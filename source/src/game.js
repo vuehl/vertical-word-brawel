@@ -2,6 +2,9 @@ import {LITE_SPECIES, isLiteSpecies, isLiteFamily} from './lite-rules.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
 import {installGlyphs} from './zixing-glyphs.js';
+import {buildPaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
+import {paperProp} from './paper-props.js';
+import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
 import './customize.js';
 import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
 import {
@@ -1710,7 +1713,7 @@ var es = class {
         t(e.altKey, `AltLeft`, `AltRight`));
     }
     requestLock() {
-      if ((clearTimeout(Jo), this.locked || uo || Da)) return;
+      if ((clearTimeout(Jo), this.fixedCamera || this.locked || uo || Da)) return;
       qo = !0;
       let e = this.userUnlockAt + Wo - performance.now();
       if (e > 0) {
@@ -1752,9 +1755,11 @@ var es = class {
       t ? (this.keys.has(e) || this.pressed.add(e), this.keys.add(e)) : this.keys.delete(e);
     }
     look(e, t) {
+      if(this.fixedCamera)return;
       ((this.mouseDX += e), (this.mouseDY += t));
     }
     zoom(e) {
+      if(this.fixedCamera)return;
       this.wheel += e;
     }
     releaseLock() {
@@ -9909,6 +9914,7 @@ function yu(e) {
   }
 }
 function bu(e) {
+  const paper=paperProp(e);if(paper)return Promise.resolve(paper);
   let t = mu.get(e);
   if (!t) {
     let n = Zt(`models/${e}.glb`),
@@ -10637,11 +10643,7 @@ var qu = `
         (this.hasWater = !r && e.water !== null),
         (this.isLava = !r && e.water === -1),
         (this.frozen = !r && e.id === `glacier`),
-        this.generate(),
-        this.planLandmarks(),
-        this.buildMesh(),
-        this.buildWater(),
-        this.initEnv());
+        buildPaperWorld(this));
     }
     terrainMat;
     setSunDir(e) {
@@ -11951,6 +11953,7 @@ var qu = `
         this.envModels?.dispose(),
         this.group.traverse((e) => {
           let t = e;
+          if(t.isInstancedMesh)t.dispose();
           t.geometry && t.geometry.dispose();
         }));
       for (let e of this.mats) e.dispose();
@@ -25889,6 +25892,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
     vz = new Float32Array(cm);
     value = new Float32Array(cm);
     attract = new Uint8Array(cm);
+    attractTime = new Float32Array(cm);
     age = new Float32Array(cm);
     free = [];
     rest = new Uint8Array(cm);
@@ -25964,6 +25968,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
         (this.vy[a] = F.range(4, 7)),
         (this.value[a] = i),
         (this.attract[a] = 0),
+        (this.attractTime[a] = 0),
         (this.age[a] = 0),
         (this.rest[a] = 0),
         this.count++);
@@ -25971,7 +25976,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
     update(e) {
       let t = this.run,
         n = t.player,
-        r = n.stats.pickupRange,
+        r = pickupRadius(n.stats.pickupRange),
         i = !!t.meta.profile.settings.calmCandies,
         a = t.meta.profile.settings.pickupFx === `simple`;
       ((this.trailBudget = a ? 0 : 24),
@@ -25995,8 +26000,8 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
             t = n.pos.y + 0.7 - this.y[a],
             r = n.pos.z - this.z[a];
           if (
-            this.age[a] <= 0.35 ||
-            (e * e + t * t + r * r >= o && !(this.magnetAll > 0 && this.kind[a] <= 1))
+            this.age[a] <= 0.18 ||
+            (!inPickupRange(e,t,r,Math.sqrt(o)) && !(this.magnetAll > 0 && this.kind[a] <= 1))
           )
             continue;
           this.rest[a] = 0;
@@ -26008,21 +26013,15 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
           d = this.kind[a];
         if (
           (!this.attract[a] &&
-            this.age[a] > 0.35 &&
-            (u < r || (this.magnetAll > 0 && d <= 1)) &&
+            this.age[a] > 0.18 &&
+            (inPickupRange(s,c,l,r) || (this.magnetAll > 0 && d <= 1)) &&
             (this.attract[a] = 1),
           this.attract[a])
         ) {
-          let n = 16 + this.age[a] * 6;
-          if (
-            ((this.vx[a] += ((s / u) * n - this.vx[a]) * Math.min(1, e * 9)),
-            (this.vy[a] += ((c / u) * n - this.vy[a]) * Math.min(1, e * 9)),
-            (this.vz[a] += ((l / u) * n - this.vz[a]) * Math.min(1, e * 9)),
-            u < 0.9)
-          ) {
-            this.collect(a);
-            continue;
-          }
+          this.attractTime[a]+=e;
+          const speed=pickupSpeed(this.attractTime[a],n.speedNow);
+          if(pickupArrived(u,speed,e)){this.collect(a);continue;}
+          this.vx[a]=s/u*speed;this.vy[a]=c/u*speed;this.vz[a]=l/u*speed;
           this.trailBudget <= 0 ||
             (d === 0 && !i && Math.random() < 0.3
               ? (this.trailBudget--,
@@ -26056,6 +26055,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
       }
     }
     collect(e) {
+      if(!this.alive[e])return;
       if (
         globalThis.__pbCoop &&
         __pbCoop.pickupCollected &&
@@ -68835,7 +68835,7 @@ var GS = class e {
         });
       }
       for (let e of this.layout.bigTrees)
-        (r.reserve(e.x, e.z, 3),
+        (this.model(`paper_pencils`,e.x,e.z,0,1),r.reserve(e.x, e.z, 3),
           this.addCover({
             x: e.x,
             z: e.z,
@@ -68846,7 +68846,7 @@ var GS = class e {
             kind: `tree`,
           }));
       for (let e of this.layout.lanterns)
-        (r.reserve(e.x, e.z, 1.4),
+        (this.model(`paper_lamp`,e.x,e.z,0,1),r.reserve(e.x, e.z, 1.4),
           this.addCover({
             x: e.x,
             z: e.z,
@@ -69074,6 +69074,7 @@ var GS = class e {
         (this.run.terrain.ringR = 1 / 0),
         this.group.traverse((e) => {
           e.geometry?.dispose();
+          if(e.material?.userData?.owned)e.material.dispose();
         }),
         this.group.parent?.remove(this.group));
     }
@@ -76357,7 +76358,7 @@ var GT = 15,
         a = (this.zone = i ? i.zoneLook() : fe(this.biome, r || this.endless ? 1 : this.stage));
       if (
         ((this.terrain = new cd(
-          r ? this.biome : { ...this.biome, sun: a.sun, light: a.light },
+          { ...this.biome, zxStage:this.stage, sun:a.sun, light:a.light },
           n,
           t.shared,
           r ? OC(r) : i ? i.layout() : void 0,
@@ -76839,6 +76840,7 @@ var GT = 15,
     };
     lookTmp = { top: new Ei(), bottom: new Ei(), fog: new Ei(), sun: new Ei() };
     pushLook() {
+      if(this.terrain?.zxPaper){applyPaperLight(this);return;}
       let e = this.look,
         t = this.r,
         n =
@@ -78126,12 +78128,12 @@ var GT = 15,
         a = this.state === `evolving` || this.state === `cinematic` || this.state === `capturing`;
       a && (r *= 0);
       let o = this.state === `capturing` ? this.capYaw : this.yawBack;
-      if (!Number.isNaN(o)) {
+      if (!this.terrain.zxPaper && !Number.isNaN(o)) {
         let t = Math.atan2(Math.sin(o - this.camYaw), Math.cos(o - this.camYaw));
         ((this.camYaw += t * Math.min(1, e * 3.2)),
           this.state !== `capturing` && Math.abs(t) < 0.01 && (this.yawBack = NaN));
       }
-      if (t.looking && (this.state === `play` || (a && this.state !== `capturing`))) {
+      if (!this.terrain.zxPaper && t.looking && (this.state === `play` || (a && this.state !== `capturing`))) {
         let e = 0.0024 * this.meta.profile.settings.sensitivity;
         (t.mouseDX && (this.yawBack = NaN),
           (this.camYaw -= t.mouseDX * e),
@@ -78144,7 +78146,7 @@ var GT = 15,
       let s = this.cine;
       ((s.blend =
         s.want > s.blend ? Math.min(s.want, s.blend + e / 0.6) : Math.max(s.want, s.blend - e * 1.4)),
-        (this.camYaw += e * s.orbit * s.blend),
+        (this.camYaw += this.terrain.zxPaper ? 0 : e * s.orbit * s.blend),
         this.evoHold > 0 && this.state === `play` && (this.evoHold -= e));
       let c = this.ultFx;
       c.t > 0 && (i || a) && (c.t -= e);
@@ -78616,6 +78618,7 @@ var GT = 15,
     }
     shakeOff = new ti();
     updateCamera(e) {
+      if(this.terrain?.zxPaper){updatePaperCamera(this,e);Il.yaw=0;return;}
       let t = this.coop?.camFocus() ?? null,
         n = this.r.camera,
         r = t ?? this.player.pos;
@@ -78939,6 +78942,7 @@ var ME = class {
           (this.knob.style.transform = ``));
         return;
       }
+      if(this.run.terrain?.zxPaper)return;
       let n = performance.now();
       (this.looks.set(e.pointerId, { x: e.clientX, y: e.clientY, t: n, t0: n }),
         (this.pinch = this.looks.size === 2 ? this.spread() : 0));
@@ -78974,6 +78978,7 @@ var ME = class {
           (this.knob.style.transform = `translate(${Math.cos(o) * a * radius}px, ${Math.sin(o) * a * radius}px)`));
         return;
       }
+      if(this.run.terrain?.zxPaper)return;
       let n = this.looks.get(e.pointerId);
       if (!n) {
         if (e.pointerType === `mouse`) return;
@@ -109342,8 +109347,10 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.title.applySky());
     }
     makeTitle(e) {
-      let t = e ? new tf(this.r, this.sprites) : new Vd(this.r, this.sprites);
-      return (this.r.scene.add(t.group), (t.group.visible = this.mode === `title`), t);
+      const terrain=new cd({...fr[0],size:120,zxStage:1},1234,this.r.shared);
+      const preview={r:this.r,terrain,player:{pos:new ti(0,0,0)},camTarget:new ti(0,0,0)};
+      const title={paper:true,group:terrain.group,applySky:()=>applyPaperLight(preview),update:dt=>updatePaperCamera(preview,dt),dispose:()=>terrain.dispose()};
+      this.r.scene.add(title.group);title.group.visible=this.mode===`title`;return title;
     }
     build(e) {
       let t = fr.find((t) => t.id === e) ?? fr[0];
@@ -109456,7 +109463,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       if (((this.t += e), (this.spookyT -= e) <= 0)) {
         this.spookyT = 2;
         let e = TL();
-        (e !== this.title instanceof tf &&
+        (!this.title.paper && e !== this.title instanceof tf &&
           (this.title.dispose(),
           this.sprites.clear(),
           (this.title = this.makeTitle(e)),

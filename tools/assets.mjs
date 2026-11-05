@@ -37,7 +37,7 @@ function sourceFor(key) {
   return fs.existsSync(override) ? override : path.join(pub, key);
 }
 const buckets = {pmd:'art', icons:'art', portraits:'art', items:'art', front:'art',
-  ui:'world', env:'world', models:'world', music:'sound', cries:'sound'};
+  ui:'world', env:'world', models:'world', glyphs:'art', music:'sound', cries:'sound'};
 const selected = new Set();
 // The forest altar requests Unown's sprite outside the 151 actor configurations.
 const referencedSpecies = new Set([201]);
@@ -51,6 +51,8 @@ for (const folder of ['assets', 'overrides/assets']) {
     if (!fs.existsSync(dir)) continue;
     for (const file of walk(dir)) {
       const name = path.relative(path.join(pub, folder), file).replaceAll('\\', '/');
+      // Replaced by the procedural desktop materials, including the menu scene.
+      if(name.startsWith('env/forest/'))continue;
       const number = parseInt(path.basename(name), 10);
       if (['pmd','icons','portraits','cries'].includes(category) && number > 151 && !referencedSpecies.has(number)) continue;
       const key = 'assets/' + name;

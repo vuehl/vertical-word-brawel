@@ -9,6 +9,7 @@ import sharp from 'sharp';
 import {reviewMenus} from './menu-regression.mjs';
 import {reviewUIPerformance} from './ui-perf.mjs';
 import {reviewZixing} from './zixing-regression.mjs';
+import {reviewPaper} from './paper-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -232,7 +233,8 @@ async function verifyStartup(){
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
   }
   if(await page.evaluate(()=>!!app.zixing)){
-    await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});
+    if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
+    else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});
     const missing=await page.evaluate(()=>[...missingAssets]);
     assert.deepEqual(missing,[],'All requested local assets must be present');
     assert.ok(homePainted,'Startup must complete its first home-frame handoff');
