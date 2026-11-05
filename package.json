@@ -1,0 +1,18 @@
+{
+  "name": "pokebonk-wechat-portrait",
+  "version": "0.8.34-portrait.1",
+  "private": true,
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "preview": "node tools/preview.mjs",
+    "build:assets": "node tools/build.mjs --assets",
+    "layout": "node tools/layout-reference.mjs",
+    "test": "node --test source/tools/lite.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/ui-cache.test.mjs",
+    "test:ui-perf": "node tools/smoke.mjs --phone-layout --software-render --ui-perf",
+    "verify:assets": "node tools/verify-assets.mjs",
+    "verify:source": "node tools/verify-source.mjs",
+    "test:touch": "node tools/smoke.mjs --phone-layout --forest-regression",
+    "test:menus": "node tools/smoke.mjs --menus-only"
+  }
+}

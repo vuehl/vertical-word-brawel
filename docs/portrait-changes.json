@@ -1,0 +1,46 @@
+{
+  "source": "C:/Users/Administrator/Desktop/宝可梦轻量版/宝可梦轻量版/project",
+  "originalGameSHA256": "a6d940064f3a598138bfad65fe9aa24513c805ef96d00e2e170ba339d1b66ef5",
+  "portraitHunks": [
+    1262,
+    1305,
+    1331,
+    5368,
+    5386,
+    96892,
+    103197,
+    103828,
+    104998,
+    105024,
+    109607,
+    109779
+  ],
+  "adapterSource": "D:/微信小游戏改/platform",
+  "notes": "Original Pokémon art, forest stages, enemies, rules and skills retained. Only two original source files changed; source/public also contains four added font/license files.",
+  "additionalChanges": [
+    "Portrait roster prioritizes the three starter cards and scrolls the selected partner profile.",
+    "Full original credits remain accessible from a compact expandable footer.",
+    "Portrait HUD, map, upgrade choices, results and touch controls respect safe areas.",
+    "QA app access is restricted to localhost:18189 with qa=portrait.",
+    "Original local server handlers are compiled into a serialized native dispatcher; saves use WeChat files with backup and atomic replacement.",
+    "Runtime assets include forest-used species and Unown 201; all source resources are retained.",
+    "Runtime music and cries are converted to 44.1 kHz 56 kbps AAC; original audio is preserved in source.",
+    "Laboratory upgrade and item cards use intrinsic-height portrait stacks with separate description and action regions.",
+    "Settings tabs wrap within the phone width; settings content and laboratory lists scroll independently.",
+    "Native spacing shorthands correctly reset earlier longhand declarations.",
+    "Native sliders read HTML min/max/step attributes and clamp decimal values; legacy 0..100 volume settings are repaired to 0..1.",
+    "Native startup and screen switches omit unsupported CSS loading panels, wipes and crossfades; starter selection no longer waits for web-only animation timers.",
+    "Native UI caches unchanged layout, bounded text measurements and GPU texture storage; visible canvas animations repaint without full relayout.",
+    "Native menu rendering is capped at 30 FPS and active gameplay at 60 FPS; scene targets use a 900000-pixel, 1.5x ceiling while UI retains independent resolution.",
+    "Portrait sprites redraw only when their animation frame or source image changes."
+  ],
+  "originalTemplateBackup": "D:/原始竖版字灵游戏-示例备份-20261104",
+  "runtime": {
+    "orientation": "portrait",
+    "miniprogramRoot": "minigame/",
+    "appid": "wxa545e5ead35ffb1b",
+    "requires": "WebGL 2",
+    "physicalDevicesTested": false,
+    "published": false
+  }
+}

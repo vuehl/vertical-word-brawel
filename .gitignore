@@ -1,0 +1,36 @@
+# Installed dependencies and generated build output.
+node_modules/
+/minigame/
+
+# Local verification output, screenshots and preview QR codes.
+/验收/
+/游戏截图_*/
+/source/reports/*.png
+/source/reports/asset-manifest.json
+/source/reports/catalogs.json
+/source/reports/missing-*.json
+
+# WeChat developer tools: keep project.config.json, ignore personal settings.
+project.private.config.json
+
+# Local saves, backups and logs (also covered by source/.gitignore).
+/source/lite-data/
+/source/backups/
+/source/logs/
+*.log
+*.tmp
+*.bak
+
+# Local environment, caches and editor/OS files.
+.env
+.env.*
+!.env.example
+!.env.sample
+.cache/
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

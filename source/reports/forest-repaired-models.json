@@ -1,0 +1,23 @@
+[
+  {
+    "name": "sanct_pillar",
+    "status": 200,
+    "bytes": 97064,
+    "saved": true,
+    "url": "https://pokebonk.com/assets/models/sanct_pillar.glb"
+  },
+  {
+    "name": "sanct_gate",
+    "status": 200,
+    "bytes": 184136,
+    "saved": true,
+    "url": "https://pokebonk.com/assets/models/sanct_gate.glb"
+  },
+  {
+    "name": "shrine",
+    "status": 200,
+    "bytes": 207404,
+    "saved": true,
+    "url": "https://pokebonk.com/assets/models/shrine.glb"
+  }
+]
