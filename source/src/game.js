@@ -78787,6 +78787,7 @@ var ME = class {
     btnIds = new Set();
     fixed = !1;
     centeredStick = !1;
+    swipeMove = !1;
     k = 1;
     setScale(e) {
       ((this.k = Math.max(0.7, Math.min(1.5, e || 1))), this.el.style.setProperty(`--tcs`, String(this.k)));
@@ -78862,6 +78863,7 @@ var ME = class {
         (this.letGo(), this.show(!1));
       }),
         addEventListener(`pagehide`, () => this.letGo()),
+        addEventListener(`resize`, () => this.letGo()),
         document.addEventListener(`visibilitychange`, () => {
           document.hidden && this.show(!1);
         }),
@@ -78896,7 +78898,7 @@ var ME = class {
     }
     mapTap = null;
     down = (e) => {
-      if (!this.run) return;
+      if (!this.run || this.run.state !== `play` || this.run.player.dead || document.hidden) return;
       if (
         (e.preventDefault(),
         jE(this.el, e.pointerId),
@@ -78906,6 +78908,13 @@ var ME = class {
         this.stickId >= 0 && this.releaseStick();
         for (let t of [...this.looks.keys()]) t !== e.pointerId && this.looks.delete(t);
         this.pinch = 0;
+      }
+      if(this.swipeMove){
+        if(this.stickId < 0){
+          this.stickId=e.pointerId;this.sx=e.clientX;this.sy=e.clientY;
+          this.run.input.stickX=this.run.input.stickY=0;
+        }
+        return;
       }
       let t = document.querySelector(`.minimap`);
       if (t && !this.mapTap && t.offsetWidth) {
@@ -78950,6 +78959,17 @@ var ME = class {
     move = (e) => {
       let t = this.run?.input;
       if (!t || e.pointerId === this.mapTap?.id || this.btnIds.has(e.pointerId)) return;
+      if(this.swipeMove){
+        if(this.run.state !== `play` || this.run.player.dead || document.hidden){this.releaseStick();return;}
+        if(e.pointerId !== this.stickId)return;
+        const dx=e.clientX-this.sx,dy=e.clientY-this.sy,distance=Math.hypot(dx,dy);
+        // Follow each deliberate swipe, so turning never requires returning to
+        // an invisible joystick origin. Keep the heading while the finger rests.
+        if(distance < 4)return;
+        this.sx=e.clientX;this.sy=e.clientY;
+        t.stickX=dx/distance;t.stickY=-dy/distance;
+        return;
+      }
       if (e.pointerId === this.stickId) {
         if(this.centeredStick){
           const bounds=this.stick.getBoundingClientRect();
@@ -79029,7 +79049,7 @@ var ME = class {
           try {
             this.el.releasePointerCapture(e);
           } catch {}
-      (this.releaseStick(), this.looks.clear(), (this.pinch = 0), (this.mapTap = null));
+      (this.releaseStick(), this.looks.clear(), this.btnIds.clear(), (this.pinch = 0), (this.mapTap = null));
       for (let e of this.el.querySelectorAll(`.tc-btn.on`)) e.classList.remove(`on`);
       let e = this.run?.input;
       if (e) for (let t of [`Space`, `ShiftLeft`, `KeyR`, `KeyE`, `Escape`, `KeyQ`]) e.touchKey(t, !1);
@@ -94744,6 +94764,7 @@ function SP() {
   return (document.addEventListener(`fullscreenchange`, n), t);
 }
 function ZX(app) {
+  const itemIcon=id=>Zt(k.items[id]?.icon||`items/${id}.png`);
   return createZixingUI(app, {
     defaults: {...SO, fpsLimit:60, batterySaver:false, enemyView:'all', zxTheme:'auto', zxBossHealth:'value', zxExtraControls:false},
     moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
@@ -94751,8 +94772,12 @@ function ZX(app) {
     baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
     offer: (run, offer) => {const value=Wb(run, offer);return {...value,title:value.title.replace('火花','火弹').replace('水枪','水环').replace('藤鞭','飞叶')};},
     moveName: move => ({ember:'火弹','water-gun':'水环','vine-whip':'飞叶'}[move.key] || move.name),
+    moveIcon: move => Zt(`ui/types/${move.type}.png`),
+    moveColor: move => YC(Ni[move.type]),
     vitaminName: id => Ne.get(id)?.name || id,
+    vitaminIcon: id => itemIcon(Ne.get(id)?.icon||id),
     itemName: id => Zb(id)?.name || id,
+    itemIcon,
     credits: () => nPFull(() => rI(app)),
     glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
   });
@@ -104851,6 +104876,7 @@ var JI = class {
         e.cry(n.species));
     }
     modal(...e) {
+      this.touch.letGo();
       let t = !!this.modalEl?.isConnected;
       if (
         (this.hideModal(),

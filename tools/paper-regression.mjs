@@ -35,8 +35,8 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
     const camera=await page.evaluate(()=>{
       const run=app.run,cam=run.r.camera;run.state='play';run.updateCamera(.1);
       const before={yaw:run.camYaw,pitch:run.camPitch,fov:cam.fov,distance:run.camDist};
-      const screen=inspected.doc.getElementById('game').getBoundingClientRect(),b=inspected.doc.querySelector('.tc-stick').getBoundingClientRect();
-      const x=b.x+b.width/2-screen.x,y=b.y+b.height/2-screen.y;
+      const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+      const x=inspected.env.innerWidth*.5-screen.x,y=inspected.env.innerHeight*.8-screen.y;
       window.tap(x,y,'down');window.tap(x+35,y,'move');window.tap(280,220,'down',2);window.tap(200,280,'move',2);window.tap(200,280,'up',2);
       const stickHeld=Math.hypot(run.input.stickX,run.input.stickY)>0;window.tap(x+35,y,'up');
       run.input.look(400,250);run.input.zoom(10);run.input.mouseDX=500;run.input.mouseDY=400;run.input.wheel=20;run.update(.016);

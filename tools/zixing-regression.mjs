@@ -20,7 +20,8 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       const box=sel=>inspected.layout.box(inspected.doc.querySelector(sel));
       const upgrade=inspected.doc.querySelector('.zx-upgrade'),pause=inspected.doc.querySelector('.zx-pause');
       const upgradeLayout=upgrade&&{extraHints:[...upgrade.children].filter(e=>e.localName==='small').length,linkRight:box('.zx-upgrade-stats').x+box('.zx-upgrade-stats').w,cardRight:box('.zx-offer').x+box('.zx-offer').w};
-      const pauseLayout=pause&&{tags:pause.querySelectorAll('.zx-build-tag').length,buildHeading:pause.textContent.includes('本局构筑'),actions:[...pause.querySelectorAll('.zx-pause-actions button')].map(el=>{const b=inspected.layout.box(el);return {x:b.x,w:b.w,h:b.h};})};
+      const pauseLayout=pause&&{page:{x:box('.zx-pause').x,y:box('.zx-pause').y,w:box('.zx-pause').w,h:box('.zx-pause').h},tags:pause.querySelectorAll('.zx-build-tag').length,buildHeading:pause.textContent.includes('本局构筑'),actions:[...pause.querySelectorAll('.zx-pause-actions button')].map(el=>{const b=inspected.layout.box(el);return {x:b.x,w:b.w,h:b.h};})};
+      const home=inspected.doc.querySelector('.zx-home-top'),homeLayout=home&&{gear:box('.zx-gear'),header:box('.zx-home-top'),scroll:box('.zx-home-scroll')};
       const unresolvedColors=[...inspected.doc.querySelectorAll('.zx *')].flatMap(el=>[...el.childNodes]).filter(n=>n.nodeType===3&&n.textContent.trim()).map(n=>({text:n.textContent,color:inspected.layout.box(n)?.s.color})).filter(t=>t.color&&/^(inherit|initial|unset|currentcolor)$/i.test(t.color));
       const settingsColors=[...inspected.doc.querySelectorAll('.zx-settings .zx-tab:not(.on),.zx-settings .zx-subtab:not(.on),.zx-settings .zx-option:not(.on),.zx-settings .zx-plain,.zx-settings .zx-footer button')].map(el=>({text:el.textContent,color:inspected.layout.box(el)?.s.color})).filter(t=>t.color);
       const prices=[...inspected.doc.querySelectorAll('.zx-buy')].map(el=>{
@@ -30,7 +31,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         const top=Math.min(...labels.map(t=>t.y)),bottom=Math.max(...labels.map(t=>t.y+t.h));
         return {text:el.textContent,verticalOffset:(top+bottom)/2-(b.y+b.h/2),horizontalOffsets:labels.map(t=>(t.x+t.w/2)-(b.x+b.w/2)),topInset:top-b.y,bottomInset:b.y+b.h-bottom,color:b.s.color};
       }).filter(Boolean);
-      return {page:app.screen?.dataset.page,dark:inspected.doc.documentElement.classList.contains('zx-dark'),viewport:[inspected.env.innerWidth,inspected.env.innerHeight],centered,leftAligned,upgradeLayout,pauseLayout,unresolvedColors,settingsColors,prices,boxes:all.map(e=>{
+      return {page:app.screen?.dataset.page,dark:inspected.doc.documentElement.classList.contains('zx-dark'),viewport:[inspected.env.innerWidth,inspected.env.innerHeight],centered,leftAligned,upgradeLayout,pauseLayout,homeLayout:homeLayout&&Object.fromEntries(Object.entries(homeLayout).map(([key,b])=>[key,{x:b.x,y:b.y,w:b.w,h:b.h}])),unresolvedColors,settingsColors,prices,boxes:all.map(e=>{
         const b=inspected.layout.box(e);return b&&{text:e.textContent.slice(0,60),class:e.className,x:b.x,y:b.y,w:b.w,h:b.h,clip:b.clip};
       }).filter(Boolean)};
     });
@@ -47,6 +48,8 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     }
     if(data.upgradeLayout){assert.equal(data.upgradeLayout.extraHints,0,'Upgrade dialog must omit the three extra hints');assert.ok(Math.abs(data.upgradeLayout.linkRight-data.upgradeLayout.cardRight)<=1.1,'Upgrade attributes link must align with the right card edge');}
     if(data.pauseLayout){assert.ok(data.pauseLayout.tags>0&&!data.pauseLayout.buildHeading,'Pause build should use compact tags');assert.equal(data.pauseLayout.actions.length,2);assert.ok(Math.abs(data.pauseLayout.actions[0].w-data.pauseLayout.actions[1].w)<=1.1,'Pause actions must have equal widths');}
+    if(data.pauseLayout)assert.deepEqual(data.pauseLayout.page,{x:0,y:0,w:data.viewport[0],h:data.viewport[1]},'Pause must cover the full usable viewport');
+    if(data.homeLayout){const {gear,header,scroll}=data.homeLayout;assert.ok(gear.y>=header.y+8&&gear.y+gear.h+8<=scroll.y&&gear.x+gear.w<=data.viewport[0]-16,'Settings must remain clear of the illustration and screen edge');}
     reports.push(name);
   }
   await snapshot('01-home-390');
@@ -142,13 +145,32 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await page.waitForFunction(()=>app.run.time>2&&!inspected.doc.querySelector('.run-loading,.stageintro'),{timeout:90000});
     await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});
     await snapshot('07-battle');
+    const hudBindings=await page.evaluate(()=>{
+      const r=app.run,p=r.player,oldXp=p.xp,oldLevel=p.level,oldSkill=p.moves[0].level,oldSlots=p.moveSlots;
+      const refresh=()=>{r.state='play';r.ui.hud(r);r.state='paused';r.ui.hud(r);};
+      const samples=[];
+      for(const value of [0,.25,.75,.99]){
+        p.xp=p.xpNext*value;refresh();
+        const ring=inspected.doc.querySelector('.zx-experience-ring'),pixels=ring.getContext('2d').getImageData(0,0,200,208).data;
+        samples.push({progress:Number(ring.dataset.progress),sum:pixels.reduce((a,b)=>a+b,0)});
+      }
+      p.level=oldLevel+1;p.xp=0;refresh();
+      const level=inspected.doc.querySelector('.zx-hud-level-badge').textContent,reset=Number(inspected.doc.querySelector('.zx-experience-ring').dataset.progress);
+      p.addItem('leftovers');p.addItem('leftovers');p.addItem('lucky-egg');p.addVitamin('protein',.12);p.moves[0].level=oldSkill+1;p.moveSlots=4;refresh();
+      const items=[...inspected.doc.querySelectorAll('[data-item]')].map(n=>[n.dataset.item,Number(n.dataset.count)]),skill=Number(inspected.doc.querySelector('[data-skill-slot="0"]').dataset.level),unlocked=!inspected.doc.querySelector('[data-skill-slot="3"]').classList.contains('locked');
+      p.level=oldLevel;p.xp=oldXp;p.moveSlots=oldSlots;refresh();r.state='play';
+      return {samples,level,expectedLevel:'Lv '+(oldLevel+1),reset,items,skill,expectedSkill:oldSkill+1,unlocked,noTopBar:!inspected.doc.querySelector('.zx-hud-progress')};
+    });
+    assert.deepEqual(hudBindings.samples.map(s=>s.progress),[0,.25,.75,.99]);assert.equal(new Set(hudBindings.samples.map(s=>s.sum)).size,4,'Experience ring pixels must change with actual XP');
+    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.reset,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.noTopBar);assert.ok(hudBindings.items.some(([id,n])=>id==='leftovers'&&n===2));
+    fs.writeFileSync(path.join(dir,'hud-bindings.json'),JSON.stringify(hudBindings,null,2));await snapshot('07-hud-skills-items');
     async function controls(){return page.evaluate(()=>{
       const box=sel=>{const b=inspected.layout.box(inspected.doc.querySelector(sel));return b&&{x:b.x,y:b.y,w:b.w,h:b.h,cx:b.x+b.w/2,cy:b.y+b.h/2};};
       return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
     });}
-    function centeredStick(c){
-      assert.ok(c.stick&&Math.abs(c.stick.cx-c.width/2)<1.1&&c.stick.y>c.height/2&&c.stick.y+c.stick.h<c.height,'Released joystick must remain visible at the bottom center: '+JSON.stringify(c));
-      assert.ok(c.knob&&Math.hypot(c.knob.cx-c.stick.cx,c.knob.cy-c.stick.cy)<1.1,'Released knob must return to its base');
+    function swipeControls(c){
+      assert.ok(!c.stick&&!c.knob,'Swipe movement must never display a joystick');
+      assert.ok(c.ult&&c.ult.x>=0&&c.ult.y>=0&&c.ult.x+c.ult.w<=c.width+1&&c.ult.y+c.ult.h<c.height,'Ultimate must fit above the safe bottom edge');
     }
     for(const [width,height] of [[320,568],[390,844],[430,932]]){
       await resize(width,height);
@@ -157,33 +179,49 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         const c=await controls();
         fs.writeFileSync(path.join(dir,`controls-${width}-${scale}.json`),JSON.stringify(c,null,2));
         assert.equal(c.extras.length,0,'Extra combat keys must be hidden by default');
-        assert.ok(c.stick&&c.ult&&Math.abs(c.stick.cx-c.width/2)<1.1,'Joystick must stay in the horizontal center');
-        assert.ok(Math.hypot(c.knob.cx-c.stick.cx,c.knob.cy-c.stick.cy)<1.1,'Released knob must sit at the center');
-        assert.ok(c.stick.y>c.height*.5&&c.stick.y+c.stick.h<c.height,'Joystick must fit above the safe bottom edge');
-        assert.ok(c.stick.x+c.stick.w<=c.ult.x||c.ult.x+c.ult.w<=c.stick.x||c.stick.y+c.stick.h<=c.ult.y||c.ult.y+c.ult.h<=c.stick.y,'Joystick and ultimate must not overlap: '+JSON.stringify(c));
+        swipeControls(c);
       }
       await page.evaluate(()=>{app.meta.profile.settings.touchScale=1;app.applySettings();});await snapshot('controls-'+width);
     }
     await resize(390,844);await sleep(400);
+    const directions=await page.evaluate(()=>{
+      const s=inspected.doc.getElementById('game').getBoundingClientRect(),input=app.run.input,results=[];
+      for(const [fx,fy] of [[.18,.4],[.5,.55],[.82,.4],[.5,.82]]){
+        const x=inspected.env.innerWidth*fx-s.x,y=inspected.env.innerHeight*fy-s.y;
+        for(const [dx,dy] of [[40,0],[-40,0],[0,-40],[0,40],[28,-28],[-28,28]]){
+          window.tap(x,y,'down');
+          const tapped=Math.hypot(input.stickX,input.stickY);
+          window.tap(x+1,y+1,'move');const jitter=Math.hypot(input.stickX,input.stickY);
+          window.tap(x+dx,y+dy,'move');const direction=[input.stickX,input.stickY];
+          window.tap(x+dx,y+dy,'up');
+          results.push({dx,dy,tapped,jitter,direction,released:Math.hypot(input.stickX,input.stickY)});
+        }
+      }
+      const x=inspected.env.innerWidth*.5-s.x,y=inspected.env.innerHeight*.8-s.y;
+      window.tap(x,y,'down');window.tap(x+60,y,'move');window.tap(x+50,y,'move');
+      const reversed=input.stickX;window.tap(x+50,y-10,'move');const turned=input.stickY;
+      window.tap(x+50,y-10,'cancel');
+      return {results,reversed,turned};
+    });
+    for(const d of directions.results){assert.equal(d.tapped,0);assert.equal(d.jitter,0);assert.equal(d.released,0);const length=Math.hypot(d.dx,d.dy);assert.ok(Math.abs(d.direction[0]-d.dx/length)<.01&&Math.abs(d.direction[1]+d.dy/length)<.01,'Screen-wide swipe direction: '+JSON.stringify(d));}
+    assert.ok(directions.reversed<-.99&&directions.turned>.99,'Changing swipe direction must not depend on the original touch position');
     const start=await page.evaluate(()=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect(),b=inspected.doc.querySelector('.tc-stick').getBoundingClientRect(),x=b.x+b.width/2-s.x,y=b.y+b.height/2-s.y;
+      const s=inspected.doc.getElementById('game').getBoundingClientRect(),x=inspected.env.innerWidth*.5-s.x,y=inspected.env.innerHeight*.8-s.y;
       window.tap(x,y,'down');window.tap(x+80,y,'move');return {x,y,px:app.run.player.pos.x,pz:app.run.player.pos.z};
     });
     await page.waitForFunction(({px,pz})=>Math.hypot(app.run.player.pos.x-px,app.run.player.pos.z-pz)>.2,{timeout:10000},start);
-    await snapshot('07-joystick-drag');
-    const dragging=await controls();
-    assert.ok(Math.abs(dragging.stick.cx-dragging.width/2)<1.1,'Dragging must not move the joystick base');
-    assert.ok(Math.hypot(dragging.knob.cx-dragging.stick.cx,dragging.knob.cy-dragging.stick.cy)<=(dragging.stick.w-dragging.knob.w)/2+1.1,'Knob must be clamped inside the base');
+    await snapshot('07-swipe-movement');swipeControls(await controls());
     const multi=await page.evaluate(({x,y})=>{
       const s=inspected.doc.getElementById('game').getBoundingClientRect(),rx=inspected.env.innerWidth*.85-s.x,ry=inspected.env.innerHeight*.4-s.y;
       window.tap(rx,ry,'down',2);window.tap(rx+18,ry,'move',2);window.tap(rx+18,ry,'up',2);
-      const speed=Math.hypot(app.run.input.stickX,app.run.input.stickY);window.tap(x+80,y,'up');return speed;
-    },start);assert.ok(multi>.1,'Moving the camera must not release the movement stick');
+      const direction=[app.run.input.stickX,app.run.input.stickY],camera=[app.run.camYaw,app.run.camPitch,app.run.camDist];window.tap(x+80,y,'up');return {direction,camera};
+    },start);assert.ok(multi.direction[0]>.99&&Math.abs(multi.direction[1])<.01,'A second finger must not change the movement direction');
+    assert.deepEqual(multi.camera,[0,Math.PI*.3,42],'Swipes must leave the camera fixed');
     assert.equal(await page.evaluate(()=>app.run.input.stickX),0,'Releasing the thumb stops movement');
-    await sleep(400);const released=await controls();centeredStick(released);
+    await sleep(400);swipeControls(await controls());
     const cast=await page.evaluate(()=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect(),b=inspected.doc.querySelector('.tc-stick').getBoundingClientRect(),u=inspected.doc.querySelector('.tc-ultb').getBoundingClientRect();
-      const x=b.x+b.width/2-s.x,y=b.y+b.height/2-s.y,ux=u.x+u.width/2-s.x,uy=u.y+u.height/2-s.y;
+      const s=inspected.doc.getElementById('game').getBoundingClientRect(),u=inspected.doc.querySelector('.tc-ultb').getBoundingClientRect();
+      const x=inspected.env.innerWidth*.5-s.x,y=inspected.env.innerHeight*.8-s.y,ux=u.x+u.width/2-s.x,uy=u.y+u.height/2-s.y;
       const settings=app.meta.profile.settings,previous={autoUlt:settings.autoUlt,ultQuiet:settings.ultQuiet};
       settings.autoUlt=false;settings.ultQuiet=true;app.run.ult.charge=1;
       const uses=app.run.ult.uses;
@@ -198,11 +236,20 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     },cast);
     assert.ok(cancelled.moving>.1,'Using the ultimate must preserve the movement pointer');
     assert.equal(cancelled.speed,0,'Touch cancellation must stop movement');
-    await sleep(400);centeredStick(await controls());
-    await page.evaluate(()=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect();
-      window.tap(40-s.x,180-s.y,'down');window.tap(50-s.x,180-s.y,'move');window.tap(50-s.x,180-s.y,'up');
-    });await sleep(400);const elsewhere=await controls();assert.ok(Math.hypot(elsewhere.stick.cx-released.stick.cx,elsewhere.stick.cy-released.stick.cy)<1.1,'Touching the map must not relocate the joystick');
+    await sleep(400);swipeControls(await controls());
+    const interrupted=await page.evaluate(()=>{
+      const s=inspected.doc.getElementById('game').getBoundingClientRect(),x=inspected.env.innerWidth*.5-s.x,y=inspected.env.innerHeight*.8-s.y;
+      const input=app.run.input,speed=()=>Math.hypot(input.stickX,input.stickY);
+      window.tap(x,y,'down');window.tap(x+30,y,'move');
+      inspected.env.dispatchEvent(new inspected.env.Event('pagehide'));const hidden=speed();
+      window.tap(x+40,y,'move');const stale=speed();window.tap(x+40,y,'up');
+      window.tap(x,y,'down');window.tap(x+30,y,'move');
+      inspected.env.dispatchEvent(new inspected.env.Event('resize'));const resized=speed();window.tap(x+30,y,'up');
+      const ult=inspected.doc.querySelector('.tc-ultb').getBoundingClientRect();
+      window.tap(ult.x+ult.width/2-s.x,ult.y+ult.height/2-s.y,'down');
+      window.tap(x,y,'move');const buttonDrag=speed();window.tap(x,y,'up');
+      return {hidden,stale,resized,buttonDrag};
+    });assert.deepEqual(interrupted,{hidden:0,stale:0,resized:0,buttonDrag:0});
     await tap('.zx-hud-pause');await snapshot('12-pause');
     for(const [w,h] of [[320,568],[430,932]]){await resize(w,h);await snapshot('12-pause-'+w);}
     await resize(390,844);await sleep(400);
@@ -214,11 +261,11 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await tap('.zx-modal .zx-button','结束本局');await snapshot('24-quit-confirm');await tap('.zx-modal .zx-button','返回');
     await tap('.zx-modal .zx-button','返回');
     assert.equal(await page.evaluate(()=>app.run.state),'play');
-    centeredStick(await controls());
+    swipeControls(await controls());
     for(const enabled of [true,false]){
       await tap('.zx-hud-pause');await tap('.zx-modal .zx-button','设置');await tap('.zx-tabs.main button','操作');
       await tap('[aria-label="扩展操作按钮"]');await tap('.zx-footer button','返回');await tap('.zx-modal .zx-button','返回');
-      const c=await controls();centeredStick(c);assert.equal(c.extras.length,enabled?4:0,'Optional controls must follow the saved switch');
+      const c=await controls();swipeControls(c);assert.equal(c.extras.length,enabled?4:0,'Optional controls must follow the saved switch');
       await snapshot(enabled?'07-optional-controls':'07-final-controls');
     }
     await page.evaluate(()=>{app.run.pendingLevels=1;app.run.doLevelUp();});
@@ -271,6 +318,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
     }
   }
-  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','fixed centered joystick at three widths and three scales','joystick release and cancellation','multitouch movement and camera','ultimate cast during movement','optional control visibility','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
+  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','hidden joystick at three widths and three button scales','screen-wide swipes, reversal, jitter, release and cancellation','multitouch movement with fixed camera','ultimate cast during movement','optional control visibility','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
   console.log('Zixing regression passed:',reports.length,'screenshots');
 }

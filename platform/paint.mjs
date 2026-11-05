@@ -18,6 +18,11 @@ function background(ctx,style,b) {
 export function paint(layout,boxes,view,scale) {
   const ctx=layout.context;
   ctx.setTransform(scale,0,0,scale,0,0);ctx.clearRect(0,0,view.width,view.height);
+  // Extend full-page paper backgrounds through the safe-area gutters while
+  // keeping every control inside the usable rectangle.
+  let fullPage;
+  for(const b of boxes)if(b.el.dataset?.fullscreen==='true'&&b.opacity>0&&b.w>0&&b.h>0)fullPage=b;
+  if(fullPage){ctx.fillStyle=background(ctx,fullPage.s,{x:0,y:0,w:view.width,h:view.height})||'#fffdf6';ctx.fillRect(0,0,view.width,view.height);}
   ctx.translate(view.x,view.y);
   for(const b of boxes) {
     const {x,y,w,h,s,el,tag,clip}=b;
