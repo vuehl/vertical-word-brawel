@@ -78788,6 +78788,7 @@ var ME = class {
     fixed = !1;
     centeredStick = !1;
     swipeMove = !1;
+    swipeActive = !1;
     k = 1;
     setScale(e) {
       ((this.k = Math.max(0.7, Math.min(1.5, e || 1))), this.el.style.setProperty(`--tcs`, String(this.k)));
@@ -78909,13 +78910,6 @@ var ME = class {
         for (let t of [...this.looks.keys()]) t !== e.pointerId && this.looks.delete(t);
         this.pinch = 0;
       }
-      if(this.swipeMove){
-        if(this.stickId < 0){
-          this.stickId=e.pointerId;this.sx=e.clientX;this.sy=e.clientY;
-          this.run.input.stickX=this.run.input.stickY=0;
-        }
-        return;
-      }
       let t = document.querySelector(`.minimap`);
       if (t && !this.mapTap && t.offsetWidth) {
         let n = t.getBoundingClientRect();
@@ -78933,7 +78927,15 @@ var ME = class {
       const inStick=stickBounds
         ? Math.hypot(e.clientX-stickBounds.left-stickBounds.width/2,e.clientY-stickBounds.top-stickBounds.height/2)<=stickBounds.width*.6
         : e.clientX < innerWidth * 0.42;
+      if(this.swipeMove && !(this.centeredStick && inStick)){
+        if(this.stickId < 0){
+          this.swipeActive=true;this.stickId=e.pointerId;this.sx=e.clientX;this.sy=e.clientY;
+          this.run.input.stickX=this.run.input.stickY=0;
+        }
+        return;
+      }
       if (this.stickId < 0 && inStick) {
+        this.swipeActive=false;
         if (((this.stickId = e.pointerId), this.fixed)) {
           let t = this.stick.getBoundingClientRect();
           ((this.sx = t.left + t.width / 2),
@@ -78959,8 +78961,8 @@ var ME = class {
     move = (e) => {
       let t = this.run?.input;
       if (!t || e.pointerId === this.mapTap?.id || this.btnIds.has(e.pointerId)) return;
-      if(this.swipeMove){
-        if(this.run.state !== `play` || this.run.player.dead || document.hidden){this.releaseStick();return;}
+      if(this.run.state !== `play` || this.run.player.dead || document.hidden){this.releaseStick();return;}
+      if(this.swipeActive){
         if(e.pointerId !== this.stickId)return;
         const dx=e.clientX-this.sx,dy=e.clientY-this.sy,distance=Math.hypot(dx,dy);
         // Follow each deliberate swipe, so turning never requires returning to
@@ -79035,6 +79037,7 @@ var ME = class {
     }
     releaseStick() {
       ((this.stickId = -1),
+        (this.swipeActive = !1),
         this.stick.classList.remove(`on`, `fixed`),
         (this.stick.style.left = this.stick.style.top = this.stick.style.bottom = ``),
         (this.knob.style.transform = ``),

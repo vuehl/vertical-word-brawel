@@ -1,6 +1,6 @@
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {drawPaperIllustration} from './paper-ui-art.js';
-import {drawProfileCard,drawExperienceRing} from './paper-hud-art.js';
+import {drawBattlePortrait,drawBattleMinimap} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
@@ -68,6 +68,10 @@ function icon(name,size=24,color='#766a88') {
     ctx.beginPath();ctx.moveTo(5,20);ctx.lineTo(5,13);ctx.moveTo(12,20);ctx.lineTo(12,7);ctx.moveTo(19,20);ctx.lineTo(19,3);ctx.stroke();
   }else if(name==='refresh'){
     ctx.beginPath();ctx.arc(12,12,7.5,Math.PI*.2,Math.PI*1.85);ctx.stroke();ctx.beginPath();ctx.moveTo(19,3.5);ctx.lineTo(19,8.5);ctx.lineTo(14,8.5);ctx.stroke();
+  }else if(name==='interact'){
+    ctx.beginPath();ctx.roundRect(3,6,18,15,3);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(3,12);ctx.lineTo(21,12);ctx.moveTo(9,6);ctx.lineTo(9,3);ctx.lineTo(15,3);ctx.lineTo(15,6);ctx.stroke();
+    ctx.fillRect(10,10,4,5);
   }
   return canvas;
 }
@@ -264,7 +268,7 @@ export function createZixingUI(app,api) {
     }else if(settingsTab===1) {
       title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']])),small('战斗预警不受透明度和隐藏攻击设置影响。')];
     }else if(settingsTab===2) {
-      title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整大招等操作按钮的大小。'),toggle('自动大招','autoUlt','就绪且附近有敌人时自动释放。'),small('固定俯视镜头 · 自动跟随字灵')),card(toggle('扩展操作按钮','zxExtraControls','需要手动跳跃、冲刺或切换瞄准时开启。'),small('在战斗画面任意空白处滑动控制方向，按住持续移动，松手停止。'))];
+      title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),toggle('自动大招','autoUlt','就绪且附近有敌人时自动释放。'),small('固定俯视镜头 · 自动跟随字灵')),card(toggle('扩展操作按钮','zxExtraControls','需要手动跳跃、冲刺或切换瞄准时开启。'),small('拖动大招左侧的圆形摇杆控制方向，松手停止；也可在空白处滑动移动。'))];
     }else if(settingsSub===0) {
       title='界面外观';content=[card(options('主题','zxTheme',[['auto','自动'],['light','浅色'],['dark','深色']]),range('界面大小','hudScale',.6,1.3,.05),range('界面不透明度','hudOpacity',.3,1,.05)),card(range('首领血条不透明度','bossBarOpacity',.2,1,.05),options('首领体力','zxBossHealth',[['value','数值'],['percent','百分比']]))];
     }else if(settingsSub===1) {
@@ -288,7 +292,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','在战斗画面任意空白处滑动：手指滑向哪里，字灵就向那个方向移动；按住持续走，松手停止。镜头固定跟随，移动时可用另一根手指释放大招。'],['攻击与拾取','靠近掉落的经验、金币与道具就会自动吸附拾取，进入吸附范围后无需停留。宝箱等场景互动仍使用交互按钮。'],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','拖动大招左侧的大圆摇杆控制方向，松手停止。也可在空白处滑动移动；镜头固定跟随，移动时可用另一根手指释放大招。'],['攻击与拾取','靠近掉落的经验、金币与道具就会自动吸附拾取，进入吸附范围后无需停留。宝箱等场景互动仍使用交互按钮。'],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -347,22 +351,25 @@ export function createZixingUI(app,api) {
     const image=(src,name)=>el('img','zx-loadout-icon',[],{src,alt:name,draggable:false});
     const slots=Array.from({length:Math.max(4,p.moveSlots)},(_,index)=>{
       const move=p.moves[index],locked=index>=p.moveSlots;
-      const node=el('div','zx-skill-slot'+(locked?' locked':move?' filled':' empty'),locked?[icon('lock',20),el('small','','未解锁')]:move?[
-        image(api.moveIcon(move.def),api.moveName(move.def)),el('b','zx-slot-level','Lv.'+move.level),el('small','zx-slot-name',api.moveName(move.def)),
+      const node=el('div','zx-skill-slot'+(locked?' locked':move?' filled':' empty'),locked?[icon('lock',17)]:move?[
+        image(api.moveIcon(move.def),api.moveName(move.def)),el('b','zx-slot-level',String(move.level)),
       ]:[],{'data-skill-slot':index,'data-level':move?.level||0,'aria-label':locked?'技能槽未解锁':move?api.moveName(move.def)+' 等级 '+move.level:'空技能槽'});
       if(move&&!locked)node.style.background='linear-gradient(180deg,#effbff,'+api.moveColor(move.def)+')';
       return node;
     });
-    const vitamins=[...p.vitamins],vits=el('div','zx-vitamin-slots',Array.from({length:p.vitaminSlots},(_,index)=>{
+    const vitamins=[...p.vitamins],vits=el('div','zx-vitamin-slots',Array.from({length:vitamins.length},(_,index)=>{
       const entry=vitamins[index];return el('div','zx-mini-slot'+(entry?' filled':''),entry?[image(api.vitaminIcon(entry[0]),api.vitaminName(entry[0])),el('b','zx-slot-count',String(entry[1].level))]:[],{'data-vitamin':entry?.[0]||'',title:entry?api.vitaminName(entry[0]):'空强化槽'});
     }));
-    const ownedItems=[...p.items],items=el('div','zx-inventory-items',ownedItems.slice(0,12).map(([id,count])=>el('div','zx-mini-slot filled',[
+    const narrow=innerWidth<=350,available=innerWidth-(narrow?70:78)-(profile().settings.zxExtraControls?136:18);
+    const capacity=Math.max(2,Math.min(12,Math.floor((available+4)/((narrow?24:28)+4))));
+    const ownedItems=[...p.items],visible=ownedItems.length>capacity?capacity-1:capacity;
+    const items=el('div','zx-inventory-items',ownedItems.slice(0,visible).map(([id,count])=>el('div','zx-mini-slot filled',[
       image(api.itemIcon(id),api.itemName(id)),el('b','zx-slot-count','×'+count),
     ],{'data-item':id,'data-count':count,title:api.itemName(id)+' ×'+count})));
-    if(ownedItems.length>12)items.append(button('+'+(ownedItems.length-12),()=>run.pause(),'zx-mini-slot zx-loadout-more',{'aria-label':'查看全部道具','data-action':'inventory-more'}));
+    if(ownedItems.length>visible)items.append(button('+'+(ownedItems.length-visible),()=>run.pause(),'zx-mini-slot zx-loadout-more',{'aria-label':'查看全部道具','data-action':'inventory-more'}));
     const inventory=el('div','zx-inventory',[small('道具'),items]);
     inventory.hidden=!profile().settings.showItems||!p.items.size;
-    return [inventory,vits,el('div','zx-skill-slots',slots)];
+    return [el('div','zx-skill-slots',slots),el('div','zx-hud-supplies',[vits,inventory])];
   }
   function offerContent(symbol,title,notes) {
     return row(glyph(symbol),col(el('b','',title),...notes));
@@ -407,6 +414,37 @@ export function createZixingUI(app,api) {
       el('h2','',title),...help,...offerBody(cards,back),...actions,
     ],{'data-choice':method}));
   }
+  function restyleItems(run,keys,choice=false) {
+    const wrap=run.ui.modalEl;
+    const cards=choice?[...wrap.querySelectorAll('.cards > .card')]:[...wrap.children].filter(node=>node.classList.contains('card'));
+    if(!cards.length)return;
+    const title=wrap.querySelector('h1')?.textContent||'发现一件道具';
+    const notes=[...wrap.children].filter(node=>node.classList.contains('help')).map(node=>text(node.textContent,'zx-item-note'));
+    cards.forEach((node,index)=>{
+      const body=node.querySelector('.bd'),heading=body.querySelector('h3'),rarity=node.querySelector('.rar');
+      const details=[...body.children].filter(detail=>detail!==heading&&!detail.classList.contains('key')&&detail.textContent.trim()).map(detail=>
+        text(detail.textContent,detail.classList.contains('muted')||detail.classList.contains('cap')?'zx-item-description':'zx-item-effect'));
+      const picture=el('img','zx-item-image',[],{src:api.itemIcon(keys[index]),alt:heading.textContent,draggable:false});
+      // Reuse the choice nodes and original action buttons to retain their
+      // reward callbacks, keyboard bindings and protection against double taps.
+      node.removeAttribute('style');node.style.cssText='';node.className='zx-item-card'+(choice?' zx-item-option':'');
+      node.dataset.itemChoice=keys[index];
+      node.replaceChildren(el('div','zx-item-hero',[el('span','zx-item-rarity',rarity?.textContent||'道具'),picture]),
+        el('div','zx-item-copy',[el('h3','',heading.textContent),...details]));
+    });
+    const actions=[...wrap.querySelectorAll('.actions > button')];
+    actions.forEach((node,index)=>{
+      node.querySelectorAll('kbd').forEach(key=>key.remove());
+      const label=node.textContent.trim().replace(/₽/g,'金币').replace(/^无\s*[（(]/,'放弃拾取（');
+      node.replaceChildren(label);node.className='zx-button'+(!choice&&index===0?' primary':' zx-item-sell');
+      node.dataset.itemAction=!choice&&index===0?'take':'sell';
+    });
+    document.querySelectorAll('.run-hint').forEach(node=>node.remove());
+    wrap.className='zx zx-modal-wrap';
+    wrap.replaceChildren(el('section','zx zx-modal zx-item-dialog',[
+      el('h2','',title),el('div','zx-item-body',choice?[...notes,...cards]:[...cards,...notes]),el('footer','zx-item-actions',actions),
+    ],{'data-choice':choice?'showItemChoice':'showItem'}));
+  }
   function summary(run,result,reward,error) {
     const win=result.victory,amount=reward?.stardust,leave=()=>{app.setScreen(null);app.toMenu();};
     run.ui.hideModal();
@@ -424,7 +462,11 @@ export function createZixingUI(app,api) {
     const hint=run.hints.show.bind(run.hints);
     run.hints.show=key=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key);};
     hud.showPause=pause;hud.showLevelUp=levelUp;hud.showSummary=summary;hud.showSlots=slots;
-    for(const [method,symbol] of Object.entries({showBlessing:'祝',showItemChoice:'物',showTrade:'易',showPact:'契',showBranch:'变',showFusion:'合',showDitto:'复',showParty:'伴',showShinySwap:'伴'})){
+    for(const method of ['showItem','showItemChoice']){
+      const render=hud[method].bind(hud);
+      hud[method]=(r,items,...args)=>{const result=render(r,items,...args);restyleItems(r,method==='showItem'?[items]:items,method==='showItemChoice');return result;};
+    }
+    for(const [method,symbol] of Object.entries({showBlessing:'祝',showTrade:'易',showPact:'契',showBranch:'变',showFusion:'合',showDitto:'复',showParty:'伴',showShinySwap:'伴'})){
       const render=hud[method].bind(hud);
       hud[method]=(...args)=>{const result=render(...args);restyleChoice(run,method,args,symbol);return result;};
     }
@@ -439,31 +481,63 @@ export function createZixingUI(app,api) {
       ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary')],hud);
     };
     const node=el('div','zx zx-hud');node.dataset.hud='true';
-    const hp=el('span','zx-hud-hp',''),level=el('b','zx-hud-level',''),badge=el('b','zx-hud-level-badge',''),fill=el('div','zx-hud-fill');
+    // Separate Latin prefix glyphs: the bundled Swei font has overly tight LV.
+    // kerning, which otherwise merges the reference label into a single mark.
+    const hp=el('span','zx-hud-hp',''),levelValue=el('span','','');
+    const level=el('b','zx-hud-level',[...['L','V','.'].map(ch=>el('span','',ch)),levelValue]),fill=el('div','zx-hud-fill');
     const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
-    const stageLabel=el('small','zx-hud-stage',''),c=character(run.startSpecies),profileWord=el('span','zx-hud-element',c.word);
-    const portrait=el('canvas','zx-profile-art',[],{width:528,height:224}),xp=el('canvas','zx-experience-ring',[],{width:200,height:208,role:'progressbar','aria-valuemin':0,'aria-valuemax':100});
-    portrait.dataset.static=xp.dataset.static='true';
-    const refreshPortrait=()=>drawProfileCard(portrait,glyphWordForSpecies(run.player.speciesId??run.startSpecies),c.tone);
-    refreshPortrait();glyphAtlasReady().then(refreshPortrait).catch(()=>{});drawExperienceRing(xp,0);
-    node.append(el('div','zx-hud-top',[col(area,stageLabel),clock,col(gold,el('small','','本局金币')),button('Ⅱ',()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'})]),
-      el('div','zx-hud-profile',[portrait,xp,badge,el('div','zx-hud-identity',[row(el('b','',c.name),profileWord),row(icon('stats',11,'#48405e'),level),el('div','zx-hud-track',fill),hp])]),inventory);
+    const stageLabel=el('small','zx-hud-stage',''),score=el('span','zx-hud-score',''),c=character(run.startSpecies);
+    const portrait=el('canvas','zx-profile-art',[],{width:120,height:120,'aria-label':c.name}),xp=el('div','zx-hud-xp');
+    const xpTrack=el('div','zx-hud-xp-track',xp,{role:'progressbar','aria-label':'升级经验','aria-valuemin':0,'aria-valuemax':100});
+    portrait.dataset.static='true';
+    const refreshPortrait=()=>drawBattlePortrait(portrait,glyphWordForSpecies(run.player.speciesId??run.startSpecies),c.tone);
+    refreshPortrait();glyphAtlasReady().then(refreshPortrait).catch(()=>{});
+    const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
+    minimap.setAttribute('aria-label','附近地图，点击查看完整地图');
+    node.append(el('div','zx-hud-top',[
+      el('div','zx-hud-profile',[portrait,el('div','zx-hud-identity',[row(level,hp),el('div','zx-hud-track',fill),xpTrack])]),
+      el('div','zx-hud-counters',[row(el('span','zx-counter-icon','◷'),clock),row(el('span','zx-counter-icon gold','◎'),gold)]),minimap,
+    ]),el('div','zx-hud-meta',[area,row(score,stageLabel)]),button('Ⅱ',()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),inventory);
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
     const look=hud.look.bind(hud);
-    hud.touch.swipeMove=true;hud.touch.centeredStick=false;hud.touch.el.classList.add('zx-touch');
-    hud.touch.el.setAttribute('aria-label','滑动移动，松手停止');
-    hud.touch.stick.setAttribute('aria-hidden','true');
+    hud.touch.swipeMove=true;hud.touch.centeredStick=true;hud.touch.el.classList.add('zx-touch');
+    hud.touch.el.setAttribute('aria-label','拖动摇杆或滑动空白处移动，松手停止');
+    hud.touch.stick.setAttribute('aria-label','移动摇杆');
     hud.look=s=>{
-      look(s);hud.touch.fixed=false;
+      look(s);hud.touch.fixed=true;
       hud.touch.el.classList.toggle('zx-extra-controls',!!s.zxExtraControls);
+      node.classList.toggle('zx-extra-controls',!!s.zxExtraControls);minimap.hidden=s.showMinimap===false;
       node.style.opacity=String(s.hudOpacity??1);node.style.fontSize=(13*(s.hudScale??1))+'px';
     };
     hud.look(profile().settings);
+    const touchUpdate=hud.touch.update.bind(hud.touch);let lastInteraction='';
+    hud.touch.update=(r,prompt)=>{
+      touchUpdate(r,prompt);
+      const raw=hud.touch.actText,target=r.interactables.nearest,key=raw+'|'+(target?.kind||'');
+      if(!raw){lastInteraction='';return;}
+      if(key===lastInteraction)return;lastInteraction=key;
+      let title=raw.replace(/₽/g,'金币'),detail='',poor=false;
+      const itemTarget=['chest','freechest','cursedchest'].includes(target?.kind);
+      hud.touch.act.classList.toggle('zx-item-act',itemTarget);
+      if(itemTarget){
+        const free=target.kind!=='chest'||target.data?.gift,cost=r.interactables.chestCost();
+        poor=!free&&r.gold<cost;
+        title=poor?'金币不足':target.kind==='cursedchest'?'开启咒箱':'开启宝箱';
+        detail=free?(target.kind==='cursedchest'?'附带诅咒':'免费'):number(cost)+' 金币';
+      }
+      if(itemTarget)hud.touch.act.firstChild.replaceChildren(icon('interact',18,'#76684e'));
+      hud.touch.act.lastChild.replaceChildren(el('b','zx-act-title',title),...(detail?[el('small','zx-act-detail',detail)]:[]));
+      hud.touch.act.classList.toggle('zx-act-poor',poor);hud.touch.act.setAttribute('aria-label',raw.replace(/₽/g,'金币'));
+    };
     for(const element of hud.hudEl.querySelectorAll('.hud-tl,.under,.hud-party,.hud-top,.hud-tr,.hud-bl,.hud-br,.lock-hint'))element.dataset.uiHidden='true';
     hud.fitTop=()=>{};
-    hud.drawMinimap=()=>{};
+    let mapAt=-Infinity,mapFrame=0;
+    hud.drawMinimap=r=>{
+      const now=performance.now();if(minimap.hidden||now-mapAt<120)return;
+      mapAt=now;drawBattleMinimap(minimap,r);minimap.dataset.frame=String(++mapFrame);
+    };
     for(const [selector,name,title] of [['.tc-jump','jump','跳跃'],['.tc-dash','dash','冲刺'],['.tc-lock','target','锁定目标']]){
       const control=hud.touch.el.querySelector(selector);
       control.replaceChildren(icon(name,26));control.setAttribute('aria-label',title);
@@ -473,7 +547,7 @@ export function createZixingUI(app,api) {
     hud.ultHud=r=>{
       originalUlt(r);
       const core=hud.touch.ult.children[1];
-      if(!core.querySelector('.zx-ult-label'))core.replaceChildren(el('div','zx-ult-label',[el('span','','◇'),el('span','','大招'),el('small','','蓄能')]));
+      if(!core.querySelector('.zx-ult-label'))core.replaceChildren(el('div','zx-ult-label',[el('span','','✧'),el('span','','大招'),el('small','','蓄能')]));
       const label=core.querySelector('small'),value=r.ult.ready?'就绪':percent(r.ult.charge);
       if(label.textContent!==value)label.textContent=value;
     };
@@ -486,14 +560,15 @@ export function createZixingUI(app,api) {
       last=now;lastState=run.state;
       original(...args);
       if(profile().settings.zxBossHealth==='percent'&&run.boss.alive){const index=run.boss.bossIndex;hud.els.bossBar.children[4].textContent=percent(Math.max(0,run.enemies.hp[index]/run.enemies.maxHp[index]));}
-      const p=run.player;updateText(level,'Lv.'+p.level);updateText(badge,'Lv '+p.level);updateText(hp,Math.ceil(p.hp)+' / '+Math.round(p.maxHp));
-      updateText(area,paperStages[Math.min(3,run.stage-1)]);updateText(stageLabel,(run.sanctuary?'终章':'区域 '+run.stage+'/3')+'  ·  '+['普通','困难','噩梦'][run.tier]);updateText(clock,time(run.time));updateText(gold,'◎ '+number(run.gold));
+      const p=run.player;updateText(levelValue,String(p.level));updateText(hp,Math.ceil(p.hp)+'/'+Math.round(p.maxHp));
+      updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'区'));updateText(stageLabel,['普通','困难','噩梦'][run.tier]);
+      updateText(score,'积分 '+number(run.stats.kills));updateText(clock,time(run.time));updateText(gold,number(run.gold));
       const evolved=glyphWordForSpecies(p.speciesId??run.startSpecies);if(portrait.dataset.word!==evolved)refreshPortrait();
-      const loadoutKey=JSON.stringify([p.moves.map(m=>m&&[m.def.key,m.level]),p.moveSlots,[...p.vitamins].map(([id,v])=>[id,v.level]),p.vitaminSlots,[...p.items],profile().settings.showItems]);
+      const loadoutKey=JSON.stringify([p.moves.map(m=>m&&[m.def.key,m.level]),p.moveSlots,[...p.vitamins].map(([id,v])=>[id,v.level]),p.vitaminSlots,[...p.items],profile().settings.showItems,profile().settings.zxExtraControls,innerWidth]);
       if(loadoutKey!==lastLoadout){lastLoadout=loadoutKey;inventory.replaceChildren(...loadout(run));}
       const health=percent(Math.max(0,Math.min(1,p.hp/p.maxHp))),exp=Math.round(Math.max(0,Math.min(1,p.xp/Math.max(1,p.xpNext)))*1000)/1000;
       if(fill.style.width!==health)fill.style.width=health;
-      if(exp!==lastExperience){lastExperience=exp;drawExperienceRing(xp,exp);xp.setAttribute('aria-valuenow',Math.round(exp*100));}
+      if(exp!==lastExperience){lastExperience=exp;xp.style.width=percent(exp);xpTrack.dataset.progress=String(exp);xpTrack.setAttribute('aria-valuenow',Math.round(exp*100));}
     };
   }
   function intro(title,subtitle) {
