@@ -8,6 +8,7 @@ import puppeteer from 'puppeteer-core';
 import sharp from 'sharp';
 import {reviewMenus} from './menu-regression.mjs';
 import {reviewUIPerformance} from './ui-perf.mjs';
+import {reviewZixing} from './zixing-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -150,7 +151,7 @@ async function verifyStartup(){
   await page.evaluate(()=>window.releaseHomeStatus());
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-  await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button'),{timeout:15000});
+  await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
   // The first usable guest screen proves optional packages did not block boot.
   // Release them now; lengthy software-rendered layout assertions must not
   // turn the fixture's artificial download gate into a real 45-second timeout.
@@ -229,6 +230,18 @@ async function verifyStartup(){
       return false;
     },{timeout:45000},selector,match);
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
+  }
+  if(await page.evaluate(()=>!!app.zixing)){
+    await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});
+    const missing=await page.evaluate(()=>[...missingAssets]);
+    assert.deepEqual(missing,[],'All requested local assets must be present');
+    assert.ok(homePainted,'Startup must complete its first home-frame handoff');
+    const values=await page.evaluate(()=>bootPercentages);
+    assert.equal(values[0],0);assert.equal(values.at(-1),100);
+    for(let i=1;i<values.length;i++)assert.ok(values[i]>=values[i-1],'Progress moved backwards');
+    assert.equal(values.filter(n=>n===100).length,1);
+    if(errors.length)throw Error(errors[0]);
+    return;
   }
   if(uiPerfOnly){
     await reviewUIPerformance({page,tap,dir,baseline:process.argv.includes('--baseline')});

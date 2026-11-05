@@ -37,11 +37,12 @@ async function launchEngine(host, play, showProgress) {
         reject(error);
       }
     };
-    env.drawUI = renderer => {
-      draw(renderer);
+    env.drawUI = (renderer,...args) => {
+      draw(renderer,...args);
       showProgress(booted ? 100 : 95, renderer);
       if (!booted) return;
       env.drawUI = draw;
+      if (env.invalidateUI) env.invalidateUI();
       env.onBootRenderError = undefined;
       resolve();
     };
@@ -71,7 +72,7 @@ async function start() {
     }
   }
   try {
-    stage('宝可梦 · 打开森林');
+    stage('字行 · 打开森林');
     const canvas = wx.createCanvas();
     const view = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     canvas.width = Math.max(1, Math.round(view.windowWidth || canvas.width || 360));

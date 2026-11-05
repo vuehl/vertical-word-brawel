@@ -8,7 +8,7 @@
     "preview": "node tools/preview.mjs",
     "build:assets": "node tools/build.mjs --assets",
     "layout": "node tools/layout-reference.mjs",
-    "test": "node --test source/tools/lite.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/ui-cache.test.mjs",
+    "test": "node --test source/tools/lite.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs",
     "test:ui-perf": "node tools/smoke.mjs --phone-layout --software-render --ui-perf",
     "verify:assets": "node tools/verify-assets.mjs",
     "verify:source": "node tools/verify-source.mjs",

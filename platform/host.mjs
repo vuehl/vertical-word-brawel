@@ -71,6 +71,8 @@ export async function setup(host) {
   function mutations(records){
     for(const record of records){
       if(record.target===screen)continue;
+      const element=record.target.nodeType===1?record.target:record.target.parentElement;
+      if(element?.closest?.('[data-ui-hidden="true"]'))continue;
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
       // Text/HUD updates may happen every game tick; coalesce them. A newly
       // mounted menu must replace the previous pixels on the very next draw.
@@ -194,7 +196,7 @@ export async function setup(host) {
     Blob,URL:LocalURL,URLSearchParams:Params,fetch,Request,Headers,Response,AbortController,AbortSignal,TextDecoder,TextEncoder,createImageBitmap:undefined,ImageBitmap:undefined,OffscreenCanvas:undefined,
     ProgressEvent:InputEvent,MouseEvent:InputEvent,KeyboardEvent:InputEvent,PointerEvent:InputEvent,Path2D:CanvasPath,MutationObserver:doc.defaultView.MutationObserver,
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
-    nativeUI:true,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    nativeUI:true,prefersDark:system.theme==='dark',nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},
@@ -203,17 +205,19 @@ export async function setup(host) {
     setInterval:(...args)=>setInterval(...args),clearInterval:id=>clearInterval(id),performance:perf,requestAnimationFrame:raf,
     cancelAnimationFrame:typeof cancelAnimationFrame==='function'?cancelAnimationFrame:clearTimeout,
     addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),dispatchEvent:win.dispatchEvent.bind(win),
-    alert:msg=>wx.showModal({title:'宝可梦',content:String(msg),showCancel:false}),open:()=>null,
+    alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
+    invalidateUI:()=>uiFrames.invalidate(false,true),
     onRunStartError(error){
       const restart=typeof wx.restartMiniProgram==='function';
       wx.showModal({title:'森林未能打开',content:String(error?.message||error),showCancel:false,
         confirmText:restart?'重新进入':'退出游戏',success:()=>restart?wx.restartMiniProgram({}):wx.exitMiniProgram({})});
     },
-    drawUI(renderer){
+    drawUI(renderer,opaque=false){
       mutations(observer.takeRecords());
       const changed=uiFrames.draw(perf.now(),env.__pb?.run?.state,layout,boxes=>paint(layout,boxes,view,scale));
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed);
+      if(opaque&&!changed)return;
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque);
     },
     locale,readLocale(lang){const p=host.files.pathFor('locale/'+lang+'.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
   });

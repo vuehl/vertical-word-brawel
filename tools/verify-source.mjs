@@ -26,7 +26,8 @@ assert.deepEqual(added.sort(),[
   'public/fonts/swei/README.md',
   'public/fonts/swei/SIL_Open_Font_License_1.1.txt',
   'public/fonts/swei/SweiGothicCJKsc-Bold.ttf',
-  'public/fonts/swei/SweiGothicCJKsc-Regular.ttf'
+  'public/fonts/swei/SweiGothicCJKsc-Regular.ttf',
+  'src/zixing-ui.js','src/zixing-style.js','src/zixing-glyphs.js'
 ].sort());
 assert.equal(digest(path.join(original,'src/game.js')),provenance.originalGameSHA256);
 const report={source:original,identical,changed,missing,added,checkedAt:new Date().toISOString()};

@@ -98,7 +98,12 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       const row=gridDisplay||(flex?(s['flex-direction']||'row').startsWith('row'):inlineText);
       node.setFlexDirection(row?Y.FLEX_DIRECTION_ROW:Y.FLEX_DIRECTION_COLUMN);
       node.setAlignItems(align[s['align-items']||s['place-items']]??Y.ALIGN_STRETCH);
-      node.setJustifyContent(justify[(s['justify-content']||'').replace('safe ','')]??Y.JUSTIFY_FLEX_START);
+      // Native inline tags are represented as inline-flex containers. Their
+      // text must align within the full label, not its intrinsic text width.
+      // Explicit flex justification still takes precedence for real controls.
+      const textFlow=inlineText||row&&!gridDisplay&&!el.children.length;
+      const textJustify=textFlow?({'center':'center','right':'flex-end','end':'flex-end'}[s['text-align']]||'flex-start'):'';
+      node.setJustifyContent(justify[(s['justify-content']||textJustify).replace('safe ','')]??Y.JUSTIFY_FLEX_START);
       const columns=s['grid-template-columns']||'';
       let count=0;
       if(gridDisplay){const match=/repeat\(\s*(\d+)/.exec(columns);count=match?+match[1]:columns?(columns.match(/(?:minmax|repeat)\([^)]*\)|[^\s]+/g)||[]).length:1;}
@@ -214,7 +219,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     boxes=[];seen=new WeakMap();
     const screens=doc.querySelectorAll('#ui > .screen');
     const screen=screens[screens.length-1];
-    const name=screen?Array.from(screen.classList).find(c=>ref.screens[c]):(runState==='paused'?'paused':'play');
+    const name=screen?.classList.contains('zx')||doc.documentElement.classList.contains('zixing')?null:screen?Array.from(screen.classList).find(c=>ref.screens[c]):(runState==='paused'?'paused':'play');
     metrics=ref.screens[name]||{};
     // CSS variables on :root are inherited by the body.
     const parent={s:engine.style(doc.documentElement,null)};

@@ -26,11 +26,28 @@ export function paint(layout,boxes,view,scale) {
     ctx.globalAlpha=b.opacity;
     // Body sits behind the WebGL canvas in the desktop stacking order.
     if(tag!=='body'&&tag!=='#text'){
-      const bg=background(ctx,s,b),border=s.border||s['border-top']||'',line=parseFloat(border)||0;
+      const bg=background(ctx,s,b),border=s.border||'',line=parseFloat(border)||0;
       const radius=parseFloat(s['border-radius']||0);
-      if(bg||line){rounded(ctx,x,y,w,h,radius);
+      if(bg||line){
+        if(s['box-shadow']&&s['box-shadow']!=='none'&&(el.classList?.contains('zx-button')||el.classList?.contains('zx-card'))){
+          rounded(ctx,x,y+3,w,h,radius);ctx.fillStyle=colors(s['box-shadow'])[0]||'#ddd7e7';ctx.fill();
+        }
+        rounded(ctx,x,y,w,h,radius);
         if(bg){ctx.fillStyle=bg;ctx.fill();}
+        const stripe=s.background||'';
+        if(stripe.includes('repeating-linear-gradient')){
+          const palette=colors(stripe);ctx.save();ctx.clip();ctx.fillStyle=palette[0];
+          for(let offset=-h;offset<w+h;offset+=22){ctx.beginPath();ctx.moveTo(x+offset,y+h);ctx.lineTo(x+offset+11,y+h);ctx.lineTo(x+offset+h+11,y);ctx.lineTo(x+offset+h,y);ctx.closePath();ctx.fill();}ctx.restore();
+          rounded(ctx,x,y,w,h,radius);
+        }
         if(line){ctx.strokeStyle=colors(s['border-color']||border)[0]||'#dedbe8';ctx.lineWidth=line;ctx.stroke();}}
+      // A row divider is a single edge, not a rectangle around the card.
+      for(const [side,points] of [['top',[x,y,x+w,y]],['right',[x+w,y,x+w,y+h]],['bottom',[x,y+h,x+w,y+h]],['left',[x,y,x,y+h]]]){
+        const edge=s['border-'+side],width=parseFloat(edge)||0;
+        if(!width)continue;
+        ctx.beginPath();ctx.moveTo(points[0],points[1]);ctx.lineTo(points[2],points[3]);
+        ctx.strokeStyle=colors(s['border-'+side+'-color']||s['border-color']||edge)[0]||'#dedbe8';ctx.lineWidth=width;ctx.stroke();
+      }
       if(el._scrollMax>1&&h>20){
         const thumb=Math.max(12,h*h/(h+el._scrollMax));
         ctx.fillStyle='rgba(70,65,92,.45)';
@@ -47,7 +64,9 @@ export function paint(layout,boxes,view,scale) {
     } else if(tag==='img'||tag==='canvas'){
       const image=el._surface;
       if(image&&(tag==='canvas'||el.complete)&&image.width&&image.height){
-        const ratio=Math.min(w/image.width,h/image.height),dw=ratio*image.width,dh=ratio*image.height;
+        const fit=s['object-fit'],ratio=(fit==='cover'?Math.max:Math.min)(w/image.width,h/image.height);
+        const dw=fit==='fill'?w:ratio*image.width,dh=fit==='fill'?h:ratio*image.height;
+        rounded(ctx,x,y,w,h,parseFloat(s['border-radius'])||0);ctx.clip();
         ctx.imageSmoothingEnabled=s['image-rendering']!=='pixelated';
         ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
       }
@@ -55,8 +74,12 @@ export function paint(layout,boxes,view,scale) {
       ctx.font=layout.font(s);ctx.fillStyle=s.color;
       if(el.type==='range'){
         const {min,max}=rangeBounds(el),f=max>min?(+el.value-min)/(max-min):0;
-        ctx.fillStyle='#bcb6c9';ctx.fillRect(x,y+h/2-2,w,4);ctx.fillStyle='#3a8cff';
-        ctx.beginPath();ctx.arc(x+w*Math.max(0,Math.min(1,f)),y+h/2,6,0,2*Math.PI);ctx.fill();
+        const zixing=el.classList.contains('zx-range'),progress=w*Math.max(0,Math.min(1,f));
+        ctx.fillStyle=zixing?'#ded6eb':'#bcb6c9';ctx.fillRect(x,y+h/2-3,w,6);
+        ctx.fillStyle=zixing?'#9b75d8':'#3a8cff';ctx.fillRect(x,y+h/2-3,progress,6);
+        ctx.beginPath();ctx.arc(x+progress,y+h/2,zixing?9:6,0,2*Math.PI);
+        ctx.fillStyle=zixing?'#fff':'#3a8cff';ctx.fill();
+        if(zixing){ctx.strokeStyle='#ad8cdb';ctx.lineWidth=2;ctx.stroke();}
       }else if(el.type==='checkbox'){ctx.fillText(el.checked?'☑':'☐',x,y+h*.75);}
       else ctx.fillText(el.value||el.placeholder||'',x+3,y+h*.7);
     }
@@ -75,8 +98,9 @@ export function compositor(gl,canvas) {
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
   const texture=gl.createTexture(),vao=gl.createVertexArray();
   let width=0,height=0;
-  return (renderer,changed)=>{
+  return (renderer,changed,opaque=false)=>{
     renderer.resetState();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
+    if(opaque){gl.disable(gl.SCISSOR_TEST);gl.clearColor(.957,.949,.98,1);gl.clear(gl.COLOR_BUFFER_BIT);}
     gl.useProgram(prog);gl.bindVertexArray(vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
     if(changed){
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);

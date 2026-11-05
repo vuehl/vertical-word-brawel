@@ -1,5 +1,7 @@
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily} from './lite-rules.js';
 import {mountLiteQA} from './lite-qa.js';
+import {createZixingUI} from './zixing-ui.js';
+import {installGlyphs} from './zixing-glyphs.js';
 import './customize.js';
 import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
 import {
@@ -78781,6 +78783,7 @@ var ME = class {
     lastType = ``;
     btnIds = new Set();
     fixed = !1;
+    centeredStick = !1;
     k = 1;
     setScale(e) {
       ((this.k = Math.max(0.7, Math.min(1.5, e || 1))), this.el.style.setProperty(`--tcs`, String(this.k)));
@@ -78914,7 +78917,11 @@ var ME = class {
           return;
         }
       }
-      if (this.stickId < 0 && e.clientX < innerWidth * 0.42) {
+      const stickBounds=this.centeredStick?this.stick.getBoundingClientRect():null;
+      const inStick=stickBounds
+        ? Math.hypot(e.clientX-stickBounds.left-stickBounds.width/2,e.clientY-stickBounds.top-stickBounds.height/2)<=stickBounds.width*.6
+        : e.clientX < innerWidth * 0.42;
+      if (this.stickId < 0 && inStick) {
         if (((this.stickId = e.pointerId), this.fixed)) {
           let t = this.stick.getBoundingClientRect();
           ((this.sx = t.left + t.width / 2),
@@ -78940,6 +78947,10 @@ var ME = class {
       let t = this.run?.input;
       if (!t || e.pointerId === this.mapTap?.id || this.btnIds.has(e.pointerId)) return;
       if (e.pointerId === this.stickId) {
+        if(this.centeredStick){
+          const bounds=this.stick.getBoundingClientRect();
+          this.sx=bounds.left+bounds.width/2;this.sy=bounds.top+bounds.height/2;
+        }
         let n = e.clientX - this.sx,
           r = e.clientY - this.sy,
           i = Math.hypot(n, r);
@@ -78952,12 +78963,15 @@ var ME = class {
             (this.stick.style.left = this.sx + `px`),
             (this.stick.style.top = this.sy + `px`));
         }
-        let a = Math.min(1, Math.hypot(n, r) / (TE * this.k)),
+        const radius=this.centeredStick
+          ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
+          : TE*this.k;
+        let a = Math.min(1, Math.hypot(n, r) / radius),
           o = Math.atan2(r, n),
           s = a < EE ? 0 : 1;
         ((t.stickX = Math.cos(o) * s),
           (t.stickY = -Math.sin(o) * s),
-          (this.knob.style.transform = `translate(${Math.cos(o) * a * TE * this.k}px, ${Math.sin(o) * a * TE * this.k}px)`));
+          (this.knob.style.transform = `translate(${Math.cos(o) * a * radius}px, ${Math.sin(o) * a * radius}px)`));
         return;
       }
       let n = this.looks.get(e.pointerId);
@@ -94258,6 +94272,7 @@ function dP(e, t, n, r = ``, i = !1, a) {
   );
 }
 function fP(e) {
+  return ZX(e).home();
   let t = e.guestClosed(),
     n = t ? (lP() ? `register` : `login`) : `guest`,
     r = !1,
@@ -94723,7 +94738,22 @@ function SP() {
     };
   return (document.addEventListener(`fullscreenchange`, n), t);
 }
+function ZX(app) {
+  return createZixingUI(app, {
+    defaults: {...SO, fpsLimit:60, batterySaver:false, enemyView:'all', zxTheme:'auto', zxBossHealth:'value', zxExtraControls:false},
+    moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
+    ultDescription: id => Xh(id, k.get(id).types[0]).desc || '积蓄能量，释放专属大招。',
+    baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
+    offer: (run, offer) => {const value=Wb(run, offer);return {...value,title:value.title.replace('火花','火弹').replace('水枪','水环').replace('藤鞭','飞叶')};},
+    moveName: move => ({ember:'火弹','water-gun':'水环','vine-whip':'飞叶'}[move.key] || move.name),
+    vitaminName: id => Ne.get(id)?.name || id,
+    itemName: id => Zb(id)?.name || id,
+    credits: () => nPFull(() => rI(app)),
+    glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
+  });
+}
 function CP(e) {
+  return ZX(e).home();
   if (location.hostname === "127.0.0.1" && location.port === "18189" && new URLSearchParams(location.search).get("qa") === "portrait") window.__portraitApp = e;
   mountLiteQA(e);
   const meta=e.meta, p=meta.profile;
@@ -95979,6 +96009,7 @@ function GP(e, t, n, r = !1) {
   );
 }
 function KP(e, t = `standard`, n, r) {
+  return ZX(e).choose();
   let i = e.meta,
     a = n != null && i.inLeague(n) ? n : i.inLeague(i.profile.lastSpecies) ? i.profile.lastSpecies : 4,
     o = !1,
@@ -96924,6 +96955,7 @@ var YP = (e) =>
     [45, 150, c(`Mewtwo`)],
   ];
 function QP(e,t,n='standard') {
+  return ZX(e).map();
   const meta=e.meta, forest=fr[0]; let tier=0,busy=false;
   const maxTier=Math.min(2,Math.max(0,meta.biomeTier('forest')));
   e.menuScene?.setBiome('forest'); e.menuScene?.setView('maps'); e.menuScene?.setFocus(t,meta.skinFor(t));
@@ -97734,6 +97766,7 @@ var hF = `pb.labItemsSeen`,
     }
   };
 function _F(e, t = `lab`) {
+  return ZX(e).lab();
   let n = e.meta,
     r = eF(n),
     i = Wt.reduce((e, t) => e + t.max, 0),
@@ -100995,6 +101028,7 @@ function QF(e, t, n) {
     document.body.append(f));
 }
 function $F(e) {
+  return ZX(e).settings();
   $P(
     e,
     `st`,
@@ -103548,6 +103582,7 @@ var JI = class {
         setTimeout(() => i.remove(), 5800));
     }
     loading(e, t) {
+      if (window.__zixingApp?.zixing) return window.__zixingApp.zixing.loading(e,t);
       let n = !this.fadeEl.classList.contains(`on`);
       n &&
         ((this.fadeEl.style.transition = `none`),
@@ -109903,6 +109938,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         }),
         N.init(),
         (this.run = new wE(this.r, this.input, N, this.hud, this.meta, e)),
+        ZX(this).attachRun(this.run),
         (globalThis.__pb = globalThis.__pb || {}),
         (globalThis.__pb.run = this.run),
         (this.run.fpsCap = this.fpsCap()),
@@ -110132,10 +110168,19 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) return;
       let t = this.frameGap();
       if (t && e < this.nextDraw - 2 && !this.r.needsDraw) return;
-      this.nextDraw = t ? Math.max(this.nextDraw + t, e) : 0;
+      // Forced resize/menu draws must not accumulate a deadline far into the
+      // future while the renderer is idle behind an opaque screen.
+      this.nextDraw = t ? e + t : 0;
       let n = Math.min(0.1, (e - this.last) / 1e3);
       this.last = e;
       try {
+        // Opaque menus only upload changed UI; hidden scenery stays idle.
+        if (window.nativeUI && this.screen?.classList.contains('zx')) {
+          window.drawUI(this.r.renderer, true);
+          this.r.needsDraw = false;
+          this.input.endFrame();
+          return;
+        }
         let t = performance.now();
         (this.pad.update(n, this.run?.state === `play`),
           this.run ? this.run.update(n) : this.menuScene?.update(n));
