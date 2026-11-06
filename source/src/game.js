@@ -42811,7 +42811,7 @@ var mv = 30,
           mul: 1 + Math.min(0.25, Math.floor(this.run.streak / 10) * 0.015) * l,
         });
       for (let e of this.run.tempMods) r.push(e);
-      (rv(e, [t, n, r, i, a, this.run.allies ? this.run.allies.mods() : [], this.run.recompiled ?? []]),
+      (rv(e, [t, n, r, i, a, this.run.allies ? this.run.allies.mods() : []]),
         av(e),
         this.run.endless && (e.moveSpeed = de(e.moveSpeed)));
       let u = this.maxHp;
@@ -45194,130 +45194,6 @@ function Hv(e, t) {
       `#c8783a`,
       { species: 112 },
     ));
-}
-var Uv = [
-  {
-    stat: `damage`,
-    gain: { stat: `damage`, mul: 1.3 },
-    loss: { stat: `damage`, mul: 0.85 },
-    up: () => c(`+30 % daño`),
-    down: () => c(`−15 % daño`),
-    item: `muscle-band`,
-  },
-  {
-    stat: `attackSpeed`,
-    gain: { stat: `attackSpeed`, mul: 1.25 },
-    loss: { stat: `attackSpeed`, mul: 0.88 },
-    up: () => c(`+25 % vel. de ataque`),
-    down: () => c(`−12 % vel. de ataque`),
-    item: `quick-claw`,
-  },
-  {
-    stat: `maxHp`,
-    gain: { stat: `maxHp`, mul: 1.25 },
-    loss: { stat: `maxHp`, mul: 0.85 },
-    up: () => c(`+25 % PS máx.`),
-    down: () => c(`−15 % PS máx.`),
-    item: `sitrus-berry`,
-  },
-  {
-    stat: `moveSpeed`,
-    gain: { stat: `moveSpeed`, mul: 1.2 },
-    loss: { stat: `moveSpeed`, mul: 0.9 },
-    up: () => c(`+20 % velocidad`),
-    down: () => c(`−10 % velocidad`),
-    item: `choice-scarf`,
-  },
-  {
-    stat: `critChance`,
-    gain: { stat: `critChance`, add: 0.15 },
-    loss: { stat: `critChance`, add: -0.08 },
-    up: () => c(`+15 % prob. de crítico`),
-    down: () => c(`−8 % prob. de crítico`),
-    item: `scope-lens`,
-  },
-  {
-    stat: `area`,
-    gain: { stat: `area`, mul: 1.3 },
-    loss: { stat: `area`, mul: 0.85 },
-    up: () => c(`+30 % área`),
-    down: () => c(`−15 % área`),
-    item: `wide-lens`,
-  },
-  {
-    stat: `xpGain`,
-    gain: { stat: `xpGain`, mul: 1.4 },
-    loss: { stat: `xpGain`, mul: 0.8 },
-    up: () => c(`+40 % experiencia`),
-    down: () => c(`−20 % experiencia`),
-    item: `lucky-egg`,
-  },
-  {
-    stat: `regen`,
-    gain: { stat: `regen`, add: 2.5 },
-    loss: { stat: `regen`, mul: 0.6 },
-    up: () => c(`+2,5 regeneración`),
-    down: () => c(`−40 % regeneración`),
-    item: `leftovers`,
-  },
-  {
-    stat: `armor`,
-    gain: { stat: `armor`, add: 20 },
-    loss: { stat: `armor`, mul: 0.75 },
-    up: () => c(`+20 armadura`),
-    down: () => c(`−25 % armadura`),
-    item: `assault-vest`,
-  },
-  {
-    stat: `duration`,
-    gain: { stat: `duration`, mul: 1.4 },
-    loss: { stat: `duration`, mul: 0.8 },
-    up: () => c(`+40 % duración`),
-    down: () => c(`−20 % duración`),
-    item: `light-clay`,
-  },
-  {
-    stat: `statusChance`,
-    gain: { stat: `statusChance`, mul: 1.4 },
-    loss: { stat: `statusChance`, mul: 0.8 },
-    up: () => c(`+40 % prob. de estado`),
-    down: () => c(`−20 % prob. de estado`),
-    item: `toxic-orb`,
-  },
-  { stat: `luck`, gain: { stat: `luck`, add: 40 }, up: () => c(`+40 suerte`), item: `lucky-punch` },
-];
-function Wv() {
-  let e = F.shuffle(Uv.slice()).slice(0, 3),
-    t = new Set(e.map((e) => e.stat)),
-    n = F.shuffle(Uv.filter((e) => e.loss && !t.has(e.stat))).slice(0, 3);
-  return e.map((e, t) => ({
-    key: `${e.stat}>${n[t].stat}`,
-    name: tv[e.stat]?.[0] ?? c(`Recompilar`),
-    tag: c(`Recompilar`),
-    color: `#3ac8e8`,
-    item: e.item,
-    boon: e.up(),
-    bane: n[t].down(),
-  }));
-}
-function Gv(e, t, n) {
-  let [r, i] = n.split(`>`),
-    a = Uv.find((e) => e.stat === r),
-    o = Uv.find((e) => e.stat === i);
-  a &&
-    o?.loss &&
-    ((t.used = !0),
-    e.recompiled.push({ ...a.gain }, { ...o.loss }),
-    e.player.recompute(),
-    e.shrines.porygon.push(n),
-    e.interactables.dim(t),
-    e.vfx.ring(t.x, t.y, t.z, 7, 3852520, 0.8),
-    e.vfx.burst(t.x, t.y + 3, t.z, 16738984, 26, 7, I.Spark, 0.6, 0.7),
-    e.vfx.burst(t.x, t.y + 3, t.z, 3852520, 26, 7, I.Twinkle, 0.6, 0.7),
-    e.vfx.flash(t.x, t.y + 3, t.z, 9109503, 5, 0.25),
-    e.audio.power(),
-    e.cry(137),
-    e.ui.toast(c(`Porygon te recompila: {boon} · {bane}`, { boon: a.up(), bane: o.down() }), null));
 }
 var Kv = [0.66, 0.33],
   qv = 0.08,
@@ -66868,18 +66744,14 @@ function CS(e) {
 }
 var wS = {
     altar: 1,
-    greed: 1,
     challenge: 1,
-    cursed: 1,
     boss: 1,
     fossil: 1,
     rhydon: 1,
-    porygon: 1,
     bill: 1,
     meowth: 2,
     ditto: 2,
     hypno: 2,
-    snorlax: 2,
     magnet: 2,
     slots: 2,
     nest: 2,
@@ -66914,9 +66786,8 @@ function PS(e, t) {
   let n = NS * ex[t] * jS(e);
   return Math.round(Math.max([10, 18, 30, 50, 90][t] * e.stage, Math.min(n, MS[t] * OS(e))));
 }
-var FS = { meowth: 52, ditto: 132, hypno: 97, snorlax: 143, magnet: 81 },
+var FS = { meowth: 52, ditto: 132, hypno: 97, magnet: 81 },
   IS = 201,
-  LS = 137,
   RS = [
     {
       color: 5959935,
@@ -67006,7 +66877,7 @@ function zS(e) {
   );
 }
 var BS = (e) => (e.data?.comet ? `comet` : e.kind === `tower` ? `tower-${e.data?.sub}` : e.kind),
-  VS = { altar: 200, challenge: 240, ditto: 150, snorlax: 240, magnet: 150, berry: 120, rock: 180 };
+  VS = { altar: 200, challenge: 240, ditto: 150, magnet: 150, berry: 120 };
 function HS(e, t, n) {
   let r = t >= 4 ? Math.max(1, Math.round(t * 0.15)) : 0,
     i = Math.round(t * 0.3),
@@ -67090,20 +66961,15 @@ var GS = class e {
           chest: [`chest`, 1.6],
           freechest: [`freechest`, 1.6],
           altar: [`altar`, 3.8],
-          greed: [`greed`, 3.4],
-          rock: [`goldrock`, 1.8],
-          cage: [`cage`, 2.6],
           boss: [`boss`, 6.2],
           portal: [`portal`, 6],
           shrine: [`shrine`, 6.3],
           challenge: [`challenge`, 3.8],
-          cursed: [`cursed`, 4.8],
           cursedchest: [`cursedchest`, 1.6],
           shroom: [`bounceshroom`, 2.3],
           slots: [`slots`, 3.4],
           fossil: [`fossil`, 3.2],
           rhydon: [`totem`, 4.3],
-          porygon: [`porygon`, 3.4],
           bill: [`billpc`, 3.4],
           nest: [`nest`, 1.8],
         },
@@ -67120,6 +66986,9 @@ var GS = class e {
                     ? [r.data.model, r.data.h ?? 2]
                     : void 0
                   : s[e];
+      // Only registered props, NPCs and custom sprite/tower objects may be placed.
+      // This also blocks stale calls from recreating removed interactions.
+      if (!l && !FS[e] && e !== `berry` && e !== `tower`) return null;
       if (e === `berry`) ((o = new Br()), (o.userData.sprite = `berry`), (o.userData.h = 3.6));
       else if (l) {
         let i = new Cr();
@@ -67147,7 +67016,7 @@ var GS = class e {
                       ? (r.data?.rot ?? Math.atan2(-t, -n))
                       : e === `shrine`
                         ? 0
-                        : e === `slots` || e === `fossil` || e === `rhydon` || e === `porygon` || e === `bill`
+                        : e === `slots` || e === `fossil` || e === `rhydon` || e === `bill`
                           ? Math.atan2(-t, -n)
                           : e === `shroom`
                             ? Math.atan2(r.data?.tx - t, r.data?.tz - n)
@@ -67168,10 +67037,8 @@ var GS = class e {
         (e === `chest` || e === `freechest`) && o.scale.setScalar(0.8),
         e === `portal` && (a.r = 3.4),
         e === `challenge` && (a.r = 3.2),
-        e === `cursed` && (a.r = 3),
         e === `fossil` && (a.r = 2.8),
         e === `rhydon` && (a.r = 3.2),
-        e === `porygon` && ((a.r = 2.4), this.run.sprites.get(LS)),
         e === `bill` && ((a.r = 3.4), o.scale.setScalar(mS)),
         e === `nest` && ((a.r = 2.8), o.scale.setScalar(1.35)),
         e === `slots` && ((a.r = 2.4), o.scale.setScalar(1.25)),
@@ -67184,7 +67051,6 @@ var GS = class e {
         (e.position.set(t, i, n), this.group.add(e), (a.beacon = e));
       }
       return (
-        e === `rock` && (a.r = 2.2),
         e === `tower` && r.r && (a.r = r.r),
         FS[e] && ((a.npc = FS[e]), this.run.sprites.get(a.npc)),
         o && (o.position.set(t, i, n), this.group.add(o), (a.group = o)),
@@ -67241,44 +67107,34 @@ var GS = class e {
           ? [
               [`altar`, i(3)],
               [`challenge`, i(1)],
-              [`cursed`, 1],
               [`fossil`, 1],
-              [`porygon`, 1],
               [`bill`, 1],
               [`nest`, 1],
               [`ditto`, 2],
               [`hypno`, 1],
-              [`snorlax`, 1],
               [`magnet`, 1],
               [`slots`, i(1)],
               [`freechest`, i(2)],
               [`cursedchest`, i(1)],
               [`berry`, i(4)],
               [`chest`, i(8)],
-              [`rock`, i(8)],
             ]
           : [
               [`altar`, i(5)],
-              [`greed`, 1],
               [`challenge`, i(2)],
-              [`cursed`, 1],
               [`fossil`, 1],
               [`rhydon`, 1],
-              [`porygon`, 1],
               [`bill`, 1],
               [`nest`, 1],
               [`meowth`, 1],
               [`ditto`, 1],
               [`hypno`, 1],
-              [`snorlax`, 2],
               [`magnet`, 2],
               [`slots`, i(2)],
               [`freechest`, i(3)],
               [`cursedchest`, i(2)],
-              [`cage`, i(2)],
               [`berry`, i(5)],
               [`chest`, i(14)],
-              [`rock`, i(14)],
             ],
         c = e.player.items.get(`dowsing-machine`) ?? 0;
       if (c) for (let e of s) e[0] === `altar` ? (e[1] += c) : e[0] === `chest` && (e[1] += 2 * c);
@@ -67289,10 +67145,6 @@ var GS = class e {
           this.add(e, t.x, t.z, e === `altar` ? { data: { tier: l[n] ?? 0 } } : {});
         }
       e.biome.relief && this.placeShrooms(n, i(3));
-      for (let t of this.list.filter((e) => e.kind === `cage`)) {
-        let r = e.director.pool.filter((e) => k.hasAnimated(e.id));
-        ((t.data = { species: r.length ? n.pick(r).id : 25 }), e.sprites.get(t.data.species));
-      }
     }
     placeShrooms(e, t) {
       let n = this.run.terrain;
@@ -67495,20 +67347,14 @@ var GS = class e {
               ? c(`Desafío: quedan {n}`, { n: e.data.left })
               : c(`Desafío superado`)
             : c(`Altar de desafío · invoca una oleada; si la derrotas, Super Ball`);
-        case `cursed`:
-          return e.used ? c(`El altar calla`) : c(`Altar maldito · un objeto raro a cambio de una maldición`);
         case `cursedchest`:
           return c(`Abrir Poké Ball maldita (gratis... ¿seguro?)`);
-        case `greed`:
-          return e.used ? c(`El altar ya respondió`) : c(`Altar de Gengar · +dificultad, +XP y +botín`);
         case `meowth`:
           return c(`Hablar con Meowth (tienda)`);
         case `ditto`:
           return e.used ? c(`Ditto descansa`) : c(`Ditto: clona uno de tus objetos`);
         case `hypno`:
           return c(`Hypno: olvida un movimiento o vitamina`);
-        case `snorlax`:
-          return e.used ? c(`Snorlax sigue durmiendo`) : c(`Despertar a Snorlax`);
         case `magnet`:
           return e.used ? c(`Magnemite sin energía`) : c(`Magnemite: atrae toda la experiencia`);
         case `berry`:
@@ -67529,12 +67375,6 @@ var GS = class e {
                 ? c(`Salir del santuario`)
                 : c(`Entrar al {name}`, { name: this.run.biome.sanctuary?.name ?? c(`santuario`) })
               : c(`Entrar al portal`);
-        case `cage`:
-          return e.used
-            ? c(`Jaula vacía`)
-            : c(`Liberar a {name} · {cost} ₽`, { name: k.get(e.data.species).name, cost: this.cageCost() });
-        case `rock`:
-          return c(`Golpe Roca`);
         case `shroom`:
           return c(`Seta rebote`);
         case `slots`: {
@@ -67561,10 +67401,6 @@ var GS = class e {
                 })
               : c(`Grito de Rhydon · guardián más fuerte y con escolta, +1 Super Ball por grito`);
         }
-        case `porygon`:
-          return e.used
-            ? c(`Porygon se ha apagado`)
-            : c(`Altar de Porygon · cambia una estadística por otra`);
         case `nest`:
           return e.used
             ? c(`Nido vacío`)
@@ -67587,9 +67423,6 @@ var GS = class e {
         default:
           return ``;
       }
-    }
-    cageCost() {
-      return 20 + this.run.stage * 10;
     }
     billIdle(e, t) {
       let n = this.run,
@@ -67666,40 +67499,6 @@ var GS = class e {
           case `challenge`:
             this.startChallenge(e);
             break;
-          case `cursed`:
-            ((e.used = !0),
-              t.curses++,
-              t.tempMods.push({ stat: `enemyAmount`, mul: 1.15 }, { stat: `difficulty`, mul: 1.1 }),
-              t.player.recompute(),
-              t.vfx.ring(e.x, e.y, e.z, 10, 5963642, 0.8),
-              t.vfx.burst(e.x, e.y + 4.2, e.z, 5963642, 30, 6, I.Skull, 0.6, 0.9),
-              t.ui.banner(
-                c(`Te ha alcanzado una maldición`),
-                c(`+15% enemigos · +10% dificultad · objeto raro`),
-                `#5aff7a`,
-                { species: 94 },
-              ),
-              t.audio.bossStart(),
-              t.shake(0.3, e.x, e.z),
-              this.dim(e),
-              t.later(0.8, () => t.rollChestItem(!1, 2)));
-            break;
-          case `greed`:
-            ((e.used = !0),
-              t.greed++,
-              t.tempMods.push(
-                { stat: `difficulty`, mul: 1.2 },
-                { stat: `xpGain`, mul: 1.25 },
-                { stat: `gold`, mul: 1.25 },
-              ),
-              t.player.recompute(),
-              t.vfx.ring(e.x, e.y, e.z, 10, 10107647, 0.8),
-              t.ui.banner(c(`Gengar acepta tu desafío`), c(`+20% dificultad · +25% XP y botín`), `#b05aff`, {
-                species: 94,
-              }),
-              t.audio.bossStart(),
-              this.dim(e));
-            break;
           case `meowth`:
             t.openShop();
             break;
@@ -67721,9 +67520,6 @@ var GS = class e {
           case `rhydon`:
             Hv(t, e);
             break;
-          case `porygon`:
-            t.openPorygon(e);
-            break;
           case `nest`:
             gf(t, e);
             break;
@@ -67737,23 +67533,6 @@ var GS = class e {
             }
             t.openSlots(e);
             break;
-          case `snorlax`: {
-            e.used = !0;
-            let n = Math.random(),
-              r = [
-                c(`Snorlax bosteza, se rasca la tripa... y te deja pasar.`),
-                c(`Snorlax abre un ojo. Parece que le caes bien.`),
-                c(`Snorlax se da la vuelta y suelta algo que tenía guardado.`),
-                c(`Snorlax ronca tan fuerte que te sientes con fuerzas.`),
-              ];
-            (t.ui.toast(F.pick(r), null),
-              n < Math.min(0.85, 0.5 * t.player.stats.luckMult)
-                ? t.offerBlessing(c(`Bendición de Snorlax`))
-                : (t.addGold(Math.max(30 * t.stage, 0.5 * OS(t))),
-                  t.vfx.burst(e.x, e.y + 2, e.z, 16765498, 20, 5, I.Star, 0.5)),
-              t.cry(143));
-            break;
-          }
           case `magnet`:
             ((e.used = !0),
               (t.pickups.magnetAll = 5),
@@ -67783,35 +67562,6 @@ var GS = class e {
           case `portal`:
             t.endless ? t.migrate() : t.enterPortal();
             break;
-          case `cage`: {
-            let n = this.cageCost();
-            if (t.gold < n) {
-              (t.ui.toast(c(`No tienes suficientes Pokédólares`), null), t.audio.deny());
-              return;
-            }
-            ((t.gold -= n),
-              (t.goldSpent += n),
-              (e.used = !0),
-              t.meta.addResearch(e.data.species, 25),
-              t.player.addXp(t.player.xpNext * 0.5),
-              t.ui.toast(
-                c(`¡Has liberado a {name}! +25 de investigación`, { name: k.get(e.data.species).name }),
-                null,
-              ),
-              t.cry(e.data.species),
-              t.vfx.burst(e.x, e.y + 1, e.z, 9109503, 26, 6, I.Heart, 0.6),
-              e.group && (e.group.visible = !1));
-            break;
-          }
-          case `rock`:
-            ((e.used = !0),
-              t.addGold(Math.round(F.range(6, 14) * Math.max(t.stage, OS(t) / 90))),
-              t.meta.count(`rocks`, 1),
-              t.vfx.burst(e.x, e.y + 1, e.z, 11049610, 14, 6, I.Rock, 0.6, 0.6, 14),
-              F.chance(0.15 * t.player.stats.luckMult) &&
-                t.pickups.spawn(F.pick([`heal`, `magnet`, `bomb`]), e.x, e.y, e.z, 1),
-              e.group && (e.group.visible = !1),
-              t.audio.boom(0.4));
         }
     }
     startChallenge(e) {
@@ -67978,21 +67728,6 @@ var GS = class e {
                 this.dim(a),
                 this.spawnChest(a.x + 2.5, a.z + 2.5, !0))
               : Math.random() < e * 3 && t.vfx.ring(a.x, a.y, a.z, 3.5, 16738890, 0.5)),
-          a.kind === `cursed` &&
-            !a.used &&
-            Math.random() < e * 4 &&
-            t.vfx.add.spawn({
-              x: a.x + F.range(-1.5, 1.5),
-              y: a.y + F.range(0.5, 2),
-              z: a.z + F.range(-1.5, 1.5),
-              vy: 0.8,
-              life: 1.4,
-              size: 0.5,
-              endSize: 0,
-              color: 5963642,
-              shape: I.Wisp,
-              glow: 0.7,
-            }),
           a.kind === `fossil` &&
             !a.used &&
             Math.random() < e * 2 &&
@@ -68043,22 +67778,7 @@ var GS = class e {
           n && (n.rotation.x = Math.sin(t.time * 3 + a.x) > 0.93 ? Math.sin(t.time * 28) * 0.12 : 0);
         }
         if (
-          (a.kind === `porygon` &&
-            !a.used &&
-            Math.random() < e * 3 &&
-            t.vfx.add.spawn({
-              x: a.x + F.range(-0.9, 0.9),
-              y: a.y + F.range(2.2, 3.6),
-              z: a.z + F.range(-0.9, 0.9),
-              vy: 0.6,
-              life: 0.9,
-              size: 0.26,
-              endSize: 0,
-              color: Math.random() < 0.5 ? 3852520 : 16738984,
-              shape: I.Spark,
-              glow: 0.8,
-            }),
-          a.kind === `bill` && !a.used && this.billIdle(a, e),
+          (a.kind === `bill` && !a.used && this.billIdle(a, e),
           a.kind === `slots` &&
             o?.userData.lamp &&
             (o.userData.lamp.scale.setScalar(Math.sin(t.time * 6 + a.x) > 0 ? 1.15 : 0.95),
@@ -68358,36 +68078,6 @@ var GS = class e {
                 e.vfx.trail(d.x, d.y + 0.4, d.z, a.color, 0.35, I.Spark, 0.4));
           }
         }
-        if (r.kind === `porygon`) {
-          let n = e.sprites.get(LS),
-            i = e.time * 2.6 + r.x,
-            a = o < r.r + 1.5 && !r.used,
-            s = r.used ? e.sprites.dirRow(t.x - r.x, t.z - r.z) : e.sprites.dirRow(Math.cos(i), Math.sin(i)),
-            c = r.used ? 0.55 : 1;
-          n.push(
-            r.x,
-            r.y + 1.85 + (r.used ? 0 : Math.sin(e.time * 2.2) * 0.12),
-            r.z,
-            `idle`,
-            e.time,
-            s,
-            1.3,
-            0,
-            0,
-            a ? 3 : 0,
-            0,
-            c,
-            c,
-            c,
-            r.used ? 0.6 : 0,
-            !1,
-          );
-        }
-        r.kind === `cage` &&
-          !r.used &&
-          e.sprites
-            .get(r.data.species)
-            .push(r.x, r.y + 0.2, r.z, `idle`, e.time, 0, 0.9, 0, 0, 0, 0, 1, 1, 1, 0, !1);
       }
       n?.end();
     }
@@ -76084,7 +75774,6 @@ var GT = 15,
     realDt = 0;
     gold = 0;
     keys = 0;
-    greed = 0;
     goldFrac = 0;
     killFrac = 0;
     curses = 0;
@@ -76105,9 +75794,8 @@ var GT = 15,
     slotSpent = 0;
     slotPrizes = {};
     tempMods = [];
-    recompiled = [];
     roars = 0;
-    shrines = { fossil: [], roars: 0, porygon: [] };
+    shrines = { fossil: [], roars: 0 };
     fusions = [];
     banished = new Set();
     rerolls = 0;
@@ -77206,7 +76894,6 @@ var GT = 15,
                     e.kind !== `shrine` &&
                     e.kind !== `magnet` &&
                     e.kind !== `berry` &&
-                    e.kind !== `rock` &&
                     e.kind !== `shroom`,
                 ) &&
                 this.ui.toast(
@@ -77561,12 +77248,11 @@ var GT = 15,
           shop: Math.round(this.econ.shop),
           sold: this.econ.sold,
         },
-        ...(this.shrines.fossil.length || this.shrines.roars || this.shrines.porygon.length
+        ...(this.shrines.fossil.length || this.shrines.roars
           ? {
               shrines: {
                 fossil: this.shrines.fossil.slice(),
                 roars: this.shrines.roars,
-                porygon: this.shrines.porygon.slice(),
               },
             }
           : {}),
@@ -78029,25 +77715,6 @@ var GT = 15,
           },
           (t) => {
             (this.resume(), t && zv(this, e, t));
-          },
-        ));
-    }
-    openPorygon(e) {
-      ((this.state = `modal`),
-        (e.data ??= {}),
-        (e.data.offers ??= Wv()),
-        this.ui.showTrade(
-          this,
-          {
-            title: c(`Altar de Porygon`),
-            help: c(
-              `Porygon reprograma tus estadísticas: una sube y otra baja para el resto de la partida. Solo una vez.`,
-            ),
-            species: 137,
-            offers: e.data.offers,
-          },
-          (t) => {
-            (this.resume(), t && Gv(this, e, t));
           },
         ));
     }
@@ -101918,18 +101585,13 @@ function sI() {
     },
     shrine: { src: aI(`shrine`), ring: `#3ac85a`, name: c(`Santuario legendario`) },
     challenge: { src: aI(`challenge`), ring: `#ff6a3a`, name: c(`Altar de desafío`) },
-    cursed: { src: aI(`cursed`), ring: `#2a2a3a`, name: c(`Altar maldito`) },
-    cage: { src: aI(`cage`), ring: `#8a8aa0`, name: c(`Jaula`) },
-    rock: { src: aI(`rock`), ring: `#d8a830`, name: c(`Roca de oro`) },
     shroom: { src: aI(`shroom`), ring: `#ff8a3a`, name: c(`Seta rebote`) },
     slots: { src: `ui/icons/coin.png`, ring: `#c8306a`, name: c(`Tragaperras (apuesta por objetos)`) },
     magnet: { src: `items/magnet.png`, ring: `#8a8aa0`, name: c(`Imán`) },
     berry: { src: `items/oran-berry.png`, ring: `#3a7aff`, name: c(`Bayas`) },
     meowth: { src: oI(52), ring: `#ffc83a`, name: c(`Meowth (tienda)`), round: !0 },
-    greed: { src: oI(94), ring: `#8a4ad0`, name: c(`Altar de Gengar (más difícil, más botín)`), round: !0 },
     ditto: { src: oI(132), ring: `#c88aff`, name: c(`Ditto (clona un objeto)`), round: !0 },
     hypno: { src: oI(97), ring: `#e8c040`, name: c(`Hypno (olvida ataques)`), round: !0 },
-    snorlax: { src: oI(143), ring: `#3a6a8a`, name: c(`Snorlax (bendición o ₽)`), round: !0 },
     fossil: {
       src: oI(142),
       ring: `#ff9a2a`,
@@ -101940,12 +101602,6 @@ function sI() {
       src: oI(112),
       ring: `#c8783a`,
       name: c(`Grito de Rhydon (guardián más fuerte, más Super Balls)`),
-      round: !0,
-    },
-    porygon: {
-      src: oI(137),
-      ring: `#3ac8e8`,
-      name: c(`Altar de Porygon (cambia una estadística por otra)`),
       round: !0,
     },
     nest: {
@@ -102090,17 +101746,12 @@ var yI = new Set([
   `freechest`,
   `cursedchest`,
   `altar`,
-  `cursed`,
   `challenge`,
-  `cage`,
   `meowth`,
   `hypno`,
   `ditto`,
-  `snorlax`,
-  `greed`,
   `slots`,
   `fossil`,
-  `porygon`,
   `nest`,
   `bill`,
 ]);
@@ -102916,7 +102567,7 @@ var OI = [
       c(`Letal`),
       c(`Imposible`),
     ][e],
-  RI = new Set([`meowth`, `ditto`, `hypno`, `snorlax`]);
+  RI = new Set([`meowth`, `ditto`, `hypno`]);
 function zI(e, t, n) {
   let r = e.textContent ?? ``,
     i = 0;
@@ -103899,17 +103550,16 @@ var JI = class {
           (t.tier.textContent = [c(`Normal`), c(`Difícil`), c(`Pesadilla`)][e.tier]),
           (t.tier.dataset.t = String(e.tier)));
       }
-      let o = e.weather + e.greed + `/` + e.curses;
+      let o = e.weather + `/` + e.curses;
       if (t.weather.dataset.k !== o) {
         t.weather.dataset.k = o;
         let n = { rain: `water`, sun: `fire`, sand: `rock`, hail: `ice`, fog: `ghost`, ash: `fire` };
         ($(t.weather).append(
           ...(n[e.weather] ? [ZC(n[e.weather], 16)] : []),
           v[e.weather].name,
-          e.greed ? X(`em`, {}, ` · ` + c(`Gengar ×{n}`, { n: e.greed })) : ``,
           e.curses ? X(`em`, {}, ` · ` + c(`Maldición ×{n}`, { n: e.curses })) : ``,
         ),
-          (t.weather.style.display = e.weather === `clear` && !e.greed && !e.curses ? `none` : ``));
+          (t.weather.style.display = e.weather === `clear` && !e.curses ? `none` : ``));
       }
     }
     xpFlashT = 0;
@@ -104324,19 +103974,15 @@ var JI = class {
         },
         i = {
           freechest: c(`Gratis`),
-          greed: c(`Gengar`),
           meowth: c(`Tienda`),
           ditto: c(`Ditto`),
           hypno: c(`Hypno`),
-          snorlax: c(`Snorlax`),
           magnet: c(`Imán`),
           berry: c(`Bayas`),
           boss: c(`Guardián`),
-          rock: c(`Golpe Roca`),
           portal: c(`¡Portal!`),
           shrine: c(`Santuario`),
           challenge: c(`Desafío`),
-          cursed: c(`Altar maldito`),
           cursedchest: c(`Maldita`),
           shroom: c(`Seta rebote`),
         };
@@ -104385,14 +104031,9 @@ var JI = class {
               p.style.setProperty(`--p`, String(e)),
               p.style.setProperty(`--ac`, RS[a.data?.tier ?? 0].css),
               $(p).append(X(`span`, {}, e + `%`))));
-        } else if (a.kind === `chest` || a.kind === `cage` || a.kind === `slots`) {
+        } else if (a.kind === `chest` || a.kind === `slots`) {
           let t = a.kind === `chest` && !!a.data?.gift,
-            n =
-              a.kind === `chest`
-                ? e.interactables.chestCost()
-                : a.kind === `slots`
-                  ? ox(e)
-                  : e.interactables.cageCost(),
+            n = a.kind === `chest` ? e.interactables.chestCost() : ox(e),
             r = t || e.gold >= n;
           ((h = `wlabel ` + (r ? `cost` : `nocost`)),
             (m = `p` + (t ? `g` : n) + r),

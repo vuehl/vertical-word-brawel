@@ -2,7 +2,7 @@ import {I as Group,K as Mesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeo
 
 // Preserve named moving parts used by chests, gates and destructible cover.
 // Interactive scenery uses the same handmade stationery language as the map.
-const supported=new Set('chest freechest cursedchest altar greed goldrock cage boss portal shrine challenge cursed bounceshroom slots fossil totem porygon billpc nest ruins_crystals sanct_portal sanct_pillar sanct_gate sanct_root sanct_bramble sanct_brambles paper_pencils paper_lamp'.split(' '));
+const supported=new Set('chest freechest cursedchest altar boss portal shrine challenge bounceshroom slots fossil totem billpc nest ruins_crystals sanct_portal sanct_pillar sanct_gate sanct_root sanct_bramble sanct_brambles paper_pencils paper_lamp'.split(' '));
 export function paperProp(name){
   if(!supported.has(name))return null;
   const group=new Group();group.name='paper-'+name;
@@ -27,7 +27,7 @@ export function paperProp(name){
   }else if(name.includes('chest')){
     box(group,0,.55,0,2.2,1.1,1.5,'#b1cfc1');const lid=new Group();lid.name='Lid';lid.position.set(0,1.1,-.75);group.add(lid);
     box(lid,0,.16,.75,2.35,.32,1.65,name==='cursedchest'?'#b5a4c3':'#ddbd76');box(group,0,.8,.8,.42,.5,.14,'#f3e5b7');
-  }else if(name==='slots'||name==='billpc'||name==='porygon'){
+  }else if(name==='slots'||name==='billpc'){
     box(group,0,1.5,0,2.6,3,1.5,'#a6bcb2');box(group,0,2,.8,2,.9,.12,'#f4ecd5');
     for(let i=-1;i<=1;i++)box(group,i*.6,2,.9,.32,.65,.1,['#da976f','#8bb9b2','#c4afcf'][i+1]);
     cyl(group,1.6,1.5,0,.12,1.5,'#9a9f91','Lever');cyl(group,1.6,2.3,0,.3,.3,'#d9a4ae');

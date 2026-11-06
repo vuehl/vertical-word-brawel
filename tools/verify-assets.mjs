@@ -31,6 +31,15 @@ for(const [key,ref] of Object.entries(index.files)){
   const data=bytes(key);assert.ok(data,'Missing '+key);assert.equal(digest(data).slice(0,16),path.basename(ref,path.extname(ref)));
 }
 const count={};
+const removedSceneAssets=[
+  'assets/models/cursed.glb','assets/models/greed.glb','assets/models/porygon.glb',
+  'assets/models/cage.glb','assets/models/goldrock.glb',
+  'assets/ui/icons/map-cursed.png','assets/ui/icons/map-cage.png','assets/ui/icons/map-rock.png'
+];
+for(const key of removedSceneAssets){
+  assert.ok(!fs.existsSync(path.join(pub,key))&&!fs.existsSync(path.join(pub,'overrides',key)),'Removed scene source asset must stay absent: '+key);
+  assert.ok(!index.files[key],'Removed scene asset must not ship; rebuild with npm run build:assets: '+key);
+}
 assert.equal(Object.keys(index.files).filter(k=>k.startsWith('assets/cries/')).length,0,'Creature cries must not ship');
 assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('locale/')),['locale/zh.json']);
 assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('data/i18n/')),['data/i18n/zh.json']);
@@ -62,6 +71,7 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(fs.readFileSync(source)),key);
 }
 const report={mappedResources:Object.keys(index.files).length,RGBA:count,originalModels:models.length,
+  removedSceneAssetsVerified:removedSceneAssets.length,
   actorBoundsVerified:152,cries:0,locales:['zh'],legacyActorAtlases:0,
   altarGlyphIncluded:!!actorMetrics[201],allArchiveHashesVerified:true};
 const out=path.join(root,'验收');fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'资源核验.json'),JSON.stringify(report,null,2));

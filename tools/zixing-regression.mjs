@@ -173,7 +173,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         const el=inspected.doc.querySelector(selector),b=inspected.layout.box(selector==='.zx-hud-level'?el:el.firstChild),label=inspected.layout.box(el);
         return {selector,text:el.textContent,width:b.w,height:b.h,font:b.s.font,nowrap:b.s['white-space']==='nowrap',labelHeight:label.h};
       });
-      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),labels,skills:[0,1,2,3].map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
+      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),labels,skills:[0,1,2,3].map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
     });}
     function swipeControls(c){
       assert.ok(c.stick&&c.knob&&c.stick.w>=100&&Math.abs(c.stick.w-c.stick.h)<=1,'The fixed circular joystick must remain visible and easy to reach');
@@ -181,11 +181,14 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       assert.ok(c.stick.cy-c.ult.cy>=48&&c.stick.cy-c.ult.cy<=90,'Ultimate must sit above the joystick for easy tapping');
       assert.ok(c.stick.y>=0&&c.stick.y+c.stick.h<c.height,'Joystick must fit above the safe bottom edge');
       assert.ok(c.ult&&c.ult.x>=0&&c.ult.y>=0&&c.ult.x+c.ult.w<=c.width+1&&c.ult.y+c.ult.h<c.height,'Ultimate must fit above the safe bottom edge');
-      assert.ok(c.profile.x+c.profile.w+8<=c.minimap.x&&c.profile.y===c.minimap.y,'Status card and minimap must share the top row without overlapping');
-      assert.ok(c.meta.y>=c.minimap.y+c.minimap.h+8&&c.pause.y>=c.minimap.y+c.minimap.h+8,'Location and pause must sit below the top row');
+      assert.ok(c.profile.x+c.profile.w+8<=c.minimap.x&&Math.abs(c.profile.y-c.minimap.y)<=4,'Status card and circular minimap must sit side by side without overlapping');
+      assert.ok(c.location.x+c.location.w+6<=c.counters.x&&c.counters.x+c.counters.w<=c.width-8,'Stage belongs on the left; time and coins belong on the right');
+      assert.ok(c.profile.y>=c.location.y+c.location.h+10&&c.minimap.y>=c.counters.y+c.counters.h+8,'The header must stay clear of the portrait and minimap');
+      assert.ok(c.meta.y>=c.profile.y+c.profile.h+8&&c.pause.y>=c.minimap.y+c.minimap.h+8,'Score and pause must stay clear of the profile and minimap');
       for(let i=0;i<c.skills.length;i++){const s=c.skills[i];assert.equal(s.w,s.h);assert.ok(s.x+s.w<=c.stick.x);if(i)assert.ok(s.y>c.skills[i-1].y+c.skills[i-1].h);}
-      assert.ok(c.labels[0].nowrap&&c.labels[0].width>=30,'The level label must remain legible on one line');
+      assert.ok(c.labels[0].nowrap&&c.labels[0].width>=40,'The level badge must remain legible on one line');
       const overlaps=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+      assert.ok(!overlaps(c.pause,c.ult)&&!overlaps(c.pause,c.stick),'Pause must stay clear of the ultimate and joystick on short screens');
       for(const extra of c.extras){assert.ok(!overlaps(extra,c.stick)&&!overlaps(extra,c.ult)&&!overlaps(extra,c.pause),'Optional controls must stay clear of the main controls');}
     }
     for(const [width,height] of [[320,568],[390,844],[430,932]]){

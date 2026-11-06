@@ -72,6 +72,19 @@ function icon(name,size=24,color='#766a88') {
     ctx.beginPath();ctx.roundRect(3,6,18,15,3);ctx.stroke();
     ctx.beginPath();ctx.moveTo(3,12);ctx.lineTo(21,12);ctx.moveTo(9,6);ctx.lineTo(9,3);ctx.lineTo(15,3);ctx.lineTo(15,6);ctx.stroke();
     ctx.fillRect(10,10,4,5);
+  }else if(name==='clock'){
+    ctx.beginPath();ctx.arc(12,13,8,0,Math.PI*2);ctx.moveTo(12,8);ctx.lineTo(12,13);ctx.lineTo(16,15);ctx.moveTo(9,2);ctx.lineTo(15,2);ctx.stroke();
+  }else if(name==='coin'){
+    ctx.fillStyle='#f5cd70';ctx.beginPath();ctx.arc(12,12,9,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(12,12,5.8,0,Math.PI*2);ctx.moveTo(12,8.5);ctx.lineTo(12,15.5);ctx.stroke();
+  }else if(name==='pin'){
+    ctx.beginPath();ctx.moveTo(12,22);ctx.bezierCurveTo(8,17,4,13,4,9);ctx.arc(12,9,8,Math.PI,Math.PI*2);ctx.bezierCurveTo(20,13,16,17,12,22);ctx.closePath();ctx.stroke();
+    ctx.beginPath();ctx.arc(12,9,2.5,0,Math.PI*2);ctx.stroke();
+  }else if(name==='score'){
+    ctx.beginPath();ctx.moveTo(7,3);ctx.lineTo(10,8);ctx.moveTo(17,3);ctx.lineTo(14,8);ctx.stroke();
+    ctx.beginPath();ctx.arc(12,14,7,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(12,10);ctx.lineTo(15,14);ctx.lineTo(12,18);ctx.lineTo(9,14);ctx.closePath();ctx.fill();
+  }else if(name==='pause'){
+    ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(8,6);ctx.lineTo(8,18);ctx.moveTo(16,6);ctx.lineTo(16,18);ctx.stroke();
   }
   return canvas;
 }
@@ -487,7 +500,8 @@ export function createZixingUI(app,api) {
     const level=el('b','zx-hud-level',[...['L','V','.'].map(ch=>el('span','',ch)),levelValue]),fill=el('div','zx-hud-fill');
     const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
     const stageLabel=el('small','zx-hud-stage',''),score=el('span','zx-hud-score',''),c=character(run.startSpecies);
-    const portrait=el('canvas','zx-profile-art',[],{width:120,height:120,'aria-label':c.name}),xp=el('div','zx-hud-xp');
+    node.classList.add('zx-hud-'+c.tone);
+    const portrait=el('canvas','zx-profile-art',[],{width:160,height:168,'aria-label':c.name}),xp=el('div','zx-hud-xp');
     const xpTrack=el('div','zx-hud-xp-track',xp,{role:'progressbar','aria-label':'升级经验','aria-valuemin':0,'aria-valuemax':100});
     portrait.dataset.static='true';
     const refreshPortrait=()=>drawBattlePortrait(portrait,glyphWordForSpecies(run.player.speciesId??run.startSpecies),c.tone);
@@ -495,9 +509,19 @@ export function createZixingUI(app,api) {
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
     minimap.setAttribute('aria-label','附近地图，点击查看完整地图');
     node.append(el('div','zx-hud-top',[
-      el('div','zx-hud-profile',[portrait,el('div','zx-hud-identity',[row(level,hp),el('div','zx-hud-track',fill),xpTrack])]),
-      el('div','zx-hud-counters',[row(el('span','zx-counter-icon','◷'),clock),row(el('span','zx-counter-icon gold','◎'),gold)]),minimap,
-    ]),el('div','zx-hud-meta',[area,row(score,stageLabel)]),button('Ⅱ',()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),inventory);
+      el('div','zx-hud-location',[icon('pin',14,'#5277a4'),area]),
+      el('div','zx-hud-counters',[
+        el('div','zx-hud-counter',[icon('clock',14,'#637ca3'),clock],{'aria-label':'关卡时间'}),
+        el('div','zx-hud-counter',[icon('coin',15,'#b68a37'),gold],{'aria-label':'本局金币'}),
+      ]),
+      el('div','zx-hud-profile',[
+        el('div','zx-hud-card-back'),el('div','zx-hud-card'),portrait,
+        el('div','zx-hud-identity',[
+          el('div','zx-hud-name-row',[el('b','zx-hud-name',c.name),el('span','zx-hud-element',c.word)]),
+          row(el('span','zx-hud-hp-label','生命'),hp),el('div','zx-hud-track',fill),xpTrack,
+        ]),level,
+      ]),minimap,
+    ]),el('div','zx-hud-meta',[icon('score',18,'#637fae'),score,stageLabel]),button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),inventory);
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
