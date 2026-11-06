@@ -1,8 +1,9 @@
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily} from './lite-rules.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
-import {installGlyphs} from './zixing-glyphs.js';
-import {buildPaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
+import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
+import {actorMetrics} from './actor-metrics.js';
+import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
 import {paperProp} from './paper-props.js';
 import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
 import './customize.js';
@@ -4746,27 +4747,9 @@ var Ws = () =>
       this.ctx &&
         [392, 370, 349, 330, 311].forEach((e, t) => this.tone(e, 0.4, `triangle`, 0.1, 1, t * 0.25));
     }
-    async cry(e, t = 1, n = 1) {
-      if (!this.ctx) return;
-      let r = this.cries.get(e);
-      if (r !== `loading` && r !== `missing`) {
-        if (r) this.playBuf(r, t * (this.cryGain.get(e) ?? 1), n);
-        else {
-          this.cries.set(e, `loading`);
-          try {
-            let r = await fetch(Zt(`cries/${e}.ogg`));
-            if (!r.ok) throw Error(`missing`);
-            let i = await this.ctx.decodeAudioData(await r.arrayBuffer());
-            (this.cries.set(e, i), this.cryGain.set(e, Us(i)), this.playBuf(i, t * this.cryGain.get(e), n));
-          } catch {
-            (this.cries.set(e, `missing`),
-              setTimeout(() => {
-                this.cries.get(e) === `missing` && this.cries.delete(e);
-              }, 3e4));
-          }
-        }
-      }
-    }
+    // Creature recordings are not part of the glyph edition. Keep the event
+    // hook for combat scripts; synthesized combat and UI effects still play.
+    cry() {}
     playBuf(e, t, n) {
       let r = this.ctx,
         i = r.createBufferSource();
@@ -5816,7 +5799,9 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         t.add(this.mesh),
         i
           ? this.use(i, new Wr(i))
-          : this.load(
+          : actorMetrics[this.sid]
+            ? (this.foot = actorMetrics[this.sid])
+            : this.load(
               (this.url = Zt(
                 this.fallback
                   ? (this.meta.fallback ?? `front/${this.sid}.png`)
@@ -5830,6 +5815,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     lastUse = nl;
     drawn = !1;
     get bytes() {
+      if(this.zxGlyph){const image=this.material.uniforms.zxGlyph.value.image;return image?image.width*image.height*4:0;}
       return this.ready ? this.meta.w * this.meta.h * 4 : 0;
     }
     urgent() {
@@ -5971,6 +5957,17 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         return;
       }
       this.count >= this.cap && this.grow();
+      if(this.zxGlyph){
+        const index=this.count++,size=Math.max(1.9,Math.min(2.55,this.bodyHeight(1)*1.3))*o;
+        const pos=this.aPos.array,dim=this.aSize.array,uv=this.aUV.array,fx=this.aFx.array,tint=this.aTint.array,look=this.aLook.array;
+        pos[index*3]=e;pos[index*3+1]=t+.08;pos[index*3+2]=n;
+        dim[index*2]=dim[index*2+1]=size;
+        uv[index*4]=uv[index*4+1]=0;uv[index*4+2]=uv[index*4+3]=1;
+        fx[index*4]=s;fx[index*4+1]=c;fx[index*4+2]=l;fx[index*4+3]=u;
+        tint[index*4]=d;tint[index*4+1]=f;tint[index*4+2]=p;tint[index*4+3]=m;
+        look[index*2]=g&15;look[index*2+1]=g>>4;
+        return;
+      }
       let _ = this.anim(r),
         v = _._tot;
       v === void 0 && ((v = _.d.reduce((e, t) => e + t, 0) || 1), (_._tot = v));
@@ -6019,7 +6016,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         this.mesh.dispose(),
         this.mesh.geometry.dispose(),
         this.material.dispose(),
-        this.material.uniforms.map.value?.dispose());
+        !this.zxGlyph && this.material.uniforms.map.value?.dispose());
     }
   },
   tl = class {
@@ -6077,6 +6074,8 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         (this.shared = t),
         (this.shadows = new tl(e)),
         (this.standIn = new el(-1, e, t, 64, il())));
+      // Install before buildStage can request even its first actor.
+      installGlyphs({sprites:this},{Texture:Wr,colorSpace:pi,species:id=>k.get(id)});
     }
     get(e, t = !1) {
       let n = this.batches.get(e);
@@ -10626,7 +10625,8 @@ var qu = `
     maxH = 1;
     arenaR;
     ringR = 1 / 0;
-    constructor(e, t, n, r) {
+    constructor(e, t, n, r, paperAssets, deferred = false) {
+      this.paperAssets=paperAssets;
       ((this.biome = e),
         (this.seed = t),
         (this.shared = n),
@@ -10643,7 +10643,7 @@ var qu = `
         (this.hasWater = !r && e.water !== null),
         (this.isLava = !r && e.water === -1),
         (this.frozen = !r && e.id === `glacier`),
-        buildPaperWorld(this));
+        !deferred && buildPaperWorld(this));
     }
     terrainMat;
     setSunDir(e) {
@@ -11948,6 +11948,7 @@ var qu = `
     }
     disposed = !1;
     dispose() {
+      if(this.zxPaper){this.disposed=true;disposePaperWorld(this);return;}
       ((this.disposed = !0),
         this.env?.dispose(),
         this.envModels?.dispose(),
@@ -71095,6 +71096,7 @@ function GC(e, t, n = e) {
   return r;
 }
 function KC(e, t, n = 3, r = `idle`, i = e) {
+  if(actorMetrics[e])return glyphPreview(e,n);
   let a = document.createElement(`canvas`);
   a.className = `pix`;
   let o = k.sprites[e],
@@ -71355,6 +71357,7 @@ function rw(e) {
   );
 }
 function iw(e, t = 3, n = `idle`) {
+  if(actorMetrics[e])return glyphPreview(e,t);
   let r = X(`canvas`, { class: `pix` }),
     i = k.sprites[e],
     a = null;
@@ -76268,9 +76271,13 @@ var GT = 15,
       ((this.boosts = new Set(a.boosts ?? [])),
         this.mode === `endless` && (this.endless = new Vw(this)),
         this.mode === `tower` && ((this.tower = new OT(this)), (this.stage = this.tower.curveStage)),
-        this.buildStage(!0),
-        this.applyBoosts(),
-        this.openStage());
+        (this.paperAssets=createPaperAssets()),
+        (this.initialized=this.initialize()));
+    }
+    async initialize() {
+      this.state='transition';
+      await this.buildStageAsync(true);
+      this.applyBoosts();
     }
     async openStage() {
       let e = this.stageSprites();
@@ -76349,21 +76356,34 @@ var GT = 15,
     useMasterBall() {
       return this.masterBall ? ((this.masterBall = !1), !0) : this.player.items.has(`master-ball`);
     }
-    buildStage(e) {
+    createStageTerrain(deferred = false) {
+      const sanctuary=this.stage===4?(this.biome.sanctuary??null):null,tower=this.tower;
+      const zone=this.zone=tower?tower.zoneLook():fe(this.biome,sanctuary||this.endless?1:this.stage);
+      return new cd({...this.biome,zxStage:this.stage,sun:zone.sun,light:zone.light},
+        (this.seed+this.stage*7919)>>>0,this.r.shared,sanctuary?OC(sanctuary):tower?tower.layout():void 0,this.paperAssets,deferred);
+    }
+    async buildStageAsync(first) {
+      this.buildingStage=true;
+      let terrain;
+      try {
+        // Let the transition cover paint before copying/building the next area.
+        await new Promise(resolve=>setTimeout(resolve,0));
+        terrain=this.createStageTerrain(true);
+        await buildPaperWorldAsync(terrain);
+        await new Promise(resolve=>setTimeout(resolve,0));
+        if(this.disposed)throw Error('本局已结束');
+        this.buildStage(first,terrain);
+      } catch(error){if(terrain&&terrain!==this.terrain)terrain.dispose();throw error;}
+      finally {this.buildingStage=false;}
+    }
+    buildStage(e, preparedTerrain) {
       let t = this.r,
-        n = (this.seed + this.stage * 7919) >>> 0,
         r = this.stage === 4 ? (this.biome.sanctuary ?? null) : null;
       this.streakPaid.clear();
-      let i = this.tower,
-        a = (this.zone = i ? i.zoneLook() : fe(this.biome, r || this.endless ? 1 : this.stage));
+      this.terrain=preparedTerrain??this.createStageTerrain();
+      let i = this.tower,a=this.zone;
       if (
-        ((this.terrain = new cd(
-          { ...this.biome, zxStage:this.stage, sun:a.sun, light:a.light },
-          n,
-          t.shared,
-          r ? OC(r) : i ? i.layout() : void 0,
-        )),
-        this.terrain.setSunDir(a.sunDir),
+        (this.terrain.setSunDir(a.sunDir),
         t.scene.add(this.terrain.group),
         t.setSun(a.sunDir, a.sunH, a.glow, a.glowK, a.stars),
         i?.buildFloor(),
@@ -77320,7 +77340,7 @@ var GT = 15,
             (this.player.flash = 0),
             this.stage++,
             this.sprites.trim(3e3, uo ? 8e7 : 3e8),
-            this.buildStage(!1),
+            await this.buildStageAsync(!1),
             this.coop?.onStage(),
             await this.openStage());
         } catch (e) {
@@ -77361,7 +77381,7 @@ var GT = 15,
             e.advance(),
             (this.stage = e.curveStage),
             this.sprites.trim(3e3, uo ? 8e7 : 3e8),
-            this.buildStage(!1),
+            await this.buildStageAsync(!1),
             await this.openStage(),
             this.checkpoint());
         } catch (e) {
@@ -77568,6 +77588,7 @@ var GT = 15,
       };
     }
     keepLive() {
+      if(!this.player||!this.director)return;
       if (!(this.state === `over` || this.sent))
         try {
           this.meta.keepLive(this.result(!1), {
@@ -78721,6 +78742,7 @@ var GT = 15,
         this.orbitalsGlow.end());
     }
     dispose() {
+      this.disposed=true;
       (this.coop?.dispose(),
         this.hints.dispose(),
         this.mapEvents.clear(),
@@ -78730,12 +78752,14 @@ var GT = 15,
         (this.r.shared.uWind.value = 1),
         this.capture?.dispose(),
         this.allies?.dispose(),
-        this.terrain.dispose(),
-        this.interactables.dispose(),
+        this.terrain?.dispose(),
+        this.interactables?.dispose(),
         this.sanctuary?.dispose(),
         this.tower?.dispose(),
         this.boss?.mech?.dispose(),
         this.sprites.clear());
+      this.sprites.standIn.dispose();
+      disposePaperAssets(this.paperAssets);
       for (let e of [
         this.vfx.add.mesh,
         this.vfx.norm.mesh,
@@ -78746,13 +78770,13 @@ var GT = 15,
         this.vfx.text.mesh,
         this.orbitals.mesh,
         this.orbitalsGlow.mesh,
-        this.projectiles.pool.mesh,
-        this.projectiles.glow.mesh,
-        this.pickups.pool.mesh,
-        this.pickups.glow.mesh,
+        this.projectiles?.pool.mesh,
+        this.projectiles?.glow.mesh,
+        this.pickups?.pool.mesh,
+        this.pickups?.glow.mesh,
         this.sprites.shadows.mesh,
       ])
-        (e.parent?.remove(e), e.geometry.dispose(), e.material.dispose());
+        if(e)(e.parent?.remove(e), e.dispose?.(), e.geometry.dispose(), e.material.dispose());
     }
   },
   TE = 46,
@@ -109369,6 +109393,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     cur = { ...OL.main };
     target = OL.main;
     constructor(e, t = `forest`) {
+      if(window.nativeUI){this.r=e;this.biome=t;applyPaperLight({r:e});return;}
       ((this.r = e),
         (this.sprites = new rl(e.scene, e.shared)),
         (this.biome = t),
@@ -109422,6 +109447,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.r.setMoon(0));
     }
     setBiome(e) {
+      if(window.nativeUI)return;
       (e === this.biome && this.terrain) ||
         ((this.biome = e),
         this.terrain?.dispose(),
@@ -109429,6 +109455,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.mode === `biome` && ((this.terrain = this.build(e)), this.biomeSky()));
     }
     setView(e) {
+      if(window.nativeUI)return;
       this.target = OL[e];
       let t = e === `main` ? `title` : `biome`;
       t !== this.mode &&
@@ -109439,6 +109466,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         t === `title` ? this.title.applySky() : this.biomeSky());
     }
     setFocus(e, t = null) {
+      if(window.nativeUI)return;
       ((this.focus = e),
         (this.look = t === !0 ? `shiny` : t || null),
         (this.focusShiny = this.look === `shiny`),
@@ -109489,6 +109517,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     }
     spookyT = 0;
     update(e) {
+      if(window.nativeUI)return;
       if (((this.t += e), (this.spookyT -= e) <= 0)) {
         this.spookyT = 2;
         let e = TL();
@@ -109564,9 +109593,14 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.sprites.end());
     }
     dispose() {
+      if(window.nativeUI)return;
       (this.title.dispose(),
         this.terrain?.dispose(),
         this.sprites.clear(),
+        this.sprites.standIn.dispose(),
+        this.sprites.shadows.mesh.dispose(),
+        this.sprites.shadows.mesh.geometry.dispose(),
+        this.sprites.shadows.mesh.material.dispose(),
         this.r.scene.remove(this.sprites.shadows.mesh));
     }
   },
@@ -109948,7 +109982,6 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         (e = { ...e, seed: t.seed, boosts: t.boosts ?? [] }),
         fN(),
         (this.lastCfg = e.coop ? null : { ...e, boosts: [] }),
-        this.setScreen(null),
         this.menuScene?.dispose(),
         (this.menuScene = null),
         this.hud?.destroy(),
@@ -109974,7 +110007,12 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         }),
         N.init(),
         (this.run = new wE(this.r, this.input, N, this.hud, this.meta, e)),
+        await this.run.initialized,
+        this.setScreen(null),
         ZX(this).attachRun(this.run),
+        await this.run.openStage(),
+        (this.run.state='play'),
+        document.hidden && this.run.pause(),
         (globalThis.__pb = globalThis.__pb || {}),
         (globalThis.__pb.run = this.run),
         (this.run.fpsCap = this.fpsCap()),
@@ -110211,6 +110249,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       this.last = e;
       try {
         // Opaque menus only upload changed UI; hidden scenery stays idle.
+        if(this.run?.buildingStage){window.drawUI?.(this.r.renderer);return;}
         if (window.nativeUI && this.screen?.classList.contains('zx')) {
           window.drawUI(this.r.renderer, true);
           this.r.needsDraw = false;

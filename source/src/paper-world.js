@@ -1,20 +1,49 @@
 // A miniature stationery world. Geometry, textures and shadows are authored
 // locally, with one instanced batch per shared geometry/material on mobile.
-import {I as Group,K as Mesh,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,et as PlaneGeometry,J as ToonMaterial,q as BasicMaterial,b as CanvasTexture,ot as SRGB,ht as Vector3} from '../assets/three-DmSYIDKK.js';
+import {I as Group,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,et as PlaneGeometry,J as ToonMaterial,q as BasicMaterial,b as CanvasTexture,ot as SRGB,ht as Vector3} from '../assets/three-DmSYIDKK.js';
 
 export const paperStages=['胶佬工作台','手帐漫游','文具高塔','字灵书庭'];
 export const PAPER_CAMERA={yaw:0,pitch:Math.PI*.30,distance:42,fov:37};
 const TAU=Math.PI*2;
 
-export function buildPaperWorld(terrain){
+// Owned by one run, shared between its areas and released on leaving the run.
+// Do not dispose these GPU resources with the outgoing area's instances.
+export function createPaperAssets(){
+  return {boxes:new BoxGeometry(1,1,1),planes:new PlaneGeometry(1,1),
+    cylinders:new CylinderGeometry(1,1,1,32),cones:new ConeGeometry(1,1,24),mats:new Map(),textures:new Map()};
+}
+export function disposePaperAssets(assets){
+  if(!assets||assets.disposed)return;assets.disposed=true;
+  for(const key of ['boxes','planes','cylinders','cones'])assets[key].dispose();
+  for(const mat of assets.mats.values())mat.dispose();
+  for(const texture of assets.textures.values())texture.dispose();
+  assets.mats.clear();assets.textures.clear();
+}
+export function disposePaperWorld(terrain){
+  terrain.group.traverse(mesh=>{if(mesh.isInstancedMesh)mesh.dispose();});
+  terrain.group.parent?.remove(terrain.group);terrain.group.clear();
+  if(terrain.ownsPaperAssets)disposePaperAssets(terrain.paperAssets);
+  terrain.mats=[];terrain.textures=[];
+}
+
+export function buildPaperWorld(terrain){for(const _ of paperWorldSteps(terrain)){} }
+export async function buildPaperWorldAsync(terrain){
+  let started=performance.now();
+  for(const _ of paperWorldSteps(terrain))if(performance.now()-started>=6){
+    await new Promise(resolve=>setTimeout(resolve,0));started=performance.now();
+  }
+}
+function* paperWorldSteps(terrain){
   const root=terrain.group,stage=terrain.biome.zxStage||1;
   terrain.zxPaper=true;terrain.zxStage=stage;root.name='paper-workshop';
   terrain.hasWater=false;terrain.isLava=false;terrain.frozen=false;
   terrain.minH=terrain.maxH=0;terrain.heights.fill(0);terrain.pathMask.fill(0);
   terrain.spawn.set(terrain.arena?.entry?.x||0,0,terrain.arena?.entry?.z||0);
   terrain.landmarks=[];terrain.zxProps=[];
-  const boxes=new BoxGeometry(1,1,1),planes=new PlaneGeometry(1,1),cylinders=new CylinderGeometry(1,1,1,32),cones=new ConeGeometry(1,1,24);
-  const mats=new Map(),textures=new Map();
+  terrain.ownsPaperAssets=!terrain.paperAssets;
+  const assets=terrain.paperAssets??=createPaperAssets();
+  const {boxes,planes,cylinders,cones,mats,textures}=assets;
+  const batches=new Map(),transform=new Group();
   const material=(color,basic=false)=>{
     const key=color+basic;if(mats.has(key))return mats.get(key);
     const mat=basic?new BasicMaterial({color}):new ToonMaterial({color});mats.set(key,mat);terrain.mats.push(mat);return mat;
@@ -29,7 +58,13 @@ export function buildPaperWorld(terrain){
     const mat=new BasicMaterial({map:t,transparent,depthWrite:!transparent,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});terrain.mats.push(mat);mats.set(key,mat);return mat;
   };
   function mesh(parent,geometry,mat,x,y,z,sx,sy,sz,rx=0,ry=0,rz=0){
-    const m=new Mesh(geometry,mat);m.position.set(x,y,z);m.scale.set(sx,sy,sz);m.rotation.set(rx,ry,rz);parent.add(m);return m;
+    // Accumulate instance matrices directly: avoid thousands of temporary
+    // Mesh objects and a second scene traversal on every area change.
+    transform.position.set(x,y,z);transform.scale.set(sx,sy,sz);transform.rotation.set(rx,ry,rz);transform.updateMatrix();
+    parent.updateMatrixWorld(true);
+    const key=geometry.uuid+'/'+mat.uuid;
+    let batch=batches.get(key);if(!batch)batches.set(key,batch={geometry,material:mat,matrices:[]});
+    batch.matrices.push(transform.matrix.clone().premultiply(parent.matrixWorld));
   }
   const box=(g,x,y,z,w,h,d,c)=>mesh(g,boxes,material(c),x,y,z,w,h,d);
   const cylinder=(g,x,y,z,r,h,c)=>mesh(g,cylinders,material(c),x,y,z,r,h,r);
@@ -40,14 +75,15 @@ export function buildPaperWorld(terrain){
   const ink='#35414b',mint='#b6d6c3',cream='#faf4df',pink='#d4a1b4';
   function rr(c,x,y,w,h,r,fill,stroke){c.beginPath();c.roundRect(x,y,w,h,r);if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.lineWidth=2;c.stroke();}}
   function label(c,text,x,y,size,color='#455365',align='left'){c.font='bold '+size+'px "Ziling Swei",sans-serif';c.fillStyle=color;c.textAlign=align;c.textBaseline='middle';c.fillText(text,x,y);}
-  const gridTex=texture('cutting-mat',512,512,(c,w,h)=>{
+  const gridTex=texture('cutting-mat-'+terrain.world,512,512,(c,w,h)=>{
     c.fillStyle='#66abc9';c.fillRect(0,0,w,h);
     for(let i=0;i<=512;i+=16){c.strokeStyle=i%64?'#a2d2dd55':'#c6ebecaa';c.lineWidth=i%64?.7:1.7;c.beginPath();c.moveTo(i,0);c.lineTo(i,h);c.moveTo(0,i);c.lineTo(w,i);c.stroke();}
     c.strokeStyle='#e5f5eb55';c.lineWidth=1;c.beginPath();c.moveTo(0,512);c.lineTo(512,0);c.moveTo(0,256);c.lineTo(256,0);c.stroke();
     label(c,'A3',34,42,18,'#e4f3df');label(c,'CUTTING MAT',34,65,8,'#e4f3df');
     for(let i=1;i<8;i++)label(c,String(i*10),i*64+3,503,8,'#d5edf0');
   });gridTex.wrapS=gridTex.wrapT=1000;gridTex.repeat.set(terrain.world/32,terrain.world/32);
-  plane(root,0,-.065,0,terrain.world,terrain.world,textureMat('mat',gridTex));
+  plane(root,0,-.065,0,terrain.world,terrain.world,textureMat('mat-'+terrain.world,gridTex));
+  yield;
   const paperMat=(kind)=>{
     if(mats.has('paper-'+kind))return mats.get('paper-'+kind);
     const tex=texture('paper-'+kind,512,512,(c,w,h)=>{
@@ -95,6 +131,7 @@ export function buildPaperWorld(terrain){
     box(g,0,.42*scale,0,w,.8*scale,d,'#647876');box(g,0,.89*scale,-.05,w-.2,.35*scale,d-.15,'#b9c5b7');
     plane(g,0,1.08*scale,0,w-.32,d-.32,calcFace);
   }
+  yield;
   const cassetteFace=textureMat('cassette-face',texture('cassette-face',768,456,(c,w,h)=>{
     c.fillStyle='#b8e3da';c.fillRect(0,0,w,h);rr(c,22,22,724,412,25,null,'#536b79');
     rr(c,44,45,680,100,8,'#fff8e5');label(c,'SIDE A',70,78,23,'#7a587d');label(c,'SMALL WONDERS',70,115,28,'#48566a');
@@ -104,6 +141,7 @@ export function buildPaperWorld(terrain){
     rr(c,175,360,418,75,10,'#dfb6c6','#8f8094');for(const x of [60,708])for(const y of [35,414]){c.fillStyle='#627879';c.beginPath();c.arc(x,y,7,0,TAU);c.fill();}
   }));
   function cassette(x,z,a=0,s=1){const g=prop('cassette',x,z,a,8*s,4.8*s,.8*s);box(g,0,.33*s,0,8*s,.66*s,4.8*s,'#b890ac');box(g,0,.69*s,0,7.9*s,.16*s,4.7*s,'#c8e9dd');plane(g,0,.78*s,0,7.8*s,4.6*s,cassetteFace);}
+  yield;
   const rulerFace=textureMat('ruler-face',texture('ruler-face',1024,128,(c,w,h)=>{
     c.fillStyle='#e8c77b';c.fillRect(0,0,w,h);c.strokeStyle='#766744';c.lineWidth=2;
     for(let i=0;i<100;i++){const x=12+i*10;c.beginPath();c.moveTo(x,0);c.lineTo(x,i%10===0?46:i%5===0?32:21);c.stroke();if(i%10===0)label(c,String(i/10),x+4,67,22,'#746444');}label(c,'ZILING',840,105,15,'#897241');
@@ -134,6 +172,7 @@ export function buildPaperWorld(terrain){
     for(let i=0;i<6;i++){const x=Math.cos(i*2.4)*1.5,z=Math.sin(i*2.4)*1.5;const col=['#e5b866','#a7c8af','#d8a6ba'][i%3];mesh(g,cylinders,material(col),x,6.8+i%3*.5,z,.28,7,.28,Math.sin(i)*.12,0,Math.cos(i)*.12);mesh(g,cones,material('#decc9e'),x,10.5+i%3*.5,z,.28,.9,.28);}
   }
   function clip(x,z,a=0){const g=new Group();g.position.set(x,.2,z);g.rotation.y=a;root.add(g);const c='#b5a56c';box(g,0,0,0,2,.12,.12,c);box(g,0,0,2.5,2,.12,.12,c);box(g,-1,0,1.25,.12,.12,2.5,c);box(g,1,0,1.1,.12,.12,2.2,c);box(g,.4,0,1.3,.12,.12,1.5,c);box(g,-.3,0,.65,1.4,.12,.12,c);}
+  yield;
   // First frame composition: the player stands on the green dot paper, with
   // oversized props above/at the edges and a ruled notebook crossing the front.
   sheet(-3,-4,20,23,.40,'dots');sheet(-10,-16,18,23,.40,'blue',.026);
@@ -144,6 +183,7 @@ export function buildPaperWorld(terrain){
   if(stage===2){notebook(-8,-13,.18);tape(14,-14,0,1.35);books(-16,12,-.25,1.1);}
   if(stage===3){books(9,-12,-.3,1.3);cup(-13,-19);ruler(-11,12,-.4);}
   if(stage===4){sheet(0,0,42,46,.18,'lined',.04);books(-19,-17,.15,1.35);books(21,-20,-.1,1.2);cup(1,-30);}
+  yield;
   // Repeat authored little vignettes across the full navigable playfield.
   const lim=Math.min(terrain.play-14,115);
   for(let z=-lim;z<=lim;z+=34)for(let x=-lim;x<=lim;x+=34){
@@ -157,17 +197,18 @@ export function buildPaperWorld(terrain){
     if(kind===3){pencil(x-9,z,a);tape(x+9,z+7);}
     if(kind===4)cup(x+8,z-8);
     if(kind===5){ruler(x,z-9,a);clip(x-5,z+4,a);}
+    yield;
   }
   // Bake soft diagonal window light onto the desk, leaving combat colors intact.
   const light=textureMat('window-light',texture('window-light',256,256,c=>{
     const g=c.createLinearGradient(0,0,256,256);g.addColorStop(0,'#fffbd32b');g.addColorStop(.65,'#fffbd310');g.addColorStop(1,'#fffbd300');c.fillStyle=g;c.fillRect(0,0,256,256);
   }),true);plane(root,-8,.085,-5,65,90,light,-.32);
-  root.updateMatrixWorld(true);
-  const batches=new Map();root.traverse(m=>{if(!m.isMesh)return;const key=m.geometry.uuid+'/'+m.material.uuid;let batch=batches.get(key);if(!batch)batches.set(key,batch={geometry:m.geometry,material:m.material,matrices:[]});batch.matrices.push(m.matrixWorld.clone());});
   root.clear();
   for(const {geometry,material,matrices} of batches.values()){
     const batch=new InstancedMesh(geometry,material,matrices.length);matrices.forEach((m,i)=>batch.setMatrixAt(i,m));batch.instanceMatrix.needsUpdate=true;root.add(batch);
+    yield;
   }
+  terrain.mats=[...mats.values()];terrain.textures=[...textures.values()];
   // Reject spawns inside large stationery; the same collision grid is used by
   // movement and projectiles, so visible objects cannot become invisible walls.
   terrain.isFlatOpen=(x,z)=>!terrain.hitProp(x,.3,z,.6)&&!terrain.inSolid(x,z);

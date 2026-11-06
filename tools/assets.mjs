@@ -3,14 +3,12 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {deflateRawSync} from 'node:zlib';
 import {pathToFileURL} from 'node:url';
 import sharp from 'sharp';
 import ffmpeg from '@ffmpeg-installer/ffmpeg';
 import {bootAssets} from './boot-assets.mjs';
-import {packModels,packLocales,packStream} from './pack-resources.mjs';
-import {packSprite} from './pack-sprite.mjs';
-import {restoreSprite} from './sprite-png.mjs';
+import {packModels,packStream} from './pack-resources.mjs';
+import {writeActorMetrics} from './actor-metrics.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const source = path.join(root, 'source');
@@ -20,7 +18,7 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pokebonk-art-'));
 const packs = {art: {}, world: {}, sound: {}, text: {}};
 const index = {};
 const generatedSprites={};
-const spriteMetadata=JSON.parse(fs.readFileSync(path.join(pub,'data/sprites.json'),'utf8'));
+await writeActorMetrics(source);
 const hash = data => createHash('sha256').update(data).digest('hex').slice(0, 16);
 function add(pack, key, data, extension = path.extname(key)) {
   // Content-address files so repeated UI assets only occupy space once.
@@ -37,9 +35,9 @@ function sourceFor(key) {
   return fs.existsSync(override) ? override : path.join(pub, key);
 }
 const buckets = {pmd:'art', icons:'art', portraits:'art', items:'art', front:'art',
-  ui:'world', env:'world', models:'world', glyphs:'art', music:'sound', cries:'sound'};
+  ui:'world', env:'world', models:'world', glyphs:'art', music:'sound'};
 const selected = new Set();
-// The forest altar requests Unown's sprite outside the 151 actor configurations.
+// The forest altar also uses species 201's icon/portrait.
 const referencedSpecies = new Set([201]);
 for (const file of fs.readdirSync(path.join(source,'src')).filter(f=>f.endsWith('.js'))) {
   const js=fs.readFileSync(path.join(source,'src',file),'utf8');
@@ -54,27 +52,19 @@ for (const folder of ['assets', 'overrides/assets']) {
       // Replaced by the procedural desktop materials, including the menu scene.
       if(name.startsWith('env/forest/'))continue;
       const number = parseInt(path.basename(name), 10);
+      // The altar's actor (201) uses the same cutout path as the 151 creatures.
+      if(category==='pmd'&&((number>=1&&number<=151)||number===201))continue;
       if (['pmd','icons','portraits','cries'].includes(category) && number > 151 && !referencedSpecies.has(number)) continue;
       const key = 'assets/' + name;
       if (selected.has(key)) continue;
       selected.add(key);
       const input = sourceFor(key);
       const original = fs.readFileSync(input);
-      if(category==='pmd'&&number<=151){
-        const encoded=await packSprite(original,spriteMetadata[number]);
-        const webp=await sharp(original).webp({lossless:true,effort:6}).toBuffer();
-        const image=webp.length<original.length?webp:original;
-        if(deflateRawSync(encoded).length+100<deflateRawSync(image).length){
-          const file=hash(restoreSprite(encoded))+'.png',recipe=hash(encoded)+'.sprite';
-          packs[pack][recipe]=encoded;generatedSprites[file]=recipe;index[key]=pack+'/'+file;
-        }else add(pack,key,image,image===webp?'.webp':'.png');
-        continue;
-      }
       if (name.endsWith('.png') && original.length > 3000) {
         const webp = await sharp(original).webp({lossless:true, effort:4}).toBuffer();
         if (webp.length < original.length) { add(pack, key, webp, '.webp'); continue; }
       }
-      if (category === 'music' || category === 'cries') {
+      if (category === 'music') {
         // AAC is supported by the native Web Audio decoders on both mobile OSes.
         const audio = path.join(temp, 'sample.m4a');
         execFileSync(ffmpeg.path, ['-loglevel','error','-y','-i',input,'-vn','-c:a','aac',
@@ -87,10 +77,11 @@ for (const folder of ['assets', 'overrides/assets']) {
 }
 for (const file of walk(path.join(pub,'data'))) {
   const key = path.relative(pub,file).replaceAll('\\','/');
+  if(key.startsWith('data/i18n/')&&key!=='data/i18n/zh.json')continue;
   add('text', key, fs.readFileSync(file));
 }
 for (const file of fs.readdirSync(path.join(pub,'assets'))) {
-  const match = /^(en|fr|pt|ja|ko|ru|zh|zht)-.*\.js$/.exec(file);
+  const match = /^(zh)-.*\.js$/.exec(file);
   if (match) {
     const words = (await import(pathToFileURL(path.join(pub,'assets',file)).href)).default;
     add('text','locale/'+match[1]+'.json',Buffer.from(JSON.stringify(words)));
@@ -105,7 +96,6 @@ for (const name of ['LICENSE','THIRD-PARTY-NOTICES.md']) add('text',name,fs.read
 for (const [key,bytes] of Object.entries(bootAssets(root))) add('text',key,bytes);
 const meta = {}, rawSizes = {};
 packModels(packs.world);
-packLocales(packs.text,index);
 for (const [name, entries] of Object.entries(packs)) {
   const {bytes,rawSize}=packStream(entries), dir=path.join(out,'packs',name);
   fs.mkdirSync(dir,{recursive:true});

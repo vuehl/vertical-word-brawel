@@ -10,6 +10,7 @@ import {reviewMenus} from './menu-regression.mjs';
 import {reviewUIPerformance} from './ui-perf.mjs';
 import {reviewZixing} from './zixing-regression.mjs';
 import {reviewPaper} from './paper-regression.mjs';
+import {reviewLoading} from './loading-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -83,6 +84,7 @@ const menusOnly=process.argv.includes('--menus-only');
 const uiPerfOnly=process.argv.includes('--ui-perf');
 const phoneLayout=process.argv.includes('--phone-layout')||menusOnly;
 if(phoneLayout)await page.evaluateOnNewDocument(()=>{window.phoneLayout=true;});
+if(process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline'))await page.evaluateOnNewDocument(()=>{localStorage.setItem('pokebonk.web.pokebonk.lang','fr');});
 if(process.argv.includes('--eager-entry'))await page.evaluateOnNewDocument(()=>{window.eagerEntry=true;});
 if(failFrame)await page.evaluateOnNewDocument(()=>{window.failFirstFrame=true;});
 if(process.argv.includes('--retry-text'))await page.evaluateOnNewDocument(()=>{window.dropTextOnce=true;});
@@ -233,7 +235,8 @@ async function verifyStartup(){
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
   }
   if(await page.evaluate(()=>!!app.zixing)){
-    if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
+    if(process.argv.includes('--loading-perf'))await reviewLoading({page,dir,sleep});
+    else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
     else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});
     const missing=await page.evaluate(()=>[...missingAssets]);
     assert.deepEqual(missing,[],'All requested local assets must be present');

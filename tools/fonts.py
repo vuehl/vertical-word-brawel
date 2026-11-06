@@ -6,8 +6,10 @@ from fontTools.ttLib import TTFont
 
 source, dest = map(Path, sys.argv[1:])
 strings = set(chr(n) for n in range(32, 127))
-for file in [*source.joinpath("src").glob("*.js"), *source.joinpath("public/data").rglob("*.json"),
-             *source.joinpath("public/assets").glob("??-*.js"), *source.joinpath("public/assets").glob("zht-*.js")]:
+data = [file for file in source.joinpath("public/data").rglob("*.json")
+        if file.parent.name != "i18n" or file.name == "zh.json"]
+for file in [*source.joinpath("src").glob("*.js"), *data,
+             *source.joinpath("public/assets").glob("zh-*.js")]:
     strings.update(file.read_text(encoding="utf-8"))
 dest.mkdir(exist_ok=True, parents=True)
 for weight in ("Regular", "Bold"):

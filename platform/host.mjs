@@ -120,9 +120,10 @@ export async function setup(host) {
   Object.defineProperty(doc,'activeElement',{get:()=>active||doc.body});
   doc.exitPointerLock=()=>{};
   const fs=wx.getFileSystemManager(),localStorage=storage('pokebonk.web.');
-  let locale=localStorage.getItem('pokebonk.lang')||'zh';
+  // Migrate old language preferences before reading the Chinese-only package.
+  const locale='zh';localStorage.setItem('pokebonk.lang',locale);
   const loc=new LocalURL('https://pokebonk.local/?touch=1');
-  loc.reload=()=>wx.restartMiniProgram?.({});loc.replace=value=>{const next=new LocalURL(value);const lang=next.searchParams.get('lang');if(lang)localStorage.setItem('pokebonk.lang',lang);loc.reload();};
+  loc.reload=()=>wx.restartMiniProgram?.({});loc.replace=()=>{localStorage.setItem('pokebonk.lang','zh');loc.reload();};
   const history={state:null,pushState(state){this.state=state;},replaceState(state){this.state=state;},back(){win.dispatchEvent(new D.Event('popstate'));}};
   const queries=new Map();
   function matchMedia(q){
@@ -219,7 +220,7 @@ export async function setup(host) {
       if(opaque&&!changed)return;
       if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque);
     },
-    locale,readLocale(lang){const p=host.files.pathFor('locale/'+lang+'.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
+    locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
   });
   env.window=env.self=env.globalThis=env;
   wx.onWindowResize?.(()=>{

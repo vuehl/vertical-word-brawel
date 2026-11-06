@@ -8,6 +8,8 @@ import index from '../minigame/assets.js';
 import codec from '../platform/resource-codec.js';
 import {restoreSprite} from './sprite-png.mjs';
 import {unpackStream} from './resource-stream.mjs';
+import {measureActor} from './actor-metrics.mjs';
+import {actorMetrics} from '../source/src/actor-metrics.js';
 const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'source/public');
 const packs={};
 const digest=b=>createHash('sha256').update(b).digest('hex');
@@ -29,7 +31,17 @@ for(const [key,ref] of Object.entries(index.files)){
   const data=bytes(key);assert.ok(data,'Missing '+key);assert.equal(digest(data).slice(0,16),path.basename(ref,path.extname(ref)));
 }
 const count={};
-for(const category of ['pmd','portraits','icons']){
+assert.equal(Object.keys(index.files).filter(k=>k.startsWith('assets/cries/')).length,0,'Creature cries must not ship');
+assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('locale/')),['locale/zh.json']);
+assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('data/i18n/')),['data/i18n/zh.json']);
+assert.equal(Object.keys(index.sprites).length,0,'Actor atlases must not be reconstructed on the phone');
+for(const id of [...Array.from({length:151},(_,i)=>i+1),201]){
+  assert.ok(!index.files['assets/pmd/'+id+'.png'],'Legacy actor atlas must not ship: '+id);
+  const file='assets/pmd/'+id+'.png',override=path.join(pub,'overrides',file);
+  const meta=JSON.parse(fs.readFileSync(path.join(pub,'data/sprites.json')))[id];
+  assert.deepEqual(actorMetrics[id],await measureActor(fs.existsSync(override)?override:path.join(pub,file),meta,id),'Actor collision bounds: '+id);
+}
+for(const category of ['portraits','icons']){
   count[category]=0;
   for(let n=1;n<=151;n++){
     const key='assets/'+category+'/'+n+'.png';
@@ -50,6 +62,7 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(fs.readFileSync(source)),key);
 }
 const report={mappedResources:Object.keys(index.files).length,RGBA:count,originalModels:models.length,
-  altarSpriteIncluded:!!index.files['assets/pmd/201.png'],allArchiveHashesVerified:true};
+  actorBoundsVerified:152,cries:0,locales:['zh'],legacyActorAtlases:0,
+  altarGlyphIncluded:!!actorMetrics[201],allArchiveHashesVerified:true};
 const out=path.join(root,'验收');fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'资源核验.json'),JSON.stringify(report,null,2));
 console.log(report);

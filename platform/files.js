@@ -1,7 +1,7 @@
 // The boot canvas must be the first canvas created by the mini game.
 const fs = () => wx.getFileSystemManager();
 const info = require('./assets');
-const {expandResources,packedInputs} = require('./resource-codec');
+const {expandResourcesAsync,packedInputs} = require('./resource-codec');
 const {restoreSprite,resourceEntries,decodeBrotli,decodeText} = require('./resource-runtime');
 const hydratedSprites = new Set();
 const installs = new Map();
@@ -63,18 +63,18 @@ async function unpack(name, revision, progress) {
     raw = decodeBrotli(new Uint8Array(manager.readFileSync(archive)),info.rawSizes[name]);
   if(!raw || raw.byteLength!==info.rawSizes[name])throw Error('资源包长度不符 '+name);
   const inputs=new Map(),recipes=packedInputs[name]||[];
-  let sliceStart = Date.now();
+  let sliceStart = Date.now(),written=0;
   for (const [file,part] of resourceEntries(raw)) {
     // raw already holds the recipes. Keeping their views avoids a second
     // on-disk copy while the expanded maps and language files are written.
     if(recipes.includes(file))inputs.set(file,part);
     else manager.writeFileSync(dir+'/'+file,part.buffer.slice(part.byteOffset,part.byteOffset+part.byteLength));
-    if (Date.now() - sliceStart >= 12) {
+    if (++written>=8 || Date.now() - sliceStart >= 6) {
       await new Promise(resolve => setTimeout(resolve, 0));
-      sliceStart = Date.now();
+      sliceStart = Date.now();written=0;
     }
   }
-  expandResources(name,{
+  await expandResourcesAsync(name,{
     read:(file,encoding)=>encoding?decodeText(inputs.get(file)):inputs.get(file),
     write:(file,data,encoding)=>fs().writeFileSync(dir+'/'+file,data,encoding)
   });
