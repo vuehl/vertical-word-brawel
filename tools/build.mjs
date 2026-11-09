@@ -8,12 +8,15 @@ import {lowerUnicodeRegexes} from './device-syntax.mjs';
 import {assetPolicyVersion} from './asset-policy.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
-const out=path.join(root,'minigame'),engine=path.join(out,'engine');
+const development=process.argv.includes('--dev');
+const projectRoot=development?path.join(root,'验收','开发者工程'):root;
+const developer=development?await import('./developer/build-support.mjs'):null;
+const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
 const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
-if(installedAssets?.policyVersion!==assetPolicyVersion||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
-  execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs')],{stdio:'inherit'});
+if(installedAssets?.policyVersion!==assetPolicyVersion||(developer&&installedAssets?.developerFontKey!==developer.fontKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
+  execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{
   if(!s.includes(from)||s.indexOf(from)!==s.lastIndexOf(from))throw Error('Source anchor changed: '+from.slice(0,80));
@@ -95,6 +98,10 @@ const sources={
       code=replace(code,'await new Promise((e) => setTimeout(e, Math.min(5e3, 1e3 + t * 500))));',
         'await new Promise((e) => setTimeout(e, 500)));\n          if (t >= 2) throw Error("WebGL 2 初始化失败：" + (e.message || e));');
       code=replace(code,'(ac(), wL(), await new AL().boot());','export async function launch(){ac();wL();const app=new AL();window.onApp?.(app);await app.boot();return app;}');
+      // Browser-only legacy QA is never part of a native release.
+      code=replace(code,"import {mountLiteQA} from './lite-qa.js';",'');
+      code=replace(code,'  mountLiteQA(e);','');
+      if(developer)code=developer.instrumentGame(code);
       code=replace(code,'if ((this.r.render(n), this.run?.state === \x60play\x60))','if ((this.r.render(n), window.drawUI(this.r.renderer), this.run?.state === \x60play\x60))');
       code=replace(code,'(this.failing++ % 60 == 0','(window.onBootRenderError?.(e), this.failing++ % 60 == 0');
       return {contents:lowerUnicodeRegexes(code),resolveDir:path.join(src,'src')};
@@ -104,11 +111,11 @@ const sources={
 // The preview service parses the submitted JavaScript before issuing a QR code.
 const previewESVersion=2017;
 const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es'+previewESVersion,charset:'utf8',legalComments:'eof',metafile:process.argv.includes('--analyze'),
-  nodePaths:[path.join(import.meta.dirname,'node_modules')],plugins:[sources],logLevel:'warning'};
+  nodePaths:[path.join(import.meta.dirname,'node_modules')],plugins:[...(developer?[developer.isolatedStoragePlugin(platform)]:[]),sources],logLevel:'warning'};
 const hostBundle=await esbuild.build({...common,define:{document:'undefined'},entryPoints:[path.join(platform,'host.mjs')],write:false});
 await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
-const result=await esbuild.build({...common,define:{innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'},write:false,stdin:{contents:
+const result=await esbuild.build({...common,metafile:true,define:{innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'},write:false,stdin:{contents:
   'import "../public/turnstile-stub.js";import {l as language} from "./i18n.js";'+
   'export async function start(){language(window.locale,window.readLocale(window.locale));return require("./game.js").launch();}',resolveDir:path.join(src,'src')}});
 const bindings=('globalThis window self document navigator location history localStorage sessionStorage innerWidth innerHeight devicePixelRatio screen '+
@@ -129,6 +136,7 @@ fs.copyFileSync(path.join(platform,'boot-screen.js'),path.join(out,'boot-screen.
 fs.copyFileSync(path.join(platform,'resource-codec.js'),path.join(out,'resource-codec.js'));
 addBootAssets(out,bootAssets(root));
 for(const name of ['game.js','game.json'])fs.copyFileSync(path.join(root,name),path.join(out,name));
+if(developer)developer.writeProject(root,projectRoot);
 const runtimePackages=new Set(['linkedom','typeflex','fflate','@noble/hashes','brotli','core-js','base64-js']);
 const notices=[];
 for(const name of runtimePackages){
@@ -144,6 +152,13 @@ fs.writeFileSync(path.join(out,'packs','text','licenses.txt'),notices.join('\n\n
 for(const file of ['game.js','host.js','original.js','licenses.txt','layout.bin','styles.bin'])fs.rmSync(path.join(engine,file),{force:true});
 function files(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(f=>f.isDirectory()?files(path.join(dir,f.name)):[path.join(dir,f.name)]);}
 const built=files(out),size=list=>list.reduce((n,f)=>n+fs.statSync(f).size,0);
+if(!development){
+  if(Object.keys(result.metafile.inputs).some(file=>/tools[\\/]developer[\\/]|src[\\/]lite-qa\.js$/.test(file)))
+    throw Error('Developer module included in release dependency graph.');
+  const release=fs.readFileSync(path.join(out,'play.js'),'utf8');
+  for(const marker of ['__zixingDeveloper','zx-dev-panel','pokebonk-dev-save','mountLiteQA','隔离 QA'])
+    if(release.includes(marker))throw Error('Developer code leaked into release: '+marker);
+}
 for(const file of built.filter(f=>f.endsWith('.js'))){
   try{parse(fs.readFileSync(file,'utf8'),{ecmaVersion:previewESVersion});}
   catch(error){throw new Error(path.relative(out,file)+': '+error.message);}

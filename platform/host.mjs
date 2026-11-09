@@ -22,9 +22,10 @@ import {initCrypto,random} from './crypto.mjs';
 import {dispatchApi} from 'pokebonk:api';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
-import {createControlLayer,createCanvasLayer} from './control-layer.mjs';
+import {createControlLayer,createCanvasLayer,createHUDLayer} from './control-layer.mjs';
 import {createModalTransition} from './modal-transition.mjs';
 import {gameViewport} from './viewport.mjs';
+import {createMutationTargets} from './mutation-targets.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -50,11 +51,15 @@ export async function setup(host) {
   const win=new D.EventTarget(),system=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();
   const view=viewport(system);
   const uiFrames=createUIFrameCache();
-  const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,()=>uiFrames.invalidate());
+  const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,element=>{
+    const tile=win.__pb?.run?.state==='play'&&hudLayers.find(layer=>layer.owns(element));
+    if(tile)tile.invalidate();else uiFrames.invalidate();
+  });
   const controls=createControlLayer(makeCanvas);
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true});
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
+  const hudLayers=['counters','score','ultimate','skills','items'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
   const modalTransition=createModalTransition(makeCanvas);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
@@ -63,12 +68,18 @@ export async function setup(host) {
   const uiAssets=readUIAssets(host.files);
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
+  const mutationTarget=createMutationTargets(doc.documentElement);
   function mutations(records){
     for(const record of records){
       if(record.target===screen)continue;
-      const element=record.target.nodeType===1?record.target:record.target.parentElement;
+      const target=mutationTarget(record);
+      const element=target.nodeType===1?target:target.parentElement;
       if(element?.closest?.('[data-ui-hidden="true"]'))continue;
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
+      if(env.__pb?.run?.state==='play'){
+        const tile=hudLayers.find(layer=>layer.owns(element));
+        if(tile){tile.invalidate();continue;}
+      }
       if(record.type==='attributes'&&minimap.owns(element)&&record.attributeName==='data-frame'){
         minimap.invalidate();continue;
       }
@@ -240,11 +251,12 @@ export async function setup(host) {
       if(modalTransition.advance(now))uiFrames.invalidate(false,true);
       const changed=uiFrames.draw(now,state,layout,boxes=>{
         controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
+        for(const tile of hudLayers)tile.capture(boxes);
         const visible=modalTransition.capture(layout,boxes,view,scale);
-        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)))),view,scale);
+        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
       });
       if(opaque&&!changed)return;
-      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),portrait.draw(layout,view,scale,state==='play'&&!opaque),...modalTransition.layers(scale,perf.now())];
+      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),portrait.draw(layout,view,scale,state==='play'&&!opaque),...hudLayers.map(tile=>tile.draw(layout,view,scale,state==='play'&&!opaque)),...modalTransition.layers(scale,perf.now())];
       if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers);
     },
     locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
@@ -263,6 +275,6 @@ export async function setup(host) {
     }
     env.dispatchEvent(new D.Event('resize'));
   });
-  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,portrait,modalTransition});
+  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,portrait,hudLayers,modalTransition});
   return env;
 }

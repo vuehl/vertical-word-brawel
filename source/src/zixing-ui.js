@@ -463,7 +463,7 @@ export function createZixingUI(app,api) {
     ],{['data-'+kind]:id,'data-count':count,title:name+' ×'+count,'aria-label':name+' ×'+count})));
     if(entries.length>visible)items.append(button('+'+(entries.length-visible),()=>run.pause(),'zx-mini-slot zx-loadout-more',{'aria-label':'查看全部道具与强化','data-action':'inventory-more'}));
     while(items.children.length<capacity)items.append(el('div','zx-mini-slot empty',[],{'aria-hidden':true}));
-    return [el('div','zx-skill-slots',slots),items];
+    return [el('div','zx-skill-slots',slots,{'data-ui-layer':'skills'}),items];
   }
   function offerContent(symbol,title,notes) {
     return row(glyph(symbol),col(el('b','',title),...notes));
@@ -584,6 +584,7 @@ export function createZixingUI(app,api) {
     const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
     const stageLabel=el('small','zx-hud-stage',''),score=el('span','zx-hud-score',''),c=character(run.startSpecies);
     const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化'});
+    supplies.dataset.uiLayer='items';
     const health=el('canvas','zx-player-health',[],{width:176,height:40,'data-static':'true','data-ui-layer':'health',role:'progressbar','aria-label':'角色生命','aria-valuemin':0});
     node.classList.add('zx-hud-'+c.tone);
     const portrait=el('canvas','zx-profile-art',[],{width:160,height:168,role:'progressbar','aria-label':c.name+' · 升级经验','aria-valuemin':0,'aria-valuemax':100});
@@ -619,6 +620,9 @@ export function createZixingUI(app,api) {
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
+    node.querySelector('.zx-hud-counters').dataset.uiLayer='counters';
+    node.querySelector('.zx-hud-meta').dataset.uiLayer='score';
+    hud.touch.ult.dataset.uiLayer='ultimate';
     const look=hud.look.bind(hud);
     hud.touch.swipeMove=true;hud.touch.centeredStick=true;hud.touch.el.classList.add('zx-touch');
     hud.touch.el.setAttribute('aria-label','拖动摇杆或滑动空白处移动，松手停止');
@@ -699,7 +703,18 @@ export function createZixingUI(app,api) {
       stageLabel.dataset.tier=String(run.tier);
       updateText(score,'积分 '+number(run.stats.kills));updateText(clock,time(run.time));updateText(gold,number(run.gold));
       const loadoutKey=JSON.stringify([p.moves.map(m=>m&&[m.def.key,m.level]),p.moveSlots,[...p.vitamins].map(([id,v])=>[id,v.level]),p.vitaminSlots,[...p.items],profile().settings.showItems,innerWidth]);
-      if(loadoutKey!==lastLoadout){lastLoadout=loadoutKey;const [skills,items]=loadout(run);inventory.replaceChildren(skills);supplies.replaceChildren(items);}
+      if(loadoutKey!==lastLoadout){
+        lastLoadout=loadoutKey;const [skills,items]=loadout(run),previous=inventory.firstElementChild;
+        // Keep decoded icons when only a level/count changed.
+        for(const [old,next] of [[previous,skills],[supplies,items]]){
+          const images=new Map();
+          for(const image of old?.querySelectorAll('img')||[]){const src=image.getAttribute('src');if(!images.has(src))images.set(src,[]);images.get(src).push(image);}
+          for(const image of next.querySelectorAll('img')){const reused=images.get(image.getAttribute('src'))?.shift();if(reused){reused.alt=image.alt;image.replaceWith(reused);}}
+        }
+        if(previous&&previous.children.length===skills.children.length)previous.replaceChildren(...skills.childNodes);
+        else inventory.replaceChildren(skills);
+        supplies.replaceChildren(items);
+      }
     };
   }
   function intro(title,subtitle) {

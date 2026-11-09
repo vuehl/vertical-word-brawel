@@ -32,7 +32,7 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
     return el._surface;
   }
   for(const dim of ['width','height'])prop(D.HTMLCanvasElement.prototype,dim,function(){return surface(this)[dim];},
-    function(n){const dimValue=Math.max(1,Math.floor(Number(n)||1));this['_'+dim]=dimValue;surface(this)[dim]=dimValue;if(this.isConnected)invalidate();});
+    function(n){const dimValue=Math.max(1,Math.floor(Number(n)||1));this['_'+dim]=dimValue;surface(this)[dim]=dimValue;if(this.isConnected)invalidate(this);});
   function wrapContext(native,el,type) {
     const cache=Object.create(null);
     // A native context can lock its own canvas and methods. The game sees the
@@ -84,7 +84,7 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
       if(!el._eagerImage&&!el.isConnected)return;
       el._loadImage=null;if(!src)return;
       const image=wx.createImage();el._surface=image;
-      const finish=ok=>{if(image!==el._surface)return;el._ready=ok;if(el.isConnected)invalidate();el.dispatchEvent(new D.Event(ok?'load':'error'));};
+      const finish=ok=>{if(image!==el._surface)return;el._ready=ok;if(el.isConnected)invalidate(el);el.dispatchEvent(new D.Event(ok?'load':'error'));};
       image.onload=()=>finish(true);image.onerror=()=>finish(false);
       const embedded=LocalURL.objectFiles?.get(src);
       if(embedded)image.src=embedded;
@@ -94,7 +94,7 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
       }).catch(error=>{console.warn('[宝可梦] 图片读取失败',src,error);finish(false);});
     };
     if(el._eagerImage)el._loadImage();
-    if(el.isConnected)invalidate();
+    if(el.isConnected)invalidate(el);
   }
   ip.setAttribute=function(name,value){rawSet.call(this,name,value);if(name==='src')setImage(this,value);};
   prop(ip,'src',function(){return this._src||'';},function(v){this.setAttribute('src',v);});

@@ -13,7 +13,7 @@ const TAU=Math.PI*2;
 // Do not dispose these GPU resources with the outgoing area's instances.
 export function createPaperAssets(){
   return {boxes:new BoxGeometry(1,1,1),planes:new PlaneGeometry(1,1),
-    cylinders:new CylinderGeometry(1,1,1,32),cones:new ConeGeometry(1,1,24),mats:new Map(),textures:new Map(),colors:new Map()};
+    cylinders:new CylinderGeometry(1,1,1,12),cones:new ConeGeometry(1,1,8),mats:new Map(),textures:new Map(),colors:new Map()};
 }
 export function disposePaperAssets(assets){
   if(!assets||assets.disposed)return;assets.disposed=true;

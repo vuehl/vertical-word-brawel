@@ -3,8 +3,9 @@
 // rotating samples between actors/frames rather than favouring the first IDs.
 export function separateCrowd(grid,id,x,z,radius,budget=64){
   const reach=radius*2+1,cell=grid.cell,dim=grid.dim;
-  const left=Math.max(0,Math.floor((x-reach+210)/cell)+1),right=Math.min(dim-1,Math.floor((x+reach+210)/cell)+1);
-  const top=Math.max(0,Math.floor((z-reach+210)/cell)+1),bottom=Math.min(dim-1,Math.floor((z+reach+210)/cell)+1);
+  const left=Math.max(grid.minX??0,Math.floor((x-reach+210)/cell)+1),right=Math.min(grid.maxX??dim-1,Math.floor((x+reach+210)/cell)+1);
+  const top=Math.max(grid.minZ??0,Math.floor((z-reach+210)/cell)+1),bottom=Math.min(grid.maxZ??dim-1,Math.floor((z+reach+210)/cell)+1);
+  if(left>right||top>bottom){grid.sepX=grid.sepZ=0;return;}
   const {starts,items,px,pz,pr}=grid;
   let candidates=0;
   for(let row=top;row<=bottom;row++)candidates+=starts[row*dim+right+1]-starts[row*dim+left];

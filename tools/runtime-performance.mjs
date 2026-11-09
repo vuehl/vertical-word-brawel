@@ -7,7 +7,11 @@ import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
 import {reviewPaperBatching} from './paper-batching-regression.mjs';
 import {profileRuntime} from './runtime-profile.mjs';
 import {reviewExperiencePerformance} from './experience-performance.mjs';
-const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
+import {reviewDeveloper} from './developer/regression.mjs';
+import {auditGeometry} from './developer/geometry-audit.mjs';
+import {reviewOptimizations} from './optimization-regression.mjs';
+const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
+const game=path.join(root,...(development?['验收','开发者工程']:[]),'minigame');
 const dir=process.env.POKEBONK_QA||path.join(root,'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
 const {default:puppeteer}=await import(pathToFileURL(path.join(root,'tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js')));
@@ -41,7 +45,7 @@ try{
     const proto=WebGL2RenderingContext.prototype;
     for(const name of ['texImage2D','texSubImage2D']){
       const original=proto[name];proto[name]=function(...args){
-        const canvas=args.at(-1);if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas)){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
+        const canvas=args.at(-1);if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas||window.inspected?.hudLayers?.some(layer=>layer.canvas===canvas))){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
         return original.apply(this,args);
       };
     }
@@ -51,6 +55,7 @@ try{
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
   await page.waitForFunction(()=>window.app?.zixing&&app.screen?.querySelector('button'),{timeout:90000});
   console.log('Home ready; creating an isolated run for workload counts.');
+  if(development)await page.waitForFunction(()=>window.inspected?.env.__zixingDeveloper);
   const initial=await page.evaluate(async()=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
@@ -68,7 +73,15 @@ try{
     return initial;
   });
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--experience')){
+  if(process.argv.includes('--optimize')){
+    await reviewOptimizations(page,dir);assert.deepEqual(errors,[]);
+  }else if(development){
+    await reviewDeveloper(page,dir);
+    assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--geometry')){
+    await auditGeometry(page,dir);
+    assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--experience')){
     for(const [width,height] of [[320,568],[390,844],[430,932]]){
       await page.setViewport({width,height,deviceScaleFactor:3});
       await page.evaluate(()=>window.dispatchEvent(new Event('resize')));

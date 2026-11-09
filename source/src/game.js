@@ -5,7 +5,9 @@ import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
 import {createPlayerFootRing} from './player-foot-ring.js';
-import {separateCrowd} from './crowd-separation.js';
+import {CrowdGrid} from './crowd-grid.js';
+import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
+import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow} from './effect-budget.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
 import {paperProp} from './paper-props.js';
@@ -5843,7 +5845,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     lastUse = nl;
     drawn = !1;
     get bytes() {
-      if(this.zxGlyph){const image=this.material.uniforms.zxGlyph.value.image;return image?image.width*image.height*4:0;}
+      if(this.zxGlyph)return this.ready?192*192*4:0;
       return this.ready ? this.meta.w * this.meta.h * 4 : 0;
     }
     urgent() {
@@ -5990,7 +5992,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         const pos=this.aPos.array,dim=this.aSize.array,uv=this.aUV.array,fx=this.aFx.array,tint=this.aTint.array,look=this.aLook.array;
         pos[index*3]=e;pos[index*3+1]=t+.08;pos[index*3+2]=n;
         dim[index*2]=dim[index*2+1]=size;
-        uv[index*4]=uv[index*4+1]=0;uv[index*4+2]=uv[index*4+3]=1;
+        uv.set(this.zxGlyphRect,index*4);
         fx[index*4]=s;fx[index*4+1]=c;fx[index*4+2]=l;fx[index*4+3]=u;
         tint[index*4]=d;tint[index*4+1]=f;tint[index*4+2]=p;tint[index*4+3]=m;
         look[index*2]=g&15;look[index*2+1]=g>>4;
@@ -8407,6 +8409,7 @@ var Rl = 20,
           Math.random() > (this.n > this.cap * 0.8 ? Fl.density * 0.5 : Fl.density))
       )
         return;
+      if(this.densityBudget&&!this.densityBudget.allow(e.x,e.z))return;
       let t = this.n++;
       ((this.px[t] = e.x),
         (this.py[t] = e.y),
@@ -9006,12 +9009,15 @@ var Gl = class {
         (this.text = new Gl(e)));
     }
     setPerformance(profile,view){
+      this.particleBudget??=new ParticleBudget();this.particleBudget.limit=profile.particleCell;
+      this.add.densityBudget=this.norm.densityBudget=this.particleBudget;
       this.add.limit=profile.particles;this.norm.limit=profile.normalParticles;this.text.limit=profile.damageTexts;
       this.add.n=Math.min(this.add.n,this.add.limit);this.norm.n=Math.min(this.norm.n,this.norm.limit);
       if(this.text.items.length>this.text.limit)this.text.items.splice(0,this.text.items.length-this.text.limit);
       this.add.view=this.norm.view=this.text.view=view;
     }
     update(e) {
+      flushDamage(this,e);this.particleBudget?.next();
       (this.add.update(e),
         this.norm.update(e),
         this.ground.update(e),
@@ -9021,6 +9027,7 @@ var Gl = class {
         this.text.update(e));
     }
     clear() {
+      this.damagePending?.clear();this.damageClock=0;
       (this.add.clear(),
         this.norm.clear(),
         this.ground.clear(),
@@ -9144,8 +9151,9 @@ var Gl = class {
         (this.beams.spawn(u, d, f, _, v, y, s, o, l), (u = _), (d = v), (f = y));
       }
     }
-    number(e, t, n, r, i, a = !1) {
+    number(e, t, n, r, i, a = !1, target = null) {
       if (!this.enabledText) return;
+      if(target!==null){accumulateDamage(this,target,e,t,n,r,i,a);return;}
       let o = Wl(r);
       this.text.spawn(e, t, n, a === 2 ? o + `!!` : a ? o + `!` : o, i, a === 2 ? 1 : a ? 0.75 : 0.52);
     }
@@ -11405,6 +11413,7 @@ var qu = `
         }
     }
     height(e, t) {
+      if(this.zxPaper)return 0;
       let n = this.world / 2,
         r = Gs((e + n) / this.cell, 0, this.res - 0.001),
         i = Gs((t + n) / this.cell, 0, this.res - 0.001),
@@ -11427,6 +11436,7 @@ var qu = `
       }
     }
     surface(e, t) {
+      if(this.zxPaper&&!this.hasWater)return 0;
       let n = this.height(e, t),
         r = this.waterAt(e, t);
       return n < r ? r : n;
@@ -14011,85 +14021,7 @@ function yf(e) {
       ),
     ));
 }
-var bf = class {
-    cell;
-    dim;
-    counts;
-    starts;
-    items;
-    cellOf;
-    result;
-    resultCount = 0;
-    px;
-    pz;
-    pr;
-    sepX = 0;
-    sepZ = 0;
-    separationTurns;
-    constructor(e, t = 3) {
-      ((this.cell = t),
-        (this.dim = Math.ceil(420 / t) + 2),
-        (this.counts = new Int32Array(this.dim * this.dim)),
-        (this.starts = new Int32Array(this.dim * this.dim + 1)),
-        (this.items = new Int32Array(e)),
-        (this.separationTurns = new Uint32Array(e)),
-        (this.cellOf = new Int32Array(e)),
-        (this.result = new Int32Array(e)),
-        (this.px = new Float32Array(e)),
-        (this.pz = new Float32Array(e)),
-        (this.pr = new Float32Array(e)));
-    }
-    key(e, t) {
-      let n = Math.floor((e + 210) / this.cell) + 1,
-        r = Math.floor((t + 210) / this.cell) + 1;
-      return (
-        n >= 0 ? n >= this.dim && (n = this.dim - 1) : (n = 0),
-        r >= 0 ? r >= this.dim && (r = this.dim - 1) : (r = 0),
-        r * this.dim + n
-      );
-    }
-    build(e, t, n, r, i, a) {
-      this.separationCandidates=0;this.separationVisits=0;
-      this.counts.fill(0);
-      for (let i = 0; i < e; i++) {
-        if (!r[i]) {
-          this.cellOf[i] = -1;
-          continue;
-        }
-        let e = this.key(t[i], n[i]);
-        ((this.cellOf[i] = e), this.counts[e]++);
-      }
-      let o = 0;
-      for (let e = 0; e < this.counts.length; e++) ((this.starts[e] = o), (o += this.counts[e]));
-      this.starts[this.counts.length] = o;
-      let s = this.counts;
-      s.fill(0);
-      for (let r = 0; r < e; r++) {
-        let e = this.cellOf[r];
-        if (e < 0) continue;
-        let o = this.starts[e] + s[e]++;
-        ((this.items[o] = r),
-          i && ((this.px[o] = t[r]), (this.pz[o] = n[r]), (this.pr[o] = a && a[r] > 0 ? NaN : i[r])));
-      }
-    }
-    separate(e, t, n, r, budget) {
-      separateCrowd(this,e,t,n,r,budget);
-    }
-    query(e, t, n) {
-      let r = Math.max(0, Math.floor((e - n + 210) / this.cell) + 1),
-        i = Math.min(this.dim - 1, Math.floor((e + n + 210) / this.cell) + 1),
-        a = Math.max(0, Math.floor((t - n + 210) / this.cell) + 1),
-        o = Math.min(this.dim - 1, Math.floor((t + n + 210) / this.cell) + 1),
-        s = 0;
-      for (let e = a; e <= o; e++)
-        for (let t = r; t <= i; t++) {
-          let n = e * this.dim + t;
-          for (let e = this.starts[n], t = this.starts[n + 1]; e < t; e++)
-            s < this.result.length && (this.result[s++] = this.items[e]);
-        }
-      return ((this.resultCount = s), s);
-    }
-  },
+var bf = CrowdGrid,
   xf = 2200,
   Sf = 50,
   R = (function (e) {
@@ -14825,6 +14757,7 @@ var Df = 0.4,
       let e = this.run,
         t = e.sprites,
         n = e.focusIdx;
+      (e.enemyShadowCells??=new Set()).clear();
       for (let r = 0; r < this.n; r++) {
         if (!this.alive[r] || this.flags[r] & 32768) continue;
         let s = this.lodDt[r],
@@ -14958,7 +14891,7 @@ var Df = 0.4,
             x,
             g,
           ),
-          !f && S !== 2)
+          !f && S !== 2 && enemyShadow(e,c,l,!!(u & wf)))
         ) {
           let n = this.gnd[r];
           t.shadows.push(c, Number.isNaN(n) ? e.terrain.surface(c, l) : n, l, this.radius[r] * 2.4);
@@ -38890,7 +38823,7 @@ var e_ = class {
                 : l < 0.99
                   ? 11053240
                   : 16777215;
-        (r.vfx.number(i.x[e], i.y[e] + i.hgt[e] + 0.3, i.z[e], s, f, m ? 2 : u),
+        (r.vfx.number(i.x[e], i.y[e] + i.hgt[e] + 0.3, i.z[e], s, f, m ? 2 : u, e+"/"+i.gen[e]),
           l > 1.01 &&
             F.chance(0.25) &&
             this.canReact(`eff`) &&
@@ -39383,7 +39316,7 @@ var e_ = class {
       (t > 0 &&
         s.vfx.enabledText &&
         Math.random() < 0.5 &&
-        s.vfx.number(c.x[e], c.y[e] + c.hgt[e] + 0.3, c.z[e], t, 10148095),
+        s.vfx.number(c.x[e], c.y[e] + c.hgt[e] + 0.3, c.z[e], t, 10148095, false, e+"/"+c.gen[e]),
         c.hp[e] <= 0 && this.killEnemy(e, { remote: o }));
     }
     bursts = [];
@@ -75576,7 +75509,6 @@ var GT = 15,
   _E = 3,
   vE = 0.22,
   yE = 1400,
-  bE = { live: { low: 500, medium: 650, high: 800 }, floor: 500, step: 50, low: 45, high: 55 },
   xE =
     `maxHp.regen.armor.evasion.shieldMax.lifesteal.healing.thorns.damage.physical.special.attackSpeed.projectiles.area.duration.projSpeed.critChance.critDamage.statusChance.statusDamage.eliteDamage.superEffective.moveSpeed.pickupRange.xpGain.gold.luck.extraJumps.jumpHeight.megaCrit.overheal.powerup.eliteSpawn.slam`.split(
       `.`,
@@ -75689,11 +75621,8 @@ var GT = 15,
     hideOwnFx = !1;
     regionCleared = !1;
     maxEnemies = yE;
-    liveCap = bE.live.high;
-    liveMax = bE.live.high;
-    hordeAcc = 0;
-    hordeFrames = 0;
-    hordeGood = 0;
+    liveCap = crowdBudgets.high.max;
+    liveMax = crowdBudgets.high.max;
     fpsCap = 0;
     get enemyCap() {
       return this.coop ? this.maxEnemies : Math.min(this.maxEnemies, this.liveCap);
@@ -77737,26 +77666,12 @@ var GT = 15,
       }
     }
     setHordeQuality(e) {
-      let t = this.liveMax;
-      ((this.liveMax = Math.max(bE.floor, bE.live[e] ?? bE.live.high)),
-        (this.liveCap = this.liveCap >= t ? this.liveMax : Math.min(this.liveCap, this.liveMax)));
+      const budget=crowdBudgets[batterySaverEnabled(this.meta.profile.settings.batterySaver)?"low":e]||crowdBudgets.low,previous=this.liveMax;
+      this.liveMax=budget.max;this.liveMin=budget.min;
+      this.liveCap=this.liveCap>=previous?this.liveMax:Math.max(this.liveMin,Math.min(this.liveCap,this.liveMax));
     }
-    governHorde(e) {
-      if (this.coop || this.state !== `play` || this.timeScale !== 1 || document.hidden) {
-        this.hordeAcc = this.hordeFrames = 0;
-        return;
-      }
-      if (((this.hordeAcc += e), this.hordeFrames++, this.hordeAcc < 2)) return;
-      let t = this.hordeFrames / this.hordeAcc;
-      this.hordeAcc = this.hordeFrames = 0;
-      let n = this.fpsCap ? Math.min(bE.low, this.fpsCap * 0.75) : bE.low,
-        r = this.fpsCap ? Math.min(bE.high, this.fpsCap * 0.92) : bE.high;
-      t < n && this.enemies.count >= this.liveCap * 0.85
-        ? ((this.hordeGood = 0), (this.liveCap = Math.max(bE.floor, Math.round(this.liveCap * 0.085) * 10)))
-        : t >= r && this.liveCap < this.liveMax
-          ? ++this.hordeGood >= 3 &&
-            ((this.hordeGood = 0), (this.liveCap = Math.min(this.liveMax, this.liveCap + bE.step)))
-          : (this.hordeGood = 0);
+    governHorde() {
+      updateCrowdBudget(this,performance.now(),document.hidden);
     }
     simulate(e) {
       let t = this.input,

@@ -14,7 +14,8 @@ import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const source = path.join(root, 'source');
 const pub = path.join(source, 'public');
-const out = path.join(root, 'minigame');
+const development=process.argv.includes('--dev');
+const out = path.join(root, ...(development?['验收','开发者工程']:[]), 'minigame');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pokebonk-art-'));
 const packs = {art: {}, world: {}, text: {}};
 const index = {};
@@ -77,6 +78,7 @@ for (const file of fs.readdirSync(path.join(pub,'assets'))) {
 }
 for (const name of ['version.json','creditos.txt','legal']) add('text',name,fs.readFileSync(path.join(pub,name)));
 const python = process.env.POKEBONK_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
+if(development)fontText.push(fs.readFileSync(path.join(import.meta.dirname,'developer','panel.mjs'),'utf8'));
 const fontInput=path.join(temp,'font-input.txt');fs.writeFileSync(fontInput,fontText.join('\n'));
 execFileSync(python,[...(python === 'py'?['-3.13']:[]),path.join(import.meta.dirname,'fonts.py'),source,temp,fontInput],{stdio:'inherit'});
 for (const weight of ['regular','bold']) add('text','fonts/'+weight+'.ttf',fs.readFileSync(path.join(temp,weight+'.ttf')));
@@ -103,8 +105,9 @@ for (const [name, entries] of Object.entries(packs)) {
   rawSizes[name]=rawSize;
   console.log(name, Object.keys(entries).length, (bytes.length/1048576).toFixed(2)+' MiB');
 }
-fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,packs:meta,rawSizes,files:index,sprites:generatedSprites})+';\n');
-const reportDir=path.join(root,'验收');fs.mkdirSync(reportDir,{recursive:true});
+const devMetadata=development?{developerFontKey:(await import('./developer/build-support.mjs')).fontKey()}:{};
+fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,...devMetadata,packs:meta,rawSizes,files:index,sprites:generatedSprites})+';\n');
+const reportDir=path.join(root,'验收',...(development?['开发者工程']:[]));fs.mkdirSync(reportDir,{recursive:true});
 fs.writeFileSync(path.join(reportDir,'资源打包清单.json'),JSON.stringify({
   policyVersion:assetPolicyVersion,mappedResources:Object.keys(index).length,runtimeSpecies:runtimeSpecies.length,musicTracks,
   packs:Object.fromEntries(Object.keys(meta).map(name=>[name,{files:Object.keys(packs[name]).length,rawBytes:rawSizes[name],packedBytes:fs.statSync(path.join(out,'packs',name,'assets.br')).size}])),

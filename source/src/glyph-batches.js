@@ -1,0 +1,60 @@
+const attributes=[['aPos','iPos'],['aSize','iSize'],['aUV','iUV'],['aFx','iFx'],['aTint','iTint'],['aLook','iLook']];
+
+// Species still own their metrics and state. Only their finished render data
+// is gathered into one draw per atlas page, using the same shader attributes.
+export function createGlyphBatches(sprites){
+  const groups=new Map();sprites.glyphGroups=groups;
+  function allocate(group,capacity){
+    const source=group.source;
+    if(group.mesh){group.mesh.parent?.remove(group.mesh);group.mesh.dispose();group.geometry.dispose();}
+    group.geometry=source.mesh.geometry.clone();
+    for(const [field,name] of attributes){
+      const original=source[field];
+      group[field]=new original.constructor(new Float32Array(capacity*original.itemSize),original.itemSize).setUsage(original.usage);
+      group.geometry.setAttribute(name,group[field]);
+    }
+    group.mesh=new source.mesh.constructor(group.geometry,group.material,capacity);
+    group.mesh.frustumCulled=false;group.mesh.renderOrder=1;group.mesh.count=0;group.mesh.visible=false;
+    group.mesh.name='glyph-batch-'+group.word;group.capacity=capacity;sprites.scene.add(group.mesh);
+  }
+  return {
+    add(source,word){
+      let group=groups.get(word);
+      if(!group){
+        const material=source.material.clone();material.uniforms={...source.material.uniforms};
+        group={word,source,material,members:new Set(),count:0};groups.set(word,group);allocate(group,64);
+      }
+      group.members.add(source);
+      source.end=()=>{
+        source.mesh.count=0;source.mesh.visible=false;
+        if(source.count){source.drawn=true;source.lastUse=performance.now();}
+      };
+      const dispose=source.dispose.bind(source);
+      source.dispose=()=>{
+        group.members.delete(source);
+        if(!group.members.size){group.mesh.parent?.remove(group.mesh);group.mesh.dispose();group.geometry.dispose();group.material.dispose();groups.delete(word);}
+        else if(group.source===source)group.source=group.members.values().next().value;
+        dispose();
+      };
+    },
+    flush(){
+      for(const group of groups.values()){
+        let total=0;for(const source of group.members)total+=source.count;
+        if(total>group.capacity)allocate(group,2**Math.ceil(Math.log2(total)));
+        group.count=total;group.mesh.count=total;group.mesh.visible=total>0;
+        if(!total)continue;
+        let offset=0;
+        for(const source of group.members){
+          if(!source.count)continue;
+          for(const [field] of attributes){
+            const size=source[field].itemSize;
+            group[field].array.set(source[field].array.subarray(0,source.count*size),offset*size);
+          }
+          offset+=source.count;
+        }
+        for(const [field] of attributes){const a=group[field];a.clearUpdateRanges();a.addUpdateRange(0,total*a.itemSize);a.needsUpdate=true;}
+      }
+    },
+    clear(){for(const g of groups.values()){g.mesh.parent?.remove(g.mesh);g.mesh.dispose();g.geometry.dispose();g.material.dispose();}groups.clear();},
+  };
+}

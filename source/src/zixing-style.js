@@ -232,6 +232,7 @@ html.zixing .zx-hud{color:#25243c}
 .zx .zx-minimap{position:absolute;right:0;top:5px;width:96px;height:96px;border:0;border-radius:0;background:transparent;box-shadow:none;pointer-events:auto;zoom:1}
 .zx-hud-meta{position:absolute;bottom:3px;left:14px;right:14px;display:flex;align-items:center;gap:7px;height:19px;padding:0 8px;border-radius:9px;background:#fffdf5c9}
 .zx-hud-score{font-size:11px;line-height:1.2;color:#405270;white-space:nowrap}.zx small.zx-hud-stage{flex:none;padding:1px 6px;border-radius:8px;background:#e3edf8;font-size:10px;line-height:1.3;color:#4f76a4;white-space:nowrap}
+.zx-hud-clock,.zx-hud-gold{width:50px;min-width:50px;max-width:50px;white-space:nowrap;flex:none}
 .zx small.zx-hud-stage[data-tier="1"]{background:#d54e50;color:#fff}.zx small.zx-hud-stage[data-tier="2"]{background:#8263ae;color:#fff}
 html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-height:40px;height:40px;border:2px solid #fffdf7;border-radius:50%;background:#eef4ff;box-shadow:0 3px 0 #8da6ca;color:#6176a3}
 .zx-loadout{position:absolute;inset:0;pointer-events:none}

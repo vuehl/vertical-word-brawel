@@ -239,5 +239,23 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
   }
   function hit(x,y){for(let i=boxes.length-1;i>=0;i--){const b=boxes[i],c=b.clip;if(b.tag==='#text'||b.s['pointer-events']==='none'||x<c.x||x>c.r||y<c.y||y>c.b)continue;
     if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.el;}return doc.body;}
-  return {refresh,hit,box:el=>seen.get(el),font,wrap,context:ctx};
+  function refreshSubtree(element,previous){
+    const bounds=seen.get(element),index=boxes.indexOf(bounds);
+    if(!bounds||index<0)return previous;
+    const all=boxes,parent={s:seen.get(element.parentElement)?.s||engine.style(element.parentElement,null)};
+    const root=make(element,parent);
+    root.node.setPositionType(Y.POSITION_TYPE_RELATIVE);
+    root.node.setPosition(Y.EDGE_LEFT,0);root.node.setPosition(Y.EDGE_TOP,0);
+    root.node.setMargin(Y.EDGE_ALL,0);
+    root.node.setWidth(bounds.w);root.node.setHeight(bounds.h);
+    root.node.calculateLayout(bounds.w,bounds.h,Y.DIRECTION_LTR);
+    // The tile's outer footprint stays fixed. Recompute only its contents;
+    // resize/settings and changed slot counts still use the complete layout.
+    root.s={...root.s,position:'relative',transform:'none',translate:'none'};
+    boxes=[];
+    record(root,bounds.x,bounds.y,bounds.clip,bounds.w,bounds.h,null,bounds.opacity/(parseFloat(root.s.opacity)||1));
+    const local=boxes;boxes=all;boxes.splice(index,previous.length,...local);
+    root.node.freeRecursive();return local;
+  }
+  return {refresh,refreshSubtree,hit,box:el=>seen.get(el),font,wrap,context:ctx};
 }

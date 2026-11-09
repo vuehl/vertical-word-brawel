@@ -110,7 +110,7 @@ export function compositor(gl,canvas) {
   gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision mediump float;in vec2 uv;out vec4 color;uniform sampler2D ui;uniform float opacity;void main(){color=texture(ui,uv)*opacity;}'));
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
   const opacity=gl.getUniformLocation(prog,'opacity');
-  const texture=gl.createTexture(),tiles=Array.from({length:6},()=>({texture:gl.createTexture(),width:0,height:0})),vao=gl.createVertexArray();
+  const texture=gl.createTexture(),tiles=Array.from({length:11},()=>({texture:gl.createTexture(),width:0,height:0})),vao=gl.createVertexArray();
   let width=0,height=0;
   return (renderer,changed,opaque=false,layers=[])=>{
     renderer.resetState();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);

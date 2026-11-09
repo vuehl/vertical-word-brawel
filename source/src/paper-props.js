@@ -11,7 +11,7 @@ export function paperProp(name){
   function mat(color){if(!materials.has(color)){const m=new Material({color});m.userData.owned=true;materials.set(color,m);}return materials.get(color);}
   function part(g,geo,x,y,z,color,label){const m=new Mesh(geo,mat(color));m.position.set(x,y,z);if(label)m.name=label;g.add(m);return m;}
   const box=(g,x,y,z,w,h,d,c,n)=>part(g,new BoxGeometry(w,h,d),x,y,z,c,n);
-  const cyl=(g,x,y,z,r,h,c,n)=>part(g,new CylinderGeometry(r,r,h,24),x,y,z,c,n);
+  const cyl=(g,x,y,z,r,h,c,n)=>part(g,new CylinderGeometry(r,r,h,12),x,y,z,c,n);
   if(name.includes('pillar')){
     const column=new Group();column.name='Column';group.add(column);
     cyl(column,0,2.4,0,.85,4.6,'#ddbb75');cyl(column,0,4.5,0,.91,.5,'#b9c6c1');cyl(column,0,4.9,0,.88,.4,'#e3a0aa');
@@ -21,7 +21,7 @@ export function paperProp(name){
     box(group,0,5.4,0,6,.6,1.5,'#e4ce8c');box(group,0,.16,0,6.2,.3,2.4,'#b2c2b8');
   }else if(name.includes('pencils')){
     cyl(group,0,2,0,1.8,4,'#8da4ac');cyl(group,0,4.08,0,1.5,.05,'#526774');
-    for(let i=0;i<5;i++){const x=Math.cos(i*2.4),z=Math.sin(i*2.4);cyl(group,x,7,z,.22,9,['#e2b769','#b3ceaa','#c8a2c1'][i%3]);part(group,new ConeGeometry(.22,.8,12),x,11.9,z,'#d4c193');}
+    for(let i=0;i<5;i++){const x=Math.cos(i*2.4),z=Math.sin(i*2.4);cyl(group,x,7,z,.22,9,['#e2b769','#b3ceaa','#c8a2c1'][i%3]);part(group,new ConeGeometry(.22,.8,8),x,11.9,z,'#d4c193');}
   }else if(name.includes('lamp')){cyl(group,0,.1,0,.65,.2,'#a3bfae');cyl(group,0,1.5,0,.14,2.8,'#7c8f91');cyl(group,0,2.9,0,.65,.4,'#efcf82');}
   else if(name.includes('root')||name.includes('bramble')){
     for(let i=0;i<4;i++){const m=box(group,(i-1.5)*.8,1.3,0,.6,2.5,.6,'#b6c49c','Pod'+i);m.rotation.z=(i-1.5)*.18;}

@@ -66,8 +66,8 @@ export async function reviewGlyphCrowd(page,dir){
     p.hp=p.maxHp=1e9;
     for(let i=0;i<600;i++){
       const a=i*2.4,d=(i%19)/10;
-      // Ordinary enemies avoid the horde's 550-actor aggregation cap, allowing
-      // a deterministic 600-actor stress scene without changing that game cap.
+      // Ordinary spawns bypass the director's weighted horde budget, allowing
+      // a deterministic 600-actor stress scene without changing production caps.
       enemies.spawn([16,19,21][i%3],p.pos.x+8+Math.cos(a)*d,p.pos.z+Math.sin(a)*d,1000,1,0);
     }
     grid.build(enemies.n,enemies.x,enemies.z,enemies.alive,enemies.radius,enemies.dying);
