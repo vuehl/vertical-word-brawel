@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {verifyDeveloperPreview,writeDeveloperPreviewPage} from './developer/preview-support.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
 const development=process.argv.includes('--dev');
@@ -27,6 +28,12 @@ fs.mkdirSync(output,{recursive:true});
 const buildHashes=()=>Object.fromEntries(['game.js','game.json','play.js','assets.js','packs/text/assets.br'].map(name=>
   [name,createHash('sha256').update(fs.readFileSync(path.join(projectRoot,'minigame',name))).digest('hex')]));
 const hashes=buildHashes();
+const developerBuild=development?verifyDeveloperPreview(projectRoot):null;
+if(development){
+  console.log('开发测试工程：'+projectRoot+'\n开发构建：'+developerBuild);
+  // Keep the visible IDE project consistent with the package being previewed.
+  runCLI(['open','--project',projectRoot]);
+}
 runCLI(['cache','--clean','compile','--project',projectRoot]);
 const qr=path.join(output,'预览二维码.jpg');
 // Some IDE versions return exit code 0 even after a compilation error. Write
@@ -47,5 +54,22 @@ try{
 }finally{
   for(const file of [nextQR,nextInfo])fs.rmSync(file,{force:true});
 }
-fs.writeFileSync(path.join(output,'build-info.json'),JSON.stringify({project:projectRoot,development,createdAt:new Date().toISOString(),previewTotalBytes:preview.size.total,hashes},null,2)+'\n');
+const createdAt=new Date().toISOString();
+fs.writeFileSync(path.join(output,'build-info.json'),JSON.stringify({project:projectRoot,development,developerBuild,createdAt,previewTotalBytes:preview.size.total,hashes},null,2)+'\n');
 console.log('预览二维码：'+qr);
+if(development){
+  // A fresh filename also prevents a chat/image viewer from reusing old pixels.
+  const sharedQR=path.join(output,'开发测试-'+stamp+'.jpg');fs.copyFileSync(qr,sharedQR);
+  console.log('本次开发测试二维码：'+sharedQR);
+  const page=path.join(output,'开发测试入口-'+stamp+'.html');
+  writeDeveloperPreviewPage({file:page,qr:sharedQR,project:projectRoot,buildId:developerBuild,createdAt:new Date(createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})+'（北京时间）'});
+  console.log('本次扫码页面：'+page+'\n扫码后请确认首页显示：开发测试版 DEV 5');
+  if(process.platform==='win32'&&!process.argv.includes('--no-open')){
+    try{
+      // This is the visible scan target the user needs, not a background helper.
+      execFileSync('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command','Start-Process -FilePath $env:POKEBONK_PREVIEW_PAGE'],{
+        windowsHide:true,stdio:'inherit',env:{...process.env,POKEBONK_PREVIEW_PAGE:page}
+      });
+    }catch(error){console.warn('扫码页面未能自动打开，请打开上面的 HTML 文件。'+error.message);}
+  }
+}

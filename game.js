@@ -72,11 +72,13 @@ async function start() {
     }
   }
   try {
-    stage('字行 · 打开森林');
+    stage('字行 · 打开纸上世界');
     const canvas = wx.createCanvas();
     const view = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
-    canvas.width = Math.max(1, Math.round(view.windowWidth || canvas.width || 360));
-    canvas.height = Math.max(1, Math.round(view.windowHeight || canvas.height || 640));
+    const width=view.windowWidth||canvas.width||360,height=view.windowHeight||canvas.height||640;
+    const density=Math.min(view.pixelRatio||1,2,Math.sqrt(2000000/(width*height)));
+    canvas.width = Math.max(1, Math.round(width*density));
+    canvas.height = Math.max(1, Math.round(height*density));
     let gl;
     try { gl = canvas.getContext('webgl2', {alpha:true, antialias:false, depth:true, stencil:false}); }
     catch (error) { console.warn('[宝可梦启动] 尝试默认 WebGL 2 参数', error); }

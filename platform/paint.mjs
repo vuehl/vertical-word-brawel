@@ -107,15 +107,35 @@ export function compositor(gl,canvas) {
   }
   const prog=gl.createProgram();
   gl.attachShader(prog,shader(gl.VERTEX_SHADER,'#version 300 es\nout vec2 uv;void main(){vec2 v=vec2((gl_VertexID<<1)&2,gl_VertexID&2);uv=vec2(v.x,1.-v.y);gl_Position=vec4(v*2.-1.,0.,1.);}'));
-  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision mediump float;in vec2 uv;out vec4 color;uniform sampler2D ui;uniform float opacity;void main(){color=texture(ui,uv)*opacity;}'));
+  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision mediump float;in vec2 uv;out vec4 color;uniform sampler2D ui;uniform float opacity;uniform bool flip;void main(){color=texture(ui,flip?vec2(uv.x,1.-uv.y):uv)*opacity;}'));
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
   const opacity=gl.getUniformLocation(prog,'opacity');
+  const flip=gl.getUniformLocation(prog,'flip');
   const texture=gl.createTexture(),tiles=Array.from({length:11},()=>({texture:gl.createTexture(),width:0,height:0})),vao=gl.createVertexArray();
   let width=0,height=0;
-  return (renderer,changed,opaque=false,layers=[])=>{
+  let frozen=null,frozenKey=null,frozenWidth=0,frozenHeight=0;
+  const hasFrozen=key=>!!key&&key===frozenKey&&!!frozen&&frozenWidth===gl.drawingBufferWidth&&frozenHeight===gl.drawingBufferHeight;
+  const release=()=>{if(frozen)gl.deleteTexture(frozen);frozen=null;frozenKey=null;};
+  const draw=(renderer,changed,opaque=false,layers=[],freezeKey=null)=>{
     renderer.resetState();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
+    gl.activeTexture(gl.TEXTURE0);
+    // Copy the scene before UI composition, once per paused choice sequence.
+    // Everything stays on the GPU; never read pixels back or create a bitmap.
+    if(freezeKey&&!hasFrozen(freezeKey)){
+      if(!frozen)frozen=gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D,frozen);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.copyTexImage2D(gl.TEXTURE_2D,0,gl.RGBA,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,0);
+      frozenKey=freezeKey;frozenWidth=gl.drawingBufferWidth;frozenHeight=gl.drawingBufferHeight;
+    }else if(!freezeKey)release();
     if(opaque){gl.disable(gl.SCISSOR_TEST);gl.clearColor(.957,.949,.98,1);gl.clear(gl.COLOR_BUFFER_BIT);}
-    gl.useProgram(prog);gl.uniform1f(opacity,1);gl.bindVertexArray(vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
+    gl.useProgram(prog);gl.uniform1f(opacity,1);gl.bindVertexArray(vao);
+    gl.disable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.disable(gl.SCISSOR_TEST);gl.depthMask(false);
+    if(freezeKey){
+      gl.disable(gl.BLEND);gl.bindTexture(gl.TEXTURE_2D,frozen);gl.uniform1i(flip,1);gl.drawArrays(gl.TRIANGLES,0,3);
+    }
+    gl.uniform1i(flip,0);gl.bindTexture(gl.TEXTURE_2D,texture);
     if(changed){
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
@@ -148,4 +168,6 @@ export function compositor(gl,canvas) {
     }
     gl.bindVertexArray(null);renderer.resetState();
   };
+  draw.hasFrozen=hasFrozen;draw.releaseFrozen=release;
+  return draw;
 }

@@ -73,7 +73,12 @@ await page.evaluateOnNewDocument(()=>{
     };
   }
   const locations=new WeakMap(),bootLocations=new WeakSet();
-  window.bootPercentages=[];
+  window.bootPercentages=[];window.bootLabels=[];
+  const fillText=CanvasRenderingContext2D.prototype.fillText;
+  CanvasRenderingContext2D.prototype.fillText=function(label,...args){
+    if(/^\d+%$/.test(label))window.bootLabels.push(label);
+    return fillText.call(this,label,...args);
+  };
   window.holdHomeStatus=true;
   gl.getUniformLocation=function(program,name){
     const loc=lookup.call(this,program,name);
@@ -117,27 +122,16 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
-  const pixel=Math.max(1,Math.round(Math.min(width/185,height/110)));
-  const cx=Math.floor(width/2),cy=Math.floor(height*.12);
-  const half=Math.floor(Math.min(width*.27,height*.28));
-  const red=(x,y)=>data[((height-1-Math.floor(y))*width+Math.floor(x))*channels];
+  const sx=width/390,y=Math.floor(height*.79+4*sx),left=Math.round(61*sx),right=Math.round(329*sx);
   let filled=0;
-  for(let x=cx-half;x<cx+half;x++)if(red(x,cy-pixel)>140)filled++;
-  assert.ok(Math.abs(filled-2*half*percent/100)<=1,'Progress bar length at '+percent+'%');
-  const label=percent+'%', start=cx-(label.length*4-1)*pixel/2;
-  const expected={'0':0o75557,'5':0o74717,'6':0o74757,'7':0o71222,'9':0o75717,'%':0o51245};
-  for(let i=0;i<label.length;i++){
-    let bits=0;
-    for(let y=4;y>=0;y--)for(let x=0;x<3;x++)
-      bits=bits*2+Number(red(start+(4*i+x+.5)*pixel,cy+(2+y+.5)*pixel)>210);
-    assert.equal(bits,expected[label[i]],'Visible character '+label[i]+' in '+label);
+  for(let x=left;x<right;x++){
+    const at=(y*width+x)*channels;
+    if(Math.abs(data[at]-130)<8&&Math.abs(data[at+1]-159)<8)filled++;
   }
-  if(percent===95){
-    // At this stage the forest backdrop should be visible above the panel.
-    const upper=await sharp(image).extract({left:0,top:0,width,height:Math.floor(height/2)}).png().toBuffer();
-    const {channels:rgb}=await sharp(upper).removeAlpha().stats();
-    assert.ok(rgb.some(channel=>channel.max-channel.min>40),'Scene was covered by the loading panel');
-  }
+  assert.ok(Math.abs(filled-268*sx*percent/100)<=2,'Paper progress bar at '+percent+'%');
+  assert.ok(await page.evaluate(p=>window.bootLabels.includes(p+'%'),percent),'Readable percentage was painted');
+  const {channels:rgb}=await sharp(image).removeAlpha().stats();
+  assert.ok(rgb.some(channel=>channel.max-channel.min>100),'Stationery illustration is visible');
 }
 async function verifyStartup(){
   await page.waitForFunction(()=>window.textRequested&&window.playDownloaded||window.problem,{timeout:20000});
@@ -242,7 +236,8 @@ async function verifyStartup(){
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
   }
   if(await page.evaluate(()=>!!app.zixing)){
-    if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
+    if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
+    else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,dir,sleep});
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});

@@ -6,8 +6,10 @@ import {pathToFileURL} from 'node:url';
 import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
 import {reviewPaperBatching} from './paper-batching-regression.mjs';
 import {profileRuntime} from './runtime-profile.mjs';
+import {reviewQuality} from './quality-regression.mjs';
+import {reviewClarity} from './clarity-regression.mjs';
 import {reviewExperiencePerformance} from './experience-performance.mjs';
-import {reviewDeveloper} from './developer/regression.mjs';
+import {reviewDeveloper,enterDeveloperFromHome} from './developer/regression.mjs';
 import {auditGeometry} from './developer/geometry-audit.mjs';
 import {reviewOptimizations} from './optimization-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
@@ -55,8 +57,12 @@ try{
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
   await page.waitForFunction(()=>window.app?.zixing&&app.screen?.querySelector('button'),{timeout:90000});
   console.log('Home ready; creating an isolated run for workload counts.');
-  if(development)await page.waitForFunction(()=>window.inspected?.env.__zixingDeveloper);
-  const initial=await page.evaluate(async()=>{
+  if(development){
+    await page.waitForFunction(()=>window.inspected?.env.__zixingDeveloper);
+    assert.equal(await page.evaluate(()=>inspected.doc.querySelector('#zx-dev-version')?.textContent),'开发测试版 DEV 5');
+    await page.screenshot({path:path.join(dir,'dev-home.png')});
+  }
+  const initial=await page.evaluate(async development=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
     const initial={quality:app.meta.profile.settings.quality,saver:app.saver,fpsCap:app.fpsCap(),frameGap:app.frameGap()};
@@ -64,6 +70,7 @@ try{
     // Prevent the software rasterizer from monopolizing startup. Manual sample frames follow.
     window.realFrameGap=app.frameGap.bind(app);
     app.frameGap=()=>250;
+    if(development)return initial;
     await inspected.env.prepareForest();
     if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Start failed');
     app.halted=true;app.run.godMode=true;app.run.queueLevelUp=()=>{};
@@ -71,9 +78,14 @@ try{
     // gameplay HUD once before freezing frames for deterministic measurements.
     app.run.update(1/60);
     return initial;
-  });
+  },development);
+  if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--optimize')){
+  if(process.argv.includes('--clarity')){
+    await reviewClarity(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--quality')){
+    await reviewQuality(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--optimize')){
     await reviewOptimizations(page,dir);assert.deepEqual(errors,[]);
   }else if(development){
     await reviewDeveloper(page,dir);
@@ -299,13 +311,13 @@ try{
     inspected.env.localStorage.removeItem('pb-battery');
     click('.zx-option','30');const selected30={fpsCap:app.fpsCap(),frameGap:realFrameGap()};click('.zx-option','60');
     const adaptive=(target,measured,busy=false)=>{
-      app.meta.profile.settings.fpsLimit=target;app.applySettings();app.r.setDynRes(1);
+      app.meta.profile.settings.quality='medium';app.meta.profile.settings.fpsLimit=target;app.applySettings();app.r.setDynRes(1);
       app.dyn={t:0,frames:0,js:0,good:0,wait:8,lastUp:-1e9};delete inspected.env.__dynFps;
       for(let i=0;i<125;i++)app.adaptRes(busy?1000/measured*.9:2,1/measured,100000+i*1000/measured);
       return app.r.dynRes;
     };
     const dynamicResolution={atSelected30:adaptive(30,30),overloaded60:adaptive(60,30),busyNative:adaptive(60,11,true)};
-    delete inspected.env.__dynFps;app.r.setDynRes(1);
+    delete inspected.env.__dynFps;app.meta.profile.settings.quality='high';app.applySettings();app.r.setDynRes(1);
     run.state='paused';
     inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
     return {saved:{quality:saved.quality,touchScale:saved.touchScale},applied,removedControls,saver,restored:run.performance.name,restoredFps,selected30,dynamicResolution,options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
@@ -330,7 +342,7 @@ try{
   assert.equal(report.visibility.revealedAfterMoving,1);assert.equal(report.visibility.alive,4);
   const [low,medium,high]=report.samples;
   assert.ok(low.worldPixels<medium.worldPixels&&medium.worldPixels<high.worldPixels);
-  assert.ok(low.uiPixels<medium.uiPixels&&medium.uiPixels<high.uiPixels);
+  assert.equal(low.uiPixels,high.uiPixels);assert.equal(medium.uiPixels,high.uiPixels);
   assert.equal(low.outline,false);assert.equal(low.bloom,0);assert.ok(high.outline&&high.bloom>0);
   for(const sample of report.samples){assert.ok(sample.submitted<sample.authored*.4);assert.equal(sample.sky,false);assert.equal(sample.interactions,56);assert.ok(sample.colliders<200);}
   assert.deepEqual(report.gameplay.loot.before.totals,report.gameplay.loot.after.totals);assert.ok(report.gameplay.loot.after.count<report.gameplay.loot.before.count);
@@ -342,7 +354,7 @@ try{
   for(const result of report.settings.applied){assert.equal(result.actual,result.label);assert.ok(result.note.includes('当前生效：'+result.label));}
   const [smooth,balanced,fine]=report.settings.applied;
   assert.ok(smooth.worldPixels<balanced.worldPixels&&balanced.worldPixels<fine.worldPixels);
-  assert.ok(smooth.uiPixels<balanced.uiPixels&&balanced.uiPixels<fine.uiPixels);
+  assert.equal(smooth.uiPixels,fine.uiPixels);assert.equal(balanced.uiPixels,fine.uiPixels);
   assert.deepEqual(report.settings.options,['流畅','均衡','精致','30','60']);
   assert.equal(report.settings.saver.fpsCap,30);assert.ok(Math.abs(report.settings.saver.frameGap-1000/30)<.1);
   assert.equal(report.settings.restoredFps.fpsCap,60);assert.equal(report.settings.restoredFps.saver,false);assert.equal(report.settings.restoredFps.frameGap,1000/60);

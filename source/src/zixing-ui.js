@@ -5,7 +5,7 @@ import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
 import {waitForLoadingPaint} from './loading-work.js';
-import {performanceProfile} from './performance-profile.js';
+import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
 
 export const characters = [
@@ -329,6 +329,7 @@ export function createZixingUI(app,api) {
     const refreshStatus=()=>{
       const p=performanceProfile(s),buffer=app.r?.composer?.inputBuffer,fps=app.perf?.fps;
       status.textContent='当前生效：'+p.name+' · 上限 '+app.fpsCap()+' 帧'+(buffer?' · 场景 '+buffer.width+'×'+buffer.height:'')+
+        (batterySaverEnabled(s.batterySaver)?' · 省电模式正在使用流畅画质':p.dynamicResolution?' · 场景清晰度自动调整':' · 场景清晰度固定')+
         (app.run&&fps>0?'。最近战斗 '+Math.round(fps)+' FPS；切换后返回战斗采样。':'。帧率上限不代表实际帧率。');
     };
     refreshStatus();
@@ -347,7 +348,16 @@ export function createZixingUI(app,api) {
     const options=(label,key,values,note='')=>{
       fields.push(key);const group=el('div','zx-options');
       const explanation=note?small(typeof note==='function'?note():note):null;
-      const fill=()=>group.replaceChildren(...values.map(([v,label])=>el('button','zx-option'+((s[key]??api.defaults[key])===v?' on':''),label,{type:'button',onclick:()=>{s[key]=v;save();fill();if(typeof note==='function')explanation.textContent=note();}})));fill();
+      const fill=()=>group.replaceChildren(...values.map(([v,label])=>el('button','zx-option'+((s[key]??api.defaults[key])===v?' on':''),label,{type:'button',onclick:()=>{
+        s[key]=v;
+        // Choosing a higher quality explicitly takes precedence over the
+        // temporary low-quality override. Enabling saver later still works.
+        const leaveSaver=key==='quality'&&v!=='low'&&batterySaverEnabled(s.batterySaver);
+        if(leaveSaver)s.batterySaver=false;
+        save();
+        if(leaveSaver){renderSettings();return;}
+        fill();if(typeof note==='function')explanation.textContent=note();
+      }})));fill();
       return el('div','zx-setting',[row(el('b','',label),group),explanation]);
     };
     const sublabels=settingsTab===1?['性能视野','震动闪光','特效强度','攻击拾取']:settingsTab===3?['显示设置','战斗提示','流程提示']:[];
@@ -355,7 +365,12 @@ export function createZixingUI(app,api) {
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'优先流畅，简化阴影、光效和掉落表现。',medium:'更清晰的桌面与柔和阴影，兼顾画质和流畅度。',high:'高清桌面、完整阴影与发光描边，适合高性能手机。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','固定 30 帧，并临时使用流畅画质'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']])),status];
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'保留柔和阴影，忙碌时自动调整场景清晰度。',high:'固定高清场景、完整阴影与光效，不自动降低清晰度。'}[s.quality??api.defaults.quality])),small('各档界面文字均保持精致档清晰度。'),toggle('省电模式','batterySaver','上限 30 帧，场景临时使用流畅画质；选择精致会关闭省电'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']])),status,
+        card(el('b','','对流畅度有多大帮助？'),
+          small('相对精致档，均衡的场景像素预算减少 50%，流畅减少 80%。精致保持高清；均衡和流畅可自动调整分辨率。'),
+          small('降低画质还会减少光效、粒子和远处怪物的更新开销，画面渲染吃紧时通常更有帮助。'),
+          small('以上是渲染预算差异，不是帧率提升比例。怪多时仍有运算开销，实际改善需在同一手机、同一战况下对比。'),
+          small('省电模式以降低功耗为主，上限为 30 帧。'))];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -472,9 +487,16 @@ export function createZixingUI(app,api) {
     return [button([el('span','','查看当前属性'),icon('stats',15,'#65577b'),el('span','','›')],onStats,'zx-upgrade-stats',{'data-action':'upgrade-stats'}),...cards];
   }
   function levelUp(run,offers,chooseOffer) {
-    const cards=offers.map((offer,index)=>{const desc=api.offer(run,offer);return button(offerContent(index===0?current():'升',desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>chooseOffer(offer),'zx-offer',{'data-offer':index});});
+    let choosing=false;
+    const choose=(offer,action)=>{
+      if(choosing)return;choosing=true;
+      const done=()=>chooseOffer(offer,action);
+      if(window.closeAnimatedModal)window.closeAnimatedModal(run.ui.modalEl,done,action==='reroll'||run.pendingLevels>1);
+      else done();
+    };
+    const cards=offers.map((offer,index)=>{const desc=api.offer(run,offer);return button(offerContent(index===0?current():'升',desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});});
     overlay('择一而进','',offerBody(cards,()=>stats(run,()=>levelUp(run,offers,chooseOffer))),
-      [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>chooseOffer(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
+      [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
   }
   function restyleChoice(run,method,args,symbol) {
     const hud=run.ui,wrap=hud.modalEl,cards=[...wrap.querySelectorAll('.cards > .card')];

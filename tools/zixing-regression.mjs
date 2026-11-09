@@ -70,7 +70,14 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       const doc=inspected.doc,wrap=doc.querySelector('.zx-modal-wrap'),dialog=wrap.querySelector('.zx-upgrade');
       const screen=doc.getElementById('game').getBoundingClientRect(),bounds=dialog.getBoundingClientRect();
       const canvas=inspected.uiCanvas,ctx=canvas.getContext('2d'),scale=canvas.width/screen.width;
-      const rgba=(x,y)=>Array.from(ctx.getImageData(Math.floor(x*scale),Math.floor(y*scale),1,1).data);
+      const shadeLayer=inspected.modalTransition?.layers(scale,performance.now()).find(l=>l.slot===3);
+      const rgba=(x,y)=>{
+        const base=Array.from(ctx.getImageData(Math.floor(x*scale),Math.floor(y*scale),1,1).data);
+        if(!shadeLayer)return base;
+        const shade=shadeLayer.canvas.getContext('2d').getImageData(0,0,1,1).data;
+        const alpha=shade[3]/255*shadeLayer.opacity,out=alpha+base[3]/255*(1-alpha);
+        return [...shade.slice(0,3),Math.round(out*255)];
+      };
       const points=[[1,1],[screen.width-2,1],[1,screen.height-2],[screen.width-2,screen.height-2],
         [1-screen.x,1-screen.y],[1-screen.x,inspected.env.innerHeight-2-screen.y]];
       const pixels=points.map(([x,y])=>rgba(x,y));
@@ -414,7 +421,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-offer]')].map(el=>el.textContent)),choices,'Viewing attributes must preserve all upgrade choices');
     await checkUpgradeModal('08-upgrade-return');
     assert.deepEqual(await page.evaluate(()=>qaOfferSelections),[],'Opening the dialog and returning from attributes must not choose an upgrade');
-    const rerolls=await page.evaluate(()=>app.run.rerolls);await tap('.zx-reroll');
+    const rerolls=await page.evaluate(()=>app.run.rerolls);await tap('.zx-reroll');await settleModal();
     assert.equal(await page.evaluate(()=>app.run.rerolls),rerolls-1,'Reroll must consume exactly one existing charge');await snapshot('08-rerolled');await checkUpgradeModal('08-rerolled');
     await tap('[data-offer="1"]');
     await page.waitForFunction(()=>app.run.state==='play');

@@ -26,6 +26,7 @@ import {createControlLayer,createCanvasLayer,createHUDLayer} from './control-lay
 import {createModalTransition} from './modal-transition.mjs';
 import {gameViewport} from './viewport.mjs';
 import {createMutationTargets} from './mutation-targets.mjs';
+import {uiScale} from './ui-resolution.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -44,7 +45,6 @@ function viewport(info) {
   let menu;try{menu=wx.getMenuButtonBoundingClientRect?.();}catch{}
   return gameViewport(info,menu);
 }
-const uiScale=(view,profile={})=>Math.min(view.dpr,profile.uiPixelRatio??2,Math.sqrt((profile.uiPixelBudget??2000000)/(view.width*view.height)));
 export async function setup(host) {
   await initCrypto();
   const {document:doc}=D.parseHTML('<!doctype html><html><head></head><body><canvas id="game"></canvas><div id="ui"></div></body></html>');
@@ -68,6 +68,10 @@ export async function setup(host) {
   const uiAssets=readUIAssets(host.files);
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
+  const frozenModalKey=()=>{
+    const app=win.__pb,run=app?.run;
+    return !app?.screen&&!run?.coop&&run?.state==='modal'&&run.ui.modalEl?.querySelector('.zx-upgrade')?run:null;
+  };
   const mutationTarget=createMutationTargets(doc.documentElement);
   function mutations(records){
     for(const record of records){
@@ -232,11 +236,11 @@ export async function setup(host) {
     addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),dispatchEvent:win.dispatchEvent.bind(win),
     alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
-    setUIPerformance(profile){
+    setUIPerformance(){
       // Settings also change inherited CSS variables (e.g. button size).
       // Refresh their hit boxes even when the pixel ratio stays the same.
       uiFrames.invalidate(true,true);
-      const next=uiScale(view,profile);
+      const next=uiScale(view);
       if(Math.abs(next-scale)<.001)return;
       scale=env.uiPixelRatio=next;
       uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
@@ -244,11 +248,18 @@ export async function setup(host) {
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
     animateModal(wrap){modalTransition.begin(wrap);uiFrames.invalidate(true,true);},
-    drawUI(renderer,opaque=false){
-      mutations(observer.takeRecords());
-      const state=env.__pb?.run?.state;
+    closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop);},
+    modalAnimating:()=>modalTransition.active,
+    drawFrozenModal(renderer){
+      const key=frozenModalKey();
+      if(!key||!draw?.hasFrozen(key))return false;
+      env.drawUI(renderer,false,key);return true;
+    },
+    drawUI(renderer,opaque=false,frozenFrame=null){
       const now=perf.now();
       if(modalTransition.advance(now))uiFrames.invalidate(false,true);
+      mutations(observer.takeRecords());
+      const state=env.__pb?.run?.state;
       const changed=uiFrames.draw(now,state,layout,boxes=>{
         controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
         for(const tile of hudLayers)tile.capture(boxes);
@@ -257,7 +268,7 @@ export async function setup(host) {
       });
       if(opaque&&!changed)return;
       const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),portrait.draw(layout,view,scale,state==='play'&&!opaque),...hudLayers.map(tile=>tile.draw(layout,view,scale,state==='play'&&!opaque)),...modalTransition.layers(scale,perf.now())];
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers);
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenModalKey());
     },
     locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
   });
@@ -267,7 +278,7 @@ export async function setup(host) {
     Object.assign(view,viewport(info));
     env.innerWidth=env.screen.width=view.w;env.innerHeight=env.screen.height=view.h;
     env.devicePixelRatio=view.dpr;
-    scale=env.uiPixelRatio=uiScale(view,env.nativeGraphics);uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
+    scale=env.uiPixelRatio=uiScale(view);uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
     layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     for(const query of queries.values()){
       const matches=mediaMatches(query.media,view);

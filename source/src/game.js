@@ -14,6 +14,7 @@ import {paperProp} from './paper-props.js';
 import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
 import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
 import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
+import {UpgradeTiming} from './upgrade-timing.js';
 import {updatePaperVisibility} from './paper-visibility.js';
 import {hitsPaperBox,resolvePaperBox} from './paper-collision.js';
 import './customize.js';
@@ -5292,6 +5293,9 @@ var oc = (e, t) =>
     dynRes = 1;
     static DYN_MIN = 0.6;
     setDynRes(t) {
+      // An explicitly selected sharp preset must not inherit a previous
+      // adaptive scale or be reduced by a delayed performance sample.
+      if(this.quality.dyn===false)t=1;
       ((t = Math.round(Math.max(e.DYN_MIN, Math.min(1, t)) * 100) / 100),
         t !== this.dynRes && ((this.dynRes = t), (this.dynDirty = !0)));
     }
@@ -73788,6 +73792,7 @@ var iT = Math.PI / 180,
       ((this.charge = 0),
         (this.holdOk = !1),
         (this.active = a),
+        e.upgradeTiming.beginUltimate(),
         this.uses++,
         e.stats.ultimates++,
         e.meta.count(`ultimates`, 1),
@@ -73831,7 +73836,7 @@ var iT = Math.PI / 180,
       (this.drones.render(), this.risers.render());
     }
     clear() {
-      (this.drones.clear(), this.risers.clear(), (this.active = 0), (this.castPending = !1));
+      (this.drones.clear(), this.risers.clear(), (this.active = 0), (this.castPending = !1), this.run.upgradeTiming.clear());
     }
   },
   PT = { burn: 1, poison: 2, para: 4, frozen: 8, sleep: 16, wet: 32, curse: 64, slow: 128 },
@@ -75589,6 +75594,7 @@ var GT = 15,
     skips = 0;
     banishes = 0;
     pendingLevels = 0;
+    upgradeTiming = new UpgradeTiming();
     bossSpawned = !1;
     stageCleared = !1;
     camYaw = 0;
@@ -77132,7 +77138,7 @@ var GT = 15,
         : !1;
     }
     doLevelUp() {
-      if (this.pendingLevels <= 0 || this.ui.experienceReady?.() === false || this.tryEvolve()) return;
+      if (this.state !== `play` || this.pendingLevels <= 0 || this.upgradeTiming.waiting(this.ult) || this.ui.experienceReady?.() === false || this.tryEvolve()) return;
       ((this.state = `modal`), this.audio.levelUp(), this.hints.show(`level`));
       let e = this.player.pos;
       (this.vfx.ring(e.x, e.y, e.z, 5, 16769162, 0.5),
@@ -77142,7 +77148,7 @@ var GT = 15,
           ((this.pendingLevels = Math.max(0, this.pendingLevels - 1)),
             (this.noResumeGrace = !e),
             this.ui.hideModal(),
-            this.pendingLevels > 0 ? (this.state = `play`) : this.resume());
+            this.pendingLevels > 0 ? ((this.state = `play`), this.doLevelUp()) : this.resume());
         },
         r = () => {
           try {
@@ -77614,9 +77620,15 @@ var GT = 15,
           (!!this.coop && (this.state === `modal` || this.state === `paused`)),
         a = this.state === `evolving` || this.state === `cinematic` || this.state === `capturing`;
       a && (r *= 0);
+      this.upgradeTiming.update(e,this.ult,this.state === `play`);
+      const finishingUltimate=this.upgradeTiming.waiting(this.ult);
       // The short full-ring presentation is part of the upgrade pause. It
-      // must not expose the player to extra hits before the choices appear.
-      this.state === `play` && this.pendingLevels > 0 && this.ui.experienceReady?.() === false && (r = 0);
+      // must not freeze an ultimate mid-cast. Protect the player while its
+      // final damage/effects continue, then pause for the remaining ring work.
+      if(this.state === `play` && this.pendingLevels > 0){
+        if(finishingUltimate&&!this.coop)this.player.iframes=Math.max(this.player.iframes,r+.1);
+        if(!finishingUltimate&&this.ui.experienceReady?.() === false)r=0;
+      }
       let o = this.state === `capturing` ? this.capYaw : this.yawBack;
       if (!this.terrain.zxPaper && !Number.isNaN(o)) {
         let t = Math.atan2(Math.sin(o - this.camYaw), Math.cos(o - this.camYaw));
@@ -109315,7 +109327,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       if(e&&(window.nativeUI||this.zixing))e.aimMode='auto';
       if (e && window.repairVolumeSettings?.(e)) this.meta.save();
       const profile=performanceProfile(e);
-      if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio,uiPixelRatio:profile.uiPixelRatio,uiPixelBudget:profile.uiPixelBudget});
+      if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio});
       window.setUIPerformance?.(profile);
       e &&
         (N.setVolumes({ master: e.master, music: e.music, sfx: e.sfx, cries: e.cries }),
@@ -109324,11 +109336,11 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         (this.saver = Uo(e.batterySaver)),
         this.r &&
           (this.r.setQuality({
-            pixelScale: e.pixel ?? 0,
+            pixelScale: window.nativeUI||this.zixing ? 0 : e.pixel ?? 0,
             bloom: profile.bloom,
             outline: profile.outline,
             hires: e.quality !== `low`,
-            dyn: !0,
+            dyn: profile.dynamicResolution,
             saver: this.saver,
           }),
           this.r.setLook(!!e.reduceFlashes, e.fxGlow ?? 1)),
@@ -109641,6 +109653,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     saver = !1;
     frameGap() {
       let e = this.run?.state;
+      if(window.nativeUI&&window.modalAnimating?.())return 1000/(this.fpsCap()||60);
       if (window.nativeUI && (!e || e === `paused` || e === `modal` || e === `over`))
         return Math.max(1000 / (this.fpsCap() || 60), 1000 / 30);
       if (this.saver) return e === `paused` || e === `modal` ? 50 : 33.3;
@@ -109703,8 +109716,11 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           return;
         }
         let t = performance.now();
-        (this.pad.update(n, this.run?.state === `play`),
-          this.run ? this.run.update(n) : this.menuScene?.update(n));
+        this.pad.update(n, this.run?.state === `play`);
+        if(!this.r.needsDraw&&window.drawFrozenModal?.(this.r.renderer)){
+          this.perf.active=false;this.failing=0;return;
+        }
+        this.run ? this.run.update(n) : this.menuScene?.update(n);
         let r = performance.now();
         if ((this.r.render(n), this.run?.state === `play`)) {
           let e = this.perf;
