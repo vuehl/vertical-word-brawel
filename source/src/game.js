@@ -7,6 +7,9 @@ import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAsset
 import {paperProp} from './paper-props.js';
 import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
 import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
+import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
+import {updatePaperVisibility} from './paper-visibility.js';
+import {hitsPaperBox,resolvePaperBox} from './paper-collision.js';
 import './customize.js';
 import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
 import {
@@ -1447,7 +1450,9 @@ var Ro = () => uo && Math.min(screen.width, screen.height) < 600,
     let t = Number(e ?? (uo ? 60 : 0));
     return t >= 20 && t <= 240 ? t : 0;
   },
-  Uo = (e) => Bo() ?? Ro(),
+  // The native settings page stores this preference in the profile. Do not
+  // silently force every small-screen phone to 30 FPS via the old web default.
+  Uo = (e) => window.nativeUI ? batterySaverEnabled(e) : Bo() ?? Ro(),
   Wo = 1100,
   Go = 2200,
   Ko = !1,
@@ -5279,6 +5284,7 @@ var oc = (e, t) =>
     dynDirty = !1;
     setQuality(e) {
       (Object.assign(this.quality, e),
+        (this.outlinePass.enabled=this.quality.outline!==false),
         this.quality.dyn || (this.dynRes = 1),
         (this.bloom.intensity = this.quality.bloom ? 0.8 * this.bloomK : 0),
         this.pickFinal(),
@@ -5360,7 +5366,7 @@ var oc = (e, t) =>
       const budget = portrait && this.quality.saver ? 1200000 : this.hires ? (uo ? 1600000 : 3700000) : 2200000;
       const nativeBudget = window.nativeGraphics?.pixelBudget ?? budget;
       const target = Math.min(window.devicePixelRatio, density, window.nativeGraphics?.maxPixelRatio ?? Infinity,
-        Math.sqrt(Math.min(budget, nativeBudget) / (e * t)));
+        Math.sqrt(nativeBudget / (e * t)));
       const ratio = n ? 1 / this.pixelScale : Math.max(.5, target * this.dynRes);
       const r = Math.round(ratio * 100) / 100;
       // Keep the world render targets at the chosen game quality. A phone can
@@ -8286,6 +8292,8 @@ var Rl = 20,
   zl = class {
     mesh;
     cap;
+    limit = Infinity;
+    view = null;
     n = 0;
     flat = !1;
     px;
@@ -8371,7 +8379,8 @@ var Rl = 20,
     }
     spawn(e) {
       if (
-        this.n >= this.cap ||
+        this.n >= Math.min(this.cap,this.limit) ||
+        (this.view&&!this.view.visible(e.x,e.y,e.z,Math.max(6,e.size||0))) ||
         Fl.on ||
         ((Fl.density < 1 || this.n > this.cap * 0.8) &&
           Math.random() > (this.n > this.cap * 0.8 ? Fl.density * 0.5 : Fl.density))
@@ -8820,6 +8829,8 @@ function Wl(e) {
 }
 var Gl = class {
     cap;
+    limit = 240;
+    view = null;
     mesh;
     glyphs = `0123456789!+-xk.₽MBTQ`;
     items = [];
@@ -8870,7 +8881,8 @@ var Gl = class {
         e.add(this.mesh));
     }
     spawn(e, t, n, r, i, a = 0.5) {
-      if (this.items.length >= 400) {
+      if(this.view&&!this.view.visible(e,t,n,6))return;
+      if (this.items.length >= this.limit) {
         if (a < 0.7) return;
         this.items.shift();
       }
@@ -8964,13 +8976,19 @@ var Gl = class {
     }
     constructor(e, t) {
       ((this.atlas = Nl()),
-        (this.add = new zl(e, this.atlas, 12e3, !0, !1, t)),
-        (this.norm = new zl(e, this.atlas, 5e3, !1, !1, t)),
+        (this.add = new zl(e, this.atlas, 3000, !0, !1, t)),
+        (this.norm = new zl(e, this.atlas, 1800, !1, !1, t)),
         (this.ground = new zl(e, this.atlas, 1500, !0, !0, t)),
         (this.groundN = new zl(e, this.atlas, 800, !1, !0, t)),
         (this.beams = new Bl(e)),
         (this.rings = new Ul(e)),
         (this.text = new Gl(e)));
+    }
+    setPerformance(profile,view){
+      this.add.limit=profile.particles;this.norm.limit=profile.normalParticles;this.text.limit=profile.damageTexts;
+      this.add.n=Math.min(this.add.n,this.add.limit);this.norm.n=Math.min(this.norm.n,this.norm.limit);
+      if(this.text.items.length>this.text.limit)this.text.items.splice(0,this.text.items.length-this.text.limit);
+      this.add.view=this.norm.view=this.text.view=view;
     }
     update(e) {
       (this.add.update(e),
@@ -11842,6 +11860,14 @@ var qu = `
     }
     addCollider(e) {
       this.colliders.push(e);
+      if(e.paperBox){
+        const rx=Math.abs(e.cos)*e.halfX+Math.abs(e.sin)*e.halfZ,rz=Math.abs(e.sin)*e.halfX+Math.abs(e.cos)*e.halfZ;
+        for(let x=Math.floor((e.x-rx)/8);x<=Math.floor((e.x+rx)/8);x++)for(let z=Math.floor((e.z-rz)/8);z<=Math.floor((e.z+rz)/8);z++){
+          const key=(x+1000)*4096+z+1000;
+          if(!this.colGrid.has(key))this.colGrid.set(key,[]);this.colGrid.get(key).push(e);
+        }
+        return;
+      }
       let t = this.cellKey(e.x, e.z),
         n = this.colGrid.get(t);
       (n || this.colGrid.set(t, (n = [])), n.push(e));
@@ -11858,6 +11884,7 @@ var qu = `
       return !0;
     }
     hitProp(e, t, n, r) {
+      const query=this.collisionQuery=(this.collisionQuery||0)+1;
       let i = Math.floor(e / 8),
         a = Math.floor(n / 8);
       for (let o = -1; o <= 1; o++)
@@ -11866,6 +11893,8 @@ var qu = `
           if (c)
             for (let i of c) {
               if (t > i.h || i.off) continue;
+              if(i.query===query)continue;i.query=query;
+              if(i.paperBox){if(hitsPaperBox(i,e,n,r))return true;continue;}
               let a = e - i.x,
                 o = n - i.z,
                 s = i.r + r;
@@ -11901,6 +11930,7 @@ var qu = `
       return null;
     }
     resolve(e, t, n, r, i) {
+      const query=this.collisionQuery=(this.collisionQuery||0)+1;
       ((i.x = e), (i.z = t));
       let a = Math.floor(e / 8),
         o = Math.floor(t / 8);
@@ -11910,6 +11940,8 @@ var qu = `
           if (s)
             for (let e of s) {
               if (r > e.h || e.off) continue;
+              if(e.query===query)continue;e.query=query;
+              if(e.paperBox){resolvePaperBox(e,i,n);continue;}
               let t = i.x - e.x,
                 a = i.z - e.z,
                 o = e.r + n,
@@ -14466,7 +14498,7 @@ var Df = 0.4,
           let e = this.x[i] - g,
             t = this.z[i] - _,
             n = e * e + t * t,
-            r = n < 196 ? 1 : n < 576 ? 2 : 3;
+            r = n < 196 ? 1 : n < 576 ? (this.run.performance?.enemyMidStep??2) : (this.run.performance?.enemyFarStep??3);
           if (((h = r > 1), h && (i + p) % r !== 0 && m < Af)) {
             this.lodDt[i] = m;
             continue;
@@ -14796,22 +14828,16 @@ var Df = 0.4,
     render() {
       let e = this.run,
         t = e.sprites,
-        n = e.focusIdx,
-        r = e.meta.profile.settings.enemyView,
-        i = r === `close` ? 18 : r === `near` ? 30 : 0,
-        a = i * i,
-        o = e.player.pos;
+        n = e.focusIdx;
       for (let r = 0; r < this.n; r++) {
         if (!this.alive[r] || this.flags[r] & 32768) continue;
-        if (i && !(this.flags[r] & 12422)) {
-          let e = this.x[r] - o.x,
-            t = this.z[r] - o.z;
-          if (e * e + t * t > a) continue;
-        }
         let s = this.lodDt[r],
           c = this.x[r] + (s > 0 ? (this.vx[r] + this.kx[r]) * s : 0),
           l = this.z[r] + (s > 0 ? (this.vz[r] + this.kz[r]) * s : 0);
-        if (!(this.flags[r] & 132) && !t.visible(c, this.y[r] + this.hgt[r] * 0.5, l, 3 + this.scale[r] * 4))
+        // Cull by the actual camera and body/shadow bounds. A fixed player
+        // radius can hide visible enemies on tall screens; old saves no longer
+        // decide visibility. Simulation, targeting and warnings run separately.
+        if (!t.visible(c, this.y[r] + this.hgt[r] * 0.5, l, 2 + Math.max(this.hgt[r], this.radius[r] * 2.4)))
           continue;
         let u = this.flags[r],
           d = t.get((u & 131072 ? Qc : 0) + this.species[r]),
@@ -25742,6 +25768,7 @@ var Yp = 3e3,
         t = this.run.hideOwnFx;
       for (let n = 0; n < this.n; n++) {
         if (!this.alive[n] || (t && !(this.flags[n] & 1))) continue;
+        if(!this.fx[n]&&!this.run.sprites.visible(this.x[n],this.y[n],this.z[n],Math.max(8,this.size[n]*2)))continue;
         let r = !(this.flags[n] & 1);
         this.glow.fade = r ? e : 1;
         let i = r ? Math.min(this.size[n], im) : this.size[n],
@@ -25921,7 +25948,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
       this.spawnMerged(1, e, t, n, r);
     }
     spawnMerged(e, t, n, r, i) {
-      if (this.count > (e === 0 ? 500 : 200)) {
+      if (this.count > (e === 0 ? this.run.performance.mergeXp*2 : this.run.performance.mergeCoins*2)) {
         let a = this.run.player.pos,
           o = -1,
           s = 16,
@@ -25980,10 +26007,10 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
         n = t.player,
         r = pickupRadius(n.stats.pickupRange),
         i = !!t.meta.profile.settings.calmCandies,
-        a = t.meta.profile.settings.pickupFx === `simple`;
+        a = t.performance.pickupSimple||t.meta.profile.settings.pickupFx === `simple`;
       ((this.trailBudget = a ? 0 : 24),
         (this.burstBudget = a ? 3 : 10),
-        (this.mergeT -= e) <= 0 && ((this.mergeT = 1.2), this.count > 260 && this.consolidate()));
+        (this.mergeT -= e) <= 0 && ((this.mergeT = t.performance.mergeInterval), this.count > t.performance.mergeXp && this.consolidate()));
       let o = r * r;
       (this.magnetAll > 0 && (this.magnetAll -= e),
         (this.xpChainT -= e) <= 0 && (this.xpChain = 0),
@@ -26141,11 +26168,12 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
       (this.pool.begin(), this.glow.begin());
       let t = (2 + this.run.stage * 2) * this.run.player.stats.gold,
         n = !!this.run.meta.profile.settings.calmCandies,
-        r = n || this.run.meta.profile.settings.pickupFx === `simple` || this.count > 400,
+        r = n || this.run.performance.pickupSimple || this.run.meta.profile.settings.pickupFx === `simple` || this.count > 400,
         i = this.run.player.pos.x,
         a = this.run.player.pos.z;
       for (let o = 0; o < this.n; o++) {
         if (!this.alive[o]) continue;
+        if(!this.run.sprites.visible(this.x[o],this.y[o]+2,this.z[o],8))continue;
         let s = lm[this.kind[o]];
         if (this.kind[o] <= 1) {
           let e = this.x[o] - i,
@@ -26256,7 +26284,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
           let s = r ? 0 : Math.max(0, Math.sin(e * 1.9 + o * 2.31)) ** 16;
           (s > 0.05 &&
             this.glow.push(this.x[o] - 0.12, a + 0.16, this.z[o], 0.7 * s, 16777215, I.Twinkle, e, 0.6, s),
-            this.shadow(o, 0.45 + i * 0.12));
+            !r&&this.shadow(o, 0.45 + i * 0.12));
         } else {
           let t = um[this.kind[o]],
             n = this.age[o],
@@ -26275,7 +26303,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
               0.3,
               0.4 + 0.15 * Math.sin(e * 4 + o),
             ));
-          for (let n = 0; n < 2; n++) {
+          for (let n = 0; n < (this.run.performance.pickupSimple?0:2); n++) {
             let r = e * 2.4 + n * Math.PI + o,
               s = 0.62 * a,
               c = 0.6 + 0.4 * Math.sin(e * 7 + n * 2 + o);
@@ -26291,7 +26319,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
               c,
             );
           }
-          if (t.pillar && !this.attract[o]) {
+          if (t.pillar && !this.attract[o]&&!this.run.performance.pickupSimple) {
             let n = this.run.terrain.surface(this.x[o], this.z[o]);
             this.run.vfx.beams.spawn(
               this.x[o],
@@ -26306,7 +26334,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
               0.16 + 0.05 * Math.sin(e * 3 + o),
             );
           }
-          this.shadow(o, 0.6 * a);
+          if(!this.run.performance.pickupSimple)this.shadow(o, 0.6 * a);
         }
       }
       (this.pool.end(), this.glow.end());
@@ -26329,8 +26357,8 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
         t = 0;
       for (let n = 0; n < this.n; n++)
         this.alive[n] && !this.attract[n] && (this.kind[n] === 0 ? e++ : this.kind[n] === 1 && t++);
-      let n = e > 240,
-        r = t > 100;
+      let n = e > this.run.performance.mergeXp,
+        r = t > this.run.performance.mergeCoins;
       if (!n && !r) return;
       let i = new Map();
       for (let e = 0; e < this.n; e++) {
@@ -67708,15 +67736,16 @@ var GS = class e {
         i = 1e9;
       for (let a of this.list) {
         let o = a.group;
-        if (o?.userData.gem) {
+        const near=(a.x-n.x)**2+(a.z-n.z)**2<2500;
+        if (near&&o?.userData.gem) {
           let n = o.userData.gem;
           ((n.rotation.y += e * 1.5), (n.position.y = (o.userData.gemY ?? 0) + Math.sin(t.time * 2) * 0.12));
           let r = 1 + Math.sin(t.time * 4) * 0.06;
           n.scale.setScalar(r);
         }
         if (
-          (a.beacon && (a.beacon.material.uniforms.uTime.value = t.time),
-          a.kind === `portal` && o && this.portalFx(a, e),
+          (near&&a.beacon && (a.beacon.material.uniforms.uTime.value = t.time),
+          near&&a.kind === `portal` && o && this.portalFx(a, e),
           a.kind === `shroom` && this.shroomUpdate(a, e),
           a.kind === `boss` && !t.bossSpawned)
         ) {
@@ -67740,7 +67769,7 @@ var GS = class e {
                 this.dim(a),
                 this.spawnChest(a.x + 2.5, a.z + 2.5, !0))
               : Math.random() < e * 3 && t.vfx.ring(a.x, a.y, a.z, 3.5, 16738890, 0.5)),
-          a.kind === `fossil` &&
+          near&&a.kind === `fossil` &&
             !a.used &&
             Math.random() < e * 2 &&
             t.vfx.add.spawn({
@@ -67755,7 +67784,7 @@ var GS = class e {
               shape: I.Twinkle,
               glow: 0.7,
             }),
-          a.kind === `rhydon` &&
+          near&&a.kind === `rhydon` &&
             this.run.roars &&
             !t.bossSpawned &&
             Math.random() < e * (1 + 2 * this.run.roars) &&
@@ -67771,7 +67800,7 @@ var GS = class e {
               shape: I.Spark,
               glow: 0.8,
             }),
-          a.kind === `nest` && !a.used)
+          near&&a.kind === `nest` && !a.used)
         ) {
           Math.random() < e * 2.5 &&
             t.vfx.add.spawn({
@@ -67790,8 +67819,8 @@ var GS = class e {
           n && (n.rotation.x = Math.sin(t.time * 3 + a.x) > 0.93 ? Math.sin(t.time * 28) * 0.12 : 0);
         }
         if (
-          (a.kind === `bill` && !a.used && this.billIdle(a, e),
-          a.kind === `slots` &&
+          (near&&a.kind === `bill` && !a.used && this.billIdle(a, e),
+          near&&a.kind === `slots` &&
             o?.userData.lamp &&
             (o.userData.lamp.scale.setScalar(Math.sin(t.time * 6 + a.x) > 0 ? 1.15 : 0.95),
             Math.random() < e * 1.5 &&
@@ -67807,7 +67836,7 @@ var GS = class e {
                 shape: I.Twinkle,
                 glow: 0.8,
               })),
-          a.kind === `cursedchest` &&
+          near&&a.kind === `cursedchest` &&
             !a.used &&
             Math.random() < e * 2 &&
             t.vfx.add.spawn({
@@ -67822,7 +67851,7 @@ var GS = class e {
               shape: I.Wisp,
               glow: 0.6,
             }),
-          a.kind === `shrine` &&
+          near&&a.kind === `shrine` &&
             !a.used &&
             Math.random() < 0.4 &&
             t.vfx.trail(
@@ -67914,6 +67943,7 @@ var GS = class e {
     landmarkFx(e) {
       let t = this.run,
         n = t.player.pos;
+      if(!t.performance.ambient)return;
       for (let r of t.terrain.landmarks) {
         if (Math.hypot(r.x - n.x, r.z - n.z) > 55) continue;
         let i = t.terrain.height(r.x, r.z),
@@ -68011,6 +68041,7 @@ var GS = class e {
         n = this.sprites;
       n?.begin();
       for (let r of this.list) {
+        if(!e.sprites.visible(r.x,r.y+3,r.z,18))continue;
         let i = r.x - t.x,
           a = r.z - t.z,
           o = Math.hypot(i, a),
@@ -75945,14 +75976,15 @@ var GT = 15,
           (this.diff.enemyHp *= this.coop.hpMul),
           (this.diff.enemyAmount *= this.coop.spawnMul)));
       let s = i.profile.settings;
+      this.performance=performanceProfile(s);
       ((this.hints = new yw(i)),
         (this.aimMode = s.aimMode),
         (this.maxEnemies = this.coop ? 800 : yE),
         this.setHordeQuality(s.quality),
-        (Fl.density =
-          (s.quality === `low` ? 0.5 : s.quality === `medium` ? 0.8 : 1) * (Uo(s.batterySaver) ? 0.7 : 1)),
+        (Fl.density = this.performance.particleDensity),
         (this.sprites = new rl(e.scene, e.shared)),
         (this.vfx = new Kl(e.scene, e.shared)),
+        this.vfx.setPerformance(this.performance,this.sprites),
         (this.vfx.calm = !!i.profile.settings.reduceFlashes),
         (this.vfx.fade = Math.max(0.2, Math.min(1, i.profile.settings.fxOpacity ?? 1))),
         (this.vfx.glow = Math.max(0.2, Math.min(1, i.profile.settings.fxGlow ?? 1))),
@@ -78192,6 +78224,7 @@ var GT = 15,
     zoneMotes(e) {
       let t = this.zone.motes,
         n = this.weather;
+      if(!this.performance.ambient)return;
       if (!t || this.mewtwo.active || n === `rain` || n === `sand`) return;
       let r =
           t === `fireflies`
@@ -78395,6 +78428,7 @@ var GT = 15,
     renderWorld(e) {
       let t = this.r.camera;
       (this.sprites.begin(t),
+        updatePaperVisibility(this.terrain,this.sprites.frustum,this.performance.worldShadows),
         this.enemies.render(),
         this.boss.kit && !this.boss.kit.dead && this.boss.kit.render(),
         this.boss.mech?.render(),
@@ -78498,6 +78532,7 @@ var ME = class {
     }
     off;
     constructor(e) {
+      const extended=!window.nativeUI&&!document.documentElement.classList.contains('zixing');
       ((this.knob = X(`i`)),
         (this.stick = X(`div`, { class: `tc-stick` }, this.knob)),
         (this.ult = X(
@@ -78509,15 +78544,15 @@ var ME = class {
           X(`div`, { class: `ult-nm` }),
         )),
         (this.act = X(`div`, { class: `tc-btn tc-act`, style: { display: `none` } }, X(`i`), X(`span`))),
-        (this.aim = X(
+        (this.aim = extended ? X(
           `div`,
           { class: `tc-btn tc-sm tc-aim`, title: c(`Apuntado automático o manual`) },
           Z(`aim`, 26),
           X(`span`, {}, c(`Auto`)),
-        )));
-      let t = X(`div`, { class: `tc-btn tc-jump` }, Z(`jump`, 44)),
-        n = X(`div`, { class: `tc-btn tc-dash` }, Z(`dash`, 34)),
-        r = X(`div`, { class: `tc-btn tc-lock`, title: c(`Fijar objetivo`) }, Z(`target`, 28)),
+        ) : null));
+      let t = extended ? X(`div`, { class: `tc-btn tc-jump` }, Z(`jump`, 44)) : null,
+        n = extended ? X(`div`, { class: `tc-btn tc-dash` }, Z(`dash`, 34)) : null,
+        r = extended ? X(`div`, { class: `tc-btn tc-lock`, title: c(`Fijar objetivo`) }, Z(`target`, 28)) : null,
         i = X(`div`, { class: `tc-btn tc-sm tc-pause`, title: c(`Pausa`) }, Z(`pause`, 26));
       ((this.fs = X(
         `div`,
@@ -78577,6 +78612,7 @@ var ME = class {
         })));
     }
     button(e, t, n) {
+      if(!e)return;
       e.addEventListener(`pointerdown`, (n) => {
         (n.stopPropagation(),
           n.preventDefault(),
@@ -78777,7 +78813,7 @@ var ME = class {
           r.includes(c(`Poké Ball`)) || r.startsWith(c(`Capturar`)) ? Q(`poke-ball`) : X(`b`, {}, `E`),
         ));
       let i = e.aimMode === `auto`;
-      (this.aim.dataset.m !== e.aimMode &&
+      (this.aim && this.aim.dataset.m !== e.aimMode &&
         ((this.aim.dataset.m = e.aimMode),
         (this.aim.lastChild.textContent = c(i ? `Auto` : `Manual`)),
         this.aim.classList.toggle(`manual`, !i)),
@@ -81685,7 +81721,7 @@ var bO = [1, 4, 7],
     music: 0.5,
     sfx: 0.7,
     cries: 0.6,
-    quality: `high`,
+    quality: `low`,
     aimMode: `auto`,
     sensitivity: 1,
     invertY: !1,
@@ -94472,7 +94508,7 @@ function SP() {
 function ZX(app) {
   const itemIcon=id=>Zt(k.items[id]?.icon||`items/${id}.png`);
   return createZixingUI(app, {
-    defaults: {...SO, fpsLimit:60, batterySaver:false, enemyView:'all', zxTheme:'auto', zxBossHealth:'value', zxExtraControls:false},
+    defaults: {...SO, fpsLimit:60, batterySaver:false, zxTheme:'auto', zxBossHealth:'value'},
     moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
     ultDescription: id => Xh(id, k.get(id).types[0]).desc || '积蓄能量，释放专属大招。',
     baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
@@ -100960,7 +100996,6 @@ function nI(e) {
           `ownFxOpacity`,
           `fxGlow`,
           `hideOwnFx`,
-          `enemyView`,
           `calmCandies`,
           `pickupFx`,
           `reduceFlashes`,
@@ -101015,18 +101050,6 @@ function nI(e) {
             `hideOwnFx`,
             c(
               `No dibuja tus proyectiles ni sus efectos. Da muchos FPS con muchos ataques; los de los enemigos se siguen viendo`,
-            ),
-          ),
-          o(
-            c(`Enemigos que se dibujan`),
-            `enemyView`,
-            [
-              [`all`, c(`Todos`)],
-              [`near`, c(`Cercanos`)],
-              [`close`, c(`Muy cercanos`)],
-            ],
-            c(
-              `Solo dibuja los enemigos que tienes cerca (30 m o 18 m); los demás siguen ahí, solo que no se ven. Da muchos FPS en Supervivencia y en el enjambre final`,
             ),
           ),
           l(c(`Caramelos discretos`), `calmCandies`, c(`Más pequeños y sin brillo; se recogen igual`)),
@@ -109548,7 +109571,10 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     }
     applySettings() {
       let e = this.meta.profile?.settings;
+      if(e&&(window.nativeUI||this.zixing))e.aimMode='auto';
       if (e && window.repairVolumeSettings?.(e)) this.meta.save();
+      const profile=performanceProfile(e);
+      if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio});
       e &&
         (N.setVolumes({ master: e.master, music: e.music, sfx: e.sfx, cries: e.cries }),
         N.setHiddenMute(document.hidden && e.muteHidden),
@@ -109557,7 +109583,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.r &&
           (this.r.setQuality({
             pixelScale: e.pixel ?? 0,
-            bloom: e.quality === `high`,
+            bloom: profile.bloom,
+            outline: profile.outline,
             hires: e.quality !== `low`,
             dyn: !0,
             saver: this.saver,
@@ -109579,8 +109606,9 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           (this.run.hideOwnFx = !!e.hideOwnFx),
           (this.run.camDist = Math.max(4.5, Math.min(26, e.camDist ?? 9))),
           (this.run.vfx.ownFade = Math.max(0.1, Math.min(1, e.ownFxOpacity ?? e.fxOpacity ?? 1))),
-          (Fl.density =
-            (e.quality === `low` ? 0.5 : e.quality === `medium` ? 0.8 : 1) * (this.saver ? 0.7 : 1)),
+          (this.run.performance=profile),
+          (Fl.density = profile.particleDensity),
+          this.run.vfx.setPerformance(profile,this.run.sprites),
           (this.run.fpsCap = this.fpsCap()),
           this.run.setHordeQuality(e.quality)));
     }
@@ -109899,11 +109927,12 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       r.t = r.frames = r.js = 0;
       let s = window.__dynFps,
         c = s ?? a;
-      c < 45 && (o < 0.7 || s !== void 0) && i.dynRes > dc.DYN_MIN
+      const target=Math.min(this.fpsCap()||60,60);
+      c < target*.75 && (o < 0.7 || s !== void 0) && i.dynRes > dc.DYN_MIN
         ? (n - r.lastUp < 25e3 && (r.wait = Math.min(60, r.wait * 2)),
           (r.good = 0),
           i.setDynRes(i.dynRes - 0.1))
-        : c >= 55 && i.dynRes < 1
+        : c >= target*(55/60) && i.dynRes < 1
           ? ++r.good * 2 >= r.wait && ((r.good = 0), (r.lastUp = n), i.setDynRes(i.dynRes + 0.1))
           : (r.good = 0);
     }

@@ -12,6 +12,7 @@ import {measureActor} from './actor-metrics.mjs';
 import {actorMetrics} from '../source/src/actor-metrics.js';
 import {assetPolicyVersion,excludedAssetReason,musicTracks,musicPackage} from './asset-policy.mjs';
 import {biomes,events,roster} from '../source/src/catalogs.js';
+import {resolveItemIcon} from '../source/src/item-icons.js';
 const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'source/public');
 const packs={};
 const digest=b=>createHash('sha256').update(b).digest('hex');
@@ -46,6 +47,11 @@ for(const track of musicTracks){
 }
 assert.equal(Object.keys(index.files).filter(k=>k.startsWith('assets/music/')).length,musicTracks.length);
 assert.ok(index.files['assets/env/common/atlas.png']&&index.files['assets/env/common/hazards.png'],'Shared berries and combat hazards must remain');
+const itemCatalog=JSON.parse(fs.readFileSync(path.join(pub,'data/items.json'),'utf8'));
+for(const [id,item] of Object.entries(itemCatalog)){
+  const key='assets/'+resolveItemIcon(item.icon||'items/'+id+'.png');
+  assert.ok(index.files[key]&&bytes(key)?.length,'Every item must have a loadable image: '+id);
+}
 const count={};
 const removedSceneAssets=[
   'assets/models/cursed.glb','assets/models/greed.glb','assets/models/porygon.glb',
@@ -90,7 +96,7 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
 const report={mappedResources:Object.keys(index.files).length,RGBA:count,originalModels:models.length,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:musicTracks.map(musicPackage),
   removedSceneAssetsVerified:removedSceneAssets.length,
-  actorBoundsVerified:152,cries:0,locales:['zh'],legacyActorAtlases:0,
+  actorBoundsVerified:152,itemIconsVerified:Object.keys(itemCatalog).length,cries:0,locales:['zh'],legacyActorAtlases:0,
   altarGlyphIncluded:!!actorMetrics[201],allArchiveHashesVerified:true};
 const out=path.join(root,'验收');fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'资源核验.json'),JSON.stringify(report,null,2));
 console.log(report);

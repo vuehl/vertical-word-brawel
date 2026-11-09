@@ -2,6 +2,8 @@
 // locally, with one instanced batch per shared geometry/material on mobile.
 import {I as Group,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,et as PlaneGeometry,J as ToonMaterial,q as BasicMaterial,b as CanvasTexture,ot as SRGB,ht as Vector3} from '../assets/three-DmSYIDKK.js';
 import {runLoadingSteps} from './loading-work.js';
+import {preparePaperBatch} from './paper-visibility.js';
+import {paperBox} from './paper-collision.js';
 
 export const paperStages=['胶佬工作台','手帐漫游','文具高塔','字灵书庭'];
 export const PAPER_CAMERA={yaw:0,pitch:Math.PI*.30,distance:42,fov:37};
@@ -104,11 +106,9 @@ function* paperWorldSteps(terrain){
     const g=new Group();g.position.set(x,0,z);g.rotation.y=angle;root.add(g);
     plane(g,.45+h*.20,.18,.6+h*.28,w+1.6+h*.15,d+1.8+h*.3,shadow);
     terrain.zxProps.push({kind,x,z,w,d,h});
-    // Circles fill the actual rotated footprint; visual paper layers stay walkable.
-    const co=Math.cos(angle),si=Math.sin(angle);
-    for(let px=-w/2+.55;px<w/2;px+=1.05)for(let pz=-d/2+.55;pz<d/2;pz+=1.05){
-      terrain.addCollider({x:x+co*px+si*pz,z:z-si*px+co*pz,r:.68,h:h+.25});
-    }
+    // One oriented footprint replaces dozens of overlapping small circles.
+    // Paper sheets remain walkable; movement and projectiles share this shape.
+    terrain.addCollider(paperBox(x,z,w,d,h+.25,angle));
     terrain.reserve(x,z,Math.hypot(w,d)/2+1.5);
     terrain.landmarks.push({kind:'meadow',x,z,r:Math.hypot(w,d)/2});return g;
   }
@@ -204,7 +204,7 @@ function* paperWorldSteps(terrain){
   root.clear();
   for(const {geometry,material,matrices} of batches.values()){
     const batch=new InstancedMesh(geometry,material,matrices.length);matrices.forEach((m,i)=>batch.setMatrixAt(i,m));batch.instanceMatrix.needsUpdate=true;
-    batch.matrixAutoUpdate=false;batch.computeBoundingSphere();root.add(batch);
+    batch.matrixAutoUpdate=false;batch.computeBoundingSphere();preparePaperBatch(batch,material===shadow);root.add(batch);
     yield;
   }
   terrain.mats=[...mats.values()];terrain.textures=[...textures.values()];
@@ -215,6 +215,7 @@ function* paperWorldSteps(terrain){
 
 export function applyPaperLight(run){
   const r=run.r;r.setSky(0xe8efdf,0xf8f5df,0xdce8e4,180,280,1,0xffedcf,0x9bbbc1);
+  r.sky.visible=!run.terrain?.zxPaper;
   r.setSun([-65,110,-45],.83,0xffeac2,0,0);r.sun.intensity=1.65;r.hemi.intensity=2.05;
   r.shared.uLight.value.setRGB(1,1,1);r.shared.uWind.value=0;
   r.setAtmos(1,1,1,0,0,.06,1,1,1);r.grade.uniforms.get('uAmount').value=.25;

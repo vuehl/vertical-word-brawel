@@ -42,7 +42,7 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
       run.input.look(400,250);run.input.zoom(10);run.input.mouseDX=500;run.input.mouseDY=400;run.input.wheel=20;run.update(.016);
       return {before,after:{yaw:run.camYaw,pitch:run.camPitch,fov:cam.fov,distance:run.camDist},stickHeld,released:run.input.stickX===0&&run.input.stickY===0,looks:run.ui.touch.looks.size,props:run.terrain.zxProps.length,colliders:run.terrain.colliders.length};
     });
-    assert.deepEqual(camera.after,camera.before);assert.ok(camera.stickHeld&&camera.released);assert.equal(camera.looks,0);assert.ok(camera.props>15&&camera.colliders>100);report.camera.push({width,...camera});
+    assert.deepEqual(camera.after,camera.before);assert.ok(camera.stickHeld&&camera.released);assert.equal(camera.looks,0);assert.ok(camera.props>15);assert.equal(camera.colliders,camera.props,'Every stationery prop keeps one oriented collision footprint');report.camera.push({width,...camera});
     await shot('05-camera-'+width);
   }
   await resize(390,844);

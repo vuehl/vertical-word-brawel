@@ -20,12 +20,13 @@ export async function reviewItems({page,tap,resize,dir,sleep,snapshot}) {
       await sleep(250);
       const layout=await page.evaluate(()=>{
         const box=sel=>{const b=inspected.layout.box(inspected.doc.querySelector(sel));return b&&{x:b.x,y:b.y,w:b.w,h:b.h};};
-        return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,act:box('.tc-act'),ult:box('.tc-ultb'),stick:box('.tc-stick'),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box),label:inspected.doc.querySelector('.tc-act').textContent};
+        return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,act:box('.tc-act'),ult:box('.tc-ultb'),stick:box('.tc-stick'),extras:inspected.doc.querySelectorAll('.tc-jump,.tc-dash,.tc-lock,.tc-aim').length,label:inspected.doc.querySelector('.tc-act').textContent};
       });
       const {act,ult,stick}=layout,overlap=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
       assert.ok(act&&act.w>=44&&act.h>=44&&act.y>=ult.y+ult.h+4,'Interaction must be below the ultimate with a usable touch area');
       assert.ok(act.x>=0&&act.x+act.w<=width&&act.y+act.h<=layout.height,'Interaction must fit on screen');
-      assert.ok(!overlap(act,stick)&&layout.extras.every(e=>!overlap(e,act)&&act.y+act.h+6<=e.y),'Interaction must leave space above optional buttons: '+JSON.stringify({scale,...layout}));
+      assert.ok(!overlap(act,stick),'Interaction must stay clear of the joystick: '+JSON.stringify({scale,...layout}));
+      assert.equal(layout.extras,0,'Old saved extra-controls flags must not create removed buttons');
       assert.match(layout.label,/开启宝箱.*金币/);layouts.push({scale,...layout});
     }
     await page.evaluate(()=>{app.meta.profile.settings.touchScale=1;app.meta.profile.settings.zxExtraControls=false;app.applySettings();});
@@ -100,6 +101,14 @@ export async function reviewItems({page,tap,resize,dir,sleep,snapshot}) {
   await page.evaluate(()=>qaRewardButton.dispatchEvent(new inspected.env.Event('click')));
   const result=await page.evaluate(key=>({count:app.run.player.items.get(key)||0,gold:app.run.gold,sold:app.run.econ.sold,state:app.run.state}),sale.key);
   assert.equal(result.count,sale.count);assert.equal(result.sold,sale.sold+1);assert.ok(result.gold>=sale.gold+sale.price);assert.equal(result.state,'play');
+  // This catalog item has no original PNG. Exercise its real dialog so the
+  // shared fallback remains visible without a failed native image request.
+  await page.evaluate(()=>{const r=app.run;r.state='modal';r.ui.showItem(r,'fairy-feather',()=>{r.ui.hideModal();r.state='play';});});
+  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-item-image')?.complete);
+  // Software-rendered regression frames are intentionally 250 ms apart; give
+  // the decoded image its next normal paint before taking the screenshot.
+  await sleep(300);
+  await checkDialog('16-item-feather');await tap('[data-item-action="sell"]');
   fs.writeFileSync(path.join(dir,'item-rewards.json'),JSON.stringify({choice,single,sale,result},null,2));
   await page.evaluate(before=>{
     const s=app.meta.profile.settings;s.touchScale=before.touchScale;s.zxExtraControls=before.extra;app.applySettings();

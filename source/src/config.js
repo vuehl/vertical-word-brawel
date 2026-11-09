@@ -1,4 +1,5 @@
 import { t as e, u as t } from "./i18n.js";
+import {resolveItemIcon} from './item-icons.js';
 var n = [
   {
     version: `0.8.34`,
@@ -6328,7 +6329,7 @@ var Ei = [`gg`, `love`, `fire`, `star`, `lol`, `wow`],
     let t = e.split(`/`);
     return t.slice(0, Math.min(2, t.length - 1)).join(`/`) || `.`;
   },
-  Ni = (e) => `${Ai}assets/${e}?v=${ji[Mi(e)] ?? `mvlr7rzv`}`,
+  Ni = (e) => `${Ai}assets/${resolveItemIcon(e)}?v=${ji[Mi(e)] ?? `mvlr7rzv`}`,
   Pi = (e) => `${Ai}data/${e}?v=${ji[`data/` + e] ?? `mvlr7rzv`}`,
   Fi = {
     novedad: { name: t(`Novedad`), color: `#2f7bf5` },

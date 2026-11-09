@@ -90,8 +90,8 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     assert.match(await page.evaluate(()=>app.screen.textContent),/测试：资源读取失败/);
     assert.equal(await page.evaluate(()=>!!app.run),false);
     await page.screenshot({path:path.join(dir,'entry-retry.png')});
-    // A stalled optional download can be left safely; a late completion must
-    // not create a run behind the user's next menu choice.
+    // A stalled download still shows real progress without loading controls.
+    // External navigation must invalidate a late completion of this entry.
     await page.evaluate(()=>{inspected.env.prepareForest=progress=>new Promise(resolve=>{
       window.entryPaintedBeforeResources=!!inspected.layout.box(inspected.doc.querySelector('.zx-loading-percent'));
       window.reportEntryResource=progress;window.releaseEntry=resolve;
@@ -109,7 +109,9 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     }),'Downloads and writes contribute to the same progress bar');
     await sleep(150);
     await page.screenshot({path:path.join(dir,'entry-progress.png')});
-    await tap('[data-action="cancel-entry"]');
+    assert.equal(await page.evaluate(()=>app.screen.querySelectorAll('button,.zx-footer').length),0,'Loading has no return button or footer');
+    assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/已等待|正在下载|正在处理|准备字灵|返回选择/);
+    await page.evaluate(()=>app.zixing.difficulty());
     await page.evaluate(()=>releaseEntry());await sleep(100);
     assert.equal(await page.evaluate(()=>app.screen.dataset.page),'difficulty');
     assert.equal(await page.evaluate(()=>!!app.run),false);
@@ -157,10 +159,14 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     for(const [width,height] of [[320,568],[390,844],[430,932]]){
       await resize(width,height);await sleep(150);
       loadingLayouts.push(await page.evaluate(()=>{
-        const boxes=Object.fromEntries(['.zx-loading-percent','.zx-loading-track','.zx-loading-content'].map(selector=>{
+        const boxes=Object.fromEntries(['.zx-loading-percent','.zx-loading-progress','.zx-loading-content','.zx-loading-ring'].map(selector=>{
           const b=inspected.layout.box(app.screen.querySelector(selector));return [selector,b&&{x:b.x,y:b.y,w:b.w,h:b.h,clip:b.clip}];
         }));
-        return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,boxes};
+        const titles=[...app.screen.querySelectorAll('.zx-loading-title')].map(el=>({text:el.textContent,font:inspected.layout.box(el)?.s.font}));
+        const ring=app.screen.querySelector('.zx-loading-ring'),ctx=ring.getContext('2d');
+        const alphaAt=(x,y)=>ctx.getImageData(x,y,1,1).data[3];
+        return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,boxes,titles,text:app.screen.textContent,buttons:app.screen.querySelectorAll('button').length,
+          ring:{static:ring.dataset.static,center:alphaAt(200,200),top:alphaAt(200,28),corner:alphaAt(10,10)}};
       }));
       await page.screenshot({path:path.join(dir,'entry-glyphs-'+width+'.png')});
     }
@@ -168,6 +174,13 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       assert.ok(b&&b.w>0&&b.h>0&&b.x>=-1&&b.x+b.w<=width+1&&b.y>=-1&&b.y+b.h<=height+1,'Loading content fits: '+selector);
       assert.ok(Math.abs(b.x+b.w/2-width/2)<2,'Loading content is horizontally centered: '+selector);
       if(selector==='.zx-loading-percent')assert.ok(Math.abs(b.y+b.h/2-height/2)<height*.15,'Percentage stays near the screen center');
+    }
+    for(const layout of loadingLayouts){
+      assert.deepEqual(layout.titles.map(t=>t.text),['桌上世界','正在布置场景']);
+      assert.ok(layout.titles.every(t=>t.font===24),'Both loading titles use the same readable size');
+      assert.equal(layout.buttons,0);assert.doesNotMatch(layout.text,/准备字灵|已等待|返回选择/);
+      const progress=layout.boxes['.zx-loading-progress'];assert.equal(progress.w,progress.h);
+      assert.deepEqual(layout.ring,{static:'true',center:0,top:255,corner:0},'Progress is a cached ring with a transparent center');
     }
     await resize(390,844);
     await page.evaluate(()=>{window.holdEntryGlyphs=false;});
@@ -206,7 +219,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     }
     assert.deepEqual(probe.requests.filter(p=>/assets\/(?:cries|pmd(?:-shiny)?)\//.test(p)),[],'Glyph actors must not request old animation sheets or cries');
     for(const s of [...stages,restart])assert.deepEqual(s.hiddenImages,[],'Hidden legacy HUD images must never be decoded');
-    for(const s of [...stages,restart]){assert.equal(s.legacyImages,0);assert.equal(s.glyphs,s.actors);assert.ok(s.estimatedActorBytes<12*1048576);assert.ok(s.colliders>500&&s.props>10);}
+    for(const s of [...stages,restart]){assert.equal(s.legacyImages,0);assert.equal(s.glyphs,s.actors);assert.ok(s.estimatedActorBytes<12*1048576);assert.ok(s.colliders>=s.props&&s.colliders<200&&s.props>10);}
     assert.ok(stages[1].textures.filter(id=>stages[0].textures.includes(id)).length>=10,'Area changes must reuse the paper textures');
     const before=path.join(dir,'loading-before.json');
     if(fs.existsSync(before)){

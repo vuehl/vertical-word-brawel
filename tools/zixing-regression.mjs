@@ -363,19 +363,14 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await tap('.zx-modal .zx-button','返回');
     assert.equal(await page.evaluate(()=>app.run.state),'play');
     swipeControls(await controls());
-    for(const enabled of [true,false]){
-      await tap('.zx-hud-pause');await tap('.zx-modal .zx-button','设置');await tap('.zx-tabs.main button','操作');
-      await tap('[aria-label="扩展操作按钮"]');await tap('.zx-footer button','返回');await tap('.zx-modal .zx-button','返回');
-      const c=await controls();swipeControls(c);assert.equal(c.extras.length,enabled?4:0,'Optional controls must follow the saved switch');
-      await snapshot(enabled?'07-optional-controls':'07-final-controls');
-      if(enabled){
-        for(const [w,h] of [[320,568],[430,932]]){
-          await resize(w,h);
-          for(const scale of [.7,1,1.3]){await page.evaluate(scale=>{app.meta.profile.settings.touchScale=scale;app.applySettings();},scale);await sleep(200);swipeControls(await controls());}
-        }
-        await page.evaluate(()=>{app.meta.profile.settings.touchScale=1;app.applySettings();});await resize(390,844);
-      }
-    }
+    await tap('.zx-hud-pause');await tap('.zx-modal .zx-button','设置');await tap('.zx-tabs.main button','操作');
+    assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/扩展操作按钮|手动跳跃/);
+    await tap('.zx-tabs.main button','画面');
+    assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/显示的敌人|很近|近处/);
+    await tap('.zx-footer button','返回');await tap('.zx-modal .zx-button','返回');
+    const c=await controls();swipeControls(c);assert.equal(c.extras.length,0);
+    assert.equal(await page.evaluate(()=>inspected.doc.querySelectorAll('.tc-jump,.tc-dash,.tc-lock,.tc-aim').length),0,'Removed controls must not be created');
+    await snapshot('07-final-controls');
     await page.evaluate(()=>{
       window.qaOfferSelections=[];const render=app.run.ui.showLevelUp.bind(app.run.ui);
       app.run.ui.showLevelUp=(run,offers,choose)=>render(run,offers,(offer,action)=>{qaOfferSelections.push({index:offers.indexOf(offer),action:action||'choose'});return choose(offer,action);});
@@ -433,6 +428,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
     }
   }
-  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and fixed joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide swipes, reversal, jitter, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','optional control visibility','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
+  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and fixed joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide swipes, reversal, jitter, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
   console.log('Zixing regression passed:',reports.length,'screenshots');
 }

@@ -22,6 +22,7 @@ import {initCrypto,random} from './crypto.mjs';
 import {dispatchApi} from 'pokebonk:api';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
+import {createControlLayer} from './control-layer.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -61,6 +62,7 @@ export async function setup(host) {
   const view=viewport(system);
   const uiFrames=createUIFrameCache();
   const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,()=>uiFrames.invalidate());
+  const controls=createControlLayer(makeCanvas);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
@@ -74,6 +76,9 @@ export async function setup(host) {
       const element=record.target.nodeType===1?record.target:record.target.parentElement;
       if(element?.closest?.('[data-ui-hidden="true"]'))continue;
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
+      if(record.type==='attributes'&&controls.owns(element)&&['style','class'].includes(record.attributeName)){
+        controls.invalidate();continue;
+      }
       // Text/HUD updates may happen every game tick; coalesce them. A newly
       // mounted menu must replace the previous pixels on the very next draw.
       const structural=record.type==='childList'&&[...record.addedNodes,...record.removedNodes].some(n=>n.nodeType===1);
@@ -146,7 +151,9 @@ export async function setup(host) {
   wx.onKeyboardConfirm?.(r=>{if(active){active.value=r.value;active.dispatchEvent(new InputEvent('change'));active.blur();}wx.hideKeyboard?.({});});
   function setRange(el,x){const b=rect(el);if(b.width<=0)return;el.value=String(rangeValueAt(el,(x-b.x)/b.width));el.dispatchEvent(new InputEvent('input'));}
   function touches(kind,event){
-    uiFrames.invalidate(false,true);
+    // Menus still react immediately. In battle, DOM mutations invalidate the
+    // controls that actually changed; an empty-space swipe needs no UI upload.
+    if(kind!=='move'&&win.__pb?.run?.state!=='play')uiFrames.invalidate(false,true);
     const local=t=>{
       const x=(t.clientX??t.pageX)-view.x,y=(t.clientY??t.pageY)-view.y;
       return {...t,identifier:t.identifier,clientX:x,clientY:y,pageX:x,pageY:y};
@@ -211,9 +218,13 @@ export async function setup(host) {
     invalidateUI:()=>uiFrames.invalidate(false,true),
     drawUI(renderer,opaque=false){
       mutations(observer.takeRecords());
-      const changed=uiFrames.draw(perf.now(),env.__pb?.run?.state,layout,boxes=>paint(layout,boxes,view,scale));
+      const state=env.__pb?.run?.state;
+      const changed=uiFrames.draw(perf.now(),state,layout,boxes=>{
+        controls.capture(boxes);paint(layout,boxes.filter(b=>!controls.owns(b.el)),view,scale);
+      });
       if(opaque&&!changed)return;
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque);
+      const control=controls.draw(layout,view,scale,state==='play'&&!opaque);
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,control);
     },
     locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
   });
@@ -231,6 +242,6 @@ export async function setup(host) {
     }
     env.dispatchEvent(new D.Event('resize'));
   });
-  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas});
+  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls});
   return env;
 }

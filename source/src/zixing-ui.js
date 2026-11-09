@@ -181,32 +181,33 @@ export function createZixingUI(app,api) {
       small('难度按地图分别解锁，无需额外携带消耗品。'),
     ],[button('进入桌上世界  →',start,'primary',{'data-action':'enter'}),button('返回',map)]);
   }
-  function loadingScreen(name,actions=[]) {
-    const phase=text('正在准备场景资源','zx-note'),detail=text('准备完成后自动进入','zx-note');
-    const value=el('b','zx-loading-percent','0%'),fill=el('div','zx-loading-fill');
-    const track=el('div','zx-loading-track',fill,{role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':0});
-    const elapsed=small('已等待 0 秒');
+  function loadingScreen(name) {
+    const value=el('b','zx-loading-percent','0%');
+    const ring=el('canvas','zx-loading-ring',[],{width:400,height:400,'data-static':'true','aria-hidden':true});
+    const progress=el('div','zx-loading-progress',[ring,value],{role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':0});
     const node=screen(name,'','',[el('div','zx-loading-content',[
-      small('桌上世界'),el('h1','','正在布置场景'),value,track,phase,detail,elapsed,
-    ])],actions);
+      el('h1','zx-loading-title','桌上世界'),el('h2','zx-loading-title','正在布置场景'),progress,
+    ])]);
     node.classList.add('zx-loading-screen');
-    let shown=0;
-    return {node,elapsed,update({phase:title,detail:message='',progress=0}){
-      shown=Math.max(shown,Math.min(100,Math.floor(progress*100)));
-      if(value.textContent!==shown+'%'){
-        value.textContent=shown+'%';fill.style.width=shown+'%';track.setAttribute('aria-valuenow',shown);
-      }
-      if(phase.textContent!==title)phase.textContent=title;
-      if(detail.textContent!==message)detail.textContent=message;
+    let shown=-1;
+    const update=({progress:fraction=0})=>{
+      const next=Math.max(shown,Math.min(100,Math.max(0,Math.floor(fraction*100))));
+      if(next===shown)return shown;
+      shown=next;value.textContent=shown+'%';progress.setAttribute('aria-valuenow',shown);
+      const ctx=ring.getContext('2d'),start=-Math.PI/2;
+      ctx.setTransform(2,0,0,2,0,0);ctx.clearRect(0,0,200,200);
+      ctx.lineWidth=9;ctx.lineCap='round';ctx.strokeStyle='#dfe7d9';
+      ctx.beginPath();ctx.arc(100,100,86,0,Math.PI*2);ctx.stroke();
+      if(shown>0){ctx.strokeStyle='#7ca78e';ctx.beginPath();ctx.arc(100,100,86,start,start+Math.PI*2*shown/100);ctx.stroke();}
       return shown;
-    }};
+    };
+    update({progress:0});return {node,update};
   }
   async function start(config={species:selected,biome:'forest',tier,boosts:[],mode:'standard'}) {
     if(activeEntry||app.starting)return false;
-    let cancelled=false,canCancel=true,lastPhase='',lastDetailAt=0;
+    let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
-    const back=button('返回选择',()=>{if(canCancel){cancelled=true;activeEntry=null;diagnostics.status='cancelled';clearInterval(timer);difficulty();}},'',{'data-action':'cancel-entry'});
-    const view=loadingScreen('entry',[back]),{node,elapsed}=view;
+    const view=loadingScreen('entry'),{node}=view;
     activeEntry=node;
     const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
     const update=({phase:title,detail:message='',progress=0})=>{
@@ -220,13 +221,11 @@ export function createZixingUI(app,api) {
         if(value!==percentages[percentages.length-1])percentages.push(value);
       }
     };
-    const timer=setInterval(()=>{
-      if(app.screen===node)elapsed.textContent='已等待 '+Math.floor((performance.now()-began)/1000)+' 秒';
-    },1000);
+    const abandoned=()=>{if(app.screen===node)return false;cancelled=true;return true;};
     try {
       // Give the loading screen a frame before disk/decoder work starts.
       await waitForLoadingPaint(app.r.renderer);
-      if(cancelled||node!==app.screen)return false;
+      if(abandoned())return false;
       await window.prepareForest?.(state=>{
         packs.set(state.name,state);
         const pending=[...packs.values()].find(s=>s.phase!=='ready')||state;
@@ -238,8 +237,7 @@ export function createZixingUI(app,api) {
         const progress=.2*(fraction(packs.get('world'))+fraction(packs.get('art')));
         update({phase:action+name+'资源',detail:pending.phase==='download'?'正在下载所需资源':pending.total?pending.completed+' / '+pending.total:'正在处理资源',progress});
       });
-      if(cancelled||node!==app.screen)return false;
-      canCancel=false;back.disabled=true;
+      if(abandoned())return false;
       update({phase:'保存出发设置',progress:.4});
       await waitForLoadingPaint(app.r.renderer);
       profile().lastBiome=config.biome;profile().lastSpecies=config.species;await app.meta.saveNow();
@@ -253,7 +251,7 @@ export function createZixingUI(app,api) {
         [button('重试进入桌上世界',()=>start(config),'primary',{'data-action':'retry-entry'}),button('返回选择',difficulty)]);
       return false;
     }finally{
-      clearInterval(timer);diagnostics.totalMs=Math.round(performance.now()-began);
+      diagnostics.totalMs=Math.round(performance.now()-began);
       if(cancelled)diagnostics.status='cancelled';
       if(activeEntry===node)activeEntry=null;
     }
@@ -332,15 +330,16 @@ export function createZixingUI(app,api) {
     };
     const options=(label,key,values,note='')=>{
       fields.push(key);const group=el('div','zx-options');
-      const fill=()=>group.replaceChildren(...values.map(([v,label])=>el('button','zx-option'+((s[key]??api.defaults[key])===v?' on':''),label,{type:'button',onclick:()=>{s[key]=v;save();fill();}})));fill();
-      return el('div','zx-setting',[row(el('b','',label),group),note?small(note):null]);
+      const explanation=note?small(typeof note==='function'?note():note):null;
+      const fill=()=>group.replaceChildren(...values.map(([v,label])=>el('button','zx-option'+((s[key]??api.defaults[key])===v?' on':''),label,{type:'button',onclick:()=>{s[key]=v;save();fill();if(typeof note==='function')explanation.textContent=note();}})));fill();
+      return el('div','zx-setting',[row(el('b','',label),group),explanation]);
     };
     const sublabels=settingsTab===1?['性能视野','震动闪光','特效强度','攻击拾取']:settingsTab===3?['显示设置','战斗提示','流程提示']:[];
     let title='',content=[];
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),range('音乐','music',0,1,.01),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','低'],['medium','中'],['high','高']]),toggle('省电模式','batterySaver','固定 30 帧，降低分辨率'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']])),card(options('显示的敌人','enemyView',[['all','全部'],['near','近处'],['close','很近']],'仅减少绘制，不移除敌人。'))];
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'优先流畅，简化阴影、光效和掉落表现。',medium:'更清晰的桌面与柔和阴影，兼顾画质和流畅度。',high:'高清桌面、完整阴影与发光描边，适合高性能手机。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','固定 30 帧，并临时使用流畅画质'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']]))];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -348,7 +347,7 @@ export function createZixingUI(app,api) {
     }else if(settingsTab===1) {
       title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']])),small('战斗预警不受透明度和隐藏攻击设置影响。')];
     }else if(settingsTab===2) {
-      title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),toggle('自动大招','autoUlt','就绪且附近有敌人时自动释放。'),small('固定俯视镜头 · 自动跟随字灵')),card(toggle('扩展操作按钮','zxExtraControls','需要手动跳跃、冲刺或切换瞄准时开启。'),small('拖动大招左侧的圆形摇杆控制方向，松手停止；也可在空白处滑动移动。'))];
+      title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),toggle('自动大招','autoUlt','就绪且附近有敌人时自动释放。'),small('固定俯视镜头 · 自动跟随字灵'))];
     }else if(settingsSub===0) {
       title='界面外观';content=[card(options('主题','zxTheme',[['auto','自动'],['light','浅色'],['dark','深色']]),range('界面大小','hudScale',.6,1.3,.05),range('界面不透明度','hudOpacity',.3,1,.05)),card(range('首领血条不透明度','bossBarOpacity',.2,1,.05),options('首领体力','zxBossHealth',[['value','数值'],['percent','百分比']]))];
     }else if(settingsSub===1) {
@@ -440,7 +439,7 @@ export function createZixingUI(app,api) {
     const vitamins=[...p.vitamins],vits=el('div','zx-vitamin-slots',Array.from({length:vitamins.length},(_,index)=>{
       const entry=vitamins[index];return el('div','zx-mini-slot'+(entry?' filled':''),entry?[image(api.vitaminIcon(entry[0]),api.vitaminName(entry[0])),el('b','zx-slot-count',String(entry[1].level))]:[],{'data-vitamin':entry?.[0]||'',title:entry?api.vitaminName(entry[0]):'空强化槽'});
     }));
-    const narrow=innerWidth<=350,available=innerWidth-(narrow?70:78)-(profile().settings.zxExtraControls?136:18);
+    const narrow=innerWidth<=350,available=innerWidth-(narrow?70:78)-18;
     const capacity=Math.max(2,Math.min(12,Math.floor((available+4)/((narrow?24:28)+4))));
     const ownedItems=[...p.items],visible=ownedItems.length>capacity?capacity-1:capacity;
     const items=el('div','zx-inventory-items',ownedItems.slice(0,visible).map(([id,count])=>el('div','zx-mini-slot filled',[
@@ -596,10 +595,10 @@ export function createZixingUI(app,api) {
     hud.touch.swipeMove=true;hud.touch.centeredStick=true;hud.touch.el.classList.add('zx-touch');
     hud.touch.el.setAttribute('aria-label','拖动摇杆或滑动空白处移动，松手停止');
     hud.touch.stick.setAttribute('aria-label','移动摇杆');
+    hud.touch.stick.dataset.uiLayer='stick';
     hud.look=s=>{
       look(s);hud.touch.fixed=true;
-      hud.touch.el.classList.toggle('zx-extra-controls',!!s.zxExtraControls);
-      node.classList.toggle('zx-extra-controls',!!s.zxExtraControls);minimap.hidden=s.showMinimap===false;
+      minimap.hidden=s.showMinimap===false;
       node.style.opacity=String(s.hudOpacity??1);node.style.fontSize=(13*(s.hudScale??1))+'px';
     };
     hud.look(profile().settings);
@@ -626,14 +625,9 @@ export function createZixingUI(app,api) {
     hud.fitTop=()=>{};
     let mapAt=-Infinity,mapFrame=0;
     hud.drawMinimap=r=>{
-      const now=performance.now();if(minimap.hidden||now-mapAt<120)return;
+      const now=performance.now();if(minimap.hidden||now-mapAt<(run.performance?.mapInterval??120))return;
       mapAt=now;drawBattleMinimap(minimap,r);minimap.dataset.frame=String(++mapFrame);
     };
-    for(const [selector,name,title] of [['.tc-jump','jump','跳跃'],['.tc-dash','dash','冲刺'],['.tc-lock','target','锁定目标']]){
-      const control=hud.touch.el.querySelector(selector);
-      control.replaceChildren(icon(name,26));control.setAttribute('aria-label',title);
-    }
-    hud.touch.aim.querySelector('img')?.remove();
     const originalUlt=hud.ultHud.bind(hud);
     hud.ultHud=r=>{
       originalUlt(r);
@@ -647,7 +641,7 @@ export function createZixingUI(app,api) {
     let last=-Infinity,lastState='',lastLoadout='',lastExperience=-1;
     hud.hud=function(...args){
       const now=performance.now();
-      if(lastState===run.state&&(now-last<80||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
+      if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
       last=now;lastState=run.state;
       original(...args);
       if(profile().settings.zxBossHealth==='percent'&&run.boss.alive){const index=run.boss.bossIndex;hud.els.bossBar.children[4].textContent=percent(Math.max(0,run.enemies.hp[index]/run.enemies.maxHp[index]));}
@@ -655,7 +649,7 @@ export function createZixingUI(app,api) {
       updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'区'));updateText(stageLabel,['普通','困难','噩梦'][run.tier]);
       updateText(score,'积分 '+number(run.stats.kills));updateText(clock,time(run.time));updateText(gold,number(run.gold));
       const evolved=glyphWordForSpecies(p.speciesId??run.startSpecies);if(portrait.dataset.word!==evolved)refreshPortrait();
-      const loadoutKey=JSON.stringify([p.moves.map(m=>m&&[m.def.key,m.level]),p.moveSlots,[...p.vitamins].map(([id,v])=>[id,v.level]),p.vitaminSlots,[...p.items],profile().settings.showItems,profile().settings.zxExtraControls,innerWidth]);
+      const loadoutKey=JSON.stringify([p.moves.map(m=>m&&[m.def.key,m.level]),p.moveSlots,[...p.vitamins].map(([id,v])=>[id,v.level]),p.vitaminSlots,[...p.items],profile().settings.showItems,innerWidth]);
       if(loadoutKey!==lastLoadout){lastLoadout=loadoutKey;inventory.replaceChildren(...loadout(run));}
       const health=percent(Math.max(0,Math.min(1,p.hp/p.maxHp))),exp=Math.round(Math.max(0,Math.min(1,p.xp/Math.max(1,p.xpNext)))*1000)/1000;
       if(fill.style.width!==health)fill.style.width=health;
@@ -675,7 +669,7 @@ export function createZixingUI(app,api) {
       for(;;){
         const n=loaded(),ratio=total?Math.min(1,n/total):1;
         const state={phase:'准备字灵',detail:'文字就绪 '+n+' / '+total,progress:onProgress ? .8+.14*ratio:ratio};
-        if(onProgress)onProgress(state);else {view.update(state);view.elapsed.textContent='已等待 '+Math.floor((performance.now()-began)/1000)+' 秒';}
+        if(onProgress)onProgress(state);else view.update(state);
         if(n>=total)return;
         if(performance.now()-began>30000)throw Error('字灵准备超时（'+n+'/'+total+'），请重试进入');
         await new Promise(resolve=>setTimeout(resolve,80));

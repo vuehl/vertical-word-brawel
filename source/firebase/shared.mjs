@@ -11,7 +11,7 @@ export const token = () => crypto.randomBytes(24).toString('base64url');
 export const uid = () => crypto.randomUUID();
 
 export const DEFAULT_SETTINGS = {
-  master: 0.8, music: 0.5, sfx: 0.7, cries: 0.6, quality: 'high', aimMode: 'auto',
+  master: 0.8, music: 0.5, sfx: 0.7, cries: 0.6, quality: 'low', aimMode: 'auto',
   sensitivity: 1, invertY: false, damageNumbers: true, floatText: true, shakeOn: true,
   screenShake: 1, fov: 70, showFps: false, reduceFlashes: false, pixel: 0,
   muteHidden: true, hudScale: 1, hudOpacity: 1, bossBarOpacity: 1, showBanners: true,
