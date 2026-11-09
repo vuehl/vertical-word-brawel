@@ -27,11 +27,19 @@ export function paint(layout,boxes,view,scale) {
   for(const b of boxes) {
     const {x,y,w,h,s,el,tag,clip}=b;
     if(w<.1||h<.1||x+w<clip.x||y+h<clip.y||x>clip.r||y>clip.b||b.opacity===0)continue;
+    if(tag==='img')el._loadImage?.();
+    // Paint modal backdrops at their normal stacking position, but beyond the
+    // safe-area clip. Keep dialog layout and hit targets in the usable area.
+    const fullBackdrop=el.classList?.contains('zx-modal-wrap');
+    if(fullBackdrop){
+      const bounds={x:-view.x,y:-view.y,w:view.width,h:view.height},bg=background(ctx,s,bounds);
+      if(bg){ctx.save();ctx.globalAlpha=b.opacity;ctx.fillStyle=bg;ctx.fillRect(bounds.x,bounds.y,bounds.w,bounds.h);ctx.restore();}
+    }
     ctx.save();ctx.beginPath();ctx.rect(clip.x,clip.y,clip.r-clip.x,clip.b-clip.y);ctx.clip();
     ctx.globalAlpha=b.opacity;
     // Body sits behind the WebGL canvas in the desktop stacking order.
     if(tag!=='body'&&tag!=='#text'){
-      const bg=background(ctx,s,b),border=s.border||'',line=parseFloat(border)||0;
+      const bg=fullBackdrop?null:background(ctx,s,b),border=s.border||'',line=parseFloat(border)||0;
       const radius=parseFloat(s['border-radius']||0);
       if(bg||line){
         if(s['box-shadow']&&s['box-shadow']!=='none'&&(el.classList?.contains('zx-button')||el.classList?.contains('zx-card'))){

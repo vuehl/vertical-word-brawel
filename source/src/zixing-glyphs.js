@@ -41,7 +41,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     m.uniforms.zxGlyph={value:t};m.uniforms.uLean.value=.65;
     m.uniforms.uTexel.value.set(1/192,1/192);
     batch.ready=!!t.image;
-    t.userData.ready.then(()=>{if(!disposed)batch.ready=true;});
+    t.userData.ready.then(()=>{if(!disposed)batch.ready=true;},error=>{if(!disposed)batch.loadError=error;});
     m.vertexShader=m.vertexShader.replace('vUv = vec2(mix(iUV.x, iUV.z, uv.x), mix(iUV.y, iUV.w, uv.y));','vUv = uv;').replace('vRect = vec4(min(iUV.x,iUV.z), min(iUV.y,iUV.w), max(iUV.x,iUV.z), max(iUV.y,iUV.w));','vRect = vec4(0.,0.,1.,1.);');
     m.fragmentShader=m.fragmentShader.replace('uniform sampler2D map;','uniform sampler2D map; uniform sampler2D zxGlyph;').replaceAll('texture2D(map,','texture2D(zxGlyph,');
     m.needsUpdate=true;return batch;

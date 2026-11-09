@@ -76,15 +76,25 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
   const ip=D.HTMLImageElement.prototype;
   function setImage(el,src) {
     src=String(src);if(el._src===src)return;el._src=src;el._ready=false;
-    const image=wx.createImage();el._surface=image;
-    const finish=ok=>{if(image!==el._surface)return;el._ready=ok;if(el.isConnected)invalidate();el.dispatchEvent(new D.Event(ok?'load':'error'));};
-    image.onload=()=>finish(true);image.onerror=()=>finish(false);
-    const embedded=LocalURL.objectFiles?.get(src);
-    if(embedded)image.src=embedded;
-    else host.files.resolvePath(src).then(path=>{
-      if(image!==el._surface)return;
-      if(path)image.src=path;else finish(false);
-    }).catch(error=>{console.warn('[宝可梦] 图片读取失败',src,error);finish(false);});
+    if(el._surface)el._surface.onload=el._surface.onerror=null;
+    el._surface=null;
+    // DOM pictures are decoded only when painted. Hidden legacy HUDs and
+    // cards replaced before their first frame must not allocate native images.
+    el._loadImage=()=>{
+      if(!el._eagerImage&&!el.isConnected)return;
+      el._loadImage=null;if(!src)return;
+      const image=wx.createImage();el._surface=image;
+      const finish=ok=>{if(image!==el._surface)return;el._ready=ok;if(el.isConnected)invalidate();el.dispatchEvent(new D.Event(ok?'load':'error'));};
+      image.onload=()=>finish(true);image.onerror=()=>finish(false);
+      const embedded=LocalURL.objectFiles?.get(src);
+      if(embedded)image.src=embedded;
+      else host.files.resolvePath(src).then(path=>{
+        if(image!==el._surface)return;
+        if(path)image.src=path;else finish(false);
+      }).catch(error=>{console.warn('[宝可梦] 图片读取失败',src,error);finish(false);});
+    };
+    if(el._eagerImage)el._loadImage();
+    if(el.isConnected)invalidate();
   }
   ip.setAttribute=function(name,value){rawSet.call(this,name,value);if(name==='src')setImage(this,value);};
   prop(ip,'src',function(){return this._src||'';},function(v){this.setAttribute('src',v);});
@@ -94,6 +104,7 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
     prop(ip,'natural'+dim[0].toUpperCase()+dim.slice(1),function(){return this._ready?this._surface[dim]:0;});
     prop(ip,dim,function(){return Number(this.getAttribute(dim))||this._surface?.[dim]||0;},function(v){rawSet.call(this,dim,String(v));});
   }
-  function Image(w,h){const img=doc.createElement('img');if(w)img.width=w;if(h)img.height=h;return img;}
+  // Explicit Image objects also serve texture/atlas loading without a DOM node.
+  function Image(w,h){const img=doc.createElement('img');img._eagerImage=true;if(w)img.width=w;if(h)img.height=h;return img;}
   return {Image,makeCanvas,screen};
 }

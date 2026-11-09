@@ -10,9 +10,17 @@ import {restoreSprite} from './sprite-png.mjs';
 import {unpackStream} from './resource-stream.mjs';
 import {measureActor} from './actor-metrics.mjs';
 import {actorMetrics} from '../source/src/actor-metrics.js';
+import {assetPolicyVersion,excludedAssetReason,musicTracks,musicPackage} from './asset-policy.mjs';
+import {biomes,events,roster} from '../source/src/catalogs.js';
 const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'source/public');
 const packs={};
 const digest=b=>createHash('sha256').update(b).digest('hex');
+assert.equal(index.policyVersion,assetPolicyVersion,'Rebuild the changed asset policy');
+assert.deepEqual(biomes.map(b=>b.id),['forest'],'Review asset exclusions if a map opens');
+assert.deepEqual(roster.map(p=>p.id),[1,4,7]);
+assert.equal(events.length,0,'Review excluded event assets if events are enabled');
+const declaredPacks=new Set(JSON.parse(fs.readFileSync(path.join(root,'game.json'))).subpackages.map(p=>p.name));
+for(const pack of Object.keys(index.packs))assert.ok(declaredPacks.has(pack),'Missing subpackage '+pack);
 for(const [group,expected] of Object.entries(index.packs)){
   const raw=fs.readFileSync(path.join(root,'minigame/packs',group,'assets.br'));
   assert.equal(digest(raw).slice(0,16),expected);
@@ -28,8 +36,16 @@ for(const [group,expected] of Object.entries(index.packs)){
 }
 function bytes(key){const [group,file]=index.files[key].split('/');return packs[group][file];}
 for(const [key,ref] of Object.entries(index.files)){
+  assert.equal(excludedAssetReason(key),null,'Unused asset still packaged: '+key);
   const data=bytes(key);assert.ok(data,'Missing '+key);assert.equal(digest(data).slice(0,16),path.basename(ref,path.extname(ref)));
 }
+for(const track of musicTracks){
+  const group=musicPackage(track),key='assets/music/'+track+'.ogg';
+  assert.equal(index.files[key]?.split('/')[0],group,'Track package: '+track);
+  assert.equal(Object.keys(packs[group]).length,1,'Each music package should contain just its own track');
+}
+assert.equal(Object.keys(index.files).filter(k=>k.startsWith('assets/music/')).length,musicTracks.length);
+assert.ok(index.files['assets/env/common/atlas.png']&&index.files['assets/env/common/hazards.png'],'Shared berries and combat hazards must remain');
 const count={};
 const removedSceneAssets=[
   'assets/models/cursed.glb','assets/models/greed.glb','assets/models/porygon.glb',
@@ -65,12 +81,14 @@ for(const category of ['portraits','icons']){
   }
 }
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
+assert.deepEqual(models,['assets/models/ball.glb'],'The paper edition needs only the original capture-ball model');
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
 for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.startsWith('assets/env/'))) {
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(fs.readFileSync(source)),key);
 }
 const report={mappedResources:Object.keys(index.files).length,RGBA:count,originalModels:models.length,
+  assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:musicTracks.map(musicPackage),
   removedSceneAssetsVerified:removedSceneAssets.length,
   actorBoundsVerified:152,cries:0,locales:['zh'],legacyActorAtlases:0,
   altarGlyphIncluded:!!actorMetrics[201],allArchiveHashesVerified:true};

@@ -1,8 +1,9 @@
 import {I as Group,K as Mesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,J as Material} from '../assets/three-DmSYIDKK.js';
+import {paperPropNames} from './paper-prop-names.js';
 
 // Preserve named moving parts used by chests, gates and destructible cover.
 // Interactive scenery uses the same handmade stationery language as the map.
-const supported=new Set('chest freechest cursedchest altar boss portal shrine challenge bounceshroom slots fossil totem billpc nest ruins_crystals sanct_portal sanct_pillar sanct_gate sanct_root sanct_bramble sanct_brambles paper_pencils paper_lamp'.split(' '));
+const supported=new Set(paperPropNames);
 export function paperProp(name){
   if(!supported.has(name))return null;
   const group=new Group();group.name='paper-'+name;

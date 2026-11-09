@@ -29,7 +29,8 @@ const fs={
   readFileSync(path,encoding){const b=bytes(path);return encoding?strFromU8(b):b.slice().buffer;},
   writeFileSync(path,b){data.set(path,typeof b==='string'?strToU8(b):new Uint8Array(b));},
   copyFileSync(from,to){data.set(to,bytes(from));},renameSync(from,to){data.set(to,bytes(from));data.delete(from);},unlinkSync(path){data.delete(path);},
-  readFile({filePath,success,fail}){queueMicrotask(()=>{try{success({data:fs.readFileSync(filePath)});}catch(e){fail(e);}});}
+  readFile({filePath,success,fail}){queueMicrotask(()=>{try{success({data:fs.readFileSync(filePath)});}catch(e){fail(e);}});},
+  writeFile({filePath,data,success,fail}){queueMicrotask(()=>{try{fs.writeFileSync(filePath,data);success({});}catch(e){fail(e);}});}
 };
 let first=true,screen=null;
 // WeChat exposes canvas as a fixed own data property on native rendering contexts.
@@ -75,6 +76,8 @@ globalThis.wx={
   getRandomValues({length,success}){success({randomValues:crypto.getRandomValues(new Uint8Array(length)).buffer});},
   createCanvas:canvas,createOffscreenCanvas:nativeCanvas,
   createImage(){const img=new Image();Object.defineProperty(img,'src',{get(){return imageSrc.get.call(img);},set(path){
+    const record={path,width:0,height:0};(window.nativeImageLoads??=[]).push(record);
+    img.addEventListener('load',()=>{record.width=img.naturalWidth;record.height=img.naturalHeight;},{once:true});
     if(data.has(path)){const url=URL.createObjectURL(new Blob([bytes(path)]));img.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});imageSrc.set.call(img,url);}
     else imageSrc.set.call(img,path);
   }});return img;},
@@ -83,6 +86,7 @@ globalThis.wx={
   createWebAudioContext:()=>new AudioContext(),getStorageSync:k=>localStorage.getItem(k)||'',setStorageSync:(k,v)=>localStorage.setItem(k,v),removeStorageSync:k=>localStorage.removeItem(k),
   showLoading(o){window.loadingTitle=o.title;},hideLoading(){window.loadingTitle=null;},showModal(o){window.problem=o.content;console.error('WX MODAL',o.content);},
   loadSubpackage(o){
+    (window.requestedPackages??=[]).push(o.name);
     let notify;
     (async()=>{try{
       if(o.name==='text'){
@@ -92,7 +96,7 @@ globalThis.wx={
         window.reportTextProgress(10);
         if(window.dropTextOnce){window.dropTextOnce=false;throw Error('test: dropped download');}
       }
-      if(['art','world','sound'].includes(o.name))await optionalDownloadGate;
+      if(o.name!=='play'&&o.name!=='text')await optionalDownloadGate;
       await window.loadFixtureData(o.name);
       // Reproduce a device reporting package success before evaluating its entry.
       o.success();

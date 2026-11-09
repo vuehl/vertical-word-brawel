@@ -1,6 +1,7 @@
 // A miniature stationery world. Geometry, textures and shadows are authored
 // locally, with one instanced batch per shared geometry/material on mobile.
 import {I as Group,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,et as PlaneGeometry,J as ToonMaterial,q as BasicMaterial,b as CanvasTexture,ot as SRGB,ht as Vector3} from '../assets/three-DmSYIDKK.js';
+import {runLoadingSteps} from './loading-work.js';
 
 export const paperStages=['胶佬工作台','手帐漫游','文具高塔','字灵书庭'];
 export const PAPER_CAMERA={yaw:0,pitch:Math.PI*.30,distance:42,fov:37};
@@ -27,12 +28,7 @@ export function disposePaperWorld(terrain){
 }
 
 export function buildPaperWorld(terrain){for(const _ of paperWorldSteps(terrain)){} }
-export async function buildPaperWorldAsync(terrain){
-  let started=performance.now();
-  for(const _ of paperWorldSteps(terrain))if(performance.now()-started>=6){
-    await new Promise(resolve=>setTimeout(resolve,0));started=performance.now();
-  }
-}
+export function buildPaperWorldAsync(terrain,options){return runLoadingSteps(paperWorldSteps(terrain),options);}
 function* paperWorldSteps(terrain){
   const root=terrain.group,stage=terrain.biome.zxStage||1;
   terrain.zxPaper=true;terrain.zxStage=stage;root.name='paper-workshop';
@@ -61,7 +57,7 @@ function* paperWorldSteps(terrain){
     // Accumulate instance matrices directly: avoid thousands of temporary
     // Mesh objects and a second scene traversal on every area change.
     transform.position.set(x,y,z);transform.scale.set(sx,sy,sz);transform.rotation.set(rx,ry,rz);transform.updateMatrix();
-    parent.updateMatrixWorld(true);
+    parent.updateWorldMatrix(true,false);
     const key=geometry.uuid+'/'+mat.uuid;
     let batch=batches.get(key);if(!batch)batches.set(key,batch={geometry,material:mat,matrices:[]});
     batch.matrices.push(transform.matrix.clone().premultiply(parent.matrixWorld));
@@ -175,8 +171,10 @@ function* paperWorldSteps(terrain){
   yield;
   // First frame composition: the player stands on the green dot paper, with
   // oversized props above/at the edges and a ruled notebook crossing the front.
-  sheet(-3,-4,20,23,.40,'dots');sheet(-10,-16,18,23,.40,'blue',.026);
-  notebook(9,13,-.32);sheet(13,-4,10,12,-.2,'cream',.035);
+  sheet(-3,-4,20,23,.40,'dots');yield;
+  sheet(-10,-16,18,23,.40,'blue',.026);yield;
+  notebook(9,13,-.32);yield;
+  sheet(13,-4,10,12,-.2,'cream',.035);yield;
   calculator(4.8,-10.2,-.26);cassette(-8.4,-6,.25);cassette(9,4.8,-.3,.9);
   pencil(-10,9,-.5,'#dda6bc');ruler(4,25,.36);books(-16,-27,.14);cup(13,-23);tape(-12,22,.2);clip(-5,8,-.5);
   // Different landmarks in every chapter, while keeping the same palette.
@@ -205,7 +203,8 @@ function* paperWorldSteps(terrain){
   }),true);plane(root,-8,.085,-5,65,90,light,-.32);
   root.clear();
   for(const {geometry,material,matrices} of batches.values()){
-    const batch=new InstancedMesh(geometry,material,matrices.length);matrices.forEach((m,i)=>batch.setMatrixAt(i,m));batch.instanceMatrix.needsUpdate=true;root.add(batch);
+    const batch=new InstancedMesh(geometry,material,matrices.length);matrices.forEach((m,i)=>batch.setMatrixAt(i,m));batch.instanceMatrix.needsUpdate=true;
+    batch.matrixAutoUpdate=false;batch.computeBoundingSphere();root.add(batch);
     yield;
   }
   terrain.mats=[...mats.values()];terrain.textures=[...textures.values()];

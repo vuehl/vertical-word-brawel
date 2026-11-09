@@ -236,7 +236,7 @@ async function verifyStartup(){
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
   }
   if(await page.evaluate(()=>!!app.zixing)){
-    if(process.argv.includes('--loading-perf'))await reviewLoading({page,dir,sleep});
+    if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,dir,sleep});
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
     else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});

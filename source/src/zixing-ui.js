@@ -4,6 +4,7 @@ import {drawBattlePortrait,drawBattleMinimap} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
+import {waitForLoadingPaint} from './loading-work.js';
 
 export const characters = [
   {id:4,word:'火',name:'灼行者',tone:'fire',color:'#bc3441',role:'爆发',motto:'以攻为守，燎原不息',move:'火弹',ult:'燎原'},
@@ -113,8 +114,8 @@ export function createZixingUI(app,api) {
   document.documentElement.classList.add('zixing');
   const style=el('style','',zixingStyle);document.head.append(style);
   window.__zixingApp=app;
-  let selected=4,tier=0,labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null;
-  const ui=app.zixing={home,choose,map,difficulty,lab,settings,help,stats,attachRun,loading};
+  let selected=4,tier=0,labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null,activeEntry=null;
+  const ui=app.zixing={home,choose,map,difficulty,lab,settings,help,stats,attachRun,loading,start};
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
   const goBack=()=>returnTo?returnTo():home();
@@ -180,16 +181,82 @@ export function createZixingUI(app,api) {
       small('难度按地图分别解锁，无需额外携带消耗品。'),
     ],[button('进入桌上世界  →',start,'primary',{'data-action':'enter'}),button('返回',map)]);
   }
-  async function start() {
-    const node=app.screen,btn=node?.querySelector('[data-action="enter"]');
-    if(btn){btn.disabled=true;btn.textContent='正在布置工作台…';}
+  function loadingScreen(name,actions=[]) {
+    const phase=text('正在准备场景资源','zx-note'),detail=text('准备完成后自动进入','zx-note');
+    const value=el('b','zx-loading-percent','0%'),fill=el('div','zx-loading-fill');
+    const track=el('div','zx-loading-track',fill,{role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':0});
+    const elapsed=small('已等待 0 秒');
+    const node=screen(name,'','',[el('div','zx-loading-content',[
+      small('桌上世界'),el('h1','','正在布置场景'),value,track,phase,detail,elapsed,
+    ])],actions);
+    node.classList.add('zx-loading-screen');
+    let shown=0;
+    return {node,elapsed,update({phase:title,detail:message='',progress=0}){
+      shown=Math.max(shown,Math.min(100,Math.floor(progress*100)));
+      if(value.textContent!==shown+'%'){
+        value.textContent=shown+'%';fill.style.width=shown+'%';track.setAttribute('aria-valuenow',shown);
+      }
+      if(phase.textContent!==title)phase.textContent=title;
+      if(detail.textContent!==message)detail.textContent=message;
+      return shown;
+    }};
+  }
+  async function start(config={species:selected,biome:'forest',tier,boosts:[],mode:'standard'}) {
+    if(activeEntry||app.starting)return false;
+    let cancelled=false,canCancel=true,lastPhase='',lastDetailAt=0;
+    const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
+    const back=button('返回选择',()=>{if(canCancel){cancelled=true;activeEntry=null;diagnostics.status='cancelled';clearInterval(timer);difficulty();}},'',{'data-action':'cancel-entry'});
+    const view=loadingScreen('entry',[back]),{node,elapsed}=view;
+    activeEntry=node;
+    const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
+    const update=({phase:title,detail:message='',progress=0})=>{
+      if(cancelled)return;
+      const now=performance.now();
+      const changed=lastPhase!==title;
+      if(changed){lastPhase=title;phases.push({phase:title,atMs:Math.round(now-began)});}
+      if(app.screen!==node)return;
+      if(changed||now-lastDetailAt>120||!message||progress*100>percentages[percentages.length-1]){
+        const value=view.update({phase:title,detail:message,progress});lastDetailAt=now;
+        if(value!==percentages[percentages.length-1])percentages.push(value);
+      }
+    };
+    const timer=setInterval(()=>{
+      if(app.screen===node)elapsed.textContent='已等待 '+Math.floor((performance.now()-began)/1000)+' 秒';
+    },1000);
     try {
-      await window.prepareForest?.();
-      if(node!==app.screen)return;
-      profile().lastBiome='forest';profile().lastSpecies=selected;await app.meta.saveNow();
-      const ok=await app.startRun({species:selected,biome:'forest',tier,boosts:[],mode:'standard'});
-      if(!ok&&app.screen===node)difficulty();
-    }catch(error){if(btn){btn.disabled=false;btn.textContent='重试进入桌上世界';}throw error;}
+      // Give the loading screen a frame before disk/decoder work starts.
+      await waitForLoadingPaint(app.r.renderer);
+      if(cancelled||node!==app.screen)return false;
+      await window.prepareForest?.(state=>{
+        packs.set(state.name,state);
+        const pending=[...packs.values()].find(s=>s.phase!=='ready')||state;
+        const name=pending.name==='world'?'场景':'字灵';
+        const action={download:'下载',unpack:'解压',write:'保存',ready:'已准备',error:'准备失败'}[pending.phase];
+        // Each pack has download, unpack and write work. Reserve the remaining
+        // 60% for the scene, actors and first rendered frame, including cache hits.
+        const fraction=s=>!s?0:s.phase==='ready'?1:s.phase==='download' ? .55*(s.total?s.completed/s.total:0):s.phase==='unpack' ? .55:s.phase==='write' ? .7+.3*(s.total?s.completed/s.total:0):0;
+        const progress=.2*(fraction(packs.get('world'))+fraction(packs.get('art')));
+        update({phase:action+name+'资源',detail:pending.phase==='download'?'正在下载所需资源':pending.total?pending.completed+' / '+pending.total:'正在处理资源',progress});
+      });
+      if(cancelled||node!==app.screen)return false;
+      canCancel=false;back.disabled=true;
+      update({phase:'保存出发设置',progress:.4});
+      await waitForLoadingPaint(app.r.renderer);
+      profile().lastBiome=config.biome;profile().lastSpecies=config.species;await app.meta.saveNow();
+      const ok=await app.startRun(config,update);
+      if(!ok)throw app.lastStartError||Error('对局未能开始，请重试');
+      diagnostics.status='ready';
+      return true;
+    }catch(error){
+      diagnostics.status='error';diagnostics.error=error.message||String(error);
+      if(!cancelled)screen('entry-error','暂时未能进入',lastPhase,[card(text(diagnostics.error,'zx-note'))],
+        [button('重试进入桌上世界',()=>start(config),'primary',{'data-action':'retry-entry'}),button('返回选择',difficulty)]);
+      return false;
+    }finally{
+      clearInterval(timer);diagnostics.totalMs=Math.round(performance.now()-began);
+      if(cancelled)diagnostics.status='cancelled';
+      if(activeEntry===node)activeEntry=null;
+    }
   }
   function wallet() {
     return el('div','zx-wallet',[row(el('small','','星尘 · 永久研究资源'),button('如何获得 ⓘ',dustHelp,'zx-plain')),el('strong','',number(profile().stardust)),el('small','','对局结算获得 · 与金币独立')]);
@@ -391,7 +458,7 @@ export function createZixingUI(app,api) {
     return [button([el('span','','查看当前属性'),icon('stats',15,'#65577b'),el('span','','›')],onStats,'zx-upgrade-stats',{'data-action':'upgrade-stats'}),...cards];
   }
   function levelUp(run,offers,chooseOffer) {
-    const cards=offers.map((offer,index)=>{const desc=api.offer(run,offer);return button(offerContent(index===0?current():'升',desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>chooseOffer(offer),'zx-offer'+(index===0?' featured':''),{'data-offer':index});});
+    const cards=offers.map((offer,index)=>{const desc=api.offer(run,offer);return button(offerContent(index===0?current():'升',desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>chooseOffer(offer),'zx-offer',{'data-offer':index});});
     overlay('择一而进','',offerBody(cards,()=>stats(run,()=>levelUp(run,offers,chooseOffer))),
       [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>chooseOffer(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
   }
@@ -412,7 +479,7 @@ export function createZixingUI(app,api) {
       // guards also serve the original keyboard shortcuts.
       const opacity=node.style.opacity,locked=node.classList.contains('locked');
       node.removeAttribute('style');node.style.cssText='';
-      node.className='zx-button zx-offer'+(index===0&&!locked&&!opacity?' featured':'');
+      node.className='zx-button zx-offer';
       if(opacity)node.style.opacity=opacity;
       else if(locked)node.style.opacity='.45';
       node.dataset.offer=String(index);
@@ -467,7 +534,7 @@ export function createZixingUI(app,api) {
       card(el('b','',win?'新的挑战已开放':'避其锋芒'),small(win?(app.meta.biomeTier('forest')>result.tier?'桌上世界下一难度已开放。':'已完成当前桌面挑战。'):'调整走位与强化，寻找更好的出手机会。')),
       button(row(col(el('b','',amount!==undefined?'星尘 +'+number(amount):'结算尚未保存'),small('当前 '+number(profile().stardust))),el('span','','去研究所 ›')),()=>{leave();lab();},'zx-banner'),
       error?small(error):null,build(run),
-    ],[row(button(win?'再来一局':'再试一次',async()=>{app.setScreen(null);await app.startRun(app.lastCfg);},'primary'),button('调整文字与关卡',()=>{leave();choose();})),button('返回',leave)]);
+    ],[row(button(win?'再来一局':'再试一次',()=>app.startRun(app.lastCfg),'primary'),button('调整文字与关卡',()=>{leave();choose();})),button('返回',leave)]);
   }
   function attachRun(run) {
     const hud=run.ui;selected=character(run.startSpecies).id;
@@ -599,19 +666,21 @@ export function createZixingUI(app,api) {
     if(profile()?.settings.showBanners===false)return;
     const node=el('div','zx zx-intro',[el('b','',title),small(subtitle)]);app.ui.append(node);setTimeout(()=>node.remove(),1800);
   }
-  function loading(total,loaded) {
-    const value=text('正在准备地图与文字…','zx-note');let done,timer;
-    const promise=new Promise(resolve=>{done=resolve;});
-    const finish=()=>{clearInterval(timer);node.remove();done();};
-    const node=overlay('即将启程','桌上世界',[el('div','zx-hero',glyph(current(),true)),value],[button('继续进入',finish,'primary',{hidden:true})]);
+  async function loading(total,loaded,onProgress) {
+    // Entry owns its loading screen until the first scene frame is ready.
+    // Later area changes use the same plain progress view, with no hero popup.
+    const view=onProgress?null:loadingScreen('stage-loading');
     const began=performance.now();
-    timer=setInterval(()=>{
-      const n=loaded(),label='文字就绪 '+n+' / '+total;
-      if(value.textContent!==label)value.textContent=label;
-      if(n>=total)finish();else if(performance.now()-began>5000)node.querySelector('button').hidden=false;
-      if(performance.now()-began>45000)finish();
-    },120);
-    return promise;
+    try {
+      for(;;){
+        const n=loaded(),ratio=total?Math.min(1,n/total):1;
+        const state={phase:'准备字灵',detail:'文字就绪 '+n+' / '+total,progress:onProgress ? .8+.14*ratio:ratio};
+        if(onProgress)onProgress(state);else {view.update(state);view.elapsed.textContent='已等待 '+Math.floor((performance.now()-began)/1000)+' 秒';}
+        if(n>=total)return;
+        if(performance.now()-began>30000)throw Error('字灵准备超时（'+n+'/'+total+'），请重试进入');
+        await new Promise(resolve=>setTimeout(resolve,80));
+      }
+    }finally{if(view&&app.screen===view.node)app.setScreen(null);}
   }
   function slots(run,machine,resume,result=null,mustResume=false) {
     const symbols={seven:'极',pikachu:'攻',berry:'生',meowth:'财',voltorb:'震',gengar:'厄',magikarp:'空'};

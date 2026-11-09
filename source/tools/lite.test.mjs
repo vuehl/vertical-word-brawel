@@ -58,7 +58,7 @@ test('best-time records retain the client object schema and fastest splits',()=>
  settleRun(p,r);assert.equal(p.times['forest-0'].time,600);assert.deepEqual(p.times['forest-0'].splits,r.splits);
  settleRun(p,{...r,time:800,splits:[200,400,600,800]});assert.equal(p.times['forest-0'].time,600);assert.deepEqual(p.times['forest-0'].splits,r.splits);
 });
-test('all three dynamically referenced sanctuary models are packaged as valid GLB files',async()=>{
+test('the three original sanctuary GLBs remain intact in source art',async()=>{
  for(const name of ['sanct_pillar','sanct_gate','shrine']){
   const bytes=await fs.readFile(new URL('../public/assets/models/'+name+'.glb',import.meta.url));
   assert.equal(bytes.toString('ascii',0,4),'glTF');assert.equal(bytes.readUInt32LE(8),bytes.length);

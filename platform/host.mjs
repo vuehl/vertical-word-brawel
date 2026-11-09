@@ -209,11 +209,6 @@ export async function setup(host) {
     alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
     invalidateUI:()=>uiFrames.invalidate(false,true),
-    onRunStartError(error){
-      const restart=typeof wx.restartMiniProgram==='function';
-      wx.showModal({title:'森林未能打开',content:String(error?.message||error),showCancel:false,
-        confirmText:restart?'重新进入':'退出游戏',success:()=>restart?wx.restartMiniProgram({}):wx.exitMiniProgram({})});
-    },
     drawUI(renderer,opaque=false){
       mutations(observer.takeRecords());
       const changed=uiFrames.draw(perf.now(),env.__pb?.run?.state,layout,boxes=>paint(layout,boxes,view,scale));

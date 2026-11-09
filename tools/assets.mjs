@@ -9,6 +9,7 @@ import ffmpeg from '@ffmpeg-installer/ffmpeg';
 import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
 import {writeActorMetrics} from './actor-metrics.mjs';
+import {assetPolicyVersion,musicTracks,musicPackage,excludedAssetReason} from './asset-policy.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const source = path.join(root, 'source');
@@ -16,6 +17,7 @@ const pub = path.join(source, 'public');
 const out = path.join(root, 'minigame');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pokebonk-art-'));
 const packs = {art: {}, world: {}, sound: {}, text: {}};
+for(const track of musicTracks)packs[musicPackage(track)]??={};
 const index = {};
 const generatedSprites={};
 await writeActorMetrics(source);
@@ -49,8 +51,7 @@ for (const folder of ['assets', 'overrides/assets']) {
     if (!fs.existsSync(dir)) continue;
     for (const file of walk(dir)) {
       const name = path.relative(path.join(pub, folder), file).replaceAll('\\', '/');
-      // Replaced by the procedural desktop materials, including the menu scene.
-      if(name.startsWith('env/forest/'))continue;
+      if(excludedAssetReason('assets/'+name))continue;
       const number = parseInt(path.basename(name), 10);
       // The altar's actor (201) uses the same cutout path as the 151 creatures.
       if(category==='pmd'&&((number>=1&&number<=151)||number===201))continue;
@@ -69,7 +70,9 @@ for (const folder of ['assets', 'overrides/assets']) {
         const audio = path.join(temp, 'sample.m4a');
         execFileSync(ffmpeg.path, ['-loglevel','error','-y','-i',input,'-vn','-c:a','aac',
           '-ar','44100','-b:a','56k','-movflags','+faststart',audio],{windowsHide:true});
-        add(pack,key,fs.readFileSync(audio),'.m4a'); continue;
+        const track=path.basename(name,'.ogg');
+        if(!musicTracks.includes(track))throw Error('Music track has no package: '+name);
+        add(musicPackage(track),key,fs.readFileSync(audio),'.m4a'); continue;
       }
       add(pack,key,original);
     }
@@ -106,5 +109,5 @@ for (const [name, entries] of Object.entries(packs)) {
   rawSizes[name]=rawSize;
   console.log(name, Object.keys(entries).length, (bytes.length/1048576).toFixed(2)+' MiB');
 }
-fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({packs:meta,rawSizes,files:index,sprites:generatedSprites})+';\n');
+fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,packs:meta,rawSizes,files:index,sprites:generatedSprites})+';\n');
 fs.rmSync(temp,{recursive:true});

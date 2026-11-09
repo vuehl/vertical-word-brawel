@@ -5,6 +5,7 @@ import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
 import {paperProp} from './paper-props.js';
+import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
 import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
 import './customize.js';
 import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
@@ -6115,7 +6116,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     }
     readyCount(e) {
       let t = 0;
-      for (let n of e) this.get(n).ready && t++;
+      for (let n of e) {const batch=this.get(n);if(batch.loadError)throw batch.loadError;if(batch.ready)t++;}
       return t;
     }
     begin(e) {
@@ -66930,10 +66931,10 @@ var GS = class e {
     list = [];
     group = new Cr();
     nearest = null;
-    constructor(e) {
+    constructor(e, deferred = false) {
       ((this.run = e),
         e.r.scene.add(this.group),
-        this.populate(),
+        !deferred && this.populate(),
         pu().then((t) => {
           t &&
             !this.disposed &&
@@ -67068,7 +67069,14 @@ var GS = class e {
     place(e, t, n, r = {}) {
       return this.add(e, t, n, r);
     }
-    populate() {
+    populate() {for(const _ of this.populationSteps()){} }
+    populateAsync() {
+      return runLoadingSteps(this.populationSteps(),{
+        check:()=>{if(this.disposed||this.run.disposed)throw Error('本局已结束');},
+        onProgress:()=>this.run.onLoadProgress?.({phase:'摆放场景物件',detail:'已摆放 '+this.list.length+' 个'})
+      });
+    }
+    *populationSteps() {
       let e = this.run,
         t = e.terrain;
       if (e.sanctuary) {
@@ -67102,6 +67110,7 @@ var GS = class e {
       if (!o) {
         let e = r(a * 0.55, a * 0.97, `boss`);
         this.add(`boss`, e.x, e.z);
+        yield;
       }
       let s = o
           ? [
@@ -67143,8 +67152,11 @@ var GS = class e {
         for (let n = 0; n < t; n++) {
           let t = r(14, a, e);
           this.add(e, t.x, t.z, e === `altar` ? { data: { tier: l[n] ?? 0 } } : {});
+          yield;
         }
-      e.biome.relief && this.placeShrooms(n, i(3));
+      // The paper world is flat; the legacy jump-mushroom search needs a
+      // 3.5–7 metre ledge and can never succeed here (up to 400 searches).
+      e.biome.relief && !t.zxPaper && this.placeShrooms(n, i(3));
     }
     placeShrooms(e, t) {
       let n = this.run.terrain;
@@ -75960,6 +75972,8 @@ var GT = 15,
         this.mode === `endless` && (this.endless = new Vw(this)),
         this.mode === `tower` && ((this.tower = new OT(this)), (this.stage = this.tower.curveStage)),
         (this.paperAssets=createPaperAssets()),
+        (this.onLoadProgress=a.onLoadProgress),
+        (this.loadingMetrics=[]),
         (this.initialized=this.initialize()));
     }
     async initialize() {
@@ -75967,19 +75981,23 @@ var GT = 15,
       await this.buildStageAsync(true);
       this.applyBoosts();
     }
-    async openStage() {
-      let e = this.stageSprites();
-      for (let t of e) this.sprites.get(t);
+    async openStage(onProgress) {
+      let e = [...new Set([...this.stageSprites(),...this.sprites.batches.keys()])];
+      const check=()=>{if(this.disposed)throw Error('本局已结束');};
+      const sprites=this.sprites;
+      await runLoadingSteps((function*(){for(const id of e){sprites.get(id);yield;}})(),{check});
+      // stageSprites covers the player, evolutions, upcoming waves and the
+      // selected guardian. Later waves request their cutouts when needed.
+      // Do not allocate every future actor at every area entrance.
       if (
-        (this.sprites.preload([...this.director.everyone(), ...this.bossPools()], !0),
-        this.sprites.readyCount(e) < e.length && this.ui.loading)
+        this.sprites.readyCount(e) < e.length && this.ui.loading
       ) {
         let t = this.state;
         ((this.state = `transition`),
-          await this.ui.loading(e.length, () => this.sprites.readyCount(e)),
-          this.state === `transition` && (this.state = t === `transition` ? `play` : t));
+          await this.ui.loading(e.length, () => {check();return this.sprites.readyCount(e);},onProgress),
+          this.state === `transition` && (this.state = t));
       }
-      this.ui.stageIntro(this);
+      if(!onProgress)this.ui.stageIntro(this);
     }
     stageSprites() {
       let e = new Set([this.player.speciesId]);
@@ -76054,17 +76072,25 @@ var GT = 15,
       this.buildingStage=true;
       let terrain;
       try {
+        const metrics={stage:this.stage};this.loadingMetrics.push(metrics);
+        const check=()=>{if(this.disposed)throw Error('本局已结束');};
+        this.onLoadProgress?.({phase:'绘制桌面与纸张',detail:'正在生成场景',progress:.5});
         // Let the transition cover paint before copying/building the next area.
         await new Promise(resolve=>setTimeout(resolve,0));
+        check();
         terrain=this.createStageTerrain(true);
-        await buildPaperWorldAsync(terrain);
+        metrics.terrain=await buildPaperWorldAsync(terrain,{check,
+          onProgress:stats=>this.onLoadProgress?.({phase:'绘制桌面与纸张',detail:'已完成 '+stats.steps+' 组'})});
         await new Promise(resolve=>setTimeout(resolve,0));
-        if(this.disposed)throw Error('本局已结束');
-        this.buildStage(first,terrain);
+        check();
+        this.onLoadProgress?.({phase:'准备角色与场景物件',detail:'',progress:.7});
+        this.buildStage(first,terrain,true);
+        this.onLoadProgress?.({phase:'摆放场景物件',detail:'',progress:.75});
+        metrics.interactions=await this.interactables.populateAsync();
       } catch(error){if(terrain&&terrain!==this.terrain)terrain.dispose();throw error;}
       finally {this.buildingStage=false;}
     }
-    buildStage(e, preparedTerrain) {
+    buildStage(e, preparedTerrain, deferred = false) {
       let t = this.r,
         r = this.stage === 4 ? (this.biome.sanctuary ?? null) : null;
       this.streakPaid.clear();
@@ -76105,7 +76131,7 @@ var GT = 15,
         (this.events = new ub(this)),
         (this.director = new Av(this)),
         (this.capture = new Eb(this)),
-        (this.interactables = new GS(this)),
+        (this.interactables = new GS(this,deferred)),
         (this.roars = 0),
         (this.mewtwo = new Ab(this)),
         i?.onFloor(),
@@ -78077,85 +78103,71 @@ var GT = 15,
     weatherFx(e) {
       let t = this.weather;
       if (t === `clear` || t === `sun` || this.mewtwo.active) return;
+      // Rain has no ambient particles. Keep the weather's combat effects below.
       let n = this.r.camera.position,
-        r = Math.floor((t === `rain` ? 140 : t === `fog` ? 6 : 50) * e * 10);
+        r = t === `rain` ? 0 : Math.floor((t === `fog` ? 6 : 50) * e * 10);
       for (let e = 0; e < r; e++) {
         let e = n.x + F.range(-25, 25),
           r = n.z + F.range(-25, 25),
           i = n.y + F.range(4, 14);
-        t === `rain`
+        t === `sand`
           ? this.vfx.norm.spawn({
               x: e,
-              y: i,
+              y: i - 6,
               z: r,
-              vx: 2,
-              vy: -26,
-              vz: 0,
-              life: 0.55,
-              size: 0.22,
-              endSize: 0.22,
-              color: 10143999,
-              shape: I.Drop,
-              rot: Math.PI,
+              vx: 14,
+              vy: -1,
+              vz: 4,
+              life: 1.4,
+              size: 0.5,
+              endSize: 0.9,
+              color: 14203008,
+              shape: I.Soft,
             })
-          : t === `sand`
+          : t === `hail`
             ? this.vfx.norm.spawn({
                 x: e,
-                y: i - 6,
+                y: i,
                 z: r,
-                vx: 14,
-                vy: -1,
-                vz: 4,
-                life: 1.4,
-                size: 0.5,
-                endSize: 0.9,
-                color: 14203008,
-                shape: I.Soft,
+                vx: 1,
+                vy: -14,
+                vz: 0,
+                life: 1,
+                size: 0.3,
+                endSize: 0.3,
+                color: 16777215,
+                shape: I.Flake,
+                spin: 4,
               })
-            : t === `hail`
-              ? this.vfx.norm.spawn({
+            : t === `ash`
+              ? this.vfx.add.spawn({
                   x: e,
                   y: i,
                   z: r,
-                  vx: 1,
-                  vy: -14,
-                  vz: 0,
-                  life: 1,
-                  size: 0.3,
-                  endSize: 0.3,
-                  color: 16777215,
-                  shape: I.Flake,
-                  spin: 4,
+                  vx: F.range(-1, 1),
+                  vy: -2,
+                  vz: F.range(-1, 1),
+                  life: 3,
+                  size: 0.18,
+                  endSize: 0.1,
+                  color: 16747066,
+                  shape: I.Soft,
+                  glow: 0.5,
                 })
-              : t === `ash`
-                ? this.vfx.add.spawn({
-                    x: e,
-                    y: i,
-                    z: r,
-                    vx: F.range(-1, 1),
-                    vy: -2,
-                    vz: F.range(-1, 1),
-                    life: 3,
-                    size: 0.18,
-                    endSize: 0.1,
-                    color: 16747066,
-                    shape: I.Soft,
-                    glow: 0.5,
-                  })
-                : t === `fog` &&
-                  this.vfx.norm.spawn({
-                    x: e,
-                    y: i - 10,
-                    z: r,
-                    vx: 0.5,
-                    vy: 0,
-                    vz: 0.3,
-                    life: 4,
-                    size: 6,
-                    endSize: 9,
-                    color: 11575496,
-                    shape: I.Soft,
-                  });
+              : t === `fog` &&
+                this.vfx.norm.spawn({
+                  x: e,
+                  y: i - 10,
+                  z: r,
+                  vx: 0.5,
+                  vy: 0,
+                  vz: 0.3,
+                  life: 4,
+                  size: 6,
+                  endSize: 9,
+                  color: 11575496,
+                  shape: I.Soft,
+                });
       }
       if (Math.random() < e * 2) {
         let e = this.enemies;
@@ -103167,7 +103179,7 @@ var JI = class {
         X(
           `div`,
           { class: `uc-row` },
-          X(`div`, { class: `uc-pt` }, ZI(e, !1)),
+          X(`div`, { class: `uc-pt` }, glyphPreview(e)),
           X(`div`, { class: `uc-txt` }, X(`small`, {}, c(`¡Ultimate!`)), X(`b`, {}, t)),
         ),
       );
@@ -103289,8 +103301,8 @@ var JI = class {
         setTimeout(() => i.classList.add(`out`), 5200),
         setTimeout(() => i.remove(), 5800));
     }
-    loading(e, t) {
-      if (window.__zixingApp?.zixing) return window.__zixingApp.zixing.loading(e,t);
+    loading(e, t, onProgress) {
+      if (window.__zixingApp?.zixing) return window.__zixingApp.zixing.loading(e,t,onProgress);
       let n = !this.fadeEl.classList.contains(`on`);
       n &&
         ((this.fadeEl.style.transition = `none`),
@@ -109580,21 +109592,24 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         } catch {}
     }
     starting = !1;
-    async startRun(e) {
+    async startRun(e, onLoadProgress) {
       if (this.starting) return !1;
+      if(!onLoadProgress&&this.zixing)return this.zixing.start(e);
+      this.lastStartError=null;
       (Oo(!0), (this.starting = !0));
       try {
-        return await this.openRun(e);
+        return await this.openRun(e,onLoadProgress);
       } catch (error) {
+        this.lastStartError=error;
         console.error('[宝可梦] 森林初始化失败', error);
-        if (window.onRunStartError) window.onRunStartError(error);
-        else { this.toMenu(); this.notice('森林未能打开：' + (error.message || error)); }
+        this.toMenu();
+        if(!onLoadProgress)this.notice('森林未能打开：' + (error.message || error));
         return false;
       } finally {
         this.starting = !1;
       }
     }
-    async openRun(e) {
+    async openRun(e, onLoadProgress) {
       this.lastCfg = e;
       let t;
       try {
@@ -109617,6 +109632,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           if (n === `cancel`) return !1;
         }
       } catch (e) {
+        this.lastStartError=e;
         return (this.notice(e.message), N.deny(), !1);
       }
       return (
@@ -109647,12 +109663,26 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           e = this.hud.pauseOverlay(t);
         }),
         N.init(),
-        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, e)),
+        onLoadProgress?.({phase:'准备对局',detail:'',progress:.45}),
+        await waitForLoadingPaint(this.r.renderer),
+        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress})),
         await this.run.initialized,
-        this.setScreen(null),
+        onLoadProgress?.({phase:'准备字灵',detail:'',progress:.8}),
         ZX(this).attachRun(this.run),
-        await this.run.openStage(),
+        await this.run.openStage(onLoadProgress),
+        onLoadProgress?.({phase:'准备进入场景',detail:'',progress:.96}),
+        await waitForLoadingPaint(this.r.renderer),
+        // Upload textures, compile shaders and populate the HUD while the
+        // opaque loading page still covers the first frame. No play time elapses.
+        this.run.update(0),
+        this.r.render(0),
+        window.drawUI?.(this.r.renderer),
+        onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
+        await waitForLoadingPaint(this.r.renderer),
+        this.setScreen(null),
+        (this.run.onLoadProgress=null),
         (this.run.state='play'),
+        this.run.ui.stageIntro(this.run),
         document.hidden && this.run.pause(),
         (globalThis.__pb = globalThis.__pb || {}),
         (globalThis.__pb.run = this.run),
@@ -109891,8 +109921,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       try {
         // Opaque menus only upload changed UI; hidden scenery stays idle.
         if(this.run?.buildingStage){window.drawUI?.(this.r.renderer);return;}
-        if (window.nativeUI && this.screen?.classList.contains('zx')) {
-          window.drawUI(this.r.renderer, true);
+        if (this.screen?.classList.contains('zx-loading-screen') || window.nativeUI && this.screen?.classList.contains('zx')) {
+          window.drawUI?.(this.r.renderer, true);
           this.r.needsDraw = false;
           this.input.endFrame();
           return;

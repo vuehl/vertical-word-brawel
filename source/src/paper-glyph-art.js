@@ -5,7 +5,16 @@ let atlas,ready;
 const cache=new Map();
 export function glyphAtlasReady(){
   if(!ready)ready=new Promise((resolve,reject)=>{
-    atlas=new Image();atlas.onload=()=>resolve(atlas);atlas.onerror=()=>{ready=null;reject(Error('字形图集加载失败'));};atlas.src='assets/glyphs/atlas.png';
+    const image=new Image();let done=false;
+    const finish=error=>{
+      if(done)return;done=true;clearTimeout(timer);image.onload=image.onerror=null;
+      if(error){ready=null;reject(error);}else{atlas=image;resolve(image);}
+    };
+    // Some native image failures never call onerror. Fall back to the bundled
+    // font instead of keeping all actors behind an unresolved image Promise.
+    const timer=setTimeout(()=>finish(Error('字形图集读取超时')),12000);
+    image.onload=()=>finish();image.onerror=()=>finish(Error('字形图集加载失败'));
+    image.src='assets/glyphs/atlas.png';
   });
   return ready;
 }

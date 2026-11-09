@@ -7,6 +7,11 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   const reports=[];
   async function snapshot(name){
     await sleep(350);
+    await page.waitForFunction(()=>[...inspected.doc.querySelectorAll('img')].every(img=>{
+      const b=inspected.layout.box(img);
+      if(!b||!img.src||!b.opacity||b.w<.1||b.h<.1||b.x+b.w<b.clip.x||b.y+b.h<b.clip.y||b.x>b.clip.r||b.y>b.clip.b)return true;
+      return img.complete&&img.naturalWidth>0&&img.naturalHeight>0;
+    }),{timeout:10000,polling:100});
     await page.screenshot({path:path.join(dir,name+'.png')});
     const data=await page.evaluate(()=>{
       const all=[...inspected.doc.querySelectorAll('.zx button,.zx input,.zx-header,.zx-footer')];
@@ -52,6 +57,48 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     if(data.pauseLayout)assert.deepEqual(data.pauseLayout.page,{x:0,y:0,w:data.viewport[0],h:data.viewport[1]},'Pause must cover the full usable viewport');
     if(data.homeLayout){const {gear,header,scroll}=data.homeLayout;assert.ok(gear.y>=header.y+8&&gear.y+gear.h+8<=scroll.y&&gear.x+gear.w<=data.viewport[0]-16,'Settings must remain clear of the illustration and screen edge');}
     reports.push(name);
+  }
+  async function checkUpgradeModal(name){
+    const data=await page.evaluate(()=>{
+      const doc=inspected.doc,wrap=doc.querySelector('.zx-modal-wrap'),dialog=wrap.querySelector('.zx-upgrade');
+      const screen=doc.getElementById('game').getBoundingClientRect(),bounds=dialog.getBoundingClientRect();
+      const canvas=inspected.uiCanvas,ctx=canvas.getContext('2d'),scale=canvas.width/screen.width;
+      const rgba=(x,y)=>Array.from(ctx.getImageData(Math.floor(x*scale),Math.floor(y*scale),1,1).data);
+      const points=[[1,1],[screen.width-2,1],[1,screen.height-2],[screen.width-2,screen.height-2],
+        [1-screen.x,1-screen.y],[1-screen.x,inspected.env.innerHeight-2-screen.y]];
+      const pixels=points.map(([x,y])=>rgba(x,y));
+      const cards=[...dialog.querySelectorAll('[data-offer]')].map(el=>{
+        const s=inspected.layout.box(el).s;
+        return {selected:el.matches('.featured,.on,.selected,.pad-focus,[aria-selected="true"],[aria-checked="true"]'),background:s.background,border:s.border,borderColor:s['border-color']};
+      });
+      const state=()=>({state:app.run.state,time:app.run.time,gold:app.run.gold,rerolls:app.run.rerolls,pending:app.run.pendingLevels,
+        moves:app.run.player.moves.filter(Boolean).map(m=>[m.def.id,m.level]),vitamins:[...app.run.player.vitamins].map(([id,v])=>[id,v.level]),items:[...app.run.player.items]});
+      const before=state();let leakedClicks=0;
+      const controls=[...doc.querySelectorAll('.zx-hud button,.zx-minimap,.tc button')],onClick=()=>leakedClicks++;
+      controls.forEach(el=>el.addEventListener('click',onClick));
+      // Tap the gutters, modal margins and exposed HUD controls. None may
+      // dismiss the dialog, grant a reward or reach the game underneath.
+      const targets=[...points,[screen.width/2,1],[screen.width/2,screen.height-2]];
+      for(const el of controls){const b=el.getBoundingClientRect();targets.push([b.x+b.width/2-screen.x,b.y+b.height/2-screen.y]);}
+      let blocked=0;
+      for(const [x,y] of targets){
+        const localX=x+screen.x,localY=y+screen.y;
+        if(localX>=bounds.left&&localX<=bounds.right&&localY>=bounds.top&&localY<=bounds.bottom)continue;
+        window.tap(x,y);blocked++;
+      }
+      window.tap(2-screen.x,20-screen.y,'down');window.tap(2-screen.x,100-screen.y,'move');window.tap(2-screen.x,100-screen.y,'up');
+      controls.forEach(el=>el.removeEventListener('click',onClick));
+      return {pixels,cards,blocked,leakedClicks,before,after:state(),sameModal:wrap===app.run.ui.modalEl,
+        stick:Math.hypot(app.run.input.stickX,app.run.input.stickY)};
+    });
+    for(const pixel of data.pixels){assert.equal(pixel[3],128,name+' backdrop must cover every screen edge exactly once');assert.deepEqual(pixel,data.pixels[0],name+' safe-area seams must have the same tint');}
+    assert.ok(data.cards.length>=3&&data.cards.every(card=>!card.selected),name+' choices must start unselected');
+    for(const card of data.cards)assert.deepEqual(card,data.cards[0],name+' choices must have equal visual emphasis');
+    assert.ok(data.blocked>=8&&data.sameModal,name+' outside taps must keep the dialog open');
+    assert.equal(data.leakedClicks,0,name+' outside taps must not reach HUD or battle controls');
+    assert.equal(data.stick,0,name+' backdrop drags must not move the player');
+    assert.deepEqual(data.after,data.before,name+' outside taps must not change the run or grant upgrades');
+    fs.writeFileSync(path.join(dir,name+'-modal.json'),JSON.stringify(data,null,2));
   }
   await snapshot('01-home-390');
   const perf=await page.evaluate(async()=>{
@@ -329,18 +376,25 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         await page.evaluate(()=>{app.meta.profile.settings.touchScale=1;app.applySettings();});await resize(390,844);
       }
     }
-    await page.evaluate(()=>{app.run.pendingLevels=1;app.run.doLevelUp();});
-    await page.waitForFunction(()=>inspected.doc.querySelector('[data-offer]'),{timeout:30000});await snapshot('08-level-up');
+    await page.evaluate(()=>{
+      window.qaOfferSelections=[];const render=app.run.ui.showLevelUp.bind(app.run.ui);
+      app.run.ui.showLevelUp=(run,offers,choose)=>render(run,offers,(offer,action)=>{qaOfferSelections.push({index:offers.indexOf(offer),action:action||'choose'});return choose(offer,action);});
+      app.run.pendingLevels=1;app.run.doLevelUp();
+    });
+    await page.waitForFunction(()=>inspected.doc.querySelector('[data-offer]'),{timeout:30000});await snapshot('08-level-up');await checkUpgradeModal('08-level-up');
     assert.equal(await page.evaluate(()=>!!inspected.doc.querySelector('.run-hint')),false,'Tutorial hints must not cover upgrade choices');
-    for(const [w,h] of [[320,568],[430,932]]){await resize(w,h);await snapshot('08-level-up-'+w);}
+    for(const [w,h] of [[320,568],[430,932]]){await resize(w,h);await snapshot('08-level-up-'+w);await checkUpgradeModal('08-level-up-'+w);}
     await resize(390,844);await sleep(400);
     const choices=await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-offer]')].map(el=>el.textContent));
     await tap('.zx-upgrade-stats');await snapshot('08-upgrade-attributes');await tap('.zx-footer button','返回');
     assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-offer]')].map(el=>el.textContent)),choices,'Viewing attributes must preserve all upgrade choices');
+    await checkUpgradeModal('08-upgrade-return');
+    assert.deepEqual(await page.evaluate(()=>qaOfferSelections),[],'Opening the dialog and returning from attributes must not choose an upgrade');
     const rerolls=await page.evaluate(()=>app.run.rerolls);await tap('.zx-reroll');
-    assert.equal(await page.evaluate(()=>app.run.rerolls),rerolls-1,'Reroll must consume exactly one existing charge');await snapshot('08-rerolled');
-    await tap('[data-offer="0"]');
+    assert.equal(await page.evaluate(()=>app.run.rerolls),rerolls-1,'Reroll must consume exactly one existing charge');await snapshot('08-rerolled');await checkUpgradeModal('08-rerolled');
+    await tap('[data-offer="1"]');
     await page.waitForFunction(()=>app.run.state==='play');
+    assert.deepEqual(await page.evaluate(()=>qaOfferSelections),[{index:-1,action:'reroll'},{index:1,action:'choose'}],'Only the player-selected second offer may be applied');
     const evolution=await page.evaluate(()=>{const target=app.run.nextEvo.to;app.run.startEvolution();return target;});
     await snapshot('09-evolution');await tap('.zx-modal button','确认进阶');
     await page.waitForFunction(id=>app.run.player.speciesId===id&&app.run.state==='play',{timeout:60000},evolution);
