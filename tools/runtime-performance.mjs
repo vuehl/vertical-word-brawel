@@ -5,6 +5,8 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
 import {reviewPaperBatching} from './paper-batching-regression.mjs';
+import {profileRuntime} from './runtime-profile.mjs';
+import {reviewExperiencePerformance} from './experience-performance.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const dir=process.env.POKEBONK_QA||path.join(root,'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
@@ -35,11 +37,11 @@ try{
   page.on('pageerror',e=>errors.push(String(e)));
   await page.setViewport({width:390,height:844,deviceScaleFactor:3});
   await page.evaluateOnNewDocument(()=>{
-    window.phoneLayout=true;window.auditUIUploads=0;window.auditControlUploads=0;window.auditUploadBytes=0;window.auditHealthBytes=0;
+    window.phoneLayout=true;window.auditUIUploads=0;window.auditControlUploads=0;window.auditUploadBytes=0;window.auditHealthBytes=0;window.auditPortraitBytes=0;
     const proto=WebGL2RenderingContext.prototype;
     for(const name of ['texImage2D','texSubImage2D']){
       const original=proto[name];proto[name]=function(...args){
-        const canvas=args.at(-1);if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas)){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;}
+        const canvas=args.at(-1);if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas)){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
         return original.apply(this,args);
       };
     }
@@ -66,6 +68,19 @@ try{
     return initial;
   });
   await new Promise(resolve=>setTimeout(resolve,2000));
+  if(process.argv.includes('--experience')){
+    for(const [width,height] of [[320,568],[390,844],[430,932]]){
+      await page.setViewport({width,height,deviceScaleFactor:3});
+      await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
+      await new Promise(resolve=>setTimeout(resolve,180));
+      const widthDir=path.join(dir,String(width));fs.mkdirSync(widthDir,{recursive:true});
+      await reviewExperiencePerformance(page,widthDir);
+    }
+    assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--profile')){
+    await profileRuntime(page,dir);
+    assert.deepEqual(errors,[]);
+  }else{
   const report={environment:'Compiled WeChat game / Chrome SwiftShader. Workload counts, NOT phone FPS.',initial,samples:[],errors};
   for(const quality of ['low','medium','high']){
     report.samples.push(await page.evaluate(quality=>{
@@ -328,4 +343,5 @@ try{
   assert.equal(report.health.damage.progress,.5);assert.equal(report.health.damage.fullUploads,0);assert.ok(report.health.damage.bytes>0&&report.health.damage.bytes<100000,'Health changes upload only the small health texture');
   assert.ok(report.frameSampling.fps>0&&report.frameSampling.fps<7,JSON.stringify(report.frameSampling));
   console.log(JSON.stringify({initial,samples:report.samples.map(({quality,calls,triangles,submitted,colliders,worldPixels})=>({quality,calls,triangles,submitted,colliders,worldPixels})),touch:report.touch,visibility:report.visibility,gameplay:report.gameplay,settings:report.settings},null,2));
+  }
 }finally{await browser.close();await new Promise(r=>srv.close(r));}

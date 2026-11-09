@@ -580,6 +580,7 @@ export function createZixingUI(app,api) {
     // kerning, which otherwise merges the reference label into a single mark.
     const levelValue=el('span','','');
     const level=el('b','zx-hud-level',[...['L','V','.'].map(ch=>el('span','',ch)),levelValue]);
+    level.dataset.uiLayer='portrait-level';
     const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
     const stageLabel=el('small','zx-hud-stage',''),score=el('span','zx-hud-score',''),c=character(run.startSpecies);
     const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化'});
@@ -587,6 +588,7 @@ export function createZixingUI(app,api) {
     node.classList.add('zx-hud-'+c.tone);
     const portrait=el('canvas','zx-profile-art',[],{width:160,height:168,role:'progressbar','aria-label':c.name+' · 升级经验','aria-valuemin':0,'aria-valuemax':100});
     portrait.dataset.static='true';
+    portrait.dataset.uiLayer='portrait';
     const xpRing=new ExperienceRing(run.player,performance.now());
     const experience=()=>xpRing.progress;
     hud.experienceReady=()=>xpRing.ready;

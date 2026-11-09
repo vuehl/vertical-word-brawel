@@ -8,6 +8,7 @@
     "preview": "node tools/preview.mjs",
     "build:assets": "node tools/build.mjs --assets",
     "analyze:package": "node tools/package-report.mjs",
+    "analyze:code": "node tools/build.mjs --analyze",
     "layout": "node tools/layout-reference.mjs",
     "test": "node --test source/tools/lite.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs tools/paper.test.mjs tools/loading.test.mjs tools/surfaces.test.mjs tools/performance.test.mjs tools/experience.test.mjs tools/runtime-data.test.mjs",
     "test:ui-perf": "node tools/smoke.mjs --phone-layout --software-render --ui-perf",

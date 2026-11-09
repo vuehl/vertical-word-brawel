@@ -6,8 +6,13 @@ import {reviewExperience} from './experience-regression.mjs';
 
 export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,perfOnly=false}) {
   const reports=[];
+  // Software-rendered runs intentionally draw at 4 FPS. The animation starts
+  // after its first rasterized frame, so 350 ms from DOM insertion need not
+  // mean its final HUD pixels are ready. Transition frames have their own test.
+  const settleModal=()=>page.waitForFunction(()=>!inspected.modalTransition?.active,{timeout:10000,polling:50});
   async function snapshot(name){
     await sleep(350);
+    await settleModal();
     await page.waitForFunction(()=>[...inspected.doc.querySelectorAll('img')].every(img=>{
       const b=inspected.layout.box(img);
       if(!b||!img.src||!b.opacity||b.w<.1||b.h<.1||b.x+b.w<b.clip.x||b.y+b.h<b.clip.y||b.x>b.clip.r||b.y>b.clip.b)return true;
@@ -60,6 +65,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     reports.push(name);
   }
   async function checkUpgradeModal(name){
+    await settleModal();
     const data=await page.evaluate(()=>{
       const doc=inspected.doc,wrap=doc.querySelector('.zx-modal-wrap'),dialog=wrap.querySelector('.zx-upgrade');
       const screen=doc.getElementById('game').getBoundingClientRect(),bounds=dialog.getBoundingClientRect();

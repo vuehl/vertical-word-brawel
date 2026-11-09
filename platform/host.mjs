@@ -54,6 +54,7 @@ export async function setup(host) {
   const controls=createControlLayer(makeCanvas);
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true});
+  const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
   const modalTransition=createModalTransition(makeCanvas);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
@@ -70,6 +71,10 @@ export async function setup(host) {
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
       if(record.type==='attributes'&&minimap.owns(element)&&record.attributeName==='data-frame'){
         minimap.invalidate();continue;
+      }
+      if(env.__pb?.run?.state==='play'&&record.type==='attributes'&&element?.dataset?.uiLayer==='portrait'&&['data-frame','data-progress','data-word','aria-valuenow'].includes(record.attributeName)){
+        if(record.attributeName==='data-frame')portrait.invalidate();
+        continue;
       }
       if(record.type==='attributes'&&health.owns(element)&&['style','data-frame','data-progress','aria-valuenow','aria-valuemax','aria-label'].includes(record.attributeName)){
         if(record.attributeName==='data-frame')health.invalidate();
@@ -234,12 +239,12 @@ export async function setup(host) {
       const now=perf.now();
       if(modalTransition.advance(now))uiFrames.invalidate(false,true);
       const changed=uiFrames.draw(now,state,layout,boxes=>{
-        controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);
+        controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
         const visible=modalTransition.capture(layout,boxes,view,scale);
-        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)))),view,scale);
+        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)))),view,scale);
       });
       if(opaque&&!changed)return;
-      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),...modalTransition.layers(scale,perf.now())];
+      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),portrait.draw(layout,view,scale,state==='play'&&!opaque),...modalTransition.layers(scale,perf.now())];
       if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers);
     },
     locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
@@ -258,6 +263,6 @@ export async function setup(host) {
     }
     env.dispatchEvent(new D.Event('resize'));
   });
-  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,modalTransition});
+  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,portrait,modalTransition});
   return env;
 }

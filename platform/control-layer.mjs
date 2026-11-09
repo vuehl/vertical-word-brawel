@@ -1,26 +1,36 @@
 import {paint} from './paint.mjs';
 
 // A frequently changing canvas (the minimap) gets a small independent texture.
-export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false}={}){
-  let canvas,context,box,originX=0,originY=0,dirty=true;
+export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground=null}={}){
+  let canvas,context,box,parts=[],bounds,originX=0,originY=0,dirty=true;
+  const owns=el=>el?.dataset?.uiLayer===id||!!(foreground&&el?.closest?.('[data-ui-layer="'+foreground+'"]'));
   return {
-    owns(el){return el?.dataset?.uiLayer===id;},
+    owns,
     invalidate(){dirty=true;},
     capture(boxes){
       box=boxes.find(b=>b.el.dataset?.uiLayer===id&&b.opacity>0&&b.w>0);
+      // A label overlapping the animated canvas must stay in front of it.
+      // Cache both in this small tile, preserving their original paint order.
+      const front=foreground?boxes.filter(b=>b.el.dataset?.uiLayer!==id&&owns(b.el.nodeType===1?b.el:b.el.parentElement)):[];
+      parts=[];bounds=null;
+      if(box){
+        parts=[box,...front];
+        const left=Math.min(...parts.map(b=>b.x)),top=Math.min(...parts.map(b=>b.y));
+        bounds={x:left-box.x,y:top-box.y,w:Math.max(...parts.map(b=>b.x+b.w))-left,h:Math.max(...parts.map(b=>b.y+b.h))-top};
+      }
       if(box&&movable){const [x,y]=translation(box.el);originX=box.x-x;originY=box.y-y;}
       dirty=true;
     },
     draw(layout,view,scale,enabled){
       if(!enabled||!box||!box.el.isConnected||box.el.hidden)return null;
       if(movable){const [x,y]=translation(box.el);box.x=originX+x;box.y=originY+y;}
-      const pad=4,x=Math.floor((box.x+view.x-pad)*scale),y=Math.floor((box.y+view.y-pad)*scale);
-      const width=Math.ceil((box.w+pad*2)*scale),height=Math.ceil((box.h+pad*2)*scale);
+      const pad=4,x=Math.floor((box.x+bounds.x+view.x-pad)*scale),y=Math.floor((box.y+bounds.y+view.y-pad)*scale);
+      const width=Math.ceil((bounds.w+pad*2)*scale),height=Math.ceil((bounds.h+pad*2)*scale);
       if(!canvas){canvas=makeCanvas();context=canvas.getContext('2d');}
       const changed=dirty||canvas.width!==width||canvas.height!==height;
       if(changed){
         if(canvas.width!==width)canvas.width=width;if(canvas.height!==height)canvas.height=height;
-        paint({...layout,context},[box],{width:width/scale,height:height/scale,x:view.x-x/scale,y:view.y-y/scale},scale);dirty=false;
+        paint({...layout,context},parts,{width:width/scale,height:height/scale,x:view.x-x/scale,y:view.y-y/scale},scale);dirty=false;
       }
       return {canvas,x,y,width,height,changed,slot};
     },

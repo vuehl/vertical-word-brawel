@@ -103,7 +103,7 @@ const sources={
 };
 // The preview service parses the submitted JavaScript before issuing a QR code.
 const previewESVersion=2017;
-const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es'+previewESVersion,charset:'utf8',legalComments:'eof',
+const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es'+previewESVersion,charset:'utf8',legalComments:'eof',metafile:process.argv.includes('--analyze'),
   nodePaths:[path.join(import.meta.dirname,'node_modules')],plugins:[sources],logLevel:'warning'};
 const hostBundle=await esbuild.build({...common,define:{document:'undefined'},entryPoints:[path.join(platform,'host.mjs')],write:false});
 await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
@@ -154,3 +154,24 @@ const total=size(built),main=size(built.filter(file=>!subRoots.some(root=>file==
 console.log('Native project:',(total/1048576).toFixed(2),'MiB, main:',(main/1048576).toFixed(2),'MiB.');
 // Keep a conservative 20 MiB preview budget, with room for compiler metadata.
 if(total>20*1048576-128*1024||main>4*1048576-64*1024)throw Error('WeChat preview package budget exceeded.');
+if(process.argv.includes('--analyze')){
+  const core=Object.values(result.metafile.outputs)[0],inputs=Object.entries(core.inputs).map(([file,{bytesInOutput}])=>({file,bytes:bytesInOutput}));
+  const engineInputs=inputs.filter(({file})=>/\/three-[^/]+\.js$/.test(file));
+  const coreInputs=inputs.filter(input=>!engineInputs.includes(input));
+  const sum=list=>list.reduce((n,input)=>n+input.bytes,0);
+  const codeFiles=built.filter(file=>!file.includes(path.sep+'packs'+path.sep));
+  const codeBytes=size(codeFiles),hostBytes=hostBundle.outputFiles[0].contents.length;
+  const groups=[
+    {name:'玩法、界面与内置效果代码',bytes:sum(coreInputs)},
+    {name:'Three.js 3D 引擎',bytes:sum(engineInputs)},
+    {name:'微信界面、布局、存档与兼容层',bytes:hostBytes},
+    {name:'启动、资源加载与打包封装',bytes:codeBytes-sum(inputs)-hostBytes},
+  ];
+  const report={basis:'Minified esbuild output attribution plus actual startup files; on-disk bytes, NOT runtime RAM.',totalBytes:codeBytes,
+    groups:groups.map(group=>({...group,MiB:group.bytes/1048576})),
+    gameplayInputs:coreInputs.sort((a,b)=>b.bytes-a.bytes),engineInputs,
+    platformInputs:Object.entries(Object.values(hostBundle.metafile.outputs)[0].inputs).map(([file,{bytesInOutput}])=>({file,bytes:bytesInOutput})).sort((a,b)=>b.bytes-a.bytes)};
+  const reportDir=process.env.POKEBONK_QA||path.join(root,'验收');fs.mkdirSync(reportDir,{recursive:true});
+  fs.writeFileSync(path.join(reportDir,'代码组成.json'),JSON.stringify(report,null,2)+'\n');
+  console.table(report.groups.map(({name,bytes,MiB})=>({组成:name,字节:bytes,MiB:MiB.toFixed(2)})));
+}
