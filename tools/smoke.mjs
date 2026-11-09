@@ -12,6 +12,7 @@ import {reviewZixing} from './zixing-regression.mjs';
 import {reviewPaper} from './paper-regression.mjs';
 import {reviewLoading} from './loading-regression.mjs';
 import {reviewScenes} from './scene-regression.mjs';
+import {reviewUpgrade} from './upgrade-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -62,6 +63,11 @@ await page.evaluateOnNewDocument(()=>{
     gl[method]=function(...args){
       if(window.uiPerf&&args[args.length-1]===window.inspected?.uiCanvas){
         uiPerf.uploads++;if(method==='texImage2D')uiPerf.allocations++;
+      }
+      if(window.upgradeAudit){
+        const canvas=args[args.length-1];
+        if(canvas===window.inspected?.uiCanvas)upgradeAudit.uploads++;
+        if(window.inspected?.modalTransition?.canvases.includes(canvas))upgradeAudit.panelUploads++;
       }
       return original.apply(this,args);
     };
@@ -237,6 +243,7 @@ async function verifyStartup(){
   }
   if(await page.evaluate(()=>!!app.zixing)){
     if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,dir,sleep});
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
     else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});

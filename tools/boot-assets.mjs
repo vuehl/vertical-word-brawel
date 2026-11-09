@@ -26,7 +26,6 @@ export function bootAssets(root) {
     }
   });
   return {
-    'engine/layout.bin':fs.readFileSync(path.join(root,'platform/layout.bin')),
     'engine/styles.bin':deflateSync(JSON.stringify(rules),{level:9})
   };
 }

@@ -23,6 +23,7 @@ import {dispatchApi} from 'pokebonk:api';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
 import {createControlLayer,createCanvasLayer} from './control-layer.mjs';
+import {createModalTransition} from './modal-transition.mjs';
 import {gameViewport} from './viewport.mjs';
 
 class InputEvent extends D.Event {
@@ -53,6 +54,7 @@ export async function setup(host) {
   const controls=createControlLayer(makeCanvas);
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true});
+  const modalTransition=createModalTransition(makeCanvas);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
@@ -148,6 +150,8 @@ export async function setup(host) {
   wx.onKeyboardConfirm?.(r=>{if(active){active.value=r.value;active.dispatchEvent(new InputEvent('change'));active.blur();}wx.hideKeyboard?.({});});
   function setRange(el,x){const b=rect(el);if(b.width<=0)return;el.value=String(rangeValueAt(el,(x-b.x)/b.width));el.dispatchEvent(new InputEvent('input'));}
   function touches(kind,event){
+    // A press begun in combat must not select a card while it is appearing.
+    if(modalTransition.active){pointers.clear();captured.clear();return;}
     // Menus still react immediately. In battle, DOM mutations invalidate the
     // controls that actually changed; an empty-space swipe needs no UI upload.
     if(kind!=='move'&&win.__pb?.run?.state!=='play')uiFrames.invalidate(false,true);
@@ -201,7 +205,7 @@ export async function setup(host) {
     Blob,URL:LocalURL,URLSearchParams:Params,fetch,Request,Headers,Response,AbortController,AbortSignal,TextDecoder,TextEncoder,createImageBitmap:undefined,ImageBitmap:undefined,OffscreenCanvas:undefined,
     ProgressEvent:InputEvent,MouseEvent:InputEvent,KeyboardEvent:InputEvent,PointerEvent:InputEvent,Path2D:CanvasPath,MutationObserver:doc.defaultView.MutationObserver,
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
-    nativeUI:true,prefersDark:system.theme==='dark',nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    nativeUI:true,backgroundMusicEnabled:false,prefersDark:system.theme==='dark',nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},
@@ -223,15 +227,19 @@ export async function setup(host) {
       layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
+    animateModal(wrap){modalTransition.begin(wrap);uiFrames.invalidate(true,true);},
     drawUI(renderer,opaque=false){
       mutations(observer.takeRecords());
       const state=env.__pb?.run?.state;
-      const changed=uiFrames.draw(perf.now(),state,layout,boxes=>{
+      const now=perf.now();
+      if(modalTransition.advance(now))uiFrames.invalidate(false,true);
+      const changed=uiFrames.draw(now,state,layout,boxes=>{
         controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);
-        paint(layout,boxes.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)))),view,scale);
+        const visible=modalTransition.capture(layout,boxes,view,scale);
+        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)))),view,scale);
       });
       if(opaque&&!changed)return;
-      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque)];
+      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),...modalTransition.layers(scale,perf.now())];
       if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers);
     },
     locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
@@ -250,6 +258,6 @@ export async function setup(host) {
     }
     env.dispatchEvent(new D.Event('resize'));
   });
-  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health});
+  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,modalTransition});
   return env;
 }

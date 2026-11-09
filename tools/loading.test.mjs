@@ -24,12 +24,13 @@ test('cooperative model expansion preserves every byte and yields between batche
 
 function installer({nativeAsync=true,stalledWrite=false}={}){
   const {pool,recipes}=models(),data=new Map(),dirs=new Set(),downloads={};
-  const archives={world:[['model-parts.bin',pool],['model-map.json',Buffer.from(JSON.stringify(recipes))]],art:[]};
+  const archives={world:[['model-parts.bin',pool],['model-map.json',Buffer.from(JSON.stringify(recipes))]],art:[],text:[]};
   let failFile=null,yields=0,asyncReads=0,syncReads=0,asyncWrites=0;
-  const compressed=filePath=>Uint8Array.of(filePath.includes('world')?1:2,0,0,0).buffer;
+  const compressed=filePath=>Uint8Array.of(filePath.includes('world')?1:filePath.includes('text')?3:2,0,0,0).buffer;
   const manager={
     accessSync(p){if(!data.has(p)&&!dirs.has(p))throw Error('ENOENT');},
     mkdirSync(p){dirs.add(p);},
+    readdirSync(p){return [...dirs].filter(d=>d.startsWith(p+'/')&&!d.slice(p.length+1).includes('/')).map(d=>d.slice(p.length+1));},
     rmdirSync(p){dirs.delete(p);for(const key of data.keys())if(key.startsWith(p+'/'))data.delete(key);},
     readCompressedFileSync({filePath}){syncReads++;return compressed(filePath);},
     readFileSync(p){const bytes=data.get(p);if(bytes===undefined)throw Error('ENOENT '+p);return Uint8Array.from(typeof bytes==='string'?Buffer.from(bytes):bytes).buffer;},
@@ -41,19 +42,30 @@ function installer({nativeAsync=true,stalledWrite=false}={}){
     manager.writeFile=({filePath,data:bytes,success,fail})=>{asyncWrites++;if(stalledWrite)return;
       queueMicrotask(()=>{try{manager.writeFileSync(filePath,bytes);success({});}catch(error){fail(error);}});};
   }
-  const info={packs:{world:'1111111111111111',art:'2222222222222222'},rawSizes:{world:4,art:4},
+  const info={packs:{world:'1111111111111111',art:'2222222222222222',text:'3333333333333333'},rawSizes:{world:4,art:4,text:4},
     files:Object.fromEntries(Object.keys(recipes).map(file=>['assets/models/'+file,'world/'+file])),sprites:{}};
   const context={module:{exports:{}},console,Uint8Array,Date,clearTimeout,
     setTimeout:(fn,ms)=>{if(ms===0)yields++;return setTimeout(fn,ms===30000&&stalledWrite?10:ms);},
     wx:{env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>manager,loadSubpackage({name,success}){downloads[name]=(downloads[name]||0)+1;queueMicrotask(success);}},
     require(name){if(name==='./assets')return info;if(name==='./resource-codec')return codec;
-      if(name==='./resource-runtime')return {decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[new Uint8Array(raw)[0]===1?'world':'art']};
+      if(name==='./resource-runtime')return {decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text'}[new Uint8Array(raw)[0]]]};
       throw Error(name);}
   };
   vm.runInNewContext(fs.readFileSync(new URL('../platform/files.js',import.meta.url),'utf8'),context);
-  return {api:context.module.exports,data,downloads,info,get yields(){return yields;},
+  return {api:context.module.exports,data,dirs,downloads,info,get yields(){return yields;},
     get io(){return {asyncReads,syncReads,asyncWrites};},failNext(file){failFile=file;}};
 }
+
+test('removed music caches are evicted without touching saves or current resources',async()=>{
+  const f=installer(),base='/userdata/pokebonk-assets';
+  const removed=[base+'/sound-aaaaaaaaaaaaaaaa',base+'/music_boss-bbbbbbbbbbbbbbbb',base+'/text-cccccccccccccccc'];
+  const kept=['/userdata/saves',base+'/player-data',base+'/world-'+f.info.packs.world];
+  for(const dir of [...removed,...kept]){f.dirs.add(dir);f.data.set(dir+'/test',new Uint8Array([42]));}
+  await f.api.init();
+  for(const dir of removed){assert.ok(!f.dirs.has(dir));assert.ok(!f.data.has(dir+'/test'));}
+  for(const dir of kept){assert.ok(f.dirs.has(dir));assert.equal(f.data.get(dir+'/test')[0],42);}
+  assert.deepEqual(f.downloads,{text:1});
+});
 test('native async installs coalesce, report progress and leave unused models on disk as recipes',async()=>{
   const fixture=installer(),progressA=[],progressB=[];
   const a=fixture.api.prepareForest(s=>progressA.push(s)),b=fixture.api.prepareForest(s=>progressB.push(s));

@@ -4774,7 +4774,7 @@ var Ws = () =>
       ((a.gain.value = t), i.connect(a), a.connect(this.cryBus), i.start());
     }
     playSong(e, t, n, r) {
-      if (!this.ctx) return;
+      if (!this.ctx || window.backgroundMusicEnabled === false) return;
       this.stopTrack();
       let i = { bright: [0, 5, 3, 4], mystic: [0, 5, 6, 4], tense: [0, 6, 5, 4], calm: [0, 3, 5, 4] };
       ((this.song = { root: e, scale: t, bpm: n, mood: r, prog: i[r] }),
@@ -4790,6 +4790,7 @@ var Ws = () =>
       ((this.musicOn = !1), clearInterval(this.seqTimer), (this.song = null));
     }
     playTrack(e) {
+      if (window.backgroundMusicEnabled === false) return;
       !this.ctx ||
         (this.trackWant === e && (this.track || this.trackLoading)) ||
         (this.stopSeq(),
@@ -4824,6 +4825,7 @@ var Ws = () =>
         }));
     }
     preloadTrack(e) {
+      if (window.backgroundMusicEnabled === false) return Promise.resolve(null);
       let t = this.trackBytes.get(e);
       return (
         t ||

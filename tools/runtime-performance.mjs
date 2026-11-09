@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
+import {reviewPaperBatching} from './paper-batching-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const dir=process.env.POKEBONK_QA||path.join(root,'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
@@ -82,6 +83,30 @@ try{
     },quality));
     await page.screenshot({path:path.join(dir,'battle-'+quality+'.png')});
   }
+  report.paperBatching=await reviewPaperBatching(page,dir);
+  report.stationaryCulling=await page.evaluate(()=>{
+    const run=app.run,terrain=run.terrain,player=run.player.pos.clone(),target=run.camTarget.clone();
+    const saved=[];let reads=0;
+    for(const mesh of terrain.group.children){
+      const data=mesh.userData.paperInstances;if(!data)continue;
+      const bounds=data.bounds;saved.push([data,bounds]);
+      data.bounds=new Proxy(bounds,{get(t,key){if(typeof key==='string'&&/^\d+$/.test(key))reads++;return Reflect.get(t,key,t);}});
+    }
+    try{
+      delete terrain.zxVisibilityView;run.renderWorld(0);const initialReads=reads;
+      const initialCounts=terrain.group.children.map(m=>m.visible?m.count:0);
+      reads=0;for(let i=0;i<60;i++)run.renderWorld(0);const stationaryReads=reads;
+      const cachedCounts=terrain.group.children.map(m=>m.visible?m.count:0);
+      run.player.pos.x+=12;run.camTarget.copy(run.player.pos);run.updateCamera(1);reads=0;run.renderWorld(0);
+      return {frames:60,initialReads,stationaryReads,movingReads:reads,initialCounts,cachedCounts};
+    }finally{
+      for(const [data,bounds] of saved)data.bounds=bounds;
+      run.player.pos.copy(player);run.camTarget.copy(target);run.updateCamera(1);run.renderWorld(0);
+    }
+  });
+  assert.ok(report.stationaryCulling.initialReads>0&&report.stationaryCulling.movingReads>0);
+  assert.equal(report.stationaryCulling.stationaryReads,0,'Still cameras must not rescan scenery bounds');
+  assert.deepEqual(report.stationaryCulling.cachedCounts,report.stationaryCulling.initialCounts);
   report.touch=await page.evaluate(async()=>{
     const run=app.run,r=app.r,input=run.input,stick=run.ui.touch.stick;
     const box=stick.getBoundingClientRect(),screen=inspected.doc.getElementById('game').getBoundingClientRect();

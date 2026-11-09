@@ -66,15 +66,18 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     const files=GameGlobal.pokebonk.files,requestedBeforeAudit=[...window.requestedPackages];
     const ball=await files.resolvePath('assets/models/ball.glb');
     const bytes=wx.getFileSystemManager().readFileSync(ball),view=new DataView(bytes);
-    // Exercise every retained track, independent of which one this run chose.
-    // These explicit test downloads are recorded separately from real entry.
+    // Even old playback hooks must not download, decode or retry removed music.
     const tracks=[];
     for(const name of ['menu','boss','ingame1','ingame2','ingame3','ingame4']){
       const data=await app.run.audio.preloadTrack(name);
-      const decoded=await app.run.audio.ctx.decodeAudioData(data.slice(0));
-      tracks.push({name,bytes:data.byteLength,duration:decoded.duration,channels:decoded.numberOfChannels});
+      app.run.audio.playTrack(name);
+      tracks.push({name,bytes:data?.byteLength||0});
     }
-    return {requestedBeforeAudit,tracks,ball:{magic:view.getUint32(0,true),size:view.getUint32(8,true),bytes:bytes.byteLength}};
+    const audio=app.run.audio;
+    return {requestedBeforeAudit,tracks,music:{enabled:inspected.env.backgroundMusicEnabled,track:audio.track?.name||null,
+      loading:!!audio.trackLoading,cached:audio.trackBytes.size,sequencer:!!audio.musicOn},
+      requestsAfterAudit:[...loadProbe.requests],packagesAfterAudit:[...window.requestedPackages],
+      ball:{magic:view.getUint32(0,true),size:view.getUint32(8,true),bytes:bytes.byteLength}};
   });
   let entryRecovery;
   if(!baseline){
@@ -209,17 +212,18 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     assert.equal(probe.locale,'zh');
     assert.equal(probe.storedLocale,'zh','Old non-Chinese preferences must migrate');
     assert.equal(cleanup.disposed,cleanup.watched);assert.ok(cleanup.menuEmpty);
-    assert.deepEqual(probe.homePackages.filter(p=>p.startsWith('music_')),[],'Home must not download battle music');
-    assert.ok(probe.homePackages.includes('sound'),'Home still has its own music');
-    assert.deepEqual(probe.entryPackages.filter(p=>p.startsWith('music_')).sort(),['music_boss','music_'+probe.entryMusic].sort(),'Entry may preload only the selected track and boss music');
+    for(const packs of [probe.homePackages,probe.entryPackages,resources.packagesAfterAudit])
+      assert.deepEqual(packs.filter(p=>p==='sound'||p.startsWith('music_')),[],'No screen may download music');
+    assert.deepEqual(resources.requestsAfterAudit.filter(p=>/assets\/music\//.test(p)),[],'No music resource request, including old playback hooks');
+    assert.deepEqual(resources.music,{enabled:false,track:null,loading:false,cached:0,sequencer:false});
     assert.equal(resources.ball.magic,0x46546c67);assert.equal(resources.ball.size,resources.ball.bytes);
-    for(const track of resources.tracks)assert.ok(track.bytes>0&&track.duration>1&&track.channels>0,'Retained music decodes: '+track.name);
+    for(const track of resources.tracks)assert.equal(track.bytes,0,'Removed track must not load: '+track.name);
     assert.equal(probe.initialResources.modelsRestored,0,'Entry must not expand unrequested legacy models');
     for(const s of [...stages,restart]){
       const metric=s.loadingMetrics.at(-1);assert.ok(metric.terrain.yields>0);
       if(s.stage<4)assert.ok(metric.interactions.yields>0);
     }
-    assert.deepEqual(probe.requests.filter(p=>/assets\/(?:cries|pmd(?:-shiny)?)\//.test(p)),[],'Glyph actors must not request old animation sheets or cries');
+    assert.deepEqual(probe.requests.filter(p=>/assets\/(?:cries|pmd(?:-shiny)?|portraits(?:-shiny)?|front|icons)\//.test(p)),[],'Glyph actors must not request any excluded image or cry');
     for(const s of [...stages,restart])assert.deepEqual(s.hiddenImages,[],'Hidden legacy HUD images must never be decoded');
     for(const s of [...stages,restart]){assert.equal(s.legacyImages,0);assert.equal(s.glyphs,s.actors);assert.ok(s.estimatedActorBytes<12*1048576);assert.ok(s.colliders>=s.props&&s.colliders<200&&s.props>10);}
     assert.ok(stages[1].textures.filter(id=>stages[0].textures.includes(id)).length>=10,'Area changes must reuse the paper textures');

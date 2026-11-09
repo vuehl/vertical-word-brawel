@@ -279,7 +279,7 @@ export function createZixingUI(app,api) {
     ],[button('返回',home)],'purple');
   }
   function overlay(title,subtitle,body,actions=[],hud=null,kind='') {
-    if(hud)document.querySelectorAll('.run-hint').forEach(node=>node.remove());
+    if(hud)document.querySelectorAll('.run-hint,.zx-intro').forEach(node=>node.remove());
     const heading=[subtitle?small(subtitle):null,el('h2','',title)];
     const content=el('section','zx zx-modal '+kind,kind==='zx-pause'?
       [el('div','zx-pause-body',[...heading,...body]),el('footer','zx-pause-footer',actions)]:[...heading,...body,...actions]);
@@ -287,6 +287,13 @@ export function createZixingUI(app,api) {
     if(hud){wrap=hud.modal(content);wrap.className='zx zx-modal-wrap';}
     else {document.querySelector('.zx-dialog')?.remove();wrap=el('div','zx zx-modal-wrap zx-dialog',content);app.ui.append(wrap);}
     if(kind==='zx-pause'){wrap.classList.add('zx-pause-screen');wrap.dataset.fullscreen='true';}
+    if(kind==='zx-upgrade'){
+      if(window.animateModal)window.animateModal(wrap);
+      else{
+        wrap.animate([{opacity:0},{opacity:1}],{duration:200,easing:'ease-out'});
+        content.animate([{transform:'translateY(12px) scale(.97)'},{transform:'translateY(0) scale(1)'}],{duration:200,easing:'ease-out'});
+      }
+    }
     return wrap;
   }
   function research(item) {
@@ -346,7 +353,7 @@ export function createZixingUI(app,api) {
     const sublabels=settingsTab===1?['性能视野','震动闪光','特效强度','攻击拾取']:settingsTab===3?['显示设置','战斗提示','流程提示']:[];
     let title='',content=[];
     if(settingsTab===0) {
-      title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),range('音乐','music',0,1,.01),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
+      title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
     }else if(settingsTab===1&&settingsSub===0) {
       title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'优先流畅，简化阴影、光效和掉落表现。',medium:'更清晰的桌面与柔和阴影，兼顾画质和流畅度。',high:'高清桌面、完整阴影与发光描边，适合高性能手机。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','固定 30 帧，并临时使用流畅画质'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']])),status];
     }else if(settingsTab===1&&settingsSub===1) {

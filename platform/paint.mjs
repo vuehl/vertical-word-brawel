@@ -107,14 +107,15 @@ export function compositor(gl,canvas) {
   }
   const prog=gl.createProgram();
   gl.attachShader(prog,shader(gl.VERTEX_SHADER,'#version 300 es\nout vec2 uv;void main(){vec2 v=vec2((gl_VertexID<<1)&2,gl_VertexID&2);uv=vec2(v.x,1.-v.y);gl_Position=vec4(v*2.-1.,0.,1.);}'));
-  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision mediump float;in vec2 uv;out vec4 color;uniform sampler2D ui;void main(){color=texture(ui,uv);}'));
+  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision mediump float;in vec2 uv;out vec4 color;uniform sampler2D ui;uniform float opacity;void main(){color=texture(ui,uv)*opacity;}'));
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
-  const texture=gl.createTexture(),tiles=Array.from({length:3},()=>({texture:gl.createTexture(),width:0,height:0})),vao=gl.createVertexArray();
+  const opacity=gl.getUniformLocation(prog,'opacity');
+  const texture=gl.createTexture(),tiles=Array.from({length:5},()=>({texture:gl.createTexture(),width:0,height:0})),vao=gl.createVertexArray();
   let width=0,height=0;
   return (renderer,changed,opaque=false,layers=[])=>{
     renderer.resetState();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
     if(opaque){gl.disable(gl.SCISSOR_TEST);gl.clearColor(.957,.949,.98,1);gl.clear(gl.COLOR_BUFFER_BIT);}
-    gl.useProgram(prog);gl.bindVertexArray(vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
+    gl.useProgram(prog);gl.uniform1f(opacity,1);gl.bindVertexArray(vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
     if(changed){
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
@@ -142,6 +143,7 @@ export function compositor(gl,canvas) {
       }
       const sx=gl.drawingBufferWidth/canvas.width,sy=gl.drawingBufferHeight/canvas.height;
       gl.viewport(Math.round(control.x*sx),Math.round((canvas.height-control.y-control.height)*sy),Math.round(control.width*sx),Math.round(control.height*sy));
+      gl.uniform1f(opacity,control.opacity??1);
       gl.drawArrays(gl.TRIANGLES,0,3);
     }
     gl.bindVertexArray(null);renderer.resetState();

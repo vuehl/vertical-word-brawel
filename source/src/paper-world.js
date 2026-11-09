@@ -1,6 +1,6 @@
 // A miniature stationery world. Geometry, textures and shadows are authored
 // locally, with one instanced batch per shared geometry/material on mobile.
-import {I as Group,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,et as PlaneGeometry,J as ToonMaterial,q as BasicMaterial,b as CanvasTexture,ot as SRGB,ht as Vector3} from '../assets/three-DmSYIDKK.js';
+import {I as Group,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,et as PlaneGeometry,J as ToonMaterial,q as BasicMaterial,b as CanvasTexture,ot as SRGB,ht as Vector3,w as Color} from '../assets/three-DmSYIDKK.js';
 import {runLoadingSteps} from './loading-work.js';
 import {preparePaperBatch} from './paper-visibility.js';
 import {paperBox} from './paper-collision.js';
@@ -13,14 +13,14 @@ const TAU=Math.PI*2;
 // Do not dispose these GPU resources with the outgoing area's instances.
 export function createPaperAssets(){
   return {boxes:new BoxGeometry(1,1,1),planes:new PlaneGeometry(1,1),
-    cylinders:new CylinderGeometry(1,1,1,32),cones:new ConeGeometry(1,1,24),mats:new Map(),textures:new Map()};
+    cylinders:new CylinderGeometry(1,1,1,32),cones:new ConeGeometry(1,1,24),mats:new Map(),textures:new Map(),colors:new Map()};
 }
 export function disposePaperAssets(assets){
   if(!assets||assets.disposed)return;assets.disposed=true;
   for(const key of ['boxes','planes','cylinders','cones'])assets[key].dispose();
   for(const mat of assets.mats.values())mat.dispose();
   for(const texture of assets.textures.values())texture.dispose();
-  assets.mats.clear();assets.textures.clear();
+  assets.mats.clear();assets.textures.clear();assets.colors.clear();
 }
 export function disposePaperWorld(terrain){
   terrain.group.traverse(mesh=>{if(mesh.isInstancedMesh)mesh.dispose();});
@@ -40,11 +40,15 @@ function* paperWorldSteps(terrain){
   terrain.landmarks=[];terrain.zxProps=[];
   terrain.ownsPaperAssets=!terrain.paperAssets;
   const assets=terrain.paperAssets??=createPaperAssets();
-  const {boxes,planes,cylinders,cones,mats,textures}=assets;
+  const {boxes,planes,cylinders,cones,mats,textures,colors}=assets;
   const batches=new Map(),transform=new Group();
-  const material=(color,basic=false)=>{
-    const key=color+basic;if(mats.has(key))return mats.get(key);
-    const mat=basic?new BasicMaterial({color}):new ToonMaterial({color});mats.set(key,mat);terrain.mats.push(mat);return mat;
+  // Flat colors are per-instance data, so pencils and notebook edges share
+  // the same draw even when their colors differ. Textured/transparent surfaces
+  // retain their own materials and ordering.
+  if(!mats.has('solid'))mats.set('solid',new ToonMaterial({color:0xffffff}));
+  const material=color=>{
+    if(!colors.has(color))colors.set(color,new Color(color));
+    return colors.get(color);
   };
   function texture(key,w,h,draw){
     if(textures.has(key))return textures.get(key);
@@ -60,9 +64,11 @@ function* paperWorldSteps(terrain){
     // Mesh objects and a second scene traversal on every area change.
     transform.position.set(x,y,z);transform.scale.set(sx,sy,sz);transform.rotation.set(rx,ry,rz);transform.updateMatrix();
     parent.updateWorldMatrix(true,false);
-    const key=geometry.uuid+'/'+mat.uuid;
-    let batch=batches.get(key);if(!batch)batches.set(key,batch={geometry,material:mat,matrices:[]});
+    const color=mat.isColor?mat:null,shared=color?mats.get('solid'):mat;
+    const key=geometry.uuid+'/'+shared.uuid;
+    let batch=batches.get(key);if(!batch)batches.set(key,batch={geometry,material:shared,matrices:[],colors:[]});
     batch.matrices.push(transform.matrix.clone().premultiply(parent.matrixWorld));
+    if(color)batch.colors.push(color);
   }
   const box=(g,x,y,z,w,h,d,c)=>mesh(g,boxes,material(c),x,y,z,w,h,d);
   const cylinder=(g,x,y,z,r,h,c)=>mesh(g,cylinders,material(c),x,y,z,r,h,r);
@@ -202,8 +208,10 @@ function* paperWorldSteps(terrain){
     const g=c.createLinearGradient(0,0,256,256);g.addColorStop(0,'#fffbd32b');g.addColorStop(.65,'#fffbd310');g.addColorStop(1,'#fffbd300');c.fillStyle=g;c.fillRect(0,0,256,256);
   }),true);plane(root,-8,.085,-5,65,90,light,-.32);
   root.clear();
-  for(const {geometry,material,matrices} of batches.values()){
+  for(const {geometry,material,matrices,colors} of batches.values()){
     const batch=new InstancedMesh(geometry,material,matrices.length);matrices.forEach((m,i)=>batch.setMatrixAt(i,m));batch.instanceMatrix.needsUpdate=true;
+    colors.forEach((color,i)=>batch.setColorAt(i,color));
+    if(batch.instanceColor)batch.instanceColor.needsUpdate=true;
     batch.matrixAutoUpdate=false;batch.computeBoundingSphere();preparePaperBatch(batch,material===shadow);root.add(batch);
     yield;
   }

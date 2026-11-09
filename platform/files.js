@@ -185,13 +185,11 @@ async function resolvePath(url) {
 }
 async function init(progress) {
   if (!exists(base)) fs().mkdirSync(base, true);
-  for (const [name,version] of Object.entries(info.packs)) {
-    // Evict obsolete versions only inside this game's own cache.
-    for (const entry of fs().readdirSync(base)) {
-      if (new RegExp('^'+name+'-[a-f0-9]{16}$').test(entry) && entry !== name+'-'+version) {
-        fs().rmdirSync(base+'/'+entry,true);
-      }
-    }
+  // Only known, content-addressed resource folders inside this game's cache.
+  // Removed music packages are obsolete too; player saves live elsewhere.
+  for (const entry of fs().readdirSync(base)) {
+    const match=/^(art|world|text|sound|music_(?:boss|ingame[1-4]))-([a-f0-9]{16})$/.exec(entry);
+    if(match&&info.packs[match[1]]!==match[2])fs().rmdirSync(base+'/'+entry,true);
   }
   await ensurePack('text', progress);
 }

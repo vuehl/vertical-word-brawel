@@ -76,3 +76,21 @@ test('camera culling restores immutable instance transforms and leaves unchanged
   updatePaperVisibility(terrain,frustum(-10,110),true);assert.equal(mesh.visible,true);
   updatePaperVisibility(terrain,frustum(200,210));assert.equal(mesh.visible,false);
 });
+
+test('merged stationery keeps each color attached to its transform across camera changes',()=>{
+  const matrices=new Float32Array(48),colors=new Float32Array([1,0,0,0,1,0,0,0,1]);
+  for(let i=0;i<3;i++){matrices[i*16]=matrices[i*16+5]=matrices[i*16+10]=matrices[i*16+15]=1;matrices[i*16+12]=i*50;}
+  const attr=array=>({array:array.slice(),uploads:0,ranges:[],clearUpdateRanges(){this.ranges=[];},addUpdateRange(start,count){this.ranges.push([start,count]);},set needsUpdate(v){if(v)this.uploads++;}});
+  const mesh={instanceMatrix:attr(matrices),instanceColor:attr(colors),userData:{paperInstances:{total:3,matrices,colors,bounds:new Float32Array([0,0,0,1,50,0,0,1,100,0,0,1]),selected:new Int32Array(3).fill(-1)}}};
+  const terrain={zxPaper:true,group:{children:[mesh]}};
+  const view=(left,right)=>({planes:[{normal:{x:1,y:0,z:0},constant:-left},{normal:{x:-1,y:0,z:0},constant:right}]});
+  for(const [left,right,ids] of [[40,110,[1,2]],[90,110,[2]],[-10,10,[0]],[-10,110,[0,1,2]]]){
+    updatePaperVisibility(terrain,view(left,right));assert.equal(mesh.count,ids.length);
+    for(let i=0;i<ids.length;i++){
+      assert.equal(mesh.instanceMatrix.array[i*16+12],ids[i]*50);
+      assert.deepEqual(mesh.instanceColor.array.slice(i*3,i*3+3),colors.slice(ids[i]*3,ids[i]*3+3));
+    }
+    assert.deepEqual(mesh.instanceColor.ranges,[[0,ids.length*3]]);
+    const before=mesh.instanceColor.uploads;updatePaperVisibility(terrain,view(left,right));assert.equal(mesh.instanceColor.uploads,before);
+  }
+});

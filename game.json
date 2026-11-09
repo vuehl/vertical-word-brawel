@@ -6,12 +6,6 @@
     {"name": "play", "root": "play.js"},
     {"name": "art", "root": "packs/art"},
     {"name": "world", "root": "packs/world"},
-    {"name": "sound", "root": "packs/sound"},
-    {"name": "music_boss", "root": "packs/music_boss"},
-    {"name": "music_ingame1", "root": "packs/music_ingame1"},
-    {"name": "music_ingame2", "root": "packs/music_ingame2"},
-    {"name": "music_ingame3", "root": "packs/music_ingame3"},
-    {"name": "music_ingame4", "root": "packs/music_ingame4"},
     {"name": "text", "root": "packs/text"}
   ]
 }
