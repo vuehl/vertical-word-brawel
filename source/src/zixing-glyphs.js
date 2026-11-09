@@ -52,8 +52,10 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
 }
 
 // Legacy choice/evolution dialogs also use cutouts, with no animation timer.
-export function glyphPreview(id,scale=3){
-  const canvas=document.createElement('canvas');canvas.className='pix';
+export function glyphPreview(id,scale=3,className='pix'){
+  const canvas=document.createElement('canvas');canvas.className=className+' zx-glyph-icon';
+  canvas.dataset.static='true';canvas.dataset.species=String(id);canvas.dataset.glyph=glyphWordForSpecies(id);
+  canvas.setAttribute('role','img');canvas.setAttribute('aria-label',glyphWordForSpecies(id)+'字灵');
   canvas.width=canvas.height=Math.max(48,Math.round(64*scale));
   const draw=()=>{const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(glyphCanvas(glyphWordForSpecies(id)),0,0,canvas.width,canvas.height);canvas.dataset.frame=String((Number(canvas.dataset.frame)||0)+1);};
   draw();glyphAtlasReady().then(draw).catch(()=>{});return canvas;

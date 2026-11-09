@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const dir=process.env.POKEBONK_QA||path.join(root,'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
@@ -33,11 +34,11 @@ try{
   page.on('pageerror',e=>errors.push(String(e)));
   await page.setViewport({width:390,height:844,deviceScaleFactor:3});
   await page.evaluateOnNewDocument(()=>{
-    window.phoneLayout=true;window.auditUIUploads=0;window.auditControlUploads=0;window.auditUploadBytes=0;
+    window.phoneLayout=true;window.auditUIUploads=0;window.auditControlUploads=0;window.auditUploadBytes=0;window.auditHealthBytes=0;
     const proto=WebGL2RenderingContext.prototype;
     for(const name of ['texImage2D','texSubImage2D']){
       const original=proto[name];proto[name]=function(...args){
-        const canvas=args.at(-1);if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}
+        const canvas=args.at(-1);if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas)){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;}
         return original.apply(this,args);
       };
     }
@@ -76,6 +77,7 @@ try{
         authored:run.terrain.group.children.reduce((n,m)=>n+(m.userData.paperInstances?.total||0),0),
         colliders:run.terrain.colliders.length,props:run.terrain.zxProps.length,interactions:run.interactables.list.length,
         bloom:r.bloom.intensity,outline:r.outlinePass.enabled,worldPixels:r.composer.inputBuffer.width*r.composer.inputBuffer.height,
+        uiPixels:inspected.uiCanvas.width*inspected.uiCanvas.height,
         profile:{...run.performance},sky:r.sky.visible};
     },quality));
     await page.screenshot({path:path.join(dir,'battle-'+quality+'.png')});
@@ -108,6 +110,18 @@ try{
   // world for the screenshot, just as the real game loop does every frame.
   await page.evaluate(()=>{app.r.render(0);inspected.env.drawUI(app.r.renderer);});
   await page.screenshot({path:path.join(dir,'joystick-released.png')});
+  report.health=await page.evaluate(async()=>{
+    const run=app.run,r=app.r,p=run.player,health=inspected.doc.querySelector('.zx-player-health'),position=p.pos.clone(),hp=p.hp;
+    run.ui.hud(run);inspected.env.drawUI(r.renderer);
+    await new Promise(resolve=>setTimeout(resolve,150));inspected.env.drawUI(r.renderer);
+    const uploads=auditUIUploads,bytes=auditHealthBytes,start=health.style.transform;
+    for(let i=1;i<=10;i++){p.pos.x=position.x+i*.2;run.ui.hud(run);inspected.env.drawUI(r.renderer);}
+    const motion={fullUploads:auditUIUploads-uploads,bytes:auditHealthBytes-bytes,moved:health.style.transform!==start};
+    const before={uploads:auditUIUploads,bytes:auditHealthBytes};p.hp=p.maxHp*.5;run.ui.hud(run);inspected.env.drawUI(r.renderer);
+    const damage={fullUploads:auditUIUploads-before.uploads,bytes:auditHealthBytes-before.bytes,progress:Number(health.dataset.progress)};
+    p.pos.copy(position);p.hp=hp;run.ui.hud(run);inspected.env.drawUI(r.renderer);
+    return {motion,damage,size:[inspected.health.canvas.width,inspected.health.canvas.height]};
+  });
   report.visibility=await page.evaluate(()=>{
     const run=app.run,enemies=run.enemies,sprites=run.sprites,position=run.player.pos.clone();
     run.updateCamera(1);sprites.begin(app.r.camera);
@@ -156,12 +170,71 @@ try{
   });
   await page.evaluate(()=>{app.r.render(0);inspected.env.drawUI(app.r.renderer);});
   await page.screenshot({path:path.join(dir,'controlled-200-enemies.png')});
+  if(process.argv.includes('--glyph-crowd'))report.glyphCrowd=await reviewGlyphCrowd(page,dir);
+  report.hud=await page.evaluate(async()=>{
+    const run=app.run,r=app.r,layout=inspected.layout,refresh=layout.refresh;
+    let layouts=0,layoutMs=0;layout.refresh=function(...args){const start=performance.now();layouts++;const result=refresh.apply(this,args);layoutMs+=performance.now()-start;return result;};
+    const before={uploads:auditUIUploads,bytes:auditUploadBytes},began=performance.now();
+    try{
+      for(let i=0;i<30;i++){run.update(.12);r.render(.12);inspected.env.drawUI(r.renderer);await new Promise(resolve=>setTimeout(resolve,120));}
+      return {ticks:30,elapsedMs:performance.now()-began,layouts,layoutMs,uploads:auditUIUploads-before.uploads,bytes:auditUploadBytes-before.bytes,
+        uiSize:[inspected.uiCanvas.width,inspected.uiCanvas.height],enemies:run.enemies.count};
+    }finally{layout.refresh=refresh;}
+  });
+  report.minimap=await page.evaluate(async()=>{
+    const r=app.r,run=app.run;
+    inspected.env.invalidateUI();inspected.env.drawUI(r.renderer);
+    await new Promise(resolve=>setTimeout(resolve,120));inspected.env.drawUI(r.renderer);
+    const uploads=auditUIUploads,bytes=auditUploadBytes;
+    run.ui.minimap.dataset.frame='isolated';await new Promise(resolve=>setTimeout(resolve,120));
+    r.render(0);inspected.env.drawUI(r.renderer);
+    return {fullUploads:auditUIUploads-uploads,bytes:auditUploadBytes-bytes,size:[inspected.minimap.canvas.width,inspected.minimap.canvas.height]};
+  });
+  if(process.argv.includes('--sustained')){
+    console.log('Checking six simulated minutes of repeated combat (not phone thermal/FPS measurement).');
+    report.sustained=await page.evaluate(async()=>{
+      const run=app.run,r=app.r,samples=[],maxHp=run.player.maxHp;
+      // Keep the isolated workload alive without bypassing hit/status logic.
+      run.player.hp=run.player.maxHp=1e9;
+      for(let cycle=0;cycle<12;cycle++){
+        run.enemies.clear();
+        for(let i=0;i<200;i++){const a=i*2.4,d=8+i%30;run.enemies.spawn(16,run.player.pos.x+Math.cos(a)*d,run.player.pos.z+Math.sin(a)*d,1,1,512);}
+        for(let i=0;i<600;i++){
+          run.update(.05);
+          if(i%60===0){r.render(.05);inspected.env.drawUI(r.renderer);await new Promise(resolve=>setTimeout(resolve,0));}
+        }
+        r.render(0);
+        samples.push({cycle,time:run.time,state:run.state,enemies:run.enemies.count,pickups:run.pickups.count,particles:run.vfx.add.n,
+          geometries:r.renderer.info.memory.geometries,textures:r.renderer.info.memory.textures,batches:run.sprites.batches.size});
+      }
+      run.player.maxHp=maxHp;run.player.hp=maxHp;return samples;
+    });
+    fs.writeFileSync(path.join(dir,'sustained.json'),JSON.stringify(report.sustained,null,2));
+    assert.ok(report.sustained.every(s=>s.state==='play'&&s.particles<=600),JSON.stringify(report.sustained));
+    const stable=report.sustained.slice(3);
+    assert.ok(stable.at(-1).time>300,'The simulation must keep advancing throughout the workload');
+    assert.ok(stable.at(-1).textures<=stable[0].textures+2&&stable.at(-1).geometries<=stable[0].geometries+2,'Repeated combat must not accumulate GPU resources');
+  }
+  report.frameSampling=await page.evaluate(async()=>{
+    // The fixture intentionally renders at 4 FPS. Actual-frame diagnostics must
+    // not report the simulation clock's clamped minimum of 10 FPS.
+    app.run.player.hp=app.run.player.maxHp;app.run.player.iframes=10;
+    app.halted=false;await new Promise(resolve=>setTimeout(resolve,2600));app.halted=true;
+    return {fps:app.perf.fps,state:app.run.state};
+  });
   report.settings=await page.evaluate(async()=>{
     Object.assign(app.meta.profile.settings,{zxExtraControls:true,aimMode:'manual'});app.applySettings();
     const removedControls={count:inspected.doc.querySelectorAll('.tc-jump,.tc-dash,.tc-lock,.tc-aim').length,aimMode:app.run.aimMode};
     const run=app.run;run.state='paused';app.zixing.settings(()=>{});
     const click=(selector,label)=>{const el=[...inspected.doc.querySelectorAll(selector)].find(el=>el.textContent===label);if(!el)throw Error('Missing option '+label);el.click();};
-    click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');click('.zx-option','精致');
+    click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');
+    const applied=[];
+    for(const label of ['流畅','均衡','精致']){
+      click('.zx-option',label);
+      applied.push({label,actual:run.performance.name,uiPixels:inspected.uiCanvas.width*inspected.uiCanvas.height,
+        worldPixels:app.r.composer.inputBuffer.width*app.r.composer.inputBuffer.height,
+        note:inspected.doc.querySelector('.zx-performance-status').textContent});
+    }
     app.meta.profile.settings.touchScale=.85;app.applySettings();await app.meta.saveNow();
     const saved=JSON.parse(wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8')).accounts[app.meta.account.id].profile.settings;
     run.state='play';
@@ -172,19 +245,27 @@ try{
     const restoredFps={fpsCap:app.fpsCap(),frameGap:realFrameGap(),saver:app.saver};
     inspected.env.localStorage.removeItem('pb-battery');
     click('.zx-option','30');const selected30={fpsCap:app.fpsCap(),frameGap:realFrameGap()};click('.zx-option','60');
-    const adaptive=(target,measured)=>{
+    const adaptive=(target,measured,busy=false)=>{
       app.meta.profile.settings.fpsLimit=target;app.applySettings();app.r.setDynRes(1);
-      app.dyn={t:0,frames:0,js:0,good:0,wait:8,lastUp:-1e9};inspected.env.__dynFps=measured;
-      for(let i=0;i<125;i++)app.adaptRes(2,1/measured,100000+i*1000/measured);
+      app.dyn={t:0,frames:0,js:0,good:0,wait:8,lastUp:-1e9};delete inspected.env.__dynFps;
+      for(let i=0;i<125;i++)app.adaptRes(busy?1000/measured*.9:2,1/measured,100000+i*1000/measured);
       return app.r.dynRes;
     };
-    const dynamicResolution={atSelected30:adaptive(30,30),overloaded60:adaptive(60,30)};
+    const dynamicResolution={atSelected30:adaptive(30,30),overloaded60:adaptive(60,30),busyNative:adaptive(60,11,true)};
     delete inspected.env.__dynFps;app.r.setDynRes(1);
     run.state='paused';
     inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
-    return {saved:{quality:saved.quality,touchScale:saved.touchScale},removedControls,saver,restored:run.performance.name,restoredFps,selected30,dynamicResolution,options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
+    return {saved:{quality:saved.quality,touchScale:saved.touchScale},applied,removedControls,saver,restored:run.performance.name,restoredFps,selected30,dynamicResolution,options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
   });
   await page.screenshot({path:path.join(dir,'settings-quality.png')});
+  if(report.glyphCrowd){
+    report.glyphCrowd.disposal=await page.evaluate(()=>{
+      const ring=app.run.playerFootRing;let geometry=false,material=false;
+      ring.geometry.addEventListener('dispose',()=>geometry=true);ring.material.addEventListener('dispose',()=>material=true);
+      app.run.dispose();return {removed:!ring.parent,geometry,material};
+    });
+    assert.deepEqual(report.glyphCrowd.disposal,{removed:true,geometry:true,material:true});
+  }
   fs.writeFileSync(path.join(dir,'runtime-performance.json'),JSON.stringify(report,null,2));
   assert.deepEqual(errors,[]);
   assert.equal(initial.quality,'low');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
@@ -196,6 +277,7 @@ try{
   assert.equal(report.visibility.revealedAfterMoving,1);assert.equal(report.visibility.alive,4);
   const [low,medium,high]=report.samples;
   assert.ok(low.worldPixels<medium.worldPixels&&medium.worldPixels<high.worldPixels);
+  assert.ok(low.uiPixels<medium.uiPixels&&medium.uiPixels<high.uiPixels);
   assert.equal(low.outline,false);assert.equal(low.bloom,0);assert.ok(high.outline&&high.bloom>0);
   for(const sample of report.samples){assert.ok(sample.submitted<sample.authored*.4);assert.equal(sample.sky,false);assert.equal(sample.interactions,56);assert.ok(sample.colliders<200);}
   assert.deepEqual(report.gameplay.loot.before.totals,report.gameplay.loot.after.totals);assert.ok(report.gameplay.loot.after.count<report.gameplay.loot.before.count);
@@ -204,10 +286,21 @@ try{
   assert.ok(report.gameplay.stress.particles<=report.gameplay.stress.particleLimit&&report.gameplay.stress.texts<=report.gameplay.stress.textLimit);
   assert.deepEqual(report.settings.saved,{quality:'high',touchScale:.85});assert.equal(report.settings.saver.quality,'high');assert.equal(report.settings.saver.profile,'流畅');assert.equal(report.settings.restored,'精致');
   assert.deepEqual(report.settings.removedControls,{count:0,aimMode:'auto'});
+  for(const result of report.settings.applied){assert.equal(result.actual,result.label);assert.ok(result.note.includes('当前生效：'+result.label));}
+  const [smooth,balanced,fine]=report.settings.applied;
+  assert.ok(smooth.worldPixels<balanced.worldPixels&&balanced.worldPixels<fine.worldPixels);
+  assert.ok(smooth.uiPixels<balanced.uiPixels&&balanced.uiPixels<fine.uiPixels);
   assert.deepEqual(report.settings.options,['流畅','均衡','精致','30','60']);
   assert.equal(report.settings.saver.fpsCap,30);assert.ok(Math.abs(report.settings.saver.frameGap-1000/30)<.1);
   assert.equal(report.settings.restoredFps.fpsCap,60);assert.equal(report.settings.restoredFps.saver,false);assert.equal(report.settings.restoredFps.frameGap,1000/60);
   assert.equal(report.settings.selected30.fpsCap,30);assert.equal(report.settings.selected30.frameGap,1000/30);
   assert.equal(report.settings.dynamicResolution.atSelected30,1);assert.ok(report.settings.dynamicResolution.overloaded60<1);
+  assert.ok(report.settings.dynamicResolution.busyNative<1,'Native uploads must not prevent dynamic scaling at 11 FPS');
+  assert.ok(report.hud.bytes<100000000,'Low quality must reduce full HUD and minimap upload bandwidth');
+  assert.equal(report.minimap.fullUploads,0,'A minimap refresh must not upload the whole screen');
+  assert.ok(report.minimap.bytes>0&&report.minimap.bytes<200000,'Minimap uses its own small texture');
+  assert.ok(report.health.motion.moved);assert.equal(report.health.motion.fullUploads,0);assert.equal(report.health.motion.bytes,0,'Moving the foot health bar reuses its texture');
+  assert.equal(report.health.damage.progress,.5);assert.equal(report.health.damage.fullUploads,0);assert.ok(report.health.damage.bytes>0&&report.health.damage.bytes<100000,'Health changes upload only the small health texture');
+  assert.ok(report.frameSampling.fps>0&&report.frameSampling.fps<7,JSON.stringify(report.frameSampling));
   console.log(JSON.stringify({initial,samples:report.samples.map(({quality,calls,triangles,submitted,colliders,worldPixels})=>({quality,calls,triangles,submitted,colliders,worldPixels})),touch:report.touch,visibility:report.visibility,gameplay:report.gameplay,settings:report.settings},null,2));
 }finally{await browser.close();await new Promise(r=>srv.close(r));}

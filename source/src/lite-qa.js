@@ -8,7 +8,7 @@ export function mountLiteQA(app) {
   const action=(name,fn)=>{const b=document.createElement('button');b.textContent=name;b.style.cssText='display:block;width:100%;margin:6px 0;padding:7px;color:black;background:white';b.onclick=async()=>{b.disabled=true;try{await fn();}catch(error){status.textContent=String(error);console.error(error);}finally{b.disabled=false;}};panel.append(b);};
   for(const id of [1,4,7])action('QA 出战 '+id,async()=>{if(app.run&&app.run.state!=='over')await app.run.finish(false,true);await app.startRun({species:id,biome:'forest',tier:0,boosts:[],mode:'standard'});});
   action('QA 下一森林区域',async()=>{const r=app.run;if(r&&r.stage<4)await r.changeZone();});
-  action('QA 生成小火龙捕获',()=>{const r=app.run;r.capture.spawnEncounter(4);const i=r.capture.index;if(i>=0){r.enemies.x[i]=r.player.pos.x+3;r.enemies.z[i]=r.player.pos.z;r.enemies.y[i]=r.player.pos.y;r.capture.onDefeated(i);r.capture.sure=true;}});
+  action('QA 生成火字灵捕获',()=>{const r=app.run;r.capture.spawnEncounter(4);const i=r.capture.index;if(i>=0){r.enemies.x[i]=r.player.pos.x+3;r.enemies.z[i]=r.player.pos.z;r.enemies.y[i]=r.player.pos.y;r.capture.onDefeated(i);r.capture.sure=true;}});
   action('QA 投球',()=>app.run.capture.throwBall());
   action('QA 胜利结算',async()=>{const r=app.run;if(r.stage!==4)throw Error('先加载圣地');await r.finish(true);});
   action('QA 暂停',()=>app.run?.pause());

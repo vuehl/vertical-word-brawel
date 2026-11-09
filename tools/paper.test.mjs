@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from '../source/src/paper-pickups.js';
+import fs from 'node:fs';
+import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
+import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
+
+test('species names in encounter and NPC prose resolve to the same glyphs as their artwork',()=>{
+  const actors=JSON.parse(fs.readFileSync(new URL('../source/public/data/pokemon.json',import.meta.url),'utf8'));
+  const locale=JSON.parse(fs.readFileSync(new URL('../source/public/data/i18n/zh.json',import.meta.url),'utf8'));
+  configureGlyphNames(actors,locale.pokemon);
+  for(const actor of actors){
+    assert.equal(glyphText(actor.name),glyphWordForSpecies(actor.id));
+    if(locale.pokemon[actor.id])assert.equal(glyphText(locale.pokemon[actor.id]),glyphWordForSpecies(actor.id));
+  }
+  assert.equal(glyphText('妙蛙种子出现了，快去抓它！'),'木出现了，快去抓它！');
+  assert.equal(glyphText('喵喵（商店） / Pokémon'),'又（商店） / 字灵');
+  for(const src of ['portraits/1.png','assets/icons/1.png','assets/portraits-shiny/1.png?v=2','/assets/pmd/1.png'])assert.equal(glyphSpeciesFromImage(src),1);
+  for(const src of ['assets/ui/icons/coin.png','assets/items/poke-ball.png','assets/glyphs/atlas.png'])assert.equal(glyphSpeciesFromImage(src),null);
+});
 
 test('automatic pickup includes the range boundary and tolerates falling loot',()=>{
   assert.ok(inPickupRange(6,2,0,pickupRadius(6)));

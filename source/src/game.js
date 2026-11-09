@@ -2,6 +2,10 @@ import {LITE_SPECIES, isLiteSpecies, isLiteFamily} from './lite-rules.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
+import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
+import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
+import {createPlayerFootRing} from './player-foot-ring.js';
+import {separateCrowd} from './crowd-separation.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
 import {paperProp} from './paper-props.js';
@@ -380,7 +384,12 @@ var Ni = {
         }),
       ),
         i() !== `es` && (await this.localize()));
-      for (let e of this.all) this.byId.set(e.id, e);
+      configureGlyphNames(this.all);
+      for (let e of this.all) {
+        e.name=glyphWordForSpecies(e.id);
+        e.flavor=glyphText(e.flavor);
+        this.byId.set(e.id, e);
+      }
       this.pokemon = this.all.filter((e) => Te(e.id));
       for (let e of this.pokemon)
         if (e.evoFrom != null && Te(e.evoFrom)) {
@@ -396,6 +405,7 @@ var Ni = {
       } catch (e) {
         return console.warn(e);
       }
+      configureGlyphNames(this.all,e.pokemon);
       for (let t of this.all)
         (e.pokemon[t.id] && (t.name = e.pokemon[t.id]), e.flavor?.[t.id] && (t.flavor = e.flavor[t.id]));
       for (let t of this.moves.values()) e.moves[t.id] && (t.name = e.moves[t.id]);
@@ -5473,6 +5483,15 @@ function wc() {
     ));
 }
 function Tc(e, t, n = `img:` + e, r) {
+  const species=glyphSpeciesFromImage(e);
+  if(species!==null){
+    glyphAtlasReady().catch(()=>null).then(()=>{
+      const image=glyphCanvas(glyphWordForSpecies(species));
+      image.naturalWidth=image.width;image.naturalHeight=image.height;image.complete=true;
+      t(image);
+    });
+    return;
+  }
   let i = 0,
     a = 0,
     o = !1,
@@ -14004,12 +14023,14 @@ var bf = class {
     pr;
     sepX = 0;
     sepZ = 0;
+    separationTurns;
     constructor(e, t = 3) {
       ((this.cell = t),
         (this.dim = Math.ceil(420 / t) + 2),
         (this.counts = new Int32Array(this.dim * this.dim)),
         (this.starts = new Int32Array(this.dim * this.dim + 1)),
         (this.items = new Int32Array(e)),
+        (this.separationTurns = new Uint32Array(e)),
         (this.cellOf = new Int32Array(e)),
         (this.result = new Int32Array(e)),
         (this.px = new Float32Array(e)),
@@ -14026,6 +14047,7 @@ var bf = class {
       );
     }
     build(e, t, n, r, i, a) {
+      this.separationCandidates=0;this.separationVisits=0;
       this.counts.fill(0);
       for (let i = 0; i < e; i++) {
         if (!r[i]) {
@@ -14048,36 +14070,8 @@ var bf = class {
           i && ((this.px[o] = t[r]), (this.pz[o] = n[r]), (this.pr[o] = a && a[r] > 0 ? NaN : i[r])));
       }
     }
-    separate(e, t, n, r) {
-      let i = r * 2 + 1,
-        a = this.cell,
-        o = this.dim,
-        s = Math.max(0, Math.floor((t - i + 210) / a) + 1),
-        c = Math.min(o - 1, Math.floor((t + i + 210) / a) + 1),
-        l = Math.max(0, Math.floor((n - i + 210) / a) + 1),
-        u = Math.min(o - 1, Math.floor((n + i + 210) / a) + 1),
-        d = this.px,
-        f = this.pz,
-        p = this.pr,
-        m = this.items,
-        h = this.starts,
-        g = 0,
-        _ = 0;
-      for (let i = l; i <= u; i++) {
-        let a = i * o;
-        for (let i = h[a + s], o = h[a + c + 1]; i < o; i++) {
-          let a = r + p[i],
-            o = t - d[i],
-            s = n - f[i],
-            c = o * o + s * s;
-          if (c < a * a && c > 1e-5 && m[i] !== e) {
-            let e = Math.sqrt(c),
-              t = (a - e) / a;
-            ((g += (o / e) * t), (_ += (s / e) * t));
-          }
-        }
-      }
-      ((this.sepX = g), (this.sepZ = _));
+    separate(e, t, n, r, budget) {
+      separateCrowd(this,e,t,n,r,budget);
     }
     query(e, t, n) {
       let r = Math.max(0, Math.floor((e - n + 210) / this.cell) + 1),
@@ -14625,7 +14619,7 @@ var Df = 0.4,
         }
         let ne = this.radius[i];
         (h || (i & 1) === f) &&
-          (d.separate(i, this.x[i], this.z[i], ne), (this.sepX[i] = d.sepX), (this.sepZ[i] = d.sepZ));
+          (d.separate(i, this.x[i], this.z[i], ne, y & wf ? Infinity : this.run.performance.enemySeparation), (this.sepX[i] = d.sepX), (this.sepZ[i] = d.sepZ));
         let re = this.sepX[i],
           ie = this.sepZ[i],
           ae = S > 0 ? 10 - 8.4 * S : 10;
@@ -44595,19 +44589,9 @@ var mv = 30,
             spin: 4,
           }),
         e.sprites.shadows.push(this.pos.x, p, this.pos.z, 1.4),
-        this.dead ||
-          e.vfx.ground.spawn({
-            x: this.pos.x,
-            y: p + 0.08,
-            z: this.pos.z,
-            life: 0.03,
-            size: 2.1,
-            endSize: 2.1,
-            color: 7002367,
-            shape: 3,
-            glow: 0,
-            rot: 0,
-          }));
+        e.playerFootRing ??= createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr}));
+      e.playerFootRing.visible=!this.dead;
+      e.playerFootRing.position.set(this.pos.x,p+.09,this.pos.z);
     }
   },
   kv = 12,
@@ -55335,15 +55319,15 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
             t.audio.bossStart())
           : i === `legendary`
             ? (t.ui.banner(
-                c(`¡{name} legendario apareció!`, { name: k.get(n).name }),
+                c(`传说字灵「{name}」现身！`, { name: k.get(n).name }),
                 c(`Es muy resistente y huirá si tardas: debilítalo y captúralo`),
                 `#ffb21a`,
                 { species: n },
               ),
               t.audio.bossStart())
             : t.ui.banner(
-                c(`¡{name} salvaje apareció!`, { name: k.get(n).name }),
-                c(`Reto completado: debilítalo y captúralo para unirlo a tu Liga`),
+                c(`字灵「{name}」现身！`, { name: k.get(n).name }),
+                c(`击败并收服，加入字灵队伍`),
                 `#36c9ff`,
                 { species: n },
               ),
@@ -70802,98 +70786,10 @@ function WC(e = ``) {
   return ((t.className = `pix` + e), (t.alt = ``), (t.draggable = !1), t);
 }
 function GC(e, t, n = e) {
-  let r = WC(),
-    i = () => {
-      ((r.onerror = () => {
-        ((r.onerror = null), (r.src = Zt(`icons/${e}.png`)));
-      }),
-        (r.src = Zt(`portraits/${e}.png`)));
-    },
-    a = RC(n, t);
-  if (t === `classic`)
-    ((r.onerror = () => {
-      ((r.onerror = null), i(), (r.style.filter = jC(e)));
-    }),
-      (r.src = Zt(`portraits-shiny/${e}.png`)));
-  else if (a)
-    ((r.style.visibility = `hidden`),
-      UC(e, a).then((e) => {
-        (e ? (r.src = e) : i(), (r.style.visibility = ``));
-      }),
-      r.classList.add(`lk-pt`));
-  else {
-    i();
-    let n = PC(t, e);
-    n && (r.style.filter = n);
-  }
-  return r;
+  return glyphPreview(e,.75);
 }
 function KC(e, t, n = 3, r = `idle`, i = e) {
-  if(actorMetrics[e])return glyphPreview(e,n);
-  let a = document.createElement(`canvas`);
-  a.className = `pix`;
-  let o = k.sprites[e],
-    s = o?.anims ? (o.anims[r] ?? o.anims.walk) : null,
-    c = s ? s.fw : 96,
-    l = s ? s.fh : 96,
-    u = s ? n : n * 0.6;
-  ((a.width = c * u), (a.height = l * u));
-  let d = a.getContext(`2d`);
-  d.imageSmoothingEnabled = !1;
-  let f = RC(i, t),
-    p = null,
-    m = s ? s.y : 0,
-    h = s ? s.n * c : 96,
-    g =
-      t === `classic` && o?.anims
-        ? Zt(`pmd-shiny/${e}.png`)
-        : o?.anims
-          ? Zt(`pmd/${e}.png`)
-          : Zt(o?.fallback ?? `front/${e}.png`),
-    _ = PC(t, e);
-  (_ && (a.style.filter = _), f && ((a.className += ` ` + zC(f)), a.style.setProperty(`--lk`, f.pal[2])));
-  let v = (e) => {
-    if (f) {
-      let t = HC(e, [0, m, Math.min(h, e.naturalWidth), l], f);
-      if (t) {
-        ((p = t), (m = 0));
-        return;
-      }
-    }
-    p = e;
-  };
-  Tc(g, v, void 0, () => {
-    t === `classic` && o?.anims && ((a.style.filter = jC(e)), Tc(Zt(`pmd/${e}.png`), v));
-  });
-  let y = performance.now(),
-    b = 0,
-    x = 0,
-    paintedFrame = -1,
-    paintedImage = null,
-    S = s ? s.d.reduce((e, t) => e + t, 0) : 1,
-    C = () => {
-      if (!a.isConnected && b > 2) cancelAnimationFrame(x);
-      else {
-        if ((b++, p)) {
-          if (s) {
-            let e = Math.floor(((performance.now() - y) / 1e3) * 60) % S,
-              t = 0;
-            for (; t < s.n - 1 && e >= s.d[t]; ) ((e -= s.d[t]), t++);
-            if (t !== paintedFrame || p !== paintedImage) {
-              d.clearRect(0, 0, a.width, a.height);
-              d.drawImage(p, t * c, m, c, l, 0, 0, c * u, l * u);
-              paintedFrame = t;paintedImage = p;
-            }
-          } else if (p !== paintedImage) {
-            d.clearRect(0, 0, a.width, a.height);
-            d.drawImage(p, 0, 0, 96, 96, 0, 0, 96 * u, 96 * u);
-            paintedImage = p;
-          }
-        }
-        x = requestAnimationFrame(C);
-      }
-    };
-  return ((x = requestAnimationFrame(C)), a);
+  return glyphPreview(e,n);
 }
 var qC = { stone: [-2, 0] };
 function JC(e, t) {
@@ -70911,7 +70807,10 @@ function JC(e, t) {
   );
 }
 function X(e, t = {}, ...n) {
-  let r = document.createElement(e);
+  const species=e===`img`?glyphSpeciesFromImage(t.src):null;
+  let r = species===null?document.createElement(e):glyphPreview(species,.75,t.class||`pix`);
+  if(species!==null){t={...t};delete t.src;delete t.class;delete t.onerror;}
+
   for (let [e, n] of Object.entries(t))
     if (n != null && n !== !1) {
       if (e === `class`) r.className = n;
@@ -70928,7 +70827,7 @@ function X(e, t = {}, ...n) {
       } else e === `html` ? (r.innerHTML = n) : r.setAttribute(e, String(n));
     }
   for (let e of n)
-    e != null && e !== !1 && r.append(e instanceof Node ? e : document.createTextNode(String(e)));
+    e != null && e !== !1 && r.append(e instanceof Node ? e : document.createTextNode(glyphText(String(e))));
   return (e === `button` && r.addEventListener(`mouseenter`, () => N.hover()), r);
 }
 var YC = (e) => `#` + e.toString(16).padStart(6, `0`);
@@ -71034,105 +70933,16 @@ function Q(e, t = `pix`) {
   );
 }
 function tw(e, t = `pix`) {
-  let n = X(`img`, { class: t, src: Zt(`icons/${e}.png`), alt: ``, draggable: `false`, loading: `lazy` });
-  return (
-    (n.onerror = () => {
-      ((n.onerror = null), (n.src = Zt(`portraits/${e}.png`)));
-    }),
-    n
-  );
+  return glyphPreview(e,.75,t);
 }
 function nw(e, t = `pix`) {
-  let n = X(`canvas`, { class: t, width: `48`, height: `48` });
-  return (
-    Tc(Zt(`icons/${e}.png`), (e) => {
-      let t = e.naturalWidth,
-        r = e.naturalHeight,
-        i = document.createElement(`canvas`);
-      ((i.width = t), (i.height = r));
-      let a = i.getContext(`2d`, { willReadFrequently: !0 });
-      a.drawImage(e, 0, 0);
-      let o;
-      try {
-        o = a.getImageData(0, 0, t, r).data;
-      } catch {
-        return;
-      }
-      let s = t,
-        c = r,
-        l = -1,
-        u = -1;
-      for (let e = 0; e < r; e++)
-        for (let n = 0; n < t; n++)
-          o[(e * t + n) * 4 + 3] > 40 &&
-            ((s = Math.min(s, n)), (l = Math.max(l, n)), (c = Math.min(c, e)), (u = Math.max(u, e)));
-      if (l < 0) return;
-      let d = l - s + 1,
-        f = u - c + 1,
-        p = Math.max(1, Math.floor(44 / Math.max(d, f))),
-        m = n.getContext(`2d`);
-      ((m.imageSmoothingEnabled = !1),
-        m.drawImage(i, s, c, d, f, Math.round((48 - d * p) / 2), Math.round((48 - f * p) / 2), d * p, f * p),
-        (m.globalCompositeOperation = `source-in`),
-        (m.fillStyle = `#3a3456`),
-        m.fillRect(0, 0, 48, 48));
-    }),
-    n
-  );
+  return glyphPreview(e,.75,t);
 }
 function rw(e) {
-  let t = X(`img`, { class: `pix`, src: Zt(`portraits/${e}.png`), alt: `` });
-  return (
-    (t.onerror = () => {
-      ((t.onerror = null), (t.src = Zt(`icons/${e}.png`)));
-    }),
-    t
-  );
+  return glyphPreview(e,.75);
 }
 function iw(e, t = 3, n = `idle`) {
-  if(actorMetrics[e])return glyphPreview(e,t);
-  let r = X(`canvas`, { class: `pix` }),
-    i = k.sprites[e],
-    a = null;
-  Tc(i?.anims ? Zt(`pmd/${e}.png`) : Zt(i?.fallback ?? `front/${e}.png`), (e) => {
-    a = e;
-  });
-  let o = i?.anims ? (i.anims[n] ?? i.anims.walk) : null,
-    s = o ? o.fw : 96,
-    c = o ? o.fh : 96,
-    l = o ? t : t * 0.6;
-  ((r.width = s * l), (r.height = c * l));
-  let u = r.getContext(`2d`);
-  u.imageSmoothingEnabled = !1;
-  let d = performance.now(),
-    f = 0,
-    p = 0,
-    paintedFrame = -1,
-    paintedImage = null,
-    m = o ? o.d.reduce((e, t) => e + t, 0) : 1,
-    h = () => {
-      if (!r.isConnected && f > 2) cancelAnimationFrame(p);
-      else {
-        if ((f++, a)) {
-          if (o) {
-            let e = Math.floor(((performance.now() - d) / 1e3) * 60) % m,
-              t = 0;
-            for (; t < o.n - 1 && e >= o.d[t]; ) ((e -= o.d[t]), t++);
-            if (t !== paintedFrame || a !== paintedImage) {
-              u.clearRect(0, 0, r.width, r.height);
-              u.drawImage(a, t * s, o.y, s, c, 0, 0, s * l, c * l);
-              paintedFrame = t;paintedImage = a;
-            }
-          } else if (a !== paintedImage) {
-            u.clearRect(0, 0, r.width, r.height);
-            u.drawImage(a, 0, 0, 96, 96, 0, 0, 96 * l, 96 * l);
-            paintedImage = a;
-          }
-        }
-        p = requestAnimationFrame(h);
-      }
-    };
-  return ((p = requestAnimationFrame(h)), r);
+  return glyphPreview(e,t);
 }
 var aw = [`var(--r0)`, `var(--r1)`, `var(--r2)`, `var(--r3)`, `var(--r4)`];
 function $(e) {
@@ -77391,7 +77201,7 @@ var GT = 15,
         : !1;
     }
     doLevelUp() {
-      if (this.pendingLevels <= 0 || this.tryEvolve()) return;
+      if (this.pendingLevels <= 0 || this.ui.experienceReady?.() === false || this.tryEvolve()) return;
       ((this.state = `modal`), this.audio.levelUp(), this.hints.show(`level`));
       let e = this.player.pos;
       (this.vfx.ring(e.x, e.y, e.z, 5, 16769162, 0.5),
@@ -77873,6 +77683,9 @@ var GT = 15,
           (!!this.coop && (this.state === `modal` || this.state === `paused`)),
         a = this.state === `evolving` || this.state === `cinematic` || this.state === `capturing`;
       a && (r *= 0);
+      // The short full-ring presentation is part of the upgrade pause. It
+      // must not expose the player to extra hits before the choices appear.
+      this.state === `play` && this.pendingLevels > 0 && this.ui.experienceReady?.() === false && (r = 0);
       let o = this.state === `capturing` ? this.capYaw : this.yawBack;
       if (!this.terrain.zxPaper && !Number.isNaN(o)) {
         let t = Math.atan2(Math.sin(o - this.camYaw), Math.cos(o - this.camYaw));
@@ -78474,6 +78287,7 @@ var GT = 15,
       this.sprites.standIn.dispose();
       disposePaperAssets(this.paperAssets);
       for (let e of [
+        this.playerFootRing,
         this.vfx.add.mesh,
         this.vfx.norm.mesh,
         this.vfx.rings.mesh,
@@ -101679,6 +101493,8 @@ var cI = {
   },
   lI = new Map();
 function uI(e) {
+  const species=glyphSpeciesFromImage(e);
+  if(species!==null)return glyphCanvas(glyphWordForSpecies(species));
   if (!lI.has(e)) {
     lI.set(e, null);
     let t = /^portraits\/(\d+)\.png$/.exec(e);
@@ -103736,9 +103552,16 @@ var JI = class {
       let t = e.player,
         n = this.els,
         r = Math.max(0, t.hp / t.maxHp);
-      n.hp.children[0].style.transform = `scaleX(${r})`;
       let i = performance.now(),
         a = Math.min(0.1, (i - this.lagT) / 1e3);
+      if(this.compact){
+        this.lagT=i;this.touch.update(e,this.promptText);this.ultHud(e);
+        n.lowhp.style.display=r<.25&&!t.dead?``:`none`;
+        const release=e.state===`play`&&e.allies.state===`down`;
+        this.releaseEl.style.display=release?``:`none`;
+        if(release)this.releaseEl.onclick=()=>{N.click();e.allies.dismiss();};
+      }else{
+      n.hp.children[0].style.transform = `scaleX(${r})`;
       ((this.lagT = i),
         r >= this.hpLag
           ? ((this.hpLag = r), (this.lagHold = 0.4))
@@ -103878,6 +103701,7 @@ var JI = class {
         }
       }
       this.party(e);
+      }
       let _ = e.boss;
       if (_.alive) {
         n.boss.style.display = ``;
@@ -109574,7 +109398,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       if(e&&(window.nativeUI||this.zixing))e.aimMode='auto';
       if (e && window.repairVolumeSettings?.(e)) this.meta.save();
       const profile=performanceProfile(e);
-      if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio});
+      if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio,uiPixelRatio:profile.uiPixelRatio,uiPixelBudget:profile.uiPixelBudget});
+      window.setUIPerformance?.(profile);
       e &&
         (N.setVolumes({ master: e.master, music: e.music, sfx: e.sfx, cries: e.cries }),
         N.setHiddenMute(document.hidden && e.muteHidden),
@@ -109894,7 +109719,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         N.playTrack(EL()),
         CP(this));
     }
-    perf = { sim: 0, draw: 0 };
+    perf = { sim: 0, draw: 0, fps: 0, frames: 0, started: 0, last: 0, run: null };
     failing = 0;
     saver = !1;
     frameGap() {
@@ -109928,7 +109753,9 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       let s = window.__dynFps,
         c = s ?? a;
       const target=Math.min(this.fpsCap()||60,60);
-      c < target*.75 && (o < 0.7 || s !== void 0) && i.dynRes > dc.DYN_MIN
+      // Native canvas uploads and graphics submission also count as JS time.
+      // Busy native submission must not block resolution reduction.
+      c < target*.75 && (window.nativeUI || o < 0.7 || s !== void 0) && i.dynRes > dc.DYN_MIN
         ? (n - r.lastUp < 25e3 && (r.wait = Math.min(60, r.wait * 2)),
           (r.good = 0),
           i.setDynRes(i.dynRes - 0.1))
@@ -109939,7 +109766,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     halted = !1;
     nextDraw = 0;
     loop = (e) => {
-      if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) return;
+      if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) {this.perf.active=false;return;}
       let t = this.frameGap();
       if (t && e < this.nextDraw - 2 && !this.r.needsDraw) return;
       // Forced resize/menu draws must not accumulate a deadline far into the
@@ -109949,8 +109776,10 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       this.last = e;
       try {
         // Opaque menus only upload changed UI; hidden scenery stays idle.
-        if(this.run?.buildingStage){window.drawUI?.(this.r.renderer);return;}
+        if(this.run?.buildingStage){this.perf.active=false;window.drawUI?.(this.r.renderer);return;}
         if (this.screen?.classList.contains('zx-loading-screen') || window.nativeUI && this.screen?.classList.contains('zx')) {
+          if(!this.run){this.perf.run=null;this.perf.fps=0;}
+          this.perf.active=false;
           window.drawUI?.(this.r.renderer, true);
           this.r.needsDraw = false;
           this.input.endFrame();
@@ -109963,7 +109792,12 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         if ((this.r.render(n), this.run?.state === `play`)) {
           let e = this.perf;
           ((e.sim += (r - t - e.sim) * 0.05), (e.draw += (performance.now() - r - e.draw) * 0.05));
-        }
+          const now=performance.now();
+          if(e.run!==this.run||!e.active){e.started=now;e.frames=0;if(e.run!==this.run)e.fps=0;e.run=this.run;}
+          else e.frames++;
+          e.last=now;e.active=true;
+          if(now-e.started>=1000){e.fps=e.frames*1000/(now-e.started);e.frames=0;e.started=now;}
+        }else this.perf.active=false;
         ((this.failing = 0), this.adaptRes(performance.now() - t, (e - this.dynAt) / 1e3, e));
       } catch (e) {
         if (

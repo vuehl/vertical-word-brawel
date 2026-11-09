@@ -51,6 +51,8 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     set('Width',s.width);set('Height',s.height,view.h);
     if(s.width==='max-content'&&metric?.[6])node.setWidth(metric[6]*ref.sx);
     set('MaxWidth',s['max-width']);set('MaxHeight',s['max-height'],view.h);
+    const region=view.regions?.[el.dataset?.uiRegion];
+    if(region)node.setMaxWidth(region.w);
     set('MinWidth',s['min-width']);set('MinHeight',s['min-height'],view.h);
     let abs=/absolute|fixed/.test(s.position);
     if(abs)node.setPositionType(Y.POSITION_TYPE_ABSOLUTE);
@@ -192,6 +194,10 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       if(sc){const extent=axis==='X'?w:h,k=+sc[1],ratio=/left|top/.test(ox)?0:/right|bottom/.test(ox)?1:(parseFloat(ox)||0)/100;
         if(axis==='X'){x+=w*(1-k)*ratio;w=extent*k;}else{y+=h*(1-k)*ratio;h=extent*k;}}
     }
+    // Only explicitly registered overlay regions may extend outside the
+    // common safe-area clip; menus and touch controls keep their usual bounds.
+    const region=view.regions?.[el.dataset?.uiRegion];
+    if(region){x=region.x;y=region.y;parentClip={x:region.x,y:region.y,r:region.x+region.w,b:region.y+region.h};}
     const alpha=parseFloat(s.opacity);
     const opacity=parentOpacity*(Number.isFinite(alpha)?Math.max(0,Math.min(1,alpha)):1);
     const box={...item,s:style,x,y,w,h,naturalW,naturalH,opacity,clip:parentClip,singleLine:single&&(!changedText||liveLabel)};seen.set(el,box);boxes.push(box);

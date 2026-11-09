@@ -1,3 +1,4 @@
+import {glyphText} from './zixing-identity.js';
 var e = [
     { id: `zh`, name: `简体中文`, locale: `zh-CN`, short: `ZH` },
   ],
@@ -23,7 +24,7 @@ function l(e, t) {
 }
 function u(e, t) {
   let n = i[e] || e;
-  return t ? n.replace(/\{(\w+)\}/g, (e, n) => (n in t ? String(t[n]) : e)) : n;
+  return glyphText(t ? n.replace(/\{(\w+)\}/g, (e, n) => (n in t ? String(t[n]) : e)) : n);
 }
 var d = null,
   f = (e) => e.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`);
@@ -50,12 +51,12 @@ function p(e) {
   for (let t of d) {
     let n = t.re.exec(e);
     if (n)
-      return t.to.replace(/\{(\w+)\}/g, (e, r) => {
+      return glyphText(t.to.replace(/\{(\w+)\}/g, (e, r) => {
         let i = t.vars.indexOf(r);
         return i < 0 ? e : n[i + 1];
-      });
+      }));
   }
-  return e;
+  return glyphText(e);
 }
 var m = (e, t = 0) => e.toLocaleString(o(), { maximumFractionDigits: t, minimumFractionDigits: t });
 export { t as a, c, p as d, m as i, l, n, a as o, s as r, o as s, e as t, u };

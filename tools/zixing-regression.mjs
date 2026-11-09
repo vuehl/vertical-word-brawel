@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {reviewItems} from './item-regression.mjs';
+import {reviewExperience} from './experience-regression.mjs';
 
 export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,perfOnly=false}) {
   const reports=[];
@@ -194,33 +195,50 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});
     await snapshot('07-battle');
     const hudBindings=await page.evaluate(()=>{
-      const r=app.run,p=r.player,oldXp=p.xp,oldLevel=p.level,oldSkill=p.moves[0].level,oldSlots=p.moveSlots;
+      const r=app.run,p=r.player,oldHp=p.hp,oldXp=p.xp,oldLevel=p.level,oldSkill=p.moves[0].level,oldSlots=p.moveSlots;
       const refresh=()=>{r.state='play';r.ui.hud(r);r.state='paused';r.ui.hud(r);};
       const samples=[];
+      for(const value of [0,.25,.75,1]){
+        p.hp=p.maxHp*value;refresh();
+        const track=inspected.doc.querySelector('.zx-player-health');
+        samples.push({progress:Number(track.dataset.progress),value:Number(track.getAttribute('aria-valuenow')),expected:Math.ceil(p.hp)});
+      }
+      const experience=[];
       for(const value of [0,.25,.75,.99]){
         p.xp=p.xpNext*value;refresh();
-        const track=inspected.doc.querySelector('.zx-hud-xp-track');
-        samples.push({progress:Number(track.dataset.progress),width:parseFloat(track.firstChild.style.width)});
+        const portrait=inspected.doc.querySelector('.zx-profile-art'),pixels=portrait.getContext('2d').getImageData(0,0,160,168).data;
+        let blue=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i+2]>pixels[i]*1.25&&pixels[i+1]>pixels[i]+30&&pixels[i+3]>200)blue++;
+        experience.push({progress:Number(portrait.dataset.progress),blue});
       }
-      p.level=oldLevel+1;p.xp=0;refresh();
-      const level=inspected.doc.querySelector('.zx-hud-level').textContent,reset=Number(inspected.doc.querySelector('.zx-hud-xp-track').dataset.progress);
+      p.hp=oldHp;p.xp=0;refresh();
+      const resetExperience=Number(inspected.doc.querySelector('.zx-profile-art').dataset.progress);
+      const level=inspected.doc.querySelector('.zx-hud-level').textContent,topBars=inspected.doc.querySelectorAll('.zx-hud-hp,.zx-hud-track,.zx-hud-xp-track').length;
       p.addItem('leftovers');p.addItem('leftovers');p.addItem('lucky-egg');p.addVitamin('protein',.12);p.moves[0].level=oldSkill+1;p.moveSlots=4;refresh();
       const items=[...inspected.doc.querySelectorAll('[data-item]')].map(n=>[n.dataset.item,Number(n.dataset.count)]),skill=Number(inspected.doc.querySelector('[data-skill-slot="0"]').dataset.level),unlocked=!inspected.doc.querySelector('[data-skill-slot="3"]').classList.contains('locked');
       p.level=oldLevel;p.xp=oldXp;p.moveSlots=oldSlots;refresh();r.state='play';
       const minimap=inspected.doc.querySelector('.zx-minimap'),mapPixels=minimap.getContext('2d').getImageData(0,0,240,240).data;
-      return {samples,level,expectedLevel:'LV.'+(oldLevel+1),reset,items,skill,expectedSkill:oldSkill+1,unlocked,mapDrawn:mapPixels.some((v,i)=>i%4===3&&v>0),score:inspected.doc.querySelector('.zx-hud-score').textContent,expectedScore:'积分 '+Math.round(r.stats.kills).toLocaleString('en-US')};
+      return {samples,experience,resetExperience,weatherTags:inspected.doc.querySelectorAll('.zx-hud-weather').length,level,expectedLevel:'LV.'+oldLevel,topBars,items,skill,expectedSkill:oldSkill+1,unlocked,mapDrawn:mapPixels.some((v,i)=>i%4===3&&v>0),score:inspected.doc.querySelector('.zx-hud-score').textContent,expectedScore:'积分 '+Math.round(r.stats.kills).toLocaleString('en-US')};
     });
-    assert.deepEqual(hudBindings.samples.map(s=>s.progress),[0,.25,.75,.99]);assert.deepEqual(hudBindings.samples.map(s=>s.width),[0,25,75,99],'Experience bar must follow actual XP');
-    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.reset,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.mapDrawn);assert.equal(hudBindings.score,hudBindings.expectedScore);assert.ok(hudBindings.items.some(([id,n])=>id==='leftovers'&&n===2));
+    assert.deepEqual(hudBindings.samples.map(s=>s.progress),[0,.25,.75,1]);assert.ok(hudBindings.samples.every(s=>s.value===s.expected),'Foot health must follow damage and healing');
+    assert.deepEqual(hudBindings.experience.map(s=>s.progress),[0,.25,.75,.99]);assert.equal(hudBindings.resetExperience,0);assert.equal(hudBindings.weatherTags,0);
+    assert.ok(hudBindings.experience.every((sample,i,all)=>!i||sample.blue>all[i-1].blue),'The blue portrait arc must visibly fill as experience increases');
+    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.topBars,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.mapDrawn);assert.equal(hudBindings.score,hudBindings.expectedScore);assert.ok(hudBindings.items.some(([id,n])=>id==='leftovers'&&n===2));
     fs.writeFileSync(path.join(dir,'hud-bindings.json'),JSON.stringify(hudBindings,null,2));await snapshot('07-hud-skills-items');
+    await page.evaluate(()=>{const r=app.run;window.previewXp=r.player.xp;r.player.xp=r.player.xpNext*.65;r.state='paused';r.ui.hud(r);});
+    await snapshot('07-experience-ring-65');
+    await page.evaluate(()=>{app.run.player.xp=window.previewXp;app.run.state='play';app.run.ui.hud(app.run);});
+    await reviewExperience(page,dir);
     await reviewItems({page,tap,resize,dir,sleep,snapshot});
     async function controls(){return page.evaluate(()=>{
       const box=sel=>{const b=inspected.layout.box(inspected.doc.querySelector(sel));return b&&{x:b.x,y:b.y,w:b.w,h:b.h,cx:b.x+b.w/2,cy:b.y+b.h/2};};
-      const labels=['.zx-hud-level','.zx-hud-hp','.zx-hud-clock','.zx-hud-gold'].map(selector=>{
+      const labels=['.zx-hud-level','.zx-hud-clock','.zx-hud-gold'].map(selector=>{
         const el=inspected.doc.querySelector(selector),b=inspected.layout.box(selector==='.zx-hud-level'?el:el.firstChild),label=inspected.layout.box(el);
         return {selector,text:el.textContent,width:b.w,height:b.h,font:b.s.font,nowrap:b.s['white-space']==='nowrap',labelHeight:label.h};
       });
-      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),labels,skills:[0,1,2,3].map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
+      const p=app.run.player,foot=app.run.ui.project(app.run,p.pos.x,p.pos.y-.15,p.pos.z);
+      const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+      const header={offsetX:-screen.x,offsetY:-screen.y,safeTop:wx.getWindowInfo().safeArea.top,menu:wx.getMenuButtonBoundingClientRect(),badge:box('.zx-hud-level'),portrait:box('.zx-profile-art')};
+      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,header,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),name:box('.zx-hud-name-row'),supplies:box('.zx-inventory-items'),health:box('.zx-player-health'),foot,labels,skills:[0,1,2,3].map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
     });}
     function swipeControls(c){
       assert.ok(c.stick&&c.knob&&c.stick.w>=100&&Math.abs(c.stick.w-c.stick.h)<=1,'The fixed circular joystick must remain visible and easy to reach');
@@ -229,9 +247,14 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       assert.ok(c.stick.y>=0&&c.stick.y+c.stick.h<c.height,'Joystick must fit above the safe bottom edge');
       assert.ok(c.ult&&c.ult.x>=0&&c.ult.y>=0&&c.ult.x+c.ult.w<=c.width+1&&c.ult.y+c.ult.h<c.height,'Ultimate must fit above the safe bottom edge');
       assert.ok(c.profile.x+c.profile.w+8<=c.minimap.x&&Math.abs(c.profile.y-c.minimap.y)<=4,'Status card and circular minimap must sit side by side without overlapping');
-      assert.ok(c.location.x+c.location.w+6<=c.counters.x&&c.counters.x+c.counters.w<=c.width-8,'Stage belongs on the left; time and coins belong on the right');
-      assert.ok(c.profile.y>=c.location.y+c.location.h+10&&c.minimap.y>=c.counters.y+c.counters.h+8,'The header must stay clear of the portrait and minimap');
-      assert.ok(c.meta.y>=c.profile.y+c.profile.h+8&&c.pause.y>=c.minimap.y+c.minimap.h+8,'Score and pause must stay clear of the profile and minimap');
+      assert.ok(c.location.x+c.location.w<=c.width-8&&c.counters.y>=c.profile.y+c.profile.h+8&&c.counters.x+c.counters.w<=c.minimap.x,'Time and coins belong below the profile');
+      assert.ok(c.location.y<0&&Math.abs(c.location.cy+c.header.offsetY-(c.header.menu.top+c.header.menu.bottom)/2)<1,'Stage strip must align with the capsule center');
+      assert.ok(c.location.x+c.location.w+c.header.offsetX+44<=c.header.menu.left,'Stage strip must leave room for the capsule and game icon');
+      assert.ok(c.profile.y>=c.location.y+c.location.h+10&&c.profile.y<=c.location.y+c.location.h+26,'The portrait must sit close below the stage strip');
+      assert.ok(c.header.badge.y>c.header.portrait.y+c.header.portrait.h*75.25/84+1,'The level badge must leave the entire experience ring visible');
+      assert.ok(c.supplies.y>=c.name.y+c.name.h+4&&c.supplies.x+c.supplies.w<c.profile.x+c.profile.w,'Items must fit below the character name');
+      assert.ok(c.meta.y>=c.skills.at(-1).y+c.skills.at(-1).h&&c.pause.y>=c.minimap.y+c.minimap.h+8,'Score belongs along the bottom and pause below the minimap');
+      assert.ok(Math.abs(c.health.cx-c.foot.x)<=2&&c.health.y>=c.foot.y+6&&c.health.y<=c.foot.y+14,'Health must follow the projected feet, including movement and resizing');
       for(let i=0;i<c.skills.length;i++){const s=c.skills[i];assert.equal(s.w,s.h);assert.ok(s.x+s.w<=c.stick.x);if(i)assert.ok(s.y>c.skills[i-1].y+c.skills[i-1].h);}
       assert.ok(c.labels[0].nowrap&&c.labels[0].width>=40,'The level badge must remain legible on one line');
       const overlaps=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;

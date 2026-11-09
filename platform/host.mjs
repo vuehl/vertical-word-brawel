@@ -22,7 +22,8 @@ import {initCrypto,random} from './crypto.mjs';
 import {dispatchApi} from 'pokebonk:api';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
-import {createControlLayer} from './control-layer.mjs';
+import {createControlLayer,createCanvasLayer} from './control-layer.mjs';
+import {gameViewport} from './viewport.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -38,23 +39,10 @@ function storage(prefix) {
 // DOM layout, hit testing and client coordinates share the usable rectangle.
 // The 3D canvas still covers the whole WeChat window behind the controls.
 function viewport(info) {
-  const width=info.windowWidth,height=info.windowHeight,screenTop=info.screenTop||0;
-  let left=0,top=0,right=width,bottom=height;
-  const safe=info.safeArea;
-  if(safe){
-    const x=Math.max(0,safe.left),y=Math.max(0,safe.top-screenTop);
-    const r=Math.min(width,safe.right),b=Math.min(height,safe.bottom-screenTop);
-    // Ignore empty or still-portrait coordinates during an orientation change.
-    if(r-x>width/2&&b-y>height/2){left=x;top=y;right=r;bottom=b;}
-  }
-  try{
-    const menu=wx.getMenuButtonBoundingClientRect?.();
-    if(menu&&menu.right>menu.left&&menu.right<=width+1&&menu.bottom>menu.top&&menu.bottom-screenTop<height/2)
-      top=Math.max(top,menu.bottom-screenTop+4);
-  }catch{} // Some runtimes do not expose a capsule rectangle.
-  return {w:right-left,h:bottom-top,x:left,y:top,width,height,dpr:info.pixelRatio||1};
+  let menu;try{menu=wx.getMenuButtonBoundingClientRect?.();}catch{}
+  return gameViewport(info,menu);
 }
-const uiScale=view=>Math.min(view.dpr,2,Math.sqrt(2000000/(view.width*view.height)));
+const uiScale=(view,profile={})=>Math.min(view.dpr,profile.uiPixelRatio??2,Math.sqrt((profile.uiPixelBudget??2000000)/(view.width*view.height)));
 export async function setup(host) {
   await initCrypto();
   const {document:doc}=D.parseHTML('<!doctype html><html><head></head><body><canvas id="game"></canvas><div id="ui"></div></body></html>');
@@ -63,6 +51,8 @@ export async function setup(host) {
   const uiFrames=createUIFrameCache();
   const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,()=>uiFrames.invalidate());
   const controls=createControlLayer(makeCanvas);
+  const minimap=createCanvasLayer(makeCanvas,'minimap');
+  const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true});
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
@@ -76,6 +66,13 @@ export async function setup(host) {
       const element=record.target.nodeType===1?record.target:record.target.parentElement;
       if(element?.closest?.('[data-ui-hidden="true"]'))continue;
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
+      if(record.type==='attributes'&&minimap.owns(element)&&record.attributeName==='data-frame'){
+        minimap.invalidate();continue;
+      }
+      if(record.type==='attributes'&&health.owns(element)&&['style','data-frame','data-progress','aria-valuenow','aria-valuemax','aria-label'].includes(record.attributeName)){
+        if(record.attributeName==='data-frame')health.invalidate();
+        continue;
+      }
       if(record.type==='attributes'&&controls.owns(element)&&['style','class'].includes(record.attributeName)){
         controls.invalidate();continue;
       }
@@ -215,16 +212,27 @@ export async function setup(host) {
     addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),dispatchEvent:win.dispatchEvent.bind(win),
     alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
+    setUIPerformance(profile){
+      // Settings also change inherited CSS variables (e.g. button size).
+      // Refresh their hit boxes even when the pixel ratio stays the same.
+      uiFrames.invalidate(true,true);
+      const next=uiScale(view,profile);
+      if(Math.abs(next-scale)<.001)return;
+      scale=env.uiPixelRatio=next;
+      uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
+      layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
+    },
     invalidateUI:()=>uiFrames.invalidate(false,true),
     drawUI(renderer,opaque=false){
       mutations(observer.takeRecords());
       const state=env.__pb?.run?.state;
       const changed=uiFrames.draw(perf.now(),state,layout,boxes=>{
-        controls.capture(boxes);paint(layout,boxes.filter(b=>!controls.owns(b.el)),view,scale);
+        controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);
+        paint(layout,boxes.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)))),view,scale);
       });
       if(opaque&&!changed)return;
-      const control=controls.draw(layout,view,scale,state==='play'&&!opaque);
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,control);
+      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque)];
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers);
     },
     locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
   });
@@ -234,7 +242,7 @@ export async function setup(host) {
     Object.assign(view,viewport(info));
     env.innerWidth=env.screen.width=view.w;env.innerHeight=env.screen.height=view.h;
     env.devicePixelRatio=view.dpr;
-    scale=env.uiPixelRatio=uiScale(view);uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
+    scale=env.uiPixelRatio=uiScale(view,env.nativeGraphics);uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
     layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     for(const query of queries.values()){
       const matches=mediaMatches(query.media,view);
@@ -242,6 +250,6 @@ export async function setup(host) {
     }
     env.dispatchEvent(new D.Event('resize'));
   });
-  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls});
+  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health});
   return env;
 }

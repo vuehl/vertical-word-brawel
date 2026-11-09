@@ -1,10 +1,12 @@
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {drawPaperIllustration} from './paper-ui-art.js';
-import {drawBattlePortrait,drawBattleMinimap} from './paper-hud-art.js';
+import {drawBattlePortrait,drawBattleMinimap,drawBattleHealth} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
 import {waitForLoadingPaint} from './loading-work.js';
+import {performanceProfile} from './performance-profile.js';
+import {ExperienceRing} from './experience-ring.js';
 
 export const characters = [
   {id:4,word:'火',name:'灼行者',tone:'fire',color:'#bc3441',role:'爆发',motto:'以攻为守，燎原不息',move:'火弹',ult:'燎原'},
@@ -186,7 +188,7 @@ export function createZixingUI(app,api) {
     const ring=el('canvas','zx-loading-ring',[],{width:400,height:400,'data-static':'true','aria-hidden':true});
     const progress=el('div','zx-loading-progress',[ring,value],{role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':0});
     const node=screen(name,'','',[el('div','zx-loading-content',[
-      el('h1','zx-loading-title','桌上世界'),el('h2','zx-loading-title','正在布置场景'),progress,
+      el('h1','zx-loading-title','正在布置场景'),progress,
     ])]);
     node.classList.add('zx-loading-screen');
     let shown=-1;
@@ -316,7 +318,14 @@ export function createZixingUI(app,api) {
   }
   function renderSettings() {
     const s=profile().settings,fields=[];
-    const save=()=>{app.applySettings();app.meta.save();applyTheme();};
+    const status=small('');status.classList.add('zx-performance-status');
+    const refreshStatus=()=>{
+      const p=performanceProfile(s),buffer=app.r?.composer?.inputBuffer,fps=app.perf?.fps;
+      status.textContent='当前生效：'+p.name+' · 上限 '+app.fpsCap()+' 帧'+(buffer?' · 场景 '+buffer.width+'×'+buffer.height:'')+
+        (app.run&&fps>0?'。最近战斗 '+Math.round(fps)+' FPS；切换后返回战斗采样。':'。帧率上限不代表实际帧率。');
+    };
+    refreshStatus();
+    const save=()=>{app.applySettings();app.meta.save();applyTheme();refreshStatus();};
     const toggle=(label,key,note='')=>{
       fields.push(key);const b=el('button','zx-switch'+(s[key]?' on':''),el('i'),{type:'button',role:'switch','aria-label':label,'aria-checked':!!s[key]});
       b.addEventListener('click',()=>{s[key]=!s[key];b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();});
@@ -339,7 +348,7 @@ export function createZixingUI(app,api) {
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),range('音乐','music',0,1,.01),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'优先流畅，简化阴影、光效和掉落表现。',medium:'更清晰的桌面与柔和阴影，兼顾画质和流畅度。',high:'高清桌面、完整阴影与发光描边，适合高性能手机。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','固定 30 帧，并临时使用流畅画质'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']]))];
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'优先流畅，简化阴影、光效和掉落表现。',medium:'更清晰的桌面与柔和阴影，兼顾画质和流畅度。',high:'高清桌面、完整阴影与发光描边，适合高性能手机。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','固定 30 帧，并临时使用流畅画质'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']])),status];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -436,19 +445,18 @@ export function createZixingUI(app,api) {
       if(move&&!locked)node.style.background='linear-gradient(180deg,#effbff,'+api.moveColor(move.def)+')';
       return node;
     });
-    const vitamins=[...p.vitamins],vits=el('div','zx-vitamin-slots',Array.from({length:vitamins.length},(_,index)=>{
-      const entry=vitamins[index];return el('div','zx-mini-slot'+(entry?' filled':''),entry?[image(api.vitaminIcon(entry[0]),api.vitaminName(entry[0])),el('b','zx-slot-count',String(entry[1].level))]:[],{'data-vitamin':entry?.[0]||'',title:entry?api.vitaminName(entry[0]):'空强化槽'});
-    }));
-    const narrow=innerWidth<=350,available=innerWidth-(narrow?70:78)-18;
-    const capacity=Math.max(2,Math.min(12,Math.floor((available+4)/((narrow?24:28)+4))));
-    const ownedItems=[...p.items],visible=ownedItems.length>capacity?capacity-1:capacity;
-    const items=el('div','zx-inventory-items',ownedItems.slice(0,visible).map(([id,count])=>el('div','zx-mini-slot filled',[
-      image(api.itemIcon(id),api.itemName(id)),el('b','zx-slot-count','×'+count),
-    ],{'data-item':id,'data-count':count,title:api.itemName(id)+' ×'+count})));
-    if(ownedItems.length>visible)items.append(button('+'+(ownedItems.length-visible),()=>run.pause(),'zx-mini-slot zx-loadout-more',{'aria-label':'查看全部道具','data-action':'inventory-more'}));
-    const inventory=el('div','zx-inventory',[small('道具'),items]);
-    inventory.hidden=!profile().settings.showItems||!p.items.size;
-    return [el('div','zx-skill-slots',slots),el('div','zx-hud-supplies',[vits,inventory])];
+    // Match the space beneath the name at each portrait/minimap breakpoint.
+    const narrow=innerWidth<=350,available=innerWidth-(narrow?200:232);
+    const capacity=Math.max(3,Math.min(6,Math.floor((available+4)/((narrow?24:26)+4))));
+    const entries=[...(profile().settings.showItems?[...p.items].map(([id,count])=>({id,count,kind:'item',name:api.itemName(id),src:api.itemIcon(id)})):[]),
+      ...[...p.vitamins].map(([id,value])=>({id,count:value.level,kind:'vitamin',name:api.vitaminName(id),src:api.vitaminIcon(id)}))];
+    const visible=entries.length>capacity?capacity-1:capacity;
+    const items=el('div','zx-inventory-items',entries.slice(0,visible).map(({id,count,kind,name,src})=>el('div','zx-mini-slot filled',[
+      image(src,name),el('b','zx-slot-count',String(count)),
+    ],{['data-'+kind]:id,'data-count':count,title:name+' ×'+count,'aria-label':name+' ×'+count})));
+    if(entries.length>visible)items.append(button('+'+(entries.length-visible),()=>run.pause(),'zx-mini-slot zx-loadout-more',{'aria-label':'查看全部道具与强化','data-action':'inventory-more'}));
+    while(items.children.length<capacity)items.append(el('div','zx-mini-slot empty',[],{'aria-hidden':true}));
+    return [el('div','zx-skill-slots',slots),items];
   }
   function offerContent(symbol,title,notes) {
     return row(glyph(symbol),col(el('b','',title),...notes));
@@ -559,23 +567,34 @@ export function createZixingUI(app,api) {
         small('保留当前招式与已有强化。'),card(statRow('基础成长','提升伤害与生命'),statRow('进阶次数',String(run.player.evoStage+1))),
       ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary')],hud);
     };
+    hud.compact=true;
     const node=el('div','zx zx-hud');node.dataset.hud='true';
     // Separate Latin prefix glyphs: the bundled Swei font has overly tight LV.
     // kerning, which otherwise merges the reference label into a single mark.
-    const hp=el('span','zx-hud-hp',''),levelValue=el('span','','');
-    const level=el('b','zx-hud-level',[...['L','V','.'].map(ch=>el('span','',ch)),levelValue]),fill=el('div','zx-hud-fill');
+    const levelValue=el('span','','');
+    const level=el('b','zx-hud-level',[...['L','V','.'].map(ch=>el('span','',ch)),levelValue]);
     const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
     const stageLabel=el('small','zx-hud-stage',''),score=el('span','zx-hud-score',''),c=character(run.startSpecies);
+    const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化'});
+    const health=el('canvas','zx-player-health',[],{width:176,height:40,'data-static':'true','data-ui-layer':'health',role:'progressbar','aria-label':'角色生命','aria-valuemin':0});
     node.classList.add('zx-hud-'+c.tone);
-    const portrait=el('canvas','zx-profile-art',[],{width:160,height:168,'aria-label':c.name}),xp=el('div','zx-hud-xp');
-    const xpTrack=el('div','zx-hud-xp-track',xp,{role:'progressbar','aria-label':'升级经验','aria-valuemin':0,'aria-valuemax':100});
+    const portrait=el('canvas','zx-profile-art',[],{width:160,height:168,role:'progressbar','aria-label':c.name+' · 升级经验','aria-valuemin':0,'aria-valuemax':100});
     portrait.dataset.static='true';
-    const refreshPortrait=()=>drawBattlePortrait(portrait,glyphWordForSpecies(run.player.speciesId??run.startSpecies),c.tone);
+    const xpRing=new ExperienceRing(run.player,performance.now());
+    const experience=()=>xpRing.progress;
+    hud.experienceReady=()=>xpRing.ready;
+    let portraitFrame=0;
+    const refreshPortrait=()=>{
+      const progress=experience();
+      drawBattlePortrait(portrait,glyphWordForSpecies(run.player.speciesId??run.startSpecies),c.tone,progress);
+      portrait.dataset.progress=String(progress);portrait.dataset.frame=String(++portraitFrame);
+      portrait.setAttribute('aria-valuenow',Math.round(progress*100));
+    };
     refreshPortrait();glyphAtlasReady().then(refreshPortrait).catch(()=>{});
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
+    minimap.dataset.uiLayer='minimap';
     minimap.setAttribute('aria-label','附近地图，点击查看完整地图');
-    node.append(el('div','zx-hud-top',[
-      el('div','zx-hud-location',[icon('pin',14,'#5277a4'),area]),
+    node.append(el('div','zx-hud-location',[icon('pin',13,'#5277a4'),area,stageLabel],{'data-ui-region':'hud-top'}),el('div','zx-hud-top',[
       el('div','zx-hud-counters',[
         el('div','zx-hud-counter',[icon('clock',14,'#637ca3'),clock],{'aria-label':'关卡时间'}),
         el('div','zx-hud-counter',[icon('coin',15,'#b68a37'),gold],{'aria-label':'本局金币'}),
@@ -584,10 +603,10 @@ export function createZixingUI(app,api) {
         el('div','zx-hud-card-back'),el('div','zx-hud-card'),portrait,
         el('div','zx-hud-identity',[
           el('div','zx-hud-name-row',[el('b','zx-hud-name',c.name),el('span','zx-hud-element',c.word)]),
-          row(el('span','zx-hud-hp-label','生命'),hp),el('div','zx-hud-track',fill),xpTrack,
+          supplies,
         ]),level,
-      ]),minimap,
-    ]),el('div','zx-hud-meta',[icon('score',18,'#637fae'),score,stageLabel]),button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),inventory);
+      ]),minimap,button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),
+    ],{'data-ui-region':'hud-stack'}),el('div','zx-hud-meta',[score]),inventory,health);
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
@@ -628,32 +647,50 @@ export function createZixingUI(app,api) {
       const now=performance.now();if(minimap.hidden||now-mapAt<(run.performance?.mapInterval??120))return;
       mapAt=now;drawBattleMinimap(minimap,r);minimap.dataset.frame=String(++mapFrame);
     };
-    const originalUlt=hud.ultHud.bind(hud);
     hud.ultHud=r=>{
-      originalUlt(r);
+      for(const [name,on] of [['ready',r.ult.ready],['active',r.ult.active>0],['deny',r.ult.denyT>0]])hud.touch.ult.classList.toggle(name,on);
       const core=hud.touch.ult.children[1];
       if(!core.querySelector('.zx-ult-label'))core.replaceChildren(el('div','zx-ult-label',[el('span','','✧'),el('span','','大招'),el('small','','蓄能')]));
-      const label=core.querySelector('small'),value=r.ult.ready?'就绪':percent(r.ult.charge);
+      const label=core.querySelector('small'),value=r.ult.ready?'就绪':Math.floor(r.ult.charge*100)+'%';
       if(label.textContent!==value)label.textContent=value;
     };
     const original=hud.hud.bind(hud);
     const updateText=(node,value)=>{if(node.textContent!==value)node.textContent=value;};
-    let last=-Infinity,lastState='',lastLoadout='',lastExperience=-1;
+    let last=-Infinity,lastState='',lastLoadout='',lastHealth='',healthFrame=0;
+    const updateHealth=()=>{
+      const p=run.player,point=hud.project(run,p.pos.x,p.pos.y-.15,p.pos.z);
+      health.hidden=!point.vis||p.dead;
+      if(health.hidden)return;
+      // Project after the camera update on every frame, independent of the
+      // slower top HUD. Native rendering moves this small cached texture only.
+      const position='translate('+Math.round(point.x-44)+'px, '+Math.round(point.y+10)+'px)';
+      if(health.style.transform!==position)health.style.transform=position;
+      const current=Math.max(0,Math.ceil(p.hp)),maximum=Math.max(1,Math.round(p.maxHp));
+      const fraction=Math.round(Math.max(0,Math.min(1,p.hp/Math.max(1,p.maxHp)))*1000)/1000;
+      const bonus=Math.max(0,Math.round(p.shield+p.overheal)),key=[current,maximum,fraction,bonus].join('/');
+      if(key===lastHealth)return;lastHealth=key;
+      drawBattleHealth(health,fraction,current,bonus);
+      health.dataset.progress=String(fraction);health.dataset.frame=String(++healthFrame);
+      health.setAttribute('aria-valuenow',current);health.setAttribute('aria-valuemax',maximum);
+      health.setAttribute('aria-label','生命 '+current+' / '+maximum+(bonus?'，护盾与额外生命 '+bonus:''));
+    };
     hud.hud=function(...args){
+      updateHealth();
       const now=performance.now();
+      xpRing.update(run.player,now,run.state==='play');
+      updateText(levelValue,String(xpRing.level));
+      const evolved=glyphWordForSpecies(run.player.speciesId??run.startSpecies);
+      if(portrait.dataset.word!==evolved||Number(portrait.dataset.progress)!==experience())refreshPortrait();
       if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
       last=now;lastState=run.state;
       original(...args);
       if(profile().settings.zxBossHealth==='percent'&&run.boss.alive){const index=run.boss.bossIndex;hud.els.bossBar.children[4].textContent=percent(Math.max(0,run.enemies.hp[index]/run.enemies.maxHp[index]));}
-      const p=run.player;updateText(levelValue,String(p.level));updateText(hp,Math.ceil(p.hp)+'/'+Math.round(p.maxHp));
-      updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'区'));updateText(stageLabel,['普通','困难','噩梦'][run.tier]);
+      const p=run.player;
+      updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'/3区'));updateText(stageLabel,['普通','困难','噩梦'][run.tier]);
+      stageLabel.dataset.tier=String(run.tier);
       updateText(score,'积分 '+number(run.stats.kills));updateText(clock,time(run.time));updateText(gold,number(run.gold));
-      const evolved=glyphWordForSpecies(p.speciesId??run.startSpecies);if(portrait.dataset.word!==evolved)refreshPortrait();
       const loadoutKey=JSON.stringify([p.moves.map(m=>m&&[m.def.key,m.level]),p.moveSlots,[...p.vitamins].map(([id,v])=>[id,v.level]),p.vitaminSlots,[...p.items],profile().settings.showItems,innerWidth]);
-      if(loadoutKey!==lastLoadout){lastLoadout=loadoutKey;inventory.replaceChildren(...loadout(run));}
-      const health=percent(Math.max(0,Math.min(1,p.hp/p.maxHp))),exp=Math.round(Math.max(0,Math.min(1,p.xp/Math.max(1,p.xpNext)))*1000)/1000;
-      if(fill.style.width!==health)fill.style.width=health;
-      if(exp!==lastExperience){lastExperience=exp;xp.style.width=percent(exp);xpTrack.dataset.progress=String(exp);xpTrack.setAttribute('aria-valuenow',Math.round(exp*100));}
+      if(loadoutKey!==lastLoadout){lastLoadout=loadoutKey;const [skills,items]=loadout(run);inventory.replaceChildren(skills);supplies.replaceChildren(items);}
     };
   }
   function intro(title,subtitle) {

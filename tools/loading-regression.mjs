@@ -158,6 +158,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     const loadingLayouts=[];
     for(const [width,height] of [[320,568],[390,844],[430,932]]){
       await resize(width,height);await sleep(150);
+      await page.waitForFunction(()=>!!inspected.layout.box(app.screen?.querySelector('.zx-loading-title'))&&!!inspected.layout.box(app.screen?.querySelector('.zx-loading-ring')));
       loadingLayouts.push(await page.evaluate(()=>{
         const boxes=Object.fromEntries(['.zx-loading-percent','.zx-loading-progress','.zx-loading-content','.zx-loading-ring'].map(selector=>{
           const b=inspected.layout.box(app.screen.querySelector(selector));return [selector,b&&{x:b.x,y:b.y,w:b.w,h:b.h,clip:b.clip}];
@@ -170,14 +171,15 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       }));
       await page.screenshot({path:path.join(dir,'entry-glyphs-'+width+'.png')});
     }
+    fs.writeFileSync(path.join(dir,'loading-layouts.json'),JSON.stringify(loadingLayouts,null,2));
     for(const {width,height,boxes} of loadingLayouts)for(const [selector,b] of Object.entries(boxes)){
       assert.ok(b&&b.w>0&&b.h>0&&b.x>=-1&&b.x+b.w<=width+1&&b.y>=-1&&b.y+b.h<=height+1,'Loading content fits: '+selector);
       assert.ok(Math.abs(b.x+b.w/2-width/2)<2,'Loading content is horizontally centered: '+selector);
       if(selector==='.zx-loading-percent')assert.ok(Math.abs(b.y+b.h/2-height/2)<height*.15,'Percentage stays near the screen center');
     }
     for(const layout of loadingLayouts){
-      assert.deepEqual(layout.titles.map(t=>t.text),['桌上世界','正在布置场景']);
-      assert.ok(layout.titles.every(t=>t.font===24),'Both loading titles use the same readable size');
+      assert.deepEqual(layout.titles.map(t=>t.text),['正在布置场景']);
+      assert.ok(layout.titles.every(t=>t.font===24),'Loading title uses a readable size: '+JSON.stringify(layout.titles));
       assert.equal(layout.buttons,0);assert.doesNotMatch(layout.text,/准备字灵|已等待|返回选择/);
       const progress=layout.boxes['.zx-loading-progress'];assert.equal(progress.w,progress.h);
       assert.deepEqual(layout.ring,{static:'true',center:0,top:255,corner:0},'Progress is a cached ring with a transparent center');

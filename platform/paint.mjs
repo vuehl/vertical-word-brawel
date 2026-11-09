@@ -109,9 +109,9 @@ export function compositor(gl,canvas) {
   gl.attachShader(prog,shader(gl.VERTEX_SHADER,'#version 300 es\nout vec2 uv;void main(){vec2 v=vec2((gl_VertexID<<1)&2,gl_VertexID&2);uv=vec2(v.x,1.-v.y);gl_Position=vec4(v*2.-1.,0.,1.);}'));
   gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision mediump float;in vec2 uv;out vec4 color;uniform sampler2D ui;void main(){color=texture(ui,uv);}'));
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
-  const texture=gl.createTexture(),controlTexture=gl.createTexture(),vao=gl.createVertexArray();
-  let width=0,height=0,controlWidth=0,controlHeight=0;
-  return (renderer,changed,opaque=false,control=null)=>{
+  const texture=gl.createTexture(),tiles=Array.from({length:3},()=>({texture:gl.createTexture(),width:0,height:0})),vao=gl.createVertexArray();
+  let width=0,height=0;
+  return (renderer,changed,opaque=false,layers=[])=>{
     renderer.resetState();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
     if(opaque){gl.disable(gl.SCISSOR_TEST);gl.clearColor(.957,.949,.98,1);gl.clear(gl.COLOR_BUFFER_BIT);}
     gl.useProgram(prog);gl.bindVertexArray(vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
@@ -126,16 +126,18 @@ export function compositor(gl,canvas) {
     }
     gl.disable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.disable(gl.SCISSOR_TEST);gl.depthMask(false);
     gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);gl.drawArrays(gl.TRIANGLES,0,3);
-    if(control){
+    for(const control of layers){
+      if(!control)continue;
+      const cache=tiles[control.slot||0];
       const {canvas:tile}=control;
-      gl.bindTexture(gl.TEXTURE_2D,controlTexture);
-      if(control.changed||controlWidth!==tile.width||controlHeight!==tile.height){
+      gl.bindTexture(gl.TEXTURE_2D,cache.texture);
+      if(control.changed||cache.width!==tile.width||cache.height!==tile.height){
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,true);
-        if(controlWidth!==tile.width||controlHeight!==tile.height){
+        if(cache.width!==tile.width||cache.height!==tile.height){
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
           gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,tile);
-          controlWidth=tile.width;controlHeight=tile.height;
+          cache.width=tile.width;cache.height=tile.height;
         }else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,tile);
       }
       const sx=gl.drawingBufferWidth/canvas.width,sy=gl.drawingBufferHeight/canvas.height;

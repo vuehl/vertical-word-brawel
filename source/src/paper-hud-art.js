@@ -1,12 +1,32 @@
 import {glyphCanvas} from './paper-glyph-art.js';
 
-export function drawBattlePortrait(canvas,word,tone) {
+export function drawBattleHealth(canvas,fraction,current,bonus=0) {
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(canvas.width/88,0,0,canvas.height/20,0,0);ctx.clearRect(0,0,88,20);
+  const pill=(x,y,w,h,r,color)=>{ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();};
+  pill(1,3,86,16,8,'#38576c99');pill(1,1,86,16,8,'#fffef8');pill(3,3,82,12,6,'#3e5759');
+  const fill=ctx.createLinearGradient(0,3,0,15);
+  fill.addColorStop(0,fraction<.3?'#ffb071':'#a3f59b');fill.addColorStop(1,fraction<.3?'#ef5e4e':'#29cd56');
+  ctx.save();ctx.beginPath();ctx.roundRect(3,3,82,12,6);ctx.clip();
+  ctx.fillStyle=fill;ctx.fillRect(3,3,82*fraction,12);ctx.restore();
+  const label=String(current)+(bonus?' +'+bonus:'');
+  ctx.font='700 '+(label.length>9?9:11)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.lineWidth=2;ctx.strokeStyle='#fffef8d9';ctx.strokeText(label,44,9.5);ctx.fillStyle='#263f36';ctx.fillText(label,44,9.5);
+}
+
+export function drawBattlePortrait(canvas,word,tone,experience=0) {
   const ctx=canvas.getContext('2d'),palette={fire:['#fff2dc','#ffd2a3','#ef9a52'],water:['#eefbff','#c4e9fc','#54aff0'],wood:['#f1fae8','#cfe7ba','#79b78a']}[tone]||['#f4f1ff','#ddd5f1','#9a89c2'];
   const disc=(x,y,r,color)=>{ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();};
   ctx.setTransform(canvas.width/80,0,0,canvas.height/84,0,0);ctx.clearRect(0,0,80,84);
-  disc(40,43,38,'#527ab2');disc(40,39,38,'#fffdf7');disc(40,39,35,palette[2]);disc(40,39,31.5,'#fff');
-  const paper=ctx.createLinearGradient(12,8,64,70);paper.addColorStop(0,palette[0]);paper.addColorStop(1,palette[1]);disc(40,39,29.5,paper);
-  ctx.strokeStyle='#ffffffd9';ctx.lineWidth=1.7;ctx.beginPath();ctx.arc(40,39,33,-Math.PI*.93,-Math.PI*.25);ctx.stroke();
+  disc(40,43,38,'#91a6b8');disc(40,39,38,'#fffdf7');disc(40,39,36.5,'#dce9f6');disc(40,39,31.5,palette[2]);disc(40,39,30,'#fff');
+  const paper=ctx.createLinearGradient(12,8,64,70);paper.addColorStop(0,palette[0]);paper.addColorStop(1,palette[1]);disc(40,39,28.5,paper);
+  const progress=Math.max(0,Math.min(1,experience));
+  if(progress>0){
+    const blue=ctx.createLinearGradient(12,6,68,72);blue.addColorStop(0,'#66dcff');blue.addColorStop(1,'#377ff0');
+    // Start at six o'clock, then fill through the left, top and right sides.
+    const start=Math.PI/2;
+    ctx.strokeStyle=blue;ctx.lineWidth=4.5;ctx.lineCap='butt';ctx.beginPath();ctx.arc(40,39,34,start,start+Math.PI*2*progress);ctx.stroke();
+  }
   ctx.drawImage(glyphCanvas(word,tone),12,11,56,56);canvas.dataset.word=word;
 }
 

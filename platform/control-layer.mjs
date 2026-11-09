@@ -1,5 +1,33 @@
 import {paint} from './paint.mjs';
 
+// A frequently changing canvas (the minimap) gets a small independent texture.
+export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false}={}){
+  let canvas,context,box,originX=0,originY=0,dirty=true;
+  return {
+    owns(el){return el?.dataset?.uiLayer===id;},
+    invalidate(){dirty=true;},
+    capture(boxes){
+      box=boxes.find(b=>b.el.dataset?.uiLayer===id&&b.opacity>0&&b.w>0);
+      if(box&&movable){const [x,y]=translation(box.el);originX=box.x-x;originY=box.y-y;}
+      dirty=true;
+    },
+    draw(layout,view,scale,enabled){
+      if(!enabled||!box||!box.el.isConnected||box.el.hidden)return null;
+      if(movable){const [x,y]=translation(box.el);box.x=originX+x;box.y=originY+y;}
+      const pad=4,x=Math.floor((box.x+view.x-pad)*scale),y=Math.floor((box.y+view.y-pad)*scale);
+      const width=Math.ceil((box.w+pad*2)*scale),height=Math.ceil((box.h+pad*2)*scale);
+      if(!canvas){canvas=makeCanvas();context=canvas.getContext('2d');}
+      const changed=dirty||canvas.width!==width||canvas.height!==height;
+      if(changed){
+        if(canvas.width!==width)canvas.width=width;if(canvas.height!==height)canvas.height=height;
+        paint({...layout,context},[box],{width:width/scale,height:height/scale,x:view.x-x/scale,y:view.y-y/scale},scale);dirty=false;
+      }
+      return {canvas,x,y,width,height,changed,slot};
+    },
+    get canvas(){return canvas;},
+  };
+}
+
 const translation=el=>{
   const values=/translate\(\s*([-\d.e+]+)px\s*,\s*([-\d.e+]+)px\s*\)/i.exec(el?.style.transform||'');
   return values?[Number(values[1]),Number(values[2])]:[0,0];
