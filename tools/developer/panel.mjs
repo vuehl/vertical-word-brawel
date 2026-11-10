@@ -82,7 +82,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   const markHome=()=>{
     const home=app.screen;if(!home?.classList.contains('zx-home'))return;
     const label=home.querySelector('.zx-home-top small');
-    if(label){text(label,'开发测试版 DEV 7');label.id='zx-dev-version';label.style.cssText='padding:5px 8px;border-radius:8px;background:#ffe0ad;color:#855329;font-weight:700;';}
+    if(label){text(label,'开发测试版 DEV 8');label.id='zx-dev-version';label.style.cssText='padding:5px 8px;border-radius:8px;background:#ffe0ad;color:#855329;font-weight:700;';}
     text(home.querySelector('.zx-home-foot small'),'分钟 / 怪数 / 全战斗压测');
   };
   const setScreen=app.setScreen.bind(app);
@@ -190,7 +190,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
       const update=()=>{text(toggle,label+' '+(options[key]?'开':'关'));toggle.setAttribute('aria-pressed',String(options[key]));if(monitor)monitor.hidden=!options.monitor;};
       update();values.toggles.push(update);switches.append(toggle);
     }
-    card.append(switches,node('small','按时间刷新最近一波首领；区域 Boss 可直接召唤。跳时间会清理旧首领及其随从，不发清理奖励。配装沿用正式技能池与强化规则。达到进化等级后，返回战斗选择方向并确认；也可点「升到下次进化」直接测试。停止预设会恢复原形态与路线。满负载额外加快施放。','font-size:11px;line-height:1.45;color:#796b57;'));
+    card.append(switches,node('small','按时间刷新最近一波首领；区域 Boss 可直接召唤，击败后按正式流程开启裂隙、发放奖励并前往下一区域。跳时间会清理旧首领及其随从，不发清理奖励。配装沿用正式技能池与强化规则。达到进化等级后，返回战斗选择方向并确认；也可点「升到下次进化」直接测试。停止预设会恢复原形态与路线。满负载额外加快施放。','font-size:11px;line-height:1.45;color:#796b57;'));
     const stats=node('div',summary(),'font-size:11px;line-height:1.5;white-space:pre-wrap;background:#edf0e6;padding:8px;border-radius:8px;');card.append(stats);
     const footer=node('div','','flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 14px 12px;');shell.append(footer);
     error=node('div','','font-size:11px;color:#b4472d;min-height:16px;');footer.append(error);

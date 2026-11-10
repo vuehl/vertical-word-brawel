@@ -14,24 +14,9 @@ export function nextEncounter(timeline,seconds){
   return next;
 }
 export function createEncounterTest(run,speciesName){
-  let current=null,guardian=null;
-  const originalCredit=run.combat.credit;
-  run.combat.credit=function(index,...args){
-    if(!current||index!==current.index||run.enemies.gen[index]!==current.gen)return originalCredit.call(this,index,...args);
-    // Keep real drops/death effects, but controlled encounters do not research
-    // families or unlock progression (some removed families lack metadata).
-    const research=run.research.add;
-    try{run.research.add=()=>{};return originalCredit.call(this,index,...args);}
-    finally{run.research.add=research;}
-  };
-  const originalKilled=run.onBossKilled;
-  run.onBossKilled=function(index){
-    // A test guardian must not open a portal or end the stage during a sample.
-    if(current?.kind==='guardian'&&run.boss===guardian&&current.index===index&&run.enemies.gen[index]===current.gen){
-      run.boss.release();run.projectiles.clearHostile();return;
-    }
-    return originalKilled.call(this,index);
-  };
+  // Only spawning/rewinding is controlled. Real defeats use the release
+  // credit and guardian callbacks, including research, rewards and portals.
+  let current=null;
   function clear(){
     const e=run.enemies,old=run.boss;
     const followers=[...old.escorts,...run.minibosses.list.flatMap(m=>m.minions)];
@@ -42,9 +27,9 @@ export function createEncounterTest(run,speciesName){
     run.minibosses=new run.minibosses.constructor(run);
     run.bossSpawned=false;run.stageCleared=false;
     run.projectiles.clearHostile();run.zones.clear();run.vfx.clear();
-    // Remove already-open exits from an earlier natural fight when rewinding.
+    // Explicitly applying a new encounter resets exits from the previous fight.
     for(const item of [...run.interactables.list])if(item.kind==='portal')run.interactables.remove(item);
-    current=null;guardian=null;
+    current=null;
   }
   function nearby(){
     let best=null,bestScore=Infinity;
@@ -81,7 +66,6 @@ export function createEncounterTest(run,speciesName){
         run.introBoss=()=>{};
         run.terrain.randomPoint=function(...args){if(first){first=false;return point;}return randomPoint.apply(this,args);};
         run.spawnBoss(run.player.pos.x,run.player.pos.z);
-        guardian=run.boss;
       }finally{run.introBoss=intro;run.terrain.randomPoint=randomPoint;}
     }else{
       const spawn=plan.kind==='totem'?'spawnTotem':'spawnSummoner';

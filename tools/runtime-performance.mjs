@@ -66,7 +66,7 @@ try{
   console.log('Home ready; creating an isolated run for workload counts.');
   if(development){
     await page.waitForFunction(()=>window.inspected?.env.__zixingDeveloper);
-    assert.equal(await page.evaluate(()=>inspected.doc.querySelector('#zx-dev-version')?.textContent),'开发测试版 DEV 7');
+    assert.equal(await page.evaluate(()=>inspected.doc.querySelector('#zx-dev-version')?.textContent),'开发测试版 DEV 8');
     await page.screenshot({path:path.join(dir,'dev-home.png')});
   }
   const initial=await page.evaluate(async development=>{

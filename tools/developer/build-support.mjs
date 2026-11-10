@@ -55,7 +55,7 @@ export function writeProject(root,out){
 // Main and gameplay must come from the same developer build. A stale release
 // subpackage must fail visibly instead of silently starting without the panel.
 export function stampRuntime(main,play){
-  const id='dev7-'+createHash('sha256').update(main).update(play).digest('hex').slice(0,12);
+  const id='dev8-'+createHash('sha256').update(main).update(play).digest('hex').slice(0,12);
   return {id,
     main:replaceOnce(main,"if (api && typeof api.setup==='function' && typeof api.run==='function') resolve(api);",
       `if (api && api.developerBuild===${JSON.stringify(id)} && typeof api.setup==='function' && typeof api.run==='function') resolve(api);`)
