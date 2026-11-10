@@ -1,5 +1,38 @@
 import {glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 
+export function drawBattleCooldown(canvas,progress,{ultimate=false,ready=false,active=false}={}) {
+  const ctx=canvas.getContext('2d'),size=ultimate?84:42,c=size/2,r=c-(ultimate?3:2);
+  ctx.setTransform(canvas.width/size,0,0,canvas.height/size,0,0);ctx.clearRect(0,0,size,size);
+  const fraction=Math.max(0,Math.min(1,progress));
+  // Regular skills use only an inset cooldown veil. The slot owns the single
+  // static rim, so ready/active skills never acquire another colored ring.
+  if(!ultimate){
+    if(!ready&&!active&&fraction<1){
+      const start=-Math.PI/2;
+      ctx.beginPath();
+      if(fraction>0)ctx.moveTo(c,c);
+      ctx.arc(c,c,r-1,start+2*Math.PI*fraction,start+2*Math.PI);ctx.closePath();ctx.fillStyle='#302e3e80';ctx.fill();
+    }
+    return;
+  }
+  const start=Math.PI/2;
+  ctx.lineWidth=4.5;ctx.lineCap='round';
+  ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);ctx.strokeStyle='#d3d8e3';ctx.stroke();
+  if(fraction>0){
+    const gradient=ctx.createLinearGradient(0,0,size,size);gradient.addColorStop(0,ready?'#fff3af':'#79e6ff');gradient.addColorStop(1,ready?'#b59aff':'#4587f3');
+    ctx.beginPath();ctx.arc(c,c,r,start,start+2*Math.PI*fraction);ctx.strokeStyle=active?'#ffd98a':gradient;ctx.stroke();
+  }
+}
+
+// Capture/rare/treasure targets need their own symbol, including beyond the
+// minimap radius. Keep flags in sync with the runtime enemy flag enum.
+export function specialMapMarker(flags,dx,dz,isBoss=false){
+  const kind=flags&(128|2048)?'rare':flags&16384?'treasure':isBoss||flags&(4|4096|8192)?'boss':flags&3?'elite':null;
+  if(!kind)return null;
+  const distance=Math.hypot(dx,dz),edge=distance>40,k=edge?40/distance:1;
+  return {kind,x:60+dx*k,y:58+dz*k,edge,angle:Math.atan2(dz,dx)};
+}
+
 export function drawBattleHealth(canvas,fraction,current,bonus=0) {
   const ctx=canvas.getContext('2d');
   ctx.setTransform(canvas.width/88,0,0,canvas.height/20,0,0);ctx.clearRect(0,0,88,20);
@@ -32,7 +65,7 @@ export function drawBattlePortrait(canvas,word,tone,experience=0) {
 
 // One north-up projection for both map sizes. The small HUD refreshes at most
 // every 120 ms; the enlarged view is drawn once while the battle is paused.
-export function drawBattleMinimap(canvas,run) {
+export function drawBattleMinimap(canvas,run,{shadow=true}={}) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=.9;
   const point=(x,z)=>[60+(x-p.x)*scale,58+(z-p.z)*scale];
   const visible=(x,y)=>(x-60)**2+(y-58)**2<=49**2;
@@ -41,7 +74,8 @@ export function drawBattleMinimap(canvas,run) {
     if(outline){ctx.lineWidth=1.1;ctx.strokeStyle=outline;ctx.stroke();}
   };
   ctx.setTransform(canvas.width/120,0,0,canvas.height/120,0,0);ctx.clearRect(0,0,120,120);
-  dot(60,62,56,'#527ab2',null);dot(60,58,56,'#fffdf7',null);dot(60,58,52,'#c3daeb',null);dot(60,58,49,'#eff5f4',null);
+  if(shadow)dot(60,62,56,'#527ab2',null);
+  dot(60,58,56,'#fffdf7',null);dot(60,58,52,'#c3daeb',null);dot(60,58,49,'#eff5f4',null);
   ctx.save();ctx.beginPath();ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
   if(!run.events?.blind){
     ctx.strokeStyle='#cedee0';ctx.lineWidth=.6;ctx.beginPath();
@@ -75,9 +109,10 @@ export function drawBattleMinimap(canvas,run) {
       if(kind<2){ctx.beginPath();ctx.fillStyle=kind?'#f2bd29':'#d76677';}
       for(let i=0;i<enemies.n;i++){
         if(!enemies.alive[i]||enemies.dying[i]>0||(enemies.flags[i]&32768))continue;
-        const type=boss(i)?2:(enemies.flags[i]&3)?1:0;if(type!==kind)continue;
+        const type=(enemies.flags[i]&(128|2048|16384))?3:boss(i)?2:(enemies.flags[i]&3)?1:0;if(type!==kind)continue;
         const x=60+(enemies.x[i]-p.x)*scale,y=58+(enemies.z[i]-p.z)*scale;
         if(!visible(x,y))continue;
+        if(kind>0&&(x-60)**2+(y-58)**2>40**2)continue;
         if(kind===2){
           dot(x,y,6.3,'#fff4dd','#d65b46');
           ctx.drawImage(glyphCanvas(glyphWordForSpecies(enemies.species[i])),x-6,y-6,12,12);
@@ -86,6 +121,15 @@ export function drawBattleMinimap(canvas,run) {
         }
       }
       if(kind<2)ctx.fill();
+    }
+    for(let i=0;i<enemies.n;i++){
+      if(!enemies.alive[i]||enemies.dying[i]>0||(enemies.flags[i]&32768))continue;
+      const marker=specialMapMarker(enemies.flags[i],(enemies.x[i]-p.x)*scale,(enemies.z[i]-p.z)*scale,boss(i));
+      if(!marker||(!marker.edge&&marker.kind!=='rare'&&marker.kind!=='treasure'))continue;
+      const {x,y,kind,edge,angle}=marker,color={rare:'#27b9cf',treasure:'#d7a32b',boss:'#d65b46',elite:'#e7b42d'}[kind];
+      if(edge){ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(2,-4);ctx.lineTo(2,4);ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.restore();}
+      dot(x,y,5.3,'#fffdf7',color);
+      ctx.beginPath();ctx.moveTo(x,y-3.7);ctx.lineTo(x+3,y);ctx.lineTo(x,y+3.7);ctx.lineTo(x-3,y);ctx.closePath();ctx.fillStyle=color;ctx.fill();
     }
     for(const ally of run.allies.list){const [x,y]=point(ally.x,ally.z);if(visible(x,y))dot(x,y,2.8,'#559e78');}
   }

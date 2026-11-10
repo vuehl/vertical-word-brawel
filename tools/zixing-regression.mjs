@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {reviewItems} from './item-regression.mjs';
 import {reviewExperience} from './experience-regression.mjs';
+import {reviewFloatingControls} from './battle-feedback-regression.mjs';
 
 export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,perfOnly=false}) {
   const reports=[];
@@ -254,10 +255,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,header,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),name:box('.zx-hud-name-row'),supplies:box('.zx-inventory-items'),health:box('.zx-player-health'),foot,labels,skills:[0,1,2,3].map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
     });}
     function swipeControls(c){
-      assert.ok(c.stick&&c.knob&&c.stick.w>=100&&Math.abs(c.stick.w-c.stick.h)<=1,'The fixed circular joystick must remain visible and easy to reach');
-      assert.ok(c.stick.x>=64&&c.stick.x+c.stick.w+12<=c.ult.x,'Joystick must sit beside the ultimate and clear the skill column');
-      assert.ok(c.stick.cy-c.ult.cy>=48&&c.stick.cy-c.ult.cy<=90,'Ultimate must sit above the joystick for easy tapping');
-      assert.ok(c.stick.y>=0&&c.stick.y+c.stick.h<c.height,'Joystick must fit above the safe bottom edge');
       assert.ok(c.ult&&c.ult.x>=0&&c.ult.y>=0&&c.ult.x+c.ult.w<=c.width+1&&c.ult.y+c.ult.h<c.height,'Ultimate must fit above the safe bottom edge');
       assert.ok(c.profile.x+c.profile.w+8<=c.minimap.x&&Math.abs(c.profile.y-c.minimap.y)<=4,'Status card and circular minimap must sit side by side without overlapping');
       assert.ok(c.location.x+c.location.w<=c.width-8&&c.counters.y>=c.profile.y+c.profile.h+8&&c.counters.x+c.counters.w<=c.minimap.x,'Time and coins belong below the profile');
@@ -268,126 +265,17 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       assert.ok(c.supplies.y>=c.name.y+c.name.h+4&&c.supplies.x+c.supplies.w<c.profile.x+c.profile.w,'Items must fit below the character name');
       assert.ok(c.meta.y>=c.skills.at(-1).y+c.skills.at(-1).h&&c.pause.y>=c.minimap.y+c.minimap.h+8,'Score belongs along the bottom and pause below the minimap');
       assert.ok(Math.abs(c.health.cx-c.foot.x)<=2&&c.health.y>=c.foot.y+6&&c.health.y<=c.foot.y+14,'Health must follow the projected feet, including movement and resizing');
-      for(let i=0;i<c.skills.length;i++){const s=c.skills[i];assert.equal(s.w,s.h);assert.ok(s.x+s.w<=c.stick.x);if(i)assert.ok(s.y>c.skills[i-1].y+c.skills[i-1].h);}
+      for(let i=0;i<c.skills.length;i++){const s=c.skills[i];assert.equal(s.w,s.h);if(i)assert.ok(s.y>c.skills[i-1].y+c.skills[i-1].h);}
       assert.ok(c.labels[0].nowrap&&c.labels[0].width>=40,'The level badge must remain legible on one line');
       const overlaps=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
-      assert.ok(!overlaps(c.pause,c.ult)&&!overlaps(c.pause,c.stick),'Pause must stay clear of the ultimate and joystick on short screens');
-      for(const extra of c.extras){assert.ok(!overlaps(extra,c.stick)&&!overlaps(extra,c.ult)&&!overlaps(extra,c.pause),'Optional controls must stay clear of the main controls');}
+      assert.ok(!overlaps(c.pause,c.ult),'Pause must stay clear of the ultimate and joystick on short screens');
+      for(const extra of c.extras){assert.ok(!overlaps(extra,c.ult)&&!overlaps(extra,c.pause),'Optional controls must stay clear of the main controls');}
     }
-    for(const [width,height] of [[320,568],[390,844],[430,932]]){
-      await resize(width,height);
-      for(const scale of [.7,1,1.3]){
-        await page.evaluate(scale=>{app.meta.profile.settings.touchScale=scale;app.applySettings();},scale);await sleep(400);
-        const c=await controls();
-        fs.writeFileSync(path.join(dir,`controls-${width}-${scale}.json`),JSON.stringify(c,null,2));
-        assert.equal(c.extras.length,0,'Extra combat keys must be hidden by default');
-        swipeControls(c);
-        const joystick=await page.evaluate(()=>{
-          const s=inspected.doc.getElementById('game').getBoundingClientRect(),j=inspected.doc.querySelector('.tc-stick'),b=j.getBoundingClientRect(),input=app.run.input;
-          const x=b.x+b.width/2-s.x,y=b.y+b.height/2-s.y,speed=()=>Math.hypot(input.stickX,input.stickY),samples=[];
-          for(const [dx,dy] of [[45,0],[-45,0],[0,-45],[0,45],[32,-32],[-32,32]]){
-            window.tap(x,y,'down');const center=speed();window.tap(x+1,y+1,'move');const jitter=speed();
-            window.tap(x+dx,y+dy,'move');const direction=[input.stickX,input.stickY];
-            window.tap(x+dx*.75,y+dy*.75,'move');const returned=[input.stickX,input.stickY];
-            inspected.layout.refresh();
-            const k=j.firstChild.getBoundingClientRect(),offset=Math.hypot(k.x+k.width/2-b.x-b.width/2,k.y+k.height/2-b.y-b.height/2),limit=(b.width-k.width)/2;
-            window.tap(x,y,'move');const recentered=speed();window.tap(x,y,'up');
-            inspected.layout.refresh();
-            const idle=j.firstChild.getBoundingClientRect();
-            samples.push({dx,dy,center,jitter,direction,returned,offset,limit,recentered,released:speed(),idleOffset:Math.hypot(idle.x+idle.width/2-b.x-b.width/2,idle.y+idle.height/2-b.y-b.height/2)});
-          }
-          window.tap(x,y,'down');window.tap(x+1000,y-1000,'move');const far=speed();window.tap(x+1000,y-1000,'cancel');
-          return {samples,far,cancelled:speed()};
-        });
-        fs.writeFileSync(path.join(dir,`joystick-${width}-${scale}.json`),JSON.stringify(joystick,null,2));
-        for(const j of joystick.samples){
-          assert.equal(j.center,0);assert.equal(j.jitter,0);assert.equal(j.recentered,0);assert.equal(j.released,0);
-          const length=Math.hypot(j.dx,j.dy);assert.ok(Math.abs(j.direction[0]-j.dx/length)<.01&&Math.abs(j.direction[1]+j.dy/length)<.01,'Joystick direction must follow the fixed center');
-          assert.deepEqual(j.returned,j.direction,'Returning partway to center must keep the same heading');
-          assert.ok(j.offset>5&&j.offset<=j.limit+1&&j.idleOffset<2,'Knob must move inside the outer circle and recenter on release: '+JSON.stringify(j));
-        }
-        assert.ok(Math.abs(joystick.far-1)<.01);assert.equal(joystick.cancelled,0);
-      }
-      await page.evaluate(()=>{app.meta.profile.settings.touchScale=1;app.applySettings();});await snapshot('controls-'+width);
-    }
-    await resize(390,844);await sleep(400);
-    const directions=await page.evaluate(()=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect(),input=app.run.input,results=[];
-      for(const [fx,fy] of [[.18,.4],[.5,.55],[.82,.4],[.5,.92]]){
-        const x=inspected.env.innerWidth*fx-s.x,y=inspected.env.innerHeight*fy-s.y;
-        for(const [dx,dy] of [[40,0],[-40,0],[0,-40],[0,40],[28,-28],[-28,28]]){
-          window.tap(x,y,'down');
-          const tapped=Math.hypot(input.stickX,input.stickY);
-          window.tap(x+1,y+1,'move');const jitter=Math.hypot(input.stickX,input.stickY);
-          window.tap(x+dx,y+dy,'move');const direction=[input.stickX,input.stickY];
-          window.tap(x+dx,y+dy,'up');
-          results.push({dx,dy,tapped,jitter,direction,released:Math.hypot(input.stickX,input.stickY)});
-        }
-      }
-      const x=inspected.env.innerWidth*.5-s.x,y=inspected.env.innerHeight*.92-s.y;
-      window.tap(x,y,'down');window.tap(x+60,y,'move');window.tap(x+50,y,'move');
-      const reversed=input.stickX;window.tap(x+50,y-10,'move');const turned=input.stickY;
-      window.tap(x+50,y-10,'cancel');
-      return {results,reversed,turned};
-    });
-    for(const d of directions.results){assert.equal(d.tapped,0);assert.equal(d.jitter,0);assert.equal(d.released,0);const length=Math.hypot(d.dx,d.dy);assert.ok(Math.abs(d.direction[0]-d.dx/length)<.01&&Math.abs(d.direction[1]+d.dy/length)<.01,'Screen-wide swipe direction: '+JSON.stringify(d));}
-    assert.ok(directions.reversed<-.99&&directions.turned>.99,'Changing swipe direction must not depend on the original touch position');
-    const start=await page.evaluate(()=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect(),j=inspected.doc.querySelector('.tc-stick').getBoundingClientRect(),x=j.x+j.width/2-s.x,y=j.y+j.height/2-s.y;
-      window.tap(x,y,'down');window.tap(x+80,y,'move');return {x,y,px:app.run.player.pos.x,pz:app.run.player.pos.z};
-    });
-    await page.waitForFunction(({px,pz})=>Math.hypot(app.run.player.pos.x-px,app.run.player.pos.z-pz)>.2,{timeout:10000},start);
-    await snapshot('07-joystick-movement');swipeControls(await controls());
-    const multi=await page.evaluate(({x,y})=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect(),rx=inspected.env.innerWidth*.85-s.x,ry=inspected.env.innerHeight*.4-s.y;
-      window.tap(rx,ry,'down',2);window.tap(rx+18,ry,'move',2);window.tap(rx+18,ry,'up',2);
-      const direction=[app.run.input.stickX,app.run.input.stickY],camera=[app.run.camYaw,app.run.camPitch,app.run.camDist];window.tap(x+80,y,'up');return {direction,camera};
-    },start);assert.ok(multi.direction[0]>.99&&Math.abs(multi.direction[1])<.01,'A second finger must not change the movement direction');
-    assert.deepEqual(multi.camera,[0,Math.PI*.3,42],'Swipes must leave the camera fixed');
-    assert.equal(await page.evaluate(()=>app.run.input.stickX),0,'Releasing the thumb stops movement');
-    await sleep(400);swipeControls(await controls());
-    const cast=await page.evaluate(()=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect(),u=inspected.doc.querySelector('.tc-ultb').getBoundingClientRect();
-      const j=inspected.doc.querySelector('.tc-stick').getBoundingClientRect();
-      const x=j.x+j.width/2-s.x,y=j.y+j.height/2-s.y,ux=u.x+u.width/2-s.x,uy=u.y+u.height/2-s.y;
-      const settings=app.meta.profile.settings,previous={autoUlt:settings.autoUlt,ultQuiet:settings.ultQuiet};
-      settings.autoUlt=false;settings.ultQuiet=true;app.run.ult.charge=1;
-      const uses=app.run.ult.uses;
-      window.tap(x,y,'down');window.tap(x+40,y,'move');window.tap(ux,uy,'down',2);window.tap(ux,uy,'up',2);
-      return {x,y,uses,previous};
-    });
-    await page.waitForFunction(uses=>app.run.ult.uses===uses+1,{timeout:15000},cast.uses);
-    const cancelled=await page.evaluate(({x,y,previous})=>{
-      const moving=Math.hypot(app.run.input.stickX,app.run.input.stickY);
-      window.tap(x+40,y,'cancel');Object.assign(app.meta.profile.settings,previous);
-      return {moving,speed:Math.hypot(app.run.input.stickX,app.run.input.stickY)};
-    },cast);
-    assert.ok(cancelled.moving>.1,'Using the ultimate must preserve the movement pointer');
-    assert.equal(cancelled.speed,0,'Touch cancellation must stop movement');
-    await sleep(400);swipeControls(await controls());
-    const interrupted=await page.evaluate(()=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect(),j=inspected.doc.querySelector('.tc-stick').getBoundingClientRect(),x=j.x+j.width/2-s.x,y=j.y+j.height/2-s.y;
-      const input=app.run.input,speed=()=>Math.hypot(input.stickX,input.stickY);
-      window.tap(x,y,'down');window.tap(x+30,y,'move');
-      inspected.env.dispatchEvent(new inspected.env.Event('pagehide'));const hidden=speed();
-      window.tap(x+40,y,'move');const stale=speed();window.tap(x+40,y,'up');
-      window.tap(x,y,'down');window.tap(x+30,y,'move');
-      inspected.env.dispatchEvent(new inspected.env.Event('resize'));const resized=speed();window.tap(x+30,y,'up');
-      const ult=inspected.doc.querySelector('.tc-ultb').getBoundingClientRect();
-      window.tap(ult.x+ult.width/2-s.x,ult.y+ult.height/2-s.y,'down');
-      window.tap(x,y,'move');const buttonDrag=speed();window.tap(x,y,'up');
-      return {hidden,stale,resized,buttonDrag};
-    });assert.deepEqual(interrupted,{hidden:0,stale:0,resized:0,buttonDrag:0});
+    await reviewFloatingControls({page,resize,dir,sleep});
     await tap('.zx-minimap');await snapshot('07-full-map');
-    assert.equal(await page.evaluate(()=>app.run.state==='paused'&&app.run.ui.mapOpen()),true,'Minimap must open the existing full map');
-    await tap('.bigmap .back-btn');assert.equal(await page.evaluate(()=>app.run.state),'play');
-    const held=await page.evaluate(()=>{
-      const s=inspected.doc.getElementById('game').getBoundingClientRect(),j=inspected.doc.querySelector('.tc-stick').getBoundingClientRect(),x=j.x+j.width/2-s.x,y=j.y+j.height/2-s.y;
-      window.tap(x,y,'down',9);window.tap(x+35,y,'move',9);return {x,y};
-    });
+    assert.equal(await page.evaluate(()=>app.run.state==='paused'&&app.run.ui.mapOpen()),true);
+    await tap('[data-action="close-battle-map"]');
     await tap('.zx-hud-pause');await snapshot('12-pause');
-    assert.equal(await page.evaluate(()=>Math.hypot(app.run.input.stickX,app.run.input.stickY)),0,'Pausing while dragging must stop movement');
-    await page.evaluate(({x,y})=>window.tap(x+35,y,'cancel',9),held);
     for(const [w,h] of [[320,568],[430,932]]){await resize(w,h);await snapshot('12-pause-'+w);}
     await resize(390,844);await sleep(400);
     const beforeTime=await page.evaluate(()=>app.run.time);await sleep(1000);
@@ -464,6 +352,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
     }
   }
-  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and fixed joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide swipes, reversal, jitter, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
+  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and floating joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide touch origins, direction, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
   console.log('Zixing regression passed:',reports.length,'screenshots');
 }

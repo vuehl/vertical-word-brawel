@@ -4,6 +4,19 @@ import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from '../source/sr
 import fs from 'node:fs';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
+import {specialMapMarker} from '../source/src/paper-hud-art.js';
+
+test('special enemies keep distinctive near markers and directional edge markers',()=>{
+  assert.equal(specialMapMarker(0,10,0),null);
+  assert.equal(specialMapMarker(128,10,-15).kind,'rare');
+  assert.equal(specialMapMarker(2048,10,-15).kind,'rare');
+  assert.equal(specialMapMarker(16384,10,-15).kind,'treasure');
+  for(const flags of [1,2,4,128,2048,4096,8192,16384])for(const [dx,dz] of [[100,0],[-100,100],[0,-100]]){
+    const m=specialMapMarker(flags,dx,dz);assert.equal(m.edge,true);
+    assert.ok(Math.abs(Math.hypot(m.x-60,m.y-58)-40)<1e-10);
+    assert.ok(Math.abs(Math.atan2(m.y-58,m.x-60)-Math.atan2(dz,dx))<1e-10);
+  }
+});
 
 test('species names in encounter and NPC prose resolve to the same glyphs as their artwork',()=>{
   const actors=JSON.parse(fs.readFileSync(new URL('../source/public/data/pokemon.json',import.meta.url),'utf8'));

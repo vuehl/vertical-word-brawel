@@ -8,7 +8,7 @@ export const performanceProfiles=Object.freeze({
     particleDensity:.5,particles:800,normalParticles:440,damageTexts:60,particleCell:10,groundArea:800,groundParticles:160,enemyShadowCell:2,ambient:false,
     worldShadows:true,pickupSimple:true,mergeXp:160,mergeCoins:80,mergeInterval:1,
     enemyMidStep:2,enemyFarStep:4,enemySeparation:96,hudInterval:80,mapInterval:150}),
-  high:Object.freeze({name:'精致',pixelBudget:1800000,maxPixelRatio:2,dynamicResolution:false,bloom:true,outline:true,
+  high:Object.freeze({name:'精致',lockVisualQuality:true,pixelBudget:1800000,maxPixelRatio:2,dynamicResolution:false,bloom:true,outline:true,
     particleDensity:1,particles:3000,normalParticles:1800,damageTexts:160,particleCell:24,groundArea:1600,groundParticles:320,enemyShadowCell:0,ambient:true,
     worldShadows:true,pickupSimple:false,mergeXp:240,mergeCoins:100,mergeInterval:1.2,
     enemyMidStep:2,enemyFarStep:3,enemySeparation:128,hudInterval:80,mapInterval:120}),

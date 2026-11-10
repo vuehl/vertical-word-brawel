@@ -2,7 +2,7 @@ export const crowdBudgets=Object.freeze({low:{max:180,min:60},medium:{max:280,mi
 
 // Use actual frame timestamps; clamped simulation dt hides severe stalls.
 export function updateCrowdBudget(run,now,hidden=false){
-  if(run.coop||run.state!=='play'||run.timeScale!==1||hidden){run.crowdSample=null;return;}
+  if(run.performance?.lockVisualQuality||run.coop||run.state!=='play'||run.timeScale!==1||hidden){run.crowdSample=null;return;}
   const sample=run.crowdSample??= {start:now,last:now,frames:0,good:0};
   if(now-sample.last>1500){sample.start=now;sample.frames=0;sample.good=0;}
   sample.last=now;sample.frames++;

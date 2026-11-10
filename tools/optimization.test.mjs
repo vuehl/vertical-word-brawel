@@ -8,15 +8,23 @@ import {parseHTML} from 'linkedom/worker';
 import {crowdStep,separationBudget} from '../source/src/crowd-cadence.js';
 import {performanceProfiles} from '../source/src/performance-profile.js';
 
-test('crowd visual pressure caps and restores decorations without touching telegraphs or attack pools',()=>{
+test('high quality preserves all decorations under crowd pressure; other presets retain their caps',()=>{
   const vfx={add:{n:2400},norm:{n:1600},text:{items:Array(160).fill(1)},particleBudget:{},rings:{n:200},ground:{n:250},projectiles:{n:400}};
   applyCrowdEffects(vfx,performanceProfiles.high,600);
-  assert.deepEqual([vfx.add.n,vfx.norm.n,vfx.text.items.length,vfx.particleBudget.limit],[600,300,48,6]);
+  assert.deepEqual([vfx.add.n,vfx.norm.n,vfx.text.items.length,vfx.particleBudget.limit],[2400,1600,160,24]);
   assert.deepEqual([vfx.rings.n,vfx.ground.n,vfx.projectiles.n],[200,250,400]);
   applyCrowdEffects(vfx,performanceProfiles.high,100);
   assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[3000,1800,160]);
+  applyCrowdEffects(vfx,performanceProfiles.medium,600);
+  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[600,300,48]);
   applyCrowdEffects(vfx,performanceProfiles.low,1000);
   assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[320,180,24]);
+});
+
+test('high quality never reduces enemy density at sustained low FPS',()=>{
+  const run={performance:performanceProfiles.high,state:'play',timeScale:1,fpsCap:60,enemies:{count:420,n:0},liveCap:420,liveMax:420,liveMin:120};
+  for(let t=0;t<30000;t+=100)updateCrowdBudget(run,t);
+  assert.equal(run.liveCap,420);assert.equal(run.crowdSample,null);
 });
 
 test('crowd cadence keeps contact immediate and accounts for every elapsed simulation step',()=>{

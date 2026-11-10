@@ -1,11 +1,11 @@
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {drawPaperIllustration} from './paper-ui-art.js';
-import {drawBattlePortrait,drawBattleMinimap,drawBattleHealth} from './paper-hud-art.js';
+import {drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
 import {waitForLoadingPaint} from './loading-work.js';
-import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
+import {batterySaverEnabled} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
 import {characters,characterForSpecies} from './starter-characters.js';
 
@@ -323,15 +323,7 @@ export function createZixingUI(app,api) {
   }
   function renderSettings() {
     const s=profile().settings,fields=[];
-    const status=small('');status.classList.add('zx-performance-status');
-    const refreshStatus=()=>{
-      const p=performanceProfile(s),buffer=app.r?.composer?.inputBuffer,fps=app.perf?.fps;
-      status.textContent='当前生效：'+p.name+' · 上限 '+app.fpsCap()+' 帧'+(buffer?' · 场景 '+buffer.width+'×'+buffer.height:'')+
-        (batterySaverEnabled(s.batterySaver)?' · 省电模式正在使用流畅画质':p.dynamicResolution?' · 场景清晰度自动调整':' · 场景清晰度固定')+
-        (app.run&&fps>0?'。最近战斗 '+Math.round(fps)+' FPS；切换后返回战斗采样。':'。帧率上限不代表实际帧率。');
-    };
-    refreshStatus();
-    const save=()=>{app.applySettings();app.meta.save();applyTheme();refreshStatus();};
+    const save=()=>{app.applySettings();app.meta.save();applyTheme();};
     const toggle=(label,key,note='')=>{
       fields.push(key);const b=el('button','zx-switch'+(s[key]?' on':''),el('i'),{type:'button',role:'switch','aria-label':label,'aria-checked':!!s[key]});
       b.addEventListener('click',()=>{s[key]=!s[key];b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();});
@@ -363,12 +355,7 @@ export function createZixingUI(app,api) {
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'保留柔和阴影，忙碌时自动调整场景清晰度。',high:'固定高清场景、完整阴影与光效，不自动降低清晰度。'}[s.quality??api.defaults.quality])),small('各档界面文字均保持精致档清晰度。'),toggle('省电模式','batterySaver','上限 30 帧，场景临时使用流畅画质；选择精致会关闭省电'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']])),status,
-        card(el('b','','对流畅度有多大帮助？'),
-          small('相对精致档，均衡的场景像素预算减少 50%，流畅减少 80%。精致保持高清；均衡和流畅可自动调整分辨率。'),
-          small('降低画质还会减少光效、粒子和远处怪物的更新开销，画面渲染吃紧时通常更有帮助。'),
-          small('以上是渲染预算差异，不是帧率提升比例。怪多时仍有运算开销，实际改善需在同一手机、同一战况下对比。'),
-          small('省电模式以降低功耗为主，上限为 30 帧。'))];
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'保留柔和阴影，忙碌时自动调整场景清晰度。',high:'固定高清场景、完整阴影与光效；卡顿时也不自动降低画质、裁减特效或减少怪物。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','上限 30 帧，场景临时使用流畅画质；选择精致会关闭省电'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']]))];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -400,7 +387,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','拖动大招左侧的大圆摇杆控制方向，松手停止。也可在空白处滑动移动；镜头固定跟随，移动时可用另一根手指释放大招。'],['攻击与拾取','靠近掉落的经验、金币与道具就会自动吸附拾取，进入吸附范围后无需停留。宝箱等场景互动仍使用交互按钮。'],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取','靠近掉落的经验、金币与道具就会自动吸附拾取，进入吸附范围后无需停留。宝箱等场景互动仍使用交互按钮。'],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -460,9 +447,8 @@ export function createZixingUI(app,api) {
     const slots=Array.from({length:Math.max(4,p.moveSlots)},(_,index)=>{
       const move=p.moves[index],locked=index>=p.moveSlots;
       const node=el('div','zx-skill-slot'+(locked?' locked':move?' filled':' empty'),locked?[icon('lock',17)]:move?[
-        image(api.moveIcon(move.def),api.moveName(move.def)),el('b','zx-slot-level',String(move.level)),
+        image(api.moveIcon(move.def),api.moveName(move.def)),el('canvas','zx-skill-cooldown',[],{width:84,height:84,'data-static':'true'}),el('b','zx-slot-level',String(move.level)),
       ]:[],{'data-skill-slot':index,'data-level':move?.level||0,'aria-label':locked?'技能槽未解锁':move?api.moveName(move.def)+' 等级 '+move.level:'空技能槽'});
-      if(move&&!locked)node.style.background='linear-gradient(180deg,#effbff,'+api.moveColor(move.def)+')';
       return node;
     });
     // Match the space beneath the name at each portrait/minimap breakpoint.
@@ -584,10 +570,8 @@ export function createZixingUI(app,api) {
       const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'放大的附近地图'});
       const frame=el('div','zx-battle-map-frame',canvas);
       frame.style.width=frame.style.height=side+'px';
-      drawBattleMinimap(canvas,r);
-      overlay('附近地图','',[
-        frame,small('红点 · 普通怪　黄点 · 精英怪　文字 · Boss'),
-      ],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
+      drawBattleMinimap(canvas,r,{shadow:false});
+      overlay('附近地图','',[frame],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
       hud.pauseBack=close;
     };
     hud.mapOpen=()=>!!hud.root.querySelector('.zx-battle-map');
@@ -670,12 +654,12 @@ export function createZixingUI(app,api) {
     node.querySelector('.zx-hud-meta').dataset.uiLayer='score';
     hud.touch.ult.dataset.uiLayer='ultimate';
     const look=hud.look.bind(hud);
-    hud.touch.swipeMove=true;hud.touch.centeredStick=true;hud.touch.el.classList.add('zx-touch');
+    hud.touch.swipeMove=false;hud.touch.centeredStick=false;hud.touch.floatingStick=true;hud.touch.el.classList.add('zx-touch');
     hud.touch.el.setAttribute('aria-label','拖动摇杆或滑动空白处移动，松手停止');
     hud.touch.stick.setAttribute('aria-label','移动摇杆');
     hud.touch.stick.dataset.uiLayer='stick';
     hud.look=s=>{
-      look(s);hud.touch.fixed=true;
+      look(s);hud.touch.fixed=false;
       minimap.hidden=s.showMinimap===false;
       node.style.opacity=String(s.hudOpacity??1);node.style.fontSize=(13*(s.hudScale??1))+'px';
     };
@@ -706,11 +690,17 @@ export function createZixingUI(app,api) {
       const now=performance.now();if(minimap.hidden||now-mapAt<(run.performance?.mapInterval??120))return;
       mapAt=now;drawBattleMinimap(minimap,r);minimap.dataset.frame=String(++mapFrame);
     };
+    const ultimateRing=el('canvas','zx-ult-progress',[],{width:168,height:168,'data-static':'true'});
+    hud.touch.ult.append(ultimateRing);
     hud.ultHud=r=>{
-      for(const [name,on] of [['ready',r.ult.ready],['active',r.ult.active>0],['deny',r.ult.denyT>0]])hud.touch.ult.classList.toggle(name,on);
+      const ready=r.ult.ready&&r.ult.active<=0&&!r.player.dead,active=r.ult.active>0;
+      for(const [name,on] of [['ready',ready],['active',active],['deny',r.ult.denyT>0]])hud.touch.ult.classList.toggle(name,on);
+      hud.touch.ult.setAttribute('aria-disabled',String(!ready));
+      const progress=Math.round(Math.max(0,Math.min(1,r.ult.charge))*1000)/1000,key=[progress,ready,active].join('/');
+      if(ultimateRing.dataset.frame!==key){drawBattleCooldown(ultimateRing,progress,{ultimate:true,ready,active});ultimateRing.dataset.frame=key;ultimateRing.dataset.progress=String(progress);}
       const core=hud.touch.ult.children[1];
       if(!core.querySelector('.zx-ult-label'))core.replaceChildren(el('div','zx-ult-label',[el('span','','✧'),el('span','','大招'),el('small','','蓄能')]));
-      const label=core.querySelector('small'),value=r.ult.ready?'就绪':Math.floor(r.ult.charge*100)+'%';
+      const label=core.querySelector('small'),value=active?'释放中':ready?'就绪':Math.floor(progress*100)+'%';
       if(label.textContent!==value)label.textContent=value;
     };
     const original=hud.hud.bind(hud);
@@ -763,6 +753,15 @@ export function createZixingUI(app,api) {
         if(previous&&previous.children.length===skills.children.length)previous.replaceChildren(...skills.childNodes);
         else inventory.replaceChildren(skills);
         supplies.replaceChildren(items);
+      }
+      for(const slot of inventory.querySelectorAll('.zx-skill-slot')){
+        const move=p.moves[Number(slot.dataset.skillSlot)],canvas=slot.querySelector('.zx-skill-cooldown');
+        if(!move||!canvas)continue;
+        const m=move.def.arch==='random'&&move.sub?move.sub:move;
+        const active=m.active>0||m.charging||m.burst.length>0,ready=m.waitingForTarget||m.timer<=0;
+        const progress=ready?1:Math.round(Math.max(0,1-m.timer/Math.max(.001,m.cooldownTotal||m.timer))*1000)/1000;
+        const key=[progress,ready,active].join('/');
+        if(canvas.dataset.frame!==key){drawBattleCooldown(canvas,progress,{ready,active});canvas.dataset.frame=key;canvas.dataset.progress=String(progress);}
       }
     };
   }

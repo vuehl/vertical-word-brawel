@@ -38,21 +38,21 @@ export async function reviewQuality(page,dir){
     for(const sample of samples){
       assert.deepEqual(sample.ui,high.ui);assert.deepEqual(sample.display,high.display);
       assert.deepEqual(sample.layers,high.layers);assert.equal(sample.headingHash,high.headingHash,'Heading pixels stay identical');
-      assert.ok(sample.text.includes('各档界面文字均保持精致档清晰度'));
+      assert.doesNotMatch(sample.text,/各档界面文字|当前生效|对流畅度有多大帮助|场景像素预算/);
     }
     assert.ok(pixels(low)<pixels(medium)&&pixels(medium)<pixels(high));
     assert.deepEqual(saver.world,low.world);assert.deepEqual(restored.world,high.world);
     assert.deepEqual(dynamic.world,high.world);assert.ok(pixels(balancedDynamic)<pixels(medium));assert.equal(saver.fpsCap,30);
-    // The added explanation scrolls on small phones while Back stays usable.
+    // The final setting and Back remain reachable on small phones.
     const scroll=await page.evaluate(()=>{
       const body=inspected.doc.querySelector('.zx-body');body.scrollTop=10000;
       inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
-      const note=[...body.querySelectorAll('small')].find(e=>e.textContent.startsWith('省电模式以'));
-      const b=inspected.layout.box(note),back=inspected.layout.box(inspected.doc.querySelector('.zx-footer button'));
-      return {noteVisible:b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1,backVisible:back.y>=back.clip.y&&back.y+back.h<=back.clip.b+1};
+      const fps=[...body.querySelectorAll('.zx-setting')].find(e=>e.textContent.startsWith('帧率上限'));
+      const b=inspected.layout.box(fps),back=inspected.layout.box(inspected.doc.querySelector('.zx-footer button'));
+      return {fpsVisible:b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1,backVisible:back.y>=back.clip.y&&back.y+back.h<=back.clip.b+1};
     });
-    assert.ok(scroll.noteVisible&&scroll.backVisible,JSON.stringify(scroll));
-    await page.screenshot({path:path.join(dir,'explanation-'+width+'.png')});
+    assert.ok(scroll.fpsVisible&&scroll.backVisible,JSON.stringify(scroll));
+    await page.screenshot({path:path.join(dir,'settings-bottom-'+width+'.png')});
     report.screens.push({width,height,samples,scroll,worldReduction:{medium:1-pixels(medium)/pixels(high),low:1-pixels(low)/pixels(high)}});
   }
   fs.writeFileSync(path.join(dir,'quality-report.json'),JSON.stringify(report,null,2));

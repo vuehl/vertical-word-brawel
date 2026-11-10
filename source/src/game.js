@@ -392,8 +392,8 @@ var Ni = {
       ),
         i() !== `es` && (await this.localize()));
       configureStarterSpecies(this.all);
-      Pi.normal='基础';Pi.flying='风';
-      if(this.types?.names){this.types.names.normal='基础';this.types.names.flying='风';}
+      Pi.normal='基';Pi.flying='风';
+      if(this.types?.names){this.types.names.normal='基';this.types.names.flying='风';}
       configureGlyphNames(this.all);
       for (let e of this.all) {
         e.name=glyphWordForSpecies(e.id);
@@ -8427,7 +8427,7 @@ var Rl = 20,
         this.n >= Math.min(this.cap,this.limit) ||
         (this.view&&!this.view.visible(e.x,e.y,e.z,Math.max(6,e.size||0))) ||
         Fl.on ||
-        ((Fl.density < 1 || this.n > this.cap * 0.8) &&
+        (!this.lockVisualQuality && (Fl.density < 1 || this.n > this.cap * 0.8) &&
           Math.random() > (this.n > this.cap * 0.8 ? Fl.density * 0.5 : Fl.density))
       )
         return;
@@ -9042,6 +9042,7 @@ var Gl = class {
         (this.text = new Gl(e)));
     }
     setPerformance(profile,view){
+      for(const pool of [this.add,this.norm,this.ground,this.groundN,this.beams])pool.lockVisualQuality=!!profile.lockVisualQuality;
       this.particleBudget??=new ParticleBudget();this.particleBudget.limit=profile.particleCell;
       this.add.densityBudget=this.norm.densityBudget=this.particleBudget;
       this.add.limit=profile.particles;this.norm.limit=profile.normalParticles;this.text.limit=profile.damageTexts;
@@ -40664,7 +40665,14 @@ function j_(e) {
 var M_ = class {
     def;
     level = 1;
-    timer = 0.4;
+    _timer = 0.4;
+    cooldownTotal = 0.4;
+    waitingForTarget = false;
+    get timer() { return this._timer; }
+    set timer(value) {
+      if(value>this._timer&&value>0){this.cooldownTotal=value;this.waitingForTarget=false;}
+      this._timer=value;
+    }
     damageDone = 0;
     mods = { dmg: 1, cd: 1, count: 0, area: 1, speed: 1, dur: 1, pierce: 0, crit: 0, status: 1, bounce: 0 };
     phase = 0;
@@ -41173,7 +41181,7 @@ function Q_(e, t, n, r) {
     case `boomerang`: {
       let r = e.aimDir(o.arch === `homing` ? 20 : 16, n);
       if (!r.has && o.arch !== `boomerang`) {
-        n.timer = 0.2;
+        n.timer = 0.2; n.waitingForTarget = true;
         return;
       }
       let i = o.arch === `homing` ? 0.9 : (o.spread ?? 0.18);
@@ -41265,7 +41273,7 @@ function Q_(e, t, n, r) {
     case `beam`: {
       let t = e.aimDir(15, n);
       if (!t.has) {
-        n.timer = 0.2;
+        n.timer = 0.2; n.waitingForTarget = true;
         return;
       }
       ((n.aimX = t.x), (n.aimZ = t.z), (n.active = p), (n.tick = 0), (n.burst = []));
@@ -41358,7 +41366,7 @@ function Q_(e, t, n, r) {
     case `strike`: {
       let t = e.aimTarget(Math.max(6, d + 3));
       if (t < 0 && e.aimMode !== `manual`) {
-        n.timer = 0.15;
+        n.timer = 0.15; n.waitingForTarget = true;
         return;
       }
       for (let r = 0; r < f; r++) {
@@ -41386,7 +41394,7 @@ function Q_(e, t, n, r) {
     case `dash`: {
       let t = e.aimDir(13, n);
       if (!t.has) {
-        n.timer = 0.2;
+        n.timer = 0.2; n.waitingForTarget = true;
         return;
       }
       for (let n = 0; n < f; n++) {
@@ -41410,7 +41418,7 @@ function Q_(e, t, n, r) {
     case `chain`: {
       let t = e.aimTarget(14);
       if (t < 0) {
-        n.timer = 0.2;
+        n.timer = 0.2; n.waitingForTarget = true;
         return;
       }
       let r = v,
@@ -41464,7 +41472,7 @@ function Q_(e, t, n, r) {
         (e > 0 && (i[e] = i[0]), e !== 0 && (i[0] = a));
       }
       if (!i.length) {
-        n.timer = 0.25;
+        n.timer = 0.25; n.waitingForTarget = true;
         return;
       }
       for (let t of i) {
@@ -56765,7 +56773,7 @@ function Ox(e, t, n, r, i) {
     o = a.stats,
     s = t.aimTarget(e.range ?? 16);
   if (s < 0 && t.aimMode !== `manual`) {
-    r.timer = 0.25;
+    r.timer = 0.25; r.waitingForTarget = true;
     return;
   }
   r.timer = Dx(e, r, o.attackSpeed);
@@ -77715,7 +77723,7 @@ var GT = 15,
     setHordeQuality(e) {
       const budget=crowdBudgets[batterySaverEnabled(this.meta.profile.settings.batterySaver)?"low":e]||crowdBudgets.low,previous=this.liveMax;
       this.liveMax=budget.max;this.liveMin=budget.min;
-      this.liveCap=this.liveCap>=previous?this.liveMax:Math.max(this.liveMin,Math.min(this.liveCap,this.liveMax));
+      this.liveCap=this.performance?.lockVisualQuality||this.liveCap>=previous?this.liveMax:Math.max(this.liveMin,Math.min(this.liveCap,this.liveMax));
     }
     governHorde() {
       updateCrowdBudget(this,performance.now(),document.hidden);
@@ -78442,9 +78450,9 @@ var ME = class {
         }
       }
       const stickBounds=this.centeredStick?this.stick.getBoundingClientRect():null;
-      const inStick=stickBounds
+      const inStick=this.floatingStick|| (stickBounds
         ? Math.hypot(e.clientX-stickBounds.left-stickBounds.width/2,e.clientY-stickBounds.top-stickBounds.height/2)<=stickBounds.width*.6
-        : e.clientX < innerWidth * 0.42;
+        : e.clientX < innerWidth * 0.42);
       if(this.swipeMove && !(this.centeredStick && inStick)){
         if(this.stickId < 0){
           this.swipeActive=true;this.stickId=e.pointerId;this.sx=e.clientX;this.sy=e.clientY;
@@ -78498,7 +78506,7 @@ var ME = class {
         let n = e.clientX - this.sx,
           r = e.clientY - this.sy,
           i = Math.hypot(n, r);
-        if (i > TE * this.k * DE && !this.fixed) {
+        if (i > TE * this.k * DE && !this.fixed && !this.floatingStick) {
           let e = (i - TE * this.k * DE) / i;
           ((this.sx += n * e),
             (this.sy += r * e),
@@ -78507,12 +78515,13 @@ var ME = class {
             (this.stick.style.left = this.sx + `px`),
             (this.stick.style.top = this.sy + `px`));
         }
-        const radius=this.centeredStick
+        const radius=this.centeredStick||this.floatingStick
           ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
           : TE*this.k;
         let a = Math.min(1, Math.hypot(n, r) / radius),
           o = Math.atan2(r, n),
-          s = a < EE ? 0 : 1;
+          // A smaller floating base must not turn finger jitter into movement.
+          s = (this.floatingStick ? i < Math.max(3, radius * EE) : a < EE) ? 0 : 1;
         ((t.stickX = Math.cos(o) * s),
           (t.stickY = -Math.sin(o) * s),
           (this.knob.style.transform = `translate(${Math.cos(o) * a * radius}px, ${Math.sin(o) * a * radius}px)`));
@@ -92899,7 +92908,7 @@ function mN(e) {
     n = !1;
   try {
     (!localStorage.getItem(`pb.swgpu`) &&
-      t.quality !== `low` &&
+      t.quality !== `low` && t.quality !== `high` &&
       ((t.quality = `low`), e.applySettings(), e.meta.save(), (n = !0)),
       localStorage.setItem(`pb.swgpu`, `1`));
   } catch {}

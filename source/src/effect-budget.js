@@ -36,7 +36,7 @@ export function enemyShadow(run,x,z,important){
 // damage labels. Ground budgets apply only to player decoration; hostile cues,
 // persistent zone boundaries, projectiles and damage are not reduced.
 export function applyCrowdEffects(vfx,profile,count){
-  const dense=count>=360,busy=count>=180;
+  const dense=!profile.lockVisualQuality&&count>=360,busy=!profile.lockVisualQuality&&count>=180;
   const add=Math.min(profile.particles,dense?600:busy?1200:Infinity);
   const normal=Math.min(profile.normalParticles,dense?300:busy?600:Infinity);
   const text=Math.min(profile.damageTexts,dense?48:busy?80:Infinity);
