@@ -12,6 +12,7 @@ import {reviewZixing} from './zixing-regression.mjs';
 import {reviewPaper} from './paper-regression.mjs';
 import {reviewLoading} from './loading-regression.mjs';
 import {reviewScenes} from './scene-regression.mjs';
+import {reviewStarters} from './starter-regression.mjs';
 import {reviewUpgrade} from './upgrade-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -239,6 +240,7 @@ async function verifyStartup(){
     if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
+    else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,dir,sleep});
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
     else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});

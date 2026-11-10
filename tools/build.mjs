@@ -3,7 +3,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import esbuild from 'esbuild';
 import {parse} from '../source/tools/vendor/acorn.mjs';
-import {addBootAssets,bootAssets} from './boot-assets.mjs';
+import {addBootAssets,bootAssets,writeBootHeroArt} from './boot-assets.mjs';
 import {lowerUnicodeRegexes} from './device-syntax.mjs';
 import {assetPolicyVersion} from './asset-policy.mjs';
 
@@ -133,6 +133,7 @@ fs.writeFileSync(path.join(out,'play.js'),'(function(){\nconst root=typeof globa
 for(const file of ['host.js','original.js'])fs.rmSync(path.join(out,file),{force:true});
 fs.copyFileSync(path.join(platform,'files.js'),path.join(out,'files.js'));
 fs.copyFileSync(path.join(platform,'boot-screen.js'),path.join(out,'boot-screen.js'));
+writeBootHeroArt(root,out);
 fs.copyFileSync(path.join(platform,'resource-codec.js'),path.join(out,'resource-codec.js'));
 addBootAssets(out,bootAssets(root));
 for(const name of ['game.js','game.json'])fs.copyFileSync(path.join(root,name),path.join(out,name));

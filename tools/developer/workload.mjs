@@ -8,22 +8,34 @@ const PRESETS=[
   {at:480,level:32,skills:4,rank:7,loot:130,items:4},
   {at:600,level:40,skills:4,rank:8,loot:170,items:5},
 ];
-export function workloadPreset(seconds,mode){
+export function workloadPreset(seconds,mode,level){
   if(mode==='none')return null;
-  if(mode==='stress')return {at:seconds,level:40,skills:4,rank:8,loot:220,items:5};
+  if(mode==='stress')return {at:seconds,level:level??40,skills:4,rank:8,loot:220,items:5};
   let preset=PRESETS[0];for(const candidate of PRESETS)if(candidate.at<=seconds)preset=candidate;
+  if(level!==undefined){for(const candidate of PRESETS)if(candidate.level<=level)preset=candidate;return {...preset,level};}
   return {...preset};
 }
 
-export function createWorkload(run,moveId){
-  let saved=null,mode='none',preset=null,elapsed=0,refill=0,ultimate=0,serial=0;
+export function workloadMoves(run,preset,skills){
+  const p=run.player,pool=skills.pool(run),seen=new Set();
+  // The same kit, lineage and unlocked shared moves shown by the release
+  // move catalogue. Prefer the current form's kit and respect level/slot gates.
+  return [...pool.kit,...pool.line,...pool.shared.filter(m=>m.open),...(pool.any||[])]
+    .filter(m=>{
+      if(m.level>preset.level||seen.has(m.id)||run.banished.has('m'+m.id))return false;
+      seen.add(m.id);return !!skills.move(m.id);
+    }).slice(0,Math.min(preset.skills,p.moveSlots)).map(m=>({...m,...skills.move(m.id)}));
+}
+
+export function createWorkload(run,skills){
+  let saved=null,mode='none',preset=null,elapsed=0,refill=0,ultimate=0,serial=0,evolutionQueued=false;
   const p=run.player;
   function stop(){
-    mode='none';preset=null;
+    mode='none';preset=null;evolutionQueued=false;
     if(!saved)return;
     // Restore the pre-test build and callbacks. Short-lived effects already
     // scheduled by a real ultimate may finish normally after stopping.
-    Object.assign(p,saved.player);run.pendingLevels=saved.pendingLevels;
+    Object.assign(p,saved.player);run.pendingLevels=saved.pendingLevels;run.nextEvo=saved.nextEvo;
     p.recompute();p.hp=Math.min(saved.player.hp,p.maxHp);
     run.ui.developerSyncExperience();run.ui.hud(run);
     saved=null;
@@ -40,36 +52,51 @@ export function createWorkload(run,moveId){
       run.pickups.spawnMerged(index%4===0?1:0,x,y,z,1);
     }
   }
-  function apply(nextMode,seconds){
-    const next=workloadPreset(seconds,nextMode);
+  function apply(nextMode,seconds,level){
+    const next=workloadPreset(seconds,nextMode,level);
     if(!next){stop();return;}
     // Resolve before mutation so a renamed/missing move cannot leave half a build.
-    const keys=['razor-leaf','fire-spin','thunderbolt','petal-dance'].slice(0,next.skills);
-    const ids=keys.map(key=>{const id=moveId(key);if(id===undefined)throw Error('Missing developer move: '+key);return id;});
+    const moves=workloadMoves(run,next,skills);
+    if(!moves.length)throw Error('当前形态没有已解锁的可用技能。');
     if(!saved){
-      saved={player:Object.fromEntries(['moves','moveSlots','vitamins','items','level','xp','xpNext','hp','addXp','gainLevel'].map(k=>[k,p[k]])),pendingLevels:run.pendingLevels};
+      saved={player:Object.fromEntries(['moves','moveSlots','vitamins','items','level','xp','xpNext','hp','addXp','gainLevel','speciesId','data','types','roster','ability','evoStage'].map(k=>[k,p[k]])),pendingLevels:run.pendingLevels,nextEvo:run.nextEvo&&{...run.nextEvo}};
     }
     // Every application starts clean; rewinding does not stack old upgrades/loot.
     run.projectiles.clear();run.zones.clear();run.vfx.clear();run.pickups.clear();
     mode=nextMode;preset=next;elapsed=refill=ultimate=serial=0;
-    p.moves=[null,null,null,null];p.moveSlots=4;p.vitamins=new Map();
+    p.moves=[null,null,null,null];p.vitamins=new Map();
     p.items=new Map(next.items?[['leftovers',Math.min(3,next.items)],['muscle-band',Math.min(3,next.items)]]:[]);
     p.level=next.level;p.xpNext=p.xpFor(p.level);
     // Boss candy bypasses addXp; freeze both upgrade routes in a fixed build.
     // Existing XP is preserved and restored with the original build.
     p.addXp=()=>{};p.gainLevel=()=>{};run.pendingLevels=0;
-    for(const id of ids){
+    for(const {id} of moves){
       if(!p.addMove(id))throw Error('Developer move could not be equipped: '+id);
-      const m=p.moves.find(m=>m?.def.id===id),n=next.rank-1;
-      m.level=next.rank;m.timer=.1;
-      Object.assign(m.mods,{dmg:1+.08*n,cd:Math.pow(.92,n),count:Math.floor(n/2),area:1+.08*n,dur:1+.06*n});
     }
+    // Learn/upgrade within the normal number of level-up choices. Each rank
+    // uses the release upgrade roll and application, with common rarity.
+    let choices=Math.max(0,next.level-moves.length);
+    for(let rank=2;rank<=next.rank&&choices>0;rank++)for(let slot=0;slot<p.moveSlots&&choices>0;slot++){
+      const m=p.moves[slot];
+      if(m&&m.level<rank&&m.level<p.capOf(m)){skills.upgrade(run,slot);choices--;}
+    }
+    for(const m of p.moves)if(m)m.timer=.1;
     p.recompute();p.hp=p.maxHp;
+    evolutionQueued=!!run.nextEvo&&p.level>=run.nextEvo.level;
     run.ui.developerSyncExperience();run.ui.hud(run);
     fillLoot(next.loot);
   }
   function update(dt){
-    if(!preset||run.state!=='play'||!Number.isFinite(dt)||dt<=0)return;
+    if(!preset||run.state!=='play')return;
+    // Fixed presets freeze XP, so the normal pending-level path never runs.
+    // Once the test panel closes, reuse the real branch choice, confirmation
+    // and animation. Never pick a branch or evolve silently for the player.
+    if(evolutionQueued){
+      if(!run.nextEvo||p.level<run.nextEvo.level)evolutionQueued=false;
+      else if(run.ult.active>0||run.ult.castPending||run.upgradeTiming.waiting(run.ult))return;
+      else if(run.tryEvolve()){evolutionQueued=false;return;}
+    }
+    if(!Number.isFinite(dt)||dt<=0)return;
     elapsed+=dt;refill-=dt;ultimate-=dt;
     if(refill<=0){refill=1;fillLoot(mode==='stress'?40:12);}
     // Normal attacks run in run.update. Stress shortens cooldowns within a
@@ -79,6 +106,11 @@ export function createWorkload(run,moveId){
       run.ult.charge=1;run.ult.fire();ultimate=mode==='stress'?8:25;
     }
   }
-  return {apply,update,stop,snapshot:()=>({mode,elapsed,preset:preset&&{...preset},
-    level:p.level,moves:p.moves.filter(Boolean).map(m=>({key:m.def.key,level:m.level,damage:m.damageDone}))})};
+  return {apply,update,stop,advanceEvolution:()=>{
+    if(!run.nextEvo)return false;
+    apply(mode==='none'?'timed':mode,run.stageTime,Math.max(p.level,run.nextEvo.level));return true;
+  },plan:(mode,seconds)=>{
+    const preset=workloadPreset(seconds,mode);return preset?workloadMoves(run,preset,skills):[];
+  },snapshot:()=>({mode,elapsed,preset:preset&&{...preset},
+    level:p.level,slots:p.moveSlots,evolutionQueued,moves:p.moves.filter(Boolean).map(m=>({key:m.def.key,name:m.def.name,level:m.level,mods:{...m.mods},damage:m.damageDone}))})};
 }

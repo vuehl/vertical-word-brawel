@@ -17,13 +17,19 @@ export function instrumentGame(code){
   code=replaceOnce(code,'await this.run.openStage(onLoadProgress),',
     'await this.run.openStage(onLoadProgress),window.__zixingDeveloper.attachRun(this.run),');
   return 'import {installDeveloperMode} from "../../tools/developer/panel.mjs";\n'+
-    replaceOnce(code,'await app.boot();return app;','await app.boot();installDeveloperMode(app,{moveId:key=>k.movesByKey.get(key)?.id,speciesName:id=>k.get(id).name});return app;');
+    replaceOnce(code,'await app.boot();return app;',`await app.boot();installDeveloperMode(app,{
+      skills:{
+        pool:run=>Vb(run.player.speciesId,run.player.roster,run.player.types,id=>run.meta.inLeague(id)),
+        move:id=>O_(id),
+        upgrade:(run,slot)=>Gb(run,{kind:'upMove',slot,ups:P_(run.player.moves[slot],E[0])})
+      },speciesName:id=>k.get(id).name
+    });return app;`);
 }
 export function isolatedStoragePlugin(platform){
   return {name:'isolated-developer-storage',setup(build){
     build.onLoad({filter:/src[\\/]zixing-ui\.js$/},args=>({resolveDir:path.dirname(args.path),
       contents:replaceOnce(fs.readFileSync(args.path,'utf8'),'hud.experienceReady=()=>xpRing.ready;',
-        'hud.experienceReady=()=>xpRing.ready;hud.developerSyncExperience=()=>Object.assign(xpRing,new ExperienceRing(run.player,performance.now()));')}));
+        'hud.experienceReady=()=>xpRing.ready;hud.developerSyncExperience=()=>{Object.assign(xpRing,new ExperienceRing(run.player,performance.now()));last=-Infinity;};')}));
     build.onLoad({filter:/platform[\\/]store\.mjs$/},args=>({resolveDir:platform,
       contents:replaceOnce(fs.readFileSync(args.path,'utf8'),'/pokebonk-save.json','/pokebonk-dev-save.json')}));
     build.onLoad({filter:/platform[\\/]host\.mjs$/},args=>{
@@ -49,7 +55,7 @@ export function writeProject(root,out){
 // Main and gameplay must come from the same developer build. A stale release
 // subpackage must fail visibly instead of silently starting without the panel.
 export function stampRuntime(main,play){
-  const id='dev5-'+createHash('sha256').update(main).update(play).digest('hex').slice(0,12);
+  const id='dev7-'+createHash('sha256').update(main).update(play).digest('hex').slice(0,12);
   return {id,
     main:replaceOnce(main,"if (api && typeof api.setup==='function' && typeof api.run==='function') resolve(api);",
       `if (api && api.developerBuild===${JSON.stringify(id)} && typeof api.setup==='function' && typeof api.run==='function') resolve(api);`)

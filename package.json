@@ -2,7 +2,9 @@
   "name": "pokebonk-wechat-portrait",
   "version": "0.8.34-portrait.1",
   "private": true,
-  "engines": {"node": ">=22"},
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "node tools/build.mjs",
     "build:dev": "node tools/build.mjs --dev",
@@ -13,7 +15,7 @@
     "analyze:package": "node tools/package-report.mjs",
     "analyze:code": "node tools/build.mjs --analyze",
     "layout": "node tools/layout-reference.mjs",
-    "test": "node --test source/tools/lite.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs tools/paper.test.mjs tools/loading.test.mjs tools/surfaces.test.mjs tools/performance.test.mjs tools/optimization.test.mjs tools/experience.test.mjs tools/runtime-data.test.mjs tools/characters.test.mjs",
+    "test": "node --test source/tools/lite.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs tools/paper.test.mjs tools/loading.test.mjs tools/surfaces.test.mjs tools/performance.test.mjs tools/optimization.test.mjs tools/experience.test.mjs tools/runtime-data.test.mjs tools/characters.test.mjs tools/starter-characters.test.mjs",
     "test:ui-perf": "node tools/smoke.mjs --phone-layout --software-render --ui-perf",
     "test:performance": "node tools/runtime-performance.mjs",
     "test:optimizations": "node tools/runtime-performance.mjs --optimize",
@@ -24,6 +26,7 @@
     "verify:source": "node tools/verify-source.mjs",
     "test:touch": "node tools/smoke.mjs --phone-layout --forest-regression",
     "test:paper": "node tools/smoke.mjs --phone-layout --software-render --paper-art",
-    "test:menus": "node tools/smoke.mjs --menus-only"
+    "test:menus": "node tools/smoke.mjs --menus-only",
+    "test:characters": "node tools/smoke.mjs --phone-layout --software-render --starter-regression"
   }
 }

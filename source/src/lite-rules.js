@@ -1,6 +1,6 @@
 // Shared boundaries for the standalone forest edition.
-import {heroWords} from './character-rules.js';
-export const LITE_SPECIES = Object.freeze([4, 16, 132]);
+import {starterSpecies,starterWords as heroWords} from './starter-characters.js';
+export const LITE_SPECIES = starterSpecies;
 export const LITE_BIOME = 'forest';
 export const isLiteSpecies = id => LITE_SPECIES.includes(Number(id));
 export const isLiteFamily = id => Object.hasOwn(heroWords, Number(id));

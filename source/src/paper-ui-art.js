@@ -29,8 +29,8 @@ export function drawPaperIllustration(canvas,hero=false,variant=0){
       const shade=c.createLinearGradient(0,0,0,310);shade.addColorStop(0,'#f8f5eaff');shade.addColorStop(.7,'#f8f5eaf0');shade.addColorStop(1,'#f8f5ea00');c.fillStyle=shade;c.fillRect(0,0,780,310);
       c.save();c.translate(390,126);c.rotate(-.055);c.font='bold 145px "Ziling Swei",sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';c.lineWidth=10;c.strokeStyle='#343044';c.strokeText('字 行',0,8);c.strokeText('字 行',0,0);const gold=c.createLinearGradient(0,-80,0,80);gold.addColorStop(0,'#ffed9d');gold.addColorStop(1,'#e8bc60');c.fillStyle=gold;c.fillText('字 行',0,0);c.restore();
       c.font='bold 23px "Ziling Swei",sans-serif';c.textAlign='center';c.fillStyle='#526f72';c.fillText('桌 上 有 天 地 · 落 字 即 成 灵',390,245);
-      for(const [word,x,y,size,angle] of [['风',195,430,130,-.15],['炎',390,425,175,.04],['摹',575,454,130,.12]]){
-        c.fillStyle='#354d5040';c.beginPath();c.ellipse(x+10,y+67,size*.34,size*.12,-.2,0,7);c.fill();c.save();c.translate(x,y);c.rotate(angle);c.drawImage(glyphCanvas(word),-size/2,-size/2,size,size);c.restore();
+      for(const [word,x,y,size] of [['风',195,430,130],['炎',390,425,175],['摹',575,454,130]]){
+        c.drawImage(glyphCanvas(word),x-size/2,y-size/2,size,size);
       }
       const fade=c.createLinearGradient(0,540,0,600);fade.addColorStop(0,'#f8f5ea00');fade.addColorStop(1,'#f8f5ea');c.fillStyle=fade;c.fillRect(0,540,780,60);
     }else if(variant){c.fillStyle=['#e9d8ad30','#cae7dd30','#d1c4de30'][variant%3];c.fillRect(0,0,780,300);}

@@ -63,7 +63,7 @@ if(development){
   console.log('本次开发测试二维码：'+sharedQR);
   const page=path.join(output,'开发测试入口-'+stamp+'.html');
   writeDeveloperPreviewPage({file:page,qr:sharedQR,project:projectRoot,buildId:developerBuild,createdAt:new Date(createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})+'（北京时间）'});
-  console.log('本次扫码页面：'+page+'\n扫码后请确认首页显示：开发测试版 DEV 5');
+  console.log('本次扫码页面：'+page+'\n扫码后请确认首页显示：开发测试版 DEV 7');
   if(process.platform==='win32'&&!process.argv.includes('--no-open')){
     try{
       // This is the visible scan target the user needs, not a background helper.

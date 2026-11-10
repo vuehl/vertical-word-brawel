@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {reviewEncounters} from './encounters-regression.mjs';
+import {reviewDeveloperSkills} from './skills-regression.mjs';
+import {reviewDeveloperEvolution} from './evolution-regression.mjs';
 
 export async function enterDeveloperFromHome(page,dir){
   // Use the user's native-touch route, not a direct app.startRun call.
@@ -46,6 +48,20 @@ export async function reviewDeveloper(page,dir){
   await draw();await page.screenshot({path:path.join(dir,'dev-first-entry.png')});
   await tap('close');
   if(process.argv.includes('--boss-only'))return reviewEncounters(page,dir,tap,draw);
+  if(process.argv.includes('--skills-only'))return reviewDeveloperSkills(page,dir);
+  if(process.argv.includes('--evolution-only'))return reviewDeveloperEvolution(page,dir);
+  await page.evaluate(()=>{
+    // Performance scenarios below use the fire hero; explicitly confirm its
+    // real evolution before measuring the continuing combat workload.
+    window.finishDeveloperFireEvolution=()=>{
+      const r=app.run;r.update(0);
+      if(r.state!=='modal')return;
+      if(inspected.doc.querySelector('[data-branch-id]'))throw Error('Performance fixture requires an explicit branch choice');
+      const button=[...inspected.doc.querySelectorAll('.zx-modal button')].find(n=>n.textContent.includes('确认进阶'));
+      if(!button)throw Error('Unexpected modal during workload setup');button.click();
+      for(let i=0;i<300;i++)r.update(1/60);
+    };
+  });
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await page.setViewport({width,height,deviceScaleFactor:3});
     await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
@@ -136,16 +152,18 @@ export async function reviewDeveloper(page,dir){
       // Pause must hold all developer producers, not merely stop the monsters.
       api.open();const elapsed=api.snapshot().workload.elapsed,loot=r.pickups.count;
       r.update(.5);const paused=api.snapshot().workload.elapsed===elapsed&&r.pickups.count===loot;
-      api.close();r.ult.active=0;r.ult.castPending=false;
-      const peak={projectiles:0,zones:0,texts:0,particles:0,pickups:0};
+      api.close();finishDeveloperFireEvolution();r.ult.active=0;r.ult.castPending=false;
+      const peak={projectiles:0,zones:0,texts:0,particles:0,pickups:0},budgetViolations=[];
       for(let frame=0;frame<360;frame++){
         if(frame%60===0)api.apply({count:200,seek:false});
         r.update(1/30);
         const s=api.snapshot();for(const key in peak)peak[key]=Math.max(peak[key],s[key]);
+        const current=limits();
+        if(s.texts>current[2]||s.particles>current[0]+current[1])budgetViolations.push({frame,texts:s.texts,particles:s.particles,limits:current});
       }
       samples.push({mode,time,initial,peak,paused,appliedWithoutRewards,displayedLevel,state:r.state,
         damage:p.moves.filter(Boolean).reduce((n,m)=>n+m.damageDone,0),ultimates:r.ult.uses-ultimates,
-        limits:limits(),levelStable:p.level===initial.workload.level});
+        limits:limits(),budgetViolations,levelStable:p.level===initial.workload.level});
     }
     const rewind=api.apply({mode:'timed',time:120,count:200});
     api.stopWorkload();
@@ -159,10 +177,12 @@ export async function reviewDeveloper(page,dir){
     assert.equal(sample.displayedLevel,'LV.'+sample.initial.workload.level,'HUD must immediately show the applied level');
     assert.ok(sample.damage>0,'Real skills must damage real enemies');
     assert.ok(sample.ultimates>0,'Real ultimate must run');
-    for(const key of ['projectiles','zones','texts','particles','pickups'])assert.ok(sample.peak[key]>0,`${sample.mode}: missing ${key}`);
+    for(const key of ['projectiles','texts','particles','pickups'])assert.ok(sample.peak[key]>0,`${sample.mode}: missing ${key}`);
+    // A legal character kit need not contain a persistent-area attack.
     assert.ok(sample.limits.every((v,i)=>v<=report.workloads.beforeLimits[i]),'Crowd pressure must stay within production quality budgets');
-    assert.ok(sample.peak.texts<=sample.limits[2]);
-    assert.ok(sample.peak.particles<=sample.limits[0]+sample.limits[1]);
+    // The crowd can cross a budget boundary as it dies. Compare each frame
+    // with its own limit, not an earlier peak against the final lower limit.
+    assert.deepEqual(sample.budgetViolations,[]);
   }
   assert.equal(report.workloads.rewind.workload.level,8);
   assert.equal(report.workloads.rewind.workload.moves.length,3);
@@ -175,6 +195,7 @@ export async function reviewDeveloper(page,dir){
       app.meta.profile.settings.quality=quality;app.applySettings();
       const limits=[r.vfx.add.limit,r.vfx.norm.limit,r.vfx.text.limit];
       api.apply({mode:'stress',time:300,count:200});
+      finishDeveloperFireEvolution();
       for(let i=0;i<90;i++)r.update(1/30);
       api.open();api.close();
       app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
@@ -211,6 +232,8 @@ export async function reviewDeveloper(page,dir){
   });
   assert.equal(report.lifecycle.invincible,true);assert.equal(report.lifecycle.maintained,200);
   assert.equal(report.lifecycle.removed,true);assert.equal(report.lifecycle.buttons,1);
+  await reviewDeveloperSkills(page,dir);
+  await reviewDeveloperEvolution(page,dir);
   fs.writeFileSync(path.join(dir,'developer-regression.json'),JSON.stringify(report,null,2)+'\n');
   console.log('Developer checks passed:',report.widths.length,'viewport sizes,',report.waves.length,'time jumps; isolated save and lifecycle.');
 }

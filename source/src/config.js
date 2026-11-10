@@ -1,3 +1,4 @@
+import {configureStarterRoster} from './starter-characters.js';
 import { t as e, u as t } from "./i18n.js";
 import {resolveItemIcon} from './item-icons.js';
 var n = [
@@ -4692,9 +4693,7 @@ var xn = (e) => Math.max(0, ...(e.board?.prizes ?? []).map((e) => e.top)),
   };
 }
 // FOREST LITE: reduce the roster before building membership lookup tables.
-M = M.filter(e => [4,16,132].includes(e.id));
-for (const hero of M) hero.start = true;
-Object.assign(M.find(e => e.id === 16), {branch:[17,58], evoLevel:26, evoLevels:[26,44]});
+M = configureStarterRoster(M);
 var N = new Map(M.map((e) => [e.id, e])),
   kn = (e) => (e.challenge ? (Array.isArray(e.challenge) ? e.challenge : [e.challenge]) : []),
   An = (e) => e.rank ?? `common`,

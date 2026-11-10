@@ -10,7 +10,7 @@ import {settleRun,applyAction} from '../local/progression.mjs';
 import {constrainLiteProfile} from '../src/lite-rules.js';
 
 test('one full forest, original three guardian groups, sanctuary, three starter kits',()=>{
- assert.deepEqual(roster.map(p=>p.id),[4,16,132]);
+ assert.deepEqual(roster.map(p=>p.id),[4,132,16]);
  assert.deepEqual(biomes.map(b=>b.id),['forest']);
  assert.equal(events.length,0);
  assert.deepEqual(biomes[0].guardians,[[123,26,55],[127,62,53],[34,76,59]]);
@@ -22,7 +22,7 @@ test('settlement preserves enemy research and evolution, excludes removed captur
  const p=constrainLiteProfile(createProfile('test'));
  const result={species:16,biome:'forest',mode:'standard',tier:0,stage:4,victory:true,kills:100,time:600,level:45,progress:{league:[10,25,16],shinies:[25,4],classics:[10,132],forms:[59,150],seen:[25,151],research:{25:10}}};
  const dust=settleRun(p,result);
- assert.ok(dust>0);assert.deepEqual(p.league,[4,16,132]);assert.deepEqual(p.unlocked,[4,16,132]);
+ assert.ok(dust>0);assert.deepEqual(p.league,[4,132,16]);assert.deepEqual(p.unlocked,[4,132,16]);
  assert.deepEqual(p.shinies,[4]);assert.deepEqual(p.classics,[132]);assert.deepEqual(p.forms,[59]);
  assert.equal(p.research[25],10);assert.ok(p.seen.includes(151));assert.deepEqual(p.biomes,{forest:1});
  const before=p.stardust;assert.equal(applyAction(p,{k:'lab',id:'reroll',lv:99}),false);assert.equal(p.stardust,before);
@@ -35,7 +35,7 @@ test('HTTP blocks removed content, saves valid play once, and restores progressi
  const call=async(route,data,status=200)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method:data===undefined?'GET':'POST',headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});assert.equal(r.status,status,route);return r.json();};
  try{
   await start();token=(await call('/auth/guest',{})).token;
-  assert.deepEqual((await call('/profile')).profile.league,[4,16,132]);await call('/profile/starter',{id:16});
+  assert.deepEqual((await call('/profile')).profile.league,[4,132,16]);await call('/profile/starter',{id:16});
   assert.deepEqual(await call('/coop/access'),{show:false,play:false});
   for(const route of ['/coop/rooms','/clans/board','/events/halloween26','/seasons/awards'])await call(route,undefined,404);
   const base={species:16,biome:'forest',tier:0,mode:'standard'};
@@ -44,7 +44,7 @@ test('HTTP blocks removed content, saves valid play once, and restores progressi
   const result={...base,stage:4,kills:100,time:600,level:30,victory:true,progress:{league:[25],research:{25:5},seen:[25]}};
   await call('/runs/'+run.id+'/finish',{result:{...result,species:4}},400);
   const one=await call('/runs/'+run.id+'/finish',{result});const two=await call('/runs/'+run.id+'/finish',{result});
-  assert.equal(two.profile.counters.runs,1);assert.equal(two.profile.stardust,one.profile.stardust);assert.deepEqual(two.profile.league,[4,16,132]);assert.deepEqual(two.profile.biomes,{forest:1});
+  assert.equal(two.profile.counters.runs,1);assert.equal(two.profile.stardust,one.profile.stardust);assert.deepEqual(two.profile.league,[4,132,16]);assert.deepEqual(two.profile.biomes,{forest:1});
   await stop();await start();const saved=(await call('/profile')).profile;
   assert.equal(saved.research[25],5);assert.equal(saved.stardust,one.profile.stardust);
  }finally{if(proc&&proc.exitCode===null)await stop();assert.equal(path.dirname(path.resolve(dir)),path.resolve(os.tmpdir()));assert.ok(path.basename(dir).startsWith('pokebonk-lite-test-'));await fs.rm(dir,{recursive:true,force:true});}

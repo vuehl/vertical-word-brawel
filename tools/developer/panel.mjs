@@ -54,7 +54,7 @@ export function setEnemyCount(run,count,reset=false){
   return current;
 }
 
-export function installDeveloperMode(app,{moveId,speciesName}){
+export function installDeveloperMode(app,{skills,speciesName}){
   const options={invincible:false,lockCount:false,monitor:false,spawn:true};
   let selectedMode='timed',workload=null;
   let bossMode='timed',encounters=null;
@@ -82,7 +82,7 @@ export function installDeveloperMode(app,{moveId,speciesName}){
   const markHome=()=>{
     const home=app.screen;if(!home?.classList.contains('zx-home'))return;
     const label=home.querySelector('.zx-home-top small');
-    if(label){text(label,'开发测试版 DEV 5');label.id='zx-dev-version';label.style.cssText='padding:5px 8px;border-radius:8px;background:#ffe0ad;color:#855329;font-weight:700;';}
+    if(label){text(label,'开发测试版 DEV 7');label.id='zx-dev-version';label.style.cssText='padding:5px 8px;border-radius:8px;background:#ffe0ad;color:#855329;font-weight:700;';}
     text(home.querySelector('.zx-home-foot small'),'分钟 / 怪数 / 全战斗压测');
   };
   const setScreen=app.setScreen.bind(app);
@@ -112,7 +112,12 @@ export function installDeveloperMode(app,{moveId,speciesName}){
     if(values){
       text(values.seconds,'本区时间 '+time(seconds));text(values.count,'普通怪目标 '+target);
       const preset=workloadPreset(seconds,selectedMode);
-      text(values.preset,preset?`角色 ${preset.level} 级 · ${preset.skills} 技能 / ${preset.rank} 级 · 掉落目标 ${preset.loot}`:'保留当前角色等级、技能和装备');
+      text(values.preset,preset?`时间预设 ${preset.level} 级 · 技能最高 ${preset.rank} 级 · 掉落目标 ${preset.loot}`:'保留当前角色等级、技能和装备');
+      text(values.skills,preset?'当前形态预设：'+workload.plan(selectedMode,seconds).map(m=>m.name).join('、'):'技能和升级按正式流程进行');
+      const evo=run.nextEvo;
+      const current='当前 '+speciesName(run.player.speciesId)+' Lv.'+run.player.level;
+      text(values.evolution,evo?current+' · 下次进化 Lv.'+evo.level+(evo.to===-1?' · 自选方向':' → '+speciesName(evo.to)):current+' · 无后续进化');
+      values.evolve.disabled=!evo;
       for(const [key,button] of values.modes){button.setAttribute('aria-pressed',String(key===selectedMode));button.style.background=key===selectedMode?'#f7d5a4':'#fffdf7';}
       for(const [key,button] of values.bossModes){button.setAttribute('aria-pressed',String(key===bossMode));button.style.background=key===bossMode?'#e2d5f5':'#fffdf7';}
       const encounter=encounterAt(run.director.timeline,seconds,bossMode),next=nextEncounter(run.director.timeline,seconds);
@@ -132,6 +137,12 @@ export function installDeveloperMode(app,{moveId,speciesName}){
     if(run&&!run.disposed&&run.state==='paused')run.resume();
     refresh();invalidate();
   }
+  function advanceEvolution(){
+    if(!run||run.disposed||!['play','paused'].includes(run.state))return false;
+    if(!workload.advanceEvolution())return false;
+    selectedMode=workload.snapshot().mode;
+    close();workload.update(0);refresh();invalidate();return true;
+  }
   function apply(jump){
     if(!run||run.disposed||!['play','paused'].includes(run.state))throw Error('请先进入可操作的战斗。');
     if(jump){
@@ -142,7 +153,7 @@ export function installDeveloperMode(app,{moveId,speciesName}){
     }
     const actual=setEnemyCount(run,target,jump);
     if(actual!==target)text(error,`可用位置或容量不足：实际生成 ${actual} 个。`);
-    else text(error,jump?'已应用 '+modeNames[selectedMode]+'，返回战斗开始运行。':'已更新普通怪数量。');
+    else text(error,jump?(workload.snapshot().evolutionQueued?'已到进化等级，返回战斗选择进化。':'已应用 '+modeNames[selectedMode]+'，返回战斗开始运行。'):'已更新普通怪数量。');
     run.renderWorld(0);refresh();
     return snapshot();
   }
@@ -159,11 +170,14 @@ export function installDeveloperMode(app,{moveId,speciesName}){
     shell.append(node('b','开发者测试','font-size:19px;flex:none;padding:12px 14px 4px;'),node('small','独立测试存档 · 面板打开时暂停','font-size:11px;flex:none;padding:0 14px 8px;color:#886b4c;'));
     const card=node('div','','min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:9px;padding:8px 14px;');
     card.dataset.devScroll='true';shell.append(card);
-    values={seconds:node('b','','font-size:14px;'),count:node('b','','font-size:14px;'),preset:node('small','','font-size:11px;'),boss:node('small','','font-size:11px;'),modes:[],bossModes:[],toggles:[]};
+    values={seconds:node('b','','font-size:14px;'),count:node('b','','font-size:14px;'),preset:node('small','','font-size:11px;'),skills:node('small','','font-size:11px;line-height:1.45;'),boss:node('small','','font-size:11px;'),modes:[],bossModes:[],toggles:[]};
     const modes=row(...Object.entries(modeNames).map(([key,label])=>{
       const button=action(label,()=>{selectedMode=key;refresh();},'mode-'+key);values.modes.push([key,button]);return button;
     }));
-    card.append(modes,values.preset);
+    card.append(modes,values.preset,values.skills);
+    values.evolution=node('small','','font-size:12px;line-height:1.45;');
+    values.evolve=action('升到下次进化',advanceEvolution,'evolve-next');
+    card.append(values.evolution,values.evolve);
     const times=row(...[0,2,2.5,3,5,6,7,8,10].map(m=>action(m+'分',()=>{seconds=m*60;if(selectedMode!=='none'&&target===0&&m>0)target=Math.min(400,100+m*50);refresh();},'minute-'+m)));
     card.append(values.seconds,times,row(action('−30秒',()=>{seconds=bounded(seconds-30,600);refresh();},'time-minus'),action('+30秒',()=>{seconds=bounded(seconds+30,600);refresh();},'time-plus')));
     card.append(values.count,row(...[0,100,200,400,600,1000].map(n=>action(String(n),()=>{target=n;refresh();},'count-'+n))),row(action('−10怪',()=>{target=bounded(target-10,MAX_COUNT);refresh();}),action('+10怪',()=>{target=bounded(target+10,MAX_COUNT);refresh();})));
@@ -176,7 +190,7 @@ export function installDeveloperMode(app,{moveId,speciesName}){
       const update=()=>{text(toggle,label+' '+(options[key]?'开':'关'));toggle.setAttribute('aria-pressed',String(options[key]));if(monitor)monitor.hidden=!options.monitor;};
       update();values.toggles.push(update);switches.append(toggle);
     }
-    card.append(switches,node('small','按时间刷新最近一波首领；区域 Boss 可直接召唤。跳时间会清理旧首领及其随从，不发清理奖励。首领生成在附近，区域 Boss 跳过入场动画，击败测试 Boss 不开放传送门。配装是受控预设，沿用当前画质限制。','font-size:11px;line-height:1.45;color:#796b57;'));
+    card.append(switches,node('small','按时间刷新最近一波首领；区域 Boss 可直接召唤。跳时间会清理旧首领及其随从，不发清理奖励。配装沿用正式技能池与强化规则。达到进化等级后，返回战斗选择方向并确认；也可点「升到下次进化」直接测试。停止预设会恢复原形态与路线。满负载额外加快施放。','font-size:11px;line-height:1.45;color:#796b57;'));
     const stats=node('div',summary(),'font-size:11px;line-height:1.5;white-space:pre-wrap;background:#edf0e6;padding:8px;border-radius:8px;');card.append(stats);
     const footer=node('div','','flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 14px 12px;');shell.append(footer);
     error=node('div','','font-size:11px;color:#b4472d;min-height:16px;');footer.append(error);
@@ -189,7 +203,7 @@ export function installDeveloperMode(app,{moveId,speciesName}){
     // startRun can route through the loading flow and call itself again.
     if(run===next)return;
     panel?.remove();panel=null;values=null;error=null;button?.remove();monitor?.remove();
-    workload?.stop();run=next;workload=createWorkload(run,moveId);encounters=createEncounterTest(run,speciesName);lastMaintain=0;showOnEntry=true;
+    workload?.stop();run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run,speciesName);lastMaintain=0;showOnEntry=true;
     button=action('测试',open,'open');button.id='zx-dev-button';button.setAttribute('aria-label','开发者测试');
     button.style.cssText='position:absolute;z-index:950;right:62px;top:117px;width:58px;height:40px;min-height:40px;padding:0;border:2px solid #fffdf7;border-radius:12px;background:#ffe0ad;color:#855329;font-size:14px;font-weight:700;pointer-events:auto;';
     // Keep the entry out of the HUD's clipping and independently cached groups.
@@ -225,9 +239,12 @@ export function installDeveloperMode(app,{moveId,speciesName}){
     const update=run.update.bind(run);
     run.update=dt=>{
       if(run.director!==wiredDirector){wireDirector();wiredDirector=run.director;}
-      const before=run.time,result=update(dt),now=performance.now();
+      const before=run.time,beforeState=run.state,result=update(dt),now=performance.now();
       if(showOnEntry)open();
       workload.update(Math.max(0,run.time-before));
+      // Evolution returns to play without calling resume(). Restore the test
+      // entry immediately instead of waiting for the one-second monitor tick.
+      if(run.state!==beforeState){mountEntrance();refresh();invalidate();}
       if(run.state==='play'&&options.lockCount&&now-lastMaintain>=1000){lastMaintain=now;setEnemyCount(run,target);}
       if(now-lastSample>=1000){lastSample=now;mountEntrance();if(options.monitor&&!panel)refresh();}
       return result;
@@ -240,6 +257,9 @@ export function installDeveloperMode(app,{moveId,speciesName}){
   app.startRun=async(...args)=>{const result=await start(...args);if(result&&app.run){attach(app.run);if(showOnEntry)open();}return result;};
   const render=app.r.render.bind(app.r);
   app.r.render=(...args)=>{
+    // Stage introductions may arrive after the automatic test panel opens.
+    // Keep the active test controls visible and touchable from the first frame.
+    if(panel)doc.querySelectorAll('.zx-intro').forEach(node=>node.remove());
     // Cover entry through a retained callback or a replaced HUD as well as the
     // normal startRun return. Only mount when the stage is fully initialized.
     if(app.run&&!app.run.disposed&&!app.run.buildingStage&&app.run.director){
@@ -258,7 +278,7 @@ export function installDeveloperMode(app,{moveId,speciesName}){
     try{return render(...args);}finally{calls=info.render.calls;triangles=info.render.triangles;info.autoReset=autoReset;}
   };
   // Test API exists exclusively in the isolated developer build.
-  window.__zixingDeveloper={options,open,close,snapshot,attachRun:attach,stopWorkload:()=>workload?.stop(),
+  window.__zixingDeveloper={options,open,close,snapshot,attachRun:attach,stopWorkload:()=>workload?.stop(),advanceEvolution,
     apply({time:nextTime,count,seek=true,mode,boss}){
       if(boss!==undefined){if(!Object.prototype.hasOwnProperty.call(bossModes,boss))throw Error('Unknown encounter mode');bossMode=boss;}
       if(mode!==undefined){if(!Object.prototype.hasOwnProperty.call(modeNames,mode))throw Error('Unknown workload mode');selectedMode=mode;}

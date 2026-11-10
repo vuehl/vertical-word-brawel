@@ -9,6 +9,14 @@ import {unpackStream} from './resource-stream.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex').slice(0,16);
 
+export function writeBootHeroArt(root,out){
+  const images={};
+  for(const [id,word] of [[4,'炎'],[16,'风'],[132,'摹']]){
+    images[word]='data:image/png;base64,'+fs.readFileSync(path.join(root,'source/art/glyphs',`hero_${id}_${word}.png`)).toString('base64');
+  }
+  fs.writeFileSync(path.join(out,'boot-hero-art.js'),'module.exports = '+JSON.stringify(images)+';\n');
+}
+
 export function bootAssets(root) {
   const read=file=>fs.readFileSync(path.join(root,'source',file),'utf8').replace(/\r\n/g,'\n');
   const css=read('public/assets/main-BnZCGLop-mvlr7rzv.css')+'\n'+read('src/customize.js').split('style.textContent=').pop().split(String.fromCharCode(96))[1]+'\n'+read('src/zixing-style.js').split(String.fromCharCode(96))[1];

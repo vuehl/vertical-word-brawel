@@ -1,5 +1,6 @@
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily} from './lite-rules.js';
-import {configureCharacterData,enemyWord,applyWindBuffs,createCharacterUltimates} from './character-rules.js';
+import {enemyWord} from './character-rules.js';
+import {configureStarterSpecies,rosterForStarterForm,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
@@ -390,7 +391,9 @@ var Ni = {
         }),
       ),
         i() !== `es` && (await this.localize()));
-      configureCharacterData(this.all);
+      configureStarterSpecies(this.all);
+      Pi.normal='基础';Pi.flying='风';
+      if(this.types?.names){this.types.names.normal='基础';this.types.names.flying='风';}
       configureGlyphNames(this.all);
       for (let e of this.all) {
         e.name=glyphWordForSpecies(e.id);
@@ -36903,17 +36906,8 @@ var Yh = {
     (e) => Uh[35].cast({ ...e, tier: 0 }),
   ),
 };
-let characterUltimates;
 function Xh(e, t) {
-  characterUltimates ??= createCharacterUltimates(Uh, context => {
-    const run=context.run;
-    for(let wave=0;wave<3;wave++) run.later(wave*.3,()=>{
-      const p=run.player.pos,radius=(5+wave*3)*context.R;
-      run.vfx.ring(p.x,p.y,p.z,radius,Y.air,.65,.3,L.Ripple);
-      q(context,p.x,p.z,radius,1.1,{knock:5});
-    });
-  });
-  return characterUltimates[e] ?? (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
+  return starterUltimate(e,Uh) ?? (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
 }
 var Zh = (e, t) => gh(e.names, t),
   Qh = (e, t) => gh(e.dur, t),
@@ -42755,6 +42749,8 @@ var mv = 30,
     }
     setSpecies(e) {
       let t = this.hp / this.maxHp;
+      this.roster=rosterForStarterForm(this.roster,e);
+      this.ability=this.roster?.passive??this.ability;
       ((this.speciesId = e),
         (this.data = k.get(e)),
         (this.types = this.data.types),
@@ -42812,7 +42808,7 @@ var mv = 30,
       (rv(e, [t, n, r, i, a, this.run.allies ? this.run.allies.mods() : []]),
         av(e),
         this.run.endless && (e.moveSpeed = de(e.moveSpeed)));
-      applyWindBuffs(e, this.buffs);
+      applyStarterSpeed(e,this.buffs);
       let u = this.maxHp;
       ((this.stats = e),
         (this.maxHp = Math.round(e.maxHp)),
@@ -44564,7 +44560,7 @@ var mv = 30,
             glow: 1,
             spin: 4,
           }),
-        e.sprites.shadows.push(this.pos.x, p, this.pos.z, 1.4),
+        !t.zxOriginalGlyph && e.sprites.shadows.push(this.pos.x, p, this.pos.z, 1.4),
         e.playerFootRing ??= createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr}));
       e.playerFootRing.visible=!this.dead;
       e.playerFootRing.position.set(this.pos.x,p+.09,this.pos.z);
@@ -73729,7 +73725,7 @@ var iT = Math.PI / 180,
     }
     get def() {
       let e = this.run.player;
-      return Xh([58,59].includes(e.speciesId) ? 58 : e.roster?.id, e.types[0]);
+      return Xh(e.speciesId, e.types[0]);
     }
     get form() {
       return this.run.player.evoStage;
@@ -73788,6 +73784,7 @@ var iT = Math.PI / 180,
         this.active > 0 ? (this.active = Math.max(0, this.active - e)) : this.add(e / kT),
         this.drones.update(e),
         this.risers.update(e));
+      updateStarterSpeed(t,e,I.Soft);
       let n = t.input.down(`KeyR`);
       (n || (this.holdOk = !0),
         t.state === `play` &&
@@ -73873,7 +73870,7 @@ var iT = Math.PI / 180,
       (this.drones.render(), this.risers.render());
     }
     clear() {
-      (this.drones.clear(), this.risers.clear(), (this.active = 0), (this.castPending = !1), this.run.upgradeTiming.clear());
+      (clearStarterSpeed(this.run), this.drones.clear(), this.risers.clear(), (this.active = 0), (this.castPending = !1), this.run.upgradeTiming.clear());
     }
   },
   PT = { burn: 1, poison: 2, para: 4, frozen: 8, sleep: 16, wet: 32, curse: 64, slow: 128 },
@@ -81496,7 +81493,7 @@ function yO(e, t = `btn small ghost gl-btn`) {
     c(`Glosario`),
   );
 }
-var bO = [4, 16, 132],
+var bO = [...LITE_SPECIES],
   xO = () => ({ idx: 0, ids: [], prog: [], claimed: [], rerolls: 0 }),
   SO = {
     master: 0.8,
@@ -94292,10 +94289,11 @@ function ZX(app) {
   return createZixingUI(app, {
     defaults: {...SO, fpsLimit:60, batterySaver:false, zxTheme:'auto', zxBossHealth:'value'},
     moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
-    ultDescription: id => Xh(id, k.get(id).types[0]).descs?.[0] || '积蓄能量，释放专属大招。',
+    ultDescription: id => Xh(id, k.get(id).types[0]).descs[0] || '积蓄能量，释放专属大招。',
     baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
-    offer: (run, offer) => {const value=Wb(run, offer);return {...value,title:value.title.replace('火花','火弹').replace('水枪','水环').replace('藤鞭','飞叶')};},
-    moveName: move => ({ember:'火弹','water-gun':'水环','vine-whip':'飞叶'}[move.key] || move.name),
+    typeName: type => Pi[type] || type,
+    offer: (run, offer) => Wb(run, offer),
+    moveName: move => move.name,
     moveIcon: move => Zt(`ui/types/${move.type}.png`),
     moveColor: move => YC(Ni[move.type]),
     vitaminName: id => Ne.get(id)?.name || id,
@@ -105419,7 +105417,7 @@ var JI = class {
         X(
           `div`,
           { class: `help`, style: { fontSize: `15px` } },
-          '攻速：风 → 讽 → 疯（攻速×10）；移速：风 → 飒 → 飙（移速×10）。',
+          '风 → 讽 → 飒；风 → 疯 → 飙。刮倒一片与没影了提供 5 秒移速×10。',
         ),
         r,
       ),

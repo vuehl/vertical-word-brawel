@@ -1,4 +1,3 @@
-import {heroFamily} from './character-rules.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {drawPaperIllustration} from './paper-ui-art.js';
 import {drawBattlePortrait,drawBattleMinimap,drawBattleHealth} from './paper-hud-art.js';
@@ -8,13 +7,10 @@ import {laboratory} from './catalogs.js';
 import {waitForLoadingPaint} from './loading-work.js';
 import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
+import {characters,characterForSpecies} from './starter-characters.js';
 
-export const characters = [
-  {id:4,word:'炎',name:'炎',tone:'fire',color:'#bc3441',role:'火系爆发',motto:'炎 → 焱 → 燚，火势层层递进',move:'火弹',ult:'一点火苗'},
-  {id:16,word:'风',name:'风',tone:'water',color:'#3278ba',role:'双路进阶',motto:'讽 → 疯提攻速；飒 → 飙提移速',move:'电光一闪',ult:'一阵刮来'},
-  {id:132,word:'摹',name:'摹',tone:'ink',color:'#766a88',role:'模仿复制',motto:'摹纸影写，照着变',move:'变身',ult:'照着变'},
-];
-const character=id=>characters.find(c=>c.id===heroFamily(id))||characters[0];
+export {characters};
+const character=characterForSpecies;
 const number=n=>Math.round(Number(n)||0).toLocaleString('en-US');
 const percent=n=>Number(((Number(n)||0)*100).toFixed(1))+'%';
 const time=n=>Math.floor((n||0)/60).toString().padStart(2,'0')+':'+Math.floor((n||0)%60).toString().padStart(2,'0');
@@ -162,6 +158,7 @@ export function createZixingUI(app,api) {
       el('div','zx-hero',[small('字灵 · '+c.word),glyph(c,true),text(c.motto,'zx-note')]),
       el('div','zx-choices',characters.map(ch=>button([glyph(ch),small(ch.role)],()=>{selected=ch.id;choose();},'zx-choice '+ch.tone+(selected===ch.id?' on':''),{'data-species':ch.id,'aria-pressed':selected===ch.id,'aria-label':ch.word+'，'+ch.role}))),
       card(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id))))),
+      small(c.evolution),
       link('▥ 查看属性                         基础 + 研究加成 ›',()=>stats(null,()=>choose())),
     ],[button('选择关卡  →',async()=>{if(!profile().starter)await app.meta.chooseStarter(selected);profile().lastSpecies=selected;app.meta.save();map();},'primary'),button('返回',home)]);
   }
@@ -408,7 +405,7 @@ export function createZixingUI(app,api) {
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
   function stats(run=null,back=choose,tab=0) {
-    const c=run?character(run.startSpecies):current(),s=run?run.player.stats:api.baseStats(selected,app.meta.labStats());
+    const c=run?character(run.player.speciesId):current(),s=run?run.player.stats:api.baseStats(selected,app.meta.labStats());
     const item=(label,value,note,click)=>{const a=card(small(label),el('strong','',value),small(note));if(click){a.setAttribute('role','button');a.addEventListener('click',click);}return a;};
     const preview=()=>stats(run,back,tab);
     const body=[card(row(glyph(c),col(el('b','',c.word+' · '+(run?'Lv.'+run.player.level:'开局属性')),small(run?'桌上世界 · 已暂停':'基础 + 永久研究')))),
@@ -434,7 +431,7 @@ export function createZixingUI(app,api) {
   }
   function pause(run) {
     overlay('片刻休整','单人对局 · 已暂停',[
-      el('div','zx-row zx-pause-profile',[glyph(glyphWordForSpecies(run.player.speciesId)),col(el('b','',glyphWordForSpecies(run.player.speciesId)+' · Lv.'+run.player.level),small('桌上世界 / '+['普通','困难','噩梦'][run.tier]))]),
+      el('div','zx-row zx-pause-profile',[glyph(character(run.player.speciesId)),col(el('b','',character(run.player.speciesId).word+' · Lv.'+run.player.level),small('桌上世界 / '+['普通','困难','噩梦'][run.tier]))]),
       el('div','zx-build-tags',buildLabels(run).map(label=>el('span','zx-build-tag',label))),
       el('div','zx-pause-stats',[[time(run.time),'已用时间'],[number(run.stats.kills),'击败'],[number(run.gold),'本局金币']].map(([v,k])=>col(el('b','',v),small(k)))),
       button([el('span','zx-pause-attribute-title',[icon('stats',16,'#2e6ddb'),el('span','','查看属性')]),el('span','zx-pause-attribute-note','当前数值 · 加成来源 ›')],()=>stats(run,()=>pause(run)),'zx-link zx-pause-attributes'),
@@ -520,10 +517,7 @@ export function createZixingUI(app,api) {
       if(opacity)node.style.opacity=opacity;
       else if(locked)node.style.opacity='.45';
       node.dataset.offer=String(index);
-      const branch=method==='showBranch'?args[1][index]:null;
-      if(branch===17)notes.push(small('攻速路线 · 讽 → 疯'),small('风环扩散 → 攻速×10，持续6秒'));
-      if(branch===58)notes.push(small('移速路线 · 飒 → 飙'),small('连续冲撞 → 移速×10，持续6秒'));
-      node.replaceChildren(offerContent(branch?glyphWordForSpecies(branch):symbol,heading.textContent,notes));
+      node.replaceChildren(offerContent(symbol,heading.textContent,notes));
     });
     const actions=[...wrap.querySelectorAll('.actions > button')];
     actions.forEach(node=>{node.className='zx-button zx-reroll';node.querySelectorAll('kbd').forEach(key=>key.remove());});
@@ -601,18 +595,28 @@ export function createZixingUI(app,api) {
       const render=hud[method].bind(hud);
       hud[method]=(r,items,...args)=>{const result=render(r,items,...args);restyleItems(r,method==='showItem'?[items]:items,method==='showItemChoice');return result;};
     }
-    for(const [method,symbol] of Object.entries({showBlessing:'祝',showTrade:'易',showPact:'契',showBranch:'变',showFusion:'合',showDitto:'复',showParty:'伴',showShinySwap:'伴'})){
+    for(const [method,symbol] of Object.entries({showBlessing:'祝',showTrade:'易',showPact:'契',showFusion:'合',showDitto:'复',showParty:'伴',showShinySwap:'伴'})){
       const render=hud[method].bind(hud);
       hud[method]=(...args)=>{const result=render(...args);restyleChoice(run,method,args,symbol);return result;};
     }
+    hud.showBranch=(r,ids,choose)=>{
+      let chosen=false;
+      const routes={17:{next:'飒',ult:'卷着打转',note:'双龙卷风卷走敌人，终阶大招「冲！」连续六次冲锋。'},18:{next:'飙',ult:'刮倒一片',note:'移动速度 ×10，持续 5 秒；终阶大招「没影了」同样获得移速 ×10。'}};
+      overlay('风起两路','选择进化分支',[
+        small('本局只能选择一条路线，确认后沿该路线继续进化。'),
+        ...ids.map(id=>button([row(glyph(character(id)),col(el('h3','',character(id).word+' → '+routes[id].next),small('大招 · '+routes[id].ult))),text(routes[id].note,'zx-note')],()=>{
+          if(chosen)return;chosen=true;choose(id);
+        },'zx-branch-choice',{'data-branch-id':id})),
+      ],[],hud);
+    };
     hud.stageIntro=r=>intro(paperStages[Math.min(3,r.stage-1)],'小小字灵，漫游桌上世界。');
     hud.showEvolution=()=>intro('字意更进一步','进阶中 · 保留当前招式与强化');
     const evolve=run.startEvolution.bind(run);
     run.startEvolution=()=>{
       run.state='modal';
       overlay('字意更进一步','文字进阶',[
-        el('div','zx-hero',[glyph(glyphWordForSpecies(run.nextEvo.to),true),el('b','',glyphWordForSpecies(run.player.speciesId)+' → '+glyphWordForSpecies(run.nextEvo.to))]),
-        small('保留当前招式与已有强化。'),card(statRow('基础成长','提升伤害与生命'),statRow('进阶次数',String(run.player.evoStage+1))),
+        el('div','zx-hero',[row(glyph(character(run.player.speciesId)),el('b','','→'),glyph(character(run.nextEvo.to),true)),el('b','',character(run.player.speciesId).word+' → '+character(run.nextEvo.to).word)]),
+        small('保留当前招式与已有强化。'+([58,59].includes(run.nextEvo.to)?'进化后解锁火系技能组，特性变为忠诚守护。':'')),card(statRow('基础成长','提升伤害与生命'),statRow('进阶次数',String(run.player.evoStage+1))),
       ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary')],hud);
     };
     hud.compact=true;
@@ -624,7 +628,6 @@ export function createZixingUI(app,api) {
     level.dataset.uiLayer='portrait-level';
     const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
     const stageLabel=el('small','zx-hud-stage',''),score=el('span','zx-hud-score',''),c=character(run.startSpecies);
-    const heroName=el('b','zx-hud-name',c.word);
     const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化'});
     supplies.dataset.uiLayer='items';
     const health=el('canvas','zx-player-health',[],{width:176,height:40,'data-static':'true','data-ui-layer':'health',role:'progressbar','aria-label':'角色生命','aria-valuemin':0});
@@ -638,11 +641,12 @@ export function createZixingUI(app,api) {
     let portraitFrame=0;
     const refreshPortrait=()=>{
       const progress=experience();
-      drawBattlePortrait(portrait,glyphWordForSpecies(run.player.speciesId??run.startSpecies),c.tone,progress);
+      drawBattlePortrait(portrait,glyphWordForSpecies(run.player.speciesId??run.startSpecies),character(run.player.speciesId).tone,progress);
       portrait.dataset.progress=String(progress);portrait.dataset.frame=String(++portraitFrame);
       portrait.setAttribute('aria-valuenow',Math.round(progress*100));
     };
     refreshPortrait();glyphAtlasReady().then(refreshPortrait).catch(()=>{});
+    const identityName=el('b','zx-hud-name',c.word),identityType=el('span','zx-hud-element',api.typeName(run.player.types[0]));
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
     minimap.dataset.uiLayer='minimap';
     minimap.setAttribute('aria-label','附近地图，点击整体放大');
@@ -654,7 +658,7 @@ export function createZixingUI(app,api) {
       el('div','zx-hud-profile',[
         el('div','zx-hud-card-back'),el('div','zx-hud-card'),portrait,
         el('div','zx-hud-identity',[
-          el('div','zx-hud-name-row',[heroName,el('span','zx-hud-element',({4:'火',16:'风',132:'基础'})[c.id])]),
+          el('div','zx-hud-name-row',[identityName,identityType]),
           supplies,
         ]),level,
       ]),minimap,button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),
@@ -735,7 +739,9 @@ export function createZixingUI(app,api) {
       xpRing.update(run.player,now,run.state==='play');
       updateText(levelValue,String(xpRing.level));
       const evolved=glyphWordForSpecies(run.player.speciesId??run.startSpecies);
-      updateText(heroName,evolved);
+      updateText(identityName,evolved);
+      updateText(identityType,api.typeName(run.player.types[0]));
+      if(identityType.dataset.element!==run.player.types[0])identityType.dataset.element=run.player.types[0];
       if(portrait.dataset.word!==evolved||Number(portrait.dataset.progress)!==experience())refreshPortrait();
       if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
       last=now;lastState=run.state;

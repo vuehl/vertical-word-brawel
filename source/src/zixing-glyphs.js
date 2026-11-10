@@ -1,4 +1,4 @@
-import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
+import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies,isOriginalHeroGlyph} from './paper-glyph-art.js';
 import {createGlyphBatches} from './glyph-batches.js';
 const paintJobs=[];
 let paintTimer=null;
@@ -55,7 +55,14 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     batch.ready=false;
     entry.ready.then(()=>{if(!disposed)batch.ready=true;},error=>{if(!disposed)batch.loadError=error;});
     m.fragmentShader=m.fragmentShader.replace('uniform sampler2D map;','uniform sampler2D map; uniform sampler2D zxGlyph;').replaceAll('texture2D(map,','texture2D(zxGlyph,');
-    m.needsUpdate=true;batches.add(batch,t.uuid);return batch;
+    batch.zxOriginalGlyph=isOriginalHeroGlyph(word);
+    if(batch.zxOriginalGlyph){
+      // No palette/skin, outline, light ramp or fog recoloring on supplied art.
+      // Retain the brief hit flash as combat feedback.
+      m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
+      m.transparent=true;m.depthWrite=false;
+    }
+    m.needsUpdate=true;batches.add(batch,t.uuid+(batch.zxOriginalGlyph?'-original':''));return batch;
   }
   run.sprites.get=(...args)=>skin(get(...args),args[2]);
   for(const batch of run.sprites.batches.values())skin(batch);

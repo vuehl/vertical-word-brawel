@@ -9,7 +9,7 @@ export async function reviewCharacters(page,dir) {
   const draw=async()=>{
     await page.evaluate(()=>{inspected.doc.querySelectorAll('.zx-intro,.evo-reveal,.ultcut').forEach(n=>n.remove());const r=app.run;r.updateCamera(1);r.renderWorld(0);r.ui.hud(r);inspected.env.invalidateUI();app.r.render(0);inspected.env.drawUI(app.r.renderer);});
   };
-  for(const [species,branch,finalWord] of [[4,5,'燚'],[16,17,'疯'],[16,58,'飙'],[132,0,'摹']]) {
+  for(const [species,branch,finalWord] of [[4,5,'燚'],[16,17,'飒'],[16,18,'飙'],[132,0,'摹']]) {
     const start=await page.evaluate(async species=>{
       app.toMenu();
       if(!await app.startRun({species,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Cannot start '+species);
@@ -24,9 +24,9 @@ export async function reviewCharacters(page,dir) {
     if(branch){
       if(species===16){
         const choices=await page.evaluate(()=>{const r=app.run;r.player.level=26;r.tryEvolve();return r.ui.modalEl.textContent;});
-        assert.ok(choices.includes('讽')&&choices.includes('飒'));
+        assert.ok(choices.includes('讽')&&choices.includes('疯'));
         await draw();await page.screenshot({path:path.join(dir,'wind-branches.png')});
-        await page.evaluate(branch=>{const r=app.run;const buttons=[...r.ui.modalEl.querySelectorAll('button')];buttons.find(n=>n.textContent.includes(branch===17?'讽':'飒')).click();},branch);
+        await page.evaluate(branch=>{const r=app.run;const buttons=[...r.ui.modalEl.querySelectorAll('button')];buttons.find(n=>n.textContent.includes(branch===17?'讽':'疯')).click();},branch);
       }else await page.evaluate(()=>{const r=app.run;r.player.level=r.nextEvo.level;r.tryEvolve();});
       const first=await page.evaluate(()=>{
         const r=app.run;const preview=r.ui.modalEl.textContent;
@@ -35,7 +35,7 @@ export async function reviewCharacters(page,dir) {
         return {preview,species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
       assert.equal(first.species,branch);report.branches.push(first);
-      assert.equal(first.ultimate,({5:'火圈绕身',17:'卷着打转',58:'冲！'})[branch]);
+      assert.equal(first.ultimate,({5:'火圈绕身',17:'卷着打转',18:'刮倒一片'})[branch]);
       const second=await page.evaluate(()=>{
         const r=app.run;r.state='play';r.player.level=r.nextEvo.level;r.tryEvolve();
         [...r.ui.modalEl.querySelectorAll('button')].find(n=>n.textContent.includes('确认进阶')).click();
@@ -43,17 +43,17 @@ export async function reviewCharacters(page,dir) {
         return {species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
       assert.equal(second.word,finalWord);assert.equal(second.next,null);report.branches.push(second);
-      if(species===16){
+      if(second.species===59){
         const buff=await page.evaluate(()=>{
-          const r=app.run,p=r.player,key=p.speciesId===18?'attackSpeed':'moveSpeed';
+          const r=app.run,p=r.player,key='moveSpeed';
           p.buffs.clear();p.recompute();const before=p.stats[key];r.ult.charge=1;r.ult.fire();
           for(let i=0;i<30&&!p.buffs.size;i++)r.update(1/30);
-          const during=p.stats[key],duration=[...p.buffs.values()].find(b=>b.label?.includes('×10'))?.max;
+          const during=p.stats[key],duration=[...p.buffs.values()].find(b=>b.label==='没影了')?.max;
           r.state='paused';for(let i=0;i<60;i++)r.update(1/30);const paused=p.stats[key];
           r.state='play';for(let i=0;i<240;i++)r.update(1/30);
           return {key,before,during,duration,paused,after:p.stats[key],buffs:[...p.buffs.keys()]};
         });
-        assert.ok(Math.abs(buff.during/buff.before-10)<1e-6,JSON.stringify(buff));assert.equal(buff.paused,buff.during);assert.equal(buff.duration,6);
+        assert.ok(Math.abs(buff.during/buff.before-10)<1e-6,JSON.stringify(buff));assert.equal(buff.paused,buff.during);assert.equal(buff.duration,5);
         assert.ok(Math.abs(buff.after/buff.before-1)<1e-6);report.buffs.push(buff);
       }
     }else{

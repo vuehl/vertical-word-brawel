@@ -58,6 +58,10 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-hero{display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 0 6px;text-align:center}
 .zx-choices{display:flex;gap:10px}.zx-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-width:0;gap:2px;min-height:96px;padding:7px;border:1px solid #dcd6e5;border-radius:18px;background:#fff;box-shadow:0 3px 0 #c9d1c2;font-size:14px}
 .zx-choice.on{background:#fff1f2;border:2px solid #b94b5a}.zx-choice.water.on{background:#edf6ff;border-color:#4d84b9}.zx-choice.wood.on{background:#e6f6ea;border-color:#4b9e65}
+.zx-glyph.wind{color:#387f87;background:#e7f6f0}.zx-glyph.ink{color:#77629e;background:#f1ecf8}
+.zx-choice.wind.on{background:#e7f6f0;border-color:#4a9997}.zx-choice.ink.on{background:#f1ecf8;border-color:#8d79ae}
+.zx-branch-choice{flex-direction:column;align-items:stretch;gap:8px;text-align:left}.zx-branch-choice>.zx-row{justify-content:flex-start}.zx-branch-choice .zx-col{align-items:flex-start}
+.zx-hud-element[data-element="flying"]{background:#5a9e9a}.zx-hud-element[data-element="normal"]{background:#8d79ae}
 .zx-choice .zx-glyph{height:38px;width:44px;font-size:34px}
 .zx-home-top{position:relative;z-index:2;min-height:68px;padding:12px 24px;flex:none;background:var(--paper)}.zx-home-top>.zx-row{min-height:44px}.zx-home-top small{font-size:14px;font-weight:700;color:#615477}
 .zx-gear{height:44px;width:44px;border:1px solid #e5dfed;border-radius:24px;background:#fff;font-size:22px}

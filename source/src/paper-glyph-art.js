@@ -4,6 +4,7 @@ import {heroWords,enemyWords} from './character-rules.js';
 const colors={fire:['#ff963e','#ed3438'],water:['#b9f2e7','#50bebd'],wood:['#c5e797','#72b778'],earth:['#e9b480','#b57649'],metal:['#ffe99a','#d5ac57'],ink:['#a5aac7','#6b719c'],dark:['#53695e','#1c302e']};
 let atlas,ready;
 const cache=new Map();
+export function isOriginalHeroGlyph(word){return Object.values(heroWords).includes(word);}
 export function glyphAtlasReady(){
   if(!ready)ready=new Promise((resolve,reject)=>{
     const image=new Image();let done=false;
@@ -38,6 +39,13 @@ export function glyphCanvas(word,tone=glyphTone(word)){
   const m=mask.getContext('2d'),record=glyphCatalog.words[word];
   if(record&&atlas?.complete){const {size,columns}=glyphCatalog;m.drawImage(atlas,record.index%columns*size,Math.floor(record.index/columns)*size,size,size,0,0,192,192);}
   else {m.font='bold 144px "Ziling Swei", sans-serif';m.textAlign='center';m.textBaseline='middle';m.fillText(word,96,100);}
+  // Hero PNGs already define their appearance. Preserve their RGB and alpha;
+  // the paper treatment below is only for enemies and interface symbols.
+  if(isOriginalHeroGlyph(word)){
+    ctx.drawImage(mask,0,0);
+    if(record&&atlas?.complete)cache.set(key,canvas);
+    return canvas;
+  }
   // Colored paper cutout: ink silhouette, warm extrusion and a light inner edge.
   m.globalCompositeOperation='source-in';m.fillStyle='#27232f';m.fillRect(0,0,192,192);
   for(let i=0;i<16;i++){const a=i*Math.PI/8;ctx.drawImage(mask,Math.cos(a)*5,Math.sin(a)*5+2);}
