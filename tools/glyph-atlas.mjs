@@ -9,7 +9,7 @@ const files=fs.readdirSync(dir).filter(f=>f.endsWith('.png')).sort();
 const size=96,columns=16,words={},enemies={},heroes={},layers=[];
 for(const [index,file] of files.entries()){
   const parts=file.replace('.png','').split('_');
-  const word=parts[0]==='hero'?parts[3]:parts[1];
+  const word=parts.at(-1);
   const input=sharp(path.join(dir,file));
   const {data,info}=await input.ensureAlpha().raw().toBuffer({resolveWithObject:true});
   let x0=info.width,y0=info.height,x1=0,y1=0;
@@ -17,8 +17,8 @@ for(const [index,file] of files.entries()){
   const image=await input.extract({left:x0,top:y0,width:x1-x0+1,height:y1-y0+1}).resize(80,80,{fit:'contain',background:'#00000000'}).extend({top:8,bottom:8,left:8,right:8,background:'#00000000'}).png().toBuffer();
   layers.push({input:image,left:index%columns*size,top:Math.floor(index/columns)*size});
   const record={index,word};words[word]=record;
-  if(parts[0]==='hero')heroes[parts[1]+'-'+parts[2]]=record;
-  else enemies[Number(parts[0])]=record;
+  if(parts[0]==='hero')heroes[Number(parts[1])]=record;
+  else enemies[word]=record;
 }
 fs.mkdirSync(path.join(root,'source/public/assets/glyphs'),{recursive:true});
 await sharp({create:{width:columns*size,height:Math.ceil(files.length/columns)*size,channels:4,background:'#00000000'}}).composite(layers).png().toFile(path.join(root,'source/public/assets/glyphs/atlas.png'));

@@ -1,4 +1,5 @@
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily} from './lite-rules.js';
+import {configureCharacterData,enemyWord,applyWindBuffs,createCharacterUltimates} from './character-rules.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
@@ -389,6 +390,7 @@ var Ni = {
         }),
       ),
         i() !== `es` && (await this.localize()));
+      configureCharacterData(this.all);
       configureGlyphNames(this.all);
       for (let e of this.all) {
         e.name=glyphWordForSpecies(e.id);
@@ -6113,14 +6115,15 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
       // Install before buildStage can request even its first actor.
       installGlyphs({sprites:this},{Texture:Wr,colorSpace:pi,species:id=>k.get(id)});
     }
-    get(e, t = !1) {
-      let n = this.batches.get(e);
+    get(e, t = !1, word = '') {
+      const key = word ? `${e}:${word}` : e;
+      let n = this.batches.get(key);
       return (
         n
           ? t || n.urgent()
           : ((n = new el(e, this.scene, this.shared, 64, void 0, t)),
             (n.standIn = this.standIn),
-            this.batches.set(e, n)),
+            (n.zxBatchKey = key), this.batches.set(key, n)),
         t || (n.lastUse = nl),
         n
       );
@@ -6134,7 +6137,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         r.sort((e, t) => e.lastUse - t.lastUse);
         for (let e of r) {
           if (n <= t) break;
-          ((n -= e.bytes), this.batches.delete(e.id), e.dispose(), Nc.delete(e.url));
+          ((n -= e.bytes), this.batches.delete(e.zxBatchKey ?? e.id), e.dispose(), Nc.delete(e.url));
         }
       }
     }
@@ -14215,6 +14218,7 @@ var Df = 0.4,
         n = [];
       return (this.t1[e] && n.push(t[this.t1[e] - 1]), this.t2[e] && n.push(t[this.t2[e] - 1]), n);
     }
+    glyphWords = new Array(2200);
     spawn(e, t, n, r, i, a = 0, o = 1) {
       if (a & 1536) {
         let e = this.run;
@@ -14236,8 +14240,9 @@ var Df = 0.4,
       if (this.free.length) s = this.free.pop();
       else if (this.n < 2200) s = this.n++;
       else return -1;
+      this.glyphWords[s] = enemyWord(e, a);
       let c = k.get(e),
-        l = this.run.sprites.get(e),
+        l = this.run.sprites.get(e, false, this.glyphWords[s]),
         u = a & 1,
         d = a & 2,
         f = a & 4,
@@ -14803,7 +14808,7 @@ var Df = 0.4,
         if (!t.visible(c, this.y[r] + this.hgt[r] * 0.5, l, 2 + Math.max(this.hgt[r], this.radius[r] * 2.4)))
           continue;
         let u = this.flags[r],
-          d = t.get((u & 131072 ? Qc : 0) + this.species[r]),
+          d = t.get((u & 131072 ? Qc : 0) + this.species[r], false, this.glyphWords[r]),
           f = this.dying[r] > 0,
           p = t.dirRow(this.fx[r], this.fz[r]),
           m = `walk`,
@@ -36898,8 +36903,17 @@ var Yh = {
     (e) => Uh[35].cast({ ...e, tier: 0 }),
   ),
 };
+let characterUltimates;
 function Xh(e, t) {
-  return (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
+  characterUltimates ??= createCharacterUltimates(Uh, context => {
+    const run=context.run;
+    for(let wave=0;wave<3;wave++) run.later(wave*.3,()=>{
+      const p=run.player.pos,radius=(5+wave*3)*context.R;
+      run.vfx.ring(p.x,p.y,p.z,radius,Y.air,.65,.3,L.Ripple);
+      q(context,p.x,p.z,radius,1.1,{knock:5});
+    });
+  });
+  return characterUltimates[e] ?? (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
 }
 var Zh = (e, t) => gh(e.names, t),
   Qh = (e, t) => gh(e.dur, t),
@@ -42798,6 +42812,7 @@ var mv = 30,
       (rv(e, [t, n, r, i, a, this.run.allies ? this.run.allies.mods() : []]),
         av(e),
         this.run.endless && (e.moveSpeed = de(e.moveSpeed)));
+      applyWindBuffs(e, this.buffs);
       let u = this.maxHp;
       ((this.stats = e),
         (this.maxHp = Math.round(e.maxHp)),
@@ -52590,7 +52605,7 @@ var Ay = 12,
         (this.exhaustSaid = !1),
         (this.bossIndex = l),
         l >= 0 && (this.bossGen = a.enemies.gen[l]),
-        (this.name = k.get(e).name),
+        (this.name = '敌'),
         (this.t = 2.5),
         (this.enraged = !1),
         (this.sigNext = !1),
@@ -54006,7 +54021,7 @@ var Ay = 12,
           i: n,
           gen: i.gen[n],
           species: t,
-          name: a.name,
+          name: i.glyphWords[n] || a.name,
           color: Ni[o] ?? 16777215,
           t: 3,
           callT: e === `summoner` ? 1.5 : 7,
@@ -54065,7 +54080,7 @@ var Ay = 12,
           c(`¡Pokémon Dominante!`),
           c(`{name} irradia un aura poderosa y llama a los suyos`, { name: o.name }),
           `#c25aff`,
-          { species: i },
+          { species: i, glyph: o.name },
         ),
         n.audio.alarm(),
         n.cry(i),
@@ -54097,7 +54112,7 @@ var Ay = 12,
             minion: l,
           }),
           `#3ac85a`,
-          { species: i },
+          { species: i, glyph: o.name },
         ),
         n.audio.alarm(),
         n.cry(i),
@@ -73714,7 +73729,7 @@ var iT = Math.PI / 180,
     }
     get def() {
       let e = this.run.player;
-      return Xh(e.roster?.id, e.types[0]);
+      return Xh([58,59].includes(e.speciesId) ? 58 : e.roster?.id, e.types[0]);
     }
     get form() {
       return this.run.player.evoStage;
@@ -81481,7 +81496,7 @@ function yO(e, t = `btn small ghost gl-btn`) {
     c(`Glosario`),
   );
 }
-var bO = [1, 4, 7],
+var bO = [4, 16, 132],
   xO = () => ({ idx: 0, ids: [], prog: [], claimed: [], rerolls: 0 }),
   SO = {
     master: 0.8,
@@ -94277,7 +94292,7 @@ function ZX(app) {
   return createZixingUI(app, {
     defaults: {...SO, fpsLimit:60, batterySaver:false, zxTheme:'auto', zxBossHealth:'value'},
     moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
-    ultDescription: id => Xh(id, k.get(id).types[0]).desc || '积蓄能量，释放专属大招。',
+    ultDescription: id => Xh(id, k.get(id).types[0]).descs?.[0] || '积蓄能量，释放专属大招。',
     baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
     offer: (run, offer) => {const value=Wb(run, offer);return {...value,title:value.title.replace('火花','火弹').replace('水枪','水环').replace('藤鞭','飞叶')};},
     moveName: move => ({ember:'火弹','water-gun':'水环','vine-whip':'飞叶'}[move.key] || move.name),
@@ -102916,7 +102931,7 @@ var JI = class {
           ? X(
               `div`,
               { class: `bn-pt` + (r.shiny ? ` shiny` : ``) + (r.classic ? ` classic` : ``) },
-              ZI(r.species, r.shiny),
+              r.glyph ? glyphPreview(r.species,.75,'pix',r.glyph) : ZI(r.species, r.shiny),
             )
           : null,
         a = X(
@@ -103663,9 +103678,9 @@ var JI = class {
           i = e.enemies.species[t];
         (n.boss.dataset.k !== String(i) &&
           ((n.boss.dataset.k = String(i)),
-          $(n.bossPt).append(rw(i)),
+          $(n.bossPt).append(glyphPreview(i,.75,'pix','敌')),
           n.boss.style.setProperty(`--c`, YC(Ni[k.get(i).types[0]])),
-          (n.bossName.textContent = _.name),
+          (n.bossName.textContent = '敌'),
           (this.bossLag = 1)),
           (n.bossTag.textContent = c(r ? `Legendario` : `Guardián`)),
           (n.bossRage.style.display = _.enraged ? `` : `none`),
@@ -105400,15 +105415,15 @@ var JI = class {
         (i.style.setProperty(`--rc`, YC(Ni[t.types[0]])), r.append(i));
       }
       (this.modal(
-        X(`h1`, {}, c(`¡Eevee va a evolucionar!`)),
+        X(`h1`, {}, '风 · 选择进阶路线'),
         X(
           `div`,
           { class: `help`, style: { fontSize: `15px` } },
-          c(`Elige en qué quieres que evolucione: cambiará su tipo y su poder`),
+          '攻速：风 → 讽 → 疯（攻速×10）；移速：风 → 飒 → 飙（移速×10）。',
         ),
         r,
       ),
-        e.cry(133));
+        e.cry(e.player.speciesId));
     }
     showEvolution(e, t, n = 3.6) {
       let r = X(
@@ -105439,12 +105454,12 @@ var JI = class {
           X(
             `div`,
             { class: `plate` },
-            X(`div`, { class: `evo-portrait` }, rw(e)),
+            X(`div`, { class: `evo-portrait` }, glyphPreview(e,.75,'pix','敌')),
             X(
               `div`,
               {},
               X(`p`, {}, c(t ? `POKÉMON LEGENDARIO` : `GUARDIÁN DE LA ZONA`)),
-              X(`h1`, {}, r.name),
+              X(`h1`, {}, '敌'),
               X(`div`, { class: `row evo-types` }, ...r.types.map((e) => XC(e))),
             ),
           ),

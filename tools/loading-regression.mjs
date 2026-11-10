@@ -58,7 +58,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     const assets=app.run.paperAssets,watched=[...(assets?.textures.values()||[]),...(assets?.mats.values()||[])];let disposed=0;
     for(const asset of watched)asset.addEventListener('dispose',()=>disposed++);
     app.toMenu();const menuEmpty=!app.menuScene?.terrain&&!app.menuScene?.title;
-    await app.startRun({species:7,biome:'forest',tier:0,boosts:[],mode:'standard'});app.run.godMode=true;app.run.queueLevelUp=()=>{};
+    await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});app.run.godMode=true;app.run.queueLevelUp=()=>{};
     return {watched:watched.length,disposed,menuEmpty};
   });
   const restart=await snapshot();

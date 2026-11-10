@@ -141,7 +141,7 @@ test('a native atlas image with no callback times out and can be loaded on retry
     setTimeout:(fn,ms)=>setTimeout(fn,ms===12000?10:ms),
   };
   const code=fs.readFileSync(new URL('../source/src/paper-glyph-art.js',import.meta.url),'utf8')
-    .replace(/^import .*;\r?\n/,'const glyphCatalog={};\n').replaceAll('export function ','function ');
+    .replace(/^import .*;\r?\n/,'const glyphCatalog={};\n').replace(/^import .*;\r?\n/gm,'').replaceAll('export function ','function ');
   vm.runInNewContext(code+'\nthis.load=glyphAtlasReady;',context);
   await assert.rejects(context.load(),/读取超时/);
   assert.equal(images[0].onload,null);

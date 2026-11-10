@@ -3,7 +3,7 @@ import path from 'node:path';
 
 export async function reviewUltimateUpgrade(page,dir){
   const samples=[];
-  for(const species of [4,7,1]){
+  for(const species of [4,16,132]){
     const sample=await page.evaluate(async species=>{
       await app.startRun({species,biome:'forest',tier:0,boosts:[],mode:'standard'});
       app.halted=true;const run=app.run,p=run.player;

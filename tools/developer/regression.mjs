@@ -206,7 +206,7 @@ export async function reviewDeveloper(page,dir){
     api.open();app.run.dispose();
     const removed=!inspected.doc.querySelector('#zx-dev-panel')&&!inspected.doc.querySelector('#zx-dev-button');
     app.run=null;
-    await app.startRun({species:7,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
     return {invincible,maintained,removed,buttons:inspected.doc.querySelectorAll('#zx-dev-button').length};
   });
   assert.equal(report.lifecycle.invincible,true);assert.equal(report.lifecycle.maintained,200);

@@ -50,7 +50,7 @@ module.exports = async function presentBootFrame(gl) {
     c.fillStyle=ink;c.beginPath();c.moveTo(-1.5,83);c.lineTo(2.5,83);c.lineTo(.5,90);c.closePath();c.fill();c.restore();
     c.save();c.translate(78,hero+108);c.rotate(-.12);rect(-35,0,252,25,'#ecd396','#bb9c5c');
     for(let x=-28;x<214;x+=9)line(x,1,x,(x+28)%27===0?13:8,'#a88c57');c.restore();
-    for(const [word,x,y,angle,color] of [['水',107,hero+5,-.16,'#3278ba'],['火',192,hero-9,.04,'#bc3441'],['木',277,hero+23,.14,'#28874e']]){
+    for(const [word,x,y,angle,color] of [['风',107,hero+5,-.16,'#3278ba'],['炎',192,hero-9,.04,'#bc3441'],['摹',277,hero+23,.14,'#28874e']]){
       sheet(x,y,72,84,angle,paper);rect(-30,-36,60,72,paper,'#e0dfce');text(word,0,0,48,color,true);
       c.fillStyle='#e6e9d7';c.beginPath();c.moveTo(24,42);c.lineTo(36,30);c.lineTo(36,42);c.closePath();c.fill();c.restore();
     }

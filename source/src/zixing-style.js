@@ -65,7 +65,7 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-home-art{position:relative;flex:none;height:calc(100vw * .76923);width:100%;margin-top:0}.zx-forest{width:100%;height:150px;flex:none;border-radius:14px}
 .zx-home-art canvas{width:100%;height:100%}.zx-home-body{flex:none;overflow:visible;overflow-y:visible;padding-top:12px;padding-bottom:24px;gap:12px}
 .zx-home-copy{display:flex;flex-direction:column;gap:5px;text-align:center;align-items:center;margin-top:0}.zx-home-copy h2{font-size:24px}.zx-home-copy p{font-size:15px;font-weight:700;color:#615477}
-.zx-home-types{display:flex;justify-content:center;gap:24px;margin-top:4px}.zx-home-types .zx-row{gap:6px;font-size:14px;font-weight:700;color:#615477}.zx-home-types .zx-glyph{width:28px;height:30px;font-size:26px;border-radius:8px}
+.zx-home-types{display:flex;justify-content:center;gap:12px;margin-top:4px}.zx-home-types .zx-row{flex:1;min-width:0;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;font-size:14px;font-weight:700;color:#615477}.zx-home-types .zx-row>span{white-space:nowrap}.zx-home-types .zx-glyph{width:28px;height:30px;font-size:26px;border-radius:8px}
 .zx-home-start{min-height:52px}.zx-home-start>span:last-child{font-size:20px}
 .zx-home .zx-home-lab{justify-content:space-between;min-height:66px;padding:10px 14px;border:0;border-radius:19px;background:linear-gradient(90deg,#b5c8c4 0%,#7f9b9c 100%);box-shadow:0 4px 0 #5f777b}
 .zx-home-lab .zx-col{text-align:left;gap:2px}.zx-home-lab b{font-size:18px}.zx-home-lab small{font-size:14px}.zx-home-lab .zx-glyph{width:24px;height:34px;font-size:26px;background:transparent;color:#fff;border-radius:0}

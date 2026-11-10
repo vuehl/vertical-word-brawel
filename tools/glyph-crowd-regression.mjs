@@ -30,7 +30,7 @@ export async function reviewGlyphCrowd(page,dir){
   assert.equal(report.ring.particleSpawns,0);assert.ok(report.ring.hiddenWhenDead&&report.ring.restored);assert.equal(report.ring.hasTimeUniform,false);
 
   report.encounters=[];
-  for(const [id,word] of [[1,'木'],[4,'火'],[7,'水']]){
+  for(const [id,word] of [[4,'炎'],[16,'风'],[132,'摹']]){
     const data=await page.evaluate(async id=>{
       const run=app.run;run.enemies.clear();run.capture.state='done';run.capture.spawnEncounter(id);
       const index=run.capture.index;
@@ -55,7 +55,7 @@ export async function reviewGlyphCrowd(page,dir){
     const modal=run.ui.modalEl;
     return {text:modal.textContent,glyphs:[...modal.querySelectorAll('canvas[data-glyph]')].map(c=>c.dataset.glyph),legacyLoads:(window.nativeImageLoads||[]).filter(r=>/(?:portraits(?:-shiny)?|icons|front|pmd(?:-shiny)?)\/\d+\.png/.test(r.path)).map(r=>r.path)};
   });
-  assert.ok(report.map.glyphs.includes('又')&&report.map.glyphs.includes('春'));
+  assert.ok(report.map.glyphs.includes('拳')&&report.map.glyphs.includes('岩'));
   assert.ok(!/妙蛙种子|小火龙|杰尼龟|喵喵|宝可梦|百变怪/.test(report.map.text));assert.deepEqual(report.map.legacyLoads,[]);
   await page.screenshot({path:path.join(dir,'glyph-map-legend.png')});
   await page.evaluate(()=>app.run.resume());

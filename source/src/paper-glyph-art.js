@@ -1,4 +1,5 @@
 import {glyphCatalog} from './glyph-catalog.js';
+import {heroWords,enemyWords} from './character-rules.js';
 
 const colors={fire:['#ff963e','#ed3438'],water:['#b9f2e7','#50bebd'],wood:['#c5e797','#72b778'],earth:['#e9b480','#b57649'],metal:['#ffe99a','#d5ac57'],ink:['#a5aac7','#6b719c'],dark:['#53695e','#1c302e']};
 let atlas,ready;
@@ -19,11 +20,11 @@ export function glyphAtlasReady(){
   return ready;
 }
 export function glyphWordForSpecies(id){
-  return ({1:'木',2:'林',3:'森',4:'火',5:'炎',6:'焱',7:'水',8:'水',9:'淼'})[id]||glyphCatalog.enemies[id]?.word||'品';
+  return heroWords[id]||enemyWords[(Math.abs(Number(id))||0)%enemyWords.length];
 }
 export function glyphTone(word){
-  if('风鬼'.includes(word))return 'dark';
-  if('火炎焱灼炬烛焚燃灯烁熙'.includes(word))return 'fire';
+  if('风讽疯飒飙'.includes(word))return 'water';
+  if('火炎焱燚烬灼炬烛焚燃灯烁熙'.includes(word))return 'fire';
   if('水淼雨川河海泉'.includes(word))return 'water';
   if('木林森禾竹春柳松槐'.includes(word))return 'wood';
   if('土圭垚士石岩磊山工'.includes(word))return 'earth';

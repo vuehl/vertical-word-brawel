@@ -406,7 +406,7 @@ async function verifyStartup(){
   }
   if(process.argv.includes('--forest-regression')){
     const report=[];
-    for(const species of [1,4,7]){
+    for(const species of [4,16,132]){
       await page.evaluate(async species=>{
         if(app.run&&app.run.state!=='over')await app.run.finish(false,true);
         app.toMenu();

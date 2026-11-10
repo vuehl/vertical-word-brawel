@@ -197,7 +197,7 @@ import {
   zr as fr,
   zt as pr,
 } from "./config.js";
-var bO = [1, 4, 7],
+var bO = [4, 16, 132],
   xO = () => ({ idx: 0, ids: [], prog: [], claimed: [], rerolls: 0 }),
   SO = {
     master: 0.8,

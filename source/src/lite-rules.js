@@ -1,14 +1,20 @@
 // Shared boundaries for the standalone forest edition.
-export const LITE_SPECIES = Object.freeze([1, 4, 7]);
+import {heroWords} from './character-rules.js';
+export const LITE_SPECIES = Object.freeze([4, 16, 132]);
 export const LITE_BIOME = 'forest';
 export const isLiteSpecies = id => LITE_SPECIES.includes(Number(id));
-export const isLiteFamily = id => Number.isInteger(Number(id)) && Number(id) >= 1 && Number(id) <= 9;
+export const isLiteFamily = id => Object.hasOwn(heroWords, Number(id));
 export function validLiteRun(run) {
   return !!run && isLiteSpecies(run.species) && run.biome === LITE_BIOME &&
     (!run.mode || run.mode === 'standard' || run.mode === 'classic') && !run.party &&
     Number.isInteger(run.tier ?? 0) && (run.tier ?? 0) >= 0 && (run.tier ?? 0) <= 2;
 }
 export function constrainLiteProfile(p) {
+  // Migrate the two replaced starter selections without resetting progress.
+  const migrate = id => ({1:132,7:16})[id] ?? id;
+  p.starter = migrate(p.starter);
+  p.lastSpecies = migrate(p.lastSpecies);
+  p.team = (p.team ?? []).map(migrate);
   p.league = [...LITE_SPECIES];
   p.unlocked = [...LITE_SPECIES];
   p.lastSpecies = isLiteSpecies(p.lastSpecies) ? p.lastSpecies : 4;

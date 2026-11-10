@@ -43,10 +43,10 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     }));
     page.jobs.push(entry.ready);t.userData.ready=Promise.all(page.jobs);textures.set(word,entry);return entry;
   }
-  function skin(batch){
+  function skin(batch,override){
     if(batch.zxGlyph)return batch;
     const data=species(batch.sid);if(!data)return batch;
-    const word=glyphWordForSpecies(batch.sid);
+    const word=override||glyphWordForSpecies(batch.sid);
     const m=batch.material;batch.zxGlyph=word;
     const entry=texture(word),t=entry.texture;batch.zxGlyphRect=entry.rect;
     m.uniforms.map.value.dispose();m.uniforms.map.value=t;
@@ -57,17 +57,17 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     m.fragmentShader=m.fragmentShader.replace('uniform sampler2D map;','uniform sampler2D map; uniform sampler2D zxGlyph;').replaceAll('texture2D(map,','texture2D(zxGlyph,');
     m.needsUpdate=true;batches.add(batch,t.uuid);return batch;
   }
-  run.sprites.get=(...args)=>skin(get(...args));
+  run.sprites.get=(...args)=>skin(get(...args),args[2]);
   for(const batch of run.sprites.batches.values())skin(batch);
   run.sprites.clear=()=>{disposed=true;clear();batches.clear();for(const page of pages)page.texture.dispose();pages.length=0;textures.clear();};
 }
 
 // Legacy choice/evolution dialogs also use cutouts, with no animation timer.
-export function glyphPreview(id,scale=3,className='pix'){
+export function glyphPreview(id,scale=3,className='pix',word=glyphWordForSpecies(id)){
   const canvas=document.createElement('canvas');canvas.className=className+' zx-glyph-icon';
-  canvas.dataset.static='true';canvas.dataset.species=String(id);canvas.dataset.glyph=glyphWordForSpecies(id);
-  canvas.setAttribute('role','img');canvas.setAttribute('aria-label',glyphWordForSpecies(id)+'字灵');
+  canvas.dataset.static='true';canvas.dataset.species=String(id);canvas.dataset.glyph=word;
+  canvas.setAttribute('role','img');canvas.setAttribute('aria-label',word+'字灵');
   canvas.width=canvas.height=Math.max(48,Math.round(64*scale));
-  const draw=()=>{const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(glyphCanvas(glyphWordForSpecies(id)),0,0,canvas.width,canvas.height);canvas.dataset.frame=String((Number(canvas.dataset.frame)||0)+1);};
+  const draw=()=>{const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(glyphCanvas(word),0,0,canvas.width,canvas.height);canvas.dataset.frame=String((Number(canvas.dataset.frame)||0)+1);};
   draw();glyphAtlasReady().then(draw).catch(()=>{});return canvas;
 }

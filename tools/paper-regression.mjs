@@ -6,7 +6,7 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
   const report={screenshots:[],camera:[],pickups:null,stages:[],mode:'Actual WeChat bundle in Chrome fixture; staged art shots are explicitly named.'};
   async function shot(name){await sleep(450);await page.screenshot({path:path.join(dir,name+'.png')});report.screenshots.push(name);}
   await resize(390,844);await shot('01-home');
-  await tap('[data-action="journey"]');await tap('[data-species="7"]');await shot('02-water');
+  await tap('[data-action="journey"]');await tap('[data-species="16"]');await shot('02-wind');
   await tap('.zx-footer button','选择关卡');await shot('03-map');
   await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.time>2&&app.run?.state==='play',{timeout:90000});

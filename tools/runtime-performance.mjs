@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
+import {reviewCharacters} from './character-regression.mjs';
 import {reviewPaperBatching} from './paper-batching-regression.mjs';
 import {profileRuntime} from './runtime-profile.mjs';
 import {reviewLateCrowd} from './late-crowd-regression.mjs';
@@ -84,7 +85,9 @@ try{
   },development);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--map-effects')){
+  if(process.argv.includes('--characters')){
+    await reviewCharacters(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--map-effects')){
     await reviewMapEffects(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--clarity')){
     await reviewClarity(page,dir);assert.deepEqual(errors,[]);

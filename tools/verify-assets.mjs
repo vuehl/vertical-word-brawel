@@ -20,7 +20,7 @@ const packs={};
 const digest=b=>createHash('sha256').update(b).digest('hex');
 assert.equal(index.policyVersion,assetPolicyVersion,'Rebuild the changed asset policy');
 assert.deepEqual(biomes.map(b=>b.id),['forest'],'Review asset exclusions if a map opens');
-assert.deepEqual(roster.map(p=>p.id),[1,4,7]);
+assert.deepEqual(roster.map(p=>p.id),[4,16,132]);
 assert.equal(events.length,0,'Review excluded event assets if events are enabled');
 const declaredPacks=new Set(JSON.parse(fs.readFileSync(path.join(root,'game.json'))).subpackages.map(p=>p.name));
 for(const pack of Object.keys(index.packs))assert.ok(declaredPacks.has(pack),'Missing subpackage '+pack);

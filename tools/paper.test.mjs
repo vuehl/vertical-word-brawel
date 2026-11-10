@@ -13,8 +13,8 @@ test('species names in encounter and NPC prose resolve to the same glyphs as the
     assert.equal(glyphText(actor.name),glyphWordForSpecies(actor.id));
     if(locale.pokemon[actor.id])assert.equal(glyphText(locale.pokemon[actor.id]),glyphWordForSpecies(actor.id));
   }
-  assert.equal(glyphText('妙蛙种子出现了，快去抓它！'),'木出现了，快去抓它！');
-  assert.equal(glyphText('喵喵（商店） / Pokémon'),'又（商店） / 字灵');
+  assert.equal(glyphText('妙蛙种子出现了，快去抓它！'),glyphWordForSpecies(1)+'出现了，快去抓它！');
+  assert.equal(glyphText('喵喵（商店） / Pokémon'),glyphWordForSpecies(52)+'（商店） / 字灵');
   for(const src of ['portraits/1.png','assets/icons/1.png','assets/portraits-shiny/1.png?v=2','/assets/pmd/1.png'])assert.equal(glyphSpeciesFromImage(src),1);
   for(const src of ['assets/ui/icons/coin.png','assets/items/poke-ball.png','assets/glyphs/atlas.png'])assert.equal(glyphSpeciesFromImage(src),null);
 });

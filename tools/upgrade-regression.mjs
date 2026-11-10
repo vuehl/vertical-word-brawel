@@ -12,7 +12,13 @@ export async function reviewUpgrade({page,resize,dir}){
     app.halted=true;app.run.godMode=true;app.run.update(1/60);
   });
   const ultimate=baseline?null:await reviewUltimateUpgrade(page,dir);
-  await page.evaluate(()=>{app.run.ui.experienceReady=()=>true;});
+  // The animation/cache checks need a fresh dialog after the three ultimate
+  // scenarios; the last hero can otherwise leave an already cached offer.
+  await page.evaluate(async()=>{
+    await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    app.halted=true;app.run.godMode=true;app.run.update(1/60);
+    app.run.ui.experienceReady=()=>true;
+  });
   try{
     for(const width of (baseline?[390]:[320,390,430])){
       await resize(width,width===320?568:width===430?932:844);
