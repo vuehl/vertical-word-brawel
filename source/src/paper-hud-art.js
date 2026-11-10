@@ -1,4 +1,4 @@
-import {glyphCanvas} from './paper-glyph-art.js';
+import {glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 
 export function drawBattleHealth(canvas,fraction,current,bonus=0) {
   const ctx=canvas.getContext('2d');
@@ -30,8 +30,8 @@ export function drawBattlePortrait(canvas,word,tone,experience=0) {
   ctx.drawImage(glyphCanvas(word,tone),12,11,56,56);canvas.dataset.word=word;
 }
 
-// A north-up view of the actual nearby props, enemies and interactions. Keep
-// the surface small; the HUD refreshes it at most once every 120 milliseconds.
+// One north-up projection for both map sizes. The small HUD refreshes at most
+// every 120 ms; the enlarged view is drawn once while the battle is paused.
 export function drawBattleMinimap(canvas,run) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=.9;
   const point=(x,z)=>[60+(x-p.x)*scale,58+(z-p.z)*scale];
@@ -68,11 +68,24 @@ export function drawBattleMinimap(canvas,run) {
       ctx.strokeStyle='#fff';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(x-1.8,y);ctx.lineTo(x+1.8,y);ctx.moveTo(x,y-1.8);ctx.lineTo(x,y+1.8);ctx.stroke();
     }
     const enemies=run.enemies;
-    for(let i=0;i<enemies.n;i++){
-      if(!enemies.alive[i]||enemies.dying[i]>0)continue;
-      const [x,y]=point(enemies.x[i],enemies.z[i]);if(!visible(x,y))continue;
-      if(run.boss.alive&&run.boss.bossIndex===i)dot(x,y,4.2,'#d85c66');
-      else dot(x,y,1.7,'#d76677',null);
+    // One fill for each dot class, rather than a Canvas draw call per monster.
+    // Draw bosses last so ordinary dots cannot cover their actual character.
+    const boss=i=>!!(enemies.flags[i]&(4|4096|8192))||(run.boss.alive&&run.boss.bossIndex===i);
+    for(let kind=0;kind<3;kind++){
+      if(kind<2){ctx.beginPath();ctx.fillStyle=kind?'#f2bd29':'#d76677';}
+      for(let i=0;i<enemies.n;i++){
+        if(!enemies.alive[i]||enemies.dying[i]>0||(enemies.flags[i]&32768))continue;
+        const type=boss(i)?2:(enemies.flags[i]&3)?1:0;if(type!==kind)continue;
+        const x=60+(enemies.x[i]-p.x)*scale,y=58+(enemies.z[i]-p.z)*scale;
+        if(!visible(x,y))continue;
+        if(kind===2){
+          dot(x,y,6.3,'#fff4dd','#d65b46');
+          ctx.drawImage(glyphCanvas(glyphWordForSpecies(enemies.species[i])),x-6,y-6,12,12);
+        }else{
+          const radius=kind?3:1.7;ctx.moveTo(x+radius,y);ctx.arc(x,y,radius,0,Math.PI*2);
+        }
+      }
+      if(kind<2)ctx.fill();
     }
     for(const ally of run.allies.list){const [x,y]=point(ally.x,ally.z);if(visible(x,y))dot(x,y,2.8,'#559e78');}
   }

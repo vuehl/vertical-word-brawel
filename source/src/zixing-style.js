@@ -246,6 +246,12 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 .zx-skill-slot{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:42px;height:42px;background:#e0e1d8d9;border:1px solid #555e53;border-radius:50%;overflow:visible}
 .zx-skill-slot.locked{background:#e0e1d8c9}.zx-skill-slot>.zx-loadout-icon{width:28px;height:28px;object-fit:contain}
 .zx-slot-level{position:absolute;right:-2px;bottom:-3px;min-width:15px;height:18px;padding:0 2px;background:#fffdf0e6;border-radius:8px;font-size:14px;line-height:1.2;text-align:center;color:#343b32}
+html.zixing .zx-choice.fire.on{border-color:#d84840;border-width:2px;background:#fff1ed;box-shadow:0 3px 0 #d9988f}
+.zx-battle-map{align-items:center;padding:18px 16px;gap:12px;animation:none;transition:none;transform:none}
+.zx-battle-map-frame{position:relative;flex:none;align-self:center}
+html.zixing .zx-battle-map-art{position:absolute;inset:0;display:block;width:100%;height:100%}
+.zx-battle-map>small{text-align:center;font-size:11px;line-height:1.5}
+.zx-battle-map>.zx-button{width:100%}
 .zx-modal-wrap.zx-pause-screen{padding:0;align-items:stretch;background:var(--paper)}
 .zx-modal.zx-pause{width:100%;max-width:none;height:100%;max-height:100%;border:0;border-radius:0;box-shadow:none;padding:0;gap:0;overflow:hidden;background:var(--paper)}
 .zx-pause-body{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;gap:16px;padding:26px 24px 18px}.zx-pause-body>*{flex-shrink:0}

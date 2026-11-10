@@ -118,7 +118,9 @@ test('distant compaction preserves HP, XP, population and specials without payin
 
 test('decorative particle limits are spatial and reset; damage texts sum only compatible hits',()=>{
   const budget=new ParticleBudget(4);
+  assert.equal(budget.remaining(0,0),4);assert.ok(budget.allow(0,0));assert.equal(budget.remaining(0,0),3);budget.next();
   assert.equal(Array.from({length:100},()=>budget.allow(0,0)).filter(Boolean).length,4);
+  assert.equal(budget.remaining(0,0),0);assert.equal(budget.remaining(20,20),4);
   assert.equal(budget.allow(20,20),true);budget.next();assert.equal(budget.allow(0,0),true);
   const emitted=[],vfx={enabledText:true,text:{limit:24},number(...args){emitted.push(args);}};
   for(let i=0;i<100;i++)accumulateDamage(vfx,1,0,0,0,5,0xffffff,false);

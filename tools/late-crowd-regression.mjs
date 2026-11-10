@@ -61,10 +61,13 @@ async function soak(page,dir){
       for(let i=0;i<e.n;i++)if(e.alive[i]&&!Number.isFinite(e.x[i]+e.y[i]+e.z[i]+e.hp[i]))finite=false;
       return {stageTime:r.stageTime,state:r.state,ordinary:inspected.env.__zixingDeveloper.snapshot().ordinary,finite,
         enemySlots:e.n,projectileSlots:r.projectiles.n,pickupSlots:r.pickups.n,particles:r.vfx.add.n+r.vfx.norm.n,
+        ground:[r.vfx.ground,r.vfx.groundN].map(pool=>({count:pool.ownCount,area:pool.ownArea,limit:pool.ownAreaLimit,
+          sum:Array.from(pool.decoration.subarray(0,pool.n)).reduce((a,b)=>a+b,0),slots:pool.n})),
         textures:app.r.renderer.info.memory.textures,damage:r.stats.damage};
     });
     samples.push(sample);console.log('Soak '+(chunk+1)+'/10 '+JSON.stringify(sample));
     assert.equal(sample.state,'play');assert.equal(sample.ordinary,600);assert.ok(sample.finite);
+    for(const ground of sample.ground){assert.ok(ground.area<=ground.limit+.01);assert.ok(Math.abs(ground.area-ground.sum)<.01);assert.ok(ground.count>=0&&ground.count<=ground.slots);}
   }
   fs.writeFileSync(path.join(dir,'late-crowd-soak.json'),JSON.stringify({note:'9000 updates at 1/30: five minutes of input dt, rendered frames excluded; not five minutes of phone wall-clock/thermal testing.',samples},null,2));
   assert.ok(samples.at(-1).stageTime>580);

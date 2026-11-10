@@ -578,6 +578,21 @@ export function createZixingUI(app,api) {
     const hint=run.hints.show.bind(run.hints);
     run.hints.show=key=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key);};
     hud.showPause=pause;hud.showLevelUp=levelUp;hud.showSummary=summary;hud.showSlots=slots;
+    hud.showMap=(r,fromPause=false)=>{
+      const close=fromPause?()=>pause(r):()=>r.resume();
+      // The same north-up projection as the HUD, immediately drawn larger.
+      // No second map controller, pinch state, zoom animation or render loop.
+      const side=Math.max(160,Math.min(352,window.innerWidth-80,window.innerHeight-220));
+      const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'放大的附近地图'});
+      const frame=el('div','zx-battle-map-frame',canvas);
+      frame.style.width=frame.style.height=side+'px';
+      drawBattleMinimap(canvas,r);
+      overlay('附近地图','',[
+        frame,small('红点 · 普通怪　黄点 · 精英怪　文字 · Boss'),
+      ],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
+      hud.pauseBack=close;
+    };
+    hud.mapOpen=()=>!!hud.root.querySelector('.zx-battle-map');
     for(const method of ['showItem','showItemChoice']){
       const render=hud[method].bind(hud);
       hud[method]=(r,items,...args)=>{const result=render(r,items,...args);restyleItems(r,method==='showItem'?[items]:items,method==='showItemChoice');return result;};
@@ -625,7 +640,7 @@ export function createZixingUI(app,api) {
     refreshPortrait();glyphAtlasReady().then(refreshPortrait).catch(()=>{});
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
     minimap.dataset.uiLayer='minimap';
-    minimap.setAttribute('aria-label','附近地图，点击查看完整地图');
+    minimap.setAttribute('aria-label','附近地图，点击整体放大');
     node.append(el('div','zx-hud-location',[icon('pin',13,'#5277a4'),area,stageLabel],{'data-ui-region':'hud-top'}),el('div','zx-hud-top',[
       el('div','zx-hud-counters',[
         el('div','zx-hud-counter',[icon('clock',14,'#637ca3'),clock],{'aria-label':'关卡时间'}),

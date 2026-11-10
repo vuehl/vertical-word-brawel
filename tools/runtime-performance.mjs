@@ -8,6 +8,7 @@ import {reviewPaperBatching} from './paper-batching-regression.mjs';
 import {profileRuntime} from './runtime-profile.mjs';
 import {reviewLateCrowd} from './late-crowd-regression.mjs';
 import {reviewRingShader} from './ring-shader-regression.mjs';
+import {reviewMapEffects} from './map-effects-regression.mjs';
 import {reviewQuality} from './quality-regression.mjs';
 import {reviewClarity} from './clarity-regression.mjs';
 import {reviewExperiencePerformance} from './experience-performance.mjs';
@@ -83,7 +84,9 @@ try{
   },development);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--clarity')){
+  if(process.argv.includes('--map-effects')){
+    await reviewMapEffects(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--clarity')){
     await reviewClarity(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--quality')){
     await reviewQuality(page,dir);assert.deepEqual(errors,[]);

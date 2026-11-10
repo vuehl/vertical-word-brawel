@@ -3,6 +3,10 @@
 export class ParticleBudget {
   constructor(limit=6){this.limit=limit;this.turn=1;this.stamps=new Uint32Array(128*128);this.counts=new Uint16Array(128*128);}
   next(){if(++this.turn>=0xffffffff){this.stamps.fill(0);this.turn=1;}}
+  remaining(x,z){
+    const col=Math.max(0,Math.min(127,Math.floor(x/4)+64)),row=Math.max(0,Math.min(127,Math.floor(z/4)+64)),key=row*128+col;
+    return Math.max(0,this.limit-(this.stamps[key]===this.turn?this.counts[key]:0));
+  }
   allow(x,z){
     const col=Math.max(0,Math.min(127,Math.floor(x/4)+64)),row=Math.max(0,Math.min(127,Math.floor(z/4)+64)),key=row*128+col;
     if(this.stamps[key]!==this.turn){this.stamps[key]=this.turn;this.counts[key]=0;}
@@ -29,7 +33,8 @@ export function enemyShadow(run,x,z,important){
 }
 
 // Resolution is independent of crowd load. Cap only decorative particles and
-// damage labels; projectiles, ground zones, rings and telegraphs are untouched.
+// damage labels. Ground budgets apply only to player decoration; hostile cues,
+// persistent zone boundaries, projectiles and damage are not reduced.
 export function applyCrowdEffects(vfx,profile,count){
   const dense=count>=360,busy=count>=180;
   const add=Math.min(profile.particles,dense?600:busy?1200:Infinity);
@@ -39,4 +44,6 @@ export function applyCrowdEffects(vfx,profile,count){
   vfx.add.n=Math.min(vfx.add.n,add);vfx.norm.n=Math.min(vfx.norm.n,normal);
   if(vfx.text.items.length>text)vfx.text.items.splice(0,vfx.text.items.length-text);
   vfx.particleBudget.limit=Math.min(profile.particleCell,dense?6:busy?12:Infinity);
+  const area=Math.min(profile.groundArea,dense?400:busy?800:Infinity);
+  for(const pool of [vfx.ground,vfx.groundN])if(pool){pool.ownAreaLimit=area;pool.ownCountLimit=Math.min(profile.groundParticles,dense?96:busy?160:Infinity);}
 }

@@ -7,7 +7,7 @@ import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-iden
 import {createPlayerFootRing} from './player-foot-ring.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
-import {ringEmptyPixels} from './ring-shader.js';
+import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
 import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
 import {actorMetrics} from './actor-metrics.js';
@@ -8325,6 +8325,11 @@ var Rl = 20,
     view = null;
     n = 0;
     flat = !1;
+    ownAreaLimit = Infinity;
+    ownCountLimit = Infinity;
+    ownArea = 0;
+    ownCount = 0;
+    decoration;
     px;
     py;
     pz;
@@ -8369,7 +8374,8 @@ var Rl = 20,
         (this.c1 = o(3)),
         (this.shape = o()),
         (this.glow = o()),
-        (this.fm = o()));
+        (this.fm = o()),
+        (this.decoration = o()));
       let s = new Yr(1, 1);
       (i && s.rotateX(-Math.PI / 2),
         (this.aA = new gr(o(4), 4).setUsage(ii)),
@@ -8406,6 +8412,10 @@ var Rl = 20,
         (this.mesh.renderOrder = r ? 10 : 5),
         e.add(this.mesh));
     }
+    available(x,y,z,size=0) {
+      if(Fl.on||(this.view&&!this.view.visible(x,y,z,Math.max(6,size))))return 0;
+      return Math.max(0,Math.min(this.cap-this.n,this.limit-this.n,this.densityBudget?.remaining(x,z)??Infinity));
+    }
     spawn(e) {
       if (
         this.n >= Math.min(this.cap,this.limit) ||
@@ -8416,7 +8426,12 @@ var Rl = 20,
       )
         return;
       if(this.densityBudget&&!this.densityBudget.allow(e.x,e.z))return;
+      // Only player ground decoration is budgeted by area. Enemy warning
+      // fills and all gameplay zones retain their existing behaviour.
+      const area=this.flat&&Fl.own&&!e.essential?Math.max(.001,Math.max(e.size,e.endSize??e.size*.2)**2):0;
+      if(area&&(this.ownArea+area>this.ownAreaLimit||this.ownCount>=this.ownCountLimit))return;
       let t = this.n++;
+      this.decoration[t]=area;if(area){this.ownArea+=this.decoration[t];this.ownCount++;}
       ((this.px[t] = e.x),
         (this.py[t] = e.y),
         (this.pz[t] = e.z),
@@ -8446,6 +8461,7 @@ var Rl = 20,
     }
     cols;
     kill(e) {
+      if(this.decoration[e]){this.ownArea=Math.max(0,this.ownArea-this.decoration[e]);this.ownCount--;}
       let t = --this.n;
       if (e === t) return;
       let n = (this.cols ??= [
@@ -8466,6 +8482,7 @@ var Rl = 20,
         this.shape,
         this.glow,
         this.fm,
+        this.decoration,
       ]);
       for (let r = 0; r < n.length; r++) n[r][e] = n[r][t];
       for (let n = 0; n < 3; n++)
@@ -8508,6 +8525,7 @@ var Rl = 20,
         (e.clearUpdateRanges(), e.addUpdateRange(0, this.n * 4), (e.needsUpdate = !0));
     }
     clear() {
+      this.ownArea=0;this.ownCount=0;
       ((this.n = 0), (this.mesh.count = 0), (this.mesh.visible = !1));
     }
   },
@@ -8667,6 +8685,7 @@ function Hl(e) {
               : 3;
 }
 var Ul = class {
+  cols;
   cap;
   mesh;
   n = 0;
@@ -8707,7 +8726,7 @@ var Ul = class {
       (this.alpha = n()),
       (this.hold = n()),
       (this.fm = n()));
-    let r = new Yr(1, 1).rotateX(-Math.PI / 2);
+    let r = ringStripGeometry(Yr);
     ((this.aA = new gr(n(4), 4).setUsage(ii)),
       (this.aB = new gr(n(4), 4).setUsage(ii)),
       (this.aC = new gr(n(4), 4).setUsage(ii)),
@@ -8717,15 +8736,16 @@ var Ul = class {
     let i = new Kr({
       transparent: !0,
       depthWrite: !1,
-      vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vP; varying vec4 vCol; varying vec4 vRing;
-        void main(){ float ext = (iA.w + iC.x * 4.0) * 2.0; vP = vec2(position.x, position.z) * ext;
+      vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vP; flat varying vec4 vCol; flat varying vec4 vRing;
+        void main(){ ${ringStripPosition}
           gl_Position = projectionMatrix * viewMatrix * vec4(iA.xyz + vec3(vP.x, 0.0, vP.y), 1.0);
           vCol = iB; vRing = vec4(iA.w, iC.x, iC.y, iC.z); }`,
-      fragmentShader: `varying vec2 vP; varying vec4 vCol; varying vec4 vRing;
+      fragmentShader: `varying vec2 vP; flat varying vec4 vCol; flat varying vec4 vRing;
         const float TAU = 6.2831853;
         float h1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
         void main(){
-          float R = vRing.x, T = vRing.y, st = vRing.z;
+          float R = vRing.x, T = vRing.y, st = floor(vRing.z + 0.5);
+          ${ringSquareClip}
           float px = clamp(T * 0.55, 0.14, 0.26);
           vec2 p = (floor(vP / px) + 0.5) * px;
           ${ringEmptyPixels}
@@ -8794,7 +8814,7 @@ var Ul = class {
       if (((n = this.once[t] ? this.once[t]++ >= 2 : (this.life[t] -= e) <= 0), !n)) continue;
       let r = --this.n;
       if (t !== r) {
-        for (let e of [
+        for (let e of (this.cols ??= [
           this.px,
           this.py,
           this.pz,
@@ -8809,7 +8829,7 @@ var Ul = class {
           this.alpha,
           this.hold,
           this.fm,
-        ])
+        ]))
           e[t] = e[r];
         for (let e = 0; e < 3; e++) this.col[t * 3 + e] = this.col[r * 3 + e];
       }
@@ -9022,6 +9042,8 @@ var Gl = class {
       this.add.n=Math.min(this.add.n,this.add.limit);this.norm.n=Math.min(this.norm.n,this.norm.limit);
       if(this.text.items.length>this.text.limit)this.text.items.splice(0,this.text.items.length-this.text.limit);
       this.add.view=this.norm.view=this.text.view=view;
+      this.ground.ownAreaLimit=this.groundN.ownAreaLimit=profile.groundArea;
+      this.ground.ownCountLimit=this.groundN.ownCountLimit=profile.groundParticles;
     }
     update(e) {
       flushDamage(this,e);this.particleBudget?.next();
@@ -9044,6 +9066,7 @@ var Gl = class {
         this.text.clear());
     }
     burst(e, t, n, r, i = 12, a = 6, o = 0, s = 0.5, c = 0.5, l = 0) {
+      i=Math.min(Math.ceil(i),this.add.available(e,t,n,s*1.3));
       for (let u = 0; u < i; u++) {
         let i = F.range(0, Math.PI * 2),
           u = F.range(-0.3, 1),
@@ -9089,6 +9112,7 @@ var Gl = class {
           shape: 0,
           glow: 0,
           rot: 0,
+          essential: true,
         }));
     }
     flash(e, t, n, r, i = 3, a = 0.15) {
@@ -9107,6 +9131,7 @@ var Gl = class {
         }));
     }
     dust(e, t, n, r = 14207144, i = 6, a = 3) {
+      i=Math.min(Math.ceil(i),this.norm.available(e,t+.2,n,1.6));
       for (let o = 0; o < i; o++) {
         let i = F.range(0, Math.PI * 2),
           o = a * F.range(0.3, 1);
@@ -9127,6 +9152,7 @@ var Gl = class {
       }
     }
     trail(e, t, n, r, i = 0.4, a = 0, o = 0.3) {
+      if(!this.add.available(e,t,n,i))return;
       this.add.spawn({
         x: e,
         y: t,
@@ -19249,6 +19275,7 @@ function gp(e, t, n, r, i, a, o, s, c) {
   }
 }
 function _p(e, t, n, r, i, a, o, s = I.Rock, c = 0.45) {
+  a=Math.min(Math.ceil(a),e.vfx.norm.available(t,n+.3,r,c*1.3));
   for (let l = 0; l < a; l++) {
     let a = F.range(0, z),
       l = o * F.range(0.4, 1);
@@ -19270,6 +19297,7 @@ function _p(e, t, n, r, i, a, o, s = I.Rock, c = 0.45) {
   }
 }
 function vp(e, t, n, r, i, a, o, s, c = 0.6, l = 0.45, u = 0, d = 0.4) {
+  a=Math.min(Math.ceil(a),e.vfx.add.available(t,n,r,c));
   for (let f = 0; f < a; f++) {
     let p = (f / a) * z + F.range(-0.1, 0.1),
       m = o * F.range(0.8, 1.1);
@@ -19292,6 +19320,7 @@ function vp(e, t, n, r, i, a, o, s, c = 0.6, l = 0.45, u = 0, d = 0.4) {
   }
 }
 function yp(e, t, n, r, i, a, o, s, c = 0.6, l = 0.45, u = 0) {
+  a=Math.min(Math.ceil(a),e.vfx.norm.available(t,n,r,c));
   for (let d = 0; d < a; d++) {
     let f = (d / a) * z + F.range(-0.1, 0.1),
       p = o * F.range(0.8, 1.1);
