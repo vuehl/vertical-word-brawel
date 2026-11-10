@@ -4,6 +4,7 @@ const attributes=[['aPos','iPos'],['aSize','iSize'],['aUV','iUV'],['aFx','iFx'],
 // no per-species crowd-sized arrays or second copy at the end of a frame.
 export function createGlyphBatches(sprites){
   const groups=new Map();sprites.glyphGroups=groups;
+  let frameTime=0;
   function allocate(group,capacity){
     const source=group.source;
     if(group.mesh){group.mesh.parent?.remove(group.mesh);group.mesh.dispose();group.geometry.dispose();}
@@ -35,7 +36,7 @@ export function createGlyphBatches(sprites){
       source.mesh.visible=false;
       source.end=()=>{
         source.mesh.count=0;source.mesh.visible=false;
-        if(source.count){source.drawn=true;source.lastUse=performance.now();}
+        if(source.count){source.drawn=true;source.lastUse=frameTime;}
       };
       const dispose=source.dispose.bind(source);
       source.dispose=()=>{
@@ -45,7 +46,7 @@ export function createGlyphBatches(sprites){
         dispose();
       };
     },
-    begin(){for(const group of groups.values())group.count=0;},
+    begin(){frameTime=performance.now();for(const group of groups.values())group.count=0;},
     flush(){
       for(const group of groups.values()){
         const total=group.count;group.mesh.count=total;group.mesh.visible=total>0;

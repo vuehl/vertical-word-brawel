@@ -9,9 +9,12 @@ import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-iden
 import {createPlayerFootRing} from './player-foot-ring.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
+import {FramePacer} from './frame-pacing.js';
+import {warmCombatShaders} from './combat-warmup.js';
 import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
+import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,SPAWN_RATE_SCALE} from './spawn-budget.js';
 import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
@@ -5318,12 +5321,8 @@ var oc = (e, t) =>
     }
     calmFx = !1;
     combatBusy = false;
-    setCombatLoad(count) {
-      const busy=this.combatBusy?count>=120:count>=180;
-      if(busy===this.combatBusy)return;
-      this.combatBusy=busy;
-      this.bloom.intensity=this.quality.bloom&&!busy?0.8*this.bloomK:0;
-      this.pickFinal();
+    setCombatLoad() {
+      // Combat load must not switch off the player's selected bloom quality.
     }
     bloomK = 1;
     setLook(e, t) {
@@ -8439,8 +8438,7 @@ var Rl = 20,
         this.n >= Math.min(this.cap,this.limit) ||
         (this.view&&!this.view.visible(e.x,e.y,e.z,Math.max(6,e.size||0))) ||
         Fl.on ||
-        (!this.lockVisualQuality && (Fl.density < 1 || this.n > this.cap * 0.8) &&
-          Math.random() > (this.n > this.cap * 0.8 ? Fl.density * 0.5 : Fl.density))
+        (Fl.density < 1 && Math.random() > Fl.density)
       )
         return;
       if(this.densityBudget&&!this.densityBudget.allow(e.x,e.z))return;
@@ -9064,13 +9062,8 @@ var Gl = class {
       for(const pool of [this.add,this.norm,this.ground,this.groundN,this.beams])pool.lockVisualQuality=!!profile.lockVisualQuality;
       this.particleBudget??=new ParticleBudget();this.particleBudget.limit=profile.particleCell;
       this.add.densityBudget=this.norm.densityBudget=this.particleBudget;
-      this.add.limit=profile.particles;this.norm.limit=profile.normalParticles;this.text.limit=profile.damageTexts;
-      this.add.ownAreaLimit=profile.particles*.2;this.norm.ownAreaLimit=profile.normalParticles*.2;
-      this.add.trimTo(this.add.limit);this.norm.trimTo(this.norm.limit);
-      if(this.text.items.length>this.text.limit)this.text.items.splice(0,this.text.items.length-this.text.limit);
       this.add.view=this.norm.view=this.text.view=view;
-      this.ground.ownAreaLimit=this.groundN.ownAreaLimit=profile.groundArea;
-      this.ground.ownCountLimit=this.groundN.ownCountLimit=profile.groundParticles;
+      applyCrowdEffects(this,profile);
     }
     update(e) {
       flushDamage(this,e);this.particleBudget?.next();
@@ -14243,6 +14236,7 @@ var Df = 0.4,
     }
     glyphWords = new Array(2200);
     spawn(e, t, n, r, i, a = 0, o = 1) {
+      if(!allowOrdinarySpawn(this.run,a))return -1;
       if (a & 1536) {
         let e = this.run;
         if (this.mass >= e.maxEnemies + 200) return -1;
@@ -44606,7 +44600,8 @@ var mv = 30,
     rng;
     swarmUntil = 0;
     spawnedTotal = 0;
-    static MAX_SPAWNS_PER_SEC = 1800;
+    // Bound catch-up work after a stall or mass kill, as well as average rate.
+    static MAX_SPAWNS_PER_SEC = 24;
     static RIM_MIN = 14;
     spawnAllowance = 0;
     vCap = 0;
@@ -44795,13 +44790,13 @@ var mv = 30,
     }
     caps(e) {
       let t = this.run;
-      ((this.vCap = Math.min(t.maxEnemies, e)),
+      ((this.vCap = Math.min(t.maxEnemies, e, runOrdinaryLimit(t))),
         (this.liveCap = Math.max(1, Math.min(t.enemyCap, this.vCap))),
-        (this.weight = Math.max(1, this.vCap / this.liveCap)));
+        (this.weight = 1));
     }
     full() {
       let e = this.run.enemies;
-      return e.mass >= this.vCap - 0.001 || e.count >= this.liveCap;
+      return e.count>=this.liveCap && countOrdinary(e)>=this.liveCap;
     }
     spend() {
       let e = this.weight;
@@ -44846,7 +44841,7 @@ var mv = 30,
       );
       let a = n.player.stats,
         o =
-          Tt(i) *
+          Tt(i) * SPAWN_RATE_SCALE *
           (1 + (n.stage - 1) * 0.35) *
           a.difficulty *
           a.enemyAmount *
@@ -44857,7 +44852,7 @@ var mv = 30,
       if (((this.spawnAllowance = Math.min(s * 0.1, this.spawnAllowance + s * t)), this.full()))
         this.credits = Math.min(this.credits, 10 * this.weight);
       else if ((this.spend(), this.finalSwarm && Math.random() < t * 2))
-        for (let e = 0; e < 6; e++) this.spawnCard(this.rng.pick(this.cards), R.Elite);
+        for (let e = 0; e < 3 && !this.full(); e++) this.spawnCard(this.rng.pick(this.cards), R.Elite);
     }
     updateEndless(t) {
       let n = this.run,
@@ -44871,14 +44866,14 @@ var mv = 30,
         o = i / 60;
       this.caps(Math.round((10 + a * 0.65 + (a / 60) ** 2 * 4.5) * (1 + 0.012 * o)));
       let s = n.player.stats,
-        c = ft(i) * s.difficulty * s.enemyAmount * r.curse.amount * (r.night ? 2 : 1);
+        c = ft(i) * SPAWN_RATE_SCALE * s.difficulty * s.enemyAmount * r.curse.amount * (r.night ? 2 : 1);
       this.credits = Math.min(this.credits + c * t, c * 2 + 10 * this.weight);
       let l = e.MAX_SPAWNS_PER_SEC;
       if (
         ((this.spawnAllowance = Math.min(l * 0.1, this.spawnAllowance + l * t)),
         r.night && this.cards.length && Math.random() < t * 2)
       )
-        for (let e = 0; e < 6 && !this.full(); e++)
+        for (let e = 0; e < 3 && !this.full(); e++)
           this.spawnCard(this.rng.pick(this.cards), R.Elite, this.weight);
       this.full() ? (this.credits = Math.min(this.credits, 10 * this.weight)) : this.spend();
     }
@@ -44924,7 +44919,7 @@ var mv = 30,
             let e = this.rng.pick(this.cards),
               n = t.player.pos,
               r = Math.round(
-                (t.stage === 1 && t.stageTime < 300 ? 40 : 46 + t.stage * 12) * (T.events[t.tier] ?? 1),
+                (t.stage === 1 && t.stageTime < 300 ? 40 : 46 + t.stage * 12) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE,
               );
             for (let i = 0; i < r; i++) {
               let a = (i / r) * Math.PI * 2,
@@ -44956,7 +44951,7 @@ var mv = 30,
               s = -o,
               l = a,
               u = Math.round(
-                (t.stage === 1 && t.stageTime < 300 ? 30 : 34 + t.stage * 8) * (T.events[t.tier] ?? 1),
+                (t.stage === 1 && t.stageTime < 300 ? 30 : 34 + t.stage * 8) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE,
               );
             for (let e = 0; e < u; e++) {
               let i = ((e % 17) - 8) * 2.2,
@@ -44999,7 +44994,7 @@ var mv = 30,
             break;
           }
           case `elitewave`:
-            for (let e = 0; e < Math.round((4 + t.stage * 2) * (T.events[t.tier] ?? 1)); e++)
+            for (let e = 0; e < Math.round((4 + t.stage * 2) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE); e++)
               this.spawnCard(this.rng.pick(this.cards), R.Elite);
             t.ui.toast(c(`Una oleada de Pokémon élite se acerca`), null);
         }
@@ -45030,8 +45025,8 @@ var mv = 30,
         f = t.z,
         p = this.hpMult() * 0.5,
         m = this.dmgMult();
-      for (let t = 0; t < 20; t++)
-        e.later(t * 0.25, () => {
+      for (let t = 0; t < 10; t++)
+        e.later(t * 0.5, () => {
           for (let t = 0; t < 3; t++) {
             let t = this.rng.range(-9, 9),
               n = d - o * 36 + l * t,
@@ -45090,7 +45085,7 @@ var mv = 30,
                 kind: `event`,
                 species: r,
               }),
-              n % 2 == 0 && e.enemies.spawn(r, c, l, i, a, R.Swarm));
+              n % 4 == 0 && e.enemies.spawn(r, c, l, i, a, R.Swarm));
           }));
       }
       (e.ui.banner(c(`¡Lluvia de rocas!`), c(`Sal de los círculos marcados`), `#c8a070`, { species: r }),
@@ -75784,7 +75779,7 @@ var GT = 15,
           (this.diff.enemyHp *= this.coop.hpMul),
           (this.diff.enemyAmount *= this.coop.spawnMul)));
       let s = i.profile.settings;
-      this.performance=performanceProfile(s);
+      this.performance=performanceProfile(s,window.nativeDevice);
       ((this.hints = new yw(i)),
         (this.aimMode = s.aimMode),
         (this.maxEnemies = this.coop ? 800 : yE),
@@ -75838,6 +75833,9 @@ var GT = 15,
           this.state === `transition` && (this.state = t));
       }
       await this.sprites.prepareGlyphTextures?.(this.r.renderer);check();
+      this.onLoadProgress?.({phase:'准备战斗特效',detail:'',progress:.96});
+      await waitForLoadingPaint(this.r.renderer);check();
+      await warmCombatShaders(this.r);check();
       if(!onProgress)this.ui.stageIntro(this);
     }
     stageSprites() {
@@ -77749,8 +77747,6 @@ var GT = 15,
       updateCrowdBudget(this,performance.now(),document.hidden);
     }
     simulate(e) {
-      this.r.setCombatLoad(this.enemies.count);
-      applyCrowdEffects(this.vfx,this.performance,this.enemies.count);
       let t = this.input,
         n = this.player,
         r = !!this.coop && n.dead;
@@ -92926,13 +92922,8 @@ var pN = !1;
 function mN(e) {
   if (pN || !e.r?.softwareGpu || e.run) return;
   pN = !0;
-  let t = e.meta.profile.settings,
-    n = !1;
   try {
-    (!localStorage.getItem(`pb.swgpu`) &&
-      t.quality !== `low` && t.quality !== `high` &&
-      ((t.quality = `low`), e.applySettings(), e.meta.save(), (n = !0)),
-      localStorage.setItem(`pb.swgpu`, `1`));
+    localStorage.setItem(`pb.swgpu`, `1`);
   } catch {}
   let r = Xj(
     X(`h2`, { class: `cl-mh` }, c(`Tu navegador no está usando la tarjeta gráfica`)),
@@ -92950,15 +92941,6 @@ function mN(e) {
         `En Chrome, Edge u Opera: abre Configuración → Sistema, activa «Usar aceleración de hardware cuando esté disponible» y reinicia el navegador. Si ya está activada, actualiza los controladores de tu tarjeta gráfica.`,
       ),
     ),
-    n
-      ? X(
-          `p`,
-          { class: `muted` },
-          c(
-            `Mientras tanto hemos bajado la calidad gráfica a Baja (puedes cambiarla en Ajustes → Gráficos).`,
-          ),
-        )
-      : null,
     X(
       `div`,
       { class: `row cl-mbtns` },
@@ -103760,15 +103742,20 @@ var JI = class {
           (this.reticle.style.top = r.y + `px`));
       } else this.reticle.style.display = `none`;
       this.crosshair.style.display = e.aimMode === `manual` && e.state === `play` ? `` : `none`;
+      const shrineTarget = e.sanctuary && !e.bossSpawned && !e.stageCleared
+        ? e.interactables.list.find((target) => target.kind === `shrine` && !target.used) : null;
       let y = e.stageCleared ? (e.interactables.list.find((e) => e.kind === `portal`) ?? null) : null,
         b =
+          shrineTarget ??
           e.capture.marker ??
           e.allies.marker ??
           e.events?.marker ??
           e.minibosses?.marker ??
           (y ? { x: y.x, z: y.z } : null);
       if (b) {
-        let t = this.project(e, b.x, e.terrain.height(b.x, b.z) + 2, b.z),
+        const distance = Math.round(Math.hypot(b.x - e.player.pos.x, b.z - e.player.pos.z)),
+          markerText = shrineTarget ? `圣地 · ${distance} 米` : c(`{n} m`, { n: distance });
+        let t = this.project(e, b.x, e.terrain.height(b.x, b.z) + (shrineTarget ? (shrineTarget.group?.userData.h ?? 6.3) + 1 : 2), b.z),
           n = innerWidth / 2,
           r = innerHeight / 2,
           i = t.x - n,
@@ -103778,10 +103765,10 @@ var JI = class {
           t.vis && t.x > 40 && t.x < innerWidth - 40 && t.y > 40 && t.y < innerHeight - 40)
         ) {
           this.arrow.style.display = `none`;
-          let n = e.player.pos,
-            r = c(`{n} m`, { n: Math.round(Math.hypot(b.x - n.x, b.z - n.z)) }),
-            i = this.markTag;
-          ((i.style.display = ``), (i.style.left = t.x + `px`), (i.style.top = t.y + `px`));
+          let r = markerText, i = this.markTag;
+          ((i.style.display = ``),
+            (i.style.left = (shrineTarget ? Gs(t.x, 76, innerWidth - 76) : t.x) + `px`),
+            (i.style.top = (shrineTarget ? Gs(t.y, 238, innerHeight - 96) : t.y) + `px`));
           let a = i.children[0];
           a.textContent !== r && (a.textContent = r);
         } else {
@@ -103790,27 +103777,26 @@ var JI = class {
             s = e.enemies,
             l = b.i,
             u =
-              e.capture.marker || e.allies.marker
+              shrineTarget ? sI().shrine.ring : e.capture.marker || e.allies.marker
                 ? cI.capture
                 : e.events?.marker
                   ? cI.treasure
                   : e.minibosses?.marker
                     ? cI.summoner
                     : sI().portal.ring,
-            d = l == null ? `portal` : `m${s.species[l]}${u}`,
+            d = shrineTarget ? `shrine` : l == null ? `portal` : `m${s.species[l]}${u}`,
             f = this.arrow;
           (f.dataset.k !== d &&
             ((f.dataset.k = d),
             f.style.setProperty(`--rc`, u),
             $(f.children[1]).append(
-              l == null ? pI(`portal`, 46) : fI(`portraits/${s.species[l]}.png`, u, 46, !0),
+              l == null ? pI(shrineTarget ? `shrine` : `portal`, 46) : fI(`portraits/${s.species[l]}.png`, u, 46, !0),
             )),
             (f.style.display = ``),
-            (f.style.left = n + Math.cos(t) * o + `px`),
-            (f.style.top = r + Math.sin(t) * o + `px`),
+            (f.style.left = (shrineTarget ? Gs(n + Math.cos(t) * o, 76, innerWidth - 76) : n + Math.cos(t) * o) + `px`),
+            (f.style.top = (shrineTarget ? Gs(r + Math.sin(t) * o, 238, innerHeight - 96) : r + Math.sin(t) * o) + `px`),
             (f.children[0].style.transform = `rotate(${t + Math.PI / 2}rad)`));
-          let p = e.player.pos,
-            m = c(`{n} m`, { n: Math.round(Math.hypot(b.x - p.x, b.z - p.z)) });
+          let m = markerText;
           (f.children[2].textContent !== m && (f.children[2].textContent = m),
             (this.markTag.style.display = `none`));
         }
@@ -103843,6 +103829,8 @@ var JI = class {
           shroom: c(`Seta rebote`),
         };
       for (let a of e.interactables.list) {
+        // The sanctuary navigation marker already labels the unopened shrine.
+        if (a.kind === `shrine` && e.sanctuary && !e.bossSpawned) continue;
         let o = Math.hypot(a.x - t.x, a.z - t.z),
           s =
             a.kind === `meowth` ||
@@ -109269,6 +109257,10 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           N.setHiddenMute(document.hidden && (this.meta.profile?.settings.muteHidden ?? !0)),
         ),
         document.addEventListener(`visibilitychange`, () => {
+          this.dynAt=performance.now();this.dyn.t=this.dyn.frames=this.dyn.js=0;
+          this.perf.active=false;
+          this.pacer.reset();
+          if(this.run)this.run.crowdSample=null;
           document.hidden && uo && this.run?.state === `play` && this.run.pause();
         }),
         addEventListener(`keydown`, (e) => {
@@ -109394,7 +109386,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       let e = this.meta.profile?.settings;
       if(e&&(window.nativeUI||this.zixing))e.aimMode='auto';
       if (e && window.repairVolumeSettings?.(e)) this.meta.save();
-      const profile=performanceProfile(e);
+      const profile=performanceProfile(e,window.nativeDevice);
       if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio});
       window.setUIPerformance?.(profile);
       e &&
@@ -109739,7 +109731,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         i = this.r;
       if (
         ((this.dynAt = n),
-        !i.quality.dyn || this.saver || this.run?.state !== `play` || document.hidden || !(t > 0 && t < 0.25))
+        !i.quality.dyn || this.saver || this.run?.state !== `play` || document.hidden || !(t > 0 && Number.isFinite(t)))
       ) {
         r.t = r.frames = r.js = 0;
         return;
@@ -109762,14 +109754,11 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           : (r.good = 0);
     }
     halted = !1;
-    nextDraw = 0;
+    pacer = new FramePacer();
     loop = (e) => {
-      if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) {this.perf.active=false;return;}
+      if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) {this.perf.active=false;this.pacer.reset();return;}
       let t = this.frameGap();
-      if (t && e < this.nextDraw - 2 && !this.r.needsDraw) return;
-      // Forced resize/menu draws must not accumulate a deadline far into the
-      // future while the renderer is idle behind an opaque screen.
-      this.nextDraw = t ? e + t : 0;
+      if (!this.pacer.ready(e,t,this.r.needsDraw)) return;
       let n = Math.min(0.1, (e - this.last) / 1e3);
       this.last = e;
       try {

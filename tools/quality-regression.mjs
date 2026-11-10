@@ -42,7 +42,7 @@ export async function reviewQuality(page,dir){
     }
     assert.ok(pixels(low)<pixels(medium)&&pixels(medium)<pixels(high));
     assert.deepEqual(saver.world,low.world);assert.deepEqual(restored.world,high.world);
-    assert.deepEqual(dynamic.world,high.world);assert.ok(pixels(balancedDynamic)<pixels(medium));assert.equal(saver.fpsCap,30);
+    assert.deepEqual(dynamic.world,high.world);assert.deepEqual(balancedDynamic.world,medium.world);assert.equal(saver.fpsCap,30);
     // The final setting and Back remain reachable on small phones.
     const scroll=await page.evaluate(()=>{
       const body=inspected.doc.querySelector('.zx-body');body.scrollTop=10000;

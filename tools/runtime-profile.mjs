@@ -6,11 +6,13 @@ import assert from 'node:assert/strict';
 // comparative only: they are neither GPU timings nor measured phone FPS.
 export async function profileRuntime(page,dir){
   const report={environment:'Compiled WeChat game / Chrome SwiftShader; inclusive CPU timings, NOT phone FPS.',samples:[]};
-  for(const count of [0,200,600]){
-    await page.evaluate(count=>{
+  for(const quality of ['low','high'])for(const count of [0,200]){
+    await page.evaluate(({count,quality})=>{
       const run=app.run,p=run.player;
-      app.meta.profile.settings.quality='low';app.applySettings();app.r.setDynRes(1);
-      run.director.update=()=>{};run.queueLevelUp=()=>{};run.pendingLevels=0;
+      app.meta.profile.settings.quality=quality;app.applySettings();app.r.setDynRes(1);
+      run.director.update=run.director.startFinalSwarm=()=>{};run.queueLevelUp=()=>{};run.pendingLevels=0;
+      run.events.update=run.minibosses.update=()=>{};
+      run.time=run.stageTime=600;run.nextCp=1e9;
       run.capture.state='done';run.enemies.clear();p.hp=p.maxHp=1e9;
       for(let i=0;i<count;i++){
         const angle=i*2.39996,distance=4+(i%60)*.24;
@@ -18,11 +20,11 @@ export async function profileRuntime(page,dir){
       }
       for(let i=0;i<15;i++)run.update(1/60);
       app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
-    },count);
+    },{count,quality});
     await new Promise(resolve=>setTimeout(resolve,300));
     const client=await page.createCDPSession();
     await client.send('Profiler.enable');await client.send('Profiler.setSamplingInterval',{interval:500});await client.send('Profiler.start');
-    const sample=await page.evaluate(async count=>{
+    const sample=await page.evaluate(async ({count,quality})=>{
       const run=app.run,r=app.r,stats={},saved=[],frames=[];
       const wrap=(object,key,label)=>{
         if(typeof object?.[key]!=='function')return;
@@ -34,6 +36,8 @@ export async function profileRuntime(page,dir){
         for(const method of ['update','render'])wrap(run[name],method,name+'.'+method);
       }
       wrap(run.enemies.grid,'build','grid.build');wrap(run.enemies.grid,'separate','grid.separate');
+      for(const name of ['height','surface','waterAt','resolve'])wrap(run.terrain,name,'terrain.'+name);
+      for(const name of ['begin','end'])wrap(run.sprites,name,'sprites.'+name);
       wrap(run.ui,'hud','ui.hud');wrap(inspected.layout,'refresh','ui.layout');
       wrap(r,'render','renderer.render');wrap(inspected.env,'drawUI','ui.draw');
       const startUploads=auditUIUploads,startBytes=auditUploadBytes;
@@ -48,7 +52,7 @@ export async function profileRuntime(page,dir){
           frames.push({ms:performance.now()-start,uiUpload:auditUIUploads!==before});
           await new Promise(resolve=>setTimeout(resolve,17));
         }
-        const output={enemiesRequested:count,enemies:run.enemies.count,state:run.state,
+        const output={quality,enemiesRequested:count,enemies:run.enemies.count,state:run.state,
           phases:Object.fromEntries(Object.entries(stats).map(([key,values])=>[key,summarize(values)])),
           frames:summarize(frames.map(f=>f.ms)),withUIUpload:summarize(frames.filter(f=>f.uiUpload).map(f=>f.ms)),withoutUIUpload:summarize(frames.filter(f=>!f.uiUpload).map(f=>f.ms)),
           uiUploads:auditUIUploads-startUploads,uploadBytes:auditUploadBytes-startBytes,
@@ -57,12 +61,12 @@ export async function profileRuntime(page,dir){
           music:{enabled:inspected.env.backgroundMusicEnabled,loading:run.audio.trackLoading,cached:run.audio.trackBytes.size,playing:!!run.audio.track}};
         return output;
       }finally{for(const restore of saved)restore();}
-    },count);
+    },{count,quality});
     const {profile}=await client.send('Profiler.stop');await client.detach();
-    fs.writeFileSync(path.join(dir,'cpu-'+count+'.cpuprofile'),JSON.stringify(profile));
+    fs.writeFileSync(path.join(dir,'cpu-'+quality+'-'+count+'.cpuprofile'),JSON.stringify(profile));
     report.samples.push(sample);
     fs.writeFileSync(path.join(dir,'runtime-profile.json'),JSON.stringify(report,null,2));
-    console.log(JSON.stringify({enemies:sample.enemies,frames:sample.frames,uiUploads:sample.uiUploads,uploadBytes:sample.uploadBytes,music:sample.music}));
+    console.log(JSON.stringify({quality,enemies:sample.enemies,frames:sample.frames,uiUploads:sample.uiUploads,uploadBytes:sample.uploadBytes,music:sample.music}));
     assert.equal(sample.state,'play');assert.equal(sample.enemies,count);
     assert.equal(sample.music.enabled,false);assert.equal(sample.music.cached,0);assert.equal(sample.music.playing,false);
   }

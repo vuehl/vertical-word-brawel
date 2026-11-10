@@ -256,6 +256,8 @@ html.zixing .zx-choice.fire.on{border-color:#d84840;border-width:2px;background:
 .zx-battle-map-frame{position:relative;flex:none;align-self:center}
 html.zixing .zx-battle-map-art{position:absolute;inset:0;display:block;width:100%;height:100%}
 .zx-battle-map>.zx-button{width:100%}
+.zx-sanctuary-guide>h2{display:flex;flex-direction:column;gap:4px;font-size:22px;line-height:1.3}
+.zx-sanctuary-guide>h2>span{white-space:nowrap}
 .zx-modal-wrap.zx-pause-screen{padding:0;align-items:stretch;background:var(--paper)}
 .zx-modal.zx-pause{width:100%;max-width:none;height:100%;max-height:100%;border:0;border-radius:0;box-shadow:none;padding:0;gap:0;overflow:hidden;background:var(--paper)}
 .zx-pause-body{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;gap:16px;padding:26px 24px 18px}.zx-pause-body>*{flex-shrink:0}

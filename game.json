@@ -1,6 +1,7 @@
 {
   "deviceOrientation": "portrait",
   "iOSHighPerformance": true,
+  "iOSHighPerformance+": true,
   "showStatusBar": false,
   "subpackages": [
     {"name": "play", "root": "play.js"},

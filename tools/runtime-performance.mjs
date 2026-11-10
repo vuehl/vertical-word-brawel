@@ -19,6 +19,8 @@ import {reviewOptimizations} from './optimization-regression.mjs';
 import {reviewCrowdRender} from './crowd-render-regression.mjs';
 import {reviewBattleLoad} from './battle-load-regression.mjs';
 import {reviewBattleVisual} from './battle-visual-regression.mjs';
+import {reviewIOSBudget} from './ios-budget-regression.mjs';
+import {reviewPhonePerformance} from './phone-performance-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
 const game=path.join(root,...(development?['验收','开发者工程']:[]),'minigame');
 const dir=process.env.POKEBONK_QA||path.join(root,'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
@@ -49,7 +51,8 @@ try{
   const page=await browser.newPage(),errors=[];
   page.on('pageerror',e=>errors.push(String(e)));
   await page.setViewport({width:390,height:844,deviceScaleFactor:3});
-  await page.evaluateOnNewDocument(()=>{
+  await page.evaluateOnNewDocument(platform=>{
+    window.fixturePlatform=platform;
     window.phoneLayout=true;window.auditUIUploads=0;window.auditControlUploads=0;window.auditUploadBytes=0;window.auditHealthBytes=0;window.auditPortraitBytes=0;
     const proto=WebGL2RenderingContext.prototype;
     for(const name of ['texImage2D','texSubImage2D']){
@@ -58,7 +61,7 @@ try{
         return original.apply(this,args);
       };
     }
-  });
+  },process.argv.includes('--ios-budget')?'ios':'devtools');
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
@@ -88,7 +91,11 @@ try{
   },development);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--battle-visual')){
+  if(process.argv.includes('--phone-performance')){
+    await reviewPhonePerformance(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--ios-budget')){
+    await reviewIOSBudget(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--battle-visual')){
     await reviewBattleVisual(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--battle-load')){
     await reviewBattleLoad(page,dir);assert.deepEqual(errors,[]);
@@ -380,8 +387,8 @@ try{
   assert.equal(report.settings.saver.fpsCap,30);assert.ok(Math.abs(report.settings.saver.frameGap-1000/30)<.1);
   assert.equal(report.settings.restoredFps.fpsCap,60);assert.equal(report.settings.restoredFps.saver,false);assert.equal(report.settings.restoredFps.frameGap,1000/60);
   assert.equal(report.settings.selected30.fpsCap,30);assert.equal(report.settings.selected30.frameGap,1000/30);
-  assert.equal(report.settings.dynamicResolution.atSelected30,1);assert.ok(report.settings.dynamicResolution.overloaded60<1);
-  assert.ok(report.settings.dynamicResolution.busyNative<1,'Native uploads must not prevent dynamic scaling at 11 FPS');
+  assert.equal(report.settings.dynamicResolution.atSelected30,1);assert.equal(report.settings.dynamicResolution.overloaded60,1);
+  assert.equal(report.settings.dynamicResolution.busyNative,1,'Low FPS must not override the selected resolution');
   assert.ok(report.hud.bytes<100000000,'Low quality must reduce full HUD and minimap upload bandwidth');
   assert.equal(report.minimap.fullUploads,0,'A minimap refresh must not upload the whole screen');
   assert.ok(report.minimap.bytes>0&&report.minimap.bytes<200000,'Minimap uses its own small texture');

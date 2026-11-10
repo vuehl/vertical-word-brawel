@@ -2,6 +2,7 @@
 // source/. No settings, debug actions or test rewards enter the release save.
 import {createWorkload,workloadPreset} from './workload.mjs';
 import {createEncounterTest,encounterAt,nextEncounter} from './encounters.mjs';
+import {ordinaryLimit} from '../../source/src/spawn-budget.js';
 const SPECIAL=2|4|128|2048|4096|8192|16384|32768|65536|131072;
 const MAX_COUNT=1000;
 const ordinary=(enemies,i)=>enemies.alive[i]&&!(enemies.flags[i]&SPECIAL);
@@ -46,7 +47,10 @@ export function setEnemyCount(run,count,reset=false){
     const index=attempts++,angle=index*2.3999632297,distance=5+Math.sqrt((index%233)/232)*15;
     const x=run.player.pos.x+Math.cos(angle)*distance,z=run.player.pos.z+Math.sin(angle)*distance;
     if(!run.terrain.inBounds(x,z,2)||run.terrain.hitProp(x,.6,z,.55))continue;
-    const id=enemies.spawn(cards[index%cards.length].id,x,z,run.director.hpMult(),run.director.dmgMult());
+    let id;
+    run.developerSpawning=true;
+    try{id=enemies.spawn(cards[index%cards.length].id,x,z,run.director.hpMult(),run.director.dmgMult());}
+    finally{run.developerSpawning=false;}
     if(id<0)break;
     current++;
   }
@@ -62,7 +66,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   const bossNames={alpha:'精英首领',totem:'支配首领',summoner:'召唤首领',guardian:'区域 Boss'};
   try{const saved=window.localStorage.getItem('developer.workload');if(['none','timed','stress'].includes(saved))selectedMode=saved;}catch{}
   const modeNames={none:'只调怪物',timed:'按时间实战',stress:'满负载压测'};
-  let run=null,button=null,monitor=null,monitorLayer=null,panel=null,target=200,seconds=120;
+  let run=null,button=null,monitor=null,monitorLayer=null,panel=null,target=30,seconds=120;
   let frames=0,since=performance.now(),fps=0,frameMs=0,calls=0,triangles=0,lastSample=0,lastMaintain=0;
   let values=null,error=null;
   let mountEntrance=()=>{};
@@ -99,6 +103,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     }
     let projectiles=0;for(let i=0;i<run.projectiles.n;i++)if(run.projectiles.alive[i])projectiles++;
     return {stage:run.stage,stageTime:run.stageTime,total:e.count,ordinary:normal,visible,
+      device:window.nativeDevice,simMs:app.perf.sim,submitMs:app.perf.draw,
       fps,frameMs,calls,triangles,particles:run.vfx.add.n+run.vfx.norm.n,pickups:run.pickups.count,
       projectiles,zones:run.zones.list.length,texts:run.vfx.text.items.length,workload:workload?.snapshot(),encounter:encounters?.snapshot(),
       textures:app.r.renderer.info.memory.textures,geometries:app.r.renderer.info.memory.geometries,
@@ -106,7 +111,15 @@ export function installDeveloperMode(app,{skills,speciesName}){
   }
   function summary(){
     const s=snapshot();if(!s)return '';
-    return `区域 ${s.stage} · ${time(s.stageTime)}   FPS ${s.fps.toFixed(1)}\n普通怪 ${s.ordinary} / 总数 ${s.total} / 入镜 ${s.visible}\n3D 绘制 ${s.calls} 次 · 三角形 ${s.triangles}\n粒子 ${s.particles} · 掉落 ${s.pickups} · 飘字 ${s.texts}\n弹道 ${s.projectiles} · 范围 ${s.zones} · ${modeNames[s.workload?.mode]||modeNames.none}\n首领 ${s.encounter?.count||0} · ${s.encounter?.current?.alive?s.encounter.current.name:'未在场'}`;
+    const device=s.device||{},mode=device.platform==='ios'?(device.highPerformancePlus===true?'高性能+':device.highPerformance===true?'高性能':device.highPerformance===false?'普通模式':'模式未确认'):device.platform||'未知平台';
+    return `区域 ${s.stage} · ${time(s.stageTime)}   FPS ${s.fps.toFixed(1)}\n${device.model||device.platform||'设备未知'} · ${mode}\n逻辑 ${s.simMs.toFixed(1)} ms · 绘制提交 ${s.submitMs.toFixed(1)} ms\n普通怪 ${s.ordinary} / 总数 ${s.total} / 入镜 ${s.visible}\n3D 绘制 ${s.calls} 次 · 三角形 ${s.triangles}\n粒子 ${s.particles} · 掉落 ${s.pickups} · 飘字 ${s.texts}\n弹道 ${s.projectiles} · 范围 ${s.zones} · ${modeNames[s.workload?.mode]||modeNames.none}\n首领 ${s.encounter?.count||0} · ${s.encounter?.current?.alive?s.encounter.current.name:'未在场'}`;
+  }
+  function writeSummary(element){
+    const lines=summary().split('\n');
+    // Native text painting collapses embedded newlines. Give each statistic
+    // its own row so the iOS mode and timings remain readable on a phone.
+    if(element.children.length!==lines.length)element.replaceChildren(...lines.map(line=>node('div',line,'width:100%;')));
+    else lines.forEach((line,index)=>text(element.children[index],line));
   }
   function refresh(){
     if(values){
@@ -125,7 +138,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
         bossMode==='none'?'不生成首领':next?'尚未到首领时间 · 下一波 '+time(next.t):'当前没有对应首领');
       for(const update of values.toggles)update();
     }
-    if(monitor){monitor.hidden=!options.monitor||run?.state!=='play'||!!app.screen;if(options.monitor)text(monitor,summary());}
+    if(monitor){monitor.hidden=!options.monitor||run?.state!=='play'||!!app.screen;if(options.monitor)writeSummary(monitor);}
   }
   function wireDirector(){
     const director=run.director;if(wiredDirectors.has(director))return;wiredDirectors.add(director);
@@ -178,8 +191,9 @@ export function installDeveloperMode(app,{skills,speciesName}){
     values.evolution=node('small','','font-size:12px;line-height:1.45;');
     values.evolve=action('升到下次进化',advanceEvolution,'evolve-next');
     card.append(values.evolution,values.evolve);
-    const times=row(...[0,2,2.5,3,5,6,7,8,10].map(m=>action(m+'分',()=>{seconds=m*60;if(selectedMode!=='none'&&target===0&&m>0)target=Math.min(400,100+m*50);refresh();},'minute-'+m)));
-    card.append(values.seconds,times,row(action('−30秒',()=>{seconds=bounded(seconds-30,600);refresh();},'time-minus'),action('+30秒',()=>{seconds=bounded(seconds+30,600);refresh();},'time-plus')));
+    const selectTime=value=>{seconds=bounded(value,600);if(selectedMode==='timed')target=ordinaryLimit(seconds);refresh();};
+    const times=row(...[0,2,2.5,3,5,6,7,8,10].map(m=>action(m+'分',()=>selectTime(m*60),'minute-'+m)));
+    card.append(values.seconds,times,row(action('−30秒',()=>selectTime(seconds-30),'time-minus'),action('+30秒',()=>selectTime(seconds+30),'time-plus')));
     card.append(values.count,row(...[0,100,200,400,600,1000].map(n=>action(String(n),()=>{target=n;refresh();},'count-'+n))),row(action('−10怪',()=>{target=bounded(target-10,MAX_COUNT);refresh();}),action('+10怪',()=>{target=bounded(target+10,MAX_COUNT);refresh();})));
     card.append(row(...Object.entries(bossModes).map(([key,label])=>{
       const button=action(label,()=>{bossMode=key;refresh();},'boss-'+key);values.bossModes.push([key,button]);return button;
@@ -191,12 +205,12 @@ export function installDeveloperMode(app,{skills,speciesName}){
       update();values.toggles.push(update);switches.append(toggle);
     }
     card.append(switches,node('small','按时间刷新最近一波首领；区域 Boss 可直接召唤，击败后按正式流程开启裂隙、发放奖励并前往下一区域。跳时间会清理旧首领及其随从，不发清理奖励。配装沿用正式技能池与强化规则。达到进化等级后，返回战斗选择方向并确认；也可点「升到下次进化」直接测试。停止预设会恢复原形态与路线。满负载额外加快施放。','font-size:11px;line-height:1.45;color:#796b57;'));
-    const stats=node('div',summary(),'font-size:11px;line-height:1.5;white-space:pre-wrap;background:#edf0e6;padding:8px;border-radius:8px;');card.append(stats);
+    const stats=node('div','','font-size:11px;line-height:1.5;background:#edf0e6;padding:8px;border-radius:8px;');writeSummary(stats);card.append(stats);
     const footer=node('div','','flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 14px 12px;');shell.append(footer);
     error=node('div','','font-size:11px;color:#b4472d;min-height:16px;');footer.append(error);
-    const applyButton=action('应用时间与场景',()=>{apply(true);text(stats,summary());},'apply');applyButton.style.background='#f7d5a4';
-    footer.append(row(applyButton,action('仅改怪数',()=>{apply(false);text(stats,summary());},'count-only')),
-      row(action('停止预设 / 恢复配装',()=>{workload.stop();selectedMode='none';refresh();text(stats,summary());text(error,'已恢复原配装；已有短时特效自然结束。');},'stop-workload'),action('返回战斗',close,'close')));
+    const applyButton=action('应用时间与场景',()=>{apply(true);writeSummary(stats);},'apply');applyButton.style.background='#f7d5a4';
+    footer.append(row(applyButton,action('仅改怪数',()=>{apply(false);writeSummary(stats);},'count-only')),
+      row(action('停止预设 / 恢复配装',()=>{workload.stop();selectedMode='none';refresh();writeSummary(stats);text(error,'已恢复原配装；已有短时特效自然结束。');},'stop-workload'),action('返回战斗',close,'close')));
     panel.append(shell);run.ui.root.append(panel);refresh();invalidate();
   }
   function attach(next){

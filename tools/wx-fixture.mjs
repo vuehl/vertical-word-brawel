@@ -66,6 +66,7 @@ Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(ho
 }});
 globalThis.wx={
   env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>fs,
+  getDeviceInfo:()=>({platform:window.fixturePlatform||'devtools'}),
   getWindowInfo:()=>({windowWidth:innerWidth,windowHeight:innerHeight,pixelRatio:devicePixelRatio,
     safeArea:!window.phoneLayout?undefined:innerHeight>=innerWidth
       ?{left:0,top:36,right:innerWidth,bottom:innerHeight-34}

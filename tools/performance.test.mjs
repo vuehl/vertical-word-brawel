@@ -4,6 +4,53 @@ import {performanceProfile} from '../source/src/performance-profile.js';
 import {paperBox,hitsPaperBox,resolvePaperBox} from '../source/src/paper-collision.js';
 import {updatePaperVisibility} from '../source/src/paper-visibility.js';
 import {separateCrowd} from '../source/src/crowd-separation.js';
+import {FramePacer} from '../source/src/frame-pacing.js';
+import {warmCombatShaders} from '../source/src/combat-warmup.js';
+import {readRuntimeInfo} from '../platform/device.mjs';
+
+test('frame pacing retains 60 callbacks per second under alternating 5 ms delays',()=>{
+  const pacer=new FramePacer();let drawn=0;
+  for(let frame=0;frame<600;frame++)drawn+=+pacer.ready(frame*1000/60+(frame%2?5:0),1000/60);
+  assert.equal(drawn,600);
+  pacer.reset();drawn=0;
+  for(let frame=0;frame<600;frame++)drawn+=+pacer.ready(frame*1000/60+(frame%2?5:0),1000/30);
+  assert.equal(drawn,300);
+});
+
+test('frame pacing respects 30/60 caps, recovers from stalls and never accumulates forced draws',()=>{
+  for(const cap of [30,60])for(const hz of [60,90,120,144]){
+    const pacer=new FramePacer();let drawn=0;
+    for(let i=0;i<hz*10;i++)drawn+=+pacer.ready(i*1000/hz,1000/cap);
+    assert.equal(drawn,cap*10);
+    assert.equal(pacer.ready(20000,1000/cap),true);
+    assert.ok(pacer.next>20000&&pacer.next<=20000+1000/cap+.001);
+    assert.equal(pacer.ready(20001,1000/cap),false);
+    for(let t=20002;t<20100;t++)assert.equal(pacer.ready(t,1000/cap,true),true);
+    assert.ok(pacer.next<=20100+1000/cap);
+    assert.equal(pacer.ready(20100,1000/(cap===30?60:30)),true);
+    assert.equal(pacer.ready(20101,0),true);
+  }
+});
+
+test('combat warmup uses the scene target and restores it before async work and errors',async()=>{
+  const screen={},world={},scene={},camera={};let target=screen,finish;
+  const graphics={scene,camera,composer:{inputBuffer:world},renderer:{
+    getRenderTarget:()=>target,setRenderTarget:value=>target=value,
+    compileAsync(s,c){assert.equal(target,world);assert.equal(s,scene);assert.equal(c,camera);return new Promise(resolve=>finish=resolve);}}};
+  const pending=warmCombatShaders(graphics);assert.equal(target,screen);finish();await pending;
+  graphics.renderer.compileAsync=()=>{throw Error('compile');};
+  await assert.rejects(warmCombatShaders(graphics),/compile/);assert.equal(target,screen);
+});
+
+test('iOS diagnostics distinguish actual mode, unavailable flags and configured quality',()=>{
+  const api={getDeviceInfo:()=>({platform:'iOS',model:'phone',system:'iOS'}),getAppBaseInfo:()=>({version:'8',SDKVersion:'3'})};
+  assert.equal(readRuntimeInfo(api).highPerformance,null);
+  assert.equal(readRuntimeInfo(api,{isIOSHighPerformanceMode:false}).highPerformance,false);
+  const result=readRuntimeInfo(api,{isIOSHighPerformanceMode:true,isIOSHighPerformanceModePlus:true});
+  assert.equal(result.highPerformance,true);assert.equal(result.highPerformancePlus,true);
+  assert.equal(result.platform,'ios');assert.equal(result.model,'phone');assert.equal(result.wechatVersion,'8');
+  assert.equal(readRuntimeInfo({getDeviceInfo(){throw Error();},getSystemInfoSync:()=>({platform:'android'})}).platform,'android');
+});
 
 function crowdFixture(count){
   const dim=142,cell=3,rows=Array.from({length:dim*dim},()=>[]);

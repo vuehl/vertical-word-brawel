@@ -52,7 +52,7 @@ export async function reviewClarity(page,dir){
     assert.equal(report.high.dyn,1);assert.equal(report.high.dynamic,false);
     assert.deepEqual(report.high.world,[780,1688]);
     for(const state of report.stress.slice(0,3)){assert.equal(state.dyn,1);assert.equal(state.pixelScale,1);assert.deepEqual(state.world,report.high.world);}
-    assert.ok(report.stress[3].dyn<1,'Balanced still supports adaptive resolution');
+    assert.equal(report.stress[3].dyn,1,'Balanced also stays at the selected resolution');
     assert.equal(report.selection.saver,false);assert.equal(report.selection.profile,'精致');assert.equal(report.selection.switch,'false');
     assert.deepEqual(report.selection.saved,{quality:'high',saver:false});assert.equal(report.selection.dyn,1);
   }

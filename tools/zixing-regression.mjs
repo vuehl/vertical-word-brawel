@@ -202,7 +202,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   await tap('.zx-home-foot button','玩法说明');await snapshot('25-help');await tap('.zx-footer button','返回');
   }
   if(!menusOnly){
-    assert.ok(await page.evaluate(()=>app.nextDraw-performance.now()<1000),'Repeated menu changes must not postpone the next game frame');
+    assert.ok(await page.evaluate(()=>app.pacer.next-performance.now()<1000),'Repeated menu changes must not postpone the next game frame');
     await tap('[data-action="journey"]');await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
     await page.waitForFunction(()=>app.run?.player,{timeout:90000});
     await page.waitForFunction(()=>app.run.time>2&&!inspected.doc.querySelector('.run-loading,.stageintro'),{timeout:90000});

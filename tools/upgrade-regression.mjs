@@ -126,7 +126,7 @@ export async function reviewUpgrade({page,resize,dir}){
         r.update=function(...args){updates++;return originalUpdate.apply(this,args);};
         inspected.env.drawUI=function(...args){frames++;return originalUI.apply(this,args);};
         app.frameGap=window.productionFrameGap||originalGap;
-        const openingGap=app.frameGap();app.halted=false;app.nextDraw=0;app.last=performance.now();
+        const openingGap=app.frameGap();app.halted=false;app.pacer.reset();app.last=performance.now();
         try{
           await new Promise(resolve=>setTimeout(resolve,650));
           app.halted=true;

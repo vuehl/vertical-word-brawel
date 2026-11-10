@@ -1,10 +1,11 @@
-export const crowdBudgets=Object.freeze({low:{max:180,min:60},medium:{max:280,min:90},high:{max:420,min:120}});
+export const crowdBudgets=Object.freeze({low:{max:200,min:60},medium:{max:200,min:80},high:{max:200,min:100}});
 
 // Use actual frame timestamps; clamped simulation dt hides severe stalls.
 export function updateCrowdBudget(run,now,hidden=false){
   if(run.performance?.lockVisualQuality||run.coop||run.state!=='play'||run.timeScale!==1||hidden){run.crowdSample=null;return;}
   const sample=run.crowdSample??= {start:now,last:now,frames:0,good:0};
-  if(now-sample.last>1500){sample.start=now;sample.frames=0;sample.good=0;}
+  // Hidden/paused frames are reset above. A long active frame is evidence of
+  // overload, not an idle gap: discarding it disabled recovery near 0 FPS.
   sample.last=now;sample.frames++;
   const elapsed=now-sample.start;if(elapsed<2000)return;
   const fps=(sample.frames-1)*1000/elapsed,target=run.fpsCap||60;

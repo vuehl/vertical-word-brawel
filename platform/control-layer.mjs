@@ -3,21 +3,29 @@ import {paint} from './paint.mjs';
 // A fixed HUD group owns its layout and pixels. Text, skill levels and button
 // state changes rebuild only this subtree and upload only this small texture.
 export function createHUDLayer(makeCanvas,id,slot){
-  let canvas,context,root,parts=[],dirty=true,layoutDirty=false;
+  let canvas,context,root,parts=[],bounds=null,dirty=true,layoutDirty=false;
   const element=b=>b.el.nodeType===1?b.el:b.el.parentElement;
   const owns=el=>!!el?.closest?.('[data-ui-layer="'+id+'"]');
   return {
     owns,
     invalidate(){dirty=layoutDirty=true;},
-    capture(boxes){root=boxes.find(b=>b.el.dataset?.uiLayer===id);parts=boxes.filter(b=>owns(element(b)));dirty=true;layoutDirty=false;},
+    capture(boxes){root=boxes.find(b=>b.el.dataset?.uiLayer===id);parts=boxes.filter(b=>owns(element(b)));bounds=null;dirty=true;layoutDirty=false;},
     draw(layout,view,scale,enabled){
       if(!enabled||!root||!root.el.isConnected||root.opacity<=0)return null;
-      if(layoutDirty){parts=layout.refreshSubtree(root.el,parts);root=parts[0];layoutDirty=false;}
+      if(layoutDirty){parts=layout.refreshSubtree(root.el,parts);root=parts[0];bounds=null;layoutDirty=false;}
       // Zero-sized overlay anchors must not enlarge their children's texture.
-      const visible=parts.filter(b=>b.opacity>0&&b.w>0&&b.h>0);
-      if(!visible.length)return null;
-      const pad=4,left=Math.min(...visible.map(b=>b.x)),top=Math.min(...visible.map(b=>b.y));
-      const right=Math.max(...visible.map(b=>b.x+b.w)),bottom=Math.max(...visible.map(b=>b.y+b.h));
+      // Layout/mutations invalidate bounds. Stable frames reuse the same
+      // rectangle without allocating five arrays for each HUD tile.
+      if(!bounds){
+        let left=Infinity,top=Infinity,right=-Infinity,bottom=-Infinity;
+        for(const b of parts)if(b.opacity>0&&b.w>0&&b.h>0){
+          left=Math.min(left,b.x);top=Math.min(top,b.y);
+          right=Math.max(right,b.x+b.w);bottom=Math.max(bottom,b.y+b.h);
+        }
+        if(left===Infinity)return null;
+        bounds={left,top,right,bottom};
+      }
+      const pad=4,{left,top,right,bottom}=bounds;
       const x=Math.floor((left+view.x-pad)*scale),y=Math.floor((top+view.y-pad)*scale);
       const width=Math.ceil((right-left+pad*2)*scale),height=Math.ceil((bottom-top+pad*2)*scale);
       if(!canvas){canvas=makeCanvas();context=canvas.getContext('2d');}

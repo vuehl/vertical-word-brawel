@@ -9,18 +9,59 @@ import {crowdStep,separationBudget} from '../source/src/crowd-cadence.js';
 import {performanceProfiles} from '../source/src/performance-profile.js';
 import {createActorTypeLookup} from '../source/src/actor-types.js';
 import {createGlyphBatches} from '../source/src/glyph-batches.js';
+import {minuteCaps,ordinaryLimit,allowOrdinarySpawn,countOrdinary} from '../source/src/spawn-budget.js';
+import {performanceProfile} from '../source/src/performance-profile.js';
+import {readDevice} from '../platform/device.mjs';
 
-test('crowd decoration budgets apply at high resolution without trimming warnings or projectiles',()=>{
+test('ordinary waves grow to 200, include event and elite spawns, and leave boss slots available',()=>{
+  assert.deepEqual(minuteCaps,[5,15,30,50,70,90,115,140,160,180,200]);
+  let previous=0;
+  for(let second=0;second<3600;second++){
+    const limit=ordinaryLimit(second);assert.ok(limit>=previous&&limit<=200);previous=limit;
+  }
+  const enemies={n:201,count:201,alive:new Uint8Array(201).fill(1),flags:new Uint32Array(201)};
+  enemies.flags[200]=4;
+  const run={stageTime:600,enemyCap:200,enemies};
+  assert.equal(countOrdinary(enemies),200);
+  for(const flags of [0,1,512,1024])assert.equal(allowOrdinarySpawn(run,flags),false);
+  for(const flags of [2,4,128,4096,8192])assert.equal(allowOrdinarySpawn(run,flags),true);
+  enemies.alive[0]=0;enemies.count--;assert.equal(allowOrdinarySpawn(run),true);
+  run.stageTime=120;assert.equal(allowOrdinarySpawn(run),false);
+  run.stageTime=600;run.enemyCap=60;assert.equal(allowOrdinarySpawn(run),false);
+});
+
+test('iOS and Android keep exactly the player-selected quality',()=>{
+  assert.deepEqual(readDevice({getDeviceInfo:()=>({platform:'iOS'})}),{platform:'ios'});
+  assert.deepEqual(readDevice({getDeviceInfo(){throw Error();},getSystemInfoSync:()=>({platform:'ios'})}),{platform:'ios'});
+  assert.deepEqual(readDevice({}),{platform:''});
+  for(const platform of ['ios','android','devtools'])for(const quality of ['low','medium','high']){
+    const settings={quality,batterySaver:false},profile=performanceProfile(settings,{platform});
+    assert.equal(profile,performanceProfiles[quality]);assert.equal(profile.dynamicResolution,false);assert.equal(profile.lockVisualQuality,true);
+    assert.equal(settings.quality,quality);
+    settings.batterySaver=true;assert.equal(performanceProfile(settings,{platform}),performanceProfiles.low);
+    settings.batterySaver=false;assert.equal(performanceProfile(settings,{platform}),profile);
+  }
+});
+
+test('multi-second stalls do not alter any selected preset or its crowd limit',()=>{
+  for(const performance of Object.values(performanceProfiles)){
+    const run={performance,state:'play',timeScale:1,fpsCap:60,enemies:{count:200,n:0},liveCap:200,liveMax:200,liveMin:60};
+    for(let t=0;t<30000;t+=2200)updateCrowdBudget(run,t);
+    assert.equal(run.liveCap,200);assert.equal(run.crowdSample,null);
+  }
+});
+
+test('crowd size never reduces preset particle, text or ground budgets',()=>{
   const vfx={add:{n:2400},norm:{n:1600},text:{items:Array(160).fill(1)},particleBudget:{},rings:{n:200},ground:{n:250},projectiles:{n:400}};
   applyCrowdEffects(vfx,performanceProfiles.high,600);
-  assert.deepEqual([vfx.add.n,vfx.norm.n,vfx.text.items.length,vfx.particleBudget.limit],[240,120,32,3]);
+  assert.deepEqual([vfx.add.n,vfx.norm.n,vfx.text.items.length,vfx.particleBudget.limit],[2400,1600,160,24]);
   assert.deepEqual([vfx.rings.n,vfx.ground.n,vfx.projectiles.n],[200,250,400]);
   applyCrowdEffects(vfx,performanceProfiles.high,100);
   assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[3000,1800,160]);
   applyCrowdEffects(vfx,performanceProfiles.medium,600);
-  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[240,120,32]);
+  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[800,440,60]);
   applyCrowdEffects(vfx,performanceProfiles.low,1000);
-  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[240,120,24]);
+  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[320,180,24]);
 });
 
 test('cached actor types follow changing type pairs and reused slots without mutable shared results',()=>{

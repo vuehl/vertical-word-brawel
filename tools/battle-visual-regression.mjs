@@ -10,7 +10,7 @@ export async function reviewBattleVisual(page,dir){
     const states=[];
     for(const count of [0,179,180,150,119]){r.setCombatLoad(count);states.push({count,busy:r.combatBusy,bloom:r.bloom.intensity,dimensions:dimensions()});}
     r.setCombatLoad(420);r.setLook(false,1);app.applySettings();
-    const staysBusy=r.bloom.intensity===0;r.setCombatLoad(0);
+    const staysBusy=r.bloom.intensity>0;r.setCombatLoad(0);
     run.director.update=()=>{};run.enemies.clear();run.capture.state='done';run.vfx.clear();
     const add=run.vfx.add,ground=run.vfx.ground,view=add.view,density=add.densityBudget;
     add.view=null;add.densityBudget=null;add.ownAreaLimit=48;add.limit=240;
@@ -28,13 +28,28 @@ export async function reviewBattleVisual(page,dir){
     add.view=view;add.densityBudget=density;run.vfx.clear();app.applySettings();
     return {states,staysBusy,saturated,trimmed,expired,recovered,countTrim,warning};
   });
-  assert.deepEqual(report.effects.states.map(s=>s.busy),[false,false,true,true,false]);
-  assert.ok(report.effects.states[0].bloom>0&&report.effects.states[2].bloom===0&&report.effects.states[4].bloom>0);
+  assert.deepEqual(report.effects.states.map(s=>s.busy),[false,false,false,false,false]);
+  assert.ok(report.effects.states.every(s=>s.bloom>0));
   assert.ok(report.effects.states.every(s=>JSON.stringify(s.dimensions)===JSON.stringify(report.effects.states[0].dimensions)));
   assert.ok(report.effects.staysBusy&&report.effects.recovered&&report.effects.warning);
   assert.equal(report.effects.saturated.area,48);assert.equal(report.effects.trimmed.area,16);
   assert.deepEqual(report.effects.expired,{count:0,area:0,ownCount:0});
   assert.deepEqual(report.effects.countTrim,{count:1,area:16,ownCount:1});
+  report.boundsReuse=await page.evaluate(()=>{
+    const env=inspected.env,renderer=app.r.renderer,root=inspected.doc.querySelector('[data-ui-layer="counters"]');
+    app.run.ui.hud(app.run);env.drawUI(renderer);
+    const boxes=[root,...root.querySelectorAll('*')].map(el=>inspected.layout.box(el)).filter(Boolean),restore=[];
+    let reads=0;
+    for(const box of boxes){
+      const descriptor=Object.getOwnPropertyDescriptor(box,'x');let value=box.x;
+      if(!descriptor?.configurable)continue;
+      Object.defineProperty(box,'x',{configurable:true,get(){reads++;return value;},set(v){value=v;}});
+      restore.push(()=>Object.defineProperty(box,'x',{...descriptor,value}));
+    }
+    try{for(let frame=0;frame<30;frame++)env.drawUI(renderer);return {boxes:boxes.length,reads};}
+    finally{restore.forEach(f=>f());}
+  });
+  assert.ok(report.boundsReuse.boxes>0);assert.equal(report.boundsReuse.reads,0,'Unchanged HUD tiles reuse their bounds');
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await page.setViewport({width,height,deviceScaleFactor:3});
     await page.evaluate(()=>window.dispatchEvent(new Event('resize')));

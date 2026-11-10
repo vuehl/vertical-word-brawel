@@ -245,7 +245,7 @@ async function verifyStartup(){
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
-    else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,dir,sleep});
+    else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--battle-feedback'))await reviewBattleFeedback({page,tap,resize,dir,sleep});
     else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});

@@ -6,7 +6,7 @@ const removed=['cursed','greed','porygon','snorlax','cage','rock'];
 const retained=['boss','altar','challenge','fossil','rhydon','bill','nest','meowth','ditto','hypno','magnet','slots','freechest','cursedchest','berry','chest'];
 
 // Exercise the compiled game, including dynamic placement and real NPC callbacks.
-export async function reviewScenes({page,tap,dir,sleep}) {
+export async function reviewScenes({page,tap,resize,dir,sleep}) {
   const report={mode:'Compiled WeChat bundle in Chrome fixture. Controlled zone traversal and isolated NPC transactions, not a natural playthrough or phone test.',removed,stages:[]};
   const shot=async name=>{await sleep(400);await page.screenshot({path:path.join(dir,name+'.png')});};
   await tap('[data-action="journey"]');
@@ -18,8 +18,28 @@ export async function reviewScenes({page,tap,dir,sleep}) {
 
   for(let stage=1;stage<=4;stage++) {
     if(stage>1) {
+      if(stage===4)await page.evaluate(()=>{app.meta.profile.settings.showBanners=false;});
       await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();});
-      await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
+      await page.waitForFunction(stage=>app.run.stage===stage&&(stage===4
+        ?app.run.state==='modal'&&!!inspected.doc.querySelector('.zx-sanctuary-guide')
+        :app.run.state==='play'),{timeout:90000},stage);
+      if(stage===4){
+        const before=await page.evaluate(()=>({time:app.run.stageTime,text:app.run.ui.modalEl.textContent}));
+        assert.match(before.text,/触碰圣地，召唤最终 Boss/);
+        assert.match(before.text,/地图中央/);
+        for(const [width,height] of [[320,568],[390,844],[430,932]]){
+          await resize(width,height);await shot('sanctuary-guide-'+width);
+          const visible=await page.evaluate(()=>[...inspected.doc.querySelectorAll('.zx-sanctuary-guide h2,.zx-sanctuary-guide p,.zx-sanctuary-guide button')].every(el=>{
+            const b=inspected.layout.box(el);return b&&b.w>0&&b.h>0&&b.x>=b.clip.x-1&&b.y>=b.clip.y-1&&b.x+b.w<=b.clip.r+1&&b.y+b.h<=b.clip.b+1;
+          }));
+          assert.ok(visible,'Sanctuary instructions and acknowledgement fit on '+width);
+        }
+        assert.equal(await page.evaluate(()=>app.run.stageTime),before.time,'Guide pauses the simulation');
+        await tap('[data-action="sanctuary-guide-close"]');
+        assert.equal(await page.evaluate(()=>app.run.state),'play');
+        await resize(390,844);
+        report.sanctuaryGuide={text:before.text,paused:true,visibleWidths:[320,390,430],bannersDisabled:true};
+      }
     }
     const inventory=await page.evaluate(removed=>{
       const r=app.run,interactions=r.interactables;r.state='paused';
@@ -103,6 +123,30 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       (report.portals??=[]).push(portal);
     }
     if(stage===4) {
+      report.sanctuaryNavigation=[];
+      for(const z of [39,24,4.8]){
+        await page.evaluate(z=>{
+          const r=app.run;r.state='play';r.player.pos.set(0,r.terrain.surface(0,z),z);r.player.vel.set(0,0,0);
+        },z);
+        await sleep(500);
+        const marker=await page.evaluate(()=>{
+          const r=app.run,h=r.ui,tag=h.markTag.style.display!=='none'?h.markTag:h.arrow;
+          return {distance:Math.round(Math.hypot(r.player.pos.x,r.player.pos.z)),text:tag.textContent,visible:tag.style.display!=='none',kind:h.arrow.dataset.k,prompt:h.touch.actText};
+        });
+        assert.ok(marker.visible);assert.ok(marker.text.includes('圣地 · '+marker.distance+' 米'));
+        report.sanctuaryNavigation.push(marker);
+        await shot('sanctuary-distance-'+z);
+      }
+      assert.ok(report.sanctuaryNavigation[0].distance>report.sanctuaryNavigation[1].distance);
+      assert.match(report.sanctuaryNavigation.at(-1).prompt,/触碰圣地/);
+      await tap('.tc-act','触碰圣地');
+      await page.waitForFunction(()=>app.run.bossSpawned&&app.run.boss.alive,{timeout:15000});
+      await sleep(300);
+      assert.equal(await page.evaluate(()=>{
+        const h=app.run.ui;return [h.arrow,h.markTag].some(el=>el.style.display!=='none'&&el.textContent.includes('圣地 ·'));
+      }),false,'Shrine navigation ends after summoning');
+      assert.equal(await page.evaluate(()=>!!inspected.doc.querySelector('.zx-sanctuary-guide')),false);
+      await shot('sanctuary-boss-summoned');
       report.sanctuary=await page.evaluate(()=>{
         const s=app.run.sanctuary;s.onPhase(2);s.onPhase(3);
         return {roots:s.roots.length,brambles:s.brambles.length,columns:s.covers.filter(c=>c.kind==='column').length};

@@ -14,6 +14,10 @@ function replaceOnce(code,from,to){
   return code.replace(from,to);
 }
 export function instrumentGame(code){
+  // Only explicit count setup may exceed the production cap; natural spawns
+  // in the developer build exercise exactly the same budget as release.
+  code=replaceOnce(code,'if(!allowOrdinarySpawn(this.run,a))return -1;',
+    'if(!this.run.developerSpawning&&!allowOrdinarySpawn(this.run,a))return -1;');
   code=replaceOnce(code,'await this.run.openStage(onLoadProgress),',
     'await this.run.openStage(onLoadProgress),window.__zixingDeveloper.attachRun(this.run),');
   return 'import {installDeveloperMode} from "../../tools/developer/panel.mjs";\n'+

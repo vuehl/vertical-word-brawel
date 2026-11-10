@@ -32,23 +32,17 @@ export function enemyShadow(run,x,z,important){
   if(run.enemyShadowCells.has(key))return false;run.enemyShadowCells.add(key);return true;
 }
 
-// Resolution is independent of crowd load. Cap only decorative particles and
-// damage labels. Ground budgets apply only to player decoration; hostile cues,
-// persistent zone boundaries, projectiles and damage are not reduced.
-export function applyCrowdEffects(vfx,profile,count){
-  // High quality locks resolution/enemy density, not decorative workload.
-  const dense=count>=360,busy=count>=180;
-  const add=Math.min(profile.particles,dense?240:busy?360:Infinity);
-  const normal=Math.min(profile.normalParticles,dense?120:busy?180:Infinity);
-  const text=Math.min(profile.damageTexts,dense?32:busy?48:Infinity);
+// Apply only when the player changes settings, never in the per-frame loop.
+// Crowd size and low FPS do not change the selected visual budgets.
+export function applyCrowdEffects(vfx,profile){
+  const add=profile.particles,normal=profile.normalParticles,text=profile.damageTexts;
   vfx.add.limit=add;vfx.norm.limit=normal;vfx.text.limit=text;
-  vfx.add.ownAreaLimit=Math.min(profile.particles*.2,dense?48:busy?72:Infinity);
-  vfx.norm.ownAreaLimit=Math.min(profile.normalParticles*.2,dense?24:busy?36:Infinity);
+  vfx.add.ownAreaLimit=profile.particles*.2;
+  vfx.norm.ownAreaLimit=profile.normalParticles*.2;
   if(vfx.add.trimTo)vfx.add.trimTo(add);else vfx.add.n=Math.min(vfx.add.n,add);
   if(vfx.norm.trimTo)vfx.norm.trimTo(normal);else vfx.norm.n=Math.min(vfx.norm.n,normal);
   if(vfx.text.trimTo)vfx.text.trimTo(text);
   else if(vfx.text.items.length>text)vfx.text.items.splice(0,vfx.text.items.length-text);
-  vfx.particleBudget.limit=Math.min(profile.particleCell,dense?3:busy?5:Infinity);
-  const area=Math.min(profile.groundArea,dense?240:busy?400:Infinity);
-  for(const pool of [vfx.ground,vfx.groundN])if(pool){pool.ownAreaLimit=area;pool.ownCountLimit=Math.min(profile.groundParticles,dense?48:busy?80:Infinity);pool.trimTo?.(pool.n);}
+  vfx.particleBudget.limit=profile.particleCell;
+  for(const pool of [vfx.ground,vfx.groundN])if(pool){pool.ownAreaLimit=profile.groundArea;pool.ownCountLimit=profile.groundParticles;pool.trimTo?.(pool.n);}
 }

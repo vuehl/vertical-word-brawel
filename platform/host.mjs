@@ -27,6 +27,7 @@ import {createModalTransition} from './modal-transition.mjs';
 import {gameViewport} from './viewport.mjs';
 import {createMutationTargets} from './mutation-targets.mjs';
 import {uiScale} from './ui-resolution.mjs';
+import {readRuntimeInfo} from './device.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -225,7 +226,7 @@ export async function setup(host) {
     Blob,URL:LocalURL,URLSearchParams:Params,fetch,Request,Headers,Response,AbortController,AbortSignal,TextDecoder,TextEncoder,createImageBitmap:undefined,ImageBitmap:undefined,OffscreenCanvas:undefined,
     ProgressEvent:InputEvent,MouseEvent:InputEvent,KeyboardEvent:InputEvent,PointerEvent:InputEvent,Path2D:CanvasPath,MutationObserver:doc.defaultView.MutationObserver,
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
-    nativeUI:true,backgroundMusicEnabled:false,prefersDark:system.theme==='dark',nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    nativeUI:true,nativeDevice:readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{}),backgroundMusicEnabled:false,prefersDark:system.theme==='dark',nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},
