@@ -125,7 +125,7 @@ export async function reviewDeveloper(page,dir){
     api.stopWorkload();
     const original={level:p.level,moves:p.moves,items:p.items,vitamins:p.vitamins,addXp:p.addXp,gainLevel:p.gainLevel,xp:p.xp,slots:p.moveSlots};
     const limits=()=>[r.vfx.add.limit,r.vfx.norm.limit,r.vfx.text.limit,r.performance.particleCell];
-    const beforeLimits=limits(),samples=[];
+    const beforeLimits=[r.performance.particles,r.performance.normalParticles,r.performance.damageTexts,r.performance.particleCell],samples=[];
     api.options.lockCount=true;api.options.spawn=false;
     for(const [mode,time] of [['timed',120],['timed',480],['stress',0]]){
       const kills=r.stats.kills,gold=r.gold,ultimates=r.ult.uses;
@@ -160,7 +160,7 @@ export async function reviewDeveloper(page,dir){
     assert.ok(sample.damage>0,'Real skills must damage real enemies');
     assert.ok(sample.ultimates>0,'Real ultimate must run');
     for(const key of ['projectiles','zones','texts','particles','pickups'])assert.ok(sample.peak[key]>0,`${sample.mode}: missing ${key}`);
-    assert.deepEqual(sample.limits,report.workloads.beforeLimits,'Keep production quality budgets');
+    assert.ok(sample.limits.every((v,i)=>v<=report.workloads.beforeLimits[i]),'Crowd pressure must stay within production quality budgets');
     assert.ok(sample.peak.texts<=sample.limits[2]);
     assert.ok(sample.peak.particles<=sample.limits[0]+sample.limits[1]);
   }
@@ -181,7 +181,7 @@ export async function reviewDeveloper(page,dir){
       const monitor=inspected.doc.querySelector('#zx-dev-monitor'),box=monitor.getBoundingClientRect();
       return {quality,limits,after:[r.vfx.add.limit,r.vfx.norm.limit,r.vfx.text.limit],snapshot:api.snapshot(),monitor:{hidden:monitor.hidden,width:box.width,height:box.height,text:monitor.textContent}};
     },quality);
-    assert.deepEqual(sample.after,sample.limits);
+    assert.ok(sample.after.every((v,i)=>v<=sample.limits[i]),'Crowd effects may tighten the selected quality budget');
     assert.equal(sample.snapshot.workload.mode,'stress');
     assert.ok(sample.snapshot.texts<=sample.limits[2]);
     assert.ok(!sample.monitor.hidden&&sample.monitor.width>0&&sample.monitor.height>0&&sample.monitor.text.includes('弹道'));

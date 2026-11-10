@@ -6,8 +6,10 @@ import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
 import {createPlayerFootRing} from './player-foot-ring.js';
 import {CrowdGrid} from './crowd-grid.js';
+import {crowdStep,separationBudget} from './crowd-cadence.js';
+import {ringEmptyPixels} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
-import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow} from './effect-budget.js';
+import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
 import {paperProp} from './paper-props.js';
@@ -8726,6 +8728,7 @@ var Ul = class {
           float R = vRing.x, T = vRing.y, st = vRing.z;
           float px = clamp(T * 0.55, 0.14, 0.26);
           vec2 p = (floor(vP / px) + 0.5) * px;
+          ${ringEmptyPixels}
           float r = length(p), u = fract((atan(p.y, p.x) + vRing.w) / TAU);
           float Rr = R, outT = T, keep = 1.0, inner = 0.0;
           if (st == 1.0) { keep = step(fract(u * 14.0), 0.62); Rr += sin(u * TAU * 28.0) * T * 0.35; }
@@ -14430,7 +14433,7 @@ var Df = 0.4,
           let e = this.x[i] - g,
             t = this.z[i] - _,
             n = e * e + t * t,
-            r = n < 196 ? 1 : n < 576 ? (this.run.performance?.enemyMidStep??2) : (this.run.performance?.enemyFarStep??3);
+            r = crowdStep(n,this.radius[i],this.count,this.run.performance);
           if (((h = r > 1), h && (i + p) % r !== 0 && m < Af)) {
             this.lodDt[i] = m;
             continue;
@@ -14557,7 +14560,7 @@ var Df = 0.4,
         }
         let ne = this.radius[i];
         (h || (i & 1) === f) &&
-          (d.separate(i, this.x[i], this.z[i], ne, y & wf ? Infinity : this.run.performance.enemySeparation), (this.sepX[i] = d.sepX), (this.sepZ[i] = d.sepZ));
+          (d.separate(i, this.x[i], this.z[i], ne, y & wf ? Infinity : separationBudget(this.count,this.run.performance.enemySeparation)), (this.sepX[i] = d.sepX), (this.sepZ[i] = d.sepZ));
         let re = this.sepX[i],
           ie = this.sepZ[i],
           ae = S > 0 ? 10 - 8.4 * S : 10;
@@ -14765,8 +14768,9 @@ var Df = 0.4,
       for (let r = 0; r < this.n; r++) {
         if (!this.alive[r] || this.flags[r] & 32768) continue;
         let s = this.lodDt[r],
-          c = this.x[r] + (s > 0 ? (this.vx[r] + this.kx[r]) * s : 0),
-          l = this.z[r] + (s > 0 ? (this.vz[r] + this.kz[r]) * s : 0);
+          separation = this.flags[r] & 8192 ? 0 : 6,
+          c = this.x[r] + (s > 0 ? (this.vx[r] + this.kx[r] + this.sepX[r]*separation) * s : 0),
+          l = this.z[r] + (s > 0 ? (this.vz[r] + this.kz[r] + this.sepZ[r]*separation) * s : 0);
         // Cull by the actual camera and body/shadow bounds. A fixed player
         // radius can hide visible enemies on tall screens; old saves no longer
         // decide visibility. Simulation, targeting and warnings run separately.
@@ -14942,18 +14946,7 @@ var Df = 0.4,
       return i;
     }
     within(e, t, n, r = []) {
-      r.length = 0;
-      let i = this.grid.query(e, t, n + 4),
-        a = this.grid.result;
-      for (let o = 0; o < i; o++) {
-        let i = a[o];
-        if (!this.alive[i] || this.dying[i] > 0) continue;
-        let s = this.x[i] - e,
-          c = this.z[i] - t,
-          l = n + this.radius[i];
-        s * s + c * c <= l * l && r.push(i);
-      }
-      return r;
+      return this.grid.within(e,t,n,this,r);
     }
   },
   Ff = 11071743,
@@ -76522,7 +76515,8 @@ var GT = 15,
       }
       let r = -1,
         i = (e * 0.85) ** 2;
-      for (let a of t.within(n.x, n.z, e * 0.85)) {
+      const candidates=t.within(n.x,n.z,e);
+      for (let a of candidates) {
         if (!(t.flags[a] & (R.Healer | R.Shielder))) continue;
         let e = (t.x[a] - n.x) ** 2 + (t.z[a] - n.z) ** 2;
         e < i && ((i = e), (r = a));
@@ -76533,7 +76527,7 @@ var GT = 15,
         s = -1,
         c = e * e,
         l = n.y + 0.9;
-      for (let r of t.within(n.x, n.z, e)) {
+      for (let r of candidates) {
         let e = (t.x[r] - n.x) ** 2 + (t.z[r] - n.z) ** 2;
         (e < c && ((c = e), (s = r)),
           e < o &&
@@ -77686,6 +77680,7 @@ var GT = 15,
       updateCrowdBudget(this,performance.now(),document.hidden);
     }
     simulate(e) {
+      applyCrowdEffects(this.vfx,this.performance,this.enemies.count);
       let t = this.input,
         n = this.player,
         r = !!this.coop && n.dead;

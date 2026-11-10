@@ -27,3 +27,16 @@ export function enemyShadow(run,x,z,important){
   const key=(Math.floor(x/cell)+1024)*2048+Math.floor(z/cell)+1024;
   if(run.enemyShadowCells.has(key))return false;run.enemyShadowCells.add(key);return true;
 }
+
+// Resolution is independent of crowd load. Cap only decorative particles and
+// damage labels; projectiles, ground zones, rings and telegraphs are untouched.
+export function applyCrowdEffects(vfx,profile,count){
+  const dense=count>=360,busy=count>=180;
+  const add=Math.min(profile.particles,dense?600:busy?1200:Infinity);
+  const normal=Math.min(profile.normalParticles,dense?300:busy?600:Infinity);
+  const text=Math.min(profile.damageTexts,dense?48:busy?80:Infinity);
+  vfx.add.limit=add;vfx.norm.limit=normal;vfx.text.limit=text;
+  vfx.add.n=Math.min(vfx.add.n,add);vfx.norm.n=Math.min(vfx.norm.n,normal);
+  if(vfx.text.items.length>text)vfx.text.items.splice(0,vfx.text.items.length-text);
+  vfx.particleBudget.limit=Math.min(profile.particleCell,dense?6:busy?12:Infinity);
+}

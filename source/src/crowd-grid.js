@@ -45,6 +45,23 @@ export class CrowdGrid {
     }
   }
   separate(id,x,z,radius,budget){separateCrowd(this,id,x,z,radius,budget);}
+  within(x,z,radius,actors,result){
+    // Keep the existing four-unit broad-phase padding and cell/ID order.
+    // Test live positions directly: movement since build and nested combat
+    // queries must not use cached positions or a shared result array.
+    const reach=radius+4;
+    const left=Math.max(this.minX,Math.floor((x-reach+210)/this.cell)+1),right=Math.min(this.maxX,Math.floor((x+reach+210)/this.cell)+1);
+    const top=Math.max(this.minZ,Math.floor((z-reach+210)/this.cell)+1),bottom=Math.min(this.maxZ,Math.floor((z+reach+210)/this.cell)+1);
+    result.length=0;
+    if(left<=right)for(let row=top;row<=bottom;row++){
+      for(let i=this.starts[row*this.dim+left],end=this.starts[row*this.dim+right+1];i<end;i++){
+        const id=this.items[i];if(!actors.alive[id]||actors.dying[id]>0)continue;
+        const dx=actors.x[id]-x,dz=actors.z[id]-z,r=radius+actors.radius[id];
+        if(dx*dx+dz*dz<=r*r)result.push(id);
+      }
+    }
+    return result;
+  }
   query(x,z,radius){
     const left=Math.max(this.minX,Math.floor((x-radius+210)/this.cell)+1),right=Math.min(this.maxX,Math.floor((x+radius+210)/this.cell)+1);
     const top=Math.max(this.minZ,Math.floor((z-radius+210)/this.cell)+1),bottom=Math.min(this.maxZ,Math.floor((z+radius+210)/this.cell)+1);

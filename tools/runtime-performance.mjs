@@ -6,6 +6,8 @@ import {pathToFileURL} from 'node:url';
 import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
 import {reviewPaperBatching} from './paper-batching-regression.mjs';
 import {profileRuntime} from './runtime-profile.mjs';
+import {reviewLateCrowd} from './late-crowd-regression.mjs';
+import {reviewRingShader} from './ring-shader-regression.mjs';
 import {reviewQuality} from './quality-regression.mjs';
 import {reviewClarity} from './clarity-regression.mjs';
 import {reviewExperiencePerformance} from './experience-performance.mjs';
@@ -87,6 +89,10 @@ try{
     await reviewQuality(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--optimize')){
     await reviewOptimizations(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--rings')){
+    await reviewRingShader(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--crowd')){
+    await reviewLateCrowd(page,dir);assert.deepEqual(errors,[]);
   }else if(development){
     await reviewDeveloper(page,dir);
     assert.deepEqual(errors,[]);

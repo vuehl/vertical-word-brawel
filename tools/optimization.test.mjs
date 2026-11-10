@@ -2,9 +2,61 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CrowdGrid} from '../source/src/crowd-grid.js';
 import {updateCrowdBudget,compactDistantEnemies} from '../source/src/crowd-budget.js';
-import {ParticleBudget,accumulateDamage,flushDamage} from '../source/src/effect-budget.js';
+import {ParticleBudget,accumulateDamage,flushDamage,applyCrowdEffects} from '../source/src/effect-budget.js';
 import {createMutationTargets} from '../platform/mutation-targets.mjs';
 import {parseHTML} from 'linkedom/worker';
+import {crowdStep,separationBudget} from '../source/src/crowd-cadence.js';
+import {performanceProfiles} from '../source/src/performance-profile.js';
+
+test('crowd visual pressure caps and restores decorations without touching telegraphs or attack pools',()=>{
+  const vfx={add:{n:2400},norm:{n:1600},text:{items:Array(160).fill(1)},particleBudget:{},rings:{n:200},ground:{n:250},projectiles:{n:400}};
+  applyCrowdEffects(vfx,performanceProfiles.high,600);
+  assert.deepEqual([vfx.add.n,vfx.norm.n,vfx.text.items.length,vfx.particleBudget.limit],[600,300,48,6]);
+  assert.deepEqual([vfx.rings.n,vfx.ground.n,vfx.projectiles.n],[200,250,400]);
+  applyCrowdEffects(vfx,performanceProfiles.high,100);
+  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[3000,1800,160]);
+  applyCrowdEffects(vfx,performanceProfiles.low,1000);
+  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[320,180,24]);
+});
+
+test('crowd cadence keeps contact immediate and accounts for every elapsed simulation step',()=>{
+  for(const profile of Object.values(performanceProfiles)){
+    assert.equal(crowdStep(35,.6,1000,profile),1);
+    assert.equal(crowdStep(48,4,1000,profile),1);
+    assert.equal(crowdStep(100,.6,179,profile),1);
+    assert.equal(crowdStep(100,.6,180,profile),2);
+    for(const distance of [4,10,18,30])for(const fps of [30,60]){
+      let pending=0,simulated=0;const step=crowdStep(distance*distance,.6,600,profile);
+      for(let frame=1;frame<=fps*5;frame++){
+        pending+=1/fps;
+        if(frame%step!==0&&pending<.08&&step>1)continue;
+        simulated+=pending;pending=0;
+      }
+      assert.ok(Math.abs(simulated+pending-5)<1e-10);
+      assert.ok(pending<.08);
+    }
+    assert.ok(separationBudget(600,profile.enemySeparation)<=24);
+    assert.equal(separationBudget(50,profile.enemySeparation),profile.enemySeparation);
+  }
+});
+
+test('direct hit queries match the former two-pass query with live movement, large bodies, deaths and slot reuse',()=>{
+  const count=1000,grid=new CrowdGrid(count),e={n:count};
+  for(const key of ['x','z','radius','alive','dying'])e[key]=new Float32Array(count);
+  let seed=721;const random=()=>((seed=Math.imul(seed,1664525)+1013904223|0)>>>0)/4294967296;
+  for(let round=0;round<5;round++){
+    for(let id=0;id<count;id++){e.x[id]=(random()-.5)*430;e.z[id]=(random()-.5)*430;e.radius[id]=.45+random()*3.55;e.alive[id]=random()>.2;e.dying[id]=random()<.1?.2:0;}
+    grid.build(count,e.x,e.z,e.alive,e.radius,e.dying);
+    // The index is a snapshot, but hits must read current actor positions/state.
+    for(let id=0;id<count;id++){e.x[id]+=random()-.5;e.z[id]+=random()-.5;if(id%17===0)e.alive[id]=0;}
+    for(let query=0;query<200;query++){
+      const x=(random()-.5)*450,z=(random()-.5)*450,r=random()*50,out=[];
+      const n=grid.query(x,z,r+4),expected=[...grid.result.slice(0,n)].filter(id=>e.alive[id]&&e.dying[id]<=0&&(e.x[id]-x)**2+(e.z[id]-z)**2<=(r+e.radius[id])**2);
+      assert.deepEqual(grid.within(x,z,r,e,out),expected);
+      const saved=[...out];grid.within(0,0,400,e,[]);assert.deepEqual(out,saved,'Nested queries must not overwrite outer targets');
+    }
+  }
+});
 
 test('native mutation targets follow text replacement and removals, including hidden HUD nodes',()=>{
   const {document,MutationObserver}=parseHTML('<html><body><section><div id="tile"><b>1</b></div><div data-ui-hidden="true"><i>old</i></div></section></body></html>');
