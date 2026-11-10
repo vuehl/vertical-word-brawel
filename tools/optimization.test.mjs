@@ -7,18 +7,51 @@ import {createMutationTargets} from '../platform/mutation-targets.mjs';
 import {parseHTML} from 'linkedom/worker';
 import {crowdStep,separationBudget} from '../source/src/crowd-cadence.js';
 import {performanceProfiles} from '../source/src/performance-profile.js';
+import {createActorTypeLookup} from '../source/src/actor-types.js';
+import {createGlyphBatches} from '../source/src/glyph-batches.js';
 
-test('high quality preserves all decorations under crowd pressure; other presets retain their caps',()=>{
+test('crowd decoration budgets apply at high resolution without trimming warnings or projectiles',()=>{
   const vfx={add:{n:2400},norm:{n:1600},text:{items:Array(160).fill(1)},particleBudget:{},rings:{n:200},ground:{n:250},projectiles:{n:400}};
   applyCrowdEffects(vfx,performanceProfiles.high,600);
-  assert.deepEqual([vfx.add.n,vfx.norm.n,vfx.text.items.length,vfx.particleBudget.limit],[2400,1600,160,24]);
+  assert.deepEqual([vfx.add.n,vfx.norm.n,vfx.text.items.length,vfx.particleBudget.limit],[240,120,32,3]);
   assert.deepEqual([vfx.rings.n,vfx.ground.n,vfx.projectiles.n],[200,250,400]);
   applyCrowdEffects(vfx,performanceProfiles.high,100);
   assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[3000,1800,160]);
   applyCrowdEffects(vfx,performanceProfiles.medium,600);
-  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[600,300,48]);
+  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[240,120,32]);
   applyCrowdEffects(vfx,performanceProfiles.low,1000);
-  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[320,180,24]);
+  assert.deepEqual([vfx.add.limit,vfx.norm.limit,vfx.text.limit],[240,120,24]);
+});
+
+test('cached actor types follow changing type pairs and reused slots without mutable shared results',()=>{
+  const types=['fire','water','grass'],lookup=createActorTypeLookup(types);
+  const slots=[[1,0],[2,3],[0,0],[0,2],[1,1]];
+  for(let turn=0;turn<6;turn++)for(const pair of slots){
+    const expected=pair.filter(Boolean).map(i=>types[i-1]),first=lookup(...pair);
+    assert.deepEqual(first,expected);assert.equal(lookup(...pair),first);
+    assert.throws(()=>first.push('ghost'),TypeError);
+  }
+  assert.notEqual(lookup(1,2),lookup(2,1));
+});
+
+test('shared glyph buffers survive growth mid-frame, reset between frames and outlive trimmed members',()=>{
+  class Attr{constructor(array,itemSize){this.array=array;this.itemSize=itemSize;}setUsage(u){this.usage=u;return this;}clearUpdateRanges(){}addUpdateRange(s,n){this.range=[s,n];}}
+  class Geometry{clone(){return new Geometry();}setAttribute(){}dispose(){}}
+  class Material{uniforms={};clone(){return new Material();}dispose(){}}
+  class Mesh{constructor(geometry,material){this.geometry=geometry;this.material=material;}dispose(){}}
+  const scene={children:new Set(),add(m){this.children.add(m);m.parent=this;},remove(m){this.children.delete(m);m.parent=null;}};
+  const make=()=>{const material=new Material(),s={material,mesh:new Mesh(new Geometry(),material),dispose(){this.mesh.geometry.dispose();}};for(const [f,n] of [['aPos',3],['aSize',2],['aUV',4],['aFx',4],['aTint',4],['aLook',2]])s[f]=new Attr(new Float32Array(n),n);scene.add(s.mesh);return s;};
+  const batches=createGlyphBatches({scene}),a=make(),b=make();batches.add(a,'page');batches.add(b,'page');
+  assert.equal(a.zxGroup,b.zxGroup);assert.equal(scene.children.size,1);
+  const g=a.zxGroup;batches.begin();
+  for(let n=0;n<1300;n++){const i=g.reserve();g.aPos.array[i*3]=n;g.aFx.array[i*4]=n/2;}
+  batches.flush();assert.equal(g.mesh.count,1300);assert.equal(g.capacity,2048);
+  for(let n=0;n<1300;n++){assert.equal(g.aPos.array[n*3],n);assert.equal(g.aFx.array[n*4],n/2);}
+  assert.deepEqual(g.aPos.range,[0,3900]);
+  a.dispose();assert.equal(scene.children.size,1);
+  batches.begin();const i=b.zxGroup.reserve();g.aPos.array[i*3]=-7;batches.flush();assert.equal(g.mesh.count,1);assert.equal(g.aPos.array[0],-7);
+  batches.begin();batches.flush();assert.equal(g.mesh.visible,false);
+  b.dispose();assert.equal(scene.children.size,0);batches.clear();
 });
 
 test('high quality never reduces enemy density at sustained low FPS',()=>{
@@ -33,6 +66,7 @@ test('crowd cadence keeps contact immediate and accounts for every elapsed simul
     assert.equal(crowdStep(48,4,1000,profile),1);
     assert.equal(crowdStep(100,.6,179,profile),1);
     assert.equal(crowdStep(100,.6,180,profile),2);
+    assert.equal(crowdStep(100,.6,360,profile),3);
     for(const distance of [4,10,18,30])for(const fps of [30,60]){
       let pending=0,simulated=0;const step=crowdStep(distance*distance,.6,600,profile);
       for(let frame=1;frame<=fps*5;frame++){

@@ -46,7 +46,7 @@ export async function reviewClarity(page,dir){
     await app.meta.saveNow();
     const saved=JSON.parse(wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8')).accounts[app.meta.account.id].profile.settings;
     return {saver:s.batterySaver,quality:s.quality,saved:{quality:saved.quality,saver:saved.batterySaver},switch:inspected.doc.querySelector('[aria-label="省电模式"]').getAttribute('aria-checked'),
-      profile:app.run.performance.name,dyn:app.r.dynRes,note:inspected.doc.querySelector('.zx-performance-status').textContent};
+      profile:app.run.performance.name,dyn:app.r.dynRes};
   });
   if(!baseline){
     assert.equal(report.high.dyn,1);assert.equal(report.high.dynamic,false);

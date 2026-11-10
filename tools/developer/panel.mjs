@@ -62,7 +62,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   const bossNames={alpha:'精英首领',totem:'支配首领',summoner:'召唤首领',guardian:'区域 Boss'};
   try{const saved=window.localStorage.getItem('developer.workload');if(['none','timed','stress'].includes(saved))selectedMode=saved;}catch{}
   const modeNames={none:'只调怪物',timed:'按时间实战',stress:'满负载压测'};
-  let run=null,button=null,monitor=null,panel=null,target=200,seconds=120;
+  let run=null,button=null,monitor=null,monitorLayer=null,panel=null,target=200,seconds=120;
   let frames=0,since=performance.now(),fps=0,frameMs=0,calls=0,triangles=0,lastSample=0,lastMaintain=0;
   let values=null,error=null;
   let mountEntrance=()=>{};
@@ -202,7 +202,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   function attach(next){
     // startRun can route through the loading flow and call itself again.
     if(run===next)return;
-    panel?.remove();panel=null;values=null;error=null;button?.remove();monitor?.remove();
+    panel?.remove();panel=null;values=null;error=null;button?.remove();monitorLayer?.remove();
     workload?.stop();run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run,speciesName);lastMaintain=0;showOnEntry=true;
     button=action('测试',open,'open');button.id='zx-dev-button';button.setAttribute('aria-label','开发者测试');
     button.style.cssText='position:absolute;z-index:950;right:62px;top:117px;width:58px;height:40px;min-height:40px;padding:0;border:2px solid #fffdf7;border-radius:12px;background:#ffe0ad;color:#855329;font-size:14px;font-weight:700;pointer-events:auto;';
@@ -219,7 +219,10 @@ export function installDeveloperMode(app,{skills,speciesName}){
     mountEntrance=()=>{if(!button.isConnected){run.ui.root.append(button);invalidate();}reposition();};
     mountEntrance();
     monitor=node('div','','position:absolute;z-index:900;left:12px;top:190px;width:248px;min-height:84px;padding:5px 8px;background:#fffaf0eb;border-radius:8px;color:#71583a;white-space:pre-wrap;font-size:10px;line-height:1.45;pointer-events:none;');
-    monitor.id='zx-dev-monitor';monitor.hidden=!options.monitor;run.ui.root.append(monitor);
+    // Keep a visible anchor so toggling the statistics can refresh locally.
+    monitorLayer=node('div','','position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none;');
+    monitorLayer.dataset.uiLayer='diagnostics';
+    monitor.id='zx-dev-monitor';monitor.hidden=!options.monitor;monitorLayer.append(monitor);run.ui.root.append(monitorLayer);
     const hurt=run.player.hurt.bind(run.player);run.player.hurt=(...args)=>options.invincible?false:hurt(...args);
     const resume=run.resume.bind(run);
     run.resume=()=>{panel?.remove();panel=null;values=null;error=null;const result=resume();mountEntrance();refresh();invalidate();return result;};
@@ -251,7 +254,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     };
     let wiredDirector=run.director;
     const dispose=run.dispose.bind(run);
-    run.dispose=()=>{workload.stop();panel?.remove();panel=null;values=null;error=null;button?.remove();monitor?.remove();return dispose();};
+    run.dispose=()=>{workload.stop();panel?.remove();panel=null;values=null;error=null;button?.remove();monitorLayer?.remove();return dispose();};
   }
   const start=app.startRun.bind(app);
   app.startRun=async(...args)=>{const result=await start(...args);if(result&&app.run){attach(app.run);if(showOnEntry)open();}return result;};

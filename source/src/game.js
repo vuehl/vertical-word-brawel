@@ -9,6 +9,7 @@ import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-iden
 import {createPlayerFootRing} from './player-foot-ring.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
+import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
 import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
@@ -5311,16 +5312,24 @@ var oc = (e, t) =>
       (Object.assign(this.quality, e),
         (this.outlinePass.enabled=this.quality.outline!==false),
         this.quality.dyn || (this.dynRes = 1),
-        (this.bloom.intensity = this.quality.bloom ? 0.8 * this.bloomK : 0),
+        (this.bloom.intensity = this.quality.bloom && !this.combatBusy ? 0.8 * this.bloomK : 0),
         this.pickFinal(),
         this.resize());
     }
     calmFx = !1;
+    combatBusy = false;
+    setCombatLoad(count) {
+      const busy=this.combatBusy?count>=120:count>=180;
+      if(busy===this.combatBusy)return;
+      this.combatBusy=busy;
+      this.bloom.intensity=this.quality.bloom&&!busy?0.8*this.bloomK:0;
+      this.pickFinal();
+    }
     bloomK = 1;
     setLook(e, t) {
       ((this.calmFx = e),
         (this.bloomK = Math.max(0.2, Math.min(1, t)) * (e ? 0.45 : 1)),
-        (this.bloom.intensity = this.quality.bloom ? 0.8 * this.bloomK : 0),
+        (this.bloom.intensity = this.quality.bloom && !this.combatBusy ? 0.8 * this.bloomK : 0),
         this.pickFinal());
     }
     pickFinal() {
@@ -5997,10 +6006,12 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         );
         return;
       }
-      this.count >= this.cap && this.grow();
       if(this.zxGlyph){
-        const index=this.count++,size=Math.max(1.9,Math.min(2.55,this.bodyHeight(1)*1.3))*o;
-        const pos=this.aPos.array,dim=this.aSize.array,uv=this.aUV.array,fx=this.aFx.array,tint=this.aTint.array,look=this.aLook.array;
+        const buffer=this.zxGroup||this;
+        if(buffer===this&&this.count>=this.cap)this.grow();
+        const index=buffer===this?this.count++:buffer.reserve(),size=Math.max(1.9,Math.min(2.55,this.bodyHeight(1)*1.3))*o;
+        if(buffer!==this)this.count++;
+        const pos=buffer.aPos.array,dim=buffer.aSize.array,uv=buffer.aUV.array,fx=buffer.aFx.array,tint=buffer.aTint.array,look=buffer.aLook.array;
         pos[index*3]=e;pos[index*3+1]=t+.08;pos[index*3+2]=n;
         dim[index*2]=dim[index*2+1]=size;
         uv.set(this.zxGlyphRect,index*4);
@@ -6009,6 +6020,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         look[index*2]=g&15;look[index*2+1]=g>>4;
         return;
       }
+      this.count >= this.cap && this.grow();
       let _ = this.anim(r),
         v = _._tot;
       v === void 0 && ((v = _.d.reduce((e, t) => e + t, 0) || 1), (_._tot = v));
@@ -6124,7 +6136,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
       return (
         n
           ? t || n.urgent()
-          : ((n = new el(e, this.scene, this.shared, 64, void 0, t)),
+          : ((n = new el(e, this.scene, this.shared, this.zxGlyphs ? 1 : 64, void 0, t)),
             (n.standIn = this.standIn),
             (n.zxBatchKey = key), this.batches.set(key, n)),
         t || (n.lastUse = nl),
@@ -8432,9 +8444,9 @@ var Rl = 20,
       )
         return;
       if(this.densityBudget&&!this.densityBudget.allow(e.x,e.z))return;
-      // Only player ground decoration is budgeted by area. Enemy warning
-      // fills and all gameplay zones retain their existing behaviour.
-      const area=this.flat&&Fl.own&&!e.essential?Math.max(.001,Math.max(e.size,e.endSize??e.size*.2)**2):0;
+      // Bound large billboard effects too. Enemy ground warning fills and
+      // explicitly essential visuals remain exempt from the area budget.
+      const area=(!this.flat||Fl.own)&&!e.essential?Math.max(.001,Math.min(this.flat?Infinity:Fl.own?Rl:Infinity,Math.max(e.size,e.endSize??e.size*.2))**2):0;
       if(area&&(this.ownArea+area>this.ownAreaLimit||this.ownCount>=this.ownCountLimit))return;
       let t = this.n++;
       this.decoration[t]=area;if(area){this.ownArea+=this.decoration[t];this.ownCount++;}
@@ -8466,6 +8478,11 @@ var Rl = 20,
         (this.fm[t] = Fl.own ? Fl.ownFade : this.fade));
     }
     cols;
+    trimTo(limit) {
+      while(this.n>limit)this.kill(this.n-1);
+      for(let i=this.n-1;i>=0&&(this.ownArea>this.ownAreaLimit||this.ownCount>this.ownCountLimit);i--)
+        if(this.decoration[i])this.kill(i);
+    }
     kill(e) {
       if(this.decoration[e]){this.ownArea=Math.max(0,this.ownArea-this.decoration[e]);this.ownCount--;}
       let t = --this.n;
@@ -8891,6 +8908,7 @@ var Gl = class {
     mesh;
     glyphs = `0123456789!+-xk.₽MBTQ`;
     items = [];
+    free = [];
     aA;
     aB;
     aC;
@@ -8939,22 +8957,22 @@ var Gl = class {
     }
     spawn(e, t, n, r, i, a = 0.5) {
       if(this.view&&!this.view.visible(e,t,n,6))return;
+      let item;
       if (this.items.length >= this.limit) {
         if (a < 0.7) return;
-        this.items.shift();
+        item=this.items.shift();
       }
       let o = Al.set(i);
-      this.items.push({
-        x: e + F.range(-0.4, 0.4),
-        y: t,
-        z: n + F.range(-0.4, 0.4),
-        vy: 3.2,
-        text: r,
-        life: 0.85,
-        max: 0.85,
-        color: { r: o.r, g: o.g, b: o.b },
-        size: a,
-      });
+      item??=this.free.pop()??{color:{},glyphs:[]};
+      item.x=e+F.range(-0.4,0.4);item.y=t;item.z=n+F.range(-0.4,0.4);
+      item.vy=3.2;item.text=r;item.life=item.max=.85;item.size=a;
+      item.color.r=o.r;item.color.g=o.g;item.color.b=o.b;
+      item.glyphs.length=r.length;
+      for(let j=0;j<r.length;j++)item.glyphs[j]=this.glyphs.indexOf(r[j]);
+      this.items.push(item);
+    }
+    trimTo(limit){
+      while(this.items.length>limit)this.free.push(this.items.shift());
     }
     update(e) {
       let t = this.aA.array,
@@ -8964,6 +8982,7 @@ var Gl = class {
       for (let a = this.items.length - 1; a >= 0; a--) {
         let o = this.items[a];
         if (((o.life -= e), o.life <= 0)) {
+          this.free.push(o);
           this.items.splice(a, 1);
           continue;
         }
@@ -8973,7 +8992,7 @@ var Gl = class {
           l = s > 0.7 ? 1 - (s - 0.7) / 0.3 : 1,
           u = o.text.length;
         for (let e = 0; e < u && i < this.cap; e++) {
-          let a = this.glyphs.indexOf(o.text[e]);
+          let a = o.glyphs[e];
           a < 0 ||
             ((t[i * 4] = o.x),
             (t[i * 4 + 1] = o.y),
@@ -8993,7 +9012,7 @@ var Gl = class {
         (e.clearUpdateRanges(), e.addUpdateRange(0, i * 4), (e.needsUpdate = !0));
     }
     clear() {
-      ((this.items.length = 0), (this.mesh.count = 0), (this.mesh.visible = !1));
+      (this.trimTo(0), (this.mesh.count = 0), (this.mesh.visible = !1));
     }
   },
   Kl = class {
@@ -9046,7 +9065,8 @@ var Gl = class {
       this.particleBudget??=new ParticleBudget();this.particleBudget.limit=profile.particleCell;
       this.add.densityBudget=this.norm.densityBudget=this.particleBudget;
       this.add.limit=profile.particles;this.norm.limit=profile.normalParticles;this.text.limit=profile.damageTexts;
-      this.add.n=Math.min(this.add.n,this.add.limit);this.norm.n=Math.min(this.norm.n,this.norm.limit);
+      this.add.ownAreaLimit=profile.particles*.2;this.norm.ownAreaLimit=profile.normalParticles*.2;
+      this.add.trimTo(this.add.limit);this.norm.trimTo(this.norm.limit);
       if(this.text.items.length>this.text.limit)this.text.items.splice(0,this.text.items.length-this.text.limit);
       this.add.view=this.norm.view=this.text.view=view;
       this.ground.ownAreaLimit=this.groundN.ownAreaLimit=profile.groundArea;
@@ -14210,6 +14230,7 @@ var Df = 0.4,
     gnd = new Float32Array(xf);
     constructor(e) {
       ((this.run = e), k.types?.types.forEach((e, t) => this.typeIdx.set(e, t + 1)));
+      this.lookupTypes=createActorTypeLookup(k.types?.types);
     }
     hasType(e, t) {
       let n = k.types?.types;
@@ -14218,9 +14239,7 @@ var Df = 0.4,
       );
     }
     typesOf(e) {
-      let t = k.types?.types ?? [],
-        n = [];
-      return (this.t1[e] && n.push(t[this.t1[e] - 1]), this.t2[e] && n.push(t[this.t2[e] - 1]), n);
+      return this.lookupTypes(this.t1[e],this.t2[e]);
     }
     glyphWords = new Array(2200);
     spawn(e, t, n, r, i, a = 0, o = 1) {
@@ -14814,7 +14833,7 @@ var Df = 0.4,
         let u = this.flags[r],
           d = t.get((u & 131072 ? Qc : 0) + this.species[r], false, this.glyphWords[r]),
           f = this.dying[r] > 0,
-          p = t.dirRow(this.fx[r], this.fz[r]),
+          p = d.zxGlyph ? 0 : t.dirRow(this.fx[r], this.fz[r]),
           m = `walk`,
           h = this.anim[r],
           g = !1;
@@ -75818,6 +75837,7 @@ var GT = 15,
           await this.ui.loading(e.length, () => {check();return this.sprites.readyCount(e);},onProgress),
           this.state === `transition` && (this.state = t));
       }
+      await this.sprites.prepareGlyphTextures?.(this.r.renderer);check();
       if(!onProgress)this.ui.stageIntro(this);
     }
     stageSprites() {
@@ -77729,6 +77749,7 @@ var GT = 15,
       updateCrowdBudget(this,performance.now(),document.hidden);
     }
     simulate(e) {
+      this.r.setCombatLoad(this.enemies.count);
       applyCrowdEffects(this.vfx,this.performance,this.enemies.count);
       let t = this.input,
         n = this.player,
@@ -78242,6 +78263,7 @@ var GT = 15,
     }
     dispose() {
       this.disposed=true;
+      this.r.setCombatLoad(0);
       (this.coop?.dispose(),
         this.hints.dispose(),
         this.mapEvents.clear(),
@@ -102840,7 +102862,7 @@ var JI = class {
         r,
       );
       (s.style.setProperty(`--c`, i),
-        this.hudEl.append(s),
+        (this.popupRoot||this.hudEl).append(s),
         this.popups++,
         setTimeout(() => {
           (s.remove(), this.popups--);
@@ -103840,7 +103862,7 @@ var JI = class {
           f = this.project(e, a.x, a.y + d + 0.5, a.z);
         if (!f.vis) continue;
         let p = this.labelPool[n];
-        (p || ((p = X(`div`, { class: `wlabel` })), this.hudEl.append(p), this.labelPool.push(p)),
+        (p || ((p = X(`div`, { class: `wlabel` })), (this.popupRoot||this.hudEl).append(p), this.labelPool.push(p)),
           n++,
           (p.style.display = ``),
           (p.style.left = f.x + `px`),

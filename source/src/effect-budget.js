@@ -36,14 +36,19 @@ export function enemyShadow(run,x,z,important){
 // damage labels. Ground budgets apply only to player decoration; hostile cues,
 // persistent zone boundaries, projectiles and damage are not reduced.
 export function applyCrowdEffects(vfx,profile,count){
-  const dense=!profile.lockVisualQuality&&count>=360,busy=!profile.lockVisualQuality&&count>=180;
-  const add=Math.min(profile.particles,dense?600:busy?1200:Infinity);
-  const normal=Math.min(profile.normalParticles,dense?300:busy?600:Infinity);
-  const text=Math.min(profile.damageTexts,dense?48:busy?80:Infinity);
+  // High quality locks resolution/enemy density, not decorative workload.
+  const dense=count>=360,busy=count>=180;
+  const add=Math.min(profile.particles,dense?240:busy?360:Infinity);
+  const normal=Math.min(profile.normalParticles,dense?120:busy?180:Infinity);
+  const text=Math.min(profile.damageTexts,dense?32:busy?48:Infinity);
   vfx.add.limit=add;vfx.norm.limit=normal;vfx.text.limit=text;
-  vfx.add.n=Math.min(vfx.add.n,add);vfx.norm.n=Math.min(vfx.norm.n,normal);
-  if(vfx.text.items.length>text)vfx.text.items.splice(0,vfx.text.items.length-text);
-  vfx.particleBudget.limit=Math.min(profile.particleCell,dense?6:busy?12:Infinity);
-  const area=Math.min(profile.groundArea,dense?400:busy?800:Infinity);
-  for(const pool of [vfx.ground,vfx.groundN])if(pool){pool.ownAreaLimit=area;pool.ownCountLimit=Math.min(profile.groundParticles,dense?96:busy?160:Infinity);}
+  vfx.add.ownAreaLimit=Math.min(profile.particles*.2,dense?48:busy?72:Infinity);
+  vfx.norm.ownAreaLimit=Math.min(profile.normalParticles*.2,dense?24:busy?36:Infinity);
+  if(vfx.add.trimTo)vfx.add.trimTo(add);else vfx.add.n=Math.min(vfx.add.n,add);
+  if(vfx.norm.trimTo)vfx.norm.trimTo(normal);else vfx.norm.n=Math.min(vfx.norm.n,normal);
+  if(vfx.text.trimTo)vfx.text.trimTo(text);
+  else if(vfx.text.items.length>text)vfx.text.items.splice(0,vfx.text.items.length-text);
+  vfx.particleBudget.limit=Math.min(profile.particleCell,dense?3:busy?5:Infinity);
+  const area=Math.min(profile.groundArea,dense?240:busy?400:Infinity);
+  for(const pool of [vfx.ground,vfx.groundN])if(pool){pool.ownAreaLimit=area;pool.ownCountLimit=Math.min(profile.groundParticles,dense?48:busy?80:Infinity);pool.trimTo?.(pool.n);}
 }

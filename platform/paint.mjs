@@ -111,7 +111,7 @@ export function compositor(gl,canvas) {
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
   const opacity=gl.getUniformLocation(prog,'opacity');
   const flip=gl.getUniformLocation(prog,'flip');
-  const texture=gl.createTexture(),tiles=Array.from({length:11},()=>({texture:gl.createTexture(),width:0,height:0})),vao=gl.createVertexArray();
+  const texture=gl.createTexture(),tiles=[],vao=gl.createVertexArray();
   let width=0,height=0;
   let frozen=null,frozenKey=null,frozenWidth=0,frozenHeight=0;
   const hasFrozen=key=>!!key&&key===frozenKey&&!!frozen&&frozenWidth===gl.drawingBufferWidth&&frozenHeight===gl.drawingBufferHeight;
@@ -149,7 +149,7 @@ export function compositor(gl,canvas) {
     gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);gl.drawArrays(gl.TRIANGLES,0,3);
     for(const control of layers){
       if(!control)continue;
-      const cache=tiles[control.slot||0];
+      const cache=tiles[control.slot||0]??= {texture:gl.createTexture(),width:0,height:0};
       const {canvas:tile}=control;
       gl.bindTexture(gl.TEXTURE_2D,cache.texture);
       if(control.changed||cache.width!==tile.width||cache.height!==tile.height){

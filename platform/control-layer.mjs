@@ -13,8 +13,11 @@ export function createHUDLayer(makeCanvas,id,slot){
     draw(layout,view,scale,enabled){
       if(!enabled||!root||!root.el.isConnected||root.opacity<=0)return null;
       if(layoutDirty){parts=layout.refreshSubtree(root.el,parts);root=parts[0];layoutDirty=false;}
-      const pad=4,left=Math.min(...parts.map(b=>b.x)),top=Math.min(...parts.map(b=>b.y));
-      const right=Math.max(...parts.map(b=>b.x+b.w)),bottom=Math.max(...parts.map(b=>b.y+b.h));
+      // Zero-sized overlay anchors must not enlarge their children's texture.
+      const visible=parts.filter(b=>b.opacity>0&&b.w>0&&b.h>0);
+      if(!visible.length)return null;
+      const pad=4,left=Math.min(...visible.map(b=>b.x)),top=Math.min(...visible.map(b=>b.y));
+      const right=Math.max(...visible.map(b=>b.x+b.w)),bottom=Math.max(...visible.map(b=>b.y+b.h));
       const x=Math.floor((left+view.x-pad)*scale),y=Math.floor((top+view.y-pad)*scale);
       const width=Math.ceil((right-left+pad*2)*scale),height=Math.ceil((bottom-top+pad*2)*scale);
       if(!canvas){canvas=makeCanvas();context=canvas.getContext('2d');}

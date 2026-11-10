@@ -355,7 +355,7 @@ export function createZixingUI(app,api) {
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'保留柔和阴影，忙碌时自动调整场景清晰度。',high:'固定高清场景、完整阴影与光效；卡顿时也不自动降低画质、裁减特效或减少怪物。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','上限 30 帧，场景临时使用流畅画质；选择精致会关闭省电'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']]))];
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'保留柔和阴影，忙碌时自动调整场景清晰度。',high:'固定高清场景与怪物数量；怪群密集时减少重复火花和伤害数字，保留技能与危险提示。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','上限 30 帧，场景临时使用流畅画质；选择精致会关闭省电'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']]))];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -653,6 +653,14 @@ export function createZixingUI(app,api) {
     node.querySelector('.zx-hud-counters').dataset.uiLayer='counters';
     node.querySelector('.zx-hud-meta').dataset.uiLayer='score';
     hud.touch.ult.dataset.uiLayer='ultimate';
+    // Preserve absolute HUD coordinates, but refresh only the visible overlay.
+    for(const id of ['markers','notices']){
+      const layer=el('div','zx-combat-overlay',[],{'data-ui-layer':id});
+      layer.style.cssText='position:absolute;left:0;top:0;width:0;height:0;overflow:visible;pointer-events:none';
+      hud.hudEl.append(layer);
+      if(id==='markers')layer.append(hud.arrow,hud.markTag,...hud.pins);
+      else hud.popupRoot=layer;
+    }
     const look=hud.look.bind(hud);
     hud.touch.swipeMove=false;hud.touch.centeredStick=false;hud.touch.floatingStick=true;hud.touch.el.classList.add('zx-touch');
     hud.touch.el.setAttribute('aria-label','拖动摇杆或滑动空白处移动，松手停止');

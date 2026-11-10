@@ -20,6 +20,7 @@
     "test:performance": "node tools/runtime-performance.mjs",
     "test:optimizations": "node tools/runtime-performance.mjs --optimize",
     "test:loading": "node tools/smoke.mjs --phone-layout --software-render --loading-perf",
+    "test:boot": "node tools/boot-loading-regression.mjs",
     "test:upgrade": "node tools/smoke.mjs --phone-layout --software-render --upgrade-perf",
     "test:scenes": "node tools/smoke.mjs --phone-layout --software-render --scene-regression",
     "verify:assets": "node tools/verify-assets.mjs",

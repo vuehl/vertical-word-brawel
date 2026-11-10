@@ -5,13 +5,16 @@ import assert from 'node:assert/strict';
 // Controlled five-minute load, not a replay of five minutes or phone FPS.
 export async function reviewLateCrowd(page,dir){
   if(process.argv.includes('--soak'))return soak(page,dir);
+  const seconds=process.argv.includes('--late')?600:300;
   const report={environment:'Chrome / compiled WeChat developer package, CPU timings only; not phone FPS.',samples:[]};
   for(const quality of ['low','high'])for(const count of [200,600,1000]){
-    const result=await page.evaluate(async({quality,count})=>{
+    const result=await page.evaluate(async({quality,count,seconds})=>{
       const run=app.run,api=inspected.env.__zixingDeveloper;
       api.close();Object.assign(api.options,{lockCount:true,invincible:true,monitor:false});
       app.meta.profile.settings.quality=quality;app.applySettings();
-      api.apply({time:300,count,mode:'timed',boss:'none'});
+      api.apply({time:seconds,count,mode:'timed',boss:'none'});
+      // Fixed-form combat fixture; evolution dialogs have separate coverage.
+      run.nextEvo=null;
       const e=run.enemies;for(let i=0;i<e.n;i++)if(e.alive[i])e.hp[i]=e.maxHp[i]=1e10;
       for(let i=0;i<60;i++)run.update(1/60);
       // Instrument only meaningful phases; don't allocate one timing per actor.
@@ -36,23 +39,25 @@ export async function reviewLateCrowd(page,dir){
           damage:run.player.moves.reduce((n,m)=>n+(m?.damageDone||0),0),meanMs:frames.reduce((a,b)=>a+b,0)/frames.length,p95Ms:frames[Math.floor(frames.length*.95)],
           fullUploads:auditUIUploads-uploads,uploadBytes:auditUploadBytes-bytes};
       }finally{restore.forEach(f=>f());}
-    },{quality,count});
+    },{quality,count,seconds});
     report.samples.push(result);fs.writeFileSync(path.join(dir,'late-crowd.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(result));
     assert.equal(result.state,'play');assert.equal(result.ordinary,count);assert.ok(result.damage>0&&result.stats.fire.calls>0&&result.peakZones>0);
     assert.ok(result.effects.every((n,i)=>n<=result.effectLimits[i]));
-    if(quality==='high'&&count>=600)assert.deepEqual(result.effectLimits,[600,300,48]);
+    if(quality==='high'&&count>=600)assert.deepEqual(result.effectLimits,[240,120,32]);
   }
   await page.screenshot({path:path.join(dir,'five-minute-crowd.png')});
   return report;
 }
 
 async function soak(page,dir){
-  await page.evaluate(()=>{
+  const seconds=process.argv.includes('--late')?600:300;
+  await page.evaluate(seconds=>{
     const r=app.run,api=inspected.env.__zixingDeveloper;api.close();
     Object.assign(api.options,{lockCount:true,invincible:true,monitor:false});
-    app.meta.profile.settings.quality='low';app.applySettings();api.apply({time:300,count:600,mode:'timed',boss:'none'});
+    app.meta.profile.settings.quality='high';app.applySettings();api.apply({time:seconds,count:600,mode:'timed',boss:'none'});
+    r.nextEvo=null;
     for(let i=0;i<r.enemies.n;i++)if(r.enemies.alive[i])r.enemies.hp[i]=r.enemies.maxHp[i]=1e10;
-  });
+  },seconds);
   const samples=[];
   for(let chunk=0;chunk<10;chunk++){
     const sample=await page.evaluate(()=>{
@@ -63,13 +68,15 @@ async function soak(page,dir){
         enemySlots:e.n,projectileSlots:r.projectiles.n,pickupSlots:r.pickups.n,particles:r.vfx.add.n+r.vfx.norm.n,
         ground:[r.vfx.ground,r.vfx.groundN].map(pool=>({count:pool.ownCount,area:pool.ownArea,limit:pool.ownAreaLimit,
           sum:Array.from(pool.decoration.subarray(0,pool.n)).reduce((a,b)=>a+b,0),slots:pool.n})),
+        billboards:[r.vfx.add,r.vfx.norm].map(pool=>({count:pool.ownCount,area:pool.ownArea,limit:pool.ownAreaLimit,
+          sum:Array.from(pool.decoration.subarray(0,pool.n)).reduce((a,b)=>a+b,0),slots:pool.n})),
         textures:app.r.renderer.info.memory.textures,damage:r.stats.damage};
     });
     samples.push(sample);console.log('Soak '+(chunk+1)+'/10 '+JSON.stringify(sample));
     assert.equal(sample.state,'play');assert.equal(sample.ordinary,600);assert.ok(sample.finite);
-    for(const ground of sample.ground){assert.ok(ground.area<=ground.limit+.01);assert.ok(Math.abs(ground.area-ground.sum)<.01);assert.ok(ground.count>=0&&ground.count<=ground.slots);}
+    for(const pool of [...sample.ground,...sample.billboards]){assert.ok(pool.area<=pool.limit+.01);assert.ok(Math.abs(pool.area-pool.sum)<.01);assert.ok(pool.count>=0&&pool.count<=pool.slots);}
   }
   fs.writeFileSync(path.join(dir,'late-crowd-soak.json'),JSON.stringify({note:'9000 updates at 1/30: five minutes of input dt, rendered frames excluded; not five minutes of phone wall-clock/thermal testing.',samples},null,2));
-  assert.ok(samples.at(-1).stageTime>580);
+  assert.ok(samples.at(-1).stageTime>seconds+280);
   assert.equal(samples.at(-1).enemySlots,samples[0].enemySlots);
 }

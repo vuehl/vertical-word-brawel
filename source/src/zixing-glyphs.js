@@ -1,5 +1,6 @@
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies,isOriginalHeroGlyph} from './paper-glyph-art.js';
 import {createGlyphBatches} from './glyph-batches.js';
+import {enemyWords} from './character-rules.js';
 const paintJobs=[];
 let paintTimer=null;
 function paintLater(paint){
@@ -20,7 +21,8 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   if(run.sprites.zxGlyphs)return;
   run.sprites.zxGlyphs=true;
   const textures=new Map(),pages=[],get=run.sprites.get.bind(run.sprites),clear=run.sprites.clear.bind(run.sprites);
-  const batches=createGlyphBatches(run.sprites),end=run.sprites.end.bind(run.sprites);
+  const batches=createGlyphBatches(run.sprites),begin=run.sprites.begin.bind(run.sprites),end=run.sprites.end.bind(run.sprites);
+  run.sprites.begin=(...args)=>{begin(...args);batches.begin();};
   run.sprites.end=()=>{end();batches.flush();};
   const shadow=run.sprites.shadows.mesh.material;
   shadow.transparent=true;shadow.blending=1;shadow.depthWrite=false;
@@ -64,6 +66,13 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     }
     m.needsUpdate=true;batches.add(batch,t.uuid+(batch.zxOriginalGlyph?'-original':''));return batch;
   }
+  // Prepare the finite ordinary pool once, including the guardian fallback.
+  // Later species reuse these UVs without painting/uploading during a wave.
+  const warmup=Promise.all([...enemyWords,'敌'].map(word=>texture(word).ready));
+  run.sprites.prepareGlyphTextures=async renderer=>{
+    await warmup;
+    for(const page of pages){await Promise.all(page.jobs);if(!disposed)renderer.initTexture(page.texture);}
+  };
   run.sprites.get=(...args)=>skin(get(...args),args[2]);
   for(const batch of run.sprites.batches.values())skin(batch);
   run.sprites.clear=()=>{disposed=true;clear();batches.clear();for(const page of pages)page.texture.dispose();pages.length=0;textures.clear();};

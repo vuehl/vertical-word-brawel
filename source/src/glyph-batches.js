@@ -1,7 +1,7 @@
 const attributes=[['aPos','iPos'],['aSize','iSize'],['aUV','iUV'],['aFx','iFx'],['aTint','iTint'],['aLook','iLook']];
 
-// Species still own their metrics and state. Only their finished render data
-// is gathered into one draw per atlas page, using the same shader attributes.
+// Species retain their metrics. Actors write straight into the atlas buffer;
+// no per-species crowd-sized arrays or second copy at the end of a frame.
 export function createGlyphBatches(sprites){
   const groups=new Map();sprites.glyphGroups=groups;
   function allocate(group,capacity){
@@ -10,7 +10,9 @@ export function createGlyphBatches(sprites){
     group.geometry=source.mesh.geometry.clone();
     for(const [field,name] of attributes){
       const original=source[field];
-      group[field]=new original.constructor(new Float32Array(capacity*original.itemSize),original.itemSize).setUsage(original.usage);
+      const array=new Float32Array(capacity*original.itemSize);
+      if(group[field])array.set(group[field].array.subarray(0,group.count*original.itemSize));
+      group[field]=new original.constructor(array,original.itemSize).setUsage(original.usage);
       group.geometry.setAttribute(name,group[field]);
     }
     group.mesh=new source.mesh.constructor(group.geometry,group.material,capacity);
@@ -22,9 +24,15 @@ export function createGlyphBatches(sprites){
       let group=groups.get(word);
       if(!group){
         const material=source.material.clone();material.uniforms={...source.material.uniforms};
-        group={word,source,material,members:new Set(),count:0};groups.set(word,group);allocate(group,64);
+        group={word,source,material,members:new Set(),count:0};
+        group.reserve=()=>{if(group.count===group.capacity)allocate(group,group.capacity*2);return group.count++;};
+        groups.set(word,group);allocate(group,1024);
       }
       group.members.add(source);
+      source.zxGroup=group;
+      // The small source mesh is only a metrics/material owner, never rendered.
+      source.mesh.parent?.remove(source.mesh);
+      source.mesh.visible=false;
       source.end=()=>{
         source.mesh.count=0;source.mesh.visible=false;
         if(source.count){source.drawn=true;source.lastUse=performance.now();}
@@ -37,21 +45,11 @@ export function createGlyphBatches(sprites){
         dispose();
       };
     },
+    begin(){for(const group of groups.values())group.count=0;},
     flush(){
       for(const group of groups.values()){
-        let total=0;for(const source of group.members)total+=source.count;
-        if(total>group.capacity)allocate(group,2**Math.ceil(Math.log2(total)));
-        group.count=total;group.mesh.count=total;group.mesh.visible=total>0;
+        const total=group.count;group.mesh.count=total;group.mesh.visible=total>0;
         if(!total)continue;
-        let offset=0;
-        for(const source of group.members){
-          if(!source.count)continue;
-          for(const [field] of attributes){
-            const size=source[field].itemSize;
-            group[field].array.set(source[field].array.subarray(0,source.count*size),offset*size);
-          }
-          offset+=source.count;
-        }
         for(const [field] of attributes){const a=group[field];a.clearUpdateRanges();a.addUpdateRange(0,total*a.itemSize);a.needsUpdate=true;}
       }
     },

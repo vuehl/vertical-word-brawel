@@ -59,7 +59,7 @@ export async function setup(host) {
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true});
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
-  const hudLayers=['counters','score','ultimate','skills','items'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
+  const hudLayers=['counters','score','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
   const modalTransition=createModalTransition(makeCanvas);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};

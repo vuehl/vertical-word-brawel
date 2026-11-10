@@ -224,6 +224,9 @@ async function verifyStartup(){
   async function tap(selector,match){
     const target=await page.waitForFunction((selector,match)=>{
       if(inspected.doc.querySelector('.wipe'))return false;
+      // Isolated combat tests halt the main loop. Late viewport events and
+      // modal changes still need a UI frame to rebuild the touch hit map.
+      if(app.halted)inspected.env.drawUI(app.r.renderer);
       for(const el of inspected.doc.querySelectorAll(selector)){
         if(match&&!el.textContent.includes(match)||el.offsetWidth<=2)continue;
         const r=el.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;

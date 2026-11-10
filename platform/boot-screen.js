@@ -1,9 +1,9 @@
 'use strict';
 
-// Native stationery and the original hero images are bundled in the main pack.
+// Native stationery and splash-sized hero copies are bundled in the main pack.
 module.exports = async function presentBootFrame(gl) {
   let program=gl.createProgram(),texture=gl.createTexture(),vao=gl.createVertexArray();
-  let canvas=wx.createCanvas(),last='',textureWidth=0,textureHeight=0;
+  let canvas=wx.createCanvas(),patch=wx.createCanvas(),last='',textureWidth=0,textureHeight=0;
   const heroes={};
   for(const [word,src] of Object.entries(require('./boot-hero-art'))){
     const image=wx.createImage();
@@ -18,11 +18,13 @@ module.exports = async function presentBootFrame(gl) {
     if(program)gl.deleteProgram(program);if(texture)gl.deleteTexture(texture);if(vao)gl.deleteVertexArray(vao);
     program=texture=vao=null;
     if(canvas){canvas.width=canvas.height=1;canvas=null;}
+    if(patch){patch.width=patch.height=1;patch=null;}
   }
-  function paint(value,w,h){
-    canvas.width=w;canvas.height=h;
-    const c=canvas.getContext('2d'),s=w/390,H=h/s;
-    c.scale(s,s);
+  function paint(value,w,h,full){
+    if(full){canvas.width=w;canvas.height=h;}
+    const s=w/390,H=h/s,strip=H>=600;
+    let c=canvas.getContext('2d');
+    c.setTransform(s,0,0,s,0,0);
     const ink='#343044',muted='#637e7e',paper='#fffdf5',hero=H*.43,track=H*.79;
     function rect(x,y,w,h,fill,stroke){
       c.fillStyle=fill;c.fillRect(x,y,w,h);
@@ -38,6 +40,7 @@ module.exports = async function presentBootFrame(gl) {
       c.save();c.translate(x,y);c.rotate(angle);
       rect(-w/2+4,-h/2+6,w,h,'#cfdbd4');rect(-w/2,-h/2,w,h,fill,'#a8bcb4');
     }
+    if(full){
     rect(0,0,390,H,'#f8f5ea');
     // Cutting mat and notebook echo the game's home illustration.
     rect(0,H*.24,390,H*.39,'#bdd9d9');
@@ -63,9 +66,22 @@ module.exports = async function presentBootFrame(gl) {
     text('字  行',195,titleY+3,54,ink,true);
     c.font='bold 54px sans-serif';c.lineJoin='round';c.lineWidth=3;c.strokeStyle=ink;c.strokeText('字  行',195,titleY);
     text('字  行',195,titleY,54,'#f2d280',true);text('桌上有天地 · 落字即成灵',195,titleY+50,13,muted);
+    if(strip)text('一笔一画，启程纸上冒险',195,H-47,12,muted);
+    }
+    let y=0;
+    if(strip){
+      y=Math.floor(h*.79-50*s);
+      const height=Math.ceil(h*.79+50*s)-y;
+      if(patch.width!==w||patch.height!==height){patch.width=w;patch.height=height;}
+      c=patch.getContext('2d');c.setTransform(1,0,0,1,0,0);
+      c.fillStyle='#f8f5ea';c.fillRect(0,0,w,height);
+      c.setTransform(s,0,0,s,0,-y);
+    }
     text(value>=95?'正在翻开第一页':value>=85?'正在整理纸上世界':'正在唤醒字灵',195,track-32,16,ink,true);
     rect(61,track,268,8,'#dce5da');if(value>0)rect(61,track,268*value/100,8,'#829f94');
-    text(value+'%',195,track+31,18,ink,true);text('一笔一画，启程纸上冒险',195,H-47,12,muted);
+    text(value+'%',195,track+31,18,ink,true);
+    if(!strip)text('一笔一画，启程纸上冒险',195,H-47,12,muted);
+    return strip?y:null;
   }
   try {
     attach(gl.VERTEX_SHADER,`#version 300 es
@@ -89,13 +105,18 @@ module.exports = async function presentBootFrame(gl) {
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
       // Repeated first-frame checks reuse the same texture without repainting.
       if(key!==last){
-        paint(value,w,h);
+        // Hero arrivals invalidate last too, so they always refresh the full
+        // illustration. Ordinary progress updates repaint/upload only a strip.
+        // Compact viewports can overlap the caption/art: use a full paint there.
+        const full=!last||textureWidth!==w||textureHeight!==h||h/(w/390)<600;
+        const stripY=paint(value,w,h,full);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
         if(textureWidth!==w||textureHeight!==h){
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
           gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,canvas);textureWidth=w;textureHeight=h;
-        }else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,canvas);
+        }else if(full)gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,canvas);
+        if(stripY!==null)gl.texSubImage2D(gl.TEXTURE_2D,0,0,stripY,gl.RGBA,gl.UNSIGNED_BYTE,patch);
         last=key;
       }
       gl.uniform1i(percent,value);gl.uniform1i(overScene,overlay?1:0);

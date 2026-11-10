@@ -16,6 +16,9 @@ import {reviewExperiencePerformance} from './experience-performance.mjs';
 import {reviewDeveloper,enterDeveloperFromHome} from './developer/regression.mjs';
 import {auditGeometry} from './developer/geometry-audit.mjs';
 import {reviewOptimizations} from './optimization-regression.mjs';
+import {reviewCrowdRender} from './crowd-render-regression.mjs';
+import {reviewBattleLoad} from './battle-load-regression.mjs';
+import {reviewBattleVisual} from './battle-visual-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
 const game=path.join(root,...(development?['验收','开发者工程']:[]),'minigame');
 const dir=process.env.POKEBONK_QA||path.join(root,'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
@@ -85,7 +88,13 @@ try{
   },development);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--characters')){
+  if(process.argv.includes('--battle-visual')){
+    await reviewBattleVisual(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--battle-load')){
+    await reviewBattleLoad(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--crowd-render')){
+    await reviewCrowdRender(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--characters')){
     await reviewCharacters(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--map-effects')){
     await reviewMapEffects(page,dir);assert.deepEqual(errors,[]);

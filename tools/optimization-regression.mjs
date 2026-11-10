@@ -85,10 +85,19 @@ export async function reviewOptimizations(page,dir){
     e.grid.build(e.n,e.x,e.z,e.alive,e.radius,e.dying);
     run.renderWorld(0);await Promise.all([...s.batches.values()].map(b=>b.material.uniforms.zxGlyph?.value.userData.ready));run.renderWorld(0);
     const attrs=['aPos','aSize','aUV','aFx','aTint','aLook'];let mismatches=0,speciesDraws=0,pooledDraws=0,instances=0;
+    // Exercise the original per-species writer as an independent reference.
+    // Only this test allocates source arrays; normal glyph sources stay at 1.
+    const sinks=[...s.batches.values()].filter(b=>b.zxGroup).map(b=>[b,b.zxGroup]);
+    for(const [b] of sinks)b.zxGroup=null;
+    run.renderWorld(0);
+    for(const [b,g] of sinks)b.zxGroup=g;
+    run.renderWorld(0);
+    const rows=(b,count)=>Array.from({length:count},(_,i)=>attrs.flatMap(f=>Array.from(b[f].array.subarray(i*b[f].itemSize,(i+1)*b[f].itemSize))).join(','));
     for(const g of s.glyphGroups.values()){
-      let offset=0;if(g.count)pooledDraws++;
-      for(const b of g.members){if(b.count)speciesDraws++;for(const field of attrs){const n=b.count*b[field].itemSize;for(let i=0;i<n;i++)if(g[field].array[offset*b[field].itemSize+i]!==b[field].array[i])mismatches++;}offset+=b.count;}
-      if(offset!==g.count)mismatches++;instances+=g.count;
+      if(g.count)pooledDraws++;
+      const expected=[];for(const b of g.members){if(b.count)speciesDraws++;expected.push(...rows(b,b.count));}
+      const actual=rows(g,g.count);expected.sort();actual.sort();
+      if(JSON.stringify(expected)!==JSON.stringify(actual))mismatches++;instances+=g.count;
     }
     const saved=[];r.scene.traverse(o=>{if(o.isMesh){saved.push([o,o.visible]);o.visible=false;}});
     const renderer=r.renderer,info=renderer.info;info.autoReset=false;
@@ -97,10 +106,10 @@ export async function reviewOptimizations(page,dir){
       for(const g of s.glyphGroups.values())g.mesh.visible=g.count>0;
       const grouped=draw(),pixels=readScreen();
       for(const g of s.glyphGroups.values())g.mesh.visible=false;
-      for(const b of s.batches.values())if(b.zxGlyph){b.mesh.visible=b.count>0;b.mesh.count=b.count;for(const a of attrs){b[a].clearUpdateRanges();b[a].addUpdateRange(0,b.count*b[a].itemSize);b[a].needsUpdate=true;}}
+      for(const b of s.batches.values())if(b.zxGlyph){r.scene.add(b.mesh);b.mesh.visible=b.count>0;b.mesh.count=b.count;for(const a of attrs){b[a].clearUpdateRanges();b[a].addUpdateRange(0,b.count*b[a].itemSize);b[a].needsUpdate=true;}}
       const original=draw(),visual=comparePixels(pixels,readScreen());
       return {mismatches,speciesDraws,pooledDraws,instances,grouped,original,visual,gridCells:e.grid.buildCells,fullGridCells:e.grid.counts.length};
-    }finally{for(const [o,visible] of saved)o.visible=visible;run.renderWorld(0);r.render(0);run.ui.hud(run);inspected.env.invalidateUI();inspected.env.drawUI(renderer);}
+    }finally{for(const [b] of sinks){b.mesh.parent?.remove(b.mesh);b.mesh.visible=false;}for(const [o,visible] of saved)o.visible=visible;run.renderWorld(0);r.render(0);run.ui.hud(run);inspected.env.invalidateUI();inspected.env.drawUI(renderer);}
   });
   console.log('Glyphs',JSON.stringify(report.glyphs));
   await page.screenshot({path:path.join(dir,'glyph-batches-320-actors.png')});
