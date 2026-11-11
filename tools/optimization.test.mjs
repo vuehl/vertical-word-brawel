@@ -9,7 +9,7 @@ import {crowdStep,separationBudget} from '../source/src/crowd-cadence.js';
 import {performanceProfiles} from '../source/src/performance-profile.js';
 import {createActorTypeLookup} from '../source/src/actor-types.js';
 import {createGlyphBatches} from '../source/src/glyph-batches.js';
-import {minuteCaps,ordinaryLimit,allowOrdinarySpawn,countOrdinary} from '../source/src/spawn-budget.js';
+import {minuteCaps,ordinaryLimit,allowOrdinarySpawn,countOrdinary,naturalCreditRate} from '../source/src/spawn-budget.js';
 import {performanceProfile} from '../source/src/performance-profile.js';
 import {readDevice} from '../platform/device.mjs';
 
@@ -28,6 +28,14 @@ test('ordinary waves grow to 200, include event and elite spawns, and leave boss
   enemies.alive[0]=0;enemies.count--;assert.equal(allowOrdinarySpawn(run),true);
   run.stageTime=120;assert.equal(allowOrdinarySpawn(run),false);
   run.stageTime=600;run.enemyCap=60;assert.equal(allowOrdinarySpawn(run),false);
+});
+
+test('first-stage ordinary spawns refill faster and rejoin the regular curve at two minutes',()=>{
+  const seconds=[0,30,60,90,120,180];
+  assert.deepEqual(seconds.map(t=>ordinaryLimit(t,1)),[5,15,25,27,30,50]);
+  assert.deepEqual(seconds.map(t=>ordinaryLimit(t,2)),[5,10,15,22,30,50]);
+  assert.deepEqual(seconds.map(t=>naturalCreditRate(2,t,1)),[1.65,1.65,1.65,1.325,1,1]);
+  assert.ok(seconds.every(t=>naturalCreditRate(2,t,2)===1));
 });
 
 test('iOS and Android keep exactly the player-selected quality',()=>{

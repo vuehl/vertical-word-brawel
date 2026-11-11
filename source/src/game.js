@@ -14,7 +14,7 @@ import {warmCombatShaders} from './combat-warmup.js';
 import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
-import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,SPAWN_RATE_SCALE} from './spawn-budget.js';
+import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE} from './spawn-budget.js';
 import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
@@ -44841,7 +44841,7 @@ var mv = 30,
       );
       let a = n.player.stats,
         o =
-          Tt(i) * SPAWN_RATE_SCALE *
+          naturalCreditRate(Tt(i), r, n.stage) *
           (1 + (n.stage - 1) * 0.35) *
           a.difficulty *
           a.enemyAmount *
@@ -44866,7 +44866,7 @@ var mv = 30,
         o = i / 60;
       this.caps(Math.round((10 + a * 0.65 + (a / 60) ** 2 * 4.5) * (1 + 0.012 * o)));
       let s = n.player.stats,
-        c = ft(i) * SPAWN_RATE_SCALE * s.difficulty * s.enemyAmount * r.curse.amount * (r.night ? 2 : 1);
+        c = naturalCreditRate(ft(i), i, n.stage) * s.difficulty * s.enemyAmount * r.curse.amount * (r.night ? 2 : 1);
       this.credits = Math.min(this.credits + c * t, c * 2 + 10 * this.weight);
       let l = e.MAX_SPAWNS_PER_SEC;
       if (

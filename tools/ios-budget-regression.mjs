@@ -47,7 +47,7 @@ export async function reviewIOSBudget(page,dir){
     api.close();return {values,stress};
   });
   assert.deepEqual(report.panel.values,[30,90,200]);assert.equal(report.panel.stress,600);
-  const caps=[5,15,30,50,70,90,115,140,160,180,200];
+  const caps=[5,25,30,50,70,90,115,140,160,180,200];
   for(let minute=0;minute<=10;minute++){
     const wave=await page.evaluate(minute=>{
       const run=app.run,api=inspected.env.__zixingDeveloper;
