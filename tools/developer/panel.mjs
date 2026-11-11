@@ -3,6 +3,7 @@
 import {createWorkload,workloadPreset} from './workload.mjs';
 import {createEncounterTest,encounterAt,nextEncounter} from './encounters.mjs';
 import {ordinaryLimit} from '../../source/src/spawn-budget.js';
+import heroRigs from '../../source/src/hero-rigs.json' with {type:'json'};
 const SPECIAL=2|4|128|2048|4096|8192|16384|32768|65536|131072;
 const MAX_COUNT=1000;
 const ordinary=(enemies,i)=>enemies.alive[i]&&!(enemies.flags[i]&SPECIAL);
@@ -201,17 +202,23 @@ export function installDeveloperMode(app,{skills,speciesName}){
     values.evolution=node('small','','font-size:12px;line-height:1.45;');
     values.evolve=action('升到下次进化',advanceEvolution,'evolve-next');
     card.append(values.evolution,values.evolve);
-    const fire=({4:['炎','上火'],5:['焱','上火'],6:['燚','左上火']})[run.player.speciesId];
-    if(fire)card.append(action('预览偏旁动作',()=>{
-      const [word,group]=fire;
+    const rig=heroRigs[run.player.speciesId];
+    if(rig)card.append(action('预览偏旁动作',()=>{
+      const group=rig.word==='风'?rig.groups[1]:rig.groups[0];
+      const stroke=group.strokes[0];
+      // Move edge strokes inward so the preview stays inside the player texture.
+      const dx=rig.sheet==='fire'||stroke.px>256?-10:10;
+      const dy=rig.sheet==='fire'||stroke.py>256?-1:1;
+      const tilt=rig.sheet==='fire'?-12:-7;
+      const shift=rig.sheet==='fire'?-8:0;
       const frames=Array.from({length:24},(_,i)=>{
         const lift=(1-Math.cos(i*Math.PI/12))/2;
-        return {word,groups:{[group]:{angle:-12*lift,y:-8*lift}},
-          strokes:{[group]:{'左点':{x:-10*lift,y:-38*lift,angle:32*lift}}}};
+        return {word:rig.word,groups:{[group.name]:{angle:tilt*lift,y:shift*lift}},
+          strokes:{[group.name]:{[stroke.name]:{x:dx*lift,y:dy*38*lift,angle:32*lift}}}};
       });
       strokePreview={start:run.time,id:run.player.speciesId,frames};
       close();
-    },'preview-fire-strokes'));
+    },'preview-hero-strokes'));
     const selectTime=value=>{seconds=bounded(value,600);if(selectedMode==='timed')target=ordinaryLimit(seconds,run.stage);refresh();};
     const times=row(...[0,2,2.5,3,5,6,7,8,10].map(m=>action(m+'分',()=>selectTime(m*60),'minute-'+m)));
     card.append(values.seconds,times,row(action('−30秒',()=>selectTime(seconds-30),'time-minus'),action('+30秒',()=>selectTime(seconds+30),'time-plus')));
@@ -245,8 +252,8 @@ export function installDeveloperMode(app,{skills,speciesName}){
       syncScenery();
       if(strokePreview){
         const frame=Math.floor(Math.max(0,run.time-strokePreview.start)*20);
-        if(frame>=72||run.player.speciesId!==strokePreview.id){run.player.firePose=null;strokePreview=null;}
-        else run.player.firePose=strokePreview.frames[frame%24];
+        if(frame>=72||run.player.speciesId!==strokePreview.id){run.player.heroPose=null;strokePreview=null;}
+        else run.player.heroPose=strokePreview.frames[frame%24];
       }
       return renderWorld(dt);
     };

@@ -48,7 +48,16 @@ export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground
     owns,
     invalidate(){dirty=true;},
     capture(boxes){
+      const previous=box;
       box=boxes.find(b=>b.el.dataset?.uiLayer===id&&b.opacity>0&&b.w>0);
+      if(movable){
+        // A paint-only refresh may reuse a layout box after the player moved.
+        if(box&&box!==previous){
+          const [x,y]=offset(box.s.transform);
+          originX=box.x-x;originY=box.y-y;dirty=true;
+        }
+        return;
+      }
       // A label overlapping the animated canvas must stay in front of it.
       // Cache both in this small tile, preserving their original paint order.
       const front=foreground?boxes.filter(b=>b.el.dataset?.uiLayer!==id&&owns(b.el.nodeType===1?b.el:b.el.parentElement)):[];
@@ -58,12 +67,19 @@ export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground
         const left=Math.min(...parts.map(b=>b.x)),top=Math.min(...parts.map(b=>b.y));
         bounds={x:left-box.x,y:top-box.y,w:Math.max(...parts.map(b=>b.x+b.w))-left,h:Math.max(...parts.map(b=>b.y+b.h))-top};
       }
-      if(box&&movable){const [x,y]=translation(box.el);originX=box.x-x;originY=box.y-y;}
       dirty=true;
     },
     draw(layout,view,scale,enabled){
       if(!enabled||!box||!box.el.isConnected||box.el.hidden)return null;
-      if(movable){const [x,y]=translation(box.el);box.x=originX+x;box.y=originY+y;}
+      if(movable){
+        const [dx,dy]=translation(box.el);box.x=originX+dx;box.y=originY+dy;
+        // Upload the HP canvas itself. Painting through the screen clip would
+        // cache an empty bar if HP changed while the player was off camera.
+        const changed=dirty||canvas!==box.el._surface;
+        canvas=box.el._surface;dirty=false;
+        return {canvas,x:Math.round((box.x+view.x)*scale),y:Math.round((box.y+view.y)*scale),
+          width:Math.round(box.w*scale),height:Math.round(box.h*scale),opacity:box.opacity,changed,slot};
+      }
       const pad=4,x=Math.floor((box.x+bounds.x+view.x-pad)*scale),y=Math.floor((box.y+bounds.y+view.y-pad)*scale);
       const width=Math.ceil((bounds.w+pad*2)*scale),height=Math.ceil((bounds.h+pad*2)*scale);
       if(!canvas){canvas=makeCanvas();context=canvas.getContext('2d');}
@@ -78,10 +94,11 @@ export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground
   };
 }
 
-const translation=el=>{
-  const values=/translate\(\s*([-\d.e+]+)px\s*,\s*([-\d.e+]+)px\s*\)/i.exec(el?.style.transform||'');
+const offset=transform=>{
+  const values=/translate\(\s*([-\d.e+]+)px\s*,\s*([-\d.e+]+)px\s*\)/i.exec(transform||'');
   return values?[Number(values[1]),Number(values[2])]:[0,0];
 };
+const translation=el=>offset(el?.style.transform);
 // The floating joystick has its own small texture. Its transforms never require a
 // screen-wide layout, canvas repaint or texture upload.
 export function createControlLayer(makeCanvas){

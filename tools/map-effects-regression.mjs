@@ -17,17 +17,29 @@ export async function reviewMapEffects(page,dir){
     const r=app.run,api=inspected.env.__zixingDeveloper;api.close();api.apply({time:0,count:0,mode:'none',boss:'none'});
     const e=r.enemies,p=r.player.pos,species=r.director.cards[0].id;
     // Separated ordinary, elite, alpha, boss and noncombat object markers.
-    for(const [x,z,flags] of [[-25,0,0],[0,-25,1],[0,25,2],[25,0,4],[-25,25,32768]])e.spawn(species,p.x+x,p.z+z,1,1,flags);
+    for(const [x,z,flags] of [[-25,0,0],[0,-25,1],[0,25,2],[25,0,4],[-25,25,32768]]) {
+      const id=e.spawn(species,p.x+x,p.z+z,1,1,flags);
+      e.x[id]=p.x+x;e.z[id]=p.z+z;
+    }
+    r.terrain.zxProps=[20,80].map(dx=>({kind:'ruler',x:p.x+dx,z:p.z-15,w:12,d:5}));
     r.updateCamera(1);r.renderWorld(0);r.ui.hud(r);
     window.readMap=canvas=>{
-      const c=canvas.getContext('2d'),scale=canvas.width/120;
-      const pixel=(x,y)=>Array.from(c.getImageData(Math.floor(x*scale),Math.floor(y*scale),1,1).data).slice(0,3);
-      return {normal:pixel(37.5,58),elite:pixel(60,35.5),eliteEdge:pixel(62.2,35.5),alpha:pixel(60,80.5),boss:pixel(82.5,58)};
+      const c=canvas.getContext('2d'),side=canvas.getBoundingClientRect().width;
+      const hudSide=r.ui.minimap.getBoundingClientRect().width;
+      const screenScale=hudSide/120*(canvas===r.ui.minimap?1:1.5),scale=canvas.width/side*screenScale;
+      const pixel=(x,y)=>Array.from(c.getImageData(Math.floor(canvas.width/2+(x-60)*scale),Math.floor(canvas.height*58/120+(y-58)*scale),1,1).data).slice(0,3);
+      let propWidth=0;
+      for(let dx=-10;dx<=10;dx+=.25){
+        if(pixel(78+dx,44.5).join(',')==='202,183,129')propWidth+=.25*screenScale;
+      }
+      return {normal:pixel(37.5,58),elite:pixel(60,35.5),eliteEdge:pixel(62.2,35.5),alpha:pixel(60,80.5),boss:pixel(82.5,58),propWidth,
+        far:pixel(132,44.5)};
     };
   });
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await page.setViewport({width,height,deviceScaleFactor:3});await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
     await new Promise(r=>setTimeout(r,200));
+    await draw();
     const mini=await page.evaluate(()=>{app.run.ui.drawMinimap(app.run);return readMap(app.run.ui.minimap);});
     assert.deepEqual(mini.normal,[215,102,119]);assert.deepEqual(mini.elite,[242,189,41]);assert.deepEqual(mini.alpha,mini.elite);assert.deepEqual(mini.eliteEdge,mini.elite);
     await tap('.zx-minimap');
@@ -43,6 +55,8 @@ export async function reviewMapEffects(page,dir){
     assert.equal(opened.state,'paused');assert.ok(opened.open&&!opened.oldMap);assert.equal(opened.animation,'none');assert.equal(opened.transform,'none');
     assert.ok(opened.side>200&&Math.abs(opened.side-opened.mapHeight)<1);assert.ok(opened.x>=0&&opened.x+opened.side<=width&&opened.bottom<=height);
     assert.deepEqual(opened.map.normal,mini.normal);assert.deepEqual(opened.map.elite,mini.elite);assert.deepEqual(opened.map.alpha,mini.alpha);
+    assert.ok(mini.propWidth>5 && Math.abs(mini.propWidth*1.5-opened.map.propWidth)<1);
+    assert.deepEqual(opened.map.far,[202,183,129]);assert.notDeepEqual(mini.far,opened.map.far);
     await page.screenshot({path:path.join(dir,`map-${width}.png`)});
     await tap('[data-action="close-battle-map"]');assert.equal(await page.evaluate(()=>app.run.state),'play');
     report.maps.push({width,height,mini,...opened});

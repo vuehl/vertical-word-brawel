@@ -12,6 +12,39 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
   await page.waitForFunction(()=>app.run?.time>2&&app.run?.state==='play',{timeout:90000});
   await page.evaluate(()=>{app.run.godMode=true;app.run.pendingLevels=0;app.run.queueLevelUp=()=>{};app.r.setDynRes(1);app.r.setQuality({...app.r.quality,dyn:false,pixelRatio:1.5});});
   await shot('04-live-battle');
+  report.enemyCollision = await page.evaluate(()=>{
+    const run = app.run, terrain = run.terrain, enemies = run.enemies;
+    const ruler = terrain.zxProps.find(prop=>prop.kind==='ruler');
+    const box = terrain.colliders.find(c=>c.x===ruler.x && c.z===ruler.z);
+    const across = distance=>({x:box.x+box.sin*distance, z:box.z+box.cos*distance});
+    const start = across(-5), target = across(5), saved = run.player.pos.clone();
+    run.state = 'paused';
+    enemies.clear();
+    const id = enemies.spawn(129, box.x, box.z, 1, 1);
+    const overlaps = ()=>terrain.hitProp(enemies.x[id], 0, enemies.z[id], enemies.radius[id]-.00005);
+    const spawnClear = !overlaps();
+    enemies.flags[id] = 0;
+    run.player.pos.set(target.x, 0, target.z);
+    enemies.x[id] = start.x;
+    enemies.z[id] = start.z;
+    enemies.kx[id] = box.sin*220;
+    enemies.kz[id] = box.cos*220;
+    enemies.update(.08);
+    const signedDistance = ()=>(enemies.x[id]-box.x)*box.sin+(enemies.z[id]-box.z)*box.cos;
+    const knockbackBlocked = signedDistance() < -box.halfZ && !overlaps();
+    enemies.kx[id] = enemies.kz[id] = 0;
+    let enteredProp = false, reached = false;
+    for(let frame=0; frame<600 && !reached; frame++){
+      enemies.update(1/30);
+      enteredProp ||= overlaps();
+      reached = Math.hypot(enemies.x[id]-target.x,enemies.z[id]-target.z)<2;
+    }
+    enemies.clear();
+    run.player.pos.copy(saved);
+    run.state = 'play';
+    return {spawnClear,knockbackBlocked,enteredProp,reached};
+  });
+  assert.deepEqual(report.enemyCollision,{spawnClear:true,knockbackBlocked:true,enteredProp:false,reached:true});
   const pickup=await page.evaluate(()=>{
     const run=app.run,p=run.player,pk=run.pickups;run.state='paused';pk.clear();
     const base=run.gold,pos=p.pos.clone();p.pos.set(0,0,0);
@@ -54,6 +87,7 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
   });await sleep(1400);await shot('06-staged-reference-composition');
   for(let stage=2;stage<=4;stage++){
     await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';app.run.enemies.clear();await app.run.changeZone();});
+    if(stage===4)await tap('[data-action="sanctuary-guide-close"]');
     await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
     const data=await page.evaluate(()=>({stage:app.run.stage,paper:app.run.terrain.zxPaper,props:app.run.terrain.zxProps.length,yaw:app.run.camYaw,spawnClear:!app.run.terrain.hitProp(app.run.player.pos.x,.3,app.run.player.pos.z,.5),oldTerrain:!!app.run.terrain.env}));
     assert.ok(data.paper&&!data.oldTerrain&&data.spawnClear);report.stages.push(data);await shot('07-stage-'+stage);

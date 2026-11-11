@@ -24,7 +24,7 @@ import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pick
 import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
 import {UpgradeTiming} from './upgrade-timing.js';
 import {updatePaperVisibility} from './paper-visibility.js';
-import {hitsPaperBox,resolvePaperBox} from './paper-collision.js';
+import {hitsPaperBox,resolvePaperBox,moveEnemyPastProps} from './paper-collision.js';
 import './customize.js';
 import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
 import {
@@ -12030,9 +12030,10 @@ var qu = `
                 a = i.z - e.z,
                 o = e.r + n,
                 s = t * t + a * a;
-              if (s < o * o && s > 1e-6) {
+              if (s < o * o) {
                 let n = Math.sqrt(s);
-                ((i.x = e.x + (t / n) * o), (i.z = e.z + (a / n) * o));
+                i.x = e.x + (n ? t / n : 1) * (o + .0001);
+                i.z = e.z + (n ? a / n : 0) * (o + .0001);
               }
             }
         }
@@ -14219,6 +14220,8 @@ var Df = 0.4,
     sepZ = new Float32Array(xf);
     sepOdd = 0;
     lodDt = new Float32Array(xf);
+    propSide = new Int8Array(xf);
+    propPosition = {x:0, z:0, side:0};
     lodFrame = 0;
     gnd = new Float32Array(xf);
     constructor(e) {
@@ -14307,6 +14310,13 @@ var Df = 0.4,
         (this.hgt[s] = Math.max(0.8, x)),
         (this.sized[s] = +!!l.ready));
       let S = a;
+      this.propSide[s] = 0;
+      if (!(a & 32768)) {
+        const pos = this.run.terrain.resolve(t, n, this.radius[s], this.y[s], this.propPosition);
+        this.x[s] = pos.x;
+        this.z[s] = pos.z;
+        this.y[s] = this.run.terrain.height(pos.x, pos.z);
+      }
       return (
         (c.types.includes(`flying`) || c.abilities.includes(Nf)) && (S |= 16),
         g.spa > g.atk * 1.15 && g.spa >= 60 && !(S & 1024) && (S |= 8),
@@ -14654,6 +14664,12 @@ var Df = 0.4,
           let e = Math.sign(this.x[i]) || 1;
           ((this.x[i] = e * 4), (this.z[i] *= 0.8));
         }
+        const steerDistance = x && !(y & 1024) ? Math.hypot(O, te) * b * m : 0;
+        const pos = moveEnemyPastProps(r, ce, le, this.x[i], this.z[i], ne, this.y[i],
+          steerDistance, this.propSide[i], this.propPosition);
+        this.x[i] = pos.x;
+        this.z[i] = pos.z;
+        this.propSide[i] = pos.side;
         if (x && Math.abs(this.vx[i]) + Math.abs(this.vz[i]) > 0.2) {
           let e = Math.sqrt(this.vx[i] * this.vx[i] + this.vz[i] * this.vz[i]);
           ((this.fx[i] = this.vx[i] / e), (this.fz[i] = this.vz[i] / e), (this.anim[i] += m * (0.6 + b / 4)));
@@ -14697,8 +14713,12 @@ var Df = 0.4,
               f = d / (d + kf),
               p = this.x[i] + o * u * (1 - f),
               m = this.z[i] + s * u * (1 - f);
-            (r.inBounds(p, m, 3) && ((this.x[i] = p), (this.z[i] = m)),
-              (n.crowdX -= o * u * f),
+            if (r.inBounds(p, m, 3)) {
+              const pushed = moveEnemyPastProps(r, this.x[i], this.z[i], p, m, ne, this.y[i], 0, 0, this.propPosition);
+              this.x[i] = pushed.x;
+              this.z[i] = pushed.z;
+            }
+            ((n.crowdX -= o * u * f),
               (n.crowdZ -= s * u * f));
           }
         }
@@ -14819,6 +14839,12 @@ var Df = 0.4,
           separation = this.flags[r] & 8192 ? 0 : 6,
           c = this.x[r] + (s > 0 ? (this.vx[r] + this.kx[r] + this.sepX[r]*separation) * s : 0),
           l = this.z[r] + (s > 0 ? (this.vz[r] + this.kz[r] + this.sepZ[r]*separation) * s : 0);
+        if (s > 0) {
+          const pos = moveEnemyPastProps(e.terrain, this.x[r], this.z[r], c, l, this.radius[r],
+            this.y[r], 0, 0, this.propPosition);
+          c = pos.x;
+          l = pos.z;
+        }
         // Cull by the actual camera and body/shadow bounds. A fixed player
         // radius can hide visible enemies on tall screens; old saves no longer
         // decide visibility. Simulation, targeting and warnings run separately.
@@ -44495,7 +44521,7 @@ var mv = 30,
     }
     render() {
       let e = this.run,
-        t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.firePose),
+        t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.heroPose??this.firePose),
         n = this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
         r = this.animT,
         i = !1,

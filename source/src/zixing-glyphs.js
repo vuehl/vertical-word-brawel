@@ -1,7 +1,7 @@
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies,isOriginalHeroGlyph} from './paper-glyph-art.js';
 import {createGlyphBatches} from './glyph-batches.js';
 import {enemyWords} from './character-rules.js';
-import {createFirePoseTexture,loadedFireRig,prepareFireStrokes} from './fire-poses.js';
+import {createHeroPoseTexture,loadedHeroRig,prepareHeroStrokes} from './hero-poses.js';
 const paintJobs=[];
 let paintTimer=null;
 function paintLater(paint){
@@ -69,17 +69,17 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   }
   let playerEntry;
   run.sprites.getPlayerGlyph=(id,speciesId,pose)=>{
-    const rig=loadedFireRig(speciesId);
+    const rig=loadedHeroRig(speciesId);
     if(!rig)return run.sprites.get(id);
-    playerEntry??=createFirePoseTexture(Texture,colorSpace);
+    playerEntry??=createHeroPoseTexture(Texture,colorSpace);
     playerEntry.draw(rig,pose?.word===rig.word?pose:null);
-    return skin(get(id,false,'player-fire'),rig.word,playerEntry);
+    return skin(get(id,false,'player-strokes'),rig.word,playerEntry);
   };
   // Prepare the finite ordinary pool once, including the guardian fallback.
   // Later species reuse these UVs without painting/uploading during a wave.
   const warmup=Promise.all([...enemyWords,'敌'].map(word=>texture(word).ready));
   run.sprites.prepareGlyphTextures=async (renderer,playerSpecies)=>{
-    await Promise.all([warmup,prepareFireStrokes(playerSpecies)]);
+    await Promise.all([warmup,prepareHeroStrokes(playerSpecies)]);
     for(const page of pages){await Promise.all(page.jobs);if(!disposed)renderer.initTexture(page.texture);}
   };
   run.sprites.get=(...args)=>skin(get(...args),args[2]);

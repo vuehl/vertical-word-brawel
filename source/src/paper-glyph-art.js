@@ -1,14 +1,14 @@
 import {glyphCatalog} from './glyph-catalog.js';
 import {heroWords,enemyWords} from './character-rules.js';
-import fireRigs from './fire-rigs.json' with {type:'json'};
+import heroRigs from './hero-rigs.json' with {type:'json'};
 
 const colors={fire:['#ff963e','#ed3438'],water:['#b9f2e7','#50bebd'],wood:['#c5e797','#72b778'],earth:['#e9b480','#b57649'],metal:['#ffe99a','#d5ac57'],ink:['#a5aac7','#6b719c'],dark:['#53695e','#1c302e']};
 let atlas,ready;
 const cache=new Map();
 // The atlas fits each authored cutout into the middle 80/96 of its tile.
-// Fire portraits already include 14 source-image pixels of dark ink.
+// Hero portraits already include 14 source-image pixels of dark ink.
 function bakedInkFraction(word){
-  const rig=Object.values(fireRigs).find(rig=>rig.word===word);
+  const rig=Object.values(heroRigs).find(rig=>rig.word===word);
   return rig?14*(80/96)/Math.max(rig.frame.width,rig.frame.height):0;
 }
 export function drawBattleOutline(ctx,mask,bakedFraction=0){

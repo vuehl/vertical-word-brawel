@@ -18,3 +18,38 @@ export function resolvePaperBox(box,point,radius){
   point.x=box.x+box.cos*x+box.sin*z;point.z=box.z-box.sin*x+box.cos*z;
   return point;
 }
+
+// Use steps smaller than the body radius so a dash cannot skip a thin prop.
+// A pursuing enemy keeps its chosen direction along the wall until it clears it.
+export function moveEnemyPastProps(terrain, x, z, endX, endZ, radius, feet, steerDistance, side, out){
+  const dx = endX - x, dz = endZ - z;
+  const distance = Math.hypot(dx, dz);
+  const steps = Math.max(1, Math.ceil(distance / radius));
+  const stepX = dx / steps, stepZ = dz / steps;
+  for(let i = 0; i < steps; i++){
+    const nextX = x + stepX, nextZ = z + stepZ;
+    terrain.resolve(nextX, nextZ, radius, feet, out);
+    const nx = out.x - nextX, nz = out.z - nextZ;
+    if(nx === 0 && nz === 0){
+      side = 0;
+    } else {
+      const normalLength = Math.hypot(nx, nz);
+      if(steerDistance > 0 && stepX * nx + stepZ * nz < 0){
+        const tx = -nz / normalLength, tz = nx / normalLength;
+        side ||= stepX * tx + stepZ * tz < 0 ? -1 : 1;
+        const along = Math.min(steerDistance, distance) / steps;
+        terrain.resolve(x + side * tx * along, z + side * tz * along, radius, feet, out);
+      }
+      // At a junction one collider can push the body back into another.
+      if(terrain.hitProp(out.x, feet, out.z, radius)){
+        out.x = x;
+        out.z = z;
+        break;
+      }
+    }
+    x = out.x;
+    z = out.z;
+  }
+  out.side = side;
+  return out;
+}

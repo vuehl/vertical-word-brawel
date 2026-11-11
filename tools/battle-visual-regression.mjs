@@ -4,6 +4,34 @@ import path from 'node:path';
 
 export async function reviewBattleVisual(page,dir){
   const report={overlays:[]};
+  report.playerHealth=await page.evaluate(()=>{
+    const run=app.run,p=run.player,renderer=app.r.renderer,env=inspected.env;
+    const origin=p.pos.clone(),hp=p.hp;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const draw=()=>{run.ui.hud(run);run.renderWorld(0);app.r.render(0);env.drawUI(renderer);};
+    const greenPixels=()=>{
+      const foot=run.ui.project(run,p.pos.x,p.pos.y-.15,p.pos.z),gl=renderer.getContext();
+      const sx=gl.drawingBufferWidth/screen.width,sy=gl.drawingBufferHeight/screen.height;
+      const w=Math.round(82*sx),h=Math.round(12*sy),rgba=new Uint8Array(w*h*4);
+      gl.readPixels(Math.round((foot.x-screen.left-41)*sx),gl.drawingBufferHeight-Math.round((foot.y-screen.top+25)*sy),
+        w,h,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+      let count=0;
+      for(let i=0;i<rgba.length;i+=4)if(rgba[i+1]>150&&rgba[i+1]-rgba[i]>60&&rgba[i+1]-rgba[i+2]>60)count++;
+      return count;
+    };
+    // Repaint HP outside the current camera, then return without another HP change.
+    p.hp=p.maxHp;draw();const full=greenPixels();
+    const m=app.r.camera.matrixWorld.elements;
+    p.pos.x+=200*m[0];p.pos.z+=200*m[2];p.hp=p.maxHp/2;draw();
+    p.pos.copy(origin);draw();const half=greenPixels();
+    p.hp=hp;draw();
+    const foot=run.ui.project(run,p.pos.x,p.pos.y-.15,p.pos.z);
+    return {full,half,recovered:greenPixels(),clip:{x:Math.round(foot.x-screen.left-76),
+      y:Math.round(foot.y-screen.top-100),width:152,height:144}};
+  });
+  const {full,half,recovered}=report.playerHealth;
+  assert.ok(full>50&&half>full*.3&&half<full*.7&&recovered>half,JSON.stringify(report.playerHealth));
+  await page.screenshot({path:path.join(dir,'主角脚下血条.png'),clip:report.playerHealth.clip});
   report.effects=await page.evaluate(()=>{
     const run=app.run,r=app.r;app.meta.profile.settings.quality='high';app.applySettings();
     const dimensions=()=>[r.composer.inputBuffer.width,r.composer.inputBuffer.height];
