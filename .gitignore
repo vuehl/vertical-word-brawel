@@ -1,6 +1,5 @@
 # Installed dependencies and generated build output.
 node_modules/
-/minigame/
 
 # Local verification output, screenshots and preview QR codes.
 /验收/
