@@ -67,7 +67,12 @@ assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('locale/')),['l
 assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('data/i18n/')),['data/i18n/zh.json']);
 assert.equal(Object.keys(index.sprites).length,0,'Actor atlases must not be reconstructed on the phone');
 assert.ok(!index.files['engine/layout.bin'],'Unused desktop layout references must not ship');
-assert.deepEqual(JSON.parse(Buffer.from(bytes('data/pokemon.json'))).map(p=>p.id),runtimeSpecies);
+// Research reads family roots even when the root is not a spawnable actor.
+const sourceSpecies=JSON.parse(fs.readFileSync(path.join(pub,'data/pokemon.json'),'utf8'));
+const requiredSpecies=new Set(runtimeSpecies);
+for(const actor of sourceSpecies)if(runtimeSpecies.includes(actor.id))requiredSpecies.add(actor.family);
+assert.deepEqual(JSON.parse(Buffer.from(bytes('data/pokemon.json'))).map(p=>p.id),
+  sourceSpecies.filter(actor=>requiredSpecies.has(actor.id)).map(actor=>actor.id));
 for(const id of [...Array.from({length:151},(_,i)=>i+1),201]){
   assert.ok(!index.files['assets/pmd/'+id+'.png'],'Legacy actor atlas must not ship: '+id);
   const file='assets/pmd/'+id+'.png',override=path.join(pub,'overrides',file);
@@ -75,7 +80,7 @@ for(const id of [...Array.from({length:151},(_,i)=>i+1),201]){
   assert.deepEqual(actorMetrics[id],await measureActor(fs.existsSync(override)?override:path.join(pub,file),meta,id),'Actor collision bounds: '+id);
 }
 for(const key of Object.keys(index.files))assert.equal(glyphSpeciesFromImage(key),null,'Legacy actor image must not ship: '+key);
-assert.ok(index.files['assets/glyphs/atlas.png'],'The replacement glyph atlas must remain');
+assert.match(index.files['assets/glyphs/atlas.png'],/^text\//,'Character selection needs the atlas in the startup package');
 // Compare every retained bitmap, including items, map/UI icons, hazards and
 // glyphs. Packing may change the encoding, never the visible pixels.
 for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){

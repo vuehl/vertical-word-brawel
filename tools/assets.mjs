@@ -50,15 +50,17 @@ for (const folder of ['assets', 'overrides/assets']) {
       const reason=excludedAssetReason('assets/'+name);
       if(reason){excluded.set('assets/'+name,reason);continue;}
       const key = 'assets/' + name;
+      // The home and character screens need the atlas before the first tap.
+      const targetPack=key==='assets/glyphs/atlas.png'?'text':pack;
       if (selected.has(key)) continue;
       selected.add(key);
       const input = sourceFor(key);
       const original = fs.readFileSync(input);
       if (name.endsWith('.png') && original.length > 3000) {
-        const webp = await sharp(original).webp({lossless:true, effort:4}).toBuffer();
-        if (webp.length < original.length) { add(pack, key, webp, '.webp'); continue; }
+        const webp = await sharp(original).webp({lossless:true, effort:category==='glyphs'?6:4}).toBuffer();
+        if (webp.length < original.length) { add(targetPack, key, webp, '.webp'); continue; }
       }
-      add(pack,key,original);
+      add(targetPack,key,original);
     }
   }
 }
@@ -96,7 +98,7 @@ if(fs.existsSync(packRoot))for(const entry of fs.readdirSync(packRoot,{withFileT
 }
 packModels(packs.world);
 for (const [name, entries] of Object.entries(packs)) {
-  const {bytes,rawSize}=packStream(entries), dir=path.join(out,'packs',name);
+  const {bytes,rawSize}=packStream(entries,name==='text'?11:10), dir=path.join(out,'packs',name);
   fs.mkdirSync(dir,{recursive:true});
   fs.writeFileSync(path.join(dir,'assets.br'),bytes);
   fs.rmSync(path.join(dir,'assets.zip'),{force:true});

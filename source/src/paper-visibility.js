@@ -17,7 +17,7 @@ export function preparePaperBatch(mesh,shadow=false){
   if(colors)mesh.instanceColor.setUsage(35048);
 }
 export function updatePaperVisibility(terrain,frustum,shadows=true){
-  if(!terrain?.zxPaper)return;
+  if(!terrain?.zxPaper||terrain.group.visible===false)return;
   const meshes=terrain.group.children,planes=frustum.planes;
   let view=terrain.zxVisibilityView;
   if(!view||view.planes.length!==planes.length*4)view=terrain.zxVisibilityView={planes:new Float64Array(planes.length*4)};

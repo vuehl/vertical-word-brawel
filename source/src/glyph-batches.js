@@ -21,13 +21,13 @@ export function createGlyphBatches(sprites){
     group.mesh.name='glyph-batch-'+group.word;group.capacity=capacity;sprites.scene.add(group.mesh);
   }
   return {
-    add(source,word){
+    add(source,word,initialCapacity=1024){
       let group=groups.get(word);
       if(!group){
         const material=source.material.clone();material.uniforms={...source.material.uniforms};
         group={word,source,material,members:new Set(),count:0};
         group.reserve=()=>{if(group.count===group.capacity)allocate(group,group.capacity*2);return group.count++;};
-        groups.set(word,group);allocate(group,1024);
+        groups.set(word,group);allocate(group,initialCapacity);
       }
       group.members.add(source);
       source.zxGroup=group;

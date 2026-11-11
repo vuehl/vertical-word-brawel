@@ -1,10 +1,10 @@
-import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
+import {glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {drawPaperIllustration} from './paper-ui-art.js';
 import {drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
-import {waitForLoadingPaint} from './loading-work.js';
+import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {batterySaverEnabled} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
 import {characters,characterForSpecies} from './starter-characters.js';
@@ -33,8 +33,8 @@ const card=(...nodes)=>el('div','zx-card',nodes);
 function glyph(c,large=false){
   const word=c.word||c,node=el('div','zx-glyph '+(c.tone||'')+(large?' large':''),[],{'aria-label':word});
   const canvas=el('canvas','zx-glyph-image',[],{width:192,height:192});canvas.dataset.static='true';node.append(canvas);
-  const draw=()=>{canvas.getContext('2d').clearRect(0,0,192,192);canvas.getContext('2d').drawImage(glyphCanvas(word,c.tone),0,0);canvas.dataset.glyphReady='true';};
-  draw();glyphAtlasReady().then(draw).catch(()=>{});return node;
+  canvas.getContext('2d').drawImage(glyphCanvas(word,c.tone),0,0);
+  canvas.dataset.glyphReady='true';return node;
 }
 const statRow=(label,value)=>el('div','zx-stat-row',[el('b','',label),el('span','',value)]);
 // Paths keep icons independent of the device's font and emoji support.
@@ -633,7 +633,7 @@ export function createZixingUI(app,api) {
       portrait.dataset.progress=String(progress);portrait.dataset.frame=String(++portraitFrame);
       portrait.setAttribute('aria-valuenow',Math.round(progress*100));
     };
-    refreshPortrait();glyphAtlasReady().then(refreshPortrait).catch(()=>{});
+    refreshPortrait();
     const identityName=el('b','zx-hud-name',c.word),identityType=el('span','zx-hud-element',api.typeName(run.player.types[0]));
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
     minimap.dataset.uiLayer='minimap';
@@ -654,6 +654,7 @@ export function createZixingUI(app,api) {
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
+    hud.prepareEntryIcons=()=>Promise.all(Array.from(node.querySelectorAll('.zx-loadout-icon'),prepareHudImage));
     node.querySelector('.zx-hud-counters').dataset.uiLayer='counters';
     node.querySelector('.zx-hud-meta').dataset.uiLayer='score';
     hud.touch.ult.dataset.uiLayer='ultimate';
@@ -729,8 +730,9 @@ export function createZixingUI(app,api) {
       const current=Math.max(0,Math.ceil(p.hp)),maximum=Math.max(1,Math.round(p.maxHp));
       const fraction=Math.round(Math.max(0,Math.min(1,p.hp/Math.max(1,p.maxHp)))*1000)/1000;
       const bonus=Math.max(0,Math.round(p.shield+p.overheal)),key=[current,maximum,fraction,bonus].join('/');
-      if(key===lastHealth)return;lastHealth=key;
+      if(key===lastHealth)return;
       drawBattleHealth(health,fraction,current,bonus);
+      lastHealth=key;
       health.dataset.progress=String(fraction);health.dataset.frame=String(++healthFrame);
       health.setAttribute('aria-valuenow',current);health.setAttribute('aria-valuemax',maximum);
       health.setAttribute('aria-label','生命 '+current+' / '+maximum+(bonus?'，护盾与额外生命 '+bonus:''));

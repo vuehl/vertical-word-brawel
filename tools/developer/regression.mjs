@@ -46,6 +46,27 @@ export async function reviewDeveloper(page,dir){
   report.firstEntry=await page.evaluate(()=>({state:app.run.state,panel:!!inspected.doc.querySelector('#zx-dev-panel')}));
   assert.deepEqual(report.firstEntry,{state:'paused',panel:true},'First battle must display the minute/count panel automatically');
   await draw();await page.screenshot({path:path.join(dir,'dev-first-entry.png')});
+  if(process.argv.includes('--scenery-only')){
+    await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({count:200,seek:false}));
+    const sample=()=>page.evaluate(()=>{
+      const run=app.run;
+      run.renderWorld(0);app.r.render(0);
+      const {ordinary,triangles}=inspected.env.__zixingDeveloper.snapshot();
+      return {visible:run.terrain.group.visible,ordinary,triangles};
+    });
+    const hidden=await sample();
+    await tap('toggle-scenery');
+    const shown=await sample();
+    await tap('toggle-scenery');
+    const hiddenAgain=await sample();
+    assert.deepEqual([hidden.visible,shown.visible,hiddenAgain.visible],[false,true,false]);
+    assert.deepEqual([hidden.ordinary,shown.ordinary,hiddenAgain.ordinary],[200,200,200]);
+    assert.ok(shown.triangles>hidden.triangles&&shown.triangles>hiddenAgain.triangles);
+    await tap('close');
+    assert.equal(await page.evaluate(()=>app.run.state),'play');
+    console.log('200 enemies, scenery toggle:',{hidden,shown,hiddenAgain});
+    return;
+  }
   await tap('close');
   if(process.argv.includes('--boss-only'))return reviewEncounters(page,dir,tap,draw);
   if(process.argv.includes('--skills-only'))return reviewDeveloperSkills(page,dir);

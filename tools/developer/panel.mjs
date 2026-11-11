@@ -59,7 +59,7 @@ export function setEnemyCount(run,count,reset=false){
 }
 
 export function installDeveloperMode(app,{skills,speciesName}){
-  const options={invincible:false,lockCount:false,monitor:false,spawn:true};
+  const options={invincible:false,lockCount:false,monitor:false,spawn:true,hideScenery:true};
   let selectedMode='timed',workload=null;
   let bossMode='timed',encounters=null;
   const bossModes={timed:'按时间首领',guardian:'区域 Boss',none:'无首领'};
@@ -67,10 +67,14 @@ export function installDeveloperMode(app,{skills,speciesName}){
   try{const saved=window.localStorage.getItem('developer.workload');if(['none','timed','stress'].includes(saved))selectedMode=saved;}catch{}
   const modeNames={none:'只调怪物',timed:'按时间实战',stress:'满负载压测'};
   let run=null,button=null,monitor=null,monitorLayer=null,panel=null,target=30,seconds=120;
+  let strokePreview=null;
   let frames=0,since=performance.now(),fps=0,frameMs=0,calls=0,triangles=0,lastSample=0,lastMaintain=0;
   let values=null,error=null;
   let mountEntrance=()=>{};
   const invalidate=()=>window.developerInvalidateUI?.();
+  function syncScenery(){
+    if(run?.terrain?.zxPaper)run.terrain.group.visible=!options.hideScenery;
+  }
   const wiredDirectors=new WeakSet();
   const doc=window.document;
   const node=(tag,text,style='')=>{const el=doc.createElement(tag);if(text)el.textContent=text;el.style.cssText=style;return el;};
@@ -187,10 +191,27 @@ export function installDeveloperMode(app,{skills,speciesName}){
     const modes=row(...Object.entries(modeNames).map(([key,label])=>{
       const button=action(label,()=>{selectedMode=key;refresh();},'mode-'+key);values.modes.push([key,button]);return button;
     }));
+    const scenery=action('',()=>{options.hideScenery=!options.hideScenery;syncScenery();refresh();invalidate();},'toggle-scenery');
+    values.toggles.push(()=>{
+      text(scenery,options.hideScenery?'地图文具：已隐藏':'地图文具：已显示');
+      scenery.setAttribute('aria-pressed',String(options.hideScenery));
+    });
+    card.append(scenery);
     card.append(modes,values.preset,values.skills);
     values.evolution=node('small','','font-size:12px;line-height:1.45;');
     values.evolve=action('升到下次进化',advanceEvolution,'evolve-next');
     card.append(values.evolution,values.evolve);
+    const fire=({4:['炎','上火'],5:['焱','上火'],6:['燚','左上火']})[run.player.speciesId];
+    if(fire)card.append(action('预览偏旁动作',()=>{
+      const [word,group]=fire;
+      const frames=Array.from({length:24},(_,i)=>{
+        const lift=(1-Math.cos(i*Math.PI/12))/2;
+        return {word,groups:{[group]:{angle:-12*lift,y:-8*lift}},
+          strokes:{[group]:{'左点':{x:-10*lift,y:-38*lift,angle:32*lift}}}};
+      });
+      strokePreview={start:run.time,id:run.player.speciesId,frames};
+      close();
+    },'preview-fire-strokes'));
     const selectTime=value=>{seconds=bounded(value,600);if(selectedMode==='timed')target=ordinaryLimit(seconds);refresh();};
     const times=row(...[0,2,2.5,3,5,6,7,8,10].map(m=>action(m+'分',()=>selectTime(m*60),'minute-'+m)));
     card.append(values.seconds,times,row(action('−30秒',()=>selectTime(seconds-30),'time-minus'),action('+30秒',()=>selectTime(seconds+30),'time-plus')));
@@ -217,7 +238,18 @@ export function installDeveloperMode(app,{skills,speciesName}){
     // startRun can route through the loading flow and call itself again.
     if(run===next)return;
     panel?.remove();panel=null;values=null;error=null;button?.remove();monitorLayer?.remove();
-    workload?.stop();run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run,speciesName);lastMaintain=0;showOnEntry=true;
+    workload?.stop();strokePreview=null;run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run,speciesName);lastMaintain=0;showOnEntry=true;
+    syncScenery();
+    const renderWorld=run.renderWorld.bind(run);
+    run.renderWorld=dt=>{
+      syncScenery();
+      if(strokePreview){
+        const frame=Math.floor(Math.max(0,run.time-strokePreview.start)*20);
+        if(frame>=72||run.player.speciesId!==strokePreview.id){run.player.firePose=null;strokePreview=null;}
+        else run.player.firePose=strokePreview.frames[frame%24];
+      }
+      return renderWorld(dt);
+    };
     button=action('测试',open,'open');button.id='zx-dev-button';button.setAttribute('aria-label','开发者测试');
     button.style.cssText='position:absolute;z-index:950;right:62px;top:117px;width:58px;height:40px;min-height:40px;padding:0;border:2px solid #fffdf7;border-radius:12px;background:#ffe0ad;color:#855329;font-size:14px;font-weight:700;pointer-events:auto;';
     // Keep the entry out of the HUD's clipping and independently cached groups.

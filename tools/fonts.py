@@ -16,7 +16,11 @@ dest.mkdir(exist_ok=True, parents=True)
 for weight in ("Regular", "Bold"):
     # Unchanged text must produce the same hash and reuse the phone's cache.
     font = TTFont(source / ("public/fonts/swei/SweiGothicCJKsc-" + weight + ".ttf"), recalcTimestamp=False)
-    sub = subset.Subsetter()
+    # All game labels use horizontal layout, including the portrait HUD.
+    options = subset.Options()
+    options.drop_tables.extend(["vhea", "vmtx"])
+    options.layout_features = [tag for tag in options.layout_features if tag not in ("vert", "vrt2")]
+    sub = subset.Subsetter(options=options)
     sub.populate(text="".join(sorted(strings)))
     sub.subset(font)
     font.save(dest / (weight.lower() + ".ttf"))

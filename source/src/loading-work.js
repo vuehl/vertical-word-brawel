@@ -14,6 +14,24 @@ export function waitForLoadingPaint(renderer) {
   });
 }
 
+// The native UI defers DOM image decoding until paint. Start just the icons
+// in the entering player's visible loadout while the loading page is up.
+export function prepareHudImage(image){
+  if(image.complete&&image.naturalWidth)return Promise.resolve();
+  if(image.decode)return image.decode();
+  return new Promise((resolve,reject)=>{
+    const loaded=()=>finish(true),failed=()=>finish(false);
+    const finish=ok=>{
+      clearTimeout(timer);
+      image.removeEventListener('load',loaded);image.removeEventListener('error',failed);
+      if(ok)resolve();else reject(Error('战斗图标读取失败：'+image.alt));
+    };
+    const timer=setTimeout(failed,12000);
+    image.addEventListener('load',loaded);image.addEventListener('error',failed);
+    image._loadImage?.();
+  });
+}
+
 export async function runLoadingSteps(steps,{onProgress,check=()=>{},budgetMs=6,maxSteps=8}={}) {
   const began=performance.now(),stats={steps:0,yields:0,maxSliceMs:0,totalMs:0};
   let sliceAt=began,count=0;

@@ -16,6 +16,11 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     const read=CanvasRenderingContext2D.prototype.getImageData;
     CanvasRenderingContext2D.prototype.getImageData=function(...args){loadProbe.readbacks++;return read.apply(this,args);};
     const account=await app.backend.guest();await app.meta.load(account);
+    app.zixing.choose();
+    loadProbe.selection=Array.from(inspected.doc.querySelectorAll('.zx-choose [aria-label="炎"] canvas'),canvas=>{
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      return pixels.some((red,i)=>i%4===0&&red>120&&red>pixels[i+1]*1.5&&pixels[i+3]>200);
+    });
     Object.assign(app.meta.profile.settings,{quality:'low',fpsLimit:30});app.applySettings();
     const prepareAt=performance.now();await inspected.env.prepareForest();
     loadProbe.assetPrepareMs=performance.now()-prepareAt;
@@ -141,6 +146,14 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       window.entryDraw=inspected.env.drawUI;
       inspected.env.drawUI=function(...args){
         const result=entryDraw(...args);
+        if(!window.firstBattleHud&&!app.screen&&app.run?.state==='play'){
+          const hp=inspected.doc.querySelector('.zx-player-health'),tile=inspected.health.canvas;
+          const box=inspected.layout.box(hp),pixels=tile?.getContext('2d').getImageData(0,0,tile.width,tile.height).data;
+          window.firstBattleHud={time:app.run.time,hp:Number(hp.getAttribute('aria-valuenow')),expected:Math.ceil(app.run.player.hp),
+            visible:!hp.hidden&&box?.w>0&&box.x>=box.clip.x&&box.y>=box.clip.y&&box.x+box.w<=box.clip.r&&box.y+box.h<=box.clip.b,
+            green:pixels?.some((red,i)=>i%4===0&&pixels[i+1]>150&&pixels[i+1]>red*1.3&&pixels[i+3]>200),
+            icons:[...inspected.doc.querySelectorAll('.zx-loadout-icon')].every(img=>img.complete&&img.naturalWidth>0)};
+        }
         if(app.screen?.dataset.page==='entry'){
           const progress=Number(app.screen.querySelector('[role="progressbar"]').getAttribute('aria-valuenow'));
           entryFrames.push({progress,state:app.run?.state,time:app.run?.time||0,popup:!!inspected.doc.querySelector('.zx-dialog,.run-loading')});
@@ -192,10 +205,13 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     await page.waitForFunction(()=>app.run?.state==='play',{timeout:45000});
     entryRecovery=await page.evaluate(()=>{
       inspected.env.drawUI=entryDraw;app.r.render=entryRender;app.zixing.attachRun=entryAttach;
-      return {...app.zixing.entryDiagnostics,frames:entryFrames,warmFrames:entryWarmFrames,resources:GameGlobal.pokebonk.files.diagnostics};
+      return {...app.zixing.entryDiagnostics,frames:entryFrames,warmFrames:entryWarmFrames,firstHud:window.firstBattleHud,resources:GameGlobal.pokebonk.files.diagnostics};
     });
     entryRecovery.layouts=loadingLayouts;
     assert.equal(entryRecovery.status,'ready');
+    const hud=entryRecovery.firstHud;
+    assert.ok(hud?.time===0&&hud.visible&&hud.green&&hud.hp>0&&hud.hp===hud.expected&&hud.icons,JSON.stringify(hud));
+    assert.deepEqual(probe.selection,[true,true,true],'Preview, starter button and move icon show colored artwork immediately');
     assert.ok(entryRecovery.phases.some(p=>p.phase==='绘制桌面与纸张'));
     assert.ok(entryRecovery.phases.some(p=>p.phase==='摆放场景物件'));
     assert.equal(entryRecovery.percentages.at(-1),100);

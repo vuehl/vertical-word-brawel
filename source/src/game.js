@@ -14846,10 +14846,10 @@ var Df = 0.4,
                 : u & 4096
                   ? 7
                   : u & 8192
-                    ? 8
+                    ? 0
                     : u & 6
                       ? 2
-                      : u & 16385
+                      : u & 16384
                         ? 1
                         : 0;
         (u & 2048 &&
@@ -44495,7 +44495,7 @@ var mv = 30,
     }
     render() {
       let e = this.run,
-        t = e.sprites.get(Xl(this.speciesId, e.skinLook)),
+        t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.firePose),
         n = this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
         r = this.animT,
         i = !1,
@@ -75817,7 +75817,7 @@ var GT = 15,
       this.applyBoosts();
     }
     async openStage(onProgress) {
-      let e = [...new Set([...this.stageSprites(),...this.sprites.batches.keys()])];
+      let e = [...new Set([...this.stageSprites(),...Array.from(this.sprites.batches.values(),batch=>batch.id)])];
       const check=()=>{if(this.disposed)throw Error('本局已结束');};
       const sprites=this.sprites;
       await runLoadingSteps((function*(){for(const id of e){sprites.get(id);yield;}})(),{check});
@@ -75832,7 +75832,7 @@ var GT = 15,
           await this.ui.loading(e.length, () => {check();return this.sprites.readyCount(e);},onProgress),
           this.state === `transition` && (this.state = t));
       }
-      await this.sprites.prepareGlyphTextures?.(this.r.renderer);check();
+      await this.sprites.prepareGlyphTextures?.(this.r.renderer,this.player.speciesId);check();
       this.onLoadProgress?.({phase:'准备战斗特效',detail:'',progress:.96});
       await waitForLoadingPaint(this.r.renderer);check();
       await warmCombatShaders(this.r);check();
@@ -109139,16 +109139,19 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         );
       this.setScreen(window.nativeUI ? null : r);
       try {
-        await k.load(
-          (e) => (n.firstChild.style.transform = `scaleX(${e})`),
-          () => (n.lastChild.textContent = c(`La conexión va lenta, seguimos intentándolo…`)),
-        );
+        await Promise.all([
+          glyphAtlasReady(),
+          document.fonts?.ready,
+          k.load(
+            (e) => (n.firstChild.style.transform = `scaleX(${e})`),
+            () => (n.lastChild.textContent = c(`La conexión va lenta, seguimos intentándolo…`)),
+          ),
+        ]);
       } catch (e) {
         ((n.lastChild.textContent = c(`Error cargando datos: {msg}`, { msg: t(e.message) })),
           r.append(X(`button`, { class: `btn big red`, onclick: () => location.reload() }, c(`Reintentar`))));
         return;
       }
-      await document.fonts?.ready;
       for (let t = 0; !this.r; t++)
         try {
           this.r = new dc(e);
@@ -109517,6 +109520,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         // Upload textures, compile shaders and populate the HUD while the
         // opaque loading page still covers the first frame. No play time elapses.
         this.run.update(0),
+        await this.run.ui.prepareEntryIcons?.(),
         this.r.render(0),
         window.drawUI?.(this.r.renderer),
         onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
@@ -109528,6 +109532,11 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         document.hidden && this.run.pause(),
         (globalThis.__pb = globalThis.__pb || {}),
         (globalThis.__pb.run = this.run),
+        // Present the playable HUD and its foot health texture together, even
+        // when the next animation callback is delayed. Keep game time at zero.
+        this.run.ui.hud(this.run),
+        this.r.render(0),
+        window.drawUI?.(this.r.renderer),
         (this.run.fpsCap = this.fpsCap()),
         Mo(!0),
         t.offline && this.hud.toast(c(`Sin conexión: esta partida no contará para tu progreso`), null),

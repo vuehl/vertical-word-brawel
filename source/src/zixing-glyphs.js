@@ -1,6 +1,7 @@
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies,isOriginalHeroGlyph} from './paper-glyph-art.js';
 import {createGlyphBatches} from './glyph-batches.js';
 import {enemyWords} from './character-rules.js';
+import {createFirePoseTexture,loadedFireRig,prepareFireStrokes} from './fire-poses.js';
 const paintJobs=[];
 let paintTimer=null;
 function paintLater(paint){
@@ -41,21 +42,21 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     const index=page.count++,x=index%5*200+4,y=Math.floor(index/5)*200+4,t=page.texture;
     const entry={texture:t,rect:new Float32Array([x/1024,1-(y+192)/1024,(x+192)/1024,1-y/1024])};
     entry.ready=glyphAtlasReady().catch(()=>null).then(()=>paintLater(()=>{
-      if(disposed)return;page.context.drawImage(glyphCanvas(word),x,y);t.needsUpdate=true;
+      if(disposed)return;page.context.drawImage(glyphCanvas(word,undefined,{battle:true}),x,y);t.needsUpdate=true;
     }));
     page.jobs.push(entry.ready);t.userData.ready=Promise.all(page.jobs);textures.set(word,entry);return entry;
   }
-  function skin(batch,override){
+  function skin(batch,override,playerEntry){
     if(batch.zxGlyph)return batch;
     const data=species(batch.sid);if(!data)return batch;
     const word=override||glyphWordForSpecies(batch.sid);
     const m=batch.material;batch.zxGlyph=word;
-    const entry=texture(word),t=entry.texture;batch.zxGlyphRect=entry.rect;
+    const entry=playerEntry||texture(word),t=entry.texture;batch.zxGlyphRect=entry.rect;
     m.uniforms.map.value.dispose();m.uniforms.map.value=t;
     m.uniforms.zxGlyph={value:t};m.uniforms.uLean.value=.65;
     m.uniforms.uTexel.value.set(1/1024,1/1024);
-    batch.ready=false;
-    entry.ready.then(()=>{if(!disposed)batch.ready=true;},error=>{if(!disposed)batch.loadError=error;});
+    batch.ready=!!playerEntry;
+    if(!playerEntry)entry.ready.then(()=>{if(!disposed)batch.ready=true;},error=>{if(!disposed)batch.loadError=error;});
     m.fragmentShader=m.fragmentShader.replace('uniform sampler2D map;','uniform sampler2D map; uniform sampler2D zxGlyph;').replaceAll('texture2D(map,','texture2D(zxGlyph,');
     batch.zxOriginalGlyph=isOriginalHeroGlyph(word);
     if(batch.zxOriginalGlyph){
@@ -64,18 +65,26 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
       m.transparent=true;m.depthWrite=false;
     }
-    m.needsUpdate=true;batches.add(batch,t.uuid+(batch.zxOriginalGlyph?'-original':''));return batch;
+    m.needsUpdate=true;batches.add(batch,t.uuid+(batch.zxOriginalGlyph?'-original':''),playerEntry?1:1024);return batch;
   }
+  let playerEntry;
+  run.sprites.getPlayerGlyph=(id,speciesId,pose)=>{
+    const rig=loadedFireRig(speciesId);
+    if(!rig)return run.sprites.get(id);
+    playerEntry??=createFirePoseTexture(Texture,colorSpace);
+    playerEntry.draw(rig,pose?.word===rig.word?pose:null);
+    return skin(get(id,false,'player-fire'),rig.word,playerEntry);
+  };
   // Prepare the finite ordinary pool once, including the guardian fallback.
   // Later species reuse these UVs without painting/uploading during a wave.
   const warmup=Promise.all([...enemyWords,'敌'].map(word=>texture(word).ready));
-  run.sprites.prepareGlyphTextures=async renderer=>{
-    await warmup;
+  run.sprites.prepareGlyphTextures=async (renderer,playerSpecies)=>{
+    await Promise.all([warmup,prepareFireStrokes(playerSpecies)]);
     for(const page of pages){await Promise.all(page.jobs);if(!disposed)renderer.initTexture(page.texture);}
   };
   run.sprites.get=(...args)=>skin(get(...args),args[2]);
   for(const batch of run.sprites.batches.values())skin(batch);
-  run.sprites.clear=()=>{disposed=true;clear();batches.clear();for(const page of pages)page.texture.dispose();pages.length=0;textures.clear();};
+  run.sprites.clear=()=>{disposed=true;clear();batches.clear();playerEntry?.texture.dispose();playerEntry=null;for(const page of pages)page.texture.dispose();pages.length=0;textures.clear();};
 }
 
 // Legacy choice/evolution dialogs also use cutouts, with no animation timer.
@@ -84,6 +93,6 @@ export function glyphPreview(id,scale=3,className='pix',word=glyphWordForSpecies
   canvas.dataset.static='true';canvas.dataset.species=String(id);canvas.dataset.glyph=word;
   canvas.setAttribute('role','img');canvas.setAttribute('aria-label',word+'字灵');
   canvas.width=canvas.height=Math.max(48,Math.round(64*scale));
-  const draw=()=>{const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(glyphCanvas(word),0,0,canvas.width,canvas.height);canvas.dataset.frame=String((Number(canvas.dataset.frame)||0)+1);};
-  draw();glyphAtlasReady().then(draw).catch(()=>{});return canvas;
+  canvas.getContext('2d').drawImage(glyphCanvas(word),0,0,canvas.width,canvas.height);
+  canvas.dataset.frame='1';return canvas;
 }

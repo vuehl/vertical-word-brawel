@@ -142,7 +142,25 @@ async function verifyStartup(){
   await page.evaluate(()=>window.reportTextProgress(50));
   await verifyProgressImage(67,'00-loading.png');
   console.log('Verified 50% and 67% labels and bar lengths during a stalled download');
+  const checkGlyphGate=process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline');
+  if(checkGlyphGate)await page.evaluate(()=>{
+    const files=GameGlobal.pokebonk.files,resolve=files.resolvePath.bind(files);
+    files.resolvePath=async function(url){
+      if(url==='assets/glyphs/atlas.png'){
+        await new Promise(done=>{window.releaseGlyphAtlas=done;});
+        files.resolvePath=resolve;
+      }
+      return resolve(url);
+    };
+  });
   await page.evaluate(()=>window.releaseTextDownload());
+  if(checkGlyphGate){
+    await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
+    await page.evaluate(()=>releaseHomeStatus());
+    await verifyProgressImage(95);
+    assert.equal(await page.evaluate(()=>!!app.screen?.querySelector('button')||bootPercentages.includes(100)),false);
+    await page.evaluate(()=>releaseGlyphAtlas());
+  }
   if(failFrame){
     await page.waitForFunction(()=>window.problem,{timeout:20000});
     const message=await page.evaluate(()=>window.problem);
@@ -151,10 +169,12 @@ async function verifyStartup(){
     console.log('First game frame error reached the native startup dialog');
     return;
   }
-  await page.waitForFunction(()=>window.bootPercentages.filter(n=>n===95).length>=2||window.problem,{timeout:60000});
-  if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-  await verifyProgressImage(95,'00-background.png');
-  await page.evaluate(()=>window.releaseHomeStatus());
+  if(!checkGlyphGate){
+    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n===95).length>=2||window.problem,{timeout:60000});
+    if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
+    await verifyProgressImage(95,'00-background.png');
+    await page.evaluate(()=>window.releaseHomeStatus());
+  }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
   await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});

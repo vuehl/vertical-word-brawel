@@ -1,4 +1,4 @@
-import {glyphAtlasReady,glyphCanvas} from './paper-glyph-art.js';
+import {glyphCanvas} from './paper-glyph-art.js';
 
 export function drawPaperIllustration(canvas,hero=false,variant=0){
   const c=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
@@ -36,5 +36,5 @@ export function drawPaperIllustration(canvas,hero=false,variant=0){
     }else if(variant){c.fillStyle=['#e9d8ad30','#cae7dd30','#d1c4de30'][variant%3];c.fillRect(0,0,780,300);}
     c.restore();canvas.dataset.artReady='true';
   }
-  draw();canvas.dataset.static='true';glyphAtlasReady().then(draw).catch(()=>{});return canvas;
+  draw();canvas.dataset.static='true';return canvas;
 }
