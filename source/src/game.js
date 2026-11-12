@@ -17,8 +17,11 @@ import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
 import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE} from './spawn-budget.js';
 import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
+import {createStylizedEffectAtlas,EFFECT_CELL} from './stylized-effect-atlas.js';
+import {StylizedSkillFX,installStylizedMoveVFX} from './stylized-skill-vfx.js';
 import {actorMetrics} from './actor-metrics.js';
-import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera} from './paper-world.js';
+import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera,updateWorkshopScene} from './paper-world.js';
+import {createSceneAntialias} from './scene-antialias.js';
 import {paperProp} from './paper-props.js';
 import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
 import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
@@ -4999,9 +5002,9 @@ var oc = (e, t) =>
       float vz(vec2 uv){ return -getViewZ(readDepth(uv)); }
       void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor){
         float c = -getViewZ(depth);
-        vec2 t = texelSize;
+        vec2 t = texelSize * 1.35;
         float m = max(max(vz(uv + vec2(t.x, 0.)), vz(uv - vec2(t.x, 0.))), max(vz(uv + vec2(0., t.y)), vz(uv - vec2(0., t.y))));
-        float edge = step(1.0 + c * 0.12, m - c) * step(c, 300.);
+        float edge = smoothstep(.22 + c * .003, .40 + c * .004, m - c) * step(c, 300.);
         vec3 col = mix(inputColor.rgb, uColor, edge * uStrength);
         // First stop of the HDR chain: the scene lives in half floats (max 65504), so many additive glows piled up (a boss
         // fight) overflow to Inf and an Inf/NaN pixel spreads through the bloom's blur as black or white blocks, or the
@@ -5229,6 +5232,9 @@ var oc = (e, t) =>
         (this.outlinePass.renderToScreen = !1),
         this.composer.addPass(this.finalPass),
         this.composer.addPass(this.finalLite),
+        (this.antiAliasPass = new oi(this.camera, createSceneAntialias(fi))),
+        (this.antiAliasPass.renderToScreen = !0),
+        this.composer.addPass(this.antiAliasPass),
         this.pickFinal(),
         this.chroma,
         window.addEventListener(`resize`, () => this.resize()),
@@ -5273,8 +5279,8 @@ var oc = (e, t) =>
       let e = this.bloom.intensity > 0.001;
       ((this.finalPass.enabled = e),
         (this.finalLite.enabled = !e),
-        (this.finalPass.renderToScreen = e),
-        (this.finalLite.renderToScreen = !e));
+        (this.finalPass.renderToScreen = !1),
+        (this.finalLite.renderToScreen = !1));
     }
     get pixelScale() {
       return this.quality.pixelScale > 1 ? this.quality.pixelScale : 1;
@@ -6025,7 +6031,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         blendSrc: 204,
         blendDst: 205,
         vertexShader: `attribute vec4 iS; varying vec2 vUv; varying float vA; void main(){ vUv = uv; vA = iS.w; vec3 p = vec3(position.x*iS.w, 0., position.z*iS.w*0.6) + iS.xyz + vec3(0.,0.06,0.); gl_Position = projectionMatrix*viewMatrix*vec4(p,1.); }`,
-        fragmentShader: `varying vec2 vUv; void main(){ float d = length(vUv-0.5)*2.; float a = smoothstep(1.,0.3,d)*0.38; gl_FragColor = vec4(0.05,0.05,0.12,a); }`,
+        fragmentShader: `varying vec2 vUv; void main(){ float d = length(vUv-0.5)*2.; float a = (1.-smoothstep(.55,1.,d))*.24; gl_FragColor = vec4(0.19,0.25,0.35,a); }`,
       });
       ((this.mesh = new Sr(n, r, t)),
         (this.mesh.frustumCulled = !1),
@@ -6038,6 +6044,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     }
     push(e, t, n, r) {
       if (this.count >= this.cap) return;
+      if(this.surface)t=Math.max(t,this.surface(e,n));
       let i = this.count++,
         a = this.a.array;
       ((a[i * 4] = e), (a[i * 4 + 1] = t), (a[i * 4 + 2] = n), (a[i * 4 + 3] = r));
@@ -6146,38 +6153,13 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     }
   };
 function il() {
-  let e = [
-      `.....kkkkkk.....`,
-      `...kkrrrrrrkk...`,
-      `..krrrrrrrrwwk..`,
-      `.krrrrrrrrrrwwk.`,
-      `.krrrrrrrrrrrwk.`,
-      `krrrrrrrrrrrrrrk`,
-      `krrrrrkkkkrrrrrk`,
-      `kkkkkkwwwwkkkkkk`,
-      `kkkkkkwwwwkkkkkk`,
-      `kwwwwwkkkkwwwwwk`,
-      `kwwwwwwwwwwwwwgk`,
-      `.kwwwwwwwwwwwgk.`,
-      `.kwwwwwwwwwwggk.`,
-      `..kgwwwwwwwggk..`,
-      `...kkggggggkk...`,
-      `.....kkkkkk.....`,
-    ],
-    t = { k: `#1d1b2a`, r: `#e8433a`, w: `#f4f1ea`, g: `#b9b4ad` },
-    n = document.createElement(`canvas`);
-  n.width = n.height = 48;
-  let r = n.getContext(`2d`);
-  return (
-    e.forEach((e, n) =>
-      [...e].forEach((e, i) => {
-        t[e] && ((r.fillStyle = t[e]), r.fillRect(i * 3, n * 3, 3, 3));
-      }),
-    ),
-    n
-  );
-}
-var al = {
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=96;
+  const c=canvas.getContext('2d');c.save();c.beginPath();c.arc(48,48,40,0,Math.PI*2);c.clip();
+  const cream=c.createLinearGradient(0,25,0,88);cream.addColorStop(0,'#fff6dd');cream.addColorStop(1,'#d2c6ae');c.fillStyle=cream;c.fillRect(0,0,96,96);
+  const red=c.createLinearGradient(0,10,0,52);red.addColorStop(0,'#ffad72');red.addColorStop(1,'#d75d57');c.fillStyle=red;c.fillRect(0,0,96,48);
+  c.fillStyle='#4e4658';c.fillRect(0,44,96,8);c.restore();c.strokeStyle='#4e4658';c.lineWidth=3;c.beginPath();c.arc(48,48,40,0,Math.PI*2);c.stroke();
+  c.fillStyle='#fff2d6';c.beginPath();c.arc(48,48,11,0,Math.PI*2);c.fill();c.stroke();c.fillStyle='#ffffffaa';c.beginPath();c.ellipse(30,24,9,4,-.5,0,Math.PI*2);c.fill();return canvas;
+}var al = {
     gb: 1,
     magma: 2,
     crystal: 3,
@@ -6787,1415 +6769,9 @@ var Al = new Ei(),
   })({}),
   Ml = `float wh = clamp(min(c.r, min(c.g, c.b)), 0., 1.); c *= (1. - 0.45 * wh) / (1. + vGlow * 0.5);`;
 function Nl() {
-  let e = document.createElement(`canvas`);
-  ((e.width = 512), (e.height = 1152));
-  let t = e.getContext(`2d`),
-    n = (e, n) => {
-      (t.save(), t.translate((e % 8) * 64 + 32, Math.floor(e / 8) * 64 + 32), n(t), t.restore());
-    },
-    r = `#fff`;
-  (n(0, (e) => {
-    let t = e.createRadialGradient(0, 0, 0, 0, 0, 30);
-    (t.addColorStop(0, `rgba(255,255,255,1)`),
-      t.addColorStop(0.4, `rgba(255,255,255,0.6)`),
-      t.addColorStop(1, `rgba(255,255,255,0)`),
-      (e.fillStyle = t),
-      e.fillRect(-32, -32, 64, 64));
-  }),
-    n(1, (e) => {
-      ((e.fillStyle = r), e.beginPath());
-      for (let t = 0; t < 10; t++) {
-        let n = t % 2 ? 11 : 28,
-          r = (t / 10) * Math.PI * 2 - Math.PI / 2;
-        e.lineTo(Math.cos(r) * n, Math.sin(r) * n);
-      }
-      e.fill();
-    }),
-    n(2, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(0, -30),
-        e.lineTo(5, 0),
-        e.lineTo(0, 30),
-        e.lineTo(-5, 0),
-        e.fill(),
-        e.beginPath(),
-        e.moveTo(-30, 0),
-        e.lineTo(0, 4),
-        e.lineTo(30, 0),
-        e.lineTo(0, -4),
-        e.fill());
-    }),
-    n(3, (e) => {
-      ((e.strokeStyle = r), (e.lineWidth = 6), e.beginPath(), e.arc(0, 0, 26, 0, Math.PI * 2), e.stroke());
-    }),
-    n(4, (e) => {
-      ((e.fillStyle = r), e.beginPath(), e.ellipse(0, 0, 12, 26, 0.6, 0, Math.PI * 2), e.fill());
-    }),
-    n(5, (e) => {
-      let t = e.createRadialGradient(0, 8, 2, 0, 4, 28);
-      (t.addColorStop(0, `#fff`),
-        t.addColorStop(1, `rgba(255,255,255,0)`),
-        (e.fillStyle = t),
-        e.beginPath(),
-        e.moveTo(0, -30),
-        e.quadraticCurveTo(22, 0, 14, 18),
-        e.quadraticCurveTo(0, 30, -14, 18),
-        e.quadraticCurveTo(-22, 0, 0, -30),
-        e.fill());
-    }),
-    n(6, (e) => {
-      ((e.strokeStyle = r),
-        (e.lineWidth = 4),
-        e.beginPath(),
-        e.arc(0, 0, 22, 0, Math.PI * 2),
-        e.stroke(),
-        (e.fillStyle = `rgba(255,255,255,0.8)`),
-        e.beginPath(),
-        e.arc(-8, -8, 6, 0, Math.PI * 2),
-        e.fill());
-    }),
-    n(7, (e) => {
-      ((e.strokeStyle = r), (e.lineWidth = 5), (e.lineCap = `round`));
-      for (let t = 0; t < 3; t++)
-        (e.rotate(Math.PI / 3), e.beginPath(), e.moveTo(-26, 0), e.lineTo(26, 0), e.stroke());
-    }),
-    n(8, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(6, -30),
-        e.lineTo(-12, 4),
-        e.lineTo(0, 4),
-        e.lineTo(-6, 30),
-        e.lineTo(14, -6),
-        e.lineTo(2, -6),
-        e.closePath(),
-        e.fill());
-    }),
-    n(9, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(-20, -10),
-        e.lineTo(-4, -24),
-        e.lineTo(20, -14),
-        e.lineTo(24, 10),
-        e.lineTo(4, 24),
-        e.lineTo(-22, 14),
-        e.closePath(),
-        e.fill());
-    }),
-    n(10, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(0, 22),
-        e.bezierCurveTo(-34, -2, -16, -30, 0, -12),
-        e.bezierCurveTo(16, -30, 34, -2, 0, 22),
-        e.fill());
-    }),
-    n(11, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.arc(0, -4, 20, 0, Math.PI * 2),
-        e.fill(),
-        e.fillRect(-10, 10, 20, 12),
-        (e.globalCompositeOperation = `destination-out`),
-        e.beginPath(),
-        e.arc(-8, -4, 6, 0, 7),
-        e.arc(8, -4, 6, 0, 7),
-        e.fill());
-    }),
-    n(12, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.ellipse(-6, 16, 10, 8, -0.4, 0, 7),
-        e.fill(),
-        e.fillRect(2, -24, 5, 40),
-        e.fillRect(2, -24, 16, 6));
-    }),
-    n(13, (e) => {
-      ((e.strokeStyle = r), (e.lineWidth = 5), e.beginPath());
-      for (let t = 0; t < 60; t++) {
-        let n = t * 0.2,
-          r = t * 0.45;
-        e.lineTo(Math.cos(n) * r, Math.sin(n) * r);
-      }
-      e.stroke();
-    }),
-    n(14, (e) => {
-      ((e.fillStyle = r), e.fillRect(-18, -18, 36, 36));
-    }),
-    n(15, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(0, -28),
-        e.quadraticCurveTo(20, 6, 0, 24),
-        e.quadraticCurveTo(-20, 6, 0, -28),
-        e.fill());
-    }),
-    n(16, (e) => {
-      e.fillStyle = r;
-      for (let t = -1; t <= 1; t++)
-        (e.beginPath(),
-          e.moveTo(t * 13 - 10, -28),
-          e.quadraticCurveTo(t * 13 + 8, 0, t * 13 - 4, 28),
-          e.quadraticCurveTo(t * 13 + 2, 0, t * 13 - 10, -28),
-          e.fill());
-    }),
-    n(17, (e) => {
-      e.fillStyle = r;
-      for (let t of [-1, 1])
-        for (let n of [-1, 1])
-          (e.beginPath(),
-            e.moveTo(n * 18, t * 28),
-            e.lineTo(n * 4, t * 28),
-            e.lineTo(n * 11, t * 4),
-            e.fill());
-    }),
-    n(18, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.roundRect(-20, -16, 36, 30, 9),
-        e.fill(),
-        e.fillRect(-26, -4, 10, 18),
-        (e.globalCompositeOperation = `destination-out`),
-        e.fillRect(-20, -6, 36, 2));
-      for (let t = 0; t < 3; t++) e.fillRect(-9 + t * 9, -16, 2, 10);
-    }),
-    n(19, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.arc(0, 0, 28, -2.2, 2.2),
-        e.arc(-12, 0, 22, 1.9, -1.9, !0),
-        e.fill());
-    }),
-    n(20, (e) => {
-      e.fillStyle = r;
-      for (let t of [0.785, -0.785])
-        (e.save(),
-          e.rotate(t),
-          e.beginPath(),
-          e.moveTo(-30, 0),
-          e.lineTo(0, -6),
-          e.lineTo(30, 0),
-          e.lineTo(0, 6),
-          e.fill(),
-          e.restore());
-    }),
-    n(21, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(-28, 0),
-        e.quadraticCurveTo(0, -24, 28, 0),
-        e.quadraticCurveTo(0, 24, -28, 0),
-        e.fill(),
-        (e.globalCompositeOperation = `destination-out`),
-        e.beginPath(),
-        e.arc(0, 0, 9, 0, 7),
-        e.fill(),
-        (e.globalCompositeOperation = `source-over`),
-        e.beginPath(),
-        e.arc(0, 0, 5, 0, 7),
-        e.fill());
-    }),
-    n(22, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.arc(0, 0, 26, 0, 7),
-        e.fill(),
-        (e.globalCompositeOperation = `destination-out`),
-        e.beginPath(),
-        e.arc(12, -8, 22, 0, 7),
-        e.fill());
-    }),
-    n(23, (e) => {
-      ((e.strokeStyle = r), (e.lineCap = `round`));
-      for (let t = 0; t < 3; t++)
-        ((e.lineWidth = 6 - t), e.beginPath(), e.arc(-22, 0, 12 + t * 12, -0.8, 0.8), e.stroke());
-    }),
-    n(24, (e) => {
-      ((e.fillStyle = r),
-        e.rotate(0.5),
-        e.beginPath(),
-        e.ellipse(0, -2, 10, 26, 0, 0, 7),
-        e.fill(),
-        e.fillRect(-1.5, 18, 3, 12),
-        (e.globalCompositeOperation = `destination-out`),
-        e.fillRect(-1, -26, 2, 44));
-    }),
-    n(25, (e) => {
-      ((e.fillStyle = r), e.beginPath());
-      for (let t = 0; t < 8; t++) {
-        let n = t % 2 ? 5 : 30,
-          r = (t / 8) * Math.PI * 2;
-        e.lineTo(Math.cos(r) * n, Math.sin(r) * n);
-      }
-      e.fill();
-    }),
-    n(26, (e) => {
-      ((e.strokeStyle = r),
-        (e.lineWidth = 5),
-        (e.lineJoin = `round`),
-        (e.lineCap = `round`),
-        e.beginPath(),
-        e.moveTo(-28, 4),
-        e.lineTo(-12, -4),
-        e.lineTo(-2, 8),
-        e.lineTo(12, -6),
-        e.lineTo(28, 2),
-        e.moveTo(-2, 8),
-        e.lineTo(2, 26),
-        e.moveTo(-12, -4),
-        e.lineTo(-16, -24),
-        e.moveTo(12, -6),
-        e.lineTo(18, -26),
-        e.stroke());
-    }),
-    n(27, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(-14, -28),
-        e.lineTo(14, -28),
-        e.lineTo(14, 10),
-        e.quadraticCurveTo(14, 28, 0, 28),
-        e.quadraticCurveTo(-14, 28, -14, 10),
-        e.fill(),
-        (e.globalCompositeOperation = `destination-out`),
-        e.fillRect(-1.5, -20, 3, 30));
-    }),
-    n(28, (e) => {
-      e.fillStyle = r;
-      for (let [t, n, r] of [
-        [0, 0, 9],
-        [-16, -10, 6],
-        [14, -14, 5],
-        [16, 12, 7],
-        [-12, 16, 5],
-        [2, -24, 4],
-        [-24, 4, 4],
-      ])
-        (e.beginPath(), e.arc(t, n, r, 0, 7), e.fill());
-    }),
-    n(29, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(0, -30),
-        e.lineTo(10, -4),
-        e.lineTo(6, 28),
-        e.lineTo(-6, 28),
-        e.lineTo(-10, -4),
-        e.closePath(),
-        e.fill());
-    }),
-    n(30, (e) => {
-      ((e.fillStyle = r), e.beginPath(), e.roundRect(-14, -6, 28, 28, 8), e.fill());
-      for (let t = 0; t < 4; t++) (e.beginPath(), e.roundRect(-14 + t * 7.5, -28, 6, 26, 3), e.fill());
-      (e.beginPath(), e.roundRect(12, -4, 14, 7, 3), e.fill());
-    }),
-    n(31, (e) => {
-      let t = e.createRadialGradient(0, 6, 2, 0, 0, 30);
-      (t.addColorStop(0, `#fff`),
-        t.addColorStop(1, `rgba(255,255,255,0.2)`),
-        (e.fillStyle = t),
-        e.beginPath(),
-        e.moveTo(0, -30),
-        e.quadraticCurveTo(10, -12, 22, -16),
-        e.quadraticCurveTo(24, 26, 0, 26),
-        e.quadraticCurveTo(-24, 26, -22, -4),
-        e.quadraticCurveTo(-8, -8, 0, -30),
-        e.fill(),
-        (e.globalCompositeOperation = `destination-out`),
-        e.beginPath(),
-        e.ellipse(-7, 6, 3, 5, 0, 0, 7),
-        e.ellipse(7, 6, 3, 5, 0, 0, 7),
-        e.fill());
-    }),
-    n(32, (e) => {
-      let t = [
-          [0, -29],
-          [17, -14],
-          [17, 12],
-          [0, 29],
-          [-17, 12],
-          [-17, -14],
-        ],
-        n = (t, n) => {
-          ((e.fillStyle = n),
-            e.beginPath(),
-            t.forEach(([t, n], r) => (r ? e.lineTo(t, n) : e.moveTo(t, n))),
-            e.closePath(),
-            e.fill());
-        };
-      ((e.lineJoin = `round`),
-        (e.strokeStyle = `#2a2440`),
-        (e.lineWidth = 5),
-        e.beginPath(),
-        t.forEach(([t, n], r) => (r ? e.lineTo(t, n) : e.moveTo(t, n))),
-        e.closePath(),
-        e.stroke(),
-        n(t, `#9a9a9a`),
-        n(
-          [
-            [0, -29],
-            [17, -14],
-            [0, -6],
-            [-17, -14],
-          ],
-          `#ffffff`,
-        ),
-        n(
-          [
-            [-17, -14],
-            [0, -6],
-            [0, 29],
-            [-17, 12],
-          ],
-          `#e2e2e2`,
-        ),
-        n(
-          [
-            [17, -14],
-            [17, 12],
-            [0, 29],
-            [0, -6],
-          ],
-          `#b4b4b4`,
-        ),
-        n(
-          [
-            [-9, -4],
-            [0, -6],
-            [0, 14],
-            [-8, 8],
-          ],
-          `#f4f4f4`,
-        ),
-        (e.fillStyle = `#ffffff`),
-        e.beginPath(),
-        e.ellipse(-8, -15, 4, 2.5, -0.5, 0, 7),
-        e.fill());
-    }));
-  let i = (e, t, r) =>
-      n(e, (e) => {
-        let n = 64 / t.length;
-        t.forEach((t, i) =>
-          [...t].forEach((t, a) => {
-            r[t] && ((e.fillStyle = r[t]), e.fillRect(a * n - 32, i * n - 32, n, n));
-          }),
-        );
-      }),
-    a = { W: `#ffffff`, S: `#c4c0b8`, O: `#3a3040` };
-  (i(
-    35,
-    [
-      `................`,
-      `................`,
-      `................`,
-      `................`,
-      `..OO........OO..`,
-      `.OWWO......OWWO.`,
-      `.OWWWOOOOOOWWWO.`,
-      `..OWWWWWWWWWWO..`,
-      `..OWWSSSSSSWWO..`,
-      `.OWWSOOOOOOSWWO.`,
-      `.OSSO......OSSO.`,
-      `..OO........OO..`,
-      `................`,
-      `................`,
-      `................`,
-      `................`,
-    ],
-    a,
-  ),
-    i(
-      36,
-      [
-        `.......OO.......`,
-        `......OWWO......`,
-        `......OWWO......`,
-        `.....OWWWO......`,
-        `.....OWWSO......`,
-        `....OWWWSO......`,
-        `....OWWSSO..OO..`,
-        `...OWWWSO..OWWO.`,
-        `...OWWSSO.OWWSO.`,
-        `..OWWWSOOOWWSO..`,
-        `..OWWSSWWWWSO...`,
-        `.OWWWSSSSSSO....`,
-        `.OWWSSSSSSO.....`,
-        `OWWSSSSSOO......`,
-        `OSSSSOOO........`,
-        `.OOOO...........`,
-      ],
-      a,
-    ),
-    i(
-      37,
-      [
-        `......OO........`,
-        `.....OWWO.......`,
-        `.....OWWO.......`,
-        `.....OWWO.......`,
-        `.....OWWO.......`,
-        `.....OWWOOO.....`,
-        `...OOOWWOWWO....`,
-        `..OWWOWWOWWOO...`,
-        `..OWWOWWOWWOWO..`,
-        `..OWWWWWWWWWWO..`,
-        `..OWWWWWWWWWSO..`,
-        `...OWWWWWWWSO...`,
-        `...OWWWWWWSSO...`,
-        `....OWWWWSSO....`,
-        `.....OSSSSO.....`,
-        `......OOOO......`,
-      ],
-      { W: `#ffe8d8`, S: `#e8b8a0`, O: `#5a3028` },
-    ),
-    i(33, [`....D...`, `...DR...`, `...ROD..`, `..DROR..`, `.DROYOD.`, `.ROYYOR.`, `.ROYYOR.`, `..DRRD..`], {
-      Y: `#fff1a8`,
-      O: `#ffaa2e`,
-      R: `#f0581e`,
-      D: `#a82a16`,
-    }),
-    i(38, [`....D...`, `...DR...`, `...ROD..`, `..DROR..`, `.DROYOD.`, `.ROYYOR.`, `.ROYYOR.`, `..DRRD..`], {
-      Y: `#f4eeff`,
-      O: `#b89aff`,
-      R: `#7a5af0`,
-      D: `#3a2a8a`,
-    }),
-    i(34, [`..1111..`, `.122221.`, `12233221`, `12333321`, `12333321`, `12233221`, `.122221.`, `..1111..`], {
-      1: `#8a8a8a`,
-      2: `#bcbcbc`,
-      3: `#e6e6e6`,
-    }),
-    i(
-      39,
-      [
-        `.OOO............`,
-        `OLWWOOO.........`,
-        `.OOGLWWOO.......`,
-        `...OGLLWWOO.....`,
-        `....OGGLWWWO....`,
-        `.....OGLLWWWO...`,
-        `.....OGGLLLWWO..`,
-        `......OGGLLWWO..`,
-        `......OGGGLLWWO.`,
-        `.......OGGGLLWO.`,
-        `........OOGGGLWO`,
-        `..........OOGLWO`,
-        `............OGLO`,
-        `.............OGW`,
-        `..............OW`,
-        `..............OL`,
-      ],
-      { W: `#ffffff`, L: `#d8ff9a`, G: `#7ad84a`, O: `#2a5a2a` },
-    ),
-    i(
-      40,
-      [
-        `.........OOOO...`,
-        `........OYYYO...`,
-        `.......OYWYO....`,
-        `......OYWYO.....`,
-        `.....OYWYO......`,
-        `....OYWYYOOOO...`,
-        `...OYWWWWWWYO...`,
-        `...OOOOYWWYO....`,
-        `......OYWYO.....`,
-        `.....OYWYO......`,
-        `....OYWYO.......`,
-        `....OYYO........`,
-        `...OYYO.........`,
-        `...OYO..........`,
-        `...OO...........`,
-        `................`,
-      ],
-      { W: `#ffffff`, Y: `#ffe14a`, O: `#8a5a10` },
-    ),
-    i(41, [`..OOOO..`, `.OLLMMO.`, `OLLMMMMO`, `OLMMMDDO`, `OMMMDDDO`, `OMMDDDDO`, `.ODDDDO.`, `..OOOO..`], {
-      L: `#e2ccaa`,
-      M: `#b0926a`,
-      D: `#76604a`,
-      O: `#3a2c22`,
-    }),
-    i(42, [`...OO...`, `..OLLO..`, `.OLWBBO.`, `.OLBBBO.`, `OLBBBBBO`, `OBBBBBDO`, `.OBBBDO.`, `..OOOO..`], {
-      L: `#c4ecff`,
-      W: `#ffffff`,
-      B: `#4aa8ff`,
-      D: `#2a6ad0`,
-      O: `#183a7a`,
-    }),
-    i(
-      43,
-      [
-        `................`,
-        `................`,
-        `....OOOOOOOO....`,
-        `...OWWOWWOWWO...`,
-        `..OWWWOWWOWWWO..`,
-        `..OWWWOWWOWWWO..`,
-        `..OWWWWWWWWWWOO.`,
-        `.OOWWWWWWWWWWWO.`,
-        `OWWOWWWWWWWWWSO.`,
-        `OWWWOWWWWWWWSSO.`,
-        `.OWWWWWWWWWSSO..`,
-        `..OSWWWWWSSSO...`,
-        `...OSSSSSSSO....`,
-        `....OOOOOOO.....`,
-        `................`,
-        `................`,
-      ],
-      { W: `#ffffff`, S: `#c8d0e0`, O: `#2a2440` },
-    ),
-    i(
-      44,
-      [
-        `..O...O...O.....`,
-        `.OWO.OWO.OWO....`,
-        `.OWO.OWO.OWO....`,
-        `.OWSOOWSOOWSO...`,
-        `.OWSOOWSOOWSO...`,
-        `..OWSOOWSOOWSO..`,
-        `..OWSOOWSOOWSO..`,
-        `..OWSOOWSOOWSO..`,
-        `...OWSOOWSOOWSO.`,
-        `...OWSOOWSOOWSO.`,
-        `...OWSOOWSOOWSO.`,
-        `....OWSOOWSOOWSO`,
-        `....OWSOOWSOOWSO`,
-        `....OWO.OWO.OWO.`,
-        `.....OWO.OWO.OWO`,
-        `......O...O...O.`,
-      ],
-      { W: `#ffffff`, S: `#e0d4c4`, O: `#4a2a20` },
-    ),
-    i(
-      45,
-      [
-        `................`,
-        `......OOOO......`,
-        `....OOWWLLO.....`,
-        `...OWLLBBBLO....`,
-        `..OWLBBOOBBLO...`,
-        `..OLBBO..OBBO...`,
-        `.OLBBO....OO....`,
-        `.OLBBO..........`,
-        `OLBBBO.......OO.`,
-        `OLBBBBO....OOLO.`,
-        `OLBBBBBOOOOLLBO.`,
-        `OBBBBBBBLLLBBBO.`,
-        `OBDBBBDBBBBDBBO.`,
-        `ODDBDDDBDDBDDDO.`,
-        `.OOOOOOOOOOOOOO.`,
-        `................`,
-      ],
-      { W: `#ffffff`, L: `#9ee0ff`, B: `#4aa8ff`, D: `#2a6ad0`, O: `#183a7a` },
-    ),
-    i(
-      46,
-      [
-        `.........O......`,
-        `........ODO.....`,
-        `........ODO.....`,
-        `...O.....ODO....`,
-        `..ODO....ODO....`,
-        `..ODO....ODO...O`,
-        `...ODO..ODO..OOD`,
-        `.OODDOO.ODDOODDO`,
-        `ODDOODDODOODDOO.`,
-        `.OO..OODO..ODO..`,
-        `......ODO...ODO.`,
-        `.....ODO....ODO.`,
-        `.....ODO.....O..`,
-        `.....ODO........`,
-        `......ODO.......`,
-        `......ODO.......`,
-      ],
-      { D: `#2a1c14`, O: `#4a3626` },
-    ),
-    i(
-      47,
-      [
-        `.......OO.......`,
-        `......OLMO......`,
-        `......OLMO......`,
-        `.....OLLMDO.....`,
-        `.....OLMMDO.....`,
-        `....OLLMMDO.....`,
-        `....OLMMMDDO....`,
-        `...OLLMMMDDO....`,
-        `...OLMMMMDDDO...`,
-        `..OLLMMOMMDDO...`,
-        `..OLMMOLOMDDDO..`,
-        `.OLLMOLMMODDDO..`,
-        `.OLMMMLMMMDDDDO.`,
-        `OLLMMMMMMMDDDDDO`,
-        `OOOOOOOOOOOOOOOO`,
-        `................`,
-      ],
-      { L: `#f0d8a8`, M: `#c88a52`, D: `#8a5430`, O: `#3a2418` },
-    ),
-    i(
-      48,
-      [
-        `................`,
-        `....OOO.........`,
-        `...OWWSO........`,
-        `...OWSSDO.......`,
-        `...OSSDDO..OO...`,
-        `....ODDO..OWSO..`,
-        `.....OO...OSDO..`,
-        `...........OO...`,
-        `.......OOOO.....`,
-        `......OWWWSO....`,
-        `.....OWWSSSDO...`,
-        `.....OWSSSDDO...`,
-        `.....OSSSDDDO...`,
-        `......OSDDDO....`,
-        `.......OOOO.....`,
-        `................`,
-      ],
-      { W: `#ffffff`, S: `#dcdcdc`, D: `#a8a8a8`, O: `#5a5a6e` },
-    ),
-    i(
-      49,
-      [
-        `.....OOOOOO.....`,
-        `...OOLLLLLLOO...`,
-        `..OLLWWiiiiiLO..`,
-        `.OLWWiiiiiiiiLO.`,
-        `.OLWiiiiiiiiiLO.`,
-        `OLLiiiiiiiiiiiLO`,
-        `OLiiiiiiiiiiiiLO`,
-        `OLiiiiiiiiiiiiLO`,
-        `OLiiiiiiiiiiiBLO`,
-        `OLiiiiiiiiiiiBLO`,
-        `OLLiiiiiiiiiBBLO`,
-        `.OLiiiiiiiiBBLO.`,
-        `.OLLiiiiiiBBLLO.`,
-        `..OLLBBBBBBLLO..`,
-        `...OOLLLLLLOO...`,
-        `.....OOOOOO.....`,
-      ],
-      { W: `#ffffff`, L: `#9ad8ff`, B: `#4a9ae8`, i: `rgba(170,220,255,0.28)`, O: `#1e4a9a` },
-    ),
-    i(50, [`OOOOOOO.`, `OWWWWWO.`, `OOOOWWO.`, `...OWO..`, `..OWO...`, `.OWWOOO.`, `OWWWWWO.`, `OOOOOOO.`], {
-      W: `#ffffff`,
-      O: `#2a2050`,
-    }),
-    i(51, [`..O..O..`, `.OWOOWO.`, `..OWWO..`, `OOWLLWOO`, `OOWLLWOO`, `..OWWO..`, `.OWOOWO.`, `..O..O..`], {
-      W: `#ffffff`,
-      L: `#9ad8ff`,
-      O: `#3a6aa8`,
-    }));
-  let o = { W: `#fffbe0`, L: `#ffe066`, M: `#f0b828`, D: `#c07a18`, O: `#5a3410` };
-  (i(
-    52,
-    [
-      `.....OOOOOO.....`,
-      `...OOLLLLLLOO...`,
-      `..OLWWLLLLLLMO..`,
-      `.OLWLLLLLLLLMMO.`,
-      `.OLWLDDDDDLLMMO.`,
-      `OLLLLDLLLLDLLMDO`,
-      `OLLLLDLLLLDLLMDO`,
-      `OLLLLDDDDDLLMMDO`,
-      `OLLLLDLLLLLLMMDO`,
-      `OLLDDDDDLLLMMMDO`,
-      `OLLLLDLLLLLMMMDO`,
-      `.OLLLDLLLLMMMDO.`,
-      `.OLLMMMMMMMMMDO.`,
-      `..OMMMMMMMMDDO..`,
-      `...OODDDDDDOO...`,
-      `.....OOOOOO.....`,
-    ],
-    o,
-  ),
-    i(
-      53,
-      [
-        `......OOOO......`,
-        `.....OLLLMO.....`,
-        `....OLWLLMMO....`,
-        `....OLWLLMMO....`,
-        `....OLLDDMMO....`,
-        `....OLLDLMDO....`,
-        `....OLLDLMDO....`,
-        `....OLLDDMDO....`,
-        `....OLLDLMDO....`,
-        `....OLDDDMDO....`,
-        `....OLLDLMDO....`,
-        `....OLLLMMDO....`,
-        `....OLMMMMDO....`,
-        `....OMMMMDDO....`,
-        `.....ODDDDO.....`,
-        `......OOOO......`,
-      ],
-      o,
-    ),
-    i(
-      54,
-      [
-        `.......OOO......`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `.......OOO......`,
-      ],
-      o,
-    ),
-    i(
-      55,
-      [
-        `................`,
-        `................`,
-        `................`,
-        `..OOOO..........`,
-        `.OLLLMO.........`,
-        `OLWOOLMO........`,
-        `OLO..OLOOOOOOOO.`,
-        `OLO..OLLLLLLLLMO`,
-        `OMO..OMMMMMMMMDO`,
-        `OMDOODMOOODOODO.`,
-        `.OMDDDO..ODOODO.`,
-        `..OOOO...ODO.OO.`,
-        `.........OO.....`,
-        `................`,
-        `................`,
-        `................`,
-      ],
-      o,
-    ),
-    i(
-      138,
-      [
-        `......OOOO......`,
-        `....OOWWLLOO....`,
-        `...OWWLLLLLMO...`,
-        `..OWLLGGLLLLMO..`,
-        `..OWLGGGLLLLMO..`,
-        `.OWLLLGLLLGGLMO.`,
-        `.OWLLLLLLGGGLMO.`,
-        `.OLLLLLLLLGLLMO.`,
-        `OLLGGLLLLLLLLMDO`,
-        `OLGGGGLLLLLLLMDO`,
-        `OLLGGLLLLLGGLMDO`,
-        `OLLLLLLLLGGGMMDO`,
-        `.OLLLLLLLLGMMDO.`,
-        `.OOMMLLLLMMMDDO.`,
-        `...OOMMMMMDDOO..`,
-        `.....OOOOOO.....`,
-      ],
-      { W: `#ffffff`, L: `#fff4d6`, M: `#ead7a8`, D: `#c8ae78`, G: `#6ad05a`, O: `#4a3a28` },
-    ));
-  let s = (e) => {
-    let t = Math.floor((16 - e.length) / 2);
-    return [...Array(t).fill(``), ...e, ...Array(16 - e.length - t).fill(``)];
-  };
-  (i(
-    63,
-    [
-      `.......OO.......`,
-      `......OLMO......`,
-      `......OLMO..O...`,
-      `.....OLMDO.OTO..`,
-      `.....OLMDOOTO...`,
-      `....OLMMDDOO....`,
-      `.OO.OLMMDO......`,
-      `OTTOOLMMDO......`,
-      `.OOTOLMMDDO.....`,
-      `...OOLLMMDO.....`,
-      `.....OLMMDDO.OO.`,
-      `.....OLMMMDOOTTO`,
-      `....OLLMMMDDOOO.`,
-      `....OLMGMMDDO...`,
-      `...OLGGMMMDDDO..`,
-      `...OOOOOOOOOOO..`,
-    ],
-    { L: `#d8a874`, M: `#9a6238`, D: `#5e3a20`, T: `#f0e4c8`, G: `#6ab04a`, O: `#2a1a10` },
-  ),
-    i(
-      64,
-      s([
-        `...........OOOO.`,
-        `.........OOLLLO.`,
-        `.......OOLLLLGO.`,
-        `......OLLLLLGGO.`,
-        `.....OLLLLLGGDO.`,
-        `....OLLLLWGGDO..`,
-        `...OLLLLWGGDDO..`,
-        `...OLLLWGGGDO...`,
-        `..OLLLWGGGDDO...`,
-        `..OLLWGGGDDO....`,
-        `..OLWGGGDDO.....`,
-        `.OLWGGDDOO......`,
-        `.OWGDDOO........`,
-        `OWOOOO..........`,
-        `OO..............`,
-      ]),
-      { W: `#e8ffb0`, L: `#9ae05a`, G: `#5ab83a`, D: `#2e7a2a`, O: `#1a3a1a` },
-    ),
-    i(
-      65,
-      s([
-        `............OO..`,
-        `..........OOLWO.`,
-        `.........OLLWLO.`,
-        `........OLLWLMO.`,
-        `.......OLLWLMMO.`,
-        `......OLLWLMMO..`,
-        `.....OLLWLMMDO..`,
-        `....OLLWLMMDO...`,
-        `...OLLWLMMDO....`,
-        `...OLWLMMDO.....`,
-        `..OLWLMDDO......`,
-        `..OWLMDOO.......`,
-        `.OWOOOO.........`,
-        `.OO.............`,
-        `O...............`,
-      ]),
-      { W: `#fff6e0`, L: `#f0d8a8`, M: `#c89a5a`, D: `#8a5a2a`, O: `#3a2410` },
-    ),
-    i(
-      66,
-      [
-        `.......OO.......`,
-        `.......OWO......`,
-        `......OWWO......`,
-        `......OWLO......`,
-        `......OWLO......`,
-        `.....OWWLO......`,
-        `.....OWLLO......`,
-        `.....OWLLDO.....`,
-        `....OWWLLDO.....`,
-        `....OWLLLDO.....`,
-        `....OWLLDDO.....`,
-        `...OWWLLDDDO....`,
-        `...OWLLLDDDO....`,
-        `...ORRRRRRRO....`,
-        `...OORRRRROO....`,
-        `.....OOOOO......`,
-      ],
-      { W: `#ffffff`, L: `#d8dce8`, D: `#9aa0b8`, R: `#e04a4a`, O: `#2a2440` },
-    ),
-    i(
-      67,
-      s([
-        `.......OO.......`,
-        `.......OYO......`,
-        `......OYYO......`,
-        `......OYWYO.....`,
-        `.OOOOOOYWYOOOOO.`,
-        `.OYYYYYWWYYYYYO.`,
-        `..OYYYWWWYYYDO..`,
-        `...OYYWWYYYDO...`,
-        `....OYYYYYDO....`,
-        `....OYYYYYDO....`,
-        `...OYYYOOYYDO...`,
-        `...OYYO..OYDO...`,
-        `..OYYO....ODDO..`,
-        `..OYO......OYO..`,
-        `..OO........OO..`,
-      ]),
-      { Y: `#ffe86a`, W: `#fffbe0`, D: `#e0a82a`, O: `#7a4a10` },
-    ),
-    i(
-      68,
-      s([
-        `.....OOOOO......`,
-        `...OOWWYYYO.....`,
-        `..OWWYYYOO......`,
-        `.OWYYYYO........`,
-        `.OWYYYO.........`,
-        `OWYYYYO.........`,
-        `OWYYYO..........`,
-        `OWYYYO..........`,
-        `OWYYYO..........`,
-        `OWYYYYO.........`,
-        `.OYYYYO.........`,
-        `.OYYYYDO........`,
-        `..OYYYDDOO......`,
-        `...OODDDDDO.....`,
-        `.....OOOOO......`,
-      ]),
-      { Y: `#fff0a0`, W: `#fffbe0`, D: `#e0c050`, O: `#6a5a20` },
-    ),
-    i(
-      69,
-      [
-        `W......W......W.`,
-        `.W.....W.....W..`,
-        `..WSSSSWSSSSW...`,
-        `..SW...W...WS...`,
-        `..S.W..W..W.S...`,
-        `..S..WSWSW..S...`,
-        `..S..SWWWS..S...`,
-        `WWWWWWWWWWWWWWW.`,
-        `..S..SWWWS..S...`,
-        `..S..WSWSW..S...`,
-        `..S.W..W..W.S...`,
-        `..SW...W...WS...`,
-        `..WSSSSWSSSSW...`,
-        `.W.....W.....W..`,
-        `W......W......W.`,
-        `................`,
-      ],
-      { W: `#ffffff`, S: `#cfd2e4` },
-    ),
-    i(
-      70,
-      s([
-        `..OOO......OOO..`,
-        `.OWWLO....OLWWO.`,
-        `OWWLLLO..OLLLWWO`,
-        `OWLLPLLOOLLPLLWO`,
-        `OWLPPPLODOLPPPLW`,
-        `OWLLPLLODOLLPLWO`,
-        `.OWLLLODDOLLLWO.`,
-        `..OOOOODDOOOOO..`,
-        `..OWLLODDOLLWO..`,
-        `.OWLLLODDOLLLWO.`,
-        `.OWLPLOODOOLPLWO`,
-        `.OWLLO.OO.OLLWO.`,
-        `..OOO......OOO..`,
-      ]),
-      { W: `#ffffff`, L: `#e4e0ff`, P: `#8a6ad8`, D: `#3a2a6a`, O: `#2a2050` },
-    ),
-    i(
-      71,
-      s([
-        `....OOOO.OOOO...`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWSSOWWSSO..`,
-        `...OWWSSOWWSSO..`,
-        `....OWSO.OWSO...`,
-        `....OWSO.OWSO...`,
-        `.....OO...OO....`,
-      ]),
-      { W: `#fffbe8`, S: `#e0d0a0`, O: `#4a2a20` },
-    ));
-  let c = { P: `#b45ae8`, L: `#e0b0ff`, W: `#ffffff`, D: `#7a2aa8`, O: `#3a1050` };
-  (i(
-    72,
-    s([
-      `.....OOOOO......`,
-      `...OOPPPPPOO....`,
-      `..OPPLLPPPPPO...`,
-      `..OPLWLPPPPPO...`,
-      `.OPPLLPPPPPPDO..`,
-      `.OPPPPPPPPPDDO..`,
-      `.OPPPPPPPPPDDO..`,
-      `.OPPPPPPPPDDDO..`,
-      `..OPPPPPPDDDO...`,
-      `..ODPPPDDDDDO...`,
-      `...OODDDDDOO....`,
-      `.....OOOOO......`,
-    ]),
-    c,
-  ),
-    i(
-      73,
-      s([
-        `......OO........`,
-        `..OO.OPPO..OO...`,
-        `.OPPOOPPPOOPPO..`,
-        `.OPPPPPPPPPPPO..`,
-        `..OPPLPPPPPPO...`,
-        `.OOPLWLPPPPPOO..`,
-        `OPPPPLPPPPPPPPO.`,
-        `OPPPPPPPPPPDDPO.`,
-        `.OOPPPPPPPDDOO..`,
-        `...OPPPPDDDDO...`,
-        `..OPPDOODDDPPO..`,
-        `..OPO..OOO.OPO..`,
-        `...O........O...`,
-      ]),
-      { ...c, P: `#9a4ad0` },
-    ),
-    i(
-      74,
-      s([
-        `..OOOO...OOOO...`,
-        `.OPPPPO.OPPPPO..`,
-        `OPWWPPPOPPPPPPO.`,
-        `OPWPPPPPPPPPPPO.`,
-        `OPPPPPPPPPPPDPO.`,
-        `OPPPPPPPPPPPDPO.`,
-        `.OPPPPPPPPPDPO..`,
-        `..OPPPPPPPDPO...`,
-        `...OPPPPPDPO....`,
-        `....OPPPDPO.....`,
-        `.....OPDPO......`,
-        `......OPO.......`,
-        `.......O........`,
-      ]),
-      { P: `#ff7ab8`, W: `#ffe0f0`, D: `#d0458a`, O: `#6a1a3a` },
-    ),
-    i(
-      75,
-      s([
-        `OOOOOOOOOOOOOOOO`,
-        `OWWWLLLWWWWLLLWO`,
-        `.OOOOOOOOOOOOOO.`,
-        `..OLLLWWWWLLLO..`,
-        `...OOOOOOOOOO...`,
-        `....OWWLLLWWO...`,
-        `....OOOOOOOO....`,
-        `.....OLLWWLO....`,
-        `......OOOOO.....`,
-        `......OWLWO.....`,
-        `.......OOO......`,
-        `.......OWO......`,
-        `........O.......`,
-      ]),
-      { W: `#ffffff`, L: `#c8dce8`, O: `#6a8aa8` },
-    ),
-    i(
-      76,
-      s([
-        `.....OOOOOO.....`,
-        `...OOYYYYYYOO...`,
-        `..OYYYYOYYYYYO..`,
-        `.OYYYYYOOYYYYYO.`,
-        `OYYWYYYOOYYYYYDO`,
-        `OYYYYYYOOYYYYDDO`,
-        `.OYYYYYOOYYYDDO.`,
-        `..OYYYYOYYYDDO..`,
-        `...OODDDDDDOO...`,
-        `.....OOOOOO.....`,
-      ]),
-      { Y: `#ffd23a`, W: `#fff8c0`, D: `#d08a10`, O: `#3a1a10` },
-    ),
-    i(77, [`..L.....`, `.LMD..L.`, `..D..LMD`, `L...M.D.`, `MD.LMD..`, `.D..D.L.`, `..L...MD`, `.LMD..D.`], {
-      L: `#f6e0a8`,
-      M: `#d8b070`,
-      D: `#a8803a`,
-    }),
-    i(
-      78,
-      s([
-        `.......O........`,
-        `......OWO.......`,
-        `......OWO.......`,
-        `......OYO.......`,
-        `.....OWYWO......`,
-        `.OOOOWYYYWOOOO..`,
-        `OWWYYYYWYYYYWWO.`,
-        `.OOOOWYYYWOOOO..`,
-        `.....OWYWO......`,
-        `......OYO.......`,
-        `......OWO.......`,
-        `......OWO.......`,
-        `.......O........`,
-      ]),
-      { Y: `#ffe86a`, W: `#ffffff`, O: `#a86a10` },
-    ),
-    i(
-      79,
-      s([
-        `......OOO.......`,
-        `.....OWWPO......`,
-        `....OWWPPPO.....`,
-        `....OWPPPPO.....`,
-        `...OWPPPPPDO....`,
-        `...OWPPPPPDO....`,
-        `...OPPPPPDDO....`,
-        `...OPPPPPDDO....`,
-        `....OPPPDDO.....`,
-        `....OPPDDDO.....`,
-        `.....OPDDO......`,
-        `......OOO.......`,
-      ]),
-      { P: `#ff9ad0`, W: `#ffe8f4`, D: `#e05aa0`, O: `#7a2a5a` },
-    ),
-    i(
-      80,
-      s([
-        `....OOOOOOO.....`,
-        `..OORRRRRRROO...`,
-        `.ORRYYRRRRYYRO..`,
-        `ORRRYYRRRRYYRRO.`,
-        `ORRRRRRYYRRRRRO.`,
-        `ORYYRRRYYRRYYRO.`,
-        `ODDDDDDDDDDDDDO.`,
-        `.OOOOWWWWWOOOO..`,
-        `.....OWWWSO.....`,
-        `.....OWWWSO.....`,
-        `.....OWWWSO.....`,
-        `....OWWWWSSO....`,
-        `....OOOOOOOO....`,
-      ]),
-      { R: `#e8502a`, Y: `#ffd84a`, D: `#a82a1a`, W: `#fff0d8`, S: `#d8c0a0`, O: `#3a1a10` },
-    ),
-    i(
-      81,
-      s([
-        `.....OOOO.......`,
-        `....OWWWSO......`,
-        `...OWWWWSSO.....`,
-        `...OWWWSSSO.....`,
-        `...OWWSSSSO.....`,
-        `....OSSSSO......`,
-        `.....OSSO.......`,
-        `......OSO.......`,
-        `......OSO.......`,
-        `......OSO.......`,
-        `......OSO.......`,
-        `......OSO.......`,
-        `.....OSSSO......`,
-        `.....OSSSO......`,
-        `......OOO.......`,
-      ]),
-      { W: `#ffffff`, S: `#b8c0d0`, O: `#4a5060` },
-    ),
-    i(
-      82,
-      s([
-        `........OO......`,
-        `........OPOO....`,
-        `........OPPPOO..`,
-        `........OPOOPPO.`,
-        `........OPO.OPO.`,
-        `........OPO..OO.`,
-        `........OPO.....`,
-        `........OPO.....`,
-        `....OOOOOPO.....`,
-        `...OPPPPPPO.....`,
-        `..OPWPPPPPO.....`,
-        `..OPPPPPPDO.....`,
-        `...OPPPPDO......`,
-        `....OOOOO.......`,
-      ]),
-      { P: `#ff8ac8`, W: `#ffe0f0`, D: `#d0508a`, O: `#5a1a3a` },
-    ),
-    i(
-      83,
-      Array.from({ length: 16 }, (e, t) =>
-        Array.from({ length: 16 }, (e, n) => {
-          let r = n - 7.5,
-            i = t - 7.5,
-            a = Math.hypot(r, i);
-          if (a > 7.6) return `.`;
-          if (a > 6.6) return `O`;
-          let o = (Math.atan2(i, r) + Math.PI) / (Math.PI * 2);
-          return Math.floor(a / 2.2 + o) % 2 ? `W` : `K`;
-        }).join(``),
-      ),
-      { W: `#ffffff`, K: `#2a2a3a`, O: `#1a1a24` },
-    ),
-    i(
-      84,
-      [
-        `..........OO....`,
-        `.........OLLO...`,
-        `.........OLWO...`,
-        `........OLWLO...`,
-        `........OLLO....`,
-        `.......OLWLO....`,
-        `.......OLLO.....`,
-        `......OLWLO.....`,
-        `......OLLO......`,
-        `.....OLWLO......`,
-        `.....OLLLO......`,
-        `....OLWLLO......`,
-        `....OLLLLDO.....`,
-        `...OLLLLLDO.....`,
-        `...ODDDDDDO.....`,
-        `....OOOOOO......`,
-      ],
-      { L: `#7ac8e8`, W: `#e8f8ff`, D: `#3a88b8`, O: `#1a3a5a` },
-    ),
-    i(
-      85,
-      s([
-        `.....OOOOOO.....`,
-        `....OWWRRRRO....`,
-        `...OWWRRRRRRO...`,
-        `..OWRRRRRRRDDO..`,
-        `..ORRRRRRRDDDO..`,
-        `...ORRRRRDDDO...`,
-        `....ORRRDDDO....`,
-        `.....ORRDDO.....`,
-        `......ODDO......`,
-        `.......OO.......`,
-      ]),
-      { R: `#ff3a4a`, W: `#ffd0d8`, D: `#a01a2a`, O: `#4a0a14` },
-    ));
-  let l = { W: `#ffffff`, L: `#c4ecff`, B: `#4aa8ff`, D: `#2a6ad0`, O: `#183a7a` },
-    u = (e, t) => Array.from({ length: e }, (n, r) => Array.from({ length: e }, (e, n) => t(n, r)).join(``)),
-    d = (e) =>
-      e.map((t, n) =>
-        [...t]
-          .map((t, r) => {
-            if (t !== `.`) return t;
-            for (let [t, i] of [
-              [1, 0],
-              [-1, 0],
-              [0, 1],
-              [0, -1],
-            ]) {
-              let a = e[n + i]?.[r + t];
-              if (a && a !== `.` && a !== `O`) return `O`;
-            }
-            return `.`;
-          })
-          .join(``),
-      );
-  (i(
-    126,
-    [
-      `.....OOOOOO.....`,
-      `...OOLLLBBBOO...`,
-      `..OLWWLBBBBBBO..`,
-      `.OLWWLBBBBBBBBO.`,
-      `.OLWLBBBBBBBBBO.`,
-      `OLLLBBBBBBBBBBDO`,
-      `OLBBBBBBBBBBBBDO`,
-      `OBBBBBBBBBBBBBDO`,
-      `OBBBBBBBBBBBBDDO`,
-      `OBBBBBBBBBBBBDDO`,
-      `OBBBBBBBBBBBDDDO`,
-      `.OBBBBBBBBBDDDO.`,
-      `.ODBBBBBBBDDDDO.`,
-      `..ODDBBBDDDDDO..`,
-      `...OODDDDDDOO...`,
-      `.....OOOOOO.....`,
-    ],
-    l,
-  ),
-    i(
-      132,
-      u(16, (e, t) => {
-        let n = e - 7.5,
-          r = t - 7.5;
-        return Math.hypot(n, r) > 7.4
-          ? `.`
-          : Math.hypot(n + 2.5, r + 2.6) < 2.2
-            ? Math.hypot(n + 3, r + 3) < 1.2
-              ? `W`
-              : `L`
-            : n + r > 6
-              ? `D`
-              : `B`;
-      }),
-      l,
-    ),
-    i(
-      127,
-      [
-        `................`,
-        `.....OOO..OO....`,
-        `....OWWWOOWWO...`,
-        `..OOWWWWWWWWO...`,
-        `.OWWWWWWWWLWWOO.`,
-        `.OWWWWWWWLLWWWWO`,
-        `OWWWWWWWWWLLWWWO`,
-        `OWWWLWWWWWWLLLWO`,
-        `OLWWLLWWWWWLLLLO`,
-        `OLLLLLLWWWLLLLMO`,
-        `.OLLMLLLLLLLLMMO`,
-        `.OMLLMMLLLLMMMO.`,
-        `..OMMMMOMMMMMO..`,
-        `...OOOO.OOOOO...`,
-        `................`,
-        `................`,
-      ],
-      { W: `#ffffff`, L: `#d4f0ff`, M: `#8ac8f0`, O: `#2a6ab0` },
-    ),
-    i(
-      128,
-      u(32, (e, t) => {
-        let n = e - 15.5,
-          r = t - 15.5,
-          i = Math.hypot(n, r),
-          a = Math.atan2(r, n),
-          o = 12.6 + 1.6 * Math.sin(a * 3 + 0.5) + 1 * Math.sin(a * 5 + 2);
-        return i > o
-          ? `.`
-          : i > o - 1.6
-            ? `D`
-            : (e === 9 && t === 10) || (e === 10 && t === 9) || (e === 20 && t === 21)
-              ? `W`
-              : r < 0 && n < 2 && i > o - 4.2
-                ? `L`
-                : `B`;
-      }),
-      { W: `#ffffff`, L: `rgba(196,236,255,0.85)`, B: `rgba(74,168,255,0.6)`, D: `rgba(42,106,208,0.8)` },
-    ),
-    i(
-      129,
-      u(32, (e, t) => {
-        let n = e - 15.5,
-          r = t - 15.5,
-          i = Math.hypot(n, r);
-        if (i > 15.2) return `.`;
-        let a = ((((Math.atan2(r, n) / (Math.PI * 2)) * 3 + i * 0.075) % 1) + 1) % 1;
-        return a < 0.08 ? `W` : a < 0.24 ? `L` : a < 0.46 ? `B` : i < 13.5 ? `D` : `.`;
-      }),
-      { W: `#ffffff`, L: `#c4ecff`, B: `#4aa8ff`, D: `rgba(42,106,208,0.55)` },
-    ),
-    i(
-      130,
-      u(32, (e, t) => {
-        let n = e - 15.5,
-          r = t - 15.5,
-          i = Math.hypot(n, r),
-          a = Math.abs(Math.atan2(r, n));
-        if (a > 1.3) return `.`;
-        let o = (1 - (a / 1.3) ** 2) * 6.5,
-          s = 15.4 - i;
-        return s < 0 || s > o ? `.` : s < 0.9 ? `O` : s < 2.2 ? `W` : s < 3.6 ? `L` : `i`;
-      }),
-      { ...l, i: `rgba(74,168,255,0.75)` },
-    ),
-    i(
-      131,
-      d(
-        u(32, (e, t) => {
-          let n = e - 15.5,
-            r = (t - 25) / 3.6,
-            i = n / 13.5;
-          if (i * i + r * r <= 1) return t < 24 ? `L` : t > 26 ? `D` : `B`;
-          for (let [e, r] of [
-            [-11, 9],
-            [-6, 15],
-            [0, 20],
-            [6, 15],
-            [11, 9],
-          ]) {
-            let i = 24 - r,
-              a = (24 - t) / r;
-            if (t > 24 || t < i - 4) continue;
-            let o = e * 0.35 * Math.max(0, a),
-              s = 2.2 * (1 - a * 0.8);
-            if (t >= i && Math.abs(n - e - o) <= s) return a > 0.82 ? `W` : n - e - o < 0 ? `L` : `B`;
-            let c = e + e * 0.45,
-              l = i - 3;
-            if (Math.hypot(n - c, t - l) <= 1.2) return `W`;
-          }
-          return `.`;
-        }),
-      ),
-      l,
-    ));
-  for (let e of [yl, xl, Cl, Tl, Dl]) e(i, s);
-  let f = new Wr(e);
-  return ((f.colorSpace = pi), Pl(t, f, 64), f);
+  const texture=createStylizedEffectAtlas();
+  Pl(texture.image.getContext('2d'),texture,EFFECT_CELL);
+  return texture;
 }
 function Pl(e, t, n) {
   for (let [r, i] of [
@@ -8239,7 +6815,7 @@ function Pl(e, t, n) {
         g = Math.max(1, Math.floor((n - 4) / Math.max(m, h))),
         _ = (r % 8) * n,
         v = Math.floor(r / 8) * n;
-      ((e.imageSmoothingEnabled = !1),
+      ((e.imageSmoothingEnabled = !0),
         e.drawImage(
           s,
           u,
@@ -8342,7 +6918,7 @@ var Rl = 20,
       let c = new Kr({
         transparent: !0,
         depthWrite: !1,
-        blending: r ? 2 : 1,
+        blending: 1, // Opaque pigment/ink silhouettes use normal alpha, never additive washout.
         uniforms: { map: { value: t }, uFogColor: a.uFogColor, uFogNear: a.uFogNear, uFogFar: a.uFogFar },
         vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
         void main(){
@@ -8357,7 +6933,7 @@ var Rl = 20,
         }`,
         fragmentShader: `uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
         void main(){ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if (a < 0.01) discard;
-          vec3 c = vCol.rgb * t.rgb * (1. + vGlow);
+          vec3 c = vCol.rgb * t.rgb * (1. + min(vGlow,.15));
           ${r ? Ml : `c = min(c, vec3(0.93)); c = mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD));`}
           gl_FragColor = vec4(c, a); }`,
       });
@@ -8387,7 +6963,7 @@ var Rl = 20,
       let t = this.n++;
       this.decoration[t]=area;if(area){this.ownArea+=this.decoration[t];this.ownCount++;}
       ((this.px[t] = e.x),
-        (this.py[t] = e.y),
+        (this.py[t] = this.flat?Math.max(e.y,this.surface?.(e.x,e.z)??e.y):e.y),
         (this.pz[t] = e.z),
         (this.vx[t] = e.vx ?? 0),
         (this.vy[t] = e.vy ?? 0),
@@ -8411,7 +6987,7 @@ var Rl = 20,
         (this.c1[t * 3 + 2] = i.b),
         (this.shape[t] = e.shape ?? 0),
         (this.glow[t] = e.glow ?? 0),
-        (this.fm[t] = Fl.own ? Fl.ownFade : this.fade));
+        (this.fm[t] = (Fl.own ? Fl.ownFade : this.fade)*(e.opacity??1)));
     }
     cols;
     trimTo(limit) {
@@ -8464,6 +7040,14 @@ var Rl = 20,
           (this.py[t] += this.vy[t] * e),
           (this.pz[t] += this.vz[t] * e),
           (this.r[t] += this.rv[t] * e));
+        if(this.surface && this.g[t]>0){const floor=this.surface(this.px[t],this.pz[t]);if(this.py[t]<floor){this.py[t]=floor;this.vy[t]=Math.abs(this.vy[t])*.22;this.vx[t]*=.65;this.vz[t]*=.65;}}
+        // Gentle advected motion gives small flames, motes and smoke a soft
+        // flowing silhouette instead of rigidly spinning billboard confetti.
+        if(this.shape[t]===5||this.shape[t]===33||this.shape[t]===38||this.shape[t]===31){
+          this.vx[t]+=Math.sin(this.life[t]*9+this.pz[t]*2)*e*.8;
+          this.vz[t]+=Math.cos(this.life[t]*7+this.px[t]*2)*e*.8;
+          this.vy[t]+=e*.75;
+        }
       }
       for (let e = 0; e < this.n; e++) {
         let i = 1 - this.life[e] / this.max[e];
@@ -8528,15 +7112,16 @@ var Rl = 20,
         side: 2,
         vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec4 vCol;
         void main(){ vec3 a = iA.xyz, b = iB.xyz; vec3 dir = b - a; vec3 camPos = cameraPosition;
-          vec3 side = normalize(cross(dir, camPos - mix(a,b,position.x))) * iA.w;
+          vec3 crossView = cross(dir,camPos-mix(a,b,position.x));
+          vec3 side = crossView*inversesqrt(max(dot(crossView,crossView),1.e-8))*iA.w;
           vec3 p = a + dir*position.x + side*position.y;
           gl_Position = projectionMatrix*viewMatrix*vec4(p,1.); vUv = uv; vCol = vec4(iC.rgb, iC.a * iB.w); }`,
-        fragmentShader: `varying vec2 vUv; varying vec4 vCol; void main(){ float e = 1. - abs(vUv.y-0.5)*2.;
+        fragmentShader: `varying vec2 vUv; varying vec4 vCol; void main(){ float e = 1. - abs(vUv.y-0.5 + sin(vUv.x*38.)*.018)*2.;
         float tip = smoothstep(0.,0.04,vUv.x)*smoothstep(1.,0.96,vUv.x);
         if (e < 0.08) discard;
         vec3 c = vCol.rgb;
-        vec3 col = e < 0.36 ? c * 0.6 : e < 0.74 ? c : mix(c, vec3(1.), 0.45);
-        float a = (e < 0.36 ? 0.85 : 1.) * vCol.a * tip;
+        vec3 col = mix(vec3(.13,.18,.29),mix(c,vec3(1.,.95,.83),step(.72,e)*.6),smoothstep(.15,.2,e));
+        float a = smoothstep(.04,.4,e)*vCol.a*tip;
         if (a < 0.02) discard;
         gl_FragColor = vec4(col, a); }`,
       });
@@ -8695,45 +7280,60 @@ var Ul = class {
     let i = new Kr({
       transparent: !0,
       depthWrite: !1,
+      uniforms: { uWaveTime: { value: 0 } },
       vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vP; flat varying vec4 vCol; flat varying vec4 vRing;
         void main(){ ${ringStripPosition}
           gl_Position = projectionMatrix * viewMatrix * vec4(iA.xyz + vec3(vP.x, 0.0, vP.y), 1.0);
           vCol = iB; vRing = vec4(iA.w, iC.x, iC.y, iC.z); }`,
-      fragmentShader: `varying vec2 vP; flat varying vec4 vCol; flat varying vec4 vRing;
-        const float TAU = 6.2831853;
-        float h1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+      fragmentShader: `uniform float uWaveTime; varying vec2 vP; flat varying vec4 vCol; flat varying vec4 vRing;
+        const float TAU=6.2831853;
+        float waveHash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+        float waveNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(waveHash(i),waveHash(i+vec2(1.,0.)),f.x),mix(waveHash(i+vec2(0.,1.)),waveHash(i+vec2(1.,1.)),f.x),f.y);}
         void main(){
-          float R = vRing.x, T = vRing.y, st = floor(vRing.z + 0.5);
+          float radius=vRing.x,width=max(.045,vRing.y),style=floor(vRing.z+.5);
+          float distance=length(vP),aa=max(fwidth(distance)*1.2,.012);
           ${ringSquareClip}
-          float px = clamp(T * 0.55, 0.14, 0.26);
-          vec2 p = (floor(vP / px) + 0.5) * px;
           ${ringEmptyPixels}
-          float r = length(p), u = fract((atan(p.y, p.x) + vRing.w) / TAU);
-          float Rr = R, outT = T, keep = 1.0, inner = 0.0;
-          if (st == 1.0) { keep = step(fract(u * 14.0), 0.62); Rr += sin(u * TAU * 28.0) * T * 0.35; }
-          else if (st == 2.0) {
-            // A foam crest, not a clean circle: it wobbles and swells, breaks in a few places and has a broken echo inside.
-            Rr += sin(u * TAU * 7.0 + vRing.w * 3.0) * T * 0.5;
-            outT = T * (0.8 + 0.4 * sin(u * TAU * 11.0 + vRing.w));
-            keep = step(0.1, fract(u * 9.0 + vRing.w));
-            inner = (1.0 - step(T * 0.22, abs(r - R * 0.72))) * step(fract(u * 14.0 + 0.3), 0.45);
+          float angle=atan(vP.y,vP.x)+vRing.w;
+          float phase=angle/TAU;
+          float centre=radius;
+          if(style==2.)centre+=(sin(angle*7.+vRing.w+uWaveTime*3.)*.28+sin(angle*11.-uWaveTime*2.)*.12)*width;
+          if(style==4.)centre+=sin(angle*6.)*width*.6;
+          if(style==5.)centre+=sin(angle*13.)*width*.38;
+          if(style==6.)centre+=sin(angle*9.+vRing.w*2.+uWaveTime*3.)*width*.6;
+          if(style==2.||style==3.||style==6.){
+            // Translucent pigment/water or warm heat sits behind a moving crest.
+            // The ripple envelope stays within the original ring's extent;
+            // held danger telegraphs use style 1 and retain their clear border.
+            bool fire=style==6.;
+            float signedDistance=distance-centre;
+            vec2 flow=vec2(angle*3.+sin(distance*3.-uWaveTime*(fire?4.:2.))*.35,signedDistance/width*1.4-uWaveTime*(fire?1.6:.85));
+            float liquid=waveNoise(flow)*.7+waveNoise(flow*2.1+3.7)*.3;
+            float innerR=max(0.,radius-width*2.6);
+            float film=smoothstep(innerR,innerR+width*.75+aa,distance)*(1.-smoothstep(width*.18,width*.6+aa,signedDistance));
+            float ridge=1.-smoothstep(width*.07+aa,width*.27+aa,abs(signedDistance));
+            float fine=pow(.5+.5*sin(signedDistance/width*(fire?11.:15.)+angle*(fire?5.:2.)-uWaveTime*(fire?9.:5.)+liquid*2.),12.)*film;
+            float lace=ridge*smoothstep(fire?.4:.46,fire?.69:.77,liquid+.17*sin(angle*9.-uWaveTime*3.));
+            float glint=ridge*smoothstep(.62,.95,sin(angle*3.-uWaveTime*1.7+liquid)*.5+.5);
+            float echo=(1.-smoothstep(width*.08+aa,width*.23+aa,abs(distance-radius*.84)))*(fire?.055:.14);
+            vec3 pigment=fire?mix(vCol.rgb*.43,mix(vCol.rgb,vec3(1.,.33,.025),.25),liquid):mix(vCol.rgb*.56,vCol.rgb*1.03,.3+liquid*.7);
+            vec3 crestColor=fire?mix(vCol.rgb,vec3(1.,.64,.18),.42):mix(vCol.rgb,vec3(.82,.95,.9),.34);
+            vec3 col=mix(pigment,crestColor,smoothstep(.24,.28,lace*.8+fine*.3));
+            col=mix(col,vec3(.11,.20,.32),ridge*(1.-smoothstep(.16,.23,liquid))*.7);col=floor(col*7.+.5)/7.;
+            float alpha=max(film*.22,max(ridge*.78,echo))*vCol.a;
+            if(alpha<.015)discard;
+            gl_FragColor=vec4(min(col,vec3(.93)),alpha);return;
           }
-          else if (st == 3.0) { float tick = step(fract(u * 16.0), 0.18); outT = T * (1.0 + tick * 2.2); inner = (1.0 - step(T * 0.25, abs(r - R * 0.86))) * step(fract(u * 40.0), 0.5); }
-          else if (st == 4.0) { Rr += abs(sin(u * TAU * 6.0)) * max(R * 0.09, T * 1.5) - R * 0.04; }
-          else if (st == 5.0) { float j = floor(u * 22.0); Rr += (h1(j) - 0.5) * T * 1.4; outT = T * (1.0 + 0.6 * step(0.7, h1(j + 7.0))); }
-          else if (st == 6.0) { float f = max(0.0, sin(u * TAU * 12.0)); outT = T * (1.0 + f * f * 2.6); }
-          float d = r - Rr;
-          float band = step(-T * 0.5, d) * step(d, outT - T * 0.5) * keep;
-          float a0 = max(band, inner * 0.8);
-          float wake = (1.0 - smoothstep(0.0, T * 3.0, -d)) * step(d, -T * 0.5) * 0.1;
-          float alpha = max(a0, wake) * vCol.a;
-          if (alpha < 0.02) discard;
-          float e = clamp((d + T * 0.5) / max(outT, 0.001), 0.0, 1.0);
-          vec3 c = vCol.rgb;
-          vec3 col = e < 0.34 ? mix(c, vec3(1.0), 0.3) : e < 0.72 ? c : c * 0.55;
-          if (st == 2.0) col = band < 0.5 ? mix(c, vec3(1.0), 0.6) : e > 0.62 ? mix(c, vec3(1.0), 0.78) : e > 0.25 ? c : c * 0.6;
-          if (a0 < 0.5) col = c * 0.9;
-          gl_FragColor = vec4(col, alpha);
+          float edge=abs(distance-centre);
+          float band=1.-smoothstep(width*.35-aa,width*.65+aa,edge);
+          if(style==1.)band*=smoothstep(.08,.16,fract(phase*14.))* (1.-smoothstep(.72,.8,fract(phase*14.)));
+          float echo=0.;
+          if(style==2.||style==3.)echo=(1.-smoothstep(width*.08+aa,width*.27+aa,abs(distance-radius*.84)))*.3;
+          float alpha=max(band,echo)*vCol.a;
+          if(alpha<.015)discard;
+          vec3 cream=mix(vCol.rgb,vec3(1.,.96,.83),.4);
+          vec3 col=mix(vCol.rgb*.9,cream,1.-smoothstep(0.,width*.65,edge));
+          gl_FragColor=vec4(col,alpha);
         }`,
     });
     ((this.mesh = new Sr(r, i, t)),
@@ -8747,7 +7347,7 @@ var Ul = class {
     let d = this.n++,
       f = Al.set(a);
     ((this.px[d] = e),
-      (this.py[d] = t),
+      (this.py[d] = Math.max(t,this.surface?.(e,n)??t)),
       (this.pz[d] = n),
       (this.r0[d] = r),
       (this.r1[d] = i),
@@ -8768,6 +7368,7 @@ var Ul = class {
     let t = this.aA.array,
       n = this.aB.array,
       r = this.aC.array;
+    this.mesh.material.uniforms.uWaveTime.value+=Math.max(0,e);
     for (let t = 0; t < this.n; t++) {
       let n;
       if (((n = this.once[t] ? this.once[t]++ >= 2 : (this.life[t] -= e) <= 0), !n)) continue;
@@ -8995,16 +7596,18 @@ var Gl = class {
         (this.beams = new Bl(e)),
         (this.rings = new Ul(e)),
         (this.text = new Gl(e)));
+      this.crafted=new StylizedSkillFX(this,e);
     }
     setPerformance(profile,view){
       for(const pool of [this.add,this.norm,this.ground,this.groundN,this.beams])pool.lockVisualQuality=!!profile.lockVisualQuality;
+      this.crafted.setPerformance(profile,view);
       this.particleBudget??=new ParticleBudget();this.particleBudget.limit=profile.particleCell;
       this.add.densityBudget=this.norm.densityBudget=this.particleBudget;
       this.add.view=this.norm.view=this.text.view=view;
       applyCrowdEffects(this,profile);
     }
     update(e) {
-      flushDamage(this,e);this.particleBudget?.next();
+      flushDamage(this,e);this.particleBudget?.next();this.crafted.update(e);
       (this.add.update(e),
         this.norm.update(e),
         this.ground.update(e),
@@ -9014,7 +7617,7 @@ var Gl = class {
         this.text.update(e));
     }
     clear() {
-      this.damagePending?.clear();this.damageClock=0;
+      this.damagePending?.clear();this.damageClock=0;this.crafted.clear();
       (this.add.clear(),
         this.norm.clear(),
         this.ground.clear(),
@@ -9178,16 +7781,16 @@ var Gl = class {
         a.setAttribute(`iC`, this.aC));
       let o = new Kr({
         transparent: !0,
-        depthWrite: !r,
-        blending: r ? 2 : 1,
+        depthWrite: false,
+        blending: 1, // Opaque pigment/ink silhouettes use normal alpha, never additive washout.
         uniforms: { map: { value: t }, uFogColor: i.uFogColor, uFogNear: i.uFogNear, uFogFar: i.uFogFar },
         vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
         void main(){ float cs = cos(iC.y), sn = sin(iC.y); vec2 p2 = vec2(position.x*cs - position.y*sn, position.x*sn + position.y*cs) * iA.w;
           vec4 mv = viewMatrix * vec4(iA.xyz, 1.); mv.xy += p2; vD = -mv.z; gl_Position = projectionMatrix * mv;
           float idx = iC.x; vec2 cell = vec2(mod(idx,8.), 17. - floor(idx/8.)); vUv = (cell + uv) / vec2(8., 18.); vCol = iB; vGlow = iC.z; }`,
         fragmentShader: `uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
-        void main(){ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; ${r ? `if (a < 0.01) discard;` : `if (t.a < 0.5) discard; if (vCol.a < 0.99 && fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > vCol.a) discard;`} vec3 c = vCol.rgb * t.rgb * (1. + vGlow${r ? `` : ` * 0.3`});
-          ${r ? Ml : `c = min(c, vec3(0.94)); c = mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD));`} gl_FragColor = vec4(c, ${r ? `a` : `1.`}); }`,
+        void main(){ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if(a<.02)discard; vec3 c = vCol.rgb * t.rgb * (1. + min(vGlow,.15));
+          ${r ? Ml : `c = min(c, vec3(0.94)); c = mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD));`} gl_FragColor = vec4(c, a); }`,
       });
       ((this.mesh = new Sr(a, o, n)),
         (this.mesh.frustumCulled = !1),
@@ -9211,7 +7814,7 @@ var Gl = class {
         (this.B[l * 4] = u.r),
         (this.B[l * 4 + 1] = u.g),
         (this.B[l * 4 + 2] = u.b),
-        (this.B[l * 4 + 3] = this.additive ? c * (Fl.own ? Fl.ownFade : this.fade) : c),
+        (this.B[l * 4 + 3] = c * (Fl.own ? Fl.ownFade : this.fade)),
         (this.C[l * 4] = a),
         (this.C[l * 4 + 1] = o),
         (this.C[l * 4 + 2] = s));
@@ -25268,6 +23871,7 @@ function Hp(e, t, n, r, i, a, o) {
     e.vfx.beams.spawn(t, n + 24, r, t, n, r, i * 0.35, wp(a, o, 0.5), 0.25, 0.85));
 }
 (Object.assign(Vp, Vf, Gf, ep, ap, up), (Vp[`giga-drain`] ??= Vp.absorb));
+installStylizedMoveVFX(Vp,key=>k.movesByKey.get(key)?.type);
 var Up = [{}],
   Wp = new Map(),
   Gp = [``];
@@ -32771,53 +31375,7 @@ function Lh(e, t, n, r, i, a, o, s = {}) {
       x = Math.hypot(v, y);
     x > b && ((v *= b / x), (y *= b / x));
     let S = U(c, v, y);
-    for (let e = 0; e < 4; e++)
-      c.vfx.norm.spawn({
-        x: v + Math.cos(p * 9 + e) * 0.25 * e,
-        y: S + 0.7 + e * o * 0.55,
-        z: y + Math.sin(p * 9 + e) * 0.25 * e,
-        life: 0.06,
-        size: o * (0.7 + e * 0.28),
-        endSize: o * (0.7 + e * 0.28),
-        color: 16777215,
-        shape: I.PixTornado,
-        rot: Math.sin(p * 7 + e) * 0.08,
-      });
-    if (
-      (Math.random() < 0.6 &&
-        c.vfx.norm.spawn({
-          x: v + F.range(-1.5, 1.5),
-          y: S + 0.3,
-          z: y + F.range(-1.5, 1.5),
-          vx: F.range(-2, 2),
-          vy: F.range(1, 3),
-          vz: F.range(-2, 2),
-          drag: 2,
-          life: 0.6,
-          size: 1.1,
-          endSize: 2,
-          color: 14209216,
-          shape: I.PixPuff,
-        }),
-      Math.random() < 0.5)
-    ) {
-      let e = F.range(0, H);
-      c.vfx.norm.spawn({
-        x: v + Math.cos(e) * o,
-        y: S + F.range(0.5, o * 2),
-        z: y + Math.sin(e) * o,
-        vx: -Math.sin(e) * 9,
-        vy: 2,
-        vz: Math.cos(e) * 9,
-        drag: 1,
-        life: 0.5,
-        size: 0.5,
-        endSize: 0.4,
-        color: 16777215,
-        shape: Math.random() < 0.5 ? I.PixFeather : I.PixLeaf,
-        spin: 8,
-      });
-    }
+    c.vfx.crafted.tornado(d,v,S+.12,y,o*1.05,o*3.4,'flying');
     if ((kh(c, v, y, (5 * e.R * o) / 2, 30 * m), (f -= m), f <= 0)) {
       f = 0.16;
       for (let t of c.enemies.within(v, y, (2.2 * e.R * o) / 2))
@@ -38812,8 +37370,10 @@ var e_ = class {
           a = i.y[e] + i.hgt[e] * 0.55,
           o = i.z[e],
           d = Ni[n.type];
+        const continuousFire=n.type==='fire'&&n.slot!=null&&r.player.moves[n.slot]?.def.arch==='cone'&&r.player.moves[n.slot]?.active>0&&!u&&!m;
+        r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
-          Math.random() < 0.6 &&
+          !continuousFire && Math.random() < 0.6 &&
             (u || this.hitFxN++ < Yg) &&
             r.vfx.burst(t, a, o, d, u ? 9 : 4, u ? 7 : 4, am(n.type), u ? 0.55 : 0.4, 0.3),
           m
@@ -40833,6 +39393,7 @@ var W_ = 0.45,
       for (let n = this.list.length - 1; n >= 0; n--) {
         let r = this.list[n];
         ((r.life -= e), (r.tick -= e));
+        t.vfx.crafted.field(r);
         let i = r.fx ? qp(r.fx) : null;
         if (Math.random() < e * 6) {
           let e = r.x + F.range(-r.r, r.r) * 0.6,
@@ -41015,33 +39576,7 @@ function Q_(e, t, n, r) {
     let t = e.aimDir(13, n),
       i = t.x,
       a = t.z;
-    for (let t = 0; t < 3; t++) {
-      let t = (Math.random() - 0.5) * 0.9,
-        n = F.range(8, 14) * (d / 7),
-        r = Math.cos(t),
-        s = Math.sin(t),
-        u = (i * r - a * s) * n,
-        f = (i * s + a * r) * n,
-        p = F.range(-0.5, 1);
-      C.cone
-        ? C.cone(e, v + i * 0.8, y, b + a * 0.8, u, p, f, d / n, d, c)
-        : e.vfx.add.spawn({
-            x: v + i * 0.8,
-            y,
-            z: b + a * 0.8,
-            vx: u,
-            vz: f,
-            vy: p,
-            life: d / n,
-            size: 0.6,
-            endSize: 1.8 * Math.sqrt(d / 7),
-            color: c,
-            endColor: o.type === `fire` ? 16726554 : c,
-            shape: o.type === `fire` || o.type === `dragon` ? I.Flame : l,
-            glow: 0.4,
-            spin: 3,
-          });
-    }
+    e.vfx.crafted.cone(n,v+i*.8,y,b+a*.8,i,a,d,o.type,.7*Math.sqrt(d/7));
     if (n.tick <= 0) {
       n.tick = 0.1;
       for (let t of e.enemies.within(v, b, d)) {
@@ -44506,7 +43041,7 @@ var mv = 30,
         i,
         e.skinGl,
       );
-      let p = e.terrain.surface(this.pos.x, this.pos.z);
+      let p = Math.max(e.terrain.surface(this.pos.x, this.pos.z),e.terrain.workshopGroundY?.(this.pos.x,this.pos.z)??-Infinity);
       (e.skinGl &&
         !this.dead &&
         eu(
@@ -73829,6 +72364,7 @@ var iT = Math.PI / 180,
         t.onUltimate(),
         e.coop?.ult(Zh(n, r)),
         (t.iframes = Math.max(t.iframes, a + 0.6)));
+      e.vfx.crafted.ultimate(u,a);
       let d = this.quiet;
       ((t.ultPoseT = d ? 0 : 0.6),
         !d &&
@@ -75761,6 +74297,7 @@ var GT = 15,
         (Fl.density = this.performance.particleDensity),
         (this.sprites = new rl(e.scene, e.shared)),
         (this.vfx = new Kl(e.scene, e.shared)),
+        this.vfx.crafted.attach(this),
         this.vfx.setPerformance(this.performance,this.sprites),
         (this.vfx.calm = !!i.profile.settings.reduceFlashes),
         (this.vfx.fade = Math.max(0.2, Math.min(1, i.profile.settings.fxOpacity ?? 1))),
@@ -78206,8 +76743,9 @@ var GT = 15,
     }
     renderWorld(e) {
       let t = this.r.camera;
+      updateWorkshopScene(this,e);
       (this.sprites.begin(t),
-        updatePaperVisibility(this.terrain,this.sprites.frustum,this.performance.worldShadows),
+        updatePaperVisibility(this.terrain,this.sprites.frustum,this.terrain.workshopBoundary?true:this.performance.worldShadows),
         this.enemies.render(),
         this.boss.kit && !this.boss.kit.dead && this.boss.kit.render(),
         this.boss.mech?.render(),
@@ -78252,6 +76790,8 @@ var GT = 15,
         this.boss?.mech?.dispose(),
         this.sprites.clear());
       this.sprites.standIn.dispose();
+      this.vfx.crafted.dispose();
+      this.vfx.atlas.dispose();
       disposePaperAssets(this.paperAssets);
       for (let e of [
         this.playerFootRing,

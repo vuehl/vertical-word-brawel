@@ -1,4 +1,5 @@
-import {I as Group,K as Mesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,J as Material} from '../assets/three-DmSYIDKK.js';
+import {I as Group,K as Mesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,WorkshopStandardMaterial as Material} from '../assets/three-DmSYIDKK.js';
+import {stabiliseWorkshopBump} from './workshop-materials.js';
 import {paperPropNames} from './paper-prop-names.js';
 
 // Preserve named moving parts used by chests, gates and destructible cover.
@@ -8,8 +9,9 @@ export function paperProp(name){
   if(!supported.has(name))return null;
   const group=new Group();group.name='paper-'+name;
   const materials=new Map();
-  function mat(color){if(!materials.has(color)){const m=new Material({color});m.userData.owned=true;materials.set(color,m);}return materials.get(color);}
-  function part(g,geo,x,y,z,color,label){const m=new Mesh(geo,mat(color));m.position.set(x,y,z);if(label)m.name=label;g.add(m);return m;}
+  const vivid={'#b1cfc1':'#238c9d','#ddbd76':'#e6b147','#a6bcb2':'#267c91','#f4ecd5':'#f6d68c','#90aca5':'#258b9b','#e4ce8c':'#e4b349','#b2c2b8':'#1f647b','#d1bd8b':'#c99754','#b6c49c':'#6fbd92','#a3bfae':'#289aa8','#efcf82':'#ffcd6a'};
+  function mat(color){if(!materials.has(color)){const m=stabiliseWorkshopBump(new Material({color:vivid[color]||color}));m.userData.owned=true;materials.set(color,m);}return materials.get(color);}
+  function part(g,geo,x,y,z,color,label){const m=new Mesh(geo,mat(color));m.position.set(x,y,z);m.castShadow=m.receiveShadow=false;if(label)m.name=label;g.add(m);return m;}
   const box=(g,x,y,z,w,h,d,c,n)=>part(g,new BoxGeometry(w,h,d),x,y,z,c,n);
   const cyl=(g,x,y,z,r,h,c,n)=>part(g,new CylinderGeometry(r,r,h,12),x,y,z,c,n);
   if(name.includes('pillar')){
@@ -36,7 +38,7 @@ export function paperProp(name){
     // Memo stacks and ink stamps replace altars, nests and stones.
     const tall=name==='shrine'?1.5:1;
     box(group,0,.2,0,3.1,.4,2.8,'#899f9c');
-    for(let i=0;i<5;i++)box(group,.08*(i%2),(.5+i*.24)*tall,0,2.8,.21*tall,2.6,i%2?'#efe5c8':'#e0dabb');
+    for(let i=0;i<5;i++)box(group,.08*(i%2),(.5+i*.24)*tall,0,2.8,.21*tall,2.6,i%2?'#e2f3ff':'#c7e0f2');
     cyl(group,0,2.1*tall,0,.7,1.4*tall,'#a4776b','Cap');cyl(group,0,2.8*tall,0,1,.25,'#cdb995');
   }
   return group;

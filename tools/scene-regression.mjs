@@ -106,8 +106,12 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
 
     if(stage===1) {
       await page.evaluate(()=>{app.run.state='play';});
-      await tap('.zx-minimap');
-      assert.equal(await page.evaluate(()=>app.run.ui.mapOpen()),true);
+      const point=await page.evaluate(()=>{
+        const r=app.run.ui.minimap.getBoundingClientRect(),screen=inspected.doc.getElementById('game').getBoundingClientRect();
+        return {x:r.x+r.width/2-screen.x,y:r.y+r.height/2-screen.y};
+      });
+      await page.touchscreen.tap(point.x,point.y);
+      await page.waitForFunction(()=>app.run.ui.mapOpen());
       const mapText=await page.evaluate(()=>app.run.ui.modalEl.textContent);
       assert.doesNotMatch(mapText,/Snorlax|Porygon|卡比兽|多边兽|诅咒雕像|贪婪|笼子|金矿石|Altar maldito|Jaula|Roca de oro|Altar de Gengar/i);
       await shot('scene-full-map');
@@ -174,12 +178,13 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
         await page.evaluate(z=>{
           const r=app.run;r.state='play';r.player.pos.set(0,r.terrain.surface(0,z),z);r.player.vel.set(0,0,0);
         },z);
-        await sleep(500);
-        const marker=await page.evaluate(()=>{
-          const r=app.run,h=r.ui,tag=h.markTag.style.display!=='none'?h.markTag:h.arrow;
-          return {distance:Number(Math.hypot(r.player.pos.x,r.player.pos.z).toFixed(2)),text:tag.textContent,visible:tag.style.display!=='none',kind:h.arrow.dataset.k,prompt:h.touch.actText};
-        });
-        assert.ok(marker.visible);assert.ok(marker.text.includes('圣地 · '+marker.distance+' 厘米'));
+        const handle=await page.waitForFunction(near=>{
+          const r=app.run,h=r.ui,shrine=r.interactables.list.find(o=>o.kind==='shrine');
+          const distance=Number(Math.hypot(r.player.pos.x-shrine.x,r.player.pos.z-shrine.z).toFixed(2));
+          const tag=[h.markTag,h.arrow].find(el=>el.style.display!=='none'&&el.textContent.includes('圣地 · '+distance+' 厘米'));
+          return tag&&(!near||h.touch.actText?.includes('触碰圣地'))?{distance,text:tag.textContent,visible:true,kind:h.arrow.dataset.k,prompt:h.touch.actText}:false;
+        },{timeout:15000},z<5);
+        const marker=await handle.jsonValue();await handle.dispose();
         report.sanctuaryNavigation.push(marker);
         await shot('sanctuary-distance-'+z);
       }

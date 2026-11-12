@@ -28,6 +28,10 @@
     "test:touch": "node tools/smoke.mjs --phone-layout --forest-regression",
     "test:paper": "node tools/smoke.mjs --phone-layout --software-render --paper-art",
     "test:menus": "node tools/smoke.mjs --menus-only",
-    "test:characters": "node tools/smoke.mjs --phone-layout --software-render --starter-regression"
+    "test:characters": "node tools/smoke.mjs --phone-layout --software-render --starter-regression",
+    "test:vfx": "node tools/runtime-performance.mjs --vfx",
+    "test:ink": "node tools/runtime-performance.mjs --vfx --ink-style",
+    "test:lighting": "node tools/runtime-performance.mjs --vfx --lighting",
+    "test:fire": "node tools/runtime-performance.mjs --vfx --fire-breath"
   }
 }

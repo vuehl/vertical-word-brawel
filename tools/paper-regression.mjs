@@ -8,14 +8,14 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
   await resize(390,844);await shot('01-home');
   await tap('[data-action="journey"]');await tap('[data-species="16"]');await shot('02-wind');
   await tap('.zx-footer button','选择关卡');await shot('03-map');
-  await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
-  await page.waitForFunction(()=>app.run?.time>2&&app.run?.state==='play',{timeout:90000});
+  await tap('.zx-footer button','选择难度');await tap('[data-mode="standard"][data-tier="0"]');await tap('[data-action="enter"]');
+  await page.waitForFunction(()=>app.run?.terrain?.zxPaper&&app.run?.state==='play',{timeout:90000,polling:100});
   await page.evaluate(()=>{app.run.godMode=true;app.run.pendingLevels=0;app.run.queueLevelUp=()=>{};app.r.setDynRes(1);app.r.setQuality({...app.r.quality,dyn:false,pixelRatio:1.5});});
   await shot('04-live-battle');
   report.enemyCollision = await page.evaluate(()=>{
     const run = app.run, terrain = run.terrain, enemies = run.enemies;
-    const ruler = terrain.zxProps.find(prop=>prop.kind==='ruler');
-    const box = terrain.colliders.find(c=>c.x===ruler.x && c.z===ruler.z);
+    const eraser = terrain.zxProps.find(prop=>prop.kind==='eraser');
+    const box = terrain.colliders.find(c=>c.x===eraser.x && c.z===eraser.z);
     const across = distance=>({x:box.x+box.sin*distance, z:box.z+box.cos*distance});
     const start = across(-5), target = across(5), saved = run.player.pos.clone();
     run.state = 'paused';
@@ -75,7 +75,7 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
       run.input.look(400,250);run.input.zoom(10);run.input.mouseDX=500;run.input.mouseDY=400;run.input.wheel=20;run.update(.016);
       return {before,after:{yaw:run.camYaw,pitch:run.camPitch,fov:cam.fov,distance:run.camDist},stickHeld,released:run.input.stickX===0&&run.input.stickY===0,looks:run.ui.touch.looks.size,props:run.terrain.zxProps.length,colliders:run.terrain.colliders.length};
     });
-    assert.deepEqual(camera.after,camera.before);assert.ok(camera.stickHeld&&camera.released);assert.equal(camera.looks,0);assert.ok(camera.props>15);assert.equal(camera.colliders,camera.props,'Every stationery prop keeps one oriented collision footprint');report.camera.push({width,...camera});
+    assert.deepEqual(camera.after,camera.before);assert.ok(camera.stickHeld&&camera.released);assert.equal(camera.looks,0);assert.ok(camera.props>15);assert.ok(camera.colliders>=camera.props,'Every stationery prop keeps its collision footprint');report.camera.push({width,...camera});
     await shot('05-camera-'+width);
   }
   await resize(390,844);

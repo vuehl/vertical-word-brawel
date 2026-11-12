@@ -17,11 +17,13 @@ export async function reviewMapEffects(page,dir){
     const r=app.run,api=inspected.env.__zixingDeveloper;api.close();api.apply({time:0,count:0,mode:'none',boss:'none'});
     const e=r.enemies,p=r.player.pos,species=r.director.cards[0].id;
     // Separated ordinary, elite, alpha, boss and noncombat object markers.
-    for(const [x,z,flags] of [[-25,0,0],[0,-25,1],[0,25,2],[25,0,4],[-25,25,32768]]) {
+    for(const [x,z,flags] of [[-25,0,0],[-32,-9,1],[0,25,2],[25,0,4],[-25,25,32768]]) {
       const id=e.spawn(species,p.x+x,p.z+z,1,1,flags);
       e.x[id]=p.x+x;e.z[id]=p.z+z;
     }
-    r.terrain.zxProps=[20,80].map(dx=>({kind:'ruler',x:p.x+dx,z:p.z-15,w:12,d:5}));
+    // Isolate the prop samples from random pickups and boss distance labels.
+    r.interactables.markers=()=>[];
+    r.terrain.zxProps=[-20,-80].map(dx=>({kind:'ruler',x:p.x+dx,z:p.z+18,w:12,d:5}));
     r.updateCamera(1);r.renderWorld(0);r.ui.hud(r);
     window.readMap=canvas=>{
       const c=canvas.getContext('2d'),side=canvas.getBoundingClientRect().width;
@@ -30,10 +32,10 @@ export async function reviewMapEffects(page,dir){
       const pixel=(x,y)=>Array.from(c.getImageData(Math.floor(canvas.width/2+(x-60)*scale),Math.floor(canvas.height*58/120+(y-58)*scale),1,1).data).slice(0,3);
       let propWidth=0;
       for(let dx=-10;dx<=10;dx+=.25){
-        if(pixel(78+dx,44.5).join(',')==='202,183,129')propWidth+=.25*screenScale;
+        if(pixel(42+dx,74.2).join(',')==='202,183,129')propWidth+=.25*screenScale;
       }
-      return {normal:pixel(37.5,58),elite:pixel(60,35.5),eliteEdge:pixel(62.2,35.5),alpha:pixel(60,80.5),boss:pixel(82.5,58),propWidth,
-        far:pixel(132,44.5)};
+      return {normal:pixel(37.5,58),elite:pixel(31.2,49.9),eliteEdge:pixel(33.4,49.9),alpha:pixel(60,80.5),boss:pixel(82.5,58),propWidth,
+        far:pixel(-12,74.2)};
     };
   });
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
@@ -60,6 +62,11 @@ export async function reviewMapEffects(page,dir){
     await page.screenshot({path:path.join(dir,`map-${width}.png`)});
     await tap('[data-action="close-battle-map"]');assert.equal(await page.evaluate(()=>app.run.state),'play');
     report.maps.push({width,height,mini,...opened});
+  }
+  if(process.argv.includes('--minimap')){
+    fs.writeFileSync(path.join(dir,'minimap.json'),JSON.stringify(report,null,2));
+    console.log('Minimap touch, marker colors, prop scale and range verified at three phone widths.');
+    return;
   }
   report.emissions=await page.evaluate(()=>{
     const r=app.run,v=r.vfx,p=r.player.pos,results=[];
