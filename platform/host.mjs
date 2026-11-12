@@ -22,6 +22,11 @@ import {initCrypto,random} from './crypto.mjs';
 import {dispatchApi} from 'pokebonk:api';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
+import {createControlLayer,createCanvasLayer,createHUDLayer} from './control-layer.mjs';
+import {createModalTransition} from './modal-transition.mjs';
+import {gameViewport} from './viewport.mjs';
+import {createMutationTargets} from './mutation-targets.mjs';
+import {uiScale} from './ui-resolution.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -37,30 +42,25 @@ function storage(prefix) {
 // DOM layout, hit testing and client coordinates share the usable rectangle.
 // The 3D canvas still covers the whole WeChat window behind the controls.
 function viewport(info) {
-  const width=info.windowWidth,height=info.windowHeight,screenTop=info.screenTop||0;
-  let left=0,top=0,right=width,bottom=height;
-  const safe=info.safeArea;
-  if(safe){
-    const x=Math.max(0,safe.left),y=Math.max(0,safe.top-screenTop);
-    const r=Math.min(width,safe.right),b=Math.min(height,safe.bottom-screenTop);
-    // Ignore empty or still-portrait coordinates during an orientation change.
-    if(r-x>width/2&&b-y>height/2){left=x;top=y;right=r;bottom=b;}
-  }
-  try{
-    const menu=wx.getMenuButtonBoundingClientRect?.();
-    if(menu&&menu.right>menu.left&&menu.right<=width+1&&menu.bottom>menu.top&&menu.bottom-screenTop<height/2)
-      top=Math.max(top,menu.bottom-screenTop+4);
-  }catch{} // Some runtimes do not expose a capsule rectangle.
-  return {w:right-left,h:bottom-top,x:left,y:top,width,height,dpr:info.pixelRatio||1};
+  let menu;try{menu=wx.getMenuButtonBoundingClientRect?.();}catch{}
+  return gameViewport(info,menu);
 }
-const uiScale=view=>Math.min(view.dpr,2,Math.sqrt(2000000/(view.width*view.height)));
 export async function setup(host) {
   await initCrypto();
   const {document:doc}=D.parseHTML('<!doctype html><html><head></head><body><canvas id="game"></canvas><div id="ui"></div></body></html>');
   const win=new D.EventTarget(),system=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();
   const view=viewport(system);
   const uiFrames=createUIFrameCache();
-  const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,()=>uiFrames.invalidate());
+  const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,element=>{
+    const tile=win.__pb?.run?.state==='play'&&hudLayers.find(layer=>layer.owns(element));
+    if(tile)tile.invalidate();else uiFrames.invalidate();
+  });
+  const controls=createControlLayer(makeCanvas);
+  const minimap=createCanvasLayer(makeCanvas,'minimap');
+  const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true});
+  const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
+  const hudLayers=['counters','score','ultimate','skills','items'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
+  const modalTransition=createModalTransition(makeCanvas);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
@@ -68,10 +68,36 @@ export async function setup(host) {
   const uiAssets=readUIAssets(host.files);
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
+  const frozenModalKey=()=>{
+    const app=win.__pb,run=app?.run;
+    return !app?.screen&&!run?.coop&&run?.state==='modal'&&run.ui.modalEl?.querySelector('.zx-upgrade')?run:null;
+  };
+  const mutationTarget=createMutationTargets(doc.documentElement);
   function mutations(records){
     for(const record of records){
       if(record.target===screen)continue;
+      const target=mutationTarget(record);
+      const element=target.nodeType===1?target:target.parentElement;
+      if(element?.closest?.('[data-ui-hidden="true"]'))continue;
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
+      if(env.__pb?.run?.state==='play'){
+        const tile=hudLayers.find(layer=>layer.owns(element));
+        if(tile){tile.invalidate();continue;}
+      }
+      if(record.type==='attributes'&&minimap.owns(element)&&record.attributeName==='data-frame'){
+        minimap.invalidate();continue;
+      }
+      if(env.__pb?.run?.state==='play'&&record.type==='attributes'&&element?.dataset?.uiLayer==='portrait'&&['data-frame','data-progress','data-word','aria-valuenow'].includes(record.attributeName)){
+        if(record.attributeName==='data-frame')portrait.invalidate();
+        continue;
+      }
+      if(record.type==='attributes'&&health.owns(element)&&['style','data-frame','data-progress','aria-valuenow','aria-valuemax','aria-label'].includes(record.attributeName)){
+        if(record.attributeName==='data-frame')health.invalidate();
+        continue;
+      }
+      if(record.type==='attributes'&&controls.owns(element)&&['style','class'].includes(record.attributeName)){
+        controls.invalidate();continue;
+      }
       // Text/HUD updates may happen every game tick; coalesce them. A newly
       // mounted menu must replace the previous pixels on the very next draw.
       const structural=record.type==='childList'&&[...record.addedNodes,...record.removedNodes].some(n=>n.nodeType===1);
@@ -118,9 +144,10 @@ export async function setup(host) {
   Object.defineProperty(doc,'activeElement',{get:()=>active||doc.body});
   doc.exitPointerLock=()=>{};
   const fs=wx.getFileSystemManager(),localStorage=storage('pokebonk.web.');
-  let locale=localStorage.getItem('pokebonk.lang')||'zh';
+  // Migrate old language preferences before reading the Chinese-only package.
+  const locale='zh';localStorage.setItem('pokebonk.lang',locale);
   const loc=new LocalURL('https://pokebonk.local/?touch=1');
-  loc.reload=()=>wx.restartMiniProgram?.({});loc.replace=value=>{const next=new LocalURL(value);const lang=next.searchParams.get('lang');if(lang)localStorage.setItem('pokebonk.lang',lang);loc.reload();};
+  loc.reload=()=>wx.restartMiniProgram?.({});loc.replace=()=>{localStorage.setItem('pokebonk.lang','zh');loc.reload();};
   const history={state:null,pushState(state){this.state=state;},replaceState(state){this.state=state;},back(){win.dispatchEvent(new D.Event('popstate'));}};
   const queries=new Map();
   function matchMedia(q){
@@ -143,7 +170,11 @@ export async function setup(host) {
   wx.onKeyboardConfirm?.(r=>{if(active){active.value=r.value;active.dispatchEvent(new InputEvent('change'));active.blur();}wx.hideKeyboard?.({});});
   function setRange(el,x){const b=rect(el);if(b.width<=0)return;el.value=String(rangeValueAt(el,(x-b.x)/b.width));el.dispatchEvent(new InputEvent('input'));}
   function touches(kind,event){
-    uiFrames.invalidate(false,true);
+    // A press begun in combat must not select a card while it is appearing.
+    if(modalTransition.active){pointers.clear();captured.clear();return;}
+    // Menus still react immediately. In battle, DOM mutations invalidate the
+    // controls that actually changed; an empty-space swipe needs no UI upload.
+    if(kind!=='move'&&win.__pb?.run?.state!=='play')uiFrames.invalidate(false,true);
     const local=t=>{
       const x=(t.clientX??t.pageX)-view.x,y=(t.clientY??t.pageY)-view.y;
       return {...t,identifier:t.identifier,clientX:x,clientY:y,pageX:x,pageY:y};
@@ -194,7 +225,7 @@ export async function setup(host) {
     Blob,URL:LocalURL,URLSearchParams:Params,fetch,Request,Headers,Response,AbortController,AbortSignal,TextDecoder,TextEncoder,createImageBitmap:undefined,ImageBitmap:undefined,OffscreenCanvas:undefined,
     ProgressEvent:InputEvent,MouseEvent:InputEvent,KeyboardEvent:InputEvent,PointerEvent:InputEvent,Path2D:CanvasPath,MutationObserver:doc.defaultView.MutationObserver,
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
-    nativeUI:true,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    nativeUI:true,backgroundMusicEnabled:false,prefersDark:system.theme==='dark',nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},
@@ -203,19 +234,43 @@ export async function setup(host) {
     setInterval:(...args)=>setInterval(...args),clearInterval:id=>clearInterval(id),performance:perf,requestAnimationFrame:raf,
     cancelAnimationFrame:typeof cancelAnimationFrame==='function'?cancelAnimationFrame:clearTimeout,
     addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),dispatchEvent:win.dispatchEvent.bind(win),
-    alert:msg=>wx.showModal({title:'宝可梦',content:String(msg),showCancel:false}),open:()=>null,
+    alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
-    onRunStartError(error){
-      const restart=typeof wx.restartMiniProgram==='function';
-      wx.showModal({title:'森林未能打开',content:String(error?.message||error),showCancel:false,
-        confirmText:restart?'重新进入':'退出游戏',success:()=>restart?wx.restartMiniProgram({}):wx.exitMiniProgram({})});
+    setUIPerformance(){
+      // Settings also change inherited CSS variables (e.g. button size).
+      // Refresh their hit boxes even when the pixel ratio stays the same.
+      uiFrames.invalidate(true,true);
+      const next=uiScale(view);
+      if(Math.abs(next-scale)<.001)return;
+      scale=env.uiPixelRatio=next;
+      uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
+      layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
-    drawUI(renderer){
+    invalidateUI:()=>uiFrames.invalidate(false,true),
+    animateModal(wrap){modalTransition.begin(wrap);uiFrames.invalidate(true,true);},
+    closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop);},
+    modalAnimating:()=>modalTransition.active,
+    drawFrozenModal(renderer){
+      const key=frozenModalKey();
+      if(!key||!draw?.hasFrozen(key))return false;
+      env.drawUI(renderer,false,key);return true;
+    },
+    drawUI(renderer,opaque=false,frozenFrame=null){
+      const now=perf.now();
+      if(modalTransition.advance(now))uiFrames.invalidate(false,true);
       mutations(observer.takeRecords());
-      const changed=uiFrames.draw(perf.now(),env.__pb?.run?.state,layout,boxes=>paint(layout,boxes,view,scale));
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed);
+      const state=env.__pb?.run?.state;
+      const changed=uiFrames.draw(now,state,layout,boxes=>{
+        controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
+        for(const tile of hudLayers)tile.capture(boxes);
+        const visible=modalTransition.capture(layout,boxes,view,scale);
+        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
+      });
+      if(opaque&&!changed)return;
+      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),portrait.draw(layout,view,scale,state==='play'&&!opaque),...hudLayers.map(tile=>tile.draw(layout,view,scale,state==='play'&&!opaque)),...modalTransition.layers(scale,perf.now())];
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenModalKey());
     },
-    locale,readLocale(lang){const p=host.files.pathFor('locale/'+lang+'.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
+    locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
   });
   env.window=env.self=env.globalThis=env;
   wx.onWindowResize?.(()=>{
@@ -231,6 +286,6 @@ export async function setup(host) {
     }
     env.dispatchEvent(new D.Event('resize'));
   });
-  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas});
+  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,portrait,hudLayers,modalTransition});
   return env;
 }

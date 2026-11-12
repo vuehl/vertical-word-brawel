@@ -37,3 +37,29 @@ test('important longhands retain priority over a regular shorthand',()=>{
   const style=styleEngine({w:320,h:470},rules).style(document.querySelector('div'));
   assert.equal(style['padding-left'],'8px');assert.equal(style['padding-right'],'4px');
 });
+
+test('clearing inline drag coordinates restores the fixed joystick position',()=>{
+  const {document}=parseHTML('<div class="stick"></div>'),el=document.querySelector('div');
+  const rules=[['.stick',[['left','50%'],['top','auto'],['bottom','28px']],'.stick','',10,0]];
+  const engine=styleEngine({w:390,h:746},rules);
+  el.style.left='80px';el.style.top='120px';el.style.bottom='auto';
+  assert.equal(engine.style(el).left,'80px');
+  el.style.left=el.style.top=el.style.bottom='';
+  const reset=engine.style(el);
+  assert.equal(reset.left,'50%');assert.equal(reset.top,'auto');assert.equal(reset.bottom,'28px');
+});
+
+test('native controls resolve inherited text colors before painting, including theme changes',()=>{
+  const {document}=parseHTML('<div style="--ink:#29263c;color:var(--ink);font-size:14px"><button style="color:inherit;font-size:inherit"><span style="color:inherit">返回</span></button><button style="color:#fff">选中</button></div>');
+  const parent=document.querySelector('div'),button=parent.firstElementChild,label=button.firstElementChild,selected=parent.lastElementChild;
+  const engine=styleEngine({w:390,h:746},[]);
+  function check(color){
+    const p=engine.style(parent),b=engine.style(button,p),t=engine.style(label,b);
+    assert.equal(b.color,color,'Canvas needs a concrete button color, not the CSS inherit keyword');
+    assert.equal(t.color,color,'Nested labels must use the same resolved color');
+    assert.equal(b.font,14,'Explicit font inheritance must retain the parent size');
+    assert.equal(engine.style(selected,p).color,'#fff','Explicit selected-button colors remain intact');
+  }
+  check('#29263c');
+  parent.style.color='#eee9f8';check('#eee9f8');
+});

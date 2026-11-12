@@ -8,6 +8,12 @@ import puppeteer from 'puppeteer-core';
 import sharp from 'sharp';
 import {reviewMenus} from './menu-regression.mjs';
 import {reviewUIPerformance} from './ui-perf.mjs';
+import {reviewZixing} from './zixing-regression.mjs';
+import {reviewPaper} from './paper-regression.mjs';
+import {reviewLoading} from './loading-regression.mjs';
+import {reviewScenes} from './scene-regression.mjs';
+import {reviewUpgrade} from './upgrade-regression.mjs';
+import {reviewStarters} from './starter-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -59,11 +65,21 @@ await page.evaluateOnNewDocument(()=>{
       if(window.uiPerf&&args[args.length-1]===window.inspected?.uiCanvas){
         uiPerf.uploads++;if(method==='texImage2D')uiPerf.allocations++;
       }
+      if(window.upgradeAudit){
+        const canvas=args[args.length-1];
+        if(canvas===window.inspected?.uiCanvas)upgradeAudit.uploads++;
+        if(window.inspected?.modalTransition?.canvases.includes(canvas))upgradeAudit.panelUploads++;
+      }
       return original.apply(this,args);
     };
   }
   const locations=new WeakMap(),bootLocations=new WeakSet();
-  window.bootPercentages=[];
+  window.bootPercentages=[];window.bootLabels=[];
+  const fillText=CanvasRenderingContext2D.prototype.fillText;
+  CanvasRenderingContext2D.prototype.fillText=function(label,...args){
+    if(/^\d+%$/.test(label))window.bootLabels.push(label);
+    return fillText.call(this,label,...args);
+  };
   window.holdHomeStatus=true;
   gl.getUniformLocation=function(program,name){
     const loc=lookup.call(this,program,name);
@@ -81,6 +97,7 @@ const menusOnly=process.argv.includes('--menus-only');
 const uiPerfOnly=process.argv.includes('--ui-perf');
 const phoneLayout=process.argv.includes('--phone-layout')||menusOnly;
 if(phoneLayout)await page.evaluateOnNewDocument(()=>{window.phoneLayout=true;});
+if(process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline'))await page.evaluateOnNewDocument(()=>{localStorage.setItem('pokebonk.web.pokebonk.lang','fr');});
 if(process.argv.includes('--eager-entry'))await page.evaluateOnNewDocument(()=>{window.eagerEntry=true;});
 if(failFrame)await page.evaluateOnNewDocument(()=>{window.failFirstFrame=true;});
 if(process.argv.includes('--retry-text'))await page.evaluateOnNewDocument(()=>{window.dropTextOnce=true;});
@@ -106,27 +123,16 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
-  const pixel=Math.max(1,Math.round(Math.min(width/185,height/110)));
-  const cx=Math.floor(width/2),cy=Math.floor(height*.12);
-  const half=Math.floor(Math.min(width*.27,height*.28));
-  const red=(x,y)=>data[((height-1-Math.floor(y))*width+Math.floor(x))*channels];
+  const sx=width/390,y=Math.floor(height*.79+4*sx),left=Math.round(61*sx),right=Math.round(329*sx);
   let filled=0;
-  for(let x=cx-half;x<cx+half;x++)if(red(x,cy-pixel)>140)filled++;
-  assert.ok(Math.abs(filled-2*half*percent/100)<=1,'Progress bar length at '+percent+'%');
-  const label=percent+'%', start=cx-(label.length*4-1)*pixel/2;
-  const expected={'0':0o75557,'5':0o74717,'6':0o74757,'7':0o71222,'9':0o75717,'%':0o51245};
-  for(let i=0;i<label.length;i++){
-    let bits=0;
-    for(let y=4;y>=0;y--)for(let x=0;x<3;x++)
-      bits=bits*2+Number(red(start+(4*i+x+.5)*pixel,cy+(2+y+.5)*pixel)>210);
-    assert.equal(bits,expected[label[i]],'Visible character '+label[i]+' in '+label);
+  for(let x=left;x<right;x++){
+    const at=(y*width+x)*channels;
+    if(Math.abs(data[at]-130)<8&&Math.abs(data[at+1]-159)<8)filled++;
   }
-  if(percent===95){
-    // At this stage the forest backdrop should be visible above the panel.
-    const upper=await sharp(image).extract({left:0,top:0,width,height:Math.floor(height/2)}).png().toBuffer();
-    const {channels:rgb}=await sharp(upper).removeAlpha().stats();
-    assert.ok(rgb.some(channel=>channel.max-channel.min>40),'Scene was covered by the loading panel');
-  }
+  assert.ok(Math.abs(filled-268*sx*percent/100)<=2,'Paper progress bar at '+percent+'%');
+  assert.ok(await page.evaluate(p=>window.bootLabels.includes(p+'%'),percent),'Readable percentage was painted');
+  const {channels:rgb}=await sharp(image).removeAlpha().stats();
+  assert.ok(rgb.some(channel=>channel.max-channel.min>100),'Stationery illustration is visible');
 }
 async function verifyStartup(){
   await page.waitForFunction(()=>window.textRequested&&window.playDownloaded||window.problem,{timeout:20000});
@@ -150,7 +156,7 @@ async function verifyStartup(){
   await page.evaluate(()=>window.releaseHomeStatus());
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-  await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button'),{timeout:15000});
+  await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
   // The first usable guest screen proves optional packages did not block boot.
   // Release them now; lengthy software-rendered layout assertions must not
   // turn the fixture's artificial download gate into a real 45-second timeout.
@@ -229,6 +235,24 @@ async function verifyStartup(){
       return false;
     },{timeout:45000},selector,match);
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
+  }
+  if(await page.evaluate(()=>!!app.zixing)){
+    if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
+    else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
+    else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,dir,sleep});
+    else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
+    else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});
+    const missing=await page.evaluate(()=>[...missingAssets]);
+    assert.deepEqual(missing,[],'All requested local assets must be present');
+    assert.ok(homePainted,'Startup must complete its first home-frame handoff');
+    const values=await page.evaluate(()=>bootPercentages);
+    assert.equal(values[0],0);assert.equal(values.at(-1),100);
+    for(let i=1;i<values.length;i++)assert.ok(values[i]>=values[i-1],'Progress moved backwards');
+    assert.equal(values.filter(n=>n===100).length,1);
+    if(errors.length)throw Error(errors[0]);
+    return;
   }
   if(uiPerfOnly){
     await reviewUIPerformance({page,tap,dir,baseline:process.argv.includes('--baseline')});
@@ -384,7 +408,7 @@ async function verifyStartup(){
   }
   if(process.argv.includes('--forest-regression')){
     const report=[];
-    for(const species of [1,4,7]){
+    for(const species of [4,132,16]){
       await page.evaluate(async species=>{
         if(app.run&&app.run.state!=='over')await app.run.finish(false,true);
         app.toMenu();

@@ -11,7 +11,7 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex').slice(0,1
 
 export function bootAssets(root) {
   const read=file=>fs.readFileSync(path.join(root,'source',file),'utf8').replace(/\r\n/g,'\n');
-  const css=read('public/assets/main-BnZCGLop-mvlr7rzv.css')+'\n'+read('src/customize.js').split('style.textContent=').pop().split(String.fromCharCode(96))[1];
+  const css=read('public/assets/main-BnZCGLop-mvlr7rzv.css')+'\n'+read('src/customize.js').split('style.textContent=').pop().split(String.fromCharCode(96))[1]+'\n'+read('src/zixing-style.js').split(String.fromCharCode(96))[1];
   const rules=[];
   postcss.parse(css).walkRules(rule=>{
     let media='';
@@ -26,7 +26,6 @@ export function bootAssets(root) {
     }
   });
   return {
-    'engine/layout.bin':fs.readFileSync(path.join(root,'platform/layout.bin')),
     'engine/styles.bin':deflateSync(JSON.stringify(rules),{level:9})
   };
 }

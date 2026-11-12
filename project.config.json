@@ -1,5 +1,5 @@
 {
-  "description": "宝可梦轻量版 · 原版森林 · 微信竖屏",
+  "description": "字行 · 字灵同行 · 微信竖屏",
   "setting": {
     "urlCheck": false,
     "es6": false,
@@ -27,7 +27,7 @@
   "compileType": "game",
   "libVersion": "latest",
   "appid": "wxa545e5ead35ffb1b",
-  "projectname": "宝可梦森林竖屏版",
+  "projectname": "字行森林竖屏版",
   "condition": {
     "search": {
       "current": -1,

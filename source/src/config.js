@@ -1,4 +1,6 @@
 import { t as e, u as t } from "./i18n.js";
+import {resolveItemIcon} from './item-icons.js';
+import {configureStarterRoster} from './starter-characters.js';
 var n = [
   {
     version: `0.8.34`,
@@ -4691,7 +4693,7 @@ var xn = (e) => Math.max(0, ...(e.board?.prizes ?? []).map((e) => e.top)),
   };
 }
 // FOREST LITE: reduce the roster before building membership lookup tables.
-M = M.filter(e => [1,4,7].includes(e.id));
+M = configureStarterRoster(M);
 var N = new Map(M.map((e) => [e.id, e])),
   kn = (e) => (e.challenge ? (Array.isArray(e.challenge) ? e.challenge : [e.challenge]) : []),
   An = (e) => e.rank ?? `common`,
@@ -6328,7 +6330,7 @@ var Ei = [`gg`, `love`, `fire`, `star`, `lol`, `wow`],
     let t = e.split(`/`);
     return t.slice(0, Math.min(2, t.length - 1)).join(`/`) || `.`;
   },
-  Ni = (e) => `${Ai}assets/${e}?v=${ji[Mi(e)] ?? `mvlr7rzv`}`,
+  Ni = (e) => `${Ai}assets/${resolveItemIcon(e)}?v=${ji[Mi(e)] ?? `mvlr7rzv`}`,
   Pi = (e) => `${Ai}data/${e}?v=${ji[`data/` + e] ?? `mvlr7rzv`}`,
   Fi = {
     novedad: { name: t(`Novedad`), color: `#2f7bf5` },

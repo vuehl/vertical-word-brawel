@@ -1,5 +1,26 @@
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily} from './lite-rules.js';
 import {mountLiteQA} from './lite-qa.js';
+import {createZixingUI} from './zixing-ui.js';
+import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
+import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
+import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
+import {createPlayerFootRing} from './player-foot-ring.js';
+import {CrowdGrid} from './crowd-grid.js';
+import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
+import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow} from './effect-budget.js';
+import {createStylizedEffectAtlas,EFFECT_CELL} from './stylized-effect-atlas.js';
+import {StylizedSkillFX,installStylizedMoveVFX} from './stylized-skill-vfx.js';
+import {actorMetrics} from './actor-metrics.js';
+import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera,updateWorkshopScene} from './paper-world.js';
+import {createSceneAntialias} from './scene-antialias.js';
+import {paperProp} from './paper-props.js';
+import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
+import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
+import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
+import {UpgradeTiming} from './upgrade-timing.js';
+import {configureStarterSpecies,rosterForStarterForm,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
+import {updatePaperVisibility} from './paper-visibility.js';
+import {hitsPaperBox,resolvePaperBox} from './paper-collision.js';
 import './customize.js';
 import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
 import {
@@ -370,7 +391,15 @@ var Ni = {
         }),
       ),
         i() !== `es` && (await this.localize()));
-      for (let e of this.all) this.byId.set(e.id, e);
+      configureStarterSpecies(this.all);
+      Pi.normal='基础';Pi.flying='风';
+      if(this.types?.names){this.types.names.normal='基础';this.types.names.flying='风';}
+      configureGlyphNames(this.all);
+      for (let e of this.all) {
+        e.name=glyphWordForSpecies(e.id);
+        e.flavor=glyphText(e.flavor);
+        this.byId.set(e.id, e);
+      }
       this.pokemon = this.all.filter((e) => Te(e.id));
       for (let e of this.pokemon)
         if (e.evoFrom != null && Te(e.evoFrom)) {
@@ -386,6 +415,7 @@ var Ni = {
       } catch (e) {
         return console.warn(e);
       }
+      configureGlyphNames(this.all,e.pokemon);
       for (let t of this.all)
         (e.pokemon[t.id] && (t.name = e.pokemon[t.id]), e.flavor?.[t.id] && (t.flavor = e.flavor[t.id]));
       for (let t of this.moves.values()) e.moves[t.id] && (t.name = e.moves[t.id]);
@@ -1440,7 +1470,9 @@ var Ro = () => uo && Math.min(screen.width, screen.height) < 600,
     let t = Number(e ?? (uo ? 60 : 0));
     return t >= 20 && t <= 240 ? t : 0;
   },
-  Uo = (e) => Bo() ?? Ro(),
+  // The native settings page stores this preference in the profile. Do not
+  // silently force every small-screen phone to 30 FPS via the old web default.
+  Uo = (e) => window.nativeUI ? batterySaverEnabled(e) : Bo() ?? Ro(),
   Wo = 1100,
   Go = 2200,
   Ko = !1,
@@ -1708,7 +1740,7 @@ var es = class {
         t(e.altKey, `AltLeft`, `AltRight`));
     }
     requestLock() {
-      if ((clearTimeout(Jo), this.locked || uo || Da)) return;
+      if ((clearTimeout(Jo), this.fixedCamera || this.locked || uo || Da)) return;
       qo = !0;
       let e = this.userUnlockAt + Wo - performance.now();
       if (e > 0) {
@@ -1750,9 +1782,11 @@ var es = class {
       t ? (this.keys.has(e) || this.pressed.add(e), this.keys.add(e)) : this.keys.delete(e);
     }
     look(e, t) {
+      if(this.fixedCamera)return;
       ((this.mouseDX += e), (this.mouseDY += t));
     }
     zoom(e) {
+      if(this.fixedCamera)return;
       this.wheel += e;
     }
     releaseLock() {
@@ -4739,27 +4773,9 @@ var Ws = () =>
       this.ctx &&
         [392, 370, 349, 330, 311].forEach((e, t) => this.tone(e, 0.4, `triangle`, 0.1, 1, t * 0.25));
     }
-    async cry(e, t = 1, n = 1) {
-      if (!this.ctx) return;
-      let r = this.cries.get(e);
-      if (r !== `loading` && r !== `missing`) {
-        if (r) this.playBuf(r, t * (this.cryGain.get(e) ?? 1), n);
-        else {
-          this.cries.set(e, `loading`);
-          try {
-            let r = await fetch(Zt(`cries/${e}.ogg`));
-            if (!r.ok) throw Error(`missing`);
-            let i = await this.ctx.decodeAudioData(await r.arrayBuffer());
-            (this.cries.set(e, i), this.cryGain.set(e, Us(i)), this.playBuf(i, t * this.cryGain.get(e), n));
-          } catch {
-            (this.cries.set(e, `missing`),
-              setTimeout(() => {
-                this.cries.get(e) === `missing` && this.cries.delete(e);
-              }, 3e4));
-          }
-        }
-      }
-    }
+    // Creature recordings are not part of the glyph edition. Keep the event
+    // hook for combat scripts; synthesized combat and UI effects still play.
+    cry() {}
     playBuf(e, t, n) {
       let r = this.ctx,
         i = r.createBufferSource();
@@ -4768,7 +4784,7 @@ var Ws = () =>
       ((a.gain.value = t), i.connect(a), a.connect(this.cryBus), i.start());
     }
     playSong(e, t, n, r) {
-      if (!this.ctx) return;
+      if (!this.ctx || window.backgroundMusicEnabled === false) return;
       this.stopTrack();
       let i = { bright: [0, 5, 3, 4], mystic: [0, 5, 6, 4], tense: [0, 6, 5, 4], calm: [0, 3, 5, 4] };
       ((this.song = { root: e, scale: t, bpm: n, mood: r, prog: i[r] }),
@@ -4784,6 +4800,7 @@ var Ws = () =>
       ((this.musicOn = !1), clearInterval(this.seqTimer), (this.song = null));
     }
     playTrack(e) {
+      if (window.backgroundMusicEnabled === false) return;
       !this.ctx ||
         (this.trackWant === e && (this.track || this.trackLoading)) ||
         (this.stopSeq(),
@@ -4818,6 +4835,7 @@ var Ws = () =>
         }));
     }
     preloadTrack(e) {
+      if (window.backgroundMusicEnabled === false) return Promise.resolve(null);
       let t = this.trackBytes.get(e);
       return (
         t ||
@@ -5039,9 +5057,9 @@ var oc = (e, t) =>
       float vz(vec2 uv){ return -getViewZ(readDepth(uv)); }
       void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor){
         float c = -getViewZ(depth);
-        vec2 t = texelSize;
+        vec2 t = texelSize * 1.35;
         float m = max(max(vz(uv + vec2(t.x, 0.)), vz(uv - vec2(t.x, 0.))), max(vz(uv + vec2(0., t.y)), vz(uv - vec2(0., t.y))));
-        float edge = step(1.0 + c * 0.12, m - c) * step(c, 300.);
+        float edge = smoothstep(.22 + c * .003, .40 + c * .004, m - c) * step(c, 300.);
         vec3 col = mix(inputColor.rgb, uColor, edge * uStrength);
         // First stop of the HDR chain: the scene lives in half floats (max 65504), so many additive glows piled up (a boss
         // fight) overflow to Inf and an Inf/NaN pixel spreads through the bloom's blur as black or white blocks, or the
@@ -5269,6 +5287,9 @@ var oc = (e, t) =>
         (this.outlinePass.renderToScreen = !1),
         this.composer.addPass(this.finalPass),
         this.composer.addPass(this.finalLite),
+        (this.antiAliasPass = new oi(this.camera, createSceneAntialias(fi))),
+        (this.antiAliasPass.renderToScreen = !0),
+        this.composer.addPass(this.antiAliasPass),
         this.pickFinal(),
         this.chroma,
         window.addEventListener(`resize`, () => this.resize()),
@@ -5282,12 +5303,16 @@ var oc = (e, t) =>
     dynRes = 1;
     static DYN_MIN = 0.6;
     setDynRes(t) {
+      // An explicitly selected sharp preset must not inherit a previous
+      // adaptive scale or be reduced by a delayed performance sample.
+      if(this.quality.dyn===false)t=1;
       ((t = Math.round(Math.max(e.DYN_MIN, Math.min(1, t)) * 100) / 100),
         t !== this.dynRes && ((this.dynRes = t), (this.dynDirty = !0)));
     }
     dynDirty = !1;
     setQuality(e) {
       (Object.assign(this.quality, e),
+        (this.outlinePass.enabled=this.quality.outline!==false),
         this.quality.dyn || (this.dynRes = 1),
         (this.bloom.intensity = this.quality.bloom ? 0.8 * this.bloomK : 0),
         this.pickFinal(),
@@ -5305,8 +5330,8 @@ var oc = (e, t) =>
       let e = this.bloom.intensity > 0.001;
       ((this.finalPass.enabled = e),
         (this.finalLite.enabled = !e),
-        (this.finalPass.renderToScreen = e),
-        (this.finalLite.renderToScreen = !e));
+        (this.finalPass.renderToScreen = !1),
+        (this.finalLite.renderToScreen = !1));
     }
     get pixelScale() {
       return this.quality.pixelScale > 1 ? this.quality.pixelScale : 1;
@@ -5369,7 +5394,7 @@ var oc = (e, t) =>
       const budget = portrait && this.quality.saver ? 1200000 : this.hires ? (uo ? 1600000 : 3700000) : 2200000;
       const nativeBudget = window.nativeGraphics?.pixelBudget ?? budget;
       const target = Math.min(window.devicePixelRatio, density, window.nativeGraphics?.maxPixelRatio ?? Infinity,
-        Math.sqrt(Math.min(budget, nativeBudget) / (e * t)));
+        Math.sqrt(nativeBudget / (e * t)));
       const ratio = n ? 1 / this.pixelScale : Math.max(.5, target * this.dynRes);
       const r = Math.round(ratio * 100) / 100;
       // Keep the world render targets at the chosen game quality. A phone can
@@ -5476,6 +5501,15 @@ function wc() {
     ));
 }
 function Tc(e, t, n = `img:` + e, r) {
+  const species=glyphSpeciesFromImage(e);
+  if(species!==null){
+    glyphAtlasReady().catch(()=>null).then(()=>{
+      const image=glyphCanvas(glyphWordForSpecies(species));
+      image.naturalWidth=image.width;image.naturalHeight=image.height;image.complete=true;
+      t(image);
+    });
+    return;
+  }
   let i = 0,
     a = 0,
     o = !1,
@@ -5809,7 +5843,9 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         t.add(this.mesh),
         i
           ? this.use(i, new Wr(i))
-          : this.load(
+          : actorMetrics[this.sid]
+            ? (this.foot = actorMetrics[this.sid])
+            : this.load(
               (this.url = Zt(
                 this.fallback
                   ? (this.meta.fallback ?? `front/${this.sid}.png`)
@@ -5823,6 +5859,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     lastUse = nl;
     drawn = !1;
     get bytes() {
+      if(this.zxGlyph)return this.ready?192*192*4:0;
       return this.ready ? this.meta.w * this.meta.h * 4 : 0;
     }
     urgent() {
@@ -5964,6 +6001,17 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         return;
       }
       this.count >= this.cap && this.grow();
+      if(this.zxGlyph){
+        const index=this.count++,size=Math.max(1.9,Math.min(2.55,this.bodyHeight(1)*1.3))*o;
+        const pos=this.aPos.array,dim=this.aSize.array,uv=this.aUV.array,fx=this.aFx.array,tint=this.aTint.array,look=this.aLook.array;
+        pos[index*3]=e;pos[index*3+1]=t+.08;pos[index*3+2]=n;
+        dim[index*2]=dim[index*2+1]=size;
+        uv.set(this.zxGlyphRect,index*4);
+        fx[index*4]=s;fx[index*4+1]=c;fx[index*4+2]=l;fx[index*4+3]=u;
+        tint[index*4]=d;tint[index*4+1]=f;tint[index*4+2]=p;tint[index*4+3]=m;
+        look[index*2]=g&15;look[index*2+1]=g>>4;
+        return;
+      }
       let _ = this.anim(r),
         v = _._tot;
       v === void 0 && ((v = _.d.reduce((e, t) => e + t, 0) || 1), (_._tot = v));
@@ -6012,7 +6060,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         this.mesh.dispose(),
         this.mesh.geometry.dispose(),
         this.material.dispose(),
-        this.material.uniforms.map.value?.dispose());
+        !this.zxGlyph && this.material.uniforms.map.value?.dispose());
     }
   },
   tl = class {
@@ -6031,7 +6079,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         blendSrc: 204,
         blendDst: 205,
         vertexShader: `attribute vec4 iS; varying vec2 vUv; varying float vA; void main(){ vUv = uv; vA = iS.w; vec3 p = vec3(position.x*iS.w, 0., position.z*iS.w*0.6) + iS.xyz + vec3(0.,0.06,0.); gl_Position = projectionMatrix*viewMatrix*vec4(p,1.); }`,
-        fragmentShader: `varying vec2 vUv; void main(){ float d = length(vUv-0.5)*2.; float a = smoothstep(1.,0.3,d)*0.38; gl_FragColor = vec4(0.05,0.05,0.12,a); }`,
+        fragmentShader: `varying vec2 vUv; void main(){ float d = length(vUv-0.5)*2.; float a = (1.-smoothstep(.55,1.,d))*.24; gl_FragColor = vec4(0.19,0.25,0.35,a); }`,
       });
       ((this.mesh = new Sr(n, r, t)),
         (this.mesh.frustumCulled = !1),
@@ -6044,6 +6092,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     }
     push(e, t, n, r) {
       if (this.count >= this.cap) return;
+      if(this.surface)t=Math.max(t,this.surface(e,n));
       let i = this.count++,
         a = this.a.array;
       ((a[i * 4] = e), (a[i * 4 + 1] = t), (a[i * 4 + 2] = n), (a[i * 4 + 3] = r));
@@ -6070,15 +6119,18 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         (this.shared = t),
         (this.shadows = new tl(e)),
         (this.standIn = new el(-1, e, t, 64, il())));
+      // Install before buildStage can request even its first actor.
+      installGlyphs({sprites:this},{Texture:Wr,colorSpace:pi,species:id=>k.get(id)});
     }
-    get(e, t = !1) {
-      let n = this.batches.get(e);
+    get(e, t = !1, monster = !1) {
+      const key=monster?'monster:'+e:e;
+      let n = this.batches.get(key);
       return (
         n
           ? t || n.urgent()
           : ((n = new el(e, this.scene, this.shared, 64, void 0, t)),
             (n.standIn = this.standIn),
-            this.batches.set(e, n)),
+            (n.zxMonster=monster), (n.zxBatchKey=key), this.batches.set(key, n)),
         t || (n.lastUse = nl),
         n
       );
@@ -6092,7 +6144,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         r.sort((e, t) => e.lastUse - t.lastUse);
         for (let e of r) {
           if (n <= t) break;
-          ((n -= e.bytes), this.batches.delete(e.id), e.dispose(), Nc.delete(e.url));
+          ((n -= e.bytes), this.batches.delete(e.zxBatchKey??e.id), e.dispose(), Nc.delete(e.url));
         }
       }
     }
@@ -6109,7 +6161,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     }
     readyCount(e) {
       let t = 0;
-      for (let n of e) this.get(n).ready && t++;
+      for (let n of e) {const batch=this.get(n);if(batch.loadError)throw batch.loadError;if(batch.ready)t++;}
       return t;
     }
     begin(e) {
@@ -6149,38 +6201,13 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     }
   };
 function il() {
-  let e = [
-      `.....kkkkkk.....`,
-      `...kkrrrrrrkk...`,
-      `..krrrrrrrrwwk..`,
-      `.krrrrrrrrrrwwk.`,
-      `.krrrrrrrrrrrwk.`,
-      `krrrrrrrrrrrrrrk`,
-      `krrrrrkkkkrrrrrk`,
-      `kkkkkkwwwwkkkkkk`,
-      `kkkkkkwwwwkkkkkk`,
-      `kwwwwwkkkkwwwwwk`,
-      `kwwwwwwwwwwwwwgk`,
-      `.kwwwwwwwwwwwgk.`,
-      `.kwwwwwwwwwwggk.`,
-      `..kgwwwwwwwggk..`,
-      `...kkggggggkk...`,
-      `.....kkkkkk.....`,
-    ],
-    t = { k: `#1d1b2a`, r: `#e8433a`, w: `#f4f1ea`, g: `#b9b4ad` },
-    n = document.createElement(`canvas`);
-  n.width = n.height = 48;
-  let r = n.getContext(`2d`);
-  return (
-    e.forEach((e, n) =>
-      [...e].forEach((e, i) => {
-        t[e] && ((r.fillStyle = t[e]), r.fillRect(i * 3, n * 3, 3, 3));
-      }),
-    ),
-    n
-  );
-}
-var al = {
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=96;
+  const c=canvas.getContext('2d');c.save();c.beginPath();c.arc(48,48,40,0,Math.PI*2);c.clip();
+  const cream=c.createLinearGradient(0,25,0,88);cream.addColorStop(0,'#fff6dd');cream.addColorStop(1,'#d2c6ae');c.fillStyle=cream;c.fillRect(0,0,96,96);
+  const red=c.createLinearGradient(0,10,0,52);red.addColorStop(0,'#ffad72');red.addColorStop(1,'#d75d57');c.fillStyle=red;c.fillRect(0,0,96,48);
+  c.fillStyle='#4e4658';c.fillRect(0,44,96,8);c.restore();c.strokeStyle='#4e4658';c.lineWidth=3;c.beginPath();c.arc(48,48,40,0,Math.PI*2);c.stroke();
+  c.fillStyle='#fff2d6';c.beginPath();c.arc(48,48,11,0,Math.PI*2);c.fill();c.stroke();c.fillStyle='#ffffffaa';c.beginPath();c.ellipse(30,24,9,4,-.5,0,Math.PI*2);c.fill();return canvas;
+}var al = {
     gb: 1,
     magma: 2,
     crystal: 3,
@@ -6790,1415 +6817,9 @@ var Al = new Ei(),
   })({}),
   Ml = `float wh = clamp(min(c.r, min(c.g, c.b)), 0., 1.); c *= (1. - 0.45 * wh) / (1. + vGlow * 0.5);`;
 function Nl() {
-  let e = document.createElement(`canvas`);
-  ((e.width = 512), (e.height = 1152));
-  let t = e.getContext(`2d`),
-    n = (e, n) => {
-      (t.save(), t.translate((e % 8) * 64 + 32, Math.floor(e / 8) * 64 + 32), n(t), t.restore());
-    },
-    r = `#fff`;
-  (n(0, (e) => {
-    let t = e.createRadialGradient(0, 0, 0, 0, 0, 30);
-    (t.addColorStop(0, `rgba(255,255,255,1)`),
-      t.addColorStop(0.4, `rgba(255,255,255,0.6)`),
-      t.addColorStop(1, `rgba(255,255,255,0)`),
-      (e.fillStyle = t),
-      e.fillRect(-32, -32, 64, 64));
-  }),
-    n(1, (e) => {
-      ((e.fillStyle = r), e.beginPath());
-      for (let t = 0; t < 10; t++) {
-        let n = t % 2 ? 11 : 28,
-          r = (t / 10) * Math.PI * 2 - Math.PI / 2;
-        e.lineTo(Math.cos(r) * n, Math.sin(r) * n);
-      }
-      e.fill();
-    }),
-    n(2, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(0, -30),
-        e.lineTo(5, 0),
-        e.lineTo(0, 30),
-        e.lineTo(-5, 0),
-        e.fill(),
-        e.beginPath(),
-        e.moveTo(-30, 0),
-        e.lineTo(0, 4),
-        e.lineTo(30, 0),
-        e.lineTo(0, -4),
-        e.fill());
-    }),
-    n(3, (e) => {
-      ((e.strokeStyle = r), (e.lineWidth = 6), e.beginPath(), e.arc(0, 0, 26, 0, Math.PI * 2), e.stroke());
-    }),
-    n(4, (e) => {
-      ((e.fillStyle = r), e.beginPath(), e.ellipse(0, 0, 12, 26, 0.6, 0, Math.PI * 2), e.fill());
-    }),
-    n(5, (e) => {
-      let t = e.createRadialGradient(0, 8, 2, 0, 4, 28);
-      (t.addColorStop(0, `#fff`),
-        t.addColorStop(1, `rgba(255,255,255,0)`),
-        (e.fillStyle = t),
-        e.beginPath(),
-        e.moveTo(0, -30),
-        e.quadraticCurveTo(22, 0, 14, 18),
-        e.quadraticCurveTo(0, 30, -14, 18),
-        e.quadraticCurveTo(-22, 0, 0, -30),
-        e.fill());
-    }),
-    n(6, (e) => {
-      ((e.strokeStyle = r),
-        (e.lineWidth = 4),
-        e.beginPath(),
-        e.arc(0, 0, 22, 0, Math.PI * 2),
-        e.stroke(),
-        (e.fillStyle = `rgba(255,255,255,0.8)`),
-        e.beginPath(),
-        e.arc(-8, -8, 6, 0, Math.PI * 2),
-        e.fill());
-    }),
-    n(7, (e) => {
-      ((e.strokeStyle = r), (e.lineWidth = 5), (e.lineCap = `round`));
-      for (let t = 0; t < 3; t++)
-        (e.rotate(Math.PI / 3), e.beginPath(), e.moveTo(-26, 0), e.lineTo(26, 0), e.stroke());
-    }),
-    n(8, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(6, -30),
-        e.lineTo(-12, 4),
-        e.lineTo(0, 4),
-        e.lineTo(-6, 30),
-        e.lineTo(14, -6),
-        e.lineTo(2, -6),
-        e.closePath(),
-        e.fill());
-    }),
-    n(9, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(-20, -10),
-        e.lineTo(-4, -24),
-        e.lineTo(20, -14),
-        e.lineTo(24, 10),
-        e.lineTo(4, 24),
-        e.lineTo(-22, 14),
-        e.closePath(),
-        e.fill());
-    }),
-    n(10, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(0, 22),
-        e.bezierCurveTo(-34, -2, -16, -30, 0, -12),
-        e.bezierCurveTo(16, -30, 34, -2, 0, 22),
-        e.fill());
-    }),
-    n(11, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.arc(0, -4, 20, 0, Math.PI * 2),
-        e.fill(),
-        e.fillRect(-10, 10, 20, 12),
-        (e.globalCompositeOperation = `destination-out`),
-        e.beginPath(),
-        e.arc(-8, -4, 6, 0, 7),
-        e.arc(8, -4, 6, 0, 7),
-        e.fill());
-    }),
-    n(12, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.ellipse(-6, 16, 10, 8, -0.4, 0, 7),
-        e.fill(),
-        e.fillRect(2, -24, 5, 40),
-        e.fillRect(2, -24, 16, 6));
-    }),
-    n(13, (e) => {
-      ((e.strokeStyle = r), (e.lineWidth = 5), e.beginPath());
-      for (let t = 0; t < 60; t++) {
-        let n = t * 0.2,
-          r = t * 0.45;
-        e.lineTo(Math.cos(n) * r, Math.sin(n) * r);
-      }
-      e.stroke();
-    }),
-    n(14, (e) => {
-      ((e.fillStyle = r), e.fillRect(-18, -18, 36, 36));
-    }),
-    n(15, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(0, -28),
-        e.quadraticCurveTo(20, 6, 0, 24),
-        e.quadraticCurveTo(-20, 6, 0, -28),
-        e.fill());
-    }),
-    n(16, (e) => {
-      e.fillStyle = r;
-      for (let t = -1; t <= 1; t++)
-        (e.beginPath(),
-          e.moveTo(t * 13 - 10, -28),
-          e.quadraticCurveTo(t * 13 + 8, 0, t * 13 - 4, 28),
-          e.quadraticCurveTo(t * 13 + 2, 0, t * 13 - 10, -28),
-          e.fill());
-    }),
-    n(17, (e) => {
-      e.fillStyle = r;
-      for (let t of [-1, 1])
-        for (let n of [-1, 1])
-          (e.beginPath(),
-            e.moveTo(n * 18, t * 28),
-            e.lineTo(n * 4, t * 28),
-            e.lineTo(n * 11, t * 4),
-            e.fill());
-    }),
-    n(18, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.roundRect(-20, -16, 36, 30, 9),
-        e.fill(),
-        e.fillRect(-26, -4, 10, 18),
-        (e.globalCompositeOperation = `destination-out`),
-        e.fillRect(-20, -6, 36, 2));
-      for (let t = 0; t < 3; t++) e.fillRect(-9 + t * 9, -16, 2, 10);
-    }),
-    n(19, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.arc(0, 0, 28, -2.2, 2.2),
-        e.arc(-12, 0, 22, 1.9, -1.9, !0),
-        e.fill());
-    }),
-    n(20, (e) => {
-      e.fillStyle = r;
-      for (let t of [0.785, -0.785])
-        (e.save(),
-          e.rotate(t),
-          e.beginPath(),
-          e.moveTo(-30, 0),
-          e.lineTo(0, -6),
-          e.lineTo(30, 0),
-          e.lineTo(0, 6),
-          e.fill(),
-          e.restore());
-    }),
-    n(21, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(-28, 0),
-        e.quadraticCurveTo(0, -24, 28, 0),
-        e.quadraticCurveTo(0, 24, -28, 0),
-        e.fill(),
-        (e.globalCompositeOperation = `destination-out`),
-        e.beginPath(),
-        e.arc(0, 0, 9, 0, 7),
-        e.fill(),
-        (e.globalCompositeOperation = `source-over`),
-        e.beginPath(),
-        e.arc(0, 0, 5, 0, 7),
-        e.fill());
-    }),
-    n(22, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.arc(0, 0, 26, 0, 7),
-        e.fill(),
-        (e.globalCompositeOperation = `destination-out`),
-        e.beginPath(),
-        e.arc(12, -8, 22, 0, 7),
-        e.fill());
-    }),
-    n(23, (e) => {
-      ((e.strokeStyle = r), (e.lineCap = `round`));
-      for (let t = 0; t < 3; t++)
-        ((e.lineWidth = 6 - t), e.beginPath(), e.arc(-22, 0, 12 + t * 12, -0.8, 0.8), e.stroke());
-    }),
-    n(24, (e) => {
-      ((e.fillStyle = r),
-        e.rotate(0.5),
-        e.beginPath(),
-        e.ellipse(0, -2, 10, 26, 0, 0, 7),
-        e.fill(),
-        e.fillRect(-1.5, 18, 3, 12),
-        (e.globalCompositeOperation = `destination-out`),
-        e.fillRect(-1, -26, 2, 44));
-    }),
-    n(25, (e) => {
-      ((e.fillStyle = r), e.beginPath());
-      for (let t = 0; t < 8; t++) {
-        let n = t % 2 ? 5 : 30,
-          r = (t / 8) * Math.PI * 2;
-        e.lineTo(Math.cos(r) * n, Math.sin(r) * n);
-      }
-      e.fill();
-    }),
-    n(26, (e) => {
-      ((e.strokeStyle = r),
-        (e.lineWidth = 5),
-        (e.lineJoin = `round`),
-        (e.lineCap = `round`),
-        e.beginPath(),
-        e.moveTo(-28, 4),
-        e.lineTo(-12, -4),
-        e.lineTo(-2, 8),
-        e.lineTo(12, -6),
-        e.lineTo(28, 2),
-        e.moveTo(-2, 8),
-        e.lineTo(2, 26),
-        e.moveTo(-12, -4),
-        e.lineTo(-16, -24),
-        e.moveTo(12, -6),
-        e.lineTo(18, -26),
-        e.stroke());
-    }),
-    n(27, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(-14, -28),
-        e.lineTo(14, -28),
-        e.lineTo(14, 10),
-        e.quadraticCurveTo(14, 28, 0, 28),
-        e.quadraticCurveTo(-14, 28, -14, 10),
-        e.fill(),
-        (e.globalCompositeOperation = `destination-out`),
-        e.fillRect(-1.5, -20, 3, 30));
-    }),
-    n(28, (e) => {
-      e.fillStyle = r;
-      for (let [t, n, r] of [
-        [0, 0, 9],
-        [-16, -10, 6],
-        [14, -14, 5],
-        [16, 12, 7],
-        [-12, 16, 5],
-        [2, -24, 4],
-        [-24, 4, 4],
-      ])
-        (e.beginPath(), e.arc(t, n, r, 0, 7), e.fill());
-    }),
-    n(29, (e) => {
-      ((e.fillStyle = r),
-        e.beginPath(),
-        e.moveTo(0, -30),
-        e.lineTo(10, -4),
-        e.lineTo(6, 28),
-        e.lineTo(-6, 28),
-        e.lineTo(-10, -4),
-        e.closePath(),
-        e.fill());
-    }),
-    n(30, (e) => {
-      ((e.fillStyle = r), e.beginPath(), e.roundRect(-14, -6, 28, 28, 8), e.fill());
-      for (let t = 0; t < 4; t++) (e.beginPath(), e.roundRect(-14 + t * 7.5, -28, 6, 26, 3), e.fill());
-      (e.beginPath(), e.roundRect(12, -4, 14, 7, 3), e.fill());
-    }),
-    n(31, (e) => {
-      let t = e.createRadialGradient(0, 6, 2, 0, 0, 30);
-      (t.addColorStop(0, `#fff`),
-        t.addColorStop(1, `rgba(255,255,255,0.2)`),
-        (e.fillStyle = t),
-        e.beginPath(),
-        e.moveTo(0, -30),
-        e.quadraticCurveTo(10, -12, 22, -16),
-        e.quadraticCurveTo(24, 26, 0, 26),
-        e.quadraticCurveTo(-24, 26, -22, -4),
-        e.quadraticCurveTo(-8, -8, 0, -30),
-        e.fill(),
-        (e.globalCompositeOperation = `destination-out`),
-        e.beginPath(),
-        e.ellipse(-7, 6, 3, 5, 0, 0, 7),
-        e.ellipse(7, 6, 3, 5, 0, 0, 7),
-        e.fill());
-    }),
-    n(32, (e) => {
-      let t = [
-          [0, -29],
-          [17, -14],
-          [17, 12],
-          [0, 29],
-          [-17, 12],
-          [-17, -14],
-        ],
-        n = (t, n) => {
-          ((e.fillStyle = n),
-            e.beginPath(),
-            t.forEach(([t, n], r) => (r ? e.lineTo(t, n) : e.moveTo(t, n))),
-            e.closePath(),
-            e.fill());
-        };
-      ((e.lineJoin = `round`),
-        (e.strokeStyle = `#2a2440`),
-        (e.lineWidth = 5),
-        e.beginPath(),
-        t.forEach(([t, n], r) => (r ? e.lineTo(t, n) : e.moveTo(t, n))),
-        e.closePath(),
-        e.stroke(),
-        n(t, `#9a9a9a`),
-        n(
-          [
-            [0, -29],
-            [17, -14],
-            [0, -6],
-            [-17, -14],
-          ],
-          `#ffffff`,
-        ),
-        n(
-          [
-            [-17, -14],
-            [0, -6],
-            [0, 29],
-            [-17, 12],
-          ],
-          `#e2e2e2`,
-        ),
-        n(
-          [
-            [17, -14],
-            [17, 12],
-            [0, 29],
-            [0, -6],
-          ],
-          `#b4b4b4`,
-        ),
-        n(
-          [
-            [-9, -4],
-            [0, -6],
-            [0, 14],
-            [-8, 8],
-          ],
-          `#f4f4f4`,
-        ),
-        (e.fillStyle = `#ffffff`),
-        e.beginPath(),
-        e.ellipse(-8, -15, 4, 2.5, -0.5, 0, 7),
-        e.fill());
-    }));
-  let i = (e, t, r) =>
-      n(e, (e) => {
-        let n = 64 / t.length;
-        t.forEach((t, i) =>
-          [...t].forEach((t, a) => {
-            r[t] && ((e.fillStyle = r[t]), e.fillRect(a * n - 32, i * n - 32, n, n));
-          }),
-        );
-      }),
-    a = { W: `#ffffff`, S: `#c4c0b8`, O: `#3a3040` };
-  (i(
-    35,
-    [
-      `................`,
-      `................`,
-      `................`,
-      `................`,
-      `..OO........OO..`,
-      `.OWWO......OWWO.`,
-      `.OWWWOOOOOOWWWO.`,
-      `..OWWWWWWWWWWO..`,
-      `..OWWSSSSSSWWO..`,
-      `.OWWSOOOOOOSWWO.`,
-      `.OSSO......OSSO.`,
-      `..OO........OO..`,
-      `................`,
-      `................`,
-      `................`,
-      `................`,
-    ],
-    a,
-  ),
-    i(
-      36,
-      [
-        `.......OO.......`,
-        `......OWWO......`,
-        `......OWWO......`,
-        `.....OWWWO......`,
-        `.....OWWSO......`,
-        `....OWWWSO......`,
-        `....OWWSSO..OO..`,
-        `...OWWWSO..OWWO.`,
-        `...OWWSSO.OWWSO.`,
-        `..OWWWSOOOWWSO..`,
-        `..OWWSSWWWWSO...`,
-        `.OWWWSSSSSSO....`,
-        `.OWWSSSSSSO.....`,
-        `OWWSSSSSOO......`,
-        `OSSSSOOO........`,
-        `.OOOO...........`,
-      ],
-      a,
-    ),
-    i(
-      37,
-      [
-        `......OO........`,
-        `.....OWWO.......`,
-        `.....OWWO.......`,
-        `.....OWWO.......`,
-        `.....OWWO.......`,
-        `.....OWWOOO.....`,
-        `...OOOWWOWWO....`,
-        `..OWWOWWOWWOO...`,
-        `..OWWOWWOWWOWO..`,
-        `..OWWWWWWWWWWO..`,
-        `..OWWWWWWWWWSO..`,
-        `...OWWWWWWWSO...`,
-        `...OWWWWWWSSO...`,
-        `....OWWWWSSO....`,
-        `.....OSSSSO.....`,
-        `......OOOO......`,
-      ],
-      { W: `#ffe8d8`, S: `#e8b8a0`, O: `#5a3028` },
-    ),
-    i(33, [`....D...`, `...DR...`, `...ROD..`, `..DROR..`, `.DROYOD.`, `.ROYYOR.`, `.ROYYOR.`, `..DRRD..`], {
-      Y: `#fff1a8`,
-      O: `#ffaa2e`,
-      R: `#f0581e`,
-      D: `#a82a16`,
-    }),
-    i(38, [`....D...`, `...DR...`, `...ROD..`, `..DROR..`, `.DROYOD.`, `.ROYYOR.`, `.ROYYOR.`, `..DRRD..`], {
-      Y: `#f4eeff`,
-      O: `#b89aff`,
-      R: `#7a5af0`,
-      D: `#3a2a8a`,
-    }),
-    i(34, [`..1111..`, `.122221.`, `12233221`, `12333321`, `12333321`, `12233221`, `.122221.`, `..1111..`], {
-      1: `#8a8a8a`,
-      2: `#bcbcbc`,
-      3: `#e6e6e6`,
-    }),
-    i(
-      39,
-      [
-        `.OOO............`,
-        `OLWWOOO.........`,
-        `.OOGLWWOO.......`,
-        `...OGLLWWOO.....`,
-        `....OGGLWWWO....`,
-        `.....OGLLWWWO...`,
-        `.....OGGLLLWWO..`,
-        `......OGGLLWWO..`,
-        `......OGGGLLWWO.`,
-        `.......OGGGLLWO.`,
-        `........OOGGGLWO`,
-        `..........OOGLWO`,
-        `............OGLO`,
-        `.............OGW`,
-        `..............OW`,
-        `..............OL`,
-      ],
-      { W: `#ffffff`, L: `#d8ff9a`, G: `#7ad84a`, O: `#2a5a2a` },
-    ),
-    i(
-      40,
-      [
-        `.........OOOO...`,
-        `........OYYYO...`,
-        `.......OYWYO....`,
-        `......OYWYO.....`,
-        `.....OYWYO......`,
-        `....OYWYYOOOO...`,
-        `...OYWWWWWWYO...`,
-        `...OOOOYWWYO....`,
-        `......OYWYO.....`,
-        `.....OYWYO......`,
-        `....OYWYO.......`,
-        `....OYYO........`,
-        `...OYYO.........`,
-        `...OYO..........`,
-        `...OO...........`,
-        `................`,
-      ],
-      { W: `#ffffff`, Y: `#ffe14a`, O: `#8a5a10` },
-    ),
-    i(41, [`..OOOO..`, `.OLLMMO.`, `OLLMMMMO`, `OLMMMDDO`, `OMMMDDDO`, `OMMDDDDO`, `.ODDDDO.`, `..OOOO..`], {
-      L: `#e2ccaa`,
-      M: `#b0926a`,
-      D: `#76604a`,
-      O: `#3a2c22`,
-    }),
-    i(42, [`...OO...`, `..OLLO..`, `.OLWBBO.`, `.OLBBBO.`, `OLBBBBBO`, `OBBBBBDO`, `.OBBBDO.`, `..OOOO..`], {
-      L: `#c4ecff`,
-      W: `#ffffff`,
-      B: `#4aa8ff`,
-      D: `#2a6ad0`,
-      O: `#183a7a`,
-    }),
-    i(
-      43,
-      [
-        `................`,
-        `................`,
-        `....OOOOOOOO....`,
-        `...OWWOWWOWWO...`,
-        `..OWWWOWWOWWWO..`,
-        `..OWWWOWWOWWWO..`,
-        `..OWWWWWWWWWWOO.`,
-        `.OOWWWWWWWWWWWO.`,
-        `OWWOWWWWWWWWWSO.`,
-        `OWWWOWWWWWWWSSO.`,
-        `.OWWWWWWWWWSSO..`,
-        `..OSWWWWWSSSO...`,
-        `...OSSSSSSSO....`,
-        `....OOOOOOO.....`,
-        `................`,
-        `................`,
-      ],
-      { W: `#ffffff`, S: `#c8d0e0`, O: `#2a2440` },
-    ),
-    i(
-      44,
-      [
-        `..O...O...O.....`,
-        `.OWO.OWO.OWO....`,
-        `.OWO.OWO.OWO....`,
-        `.OWSOOWSOOWSO...`,
-        `.OWSOOWSOOWSO...`,
-        `..OWSOOWSOOWSO..`,
-        `..OWSOOWSOOWSO..`,
-        `..OWSOOWSOOWSO..`,
-        `...OWSOOWSOOWSO.`,
-        `...OWSOOWSOOWSO.`,
-        `...OWSOOWSOOWSO.`,
-        `....OWSOOWSOOWSO`,
-        `....OWSOOWSOOWSO`,
-        `....OWO.OWO.OWO.`,
-        `.....OWO.OWO.OWO`,
-        `......O...O...O.`,
-      ],
-      { W: `#ffffff`, S: `#e0d4c4`, O: `#4a2a20` },
-    ),
-    i(
-      45,
-      [
-        `................`,
-        `......OOOO......`,
-        `....OOWWLLO.....`,
-        `...OWLLBBBLO....`,
-        `..OWLBBOOBBLO...`,
-        `..OLBBO..OBBO...`,
-        `.OLBBO....OO....`,
-        `.OLBBO..........`,
-        `OLBBBO.......OO.`,
-        `OLBBBBO....OOLO.`,
-        `OLBBBBBOOOOLLBO.`,
-        `OBBBBBBBLLLBBBO.`,
-        `OBDBBBDBBBBDBBO.`,
-        `ODDBDDDBDDBDDDO.`,
-        `.OOOOOOOOOOOOOO.`,
-        `................`,
-      ],
-      { W: `#ffffff`, L: `#9ee0ff`, B: `#4aa8ff`, D: `#2a6ad0`, O: `#183a7a` },
-    ),
-    i(
-      46,
-      [
-        `.........O......`,
-        `........ODO.....`,
-        `........ODO.....`,
-        `...O.....ODO....`,
-        `..ODO....ODO....`,
-        `..ODO....ODO...O`,
-        `...ODO..ODO..OOD`,
-        `.OODDOO.ODDOODDO`,
-        `ODDOODDODOODDOO.`,
-        `.OO..OODO..ODO..`,
-        `......ODO...ODO.`,
-        `.....ODO....ODO.`,
-        `.....ODO.....O..`,
-        `.....ODO........`,
-        `......ODO.......`,
-        `......ODO.......`,
-      ],
-      { D: `#2a1c14`, O: `#4a3626` },
-    ),
-    i(
-      47,
-      [
-        `.......OO.......`,
-        `......OLMO......`,
-        `......OLMO......`,
-        `.....OLLMDO.....`,
-        `.....OLMMDO.....`,
-        `....OLLMMDO.....`,
-        `....OLMMMDDO....`,
-        `...OLLMMMDDO....`,
-        `...OLMMMMDDDO...`,
-        `..OLLMMOMMDDO...`,
-        `..OLMMOLOMDDDO..`,
-        `.OLLMOLMMODDDO..`,
-        `.OLMMMLMMMDDDDO.`,
-        `OLLMMMMMMMDDDDDO`,
-        `OOOOOOOOOOOOOOOO`,
-        `................`,
-      ],
-      { L: `#f0d8a8`, M: `#c88a52`, D: `#8a5430`, O: `#3a2418` },
-    ),
-    i(
-      48,
-      [
-        `................`,
-        `....OOO.........`,
-        `...OWWSO........`,
-        `...OWSSDO.......`,
-        `...OSSDDO..OO...`,
-        `....ODDO..OWSO..`,
-        `.....OO...OSDO..`,
-        `...........OO...`,
-        `.......OOOO.....`,
-        `......OWWWSO....`,
-        `.....OWWSSSDO...`,
-        `.....OWSSSDDO...`,
-        `.....OSSSDDDO...`,
-        `......OSDDDO....`,
-        `.......OOOO.....`,
-        `................`,
-      ],
-      { W: `#ffffff`, S: `#dcdcdc`, D: `#a8a8a8`, O: `#5a5a6e` },
-    ),
-    i(
-      49,
-      [
-        `.....OOOOOO.....`,
-        `...OOLLLLLLOO...`,
-        `..OLLWWiiiiiLO..`,
-        `.OLWWiiiiiiiiLO.`,
-        `.OLWiiiiiiiiiLO.`,
-        `OLLiiiiiiiiiiiLO`,
-        `OLiiiiiiiiiiiiLO`,
-        `OLiiiiiiiiiiiiLO`,
-        `OLiiiiiiiiiiiBLO`,
-        `OLiiiiiiiiiiiBLO`,
-        `OLLiiiiiiiiiBBLO`,
-        `.OLiiiiiiiiBBLO.`,
-        `.OLLiiiiiiBBLLO.`,
-        `..OLLBBBBBBLLO..`,
-        `...OOLLLLLLOO...`,
-        `.....OOOOOO.....`,
-      ],
-      { W: `#ffffff`, L: `#9ad8ff`, B: `#4a9ae8`, i: `rgba(170,220,255,0.28)`, O: `#1e4a9a` },
-    ),
-    i(50, [`OOOOOOO.`, `OWWWWWO.`, `OOOOWWO.`, `...OWO..`, `..OWO...`, `.OWWOOO.`, `OWWWWWO.`, `OOOOOOO.`], {
-      W: `#ffffff`,
-      O: `#2a2050`,
-    }),
-    i(51, [`..O..O..`, `.OWOOWO.`, `..OWWO..`, `OOWLLWOO`, `OOWLLWOO`, `..OWWO..`, `.OWOOWO.`, `..O..O..`], {
-      W: `#ffffff`,
-      L: `#9ad8ff`,
-      O: `#3a6aa8`,
-    }));
-  let o = { W: `#fffbe0`, L: `#ffe066`, M: `#f0b828`, D: `#c07a18`, O: `#5a3410` };
-  (i(
-    52,
-    [
-      `.....OOOOOO.....`,
-      `...OOLLLLLLOO...`,
-      `..OLWWLLLLLLMO..`,
-      `.OLWLLLLLLLLMMO.`,
-      `.OLWLDDDDDLLMMO.`,
-      `OLLLLDLLLLDLLMDO`,
-      `OLLLLDLLLLDLLMDO`,
-      `OLLLLDDDDDLLMMDO`,
-      `OLLLLDLLLLLLMMDO`,
-      `OLLDDDDDLLLMMMDO`,
-      `OLLLLDLLLLLMMMDO`,
-      `.OLLLDLLLLMMMDO.`,
-      `.OLLMMMMMMMMMDO.`,
-      `..OMMMMMMMMDDO..`,
-      `...OODDDDDDOO...`,
-      `.....OOOOOO.....`,
-    ],
-    o,
-  ),
-    i(
-      53,
-      [
-        `......OOOO......`,
-        `.....OLLLMO.....`,
-        `....OLWLLMMO....`,
-        `....OLWLLMMO....`,
-        `....OLLDDMMO....`,
-        `....OLLDLMDO....`,
-        `....OLLDLMDO....`,
-        `....OLLDDMDO....`,
-        `....OLLDLMDO....`,
-        `....OLDDDMDO....`,
-        `....OLLDLMDO....`,
-        `....OLLLMMDO....`,
-        `....OLMMMMDO....`,
-        `....OMMMMDDO....`,
-        `.....ODDDDO.....`,
-        `......OOOO......`,
-      ],
-      o,
-    ),
-    i(
-      54,
-      [
-        `.......OOO......`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `......OWMDO.....`,
-        `......OLDDO.....`,
-        `.......OOO......`,
-      ],
-      o,
-    ),
-    i(
-      55,
-      [
-        `................`,
-        `................`,
-        `................`,
-        `..OOOO..........`,
-        `.OLLLMO.........`,
-        `OLWOOLMO........`,
-        `OLO..OLOOOOOOOO.`,
-        `OLO..OLLLLLLLLMO`,
-        `OMO..OMMMMMMMMDO`,
-        `OMDOODMOOODOODO.`,
-        `.OMDDDO..ODOODO.`,
-        `..OOOO...ODO.OO.`,
-        `.........OO.....`,
-        `................`,
-        `................`,
-        `................`,
-      ],
-      o,
-    ),
-    i(
-      138,
-      [
-        `......OOOO......`,
-        `....OOWWLLOO....`,
-        `...OWWLLLLLMO...`,
-        `..OWLLGGLLLLMO..`,
-        `..OWLGGGLLLLMO..`,
-        `.OWLLLGLLLGGLMO.`,
-        `.OWLLLLLLGGGLMO.`,
-        `.OLLLLLLLLGLLMO.`,
-        `OLLGGLLLLLLLLMDO`,
-        `OLGGGGLLLLLLLMDO`,
-        `OLLGGLLLLLGGLMDO`,
-        `OLLLLLLLLGGGMMDO`,
-        `.OLLLLLLLLGMMDO.`,
-        `.OOMMLLLLMMMDDO.`,
-        `...OOMMMMMDDOO..`,
-        `.....OOOOOO.....`,
-      ],
-      { W: `#ffffff`, L: `#fff4d6`, M: `#ead7a8`, D: `#c8ae78`, G: `#6ad05a`, O: `#4a3a28` },
-    ));
-  let s = (e) => {
-    let t = Math.floor((16 - e.length) / 2);
-    return [...Array(t).fill(``), ...e, ...Array(16 - e.length - t).fill(``)];
-  };
-  (i(
-    63,
-    [
-      `.......OO.......`,
-      `......OLMO......`,
-      `......OLMO..O...`,
-      `.....OLMDO.OTO..`,
-      `.....OLMDOOTO...`,
-      `....OLMMDDOO....`,
-      `.OO.OLMMDO......`,
-      `OTTOOLMMDO......`,
-      `.OOTOLMMDDO.....`,
-      `...OOLLMMDO.....`,
-      `.....OLMMDDO.OO.`,
-      `.....OLMMMDOOTTO`,
-      `....OLLMMMDDOOO.`,
-      `....OLMGMMDDO...`,
-      `...OLGGMMMDDDO..`,
-      `...OOOOOOOOOOO..`,
-    ],
-    { L: `#d8a874`, M: `#9a6238`, D: `#5e3a20`, T: `#f0e4c8`, G: `#6ab04a`, O: `#2a1a10` },
-  ),
-    i(
-      64,
-      s([
-        `...........OOOO.`,
-        `.........OOLLLO.`,
-        `.......OOLLLLGO.`,
-        `......OLLLLLGGO.`,
-        `.....OLLLLLGGDO.`,
-        `....OLLLLWGGDO..`,
-        `...OLLLLWGGDDO..`,
-        `...OLLLWGGGDO...`,
-        `..OLLLWGGGDDO...`,
-        `..OLLWGGGDDO....`,
-        `..OLWGGGDDO.....`,
-        `.OLWGGDDOO......`,
-        `.OWGDDOO........`,
-        `OWOOOO..........`,
-        `OO..............`,
-      ]),
-      { W: `#e8ffb0`, L: `#9ae05a`, G: `#5ab83a`, D: `#2e7a2a`, O: `#1a3a1a` },
-    ),
-    i(
-      65,
-      s([
-        `............OO..`,
-        `..........OOLWO.`,
-        `.........OLLWLO.`,
-        `........OLLWLMO.`,
-        `.......OLLWLMMO.`,
-        `......OLLWLMMO..`,
-        `.....OLLWLMMDO..`,
-        `....OLLWLMMDO...`,
-        `...OLLWLMMDO....`,
-        `...OLWLMMDO.....`,
-        `..OLWLMDDO......`,
-        `..OWLMDOO.......`,
-        `.OWOOOO.........`,
-        `.OO.............`,
-        `O...............`,
-      ]),
-      { W: `#fff6e0`, L: `#f0d8a8`, M: `#c89a5a`, D: `#8a5a2a`, O: `#3a2410` },
-    ),
-    i(
-      66,
-      [
-        `.......OO.......`,
-        `.......OWO......`,
-        `......OWWO......`,
-        `......OWLO......`,
-        `......OWLO......`,
-        `.....OWWLO......`,
-        `.....OWLLO......`,
-        `.....OWLLDO.....`,
-        `....OWWLLDO.....`,
-        `....OWLLLDO.....`,
-        `....OWLLDDO.....`,
-        `...OWWLLDDDO....`,
-        `...OWLLLDDDO....`,
-        `...ORRRRRRRO....`,
-        `...OORRRRROO....`,
-        `.....OOOOO......`,
-      ],
-      { W: `#ffffff`, L: `#d8dce8`, D: `#9aa0b8`, R: `#e04a4a`, O: `#2a2440` },
-    ),
-    i(
-      67,
-      s([
-        `.......OO.......`,
-        `.......OYO......`,
-        `......OYYO......`,
-        `......OYWYO.....`,
-        `.OOOOOOYWYOOOOO.`,
-        `.OYYYYYWWYYYYYO.`,
-        `..OYYYWWWYYYDO..`,
-        `...OYYWWYYYDO...`,
-        `....OYYYYYDO....`,
-        `....OYYYYYDO....`,
-        `...OYYYOOYYDO...`,
-        `...OYYO..OYDO...`,
-        `..OYYO....ODDO..`,
-        `..OYO......OYO..`,
-        `..OO........OO..`,
-      ]),
-      { Y: `#ffe86a`, W: `#fffbe0`, D: `#e0a82a`, O: `#7a4a10` },
-    ),
-    i(
-      68,
-      s([
-        `.....OOOOO......`,
-        `...OOWWYYYO.....`,
-        `..OWWYYYOO......`,
-        `.OWYYYYO........`,
-        `.OWYYYO.........`,
-        `OWYYYYO.........`,
-        `OWYYYO..........`,
-        `OWYYYO..........`,
-        `OWYYYO..........`,
-        `OWYYYYO.........`,
-        `.OYYYYO.........`,
-        `.OYYYYDO........`,
-        `..OYYYDDOO......`,
-        `...OODDDDDO.....`,
-        `.....OOOOO......`,
-      ]),
-      { Y: `#fff0a0`, W: `#fffbe0`, D: `#e0c050`, O: `#6a5a20` },
-    ),
-    i(
-      69,
-      [
-        `W......W......W.`,
-        `.W.....W.....W..`,
-        `..WSSSSWSSSSW...`,
-        `..SW...W...WS...`,
-        `..S.W..W..W.S...`,
-        `..S..WSWSW..S...`,
-        `..S..SWWWS..S...`,
-        `WWWWWWWWWWWWWWW.`,
-        `..S..SWWWS..S...`,
-        `..S..WSWSW..S...`,
-        `..S.W..W..W.S...`,
-        `..SW...W...WS...`,
-        `..WSSSSWSSSSW...`,
-        `.W.....W.....W..`,
-        `W......W......W.`,
-        `................`,
-      ],
-      { W: `#ffffff`, S: `#cfd2e4` },
-    ),
-    i(
-      70,
-      s([
-        `..OOO......OOO..`,
-        `.OWWLO....OLWWO.`,
-        `OWWLLLO..OLLLWWO`,
-        `OWLLPLLOOLLPLLWO`,
-        `OWLPPPLODOLPPPLW`,
-        `OWLLPLLODOLLPLWO`,
-        `.OWLLLODDOLLLWO.`,
-        `..OOOOODDOOOOO..`,
-        `..OWLLODDOLLWO..`,
-        `.OWLLLODDOLLLWO.`,
-        `.OWLPLOODOOLPLWO`,
-        `.OWLLO.OO.OLLWO.`,
-        `..OOO......OOO..`,
-      ]),
-      { W: `#ffffff`, L: `#e4e0ff`, P: `#8a6ad8`, D: `#3a2a6a`, O: `#2a2050` },
-    ),
-    i(
-      71,
-      s([
-        `....OOOO.OOOO...`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWWSOWWWSO..`,
-        `...OWWSSOWWSSO..`,
-        `...OWWSSOWWSSO..`,
-        `....OWSO.OWSO...`,
-        `....OWSO.OWSO...`,
-        `.....OO...OO....`,
-      ]),
-      { W: `#fffbe8`, S: `#e0d0a0`, O: `#4a2a20` },
-    ));
-  let c = { P: `#b45ae8`, L: `#e0b0ff`, W: `#ffffff`, D: `#7a2aa8`, O: `#3a1050` };
-  (i(
-    72,
-    s([
-      `.....OOOOO......`,
-      `...OOPPPPPOO....`,
-      `..OPPLLPPPPPO...`,
-      `..OPLWLPPPPPO...`,
-      `.OPPLLPPPPPPDO..`,
-      `.OPPPPPPPPPDDO..`,
-      `.OPPPPPPPPPDDO..`,
-      `.OPPPPPPPPDDDO..`,
-      `..OPPPPPPDDDO...`,
-      `..ODPPPDDDDDO...`,
-      `...OODDDDDOO....`,
-      `.....OOOOO......`,
-    ]),
-    c,
-  ),
-    i(
-      73,
-      s([
-        `......OO........`,
-        `..OO.OPPO..OO...`,
-        `.OPPOOPPPOOPPO..`,
-        `.OPPPPPPPPPPPO..`,
-        `..OPPLPPPPPPO...`,
-        `.OOPLWLPPPPPOO..`,
-        `OPPPPLPPPPPPPPO.`,
-        `OPPPPPPPPPPDDPO.`,
-        `.OOPPPPPPPDDOO..`,
-        `...OPPPPDDDDO...`,
-        `..OPPDOODDDPPO..`,
-        `..OPO..OOO.OPO..`,
-        `...O........O...`,
-      ]),
-      { ...c, P: `#9a4ad0` },
-    ),
-    i(
-      74,
-      s([
-        `..OOOO...OOOO...`,
-        `.OPPPPO.OPPPPO..`,
-        `OPWWPPPOPPPPPPO.`,
-        `OPWPPPPPPPPPPPO.`,
-        `OPPPPPPPPPPPDPO.`,
-        `OPPPPPPPPPPPDPO.`,
-        `.OPPPPPPPPPDPO..`,
-        `..OPPPPPPPDPO...`,
-        `...OPPPPPDPO....`,
-        `....OPPPDPO.....`,
-        `.....OPDPO......`,
-        `......OPO.......`,
-        `.......O........`,
-      ]),
-      { P: `#ff7ab8`, W: `#ffe0f0`, D: `#d0458a`, O: `#6a1a3a` },
-    ),
-    i(
-      75,
-      s([
-        `OOOOOOOOOOOOOOOO`,
-        `OWWWLLLWWWWLLLWO`,
-        `.OOOOOOOOOOOOOO.`,
-        `..OLLLWWWWLLLO..`,
-        `...OOOOOOOOOO...`,
-        `....OWWLLLWWO...`,
-        `....OOOOOOOO....`,
-        `.....OLLWWLO....`,
-        `......OOOOO.....`,
-        `......OWLWO.....`,
-        `.......OOO......`,
-        `.......OWO......`,
-        `........O.......`,
-      ]),
-      { W: `#ffffff`, L: `#c8dce8`, O: `#6a8aa8` },
-    ),
-    i(
-      76,
-      s([
-        `.....OOOOOO.....`,
-        `...OOYYYYYYOO...`,
-        `..OYYYYOYYYYYO..`,
-        `.OYYYYYOOYYYYYO.`,
-        `OYYWYYYOOYYYYYDO`,
-        `OYYYYYYOOYYYYDDO`,
-        `.OYYYYYOOYYYDDO.`,
-        `..OYYYYOYYYDDO..`,
-        `...OODDDDDDOO...`,
-        `.....OOOOOO.....`,
-      ]),
-      { Y: `#ffd23a`, W: `#fff8c0`, D: `#d08a10`, O: `#3a1a10` },
-    ),
-    i(77, [`..L.....`, `.LMD..L.`, `..D..LMD`, `L...M.D.`, `MD.LMD..`, `.D..D.L.`, `..L...MD`, `.LMD..D.`], {
-      L: `#f6e0a8`,
-      M: `#d8b070`,
-      D: `#a8803a`,
-    }),
-    i(
-      78,
-      s([
-        `.......O........`,
-        `......OWO.......`,
-        `......OWO.......`,
-        `......OYO.......`,
-        `.....OWYWO......`,
-        `.OOOOWYYYWOOOO..`,
-        `OWWYYYYWYYYYWWO.`,
-        `.OOOOWYYYWOOOO..`,
-        `.....OWYWO......`,
-        `......OYO.......`,
-        `......OWO.......`,
-        `......OWO.......`,
-        `.......O........`,
-      ]),
-      { Y: `#ffe86a`, W: `#ffffff`, O: `#a86a10` },
-    ),
-    i(
-      79,
-      s([
-        `......OOO.......`,
-        `.....OWWPO......`,
-        `....OWWPPPO.....`,
-        `....OWPPPPO.....`,
-        `...OWPPPPPDO....`,
-        `...OWPPPPPDO....`,
-        `...OPPPPPDDO....`,
-        `...OPPPPPDDO....`,
-        `....OPPPDDO.....`,
-        `....OPPDDDO.....`,
-        `.....OPDDO......`,
-        `......OOO.......`,
-      ]),
-      { P: `#ff9ad0`, W: `#ffe8f4`, D: `#e05aa0`, O: `#7a2a5a` },
-    ),
-    i(
-      80,
-      s([
-        `....OOOOOOO.....`,
-        `..OORRRRRRROO...`,
-        `.ORRYYRRRRYYRO..`,
-        `ORRRYYRRRRYYRRO.`,
-        `ORRRRRRYYRRRRRO.`,
-        `ORYYRRRYYRRYYRO.`,
-        `ODDDDDDDDDDDDDO.`,
-        `.OOOOWWWWWOOOO..`,
-        `.....OWWWSO.....`,
-        `.....OWWWSO.....`,
-        `.....OWWWSO.....`,
-        `....OWWWWSSO....`,
-        `....OOOOOOOO....`,
-      ]),
-      { R: `#e8502a`, Y: `#ffd84a`, D: `#a82a1a`, W: `#fff0d8`, S: `#d8c0a0`, O: `#3a1a10` },
-    ),
-    i(
-      81,
-      s([
-        `.....OOOO.......`,
-        `....OWWWSO......`,
-        `...OWWWWSSO.....`,
-        `...OWWWSSSO.....`,
-        `...OWWSSSSO.....`,
-        `....OSSSSO......`,
-        `.....OSSO.......`,
-        `......OSO.......`,
-        `......OSO.......`,
-        `......OSO.......`,
-        `......OSO.......`,
-        `......OSO.......`,
-        `.....OSSSO......`,
-        `.....OSSSO......`,
-        `......OOO.......`,
-      ]),
-      { W: `#ffffff`, S: `#b8c0d0`, O: `#4a5060` },
-    ),
-    i(
-      82,
-      s([
-        `........OO......`,
-        `........OPOO....`,
-        `........OPPPOO..`,
-        `........OPOOPPO.`,
-        `........OPO.OPO.`,
-        `........OPO..OO.`,
-        `........OPO.....`,
-        `........OPO.....`,
-        `....OOOOOPO.....`,
-        `...OPPPPPPO.....`,
-        `..OPWPPPPPO.....`,
-        `..OPPPPPPDO.....`,
-        `...OPPPPDO......`,
-        `....OOOOO.......`,
-      ]),
-      { P: `#ff8ac8`, W: `#ffe0f0`, D: `#d0508a`, O: `#5a1a3a` },
-    ),
-    i(
-      83,
-      Array.from({ length: 16 }, (e, t) =>
-        Array.from({ length: 16 }, (e, n) => {
-          let r = n - 7.5,
-            i = t - 7.5,
-            a = Math.hypot(r, i);
-          if (a > 7.6) return `.`;
-          if (a > 6.6) return `O`;
-          let o = (Math.atan2(i, r) + Math.PI) / (Math.PI * 2);
-          return Math.floor(a / 2.2 + o) % 2 ? `W` : `K`;
-        }).join(``),
-      ),
-      { W: `#ffffff`, K: `#2a2a3a`, O: `#1a1a24` },
-    ),
-    i(
-      84,
-      [
-        `..........OO....`,
-        `.........OLLO...`,
-        `.........OLWO...`,
-        `........OLWLO...`,
-        `........OLLO....`,
-        `.......OLWLO....`,
-        `.......OLLO.....`,
-        `......OLWLO.....`,
-        `......OLLO......`,
-        `.....OLWLO......`,
-        `.....OLLLO......`,
-        `....OLWLLO......`,
-        `....OLLLLDO.....`,
-        `...OLLLLLDO.....`,
-        `...ODDDDDDO.....`,
-        `....OOOOOO......`,
-      ],
-      { L: `#7ac8e8`, W: `#e8f8ff`, D: `#3a88b8`, O: `#1a3a5a` },
-    ),
-    i(
-      85,
-      s([
-        `.....OOOOOO.....`,
-        `....OWWRRRRO....`,
-        `...OWWRRRRRRO...`,
-        `..OWRRRRRRRDDO..`,
-        `..ORRRRRRRDDDO..`,
-        `...ORRRRRDDDO...`,
-        `....ORRRDDDO....`,
-        `.....ORRDDO.....`,
-        `......ODDO......`,
-        `.......OO.......`,
-      ]),
-      { R: `#ff3a4a`, W: `#ffd0d8`, D: `#a01a2a`, O: `#4a0a14` },
-    ));
-  let l = { W: `#ffffff`, L: `#c4ecff`, B: `#4aa8ff`, D: `#2a6ad0`, O: `#183a7a` },
-    u = (e, t) => Array.from({ length: e }, (n, r) => Array.from({ length: e }, (e, n) => t(n, r)).join(``)),
-    d = (e) =>
-      e.map((t, n) =>
-        [...t]
-          .map((t, r) => {
-            if (t !== `.`) return t;
-            for (let [t, i] of [
-              [1, 0],
-              [-1, 0],
-              [0, 1],
-              [0, -1],
-            ]) {
-              let a = e[n + i]?.[r + t];
-              if (a && a !== `.` && a !== `O`) return `O`;
-            }
-            return `.`;
-          })
-          .join(``),
-      );
-  (i(
-    126,
-    [
-      `.....OOOOOO.....`,
-      `...OOLLLBBBOO...`,
-      `..OLWWLBBBBBBO..`,
-      `.OLWWLBBBBBBBBO.`,
-      `.OLWLBBBBBBBBBO.`,
-      `OLLLBBBBBBBBBBDO`,
-      `OLBBBBBBBBBBBBDO`,
-      `OBBBBBBBBBBBBBDO`,
-      `OBBBBBBBBBBBBDDO`,
-      `OBBBBBBBBBBBBDDO`,
-      `OBBBBBBBBBBBDDDO`,
-      `.OBBBBBBBBBDDDO.`,
-      `.ODBBBBBBBDDDDO.`,
-      `..ODDBBBDDDDDO..`,
-      `...OODDDDDDOO...`,
-      `.....OOOOOO.....`,
-    ],
-    l,
-  ),
-    i(
-      132,
-      u(16, (e, t) => {
-        let n = e - 7.5,
-          r = t - 7.5;
-        return Math.hypot(n, r) > 7.4
-          ? `.`
-          : Math.hypot(n + 2.5, r + 2.6) < 2.2
-            ? Math.hypot(n + 3, r + 3) < 1.2
-              ? `W`
-              : `L`
-            : n + r > 6
-              ? `D`
-              : `B`;
-      }),
-      l,
-    ),
-    i(
-      127,
-      [
-        `................`,
-        `.....OOO..OO....`,
-        `....OWWWOOWWO...`,
-        `..OOWWWWWWWWO...`,
-        `.OWWWWWWWWLWWOO.`,
-        `.OWWWWWWWLLWWWWO`,
-        `OWWWWWWWWWLLWWWO`,
-        `OWWWLWWWWWWLLLWO`,
-        `OLWWLLWWWWWLLLLO`,
-        `OLLLLLLWWWLLLLMO`,
-        `.OLLMLLLLLLLLMMO`,
-        `.OMLLMMLLLLMMMO.`,
-        `..OMMMMOMMMMMO..`,
-        `...OOOO.OOOOO...`,
-        `................`,
-        `................`,
-      ],
-      { W: `#ffffff`, L: `#d4f0ff`, M: `#8ac8f0`, O: `#2a6ab0` },
-    ),
-    i(
-      128,
-      u(32, (e, t) => {
-        let n = e - 15.5,
-          r = t - 15.5,
-          i = Math.hypot(n, r),
-          a = Math.atan2(r, n),
-          o = 12.6 + 1.6 * Math.sin(a * 3 + 0.5) + 1 * Math.sin(a * 5 + 2);
-        return i > o
-          ? `.`
-          : i > o - 1.6
-            ? `D`
-            : (e === 9 && t === 10) || (e === 10 && t === 9) || (e === 20 && t === 21)
-              ? `W`
-              : r < 0 && n < 2 && i > o - 4.2
-                ? `L`
-                : `B`;
-      }),
-      { W: `#ffffff`, L: `rgba(196,236,255,0.85)`, B: `rgba(74,168,255,0.6)`, D: `rgba(42,106,208,0.8)` },
-    ),
-    i(
-      129,
-      u(32, (e, t) => {
-        let n = e - 15.5,
-          r = t - 15.5,
-          i = Math.hypot(n, r);
-        if (i > 15.2) return `.`;
-        let a = ((((Math.atan2(r, n) / (Math.PI * 2)) * 3 + i * 0.075) % 1) + 1) % 1;
-        return a < 0.08 ? `W` : a < 0.24 ? `L` : a < 0.46 ? `B` : i < 13.5 ? `D` : `.`;
-      }),
-      { W: `#ffffff`, L: `#c4ecff`, B: `#4aa8ff`, D: `rgba(42,106,208,0.55)` },
-    ),
-    i(
-      130,
-      u(32, (e, t) => {
-        let n = e - 15.5,
-          r = t - 15.5,
-          i = Math.hypot(n, r),
-          a = Math.abs(Math.atan2(r, n));
-        if (a > 1.3) return `.`;
-        let o = (1 - (a / 1.3) ** 2) * 6.5,
-          s = 15.4 - i;
-        return s < 0 || s > o ? `.` : s < 0.9 ? `O` : s < 2.2 ? `W` : s < 3.6 ? `L` : `i`;
-      }),
-      { ...l, i: `rgba(74,168,255,0.75)` },
-    ),
-    i(
-      131,
-      d(
-        u(32, (e, t) => {
-          let n = e - 15.5,
-            r = (t - 25) / 3.6,
-            i = n / 13.5;
-          if (i * i + r * r <= 1) return t < 24 ? `L` : t > 26 ? `D` : `B`;
-          for (let [e, r] of [
-            [-11, 9],
-            [-6, 15],
-            [0, 20],
-            [6, 15],
-            [11, 9],
-          ]) {
-            let i = 24 - r,
-              a = (24 - t) / r;
-            if (t > 24 || t < i - 4) continue;
-            let o = e * 0.35 * Math.max(0, a),
-              s = 2.2 * (1 - a * 0.8);
-            if (t >= i && Math.abs(n - e - o) <= s) return a > 0.82 ? `W` : n - e - o < 0 ? `L` : `B`;
-            let c = e + e * 0.45,
-              l = i - 3;
-            if (Math.hypot(n - c, t - l) <= 1.2) return `W`;
-          }
-          return `.`;
-        }),
-      ),
-      l,
-    ));
-  for (let e of [yl, xl, Cl, Tl, Dl]) e(i, s);
-  let f = new Wr(e);
-  return ((f.colorSpace = pi), Pl(t, f, 64), f);
+  const texture=createStylizedEffectAtlas();
+  Pl(texture.image.getContext('2d'),texture,EFFECT_CELL);
+  return texture;
 }
 function Pl(e, t, n) {
   for (let [r, i] of [
@@ -8242,7 +6863,7 @@ function Pl(e, t, n) {
         g = Math.max(1, Math.floor((n - 4) / Math.max(m, h))),
         _ = (r % 8) * n,
         v = Math.floor(r / 8) * n;
-      ((e.imageSmoothingEnabled = !1),
+      ((e.imageSmoothingEnabled = !0),
         e.drawImage(
           s,
           u,
@@ -8279,6 +6900,8 @@ var Rl = 20,
   zl = class {
     mesh;
     cap;
+    limit = Infinity;
+    view = null;
     n = 0;
     flat = !1;
     px;
@@ -8337,7 +6960,7 @@ var Rl = 20,
       let c = new Kr({
         transparent: !0,
         depthWrite: !1,
-        blending: r ? 2 : 1,
+        blending: 1, // Opaque pigment/ink silhouettes use normal alpha, never additive washout.
         uniforms: { map: { value: t }, uFogColor: a.uFogColor, uFogNear: a.uFogNear, uFogFar: a.uFogFar },
         vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
         void main(){
@@ -8352,7 +6975,7 @@ var Rl = 20,
         }`,
         fragmentShader: `uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
         void main(){ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if (a < 0.01) discard;
-          vec3 c = vCol.rgb * t.rgb * (1. + vGlow);
+          vec3 c = vCol.rgb * t.rgb * (1. + min(vGlow,.15));
           ${r ? Ml : `c = min(c, vec3(0.93)); c = mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD));`}
           gl_FragColor = vec4(c, a); }`,
       });
@@ -8364,15 +6987,17 @@ var Rl = 20,
     }
     spawn(e) {
       if (
-        this.n >= this.cap ||
+        this.n >= Math.min(this.cap,this.limit) ||
+        (this.view&&!this.view.visible(e.x,e.y,e.z,Math.max(6,e.size||0))) ||
         Fl.on ||
         ((Fl.density < 1 || this.n > this.cap * 0.8) &&
           Math.random() > (this.n > this.cap * 0.8 ? Fl.density * 0.5 : Fl.density))
       )
         return;
+      if(this.densityBudget&&!this.densityBudget.allow(e.x,e.z))return;
       let t = this.n++;
       ((this.px[t] = e.x),
-        (this.py[t] = e.y),
+        (this.py[t] = this.flat?Math.max(e.y,this.surface?.(e.x,e.z)??e.y):e.y),
         (this.pz[t] = e.z),
         (this.vx[t] = e.vx ?? 0),
         (this.vy[t] = e.vy ?? 0),
@@ -8396,7 +7021,7 @@ var Rl = 20,
         (this.c1[t * 3 + 2] = i.b),
         (this.shape[t] = e.shape ?? 0),
         (this.glow[t] = e.glow ?? 0),
-        (this.fm[t] = Fl.own ? Fl.ownFade : this.fade));
+        (this.fm[t] = (Fl.own ? Fl.ownFade : this.fade)*(e.opacity??1)));
     }
     cols;
     kill(e) {
@@ -8442,6 +7067,14 @@ var Rl = 20,
           (this.py[t] += this.vy[t] * e),
           (this.pz[t] += this.vz[t] * e),
           (this.r[t] += this.rv[t] * e));
+        if(this.surface && this.g[t]>0){const floor=this.surface(this.px[t],this.pz[t]);if(this.py[t]<floor){this.py[t]=floor;this.vy[t]=Math.abs(this.vy[t])*.22;this.vx[t]*=.65;this.vz[t]*=.65;}}
+        // Gentle advected motion gives small flames, motes and smoke a soft
+        // flowing silhouette instead of rigidly spinning billboard confetti.
+        if(this.shape[t]===5||this.shape[t]===33||this.shape[t]===38||this.shape[t]===31){
+          this.vx[t]+=Math.sin(this.life[t]*9+this.pz[t]*2)*e*.8;
+          this.vz[t]+=Math.cos(this.life[t]*7+this.px[t]*2)*e*.8;
+          this.vy[t]+=e*.75;
+        }
       }
       for (let e = 0; e < this.n; e++) {
         let i = 1 - this.life[e] / this.max[e];
@@ -8505,15 +7138,16 @@ var Rl = 20,
         side: 2,
         vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec4 vCol;
         void main(){ vec3 a = iA.xyz, b = iB.xyz; vec3 dir = b - a; vec3 camPos = cameraPosition;
-          vec3 side = normalize(cross(dir, camPos - mix(a,b,position.x))) * iA.w;
+          vec3 crossView = cross(dir,camPos-mix(a,b,position.x));
+          vec3 side = crossView*inversesqrt(max(dot(crossView,crossView),1.e-8))*iA.w;
           vec3 p = a + dir*position.x + side*position.y;
           gl_Position = projectionMatrix*viewMatrix*vec4(p,1.); vUv = uv; vCol = vec4(iC.rgb, iC.a * iB.w); }`,
-        fragmentShader: `varying vec2 vUv; varying vec4 vCol; void main(){ float e = 1. - abs(vUv.y-0.5)*2.;
+        fragmentShader: `varying vec2 vUv; varying vec4 vCol; void main(){ float e = 1. - abs(vUv.y-0.5 + sin(vUv.x*38.)*.018)*2.;
         float tip = smoothstep(0.,0.04,vUv.x)*smoothstep(1.,0.96,vUv.x);
         if (e < 0.08) discard;
         vec3 c = vCol.rgb;
-        vec3 col = e < 0.36 ? c * 0.6 : e < 0.74 ? c : mix(c, vec3(1.), 0.45);
-        float a = (e < 0.36 ? 0.85 : 1.) * vCol.a * tip;
+        vec3 col = mix(vec3(.13,.18,.29),mix(c,vec3(1.,.95,.83),step(.72,e)*.6),smoothstep(.15,.2,e));
+        float a = smoothstep(.04,.4,e)*vCol.a*tip;
         if (a < 0.02) discard;
         gl_FragColor = vec4(col, a); }`,
       });
@@ -8671,43 +7305,58 @@ var Ul = class {
     let i = new Kr({
       transparent: !0,
       depthWrite: !1,
+      uniforms: { uWaveTime: { value: 0 } },
       vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vP; varying vec4 vCol; varying vec4 vRing;
         void main(){ float ext = (iA.w + iC.x * 4.0) * 2.0; vP = vec2(position.x, position.z) * ext;
           gl_Position = projectionMatrix * viewMatrix * vec4(iA.xyz + vec3(vP.x, 0.0, vP.y), 1.0);
           vCol = iB; vRing = vec4(iA.w, iC.x, iC.y, iC.z); }`,
-      fragmentShader: `varying vec2 vP; varying vec4 vCol; varying vec4 vRing;
-        const float TAU = 6.2831853;
-        float h1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+      fragmentShader: `uniform float uWaveTime; varying vec2 vP; varying vec4 vCol; varying vec4 vRing;
+        const float TAU=6.2831853;
+        float waveHash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+        float waveNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(waveHash(i),waveHash(i+vec2(1.,0.)),f.x),mix(waveHash(i+vec2(0.,1.)),waveHash(i+vec2(1.,1.)),f.x),f.y);}
         void main(){
-          float R = vRing.x, T = vRing.y, st = vRing.z;
-          float px = clamp(T * 0.55, 0.14, 0.26);
-          vec2 p = (floor(vP / px) + 0.5) * px;
-          float r = length(p), u = fract((atan(p.y, p.x) + vRing.w) / TAU);
-          float Rr = R, outT = T, keep = 1.0, inner = 0.0;
-          if (st == 1.0) { keep = step(fract(u * 14.0), 0.62); Rr += sin(u * TAU * 28.0) * T * 0.35; }
-          else if (st == 2.0) {
-            // A foam crest, not a clean circle: it wobbles and swells, breaks in a few places and has a broken echo inside.
-            Rr += sin(u * TAU * 7.0 + vRing.w * 3.0) * T * 0.5;
-            outT = T * (0.8 + 0.4 * sin(u * TAU * 11.0 + vRing.w));
-            keep = step(0.1, fract(u * 9.0 + vRing.w));
-            inner = (1.0 - step(T * 0.22, abs(r - R * 0.72))) * step(fract(u * 14.0 + 0.3), 0.45);
+          float radius=vRing.x,width=max(.045,vRing.y),style=floor(vRing.z+.5);
+          float angle=atan(vP.y,vP.x)+vRing.w;
+          float phase=angle/TAU;
+          float distance=length(vP),aa=max(fwidth(distance)*1.2,.012);
+          float centre=radius;
+          if(style==2.)centre+=(sin(angle*7.+vRing.w+uWaveTime*3.)*.28+sin(angle*11.-uWaveTime*2.)*.12)*width;
+          if(style==4.)centre+=sin(angle*6.)*width*.6;
+          if(style==5.)centre+=sin(angle*13.)*width*.38;
+          if(style==6.)centre+=sin(angle*9.+vRing.w*2.+uWaveTime*3.)*width*.6;
+          if(style==2.||style==3.||style==6.){
+            // Translucent pigment/water or warm heat sits behind a moving crest.
+            // The ripple envelope stays within the original ring's extent;
+            // held danger telegraphs use style 1 and retain their clear border.
+            bool fire=style==6.;
+            float signedDistance=distance-centre;
+            vec2 flow=vec2(angle*3.+sin(distance*3.-uWaveTime*(fire?4.:2.))*.35,signedDistance/width*1.4-uWaveTime*(fire?1.6:.85));
+            float liquid=waveNoise(flow)*.7+waveNoise(flow*2.1+3.7)*.3;
+            float innerR=max(0.,radius-width*2.6);
+            float film=smoothstep(innerR,innerR+width*.75+aa,distance)*(1.-smoothstep(width*.18,width*.6+aa,signedDistance));
+            float ridge=1.-smoothstep(width*.07+aa,width*.27+aa,abs(signedDistance));
+            float fine=pow(.5+.5*sin(signedDistance/width*(fire?11.:15.)+angle*(fire?5.:2.)-uWaveTime*(fire?9.:5.)+liquid*2.),12.)*film;
+            float lace=ridge*smoothstep(fire?.4:.46,fire?.69:.77,liquid+.17*sin(angle*9.-uWaveTime*3.));
+            float glint=ridge*smoothstep(.62,.95,sin(angle*3.-uWaveTime*1.7+liquid)*.5+.5);
+            float echo=(1.-smoothstep(width*.08+aa,width*.23+aa,abs(distance-radius*.84)))*(fire?.055:.14);
+            vec3 pigment=fire?mix(vCol.rgb*.43,mix(vCol.rgb,vec3(1.,.33,.025),.25),liquid):mix(vCol.rgb*.56,vCol.rgb*1.03,.3+liquid*.7);
+            vec3 crestColor=fire?mix(vCol.rgb,vec3(1.,.64,.18),.42):mix(vCol.rgb,vec3(.82,.95,.9),.34);
+            vec3 col=mix(pigment,crestColor,smoothstep(.24,.28,lace*.8+fine*.3));
+            col=mix(col,vec3(.11,.20,.32),ridge*(1.-smoothstep(.16,.23,liquid))*.7);col=floor(col*7.+.5)/7.;
+            float alpha=max(film*.22,max(ridge*.78,echo))*vCol.a;
+            if(alpha<.015)discard;
+            gl_FragColor=vec4(min(col,vec3(.93)),alpha);return;
           }
-          else if (st == 3.0) { float tick = step(fract(u * 16.0), 0.18); outT = T * (1.0 + tick * 2.2); inner = (1.0 - step(T * 0.25, abs(r - R * 0.86))) * step(fract(u * 40.0), 0.5); }
-          else if (st == 4.0) { Rr += abs(sin(u * TAU * 6.0)) * max(R * 0.09, T * 1.5) - R * 0.04; }
-          else if (st == 5.0) { float j = floor(u * 22.0); Rr += (h1(j) - 0.5) * T * 1.4; outT = T * (1.0 + 0.6 * step(0.7, h1(j + 7.0))); }
-          else if (st == 6.0) { float f = max(0.0, sin(u * TAU * 12.0)); outT = T * (1.0 + f * f * 2.6); }
-          float d = r - Rr;
-          float band = step(-T * 0.5, d) * step(d, outT - T * 0.5) * keep;
-          float a0 = max(band, inner * 0.8);
-          float wake = (1.0 - smoothstep(0.0, T * 3.0, -d)) * step(d, -T * 0.5) * 0.1;
-          float alpha = max(a0, wake) * vCol.a;
-          if (alpha < 0.02) discard;
-          float e = clamp((d + T * 0.5) / max(outT, 0.001), 0.0, 1.0);
-          vec3 c = vCol.rgb;
-          vec3 col = e < 0.34 ? mix(c, vec3(1.0), 0.3) : e < 0.72 ? c : c * 0.55;
-          if (st == 2.0) col = band < 0.5 ? mix(c, vec3(1.0), 0.6) : e > 0.62 ? mix(c, vec3(1.0), 0.78) : e > 0.25 ? c : c * 0.6;
-          if (a0 < 0.5) col = c * 0.9;
-          gl_FragColor = vec4(col, alpha);
+          float edge=abs(distance-centre);
+          float band=1.-smoothstep(width*.35-aa,width*.65+aa,edge);
+          if(style==1.)band*=smoothstep(.08,.16,fract(phase*14.))* (1.-smoothstep(.72,.8,fract(phase*14.)));
+          float echo=0.;
+          if(style==2.||style==3.)echo=(1.-smoothstep(width*.08+aa,width*.27+aa,abs(distance-radius*.84)))*.3;
+          float alpha=max(band,echo)*vCol.a;
+          if(alpha<.015)discard;
+          vec3 cream=mix(vCol.rgb,vec3(1.,.96,.83),.4);
+          vec3 col=mix(vCol.rgb*.9,cream,1.-smoothstep(0.,width*.65,edge));
+          gl_FragColor=vec4(col,alpha);
         }`,
     });
     ((this.mesh = new Sr(r, i, t)),
@@ -8721,7 +7370,7 @@ var Ul = class {
     let d = this.n++,
       f = Al.set(a);
     ((this.px[d] = e),
-      (this.py[d] = t),
+      (this.py[d] = Math.max(t,this.surface?.(e,n)??t)),
       (this.pz[d] = n),
       (this.r0[d] = r),
       (this.r1[d] = i),
@@ -8742,6 +7391,7 @@ var Ul = class {
     let t = this.aA.array,
       n = this.aB.array,
       r = this.aC.array;
+    this.mesh.material.uniforms.uWaveTime.value+=Math.max(0,e);
     for (let t = 0; t < this.n; t++) {
       let n;
       if (((n = this.once[t] ? this.once[t]++ >= 2 : (this.life[t] -= e) <= 0), !n)) continue;
@@ -8813,6 +7463,8 @@ function Wl(e) {
 }
 var Gl = class {
     cap;
+    limit = 240;
+    view = null;
     mesh;
     glyphs = `0123456789!+-xk.₽MBTQ`;
     items = [];
@@ -8863,7 +7515,8 @@ var Gl = class {
         e.add(this.mesh));
     }
     spawn(e, t, n, r, i, a = 0.5) {
-      if (this.items.length >= 400) {
+      if(this.view&&!this.view.visible(e,t,n,6))return;
+      if (this.items.length >= this.limit) {
         if (a < 0.7) return;
         this.items.shift();
       }
@@ -8957,15 +7610,26 @@ var Gl = class {
     }
     constructor(e, t) {
       ((this.atlas = Nl()),
-        (this.add = new zl(e, this.atlas, 12e3, !0, !1, t)),
-        (this.norm = new zl(e, this.atlas, 5e3, !1, !1, t)),
+        (this.add = new zl(e, this.atlas, 3000, !0, !1, t)),
+        (this.norm = new zl(e, this.atlas, 1800, !1, !1, t)),
         (this.ground = new zl(e, this.atlas, 1500, !0, !0, t)),
         (this.groundN = new zl(e, this.atlas, 800, !1, !0, t)),
         (this.beams = new Bl(e)),
         (this.rings = new Ul(e)),
         (this.text = new Gl(e)));
+      this.crafted=new StylizedSkillFX(this,e);
+    }
+    setPerformance(profile,view){
+      this.crafted.setPerformance(profile,view);
+      this.particleBudget??=new ParticleBudget();this.particleBudget.limit=profile.particleCell;
+      this.add.densityBudget=this.norm.densityBudget=this.particleBudget;
+      this.add.limit=profile.particles;this.norm.limit=profile.normalParticles;this.text.limit=profile.damageTexts;
+      this.add.n=Math.min(this.add.n,this.add.limit);this.norm.n=Math.min(this.norm.n,this.norm.limit);
+      if(this.text.items.length>this.text.limit)this.text.items.splice(0,this.text.items.length-this.text.limit);
+      this.add.view=this.norm.view=this.text.view=view;
     }
     update(e) {
+      flushDamage(this,e);this.particleBudget?.next();this.crafted.update(e);
       (this.add.update(e),
         this.norm.update(e),
         this.ground.update(e),
@@ -8975,6 +7639,7 @@ var Gl = class {
         this.text.update(e));
     }
     clear() {
+      this.damagePending?.clear();this.damageClock=0;this.crafted.clear();
       (this.add.clear(),
         this.norm.clear(),
         this.ground.clear(),
@@ -9098,8 +7763,9 @@ var Gl = class {
         (this.beams.spawn(u, d, f, _, v, y, s, o, l), (u = _), (d = v), (f = y));
       }
     }
-    number(e, t, n, r, i, a = !1) {
+    number(e, t, n, r, i, a = !1, target = null) {
       if (!this.enabledText) return;
+      if(target!==null){accumulateDamage(this,target,e,t,n,r,i,a);return;}
       let o = Wl(r);
       this.text.spawn(e, t, n, a === 2 ? o + `!!` : a ? o + `!` : o, i, a === 2 ? 1 : a ? 0.75 : 0.52);
     }
@@ -9133,16 +7799,16 @@ var Gl = class {
         a.setAttribute(`iC`, this.aC));
       let o = new Kr({
         transparent: !0,
-        depthWrite: !r,
-        blending: r ? 2 : 1,
+        depthWrite: false,
+        blending: 1, // Opaque pigment/ink silhouettes use normal alpha, never additive washout.
         uniforms: { map: { value: t }, uFogColor: i.uFogColor, uFogNear: i.uFogNear, uFogFar: i.uFogFar },
         vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
         void main(){ float cs = cos(iC.y), sn = sin(iC.y); vec2 p2 = vec2(position.x*cs - position.y*sn, position.x*sn + position.y*cs) * iA.w;
           vec4 mv = viewMatrix * vec4(iA.xyz, 1.); mv.xy += p2; vD = -mv.z; gl_Position = projectionMatrix * mv;
           float idx = iC.x; vec2 cell = vec2(mod(idx,8.), 17. - floor(idx/8.)); vUv = (cell + uv) / vec2(8., 18.); vCol = iB; vGlow = iC.z; }`,
         fragmentShader: `uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
-        void main(){ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; ${r ? `if (a < 0.01) discard;` : `if (t.a < 0.5) discard; if (vCol.a < 0.99 && fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > vCol.a) discard;`} vec3 c = vCol.rgb * t.rgb * (1. + vGlow${r ? `` : ` * 0.3`});
-          ${r ? Ml : `c = min(c, vec3(0.94)); c = mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD));`} gl_FragColor = vec4(c, ${r ? `a` : `1.`}); }`,
+        void main(){ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if(a<.02)discard; vec3 c = vCol.rgb * t.rgb * (1. + min(vGlow,.15));
+          ${r ? Ml : `c = min(c, vec3(0.94)); c = mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD));`} gl_FragColor = vec4(c, a); }`,
       });
       ((this.mesh = new Sr(a, o, n)),
         (this.mesh.frustumCulled = !1),
@@ -9166,7 +7832,7 @@ var Gl = class {
         (this.B[l * 4] = u.r),
         (this.B[l * 4 + 1] = u.g),
         (this.B[l * 4 + 2] = u.b),
-        (this.B[l * 4 + 3] = this.additive ? c * (Fl.own ? Fl.ownFade : this.fade) : c),
+        (this.B[l * 4 + 3] = c * (Fl.own ? Fl.ownFade : this.fade)),
         (this.C[l * 4] = a),
         (this.C[l * 4 + 1] = o),
         (this.C[l * 4 + 2] = s));
@@ -9907,6 +8573,7 @@ function yu(e) {
   }
 }
 function bu(e) {
+  const paper=paperProp(e);if(paper)return Promise.resolve(paper);
   let t = mu.get(e);
   if (!t) {
     let n = Zt(`models/${e}.glb`),
@@ -10618,7 +9285,8 @@ var qu = `
     maxH = 1;
     arenaR;
     ringR = 1 / 0;
-    constructor(e, t, n, r) {
+    constructor(e, t, n, r, paperAssets, deferred = false) {
+      this.paperAssets=paperAssets;
       ((this.biome = e),
         (this.seed = t),
         (this.shared = n),
@@ -10635,11 +9303,7 @@ var qu = `
         (this.hasWater = !r && e.water !== null),
         (this.isLava = !r && e.water === -1),
         (this.frozen = !r && e.id === `glacier`),
-        this.generate(),
-        this.planLandmarks(),
-        this.buildMesh(),
-        this.buildWater(),
-        this.initEnv());
+        !deferred && buildPaperWorld(this));
     }
     terrainMat;
     setSunDir(e) {
@@ -11361,6 +10025,7 @@ var qu = `
         }
     }
     height(e, t) {
+      if(this.zxPaper)return 0;
       let n = this.world / 2,
         r = Gs((e + n) / this.cell, 0, this.res - 0.001),
         i = Gs((t + n) / this.cell, 0, this.res - 0.001),
@@ -11383,6 +10048,7 @@ var qu = `
       }
     }
     surface(e, t) {
+      if(this.zxPaper&&!this.hasWater)return 0;
       let n = this.height(e, t),
         r = this.waterAt(e, t);
       return n < r ? r : n;
@@ -11837,6 +10503,14 @@ var qu = `
     }
     addCollider(e) {
       this.colliders.push(e);
+      if(e.paperBox){
+        const rx=Math.abs(e.cos)*e.halfX+Math.abs(e.sin)*e.halfZ,rz=Math.abs(e.sin)*e.halfX+Math.abs(e.cos)*e.halfZ;
+        for(let x=Math.floor((e.x-rx)/8);x<=Math.floor((e.x+rx)/8);x++)for(let z=Math.floor((e.z-rz)/8);z<=Math.floor((e.z+rz)/8);z++){
+          const key=(x+1000)*4096+z+1000;
+          if(!this.colGrid.has(key))this.colGrid.set(key,[]);this.colGrid.get(key).push(e);
+        }
+        return;
+      }
       let t = this.cellKey(e.x, e.z),
         n = this.colGrid.get(t);
       (n || this.colGrid.set(t, (n = [])), n.push(e));
@@ -11853,6 +10527,7 @@ var qu = `
       return !0;
     }
     hitProp(e, t, n, r) {
+      const query=this.collisionQuery=(this.collisionQuery||0)+1;
       let i = Math.floor(e / 8),
         a = Math.floor(n / 8);
       for (let o = -1; o <= 1; o++)
@@ -11861,6 +10536,8 @@ var qu = `
           if (c)
             for (let i of c) {
               if (t > i.h || i.off) continue;
+              if(i.query===query)continue;i.query=query;
+              if(i.paperBox){if(hitsPaperBox(i,e,n,r))return true;continue;}
               let a = e - i.x,
                 o = n - i.z,
                 s = i.r + r;
@@ -11896,6 +10573,7 @@ var qu = `
       return null;
     }
     resolve(e, t, n, r, i) {
+      const query=this.collisionQuery=(this.collisionQuery||0)+1;
       ((i.x = e), (i.z = t));
       let a = Math.floor(e / 8),
         o = Math.floor(t / 8);
@@ -11905,6 +10583,8 @@ var qu = `
           if (s)
             for (let e of s) {
               if (r > e.h || e.off) continue;
+              if(e.query===query)continue;e.query=query;
+              if(e.paperBox){resolvePaperBox(e,i,n);continue;}
               let t = i.x - e.x,
                 a = i.z - e.z,
                 o = e.r + n,
@@ -11944,11 +10624,13 @@ var qu = `
     }
     disposed = !1;
     dispose() {
+      if(this.zxPaper){this.disposed=true;disposePaperWorld(this);return;}
       ((this.disposed = !0),
         this.env?.dispose(),
         this.envModels?.dispose(),
         this.group.traverse((e) => {
           let t = e;
+          if(t.isInstancedMesh)t.dispose();
           t.geometry && t.geometry.dispose();
         }));
       for (let e of this.mats) e.dispose();
@@ -13951,110 +12633,7 @@ function yf(e) {
       ),
     ));
 }
-var bf = class {
-    cell;
-    dim;
-    counts;
-    starts;
-    items;
-    cellOf;
-    result;
-    resultCount = 0;
-    px;
-    pz;
-    pr;
-    sepX = 0;
-    sepZ = 0;
-    constructor(e, t = 3) {
-      ((this.cell = t),
-        (this.dim = Math.ceil(420 / t) + 2),
-        (this.counts = new Int32Array(this.dim * this.dim)),
-        (this.starts = new Int32Array(this.dim * this.dim + 1)),
-        (this.items = new Int32Array(e)),
-        (this.cellOf = new Int32Array(e)),
-        (this.result = new Int32Array(e)),
-        (this.px = new Float32Array(e)),
-        (this.pz = new Float32Array(e)),
-        (this.pr = new Float32Array(e)));
-    }
-    key(e, t) {
-      let n = Math.floor((e + 210) / this.cell) + 1,
-        r = Math.floor((t + 210) / this.cell) + 1;
-      return (
-        n >= 0 ? n >= this.dim && (n = this.dim - 1) : (n = 0),
-        r >= 0 ? r >= this.dim && (r = this.dim - 1) : (r = 0),
-        r * this.dim + n
-      );
-    }
-    build(e, t, n, r, i, a) {
-      this.counts.fill(0);
-      for (let i = 0; i < e; i++) {
-        if (!r[i]) {
-          this.cellOf[i] = -1;
-          continue;
-        }
-        let e = this.key(t[i], n[i]);
-        ((this.cellOf[i] = e), this.counts[e]++);
-      }
-      let o = 0;
-      for (let e = 0; e < this.counts.length; e++) ((this.starts[e] = o), (o += this.counts[e]));
-      this.starts[this.counts.length] = o;
-      let s = this.counts;
-      s.fill(0);
-      for (let r = 0; r < e; r++) {
-        let e = this.cellOf[r];
-        if (e < 0) continue;
-        let o = this.starts[e] + s[e]++;
-        ((this.items[o] = r),
-          i && ((this.px[o] = t[r]), (this.pz[o] = n[r]), (this.pr[o] = a && a[r] > 0 ? NaN : i[r])));
-      }
-    }
-    separate(e, t, n, r) {
-      let i = r * 2 + 1,
-        a = this.cell,
-        o = this.dim,
-        s = Math.max(0, Math.floor((t - i + 210) / a) + 1),
-        c = Math.min(o - 1, Math.floor((t + i + 210) / a) + 1),
-        l = Math.max(0, Math.floor((n - i + 210) / a) + 1),
-        u = Math.min(o - 1, Math.floor((n + i + 210) / a) + 1),
-        d = this.px,
-        f = this.pz,
-        p = this.pr,
-        m = this.items,
-        h = this.starts,
-        g = 0,
-        _ = 0;
-      for (let i = l; i <= u; i++) {
-        let a = i * o;
-        for (let i = h[a + s], o = h[a + c + 1]; i < o; i++) {
-          let a = r + p[i],
-            o = t - d[i],
-            s = n - f[i],
-            c = o * o + s * s;
-          if (c < a * a && c > 1e-5 && m[i] !== e) {
-            let e = Math.sqrt(c),
-              t = (a - e) / a;
-            ((g += (o / e) * t), (_ += (s / e) * t));
-          }
-        }
-      }
-      ((this.sepX = g), (this.sepZ = _));
-    }
-    query(e, t, n) {
-      let r = Math.max(0, Math.floor((e - n + 210) / this.cell) + 1),
-        i = Math.min(this.dim - 1, Math.floor((e + n + 210) / this.cell) + 1),
-        a = Math.max(0, Math.floor((t - n + 210) / this.cell) + 1),
-        o = Math.min(this.dim - 1, Math.floor((t + n + 210) / this.cell) + 1),
-        s = 0;
-      for (let e = a; e <= o; e++)
-        for (let t = r; t <= i; t++) {
-          let n = e * this.dim + t;
-          for (let e = this.starts[n], t = this.starts[n + 1]; e < t; e++)
-            s < this.result.length && (this.result[s++] = this.items[e]);
-        }
-      return ((this.resultCount = s), s);
-    }
-  },
+var bf = CrowdGrid,
   xf = 2200,
   Sf = 50,
   R = (function (e) {
@@ -14237,7 +12816,7 @@ var Df = 0.4,
       else if (this.n < 2200) s = this.n++;
       else return -1;
       let c = k.get(e),
-        l = this.run.sprites.get(e),
+        l = a & 128 ? this.run.sprites.get(e) : this.run.sprites.getMonster(e),
         u = a & 1,
         d = a & 2,
         f = a & 4,
@@ -14459,7 +13038,7 @@ var Df = 0.4,
           let e = this.x[i] - g,
             t = this.z[i] - _,
             n = e * e + t * t,
-            r = n < 196 ? 1 : n < 576 ? 2 : 3;
+            r = n < 196 ? 1 : n < 576 ? (this.run.performance?.enemyMidStep??2) : (this.run.performance?.enemyFarStep??3);
           if (((h = r > 1), h && (i + p) % r !== 0 && m < Af)) {
             this.lodDt[i] = m;
             continue;
@@ -14478,7 +13057,7 @@ var Df = 0.4,
             (this.vx[i] = this.vz[i] = this.vy[i] = this.kx[i] = this.kz[i] = 0)),
           !this.sized[i])
         ) {
-          let e = t.sprites.get(this.species[i]);
+          let e = this.flags[i] & (128|65536) ? t.sprites.get(this.species[i]) : t.sprites.getMonster(this.species[i]);
           e.ready &&
             ((this.sized[i] = 1),
             (this.radius[i] = Math.max(0.45, Math.min(4, e.bodyWidth(this.scale[i]) * 0.42))),
@@ -14586,7 +13165,7 @@ var Df = 0.4,
         }
         let ne = this.radius[i];
         (h || (i & 1) === f) &&
-          (d.separate(i, this.x[i], this.z[i], ne), (this.sepX[i] = d.sepX), (this.sepZ[i] = d.sepZ));
+          (d.separate(i, this.x[i], this.z[i], ne, y & wf ? Infinity : this.run.performance.enemySeparation), (this.sepX[i] = d.sepX), (this.sepZ[i] = d.sepZ));
         let re = this.sepX[i],
           ie = this.sepZ[i],
           ae = S > 0 ? 10 - 8.4 * S : 10;
@@ -14735,7 +13314,7 @@ var Df = 0.4,
         (this.atkAnim[e] = Math.max(0, this.atkAnim[e] - t)),
         !this.sized[e])
       ) {
-        let t = a.sprites.get(this.species[e]);
+        let t = this.flags[e] & (128|65536) ? a.sprites.get(this.species[e]) : a.sprites.getMonster(this.species[e]);
         t.ready &&
           ((this.sized[e] = 1),
           (this.radius[e] = Math.max(0.45, Math.min(4, t.bodyWidth(this.scale[e]) * 0.42))),
@@ -14789,25 +13368,20 @@ var Df = 0.4,
     render() {
       let e = this.run,
         t = e.sprites,
-        n = e.focusIdx,
-        r = e.meta.profile.settings.enemyView,
-        i = r === `close` ? 18 : r === `near` ? 30 : 0,
-        a = i * i,
-        o = e.player.pos;
+        n = e.focusIdx;
+      (e.enemyShadowCells??=new Set()).clear();
       for (let r = 0; r < this.n; r++) {
         if (!this.alive[r] || this.flags[r] & 32768) continue;
-        if (i && !(this.flags[r] & 12422)) {
-          let e = this.x[r] - o.x,
-            t = this.z[r] - o.z;
-          if (e * e + t * t > a) continue;
-        }
         let s = this.lodDt[r],
           c = this.x[r] + (s > 0 ? (this.vx[r] + this.kx[r]) * s : 0),
           l = this.z[r] + (s > 0 ? (this.vz[r] + this.kz[r]) * s : 0);
-        if (!(this.flags[r] & 132) && !t.visible(c, this.y[r] + this.hgt[r] * 0.5, l, 3 + this.scale[r] * 4))
+        // Cull by the actual camera and body/shadow bounds. A fixed player
+        // radius can hide visible enemies on tall screens; old saves no longer
+        // decide visibility. Simulation, targeting and warnings run separately.
+        if (!t.visible(c, this.y[r] + this.hgt[r] * 0.5, l, 2 + Math.max(this.hgt[r], this.radius[r] * 2.4)))
           continue;
         let u = this.flags[r],
-          d = t.get((u & 131072 ? Qc : 0) + this.species[r]),
+          d = u & (128|65536) ? t.get((u & 131072 ? Qc : 0) + this.species[r]) : t.getMonster((u & 131072 ? Qc : 0) + this.species[r]),
           f = this.dying[r] > 0,
           p = t.dirRow(this.fx[r], this.fz[r]),
           m = `walk`,
@@ -14929,7 +13503,7 @@ var Df = 0.4,
             x,
             g,
           ),
-          !f && S !== 2)
+          !f && S !== 2 && enemyShadow(e,c,l,!!(u & wf)))
         ) {
           let n = this.gnd[r];
           t.shadows.push(c, Number.isNaN(n) ? e.terrain.surface(c, l) : n, l, this.radius[r] * 2.4);
@@ -25294,6 +23868,7 @@ function Hp(e, t, n, r, i, a, o) {
     e.vfx.beams.spawn(t, n + 24, r, t, n, r, i * 0.35, wp(a, o, 0.5), 0.25, 0.85));
 }
 (Object.assign(Vp, Vf, Gf, ep, ap, up), (Vp[`giga-drain`] ??= Vp.absorb));
+installStylizedMoveVFX(Vp,key=>k.movesByKey.get(key)?.type);
 var Up = [{}],
   Wp = new Map(),
   Gp = [``];
@@ -25735,6 +24310,7 @@ var Yp = 3e3,
         t = this.run.hideOwnFx;
       for (let n = 0; n < this.n; n++) {
         if (!this.alive[n] || (t && !(this.flags[n] & 1))) continue;
+        if(!this.fx[n]&&!this.run.sprites.visible(this.x[n],this.y[n],this.z[n],Math.max(8,this.size[n]*2)))continue;
         let r = !(this.flags[n] & 1);
         this.glow.fade = r ? e : 1;
         let i = r ? Math.min(this.size[n], im) : this.size[n],
@@ -25887,6 +24463,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
     vz = new Float32Array(cm);
     value = new Float32Array(cm);
     attract = new Uint8Array(cm);
+    attractTime = new Float32Array(cm);
     age = new Float32Array(cm);
     free = [];
     rest = new Uint8Array(cm);
@@ -25913,7 +24490,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
       this.spawnMerged(1, e, t, n, r);
     }
     spawnMerged(e, t, n, r, i) {
-      if (this.count > (e === 0 ? 500 : 200)) {
+      if (this.count > (e === 0 ? this.run.performance.mergeXp*2 : this.run.performance.mergeCoins*2)) {
         let a = this.run.player.pos,
           o = -1,
           s = 16,
@@ -25962,6 +24539,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
         (this.vy[a] = F.range(4, 7)),
         (this.value[a] = i),
         (this.attract[a] = 0),
+        (this.attractTime[a] = 0),
         (this.age[a] = 0),
         (this.rest[a] = 0),
         this.count++);
@@ -25969,12 +24547,12 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
     update(e) {
       let t = this.run,
         n = t.player,
-        r = n.stats.pickupRange,
+        r = pickupRadius(n.stats.pickupRange),
         i = !!t.meta.profile.settings.calmCandies,
-        a = t.meta.profile.settings.pickupFx === `simple`;
+        a = t.performance.pickupSimple||t.meta.profile.settings.pickupFx === `simple`;
       ((this.trailBudget = a ? 0 : 24),
         (this.burstBudget = a ? 3 : 10),
-        (this.mergeT -= e) <= 0 && ((this.mergeT = 1.2), this.count > 260 && this.consolidate()));
+        (this.mergeT -= e) <= 0 && ((this.mergeT = t.performance.mergeInterval), this.count > t.performance.mergeXp && this.consolidate()));
       let o = r * r;
       (this.magnetAll > 0 && (this.magnetAll -= e),
         (this.xpChainT -= e) <= 0 && (this.xpChain = 0),
@@ -25993,8 +24571,8 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
             t = n.pos.y + 0.7 - this.y[a],
             r = n.pos.z - this.z[a];
           if (
-            this.age[a] <= 0.35 ||
-            (e * e + t * t + r * r >= o && !(this.magnetAll > 0 && this.kind[a] <= 1))
+            this.age[a] <= 0.18 ||
+            (!inPickupRange(e,t,r,Math.sqrt(o)) && !(this.magnetAll > 0 && this.kind[a] <= 1))
           )
             continue;
           this.rest[a] = 0;
@@ -26006,21 +24584,15 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
           d = this.kind[a];
         if (
           (!this.attract[a] &&
-            this.age[a] > 0.35 &&
-            (u < r || (this.magnetAll > 0 && d <= 1)) &&
+            this.age[a] > 0.18 &&
+            (inPickupRange(s,c,l,r) || (this.magnetAll > 0 && d <= 1)) &&
             (this.attract[a] = 1),
           this.attract[a])
         ) {
-          let n = 16 + this.age[a] * 6;
-          if (
-            ((this.vx[a] += ((s / u) * n - this.vx[a]) * Math.min(1, e * 9)),
-            (this.vy[a] += ((c / u) * n - this.vy[a]) * Math.min(1, e * 9)),
-            (this.vz[a] += ((l / u) * n - this.vz[a]) * Math.min(1, e * 9)),
-            u < 0.9)
-          ) {
-            this.collect(a);
-            continue;
-          }
+          this.attractTime[a]+=e;
+          const speed=pickupSpeed(this.attractTime[a],n.speedNow);
+          if(pickupArrived(u,speed,e)){this.collect(a);continue;}
+          this.vx[a]=s/u*speed;this.vy[a]=c/u*speed;this.vz[a]=l/u*speed;
           this.trailBudget <= 0 ||
             (d === 0 && !i && Math.random() < 0.3
               ? (this.trailBudget--,
@@ -26054,6 +24626,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
       }
     }
     collect(e) {
+      if(!this.alive[e])return;
       if (
         globalThis.__pbCoop &&
         __pbCoop.pickupCollected &&
@@ -26137,11 +24710,12 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
       (this.pool.begin(), this.glow.begin());
       let t = (2 + this.run.stage * 2) * this.run.player.stats.gold,
         n = !!this.run.meta.profile.settings.calmCandies,
-        r = n || this.run.meta.profile.settings.pickupFx === `simple` || this.count > 400,
+        r = n || this.run.performance.pickupSimple || this.run.meta.profile.settings.pickupFx === `simple` || this.count > 400,
         i = this.run.player.pos.x,
         a = this.run.player.pos.z;
       for (let o = 0; o < this.n; o++) {
         if (!this.alive[o]) continue;
+        if(!this.run.sprites.visible(this.x[o],this.y[o]+2,this.z[o],8))continue;
         let s = lm[this.kind[o]];
         if (this.kind[o] <= 1) {
           let e = this.x[o] - i,
@@ -26252,7 +24826,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
           let s = r ? 0 : Math.max(0, Math.sin(e * 1.9 + o * 2.31)) ** 16;
           (s > 0.05 &&
             this.glow.push(this.x[o] - 0.12, a + 0.16, this.z[o], 0.7 * s, 16777215, I.Twinkle, e, 0.6, s),
-            this.shadow(o, 0.45 + i * 0.12));
+            !r&&this.shadow(o, 0.45 + i * 0.12));
         } else {
           let t = um[this.kind[o]],
             n = this.age[o],
@@ -26271,7 +24845,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
               0.3,
               0.4 + 0.15 * Math.sin(e * 4 + o),
             ));
-          for (let n = 0; n < 2; n++) {
+          for (let n = 0; n < (this.run.performance.pickupSimple?0:2); n++) {
             let r = e * 2.4 + n * Math.PI + o,
               s = 0.62 * a,
               c = 0.6 + 0.4 * Math.sin(e * 7 + n * 2 + o);
@@ -26287,7 +24861,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
               c,
             );
           }
-          if (t.pillar && !this.attract[o]) {
+          if (t.pillar && !this.attract[o]&&!this.run.performance.pickupSimple) {
             let n = this.run.terrain.surface(this.x[o], this.z[o]);
             this.run.vfx.beams.spawn(
               this.x[o],
@@ -26302,7 +24876,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
               0.16 + 0.05 * Math.sin(e * 3 + o),
             );
           }
-          this.shadow(o, 0.6 * a);
+          if(!this.run.performance.pickupSimple)this.shadow(o, 0.6 * a);
         }
       }
       (this.pool.end(), this.glow.end());
@@ -26325,8 +24899,8 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
         t = 0;
       for (let n = 0; n < this.n; n++)
         this.alive[n] && !this.attract[n] && (this.kind[n] === 0 ? e++ : this.kind[n] === 1 && t++);
-      let n = e > 240,
-        r = t > 100;
+      let n = e > this.run.performance.mergeXp,
+        r = t > this.run.performance.mergeCoins;
       if (!n && !r) return;
       let i = new Map();
       for (let e = 0; e < this.n; e++) {
@@ -32798,53 +31372,7 @@ function Lh(e, t, n, r, i, a, o, s = {}) {
       x = Math.hypot(v, y);
     x > b && ((v *= b / x), (y *= b / x));
     let S = U(c, v, y);
-    for (let e = 0; e < 4; e++)
-      c.vfx.norm.spawn({
-        x: v + Math.cos(p * 9 + e) * 0.25 * e,
-        y: S + 0.7 + e * o * 0.55,
-        z: y + Math.sin(p * 9 + e) * 0.25 * e,
-        life: 0.06,
-        size: o * (0.7 + e * 0.28),
-        endSize: o * (0.7 + e * 0.28),
-        color: 16777215,
-        shape: I.PixTornado,
-        rot: Math.sin(p * 7 + e) * 0.08,
-      });
-    if (
-      (Math.random() < 0.6 &&
-        c.vfx.norm.spawn({
-          x: v + F.range(-1.5, 1.5),
-          y: S + 0.3,
-          z: y + F.range(-1.5, 1.5),
-          vx: F.range(-2, 2),
-          vy: F.range(1, 3),
-          vz: F.range(-2, 2),
-          drag: 2,
-          life: 0.6,
-          size: 1.1,
-          endSize: 2,
-          color: 14209216,
-          shape: I.PixPuff,
-        }),
-      Math.random() < 0.5)
-    ) {
-      let e = F.range(0, H);
-      c.vfx.norm.spawn({
-        x: v + Math.cos(e) * o,
-        y: S + F.range(0.5, o * 2),
-        z: y + Math.sin(e) * o,
-        vx: -Math.sin(e) * 9,
-        vy: 2,
-        vz: Math.cos(e) * 9,
-        drag: 1,
-        life: 0.5,
-        size: 0.5,
-        endSize: 0.4,
-        color: 16777215,
-        shape: Math.random() < 0.5 ? I.PixFeather : I.PixLeaf,
-        spin: 8,
-      });
-    }
+    c.vfx.crafted.tornado(d,v,S+.12,y,o*1.05,o*3.4,'flying');
     if ((kh(c, v, y, (5 * e.R * o) / 2, 30 * m), (f -= m), f <= 0)) {
       f = 0.16;
       for (let t of c.enemies.within(v, y, (2.2 * e.R * o) / 2))
@@ -36912,7 +35440,7 @@ var Yh = {
   ),
 };
 function Xh(e, t) {
-  return (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
+  return starterUltimate(e,Uh) ?? (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
 }
 var Zh = (e, t) => gh(e.names, t),
   Qh = (e, t) => gh(e.dur, t),
@@ -38833,8 +37361,10 @@ var e_ = class {
           a = i.y[e] + i.hgt[e] * 0.55,
           o = i.z[e],
           d = Ni[n.type];
+        const continuousFire=n.type==='fire'&&n.slot!=null&&r.player.moves[n.slot]?.def.arch==='cone'&&r.player.moves[n.slot]?.active>0&&!u&&!m;
+        r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
-          Math.random() < 0.6 &&
+          !continuousFire && Math.random() < 0.6 &&
             (u || this.hitFxN++ < Yg) &&
             r.vfx.burst(t, a, o, d, u ? 9 : 4, u ? 7 : 4, am(n.type), u ? 0.55 : 0.4, 0.3),
           m
@@ -38862,7 +37392,7 @@ var e_ = class {
                 : l < 0.99
                   ? 11053240
                   : 16777215;
-        (r.vfx.number(i.x[e], i.y[e] + i.hgt[e] + 0.3, i.z[e], s, f, m ? 2 : u),
+        (r.vfx.number(i.x[e], i.y[e] + i.hgt[e] + 0.3, i.z[e], s, f, m ? 2 : u, e+"/"+i.gen[e]),
           l > 1.01 &&
             F.chance(0.25) &&
             this.canReact(`eff`) &&
@@ -39355,7 +37885,7 @@ var e_ = class {
       (t > 0 &&
         s.vfx.enabledText &&
         Math.random() < 0.5 &&
-        s.vfx.number(c.x[e], c.y[e] + c.hgt[e] + 0.3, c.z[e], t, 10148095),
+        s.vfx.number(c.x[e], c.y[e] + c.hgt[e] + 0.3, c.z[e], t, 10148095, false, e+"/"+c.gen[e]),
         c.hp[e] <= 0 && this.killEnemy(e, { remote: o }));
     }
     bursts = [];
@@ -40847,6 +39377,7 @@ var W_ = 0.45,
       for (let n = this.list.length - 1; n >= 0; n--) {
         let r = this.list[n];
         ((r.life -= e), (r.tick -= e));
+        t.vfx.crafted.field(r);
         let i = r.fx ? qp(r.fx) : null;
         if (Math.random() < e * 6) {
           let e = r.x + F.range(-r.r, r.r) * 0.6,
@@ -41029,33 +39560,7 @@ function Q_(e, t, n, r) {
     let t = e.aimDir(13, n),
       i = t.x,
       a = t.z;
-    for (let t = 0; t < 3; t++) {
-      let t = (Math.random() - 0.5) * 0.9,
-        n = F.range(8, 14) * (d / 7),
-        r = Math.cos(t),
-        s = Math.sin(t),
-        u = (i * r - a * s) * n,
-        f = (i * s + a * r) * n,
-        p = F.range(-0.5, 1);
-      C.cone
-        ? C.cone(e, v + i * 0.8, y, b + a * 0.8, u, p, f, d / n, d, c)
-        : e.vfx.add.spawn({
-            x: v + i * 0.8,
-            y,
-            z: b + a * 0.8,
-            vx: u,
-            vz: f,
-            vy: p,
-            life: d / n,
-            size: 0.6,
-            endSize: 1.8 * Math.sqrt(d / 7),
-            color: c,
-            endColor: o.type === `fire` ? 16726554 : c,
-            shape: o.type === `fire` || o.type === `dragon` ? I.Flame : l,
-            glow: 0.4,
-            spin: 3,
-          });
-    }
+    e.vfx.crafted.cone(n,v+i*.8,y,b+a*.8,i,a,d,o.type,.7*Math.sqrt(d/7));
     if (n.tick <= 0) {
       n.tick = 0.1;
       for (let t of e.enemies.within(v, b, d)) {
@@ -42754,6 +41259,8 @@ var mv = 30,
     }
     setSpecies(e) {
       let t = this.hp / this.maxHp;
+      this.roster=rosterForStarterForm(this.roster,e);
+      this.ability=this.roster?.passive??this.ability;
       ((this.speciesId = e),
         (this.data = k.get(e)),
         (this.types = this.data.types),
@@ -42808,9 +41315,10 @@ var mv = 30,
           mul: 1 + Math.min(0.25, Math.floor(this.run.streak / 10) * 0.015) * l,
         });
       for (let e of this.run.tempMods) r.push(e);
-      (rv(e, [t, n, r, i, a, this.run.allies ? this.run.allies.mods() : [], this.run.recompiled ?? []]),
+      (rv(e, [t, n, r, i, a, this.run.allies ? this.run.allies.mods() : []]),
         av(e),
         this.run.endless && (e.moveSpeed = de(e.moveSpeed)));
+      applyStarterSpeed(e,this.buffs);
       let u = this.maxHp;
       ((this.stats = e),
         (this.maxHp = Math.round(e.maxHp)),
@@ -44518,7 +43026,7 @@ var mv = 30,
         i,
         e.skinGl,
       );
-      let p = e.terrain.surface(this.pos.x, this.pos.z);
+      let p = Math.max(e.terrain.surface(this.pos.x, this.pos.z),e.terrain.workshopGroundY?.(this.pos.x,this.pos.z)??-Infinity);
       (e.skinGl &&
         !this.dead &&
         eu(
@@ -44563,19 +43071,9 @@ var mv = 30,
             spin: 4,
           }),
         e.sprites.shadows.push(this.pos.x, p, this.pos.z, 1.4),
-        this.dead ||
-          e.vfx.ground.spawn({
-            x: this.pos.x,
-            y: p + 0.08,
-            z: this.pos.z,
-            life: 0.03,
-            size: 2.1,
-            endSize: 2.1,
-            color: 7002367,
-            shape: 3,
-            glow: 0,
-            rot: 0,
-          }));
+        e.playerFootRing ??= createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr}));
+      e.playerFootRing.visible=!this.dead;
+      e.playerFootRing.position.set(this.pos.x,p+.09,this.pos.z);
     }
   },
   kv = 12,
@@ -45192,130 +43690,6 @@ function Hv(e, t) {
       { species: 112 },
     ));
 }
-var Uv = [
-  {
-    stat: `damage`,
-    gain: { stat: `damage`, mul: 1.3 },
-    loss: { stat: `damage`, mul: 0.85 },
-    up: () => c(`+30 % daño`),
-    down: () => c(`−15 % daño`),
-    item: `muscle-band`,
-  },
-  {
-    stat: `attackSpeed`,
-    gain: { stat: `attackSpeed`, mul: 1.25 },
-    loss: { stat: `attackSpeed`, mul: 0.88 },
-    up: () => c(`+25 % vel. de ataque`),
-    down: () => c(`−12 % vel. de ataque`),
-    item: `quick-claw`,
-  },
-  {
-    stat: `maxHp`,
-    gain: { stat: `maxHp`, mul: 1.25 },
-    loss: { stat: `maxHp`, mul: 0.85 },
-    up: () => c(`+25 % PS máx.`),
-    down: () => c(`−15 % PS máx.`),
-    item: `sitrus-berry`,
-  },
-  {
-    stat: `moveSpeed`,
-    gain: { stat: `moveSpeed`, mul: 1.2 },
-    loss: { stat: `moveSpeed`, mul: 0.9 },
-    up: () => c(`+20 % velocidad`),
-    down: () => c(`−10 % velocidad`),
-    item: `choice-scarf`,
-  },
-  {
-    stat: `critChance`,
-    gain: { stat: `critChance`, add: 0.15 },
-    loss: { stat: `critChance`, add: -0.08 },
-    up: () => c(`+15 % prob. de crítico`),
-    down: () => c(`−8 % prob. de crítico`),
-    item: `scope-lens`,
-  },
-  {
-    stat: `area`,
-    gain: { stat: `area`, mul: 1.3 },
-    loss: { stat: `area`, mul: 0.85 },
-    up: () => c(`+30 % área`),
-    down: () => c(`−15 % área`),
-    item: `wide-lens`,
-  },
-  {
-    stat: `xpGain`,
-    gain: { stat: `xpGain`, mul: 1.4 },
-    loss: { stat: `xpGain`, mul: 0.8 },
-    up: () => c(`+40 % experiencia`),
-    down: () => c(`−20 % experiencia`),
-    item: `lucky-egg`,
-  },
-  {
-    stat: `regen`,
-    gain: { stat: `regen`, add: 2.5 },
-    loss: { stat: `regen`, mul: 0.6 },
-    up: () => c(`+2,5 regeneración`),
-    down: () => c(`−40 % regeneración`),
-    item: `leftovers`,
-  },
-  {
-    stat: `armor`,
-    gain: { stat: `armor`, add: 20 },
-    loss: { stat: `armor`, mul: 0.75 },
-    up: () => c(`+20 armadura`),
-    down: () => c(`−25 % armadura`),
-    item: `assault-vest`,
-  },
-  {
-    stat: `duration`,
-    gain: { stat: `duration`, mul: 1.4 },
-    loss: { stat: `duration`, mul: 0.8 },
-    up: () => c(`+40 % duración`),
-    down: () => c(`−20 % duración`),
-    item: `light-clay`,
-  },
-  {
-    stat: `statusChance`,
-    gain: { stat: `statusChance`, mul: 1.4 },
-    loss: { stat: `statusChance`, mul: 0.8 },
-    up: () => c(`+40 % prob. de estado`),
-    down: () => c(`−20 % prob. de estado`),
-    item: `toxic-orb`,
-  },
-  { stat: `luck`, gain: { stat: `luck`, add: 40 }, up: () => c(`+40 suerte`), item: `lucky-punch` },
-];
-function Wv() {
-  let e = F.shuffle(Uv.slice()).slice(0, 3),
-    t = new Set(e.map((e) => e.stat)),
-    n = F.shuffle(Uv.filter((e) => e.loss && !t.has(e.stat))).slice(0, 3);
-  return e.map((e, t) => ({
-    key: `${e.stat}>${n[t].stat}`,
-    name: tv[e.stat]?.[0] ?? c(`Recompilar`),
-    tag: c(`Recompilar`),
-    color: `#3ac8e8`,
-    item: e.item,
-    boon: e.up(),
-    bane: n[t].down(),
-  }));
-}
-function Gv(e, t, n) {
-  let [r, i] = n.split(`>`),
-    a = Uv.find((e) => e.stat === r),
-    o = Uv.find((e) => e.stat === i);
-  a &&
-    o?.loss &&
-    ((t.used = !0),
-    e.recompiled.push({ ...a.gain }, { ...o.loss }),
-    e.player.recompute(),
-    e.shrines.porygon.push(n),
-    e.interactables.dim(t),
-    e.vfx.ring(t.x, t.y, t.z, 7, 3852520, 0.8),
-    e.vfx.burst(t.x, t.y + 3, t.z, 16738984, 26, 7, I.Spark, 0.6, 0.7),
-    e.vfx.burst(t.x, t.y + 3, t.z, 3852520, 26, 7, I.Twinkle, 0.6, 0.7),
-    e.vfx.flash(t.x, t.y + 3, t.z, 9109503, 5, 0.25),
-    e.audio.power(),
-    e.cry(137),
-    e.ui.toast(c(`Porygon te recompila: {boon} · {bane}`, { boon: a.up(), bane: o.down() }), null));
-}
 var Kv = [0.66, 0.33],
   qv = 0.08,
   Jv = (e) => T.wound[e.tier] ?? 4,
@@ -45889,7 +44263,7 @@ var Kv = [0.66, 0.33],
     }
     render() {
       let e = this.run,
-        t = e.sprites.get(this.species),
+        t = e.sprites.getMonster(this.species),
         n = e.player.pos;
       for (let r of this.echoes) {
         let i = this.groundY(r.x, r.z) + 1.2,
@@ -47377,7 +45751,7 @@ var Kv = [0.66, 0.33],
           );
       } else t.scale[n] = 2.6 * Math.max(0.05, this.fade);
       if (!this.clones.length) return;
-      let r = e.sprites.get(this.species),
+      let r = e.sprites.getMonster(this.species),
         i = e.player.pos;
       for (let t of this.clones) {
         let n = e.terrain.surface(t.x, t.z) + 1.1,
@@ -48524,7 +46898,7 @@ var Kv = [0.66, 0.33],
     render() {
       let e = this.run;
       if (((this.run.enemies.scale[this.i] = 2.5 * Math.max(0.05, this.fade)), !this.clones.length)) return;
-      let t = e.sprites.get(this.species),
+      let t = e.sprites.getMonster(this.species),
         n = e.player.pos;
       for (let r of this.clones) {
         let i = e.terrain.surface(r.x, r.z) + 1.1,
@@ -49941,7 +48315,7 @@ var fy = {
       }
       render() {
         let e = this.run,
-          t = e.sprites.get(100);
+          t = e.sprites.getMonster(100);
         for (let n of this.mines) {
           let r = n.fuse >= 0 ? +(Math.sin(e.time * 40) > 0) : n.arm > 0 ? 0.3 : 0;
           t.push(
@@ -55427,15 +53801,15 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
             t.audio.bossStart())
           : i === `legendary`
             ? (t.ui.banner(
-                c(`¡{name} legendario apareció!`, { name: k.get(n).name }),
+                c(`传说字灵「{name}」现身！`, { name: k.get(n).name }),
                 c(`Es muy resistente y huirá si tardas: debilítalo y captúralo`),
                 `#ffb21a`,
                 { species: n },
               ),
               t.audio.bossStart())
             : t.ui.banner(
-                c(`¡{name} salvaje apareció!`, { name: k.get(n).name }),
-                c(`Reto completado: debilítalo y captúralo para unirlo a tu Liga`),
+                c(`字灵「{name}」现身！`, { name: k.get(n).name }),
+                c(`击败并收服，加入字灵队伍`),
                 `#36c9ff`,
                 { species: n },
               ),
@@ -66865,18 +65239,14 @@ function CS(e) {
 }
 var wS = {
     altar: 1,
-    greed: 1,
     challenge: 1,
-    cursed: 1,
     boss: 1,
     fossil: 1,
     rhydon: 1,
-    porygon: 1,
     bill: 1,
     meowth: 2,
     ditto: 2,
     hypno: 2,
-    snorlax: 2,
     magnet: 2,
     slots: 2,
     nest: 2,
@@ -66911,9 +65281,8 @@ function PS(e, t) {
   let n = NS * ex[t] * jS(e);
   return Math.round(Math.max([10, 18, 30, 50, 90][t] * e.stage, Math.min(n, MS[t] * OS(e))));
 }
-var FS = { meowth: 52, ditto: 132, hypno: 97, snorlax: 143, magnet: 81 },
+var FS = { meowth: 52, ditto: 132, hypno: 97, magnet: 81 },
   IS = 201,
-  LS = 137,
   RS = [
     {
       color: 5959935,
@@ -67003,7 +65372,7 @@ function zS(e) {
   );
 }
 var BS = (e) => (e.data?.comet ? `comet` : e.kind === `tower` ? `tower-${e.data?.sub}` : e.kind),
-  VS = { altar: 200, challenge: 240, ditto: 150, snorlax: 240, magnet: 150, berry: 120, rock: 180 };
+  VS = { altar: 200, challenge: 240, ditto: 150, magnet: 150, berry: 120 };
 function HS(e, t, n) {
   let r = t >= 4 ? Math.max(1, Math.round(t * 0.15)) : 0,
     i = Math.round(t * 0.3),
@@ -67056,10 +65425,10 @@ var GS = class e {
     list = [];
     group = new Cr();
     nearest = null;
-    constructor(e) {
+    constructor(e, deferred = false) {
       ((this.run = e),
         e.r.scene.add(this.group),
-        this.populate(),
+        !deferred && this.populate(),
         pu().then((t) => {
           t &&
             !this.disposed &&
@@ -67087,20 +65456,15 @@ var GS = class e {
           chest: [`chest`, 1.6],
           freechest: [`freechest`, 1.6],
           altar: [`altar`, 3.8],
-          greed: [`greed`, 3.4],
-          rock: [`goldrock`, 1.8],
-          cage: [`cage`, 2.6],
           boss: [`boss`, 6.2],
           portal: [`portal`, 6],
           shrine: [`shrine`, 6.3],
           challenge: [`challenge`, 3.8],
-          cursed: [`cursed`, 4.8],
           cursedchest: [`cursedchest`, 1.6],
           shroom: [`bounceshroom`, 2.3],
           slots: [`slots`, 3.4],
           fossil: [`fossil`, 3.2],
           rhydon: [`totem`, 4.3],
-          porygon: [`porygon`, 3.4],
           bill: [`billpc`, 3.4],
           nest: [`nest`, 1.8],
         },
@@ -67117,6 +65481,9 @@ var GS = class e {
                     ? [r.data.model, r.data.h ?? 2]
                     : void 0
                   : s[e];
+      // Only registered props, NPCs and custom sprite/tower objects may be placed.
+      // This also blocks stale calls from recreating removed interactions.
+      if (!l && !FS[e] && e !== `berry` && e !== `tower`) return null;
       if (e === `berry`) ((o = new Br()), (o.userData.sprite = `berry`), (o.userData.h = 3.6));
       else if (l) {
         let i = new Cr();
@@ -67144,7 +65511,7 @@ var GS = class e {
                       ? (r.data?.rot ?? Math.atan2(-t, -n))
                       : e === `shrine`
                         ? 0
-                        : e === `slots` || e === `fossil` || e === `rhydon` || e === `porygon` || e === `bill`
+                        : e === `slots` || e === `fossil` || e === `rhydon` || e === `bill`
                           ? Math.atan2(-t, -n)
                           : e === `shroom`
                             ? Math.atan2(r.data?.tx - t, r.data?.tz - n)
@@ -67165,10 +65532,8 @@ var GS = class e {
         (e === `chest` || e === `freechest`) && o.scale.setScalar(0.8),
         e === `portal` && (a.r = 3.4),
         e === `challenge` && (a.r = 3.2),
-        e === `cursed` && (a.r = 3),
         e === `fossil` && (a.r = 2.8),
         e === `rhydon` && (a.r = 3.2),
-        e === `porygon` && ((a.r = 2.4), this.run.sprites.get(LS)),
         e === `bill` && ((a.r = 3.4), o.scale.setScalar(mS)),
         e === `nest` && ((a.r = 2.8), o.scale.setScalar(1.35)),
         e === `slots` && ((a.r = 2.4), o.scale.setScalar(1.25)),
@@ -67181,7 +65546,6 @@ var GS = class e {
         (e.position.set(t, i, n), this.group.add(e), (a.beacon = e));
       }
       return (
-        e === `rock` && (a.r = 2.2),
         e === `tower` && r.r && (a.r = r.r),
         FS[e] && ((a.npc = FS[e]), this.run.sprites.get(a.npc)),
         o && (o.position.set(t, i, n), this.group.add(o), (a.group = o)),
@@ -67199,7 +65563,14 @@ var GS = class e {
     place(e, t, n, r = {}) {
       return this.add(e, t, n, r);
     }
-    populate() {
+    populate() {for(const _ of this.populationSteps()){} }
+    populateAsync() {
+      return runLoadingSteps(this.populationSteps(),{
+        check:()=>{if(this.disposed||this.run.disposed)throw Error('本局已结束');},
+        onProgress:()=>this.run.onLoadProgress?.({phase:'摆放场景物件',detail:'已摆放 '+this.list.length+' 个'})
+      });
+    }
+    *populationSteps() {
       let e = this.run,
         t = e.terrain;
       if (e.sanctuary) {
@@ -67233,49 +65604,40 @@ var GS = class e {
       if (!o) {
         let e = r(a * 0.55, a * 0.97, `boss`);
         this.add(`boss`, e.x, e.z);
+        yield;
       }
       let s = o
           ? [
               [`altar`, i(3)],
               [`challenge`, i(1)],
-              [`cursed`, 1],
               [`fossil`, 1],
-              [`porygon`, 1],
               [`bill`, 1],
               [`nest`, 1],
               [`ditto`, 2],
               [`hypno`, 1],
-              [`snorlax`, 1],
               [`magnet`, 1],
               [`slots`, i(1)],
               [`freechest`, i(2)],
               [`cursedchest`, i(1)],
               [`berry`, i(4)],
               [`chest`, i(8)],
-              [`rock`, i(8)],
             ]
           : [
               [`altar`, i(5)],
-              [`greed`, 1],
               [`challenge`, i(2)],
-              [`cursed`, 1],
               [`fossil`, 1],
               [`rhydon`, 1],
-              [`porygon`, 1],
               [`bill`, 1],
               [`nest`, 1],
               [`meowth`, 1],
               [`ditto`, 1],
               [`hypno`, 1],
-              [`snorlax`, 2],
               [`magnet`, 2],
               [`slots`, i(2)],
               [`freechest`, i(3)],
               [`cursedchest`, i(2)],
-              [`cage`, i(2)],
               [`berry`, i(5)],
               [`chest`, i(14)],
-              [`rock`, i(14)],
             ],
         c = e.player.items.get(`dowsing-machine`) ?? 0;
       if (c) for (let e of s) e[0] === `altar` ? (e[1] += c) : e[0] === `chest` && (e[1] += 2 * c);
@@ -67284,12 +65646,11 @@ var GS = class e {
         for (let n = 0; n < t; n++) {
           let t = r(14, a, e);
           this.add(e, t.x, t.z, e === `altar` ? { data: { tier: l[n] ?? 0 } } : {});
+          yield;
         }
-      e.biome.relief && this.placeShrooms(n, i(3));
-      for (let t of this.list.filter((e) => e.kind === `cage`)) {
-        let r = e.director.pool.filter((e) => k.hasAnimated(e.id));
-        ((t.data = { species: r.length ? n.pick(r).id : 25 }), e.sprites.get(t.data.species));
-      }
+      // The paper world is flat; the legacy jump-mushroom search needs a
+      // 3.5–7 metre ledge and can never succeed here (up to 400 searches).
+      e.biome.relief && !t.zxPaper && this.placeShrooms(n, i(3));
     }
     placeShrooms(e, t) {
       let n = this.run.terrain;
@@ -67492,20 +65853,14 @@ var GS = class e {
               ? c(`Desafío: quedan {n}`, { n: e.data.left })
               : c(`Desafío superado`)
             : c(`Altar de desafío · invoca una oleada; si la derrotas, Super Ball`);
-        case `cursed`:
-          return e.used ? c(`El altar calla`) : c(`Altar maldito · un objeto raro a cambio de una maldición`);
         case `cursedchest`:
           return c(`Abrir Poké Ball maldita (gratis... ¿seguro?)`);
-        case `greed`:
-          return e.used ? c(`El altar ya respondió`) : c(`Altar de Gengar · +dificultad, +XP y +botín`);
         case `meowth`:
           return c(`Hablar con Meowth (tienda)`);
         case `ditto`:
           return e.used ? c(`Ditto descansa`) : c(`Ditto: clona uno de tus objetos`);
         case `hypno`:
           return c(`Hypno: olvida un movimiento o vitamina`);
-        case `snorlax`:
-          return e.used ? c(`Snorlax sigue durmiendo`) : c(`Despertar a Snorlax`);
         case `magnet`:
           return e.used ? c(`Magnemite sin energía`) : c(`Magnemite: atrae toda la experiencia`);
         case `berry`:
@@ -67526,12 +65881,6 @@ var GS = class e {
                 ? c(`Salir del santuario`)
                 : c(`Entrar al {name}`, { name: this.run.biome.sanctuary?.name ?? c(`santuario`) })
               : c(`Entrar al portal`);
-        case `cage`:
-          return e.used
-            ? c(`Jaula vacía`)
-            : c(`Liberar a {name} · {cost} ₽`, { name: k.get(e.data.species).name, cost: this.cageCost() });
-        case `rock`:
-          return c(`Golpe Roca`);
         case `shroom`:
           return c(`Seta rebote`);
         case `slots`: {
@@ -67558,10 +65907,6 @@ var GS = class e {
                 })
               : c(`Grito de Rhydon · guardián más fuerte y con escolta, +1 Super Ball por grito`);
         }
-        case `porygon`:
-          return e.used
-            ? c(`Porygon se ha apagado`)
-            : c(`Altar de Porygon · cambia una estadística por otra`);
         case `nest`:
           return e.used
             ? c(`Nido vacío`)
@@ -67584,9 +65929,6 @@ var GS = class e {
         default:
           return ``;
       }
-    }
-    cageCost() {
-      return 20 + this.run.stage * 10;
     }
     billIdle(e, t) {
       let n = this.run,
@@ -67663,40 +66005,6 @@ var GS = class e {
           case `challenge`:
             this.startChallenge(e);
             break;
-          case `cursed`:
-            ((e.used = !0),
-              t.curses++,
-              t.tempMods.push({ stat: `enemyAmount`, mul: 1.15 }, { stat: `difficulty`, mul: 1.1 }),
-              t.player.recompute(),
-              t.vfx.ring(e.x, e.y, e.z, 10, 5963642, 0.8),
-              t.vfx.burst(e.x, e.y + 4.2, e.z, 5963642, 30, 6, I.Skull, 0.6, 0.9),
-              t.ui.banner(
-                c(`Te ha alcanzado una maldición`),
-                c(`+15% enemigos · +10% dificultad · objeto raro`),
-                `#5aff7a`,
-                { species: 94 },
-              ),
-              t.audio.bossStart(),
-              t.shake(0.3, e.x, e.z),
-              this.dim(e),
-              t.later(0.8, () => t.rollChestItem(!1, 2)));
-            break;
-          case `greed`:
-            ((e.used = !0),
-              t.greed++,
-              t.tempMods.push(
-                { stat: `difficulty`, mul: 1.2 },
-                { stat: `xpGain`, mul: 1.25 },
-                { stat: `gold`, mul: 1.25 },
-              ),
-              t.player.recompute(),
-              t.vfx.ring(e.x, e.y, e.z, 10, 10107647, 0.8),
-              t.ui.banner(c(`Gengar acepta tu desafío`), c(`+20% dificultad · +25% XP y botín`), `#b05aff`, {
-                species: 94,
-              }),
-              t.audio.bossStart(),
-              this.dim(e));
-            break;
           case `meowth`:
             t.openShop();
             break;
@@ -67718,9 +66026,6 @@ var GS = class e {
           case `rhydon`:
             Hv(t, e);
             break;
-          case `porygon`:
-            t.openPorygon(e);
-            break;
           case `nest`:
             gf(t, e);
             break;
@@ -67734,23 +66039,6 @@ var GS = class e {
             }
             t.openSlots(e);
             break;
-          case `snorlax`: {
-            e.used = !0;
-            let n = Math.random(),
-              r = [
-                c(`Snorlax bosteza, se rasca la tripa... y te deja pasar.`),
-                c(`Snorlax abre un ojo. Parece que le caes bien.`),
-                c(`Snorlax se da la vuelta y suelta algo que tenía guardado.`),
-                c(`Snorlax ronca tan fuerte que te sientes con fuerzas.`),
-              ];
-            (t.ui.toast(F.pick(r), null),
-              n < Math.min(0.85, 0.5 * t.player.stats.luckMult)
-                ? t.offerBlessing(c(`Bendición de Snorlax`))
-                : (t.addGold(Math.max(30 * t.stage, 0.5 * OS(t))),
-                  t.vfx.burst(e.x, e.y + 2, e.z, 16765498, 20, 5, I.Star, 0.5)),
-              t.cry(143));
-            break;
-          }
           case `magnet`:
             ((e.used = !0),
               (t.pickups.magnetAll = 5),
@@ -67780,35 +66068,6 @@ var GS = class e {
           case `portal`:
             t.endless ? t.migrate() : t.enterPortal();
             break;
-          case `cage`: {
-            let n = this.cageCost();
-            if (t.gold < n) {
-              (t.ui.toast(c(`No tienes suficientes Pokédólares`), null), t.audio.deny());
-              return;
-            }
-            ((t.gold -= n),
-              (t.goldSpent += n),
-              (e.used = !0),
-              t.meta.addResearch(e.data.species, 25),
-              t.player.addXp(t.player.xpNext * 0.5),
-              t.ui.toast(
-                c(`¡Has liberado a {name}! +25 de investigación`, { name: k.get(e.data.species).name }),
-                null,
-              ),
-              t.cry(e.data.species),
-              t.vfx.burst(e.x, e.y + 1, e.z, 9109503, 26, 6, I.Heart, 0.6),
-              e.group && (e.group.visible = !1));
-            break;
-          }
-          case `rock`:
-            ((e.used = !0),
-              t.addGold(Math.round(F.range(6, 14) * Math.max(t.stage, OS(t) / 90))),
-              t.meta.count(`rocks`, 1),
-              t.vfx.burst(e.x, e.y + 1, e.z, 11049610, 14, 6, I.Rock, 0.6, 0.6, 14),
-              F.chance(0.15 * t.player.stats.luckMult) &&
-                t.pickups.spawn(F.pick([`heal`, `magnet`, `bomb`]), e.x, e.y, e.z, 1),
-              e.group && (e.group.visible = !1),
-              t.audio.boom(0.4));
         }
     }
     startChallenge(e) {
@@ -67943,15 +66202,16 @@ var GS = class e {
         i = 1e9;
       for (let a of this.list) {
         let o = a.group;
-        if (o?.userData.gem) {
+        const near=(a.x-n.x)**2+(a.z-n.z)**2<2500;
+        if (near&&o?.userData.gem) {
           let n = o.userData.gem;
           ((n.rotation.y += e * 1.5), (n.position.y = (o.userData.gemY ?? 0) + Math.sin(t.time * 2) * 0.12));
           let r = 1 + Math.sin(t.time * 4) * 0.06;
           n.scale.setScalar(r);
         }
         if (
-          (a.beacon && (a.beacon.material.uniforms.uTime.value = t.time),
-          a.kind === `portal` && o && this.portalFx(a, e),
+          (near&&a.beacon && (a.beacon.material.uniforms.uTime.value = t.time),
+          near&&a.kind === `portal` && o && this.portalFx(a, e),
           a.kind === `shroom` && this.shroomUpdate(a, e),
           a.kind === `boss` && !t.bossSpawned)
         ) {
@@ -67975,22 +66235,7 @@ var GS = class e {
                 this.dim(a),
                 this.spawnChest(a.x + 2.5, a.z + 2.5, !0))
               : Math.random() < e * 3 && t.vfx.ring(a.x, a.y, a.z, 3.5, 16738890, 0.5)),
-          a.kind === `cursed` &&
-            !a.used &&
-            Math.random() < e * 4 &&
-            t.vfx.add.spawn({
-              x: a.x + F.range(-1.5, 1.5),
-              y: a.y + F.range(0.5, 2),
-              z: a.z + F.range(-1.5, 1.5),
-              vy: 0.8,
-              life: 1.4,
-              size: 0.5,
-              endSize: 0,
-              color: 5963642,
-              shape: I.Wisp,
-              glow: 0.7,
-            }),
-          a.kind === `fossil` &&
+          near&&a.kind === `fossil` &&
             !a.used &&
             Math.random() < e * 2 &&
             t.vfx.add.spawn({
@@ -68005,7 +66250,7 @@ var GS = class e {
               shape: I.Twinkle,
               glow: 0.7,
             }),
-          a.kind === `rhydon` &&
+          near&&a.kind === `rhydon` &&
             this.run.roars &&
             !t.bossSpawned &&
             Math.random() < e * (1 + 2 * this.run.roars) &&
@@ -68021,7 +66266,7 @@ var GS = class e {
               shape: I.Spark,
               glow: 0.8,
             }),
-          a.kind === `nest` && !a.used)
+          near&&a.kind === `nest` && !a.used)
         ) {
           Math.random() < e * 2.5 &&
             t.vfx.add.spawn({
@@ -68040,23 +66285,8 @@ var GS = class e {
           n && (n.rotation.x = Math.sin(t.time * 3 + a.x) > 0.93 ? Math.sin(t.time * 28) * 0.12 : 0);
         }
         if (
-          (a.kind === `porygon` &&
-            !a.used &&
-            Math.random() < e * 3 &&
-            t.vfx.add.spawn({
-              x: a.x + F.range(-0.9, 0.9),
-              y: a.y + F.range(2.2, 3.6),
-              z: a.z + F.range(-0.9, 0.9),
-              vy: 0.6,
-              life: 0.9,
-              size: 0.26,
-              endSize: 0,
-              color: Math.random() < 0.5 ? 3852520 : 16738984,
-              shape: I.Spark,
-              glow: 0.8,
-            }),
-          a.kind === `bill` && !a.used && this.billIdle(a, e),
-          a.kind === `slots` &&
+          (near&&a.kind === `bill` && !a.used && this.billIdle(a, e),
+          near&&a.kind === `slots` &&
             o?.userData.lamp &&
             (o.userData.lamp.scale.setScalar(Math.sin(t.time * 6 + a.x) > 0 ? 1.15 : 0.95),
             Math.random() < e * 1.5 &&
@@ -68072,7 +66302,7 @@ var GS = class e {
                 shape: I.Twinkle,
                 glow: 0.8,
               })),
-          a.kind === `cursedchest` &&
+          near&&a.kind === `cursedchest` &&
             !a.used &&
             Math.random() < e * 2 &&
             t.vfx.add.spawn({
@@ -68087,7 +66317,7 @@ var GS = class e {
               shape: I.Wisp,
               glow: 0.6,
             }),
-          a.kind === `shrine` &&
+          near&&a.kind === `shrine` &&
             !a.used &&
             Math.random() < 0.4 &&
             t.vfx.trail(
@@ -68179,6 +66409,7 @@ var GS = class e {
     landmarkFx(e) {
       let t = this.run,
         n = t.player.pos;
+      if(!t.performance.ambient)return;
       for (let r of t.terrain.landmarks) {
         if (Math.hypot(r.x - n.x, r.z - n.z) > 55) continue;
         let i = t.terrain.height(r.x, r.z),
@@ -68276,6 +66507,7 @@ var GS = class e {
         n = this.sprites;
       n?.begin();
       for (let r of this.list) {
+        if(!e.sprites.visible(r.x,r.y+3,r.z,18))continue;
         let i = r.x - t.x,
           a = r.z - t.z,
           o = Math.hypot(i, a),
@@ -68355,36 +66587,6 @@ var GS = class e {
                 e.vfx.trail(d.x, d.y + 0.4, d.z, a.color, 0.35, I.Spark, 0.4));
           }
         }
-        if (r.kind === `porygon`) {
-          let n = e.sprites.get(LS),
-            i = e.time * 2.6 + r.x,
-            a = o < r.r + 1.5 && !r.used,
-            s = r.used ? e.sprites.dirRow(t.x - r.x, t.z - r.z) : e.sprites.dirRow(Math.cos(i), Math.sin(i)),
-            c = r.used ? 0.55 : 1;
-          n.push(
-            r.x,
-            r.y + 1.85 + (r.used ? 0 : Math.sin(e.time * 2.2) * 0.12),
-            r.z,
-            `idle`,
-            e.time,
-            s,
-            1.3,
-            0,
-            0,
-            a ? 3 : 0,
-            0,
-            c,
-            c,
-            c,
-            r.used ? 0.6 : 0,
-            !1,
-          );
-        }
-        r.kind === `cage` &&
-          !r.used &&
-          e.sprites
-            .get(r.data.species)
-            .push(r.x, r.y + 0.2, r.z, `idle`, e.time, 0, 0.9, 0, 0, 0, 0, 1, 1, 1, 0, !1);
       }
       n?.end();
     }
@@ -68833,7 +67035,7 @@ var GS = class e {
         });
       }
       for (let e of this.layout.bigTrees)
-        (r.reserve(e.x, e.z, 3),
+        (this.model(`paper_pencils`,e.x,e.z,0,1),r.reserve(e.x, e.z, 3),
           this.addCover({
             x: e.x,
             z: e.z,
@@ -68844,7 +67046,7 @@ var GS = class e {
             kind: `tree`,
           }));
       for (let e of this.layout.lanterns)
-        (r.reserve(e.x, e.z, 1.4),
+        (this.model(`paper_lamp`,e.x,e.z,0,1),r.reserve(e.x, e.z, 1.4),
           this.addCover({
             x: e.x,
             z: e.z,
@@ -69072,6 +67274,7 @@ var GS = class e {
         (this.run.terrain.ringR = 1 / 0),
         this.group.traverse((e) => {
           e.geometry?.dispose();
+          if(e.material?.userData?.owned)e.material.dispose();
         }),
         this.group.parent?.remove(this.group));
     }
@@ -71065,97 +69268,10 @@ function WC(e = ``) {
   return ((t.className = `pix` + e), (t.alt = ``), (t.draggable = !1), t);
 }
 function GC(e, t, n = e) {
-  let r = WC(),
-    i = () => {
-      ((r.onerror = () => {
-        ((r.onerror = null), (r.src = Zt(`icons/${e}.png`)));
-      }),
-        (r.src = Zt(`portraits/${e}.png`)));
-    },
-    a = RC(n, t);
-  if (t === `classic`)
-    ((r.onerror = () => {
-      ((r.onerror = null), i(), (r.style.filter = jC(e)));
-    }),
-      (r.src = Zt(`portraits-shiny/${e}.png`)));
-  else if (a)
-    ((r.style.visibility = `hidden`),
-      UC(e, a).then((e) => {
-        (e ? (r.src = e) : i(), (r.style.visibility = ``));
-      }),
-      r.classList.add(`lk-pt`));
-  else {
-    i();
-    let n = PC(t, e);
-    n && (r.style.filter = n);
-  }
-  return r;
+  return glyphPreview(e,.75);
 }
 function KC(e, t, n = 3, r = `idle`, i = e) {
-  let a = document.createElement(`canvas`);
-  a.className = `pix`;
-  let o = k.sprites[e],
-    s = o?.anims ? (o.anims[r] ?? o.anims.walk) : null,
-    c = s ? s.fw : 96,
-    l = s ? s.fh : 96,
-    u = s ? n : n * 0.6;
-  ((a.width = c * u), (a.height = l * u));
-  let d = a.getContext(`2d`);
-  d.imageSmoothingEnabled = !1;
-  let f = RC(i, t),
-    p = null,
-    m = s ? s.y : 0,
-    h = s ? s.n * c : 96,
-    g =
-      t === `classic` && o?.anims
-        ? Zt(`pmd-shiny/${e}.png`)
-        : o?.anims
-          ? Zt(`pmd/${e}.png`)
-          : Zt(o?.fallback ?? `front/${e}.png`),
-    _ = PC(t, e);
-  (_ && (a.style.filter = _), f && ((a.className += ` ` + zC(f)), a.style.setProperty(`--lk`, f.pal[2])));
-  let v = (e) => {
-    if (f) {
-      let t = HC(e, [0, m, Math.min(h, e.naturalWidth), l], f);
-      if (t) {
-        ((p = t), (m = 0));
-        return;
-      }
-    }
-    p = e;
-  };
-  Tc(g, v, void 0, () => {
-    t === `classic` && o?.anims && ((a.style.filter = jC(e)), Tc(Zt(`pmd/${e}.png`), v));
-  });
-  let y = performance.now(),
-    b = 0,
-    x = 0,
-    paintedFrame = -1,
-    paintedImage = null,
-    S = s ? s.d.reduce((e, t) => e + t, 0) : 1,
-    C = () => {
-      if (!a.isConnected && b > 2) cancelAnimationFrame(x);
-      else {
-        if ((b++, p)) {
-          if (s) {
-            let e = Math.floor(((performance.now() - y) / 1e3) * 60) % S,
-              t = 0;
-            for (; t < s.n - 1 && e >= s.d[t]; ) ((e -= s.d[t]), t++);
-            if (t !== paintedFrame || p !== paintedImage) {
-              d.clearRect(0, 0, a.width, a.height);
-              d.drawImage(p, t * c, m, c, l, 0, 0, c * u, l * u);
-              paintedFrame = t;paintedImage = p;
-            }
-          } else if (p !== paintedImage) {
-            d.clearRect(0, 0, a.width, a.height);
-            d.drawImage(p, 0, 0, 96, 96, 0, 0, 96 * u, 96 * u);
-            paintedImage = p;
-          }
-        }
-        x = requestAnimationFrame(C);
-      }
-    };
-  return ((x = requestAnimationFrame(C)), a);
+  return glyphPreview(e,n);
 }
 var qC = { stone: [-2, 0] };
 function JC(e, t) {
@@ -71173,7 +69289,10 @@ function JC(e, t) {
   );
 }
 function X(e, t = {}, ...n) {
-  let r = document.createElement(e);
+  const species=e===`img`?glyphSpeciesFromImage(t.src):null;
+  let r = species===null?document.createElement(e):glyphPreview(species,.75,t.class||`pix`);
+  if(species!==null){t={...t};delete t.src;delete t.class;delete t.onerror;}
+
   for (let [e, n] of Object.entries(t))
     if (n != null && n !== !1) {
       if (e === `class`) r.className = n;
@@ -71190,7 +69309,7 @@ function X(e, t = {}, ...n) {
       } else e === `html` ? (r.innerHTML = n) : r.setAttribute(e, String(n));
     }
   for (let e of n)
-    e != null && e !== !1 && r.append(e instanceof Node ? e : document.createTextNode(String(e)));
+    e != null && e !== !1 && r.append(e instanceof Node ? e : document.createTextNode(glyphText(String(e))));
   return (e === `button` && r.addEventListener(`mouseenter`, () => N.hover()), r);
 }
 var YC = (e) => `#` + e.toString(16).padStart(6, `0`);
@@ -71296,104 +69415,16 @@ function Q(e, t = `pix`) {
   );
 }
 function tw(e, t = `pix`) {
-  let n = X(`img`, { class: t, src: Zt(`icons/${e}.png`), alt: ``, draggable: `false`, loading: `lazy` });
-  return (
-    (n.onerror = () => {
-      ((n.onerror = null), (n.src = Zt(`portraits/${e}.png`)));
-    }),
-    n
-  );
+  return glyphPreview(e,.75,t);
 }
 function nw(e, t = `pix`) {
-  let n = X(`canvas`, { class: t, width: `48`, height: `48` });
-  return (
-    Tc(Zt(`icons/${e}.png`), (e) => {
-      let t = e.naturalWidth,
-        r = e.naturalHeight,
-        i = document.createElement(`canvas`);
-      ((i.width = t), (i.height = r));
-      let a = i.getContext(`2d`, { willReadFrequently: !0 });
-      a.drawImage(e, 0, 0);
-      let o;
-      try {
-        o = a.getImageData(0, 0, t, r).data;
-      } catch {
-        return;
-      }
-      let s = t,
-        c = r,
-        l = -1,
-        u = -1;
-      for (let e = 0; e < r; e++)
-        for (let n = 0; n < t; n++)
-          o[(e * t + n) * 4 + 3] > 40 &&
-            ((s = Math.min(s, n)), (l = Math.max(l, n)), (c = Math.min(c, e)), (u = Math.max(u, e)));
-      if (l < 0) return;
-      let d = l - s + 1,
-        f = u - c + 1,
-        p = Math.max(1, Math.floor(44 / Math.max(d, f))),
-        m = n.getContext(`2d`);
-      ((m.imageSmoothingEnabled = !1),
-        m.drawImage(i, s, c, d, f, Math.round((48 - d * p) / 2), Math.round((48 - f * p) / 2), d * p, f * p),
-        (m.globalCompositeOperation = `source-in`),
-        (m.fillStyle = `#3a3456`),
-        m.fillRect(0, 0, 48, 48));
-    }),
-    n
-  );
+  return glyphPreview(e,.75,t);
 }
 function rw(e) {
-  let t = X(`img`, { class: `pix`, src: Zt(`portraits/${e}.png`), alt: `` });
-  return (
-    (t.onerror = () => {
-      ((t.onerror = null), (t.src = Zt(`icons/${e}.png`)));
-    }),
-    t
-  );
+  return glyphPreview(e,.75);
 }
 function iw(e, t = 3, n = `idle`) {
-  let r = X(`canvas`, { class: `pix` }),
-    i = k.sprites[e],
-    a = null;
-  Tc(i?.anims ? Zt(`pmd/${e}.png`) : Zt(i?.fallback ?? `front/${e}.png`), (e) => {
-    a = e;
-  });
-  let o = i?.anims ? (i.anims[n] ?? i.anims.walk) : null,
-    s = o ? o.fw : 96,
-    c = o ? o.fh : 96,
-    l = o ? t : t * 0.6;
-  ((r.width = s * l), (r.height = c * l));
-  let u = r.getContext(`2d`);
-  u.imageSmoothingEnabled = !1;
-  let d = performance.now(),
-    f = 0,
-    p = 0,
-    paintedFrame = -1,
-    paintedImage = null,
-    m = o ? o.d.reduce((e, t) => e + t, 0) : 1,
-    h = () => {
-      if (!r.isConnected && f > 2) cancelAnimationFrame(p);
-      else {
-        if ((f++, a)) {
-          if (o) {
-            let e = Math.floor(((performance.now() - d) / 1e3) * 60) % m,
-              t = 0;
-            for (; t < o.n - 1 && e >= o.d[t]; ) ((e -= o.d[t]), t++);
-            if (t !== paintedFrame || a !== paintedImage) {
-              u.clearRect(0, 0, r.width, r.height);
-              u.drawImage(a, t * s, o.y, s, c, 0, 0, s * l, c * l);
-              paintedFrame = t;paintedImage = a;
-            }
-          } else if (a !== paintedImage) {
-            u.clearRect(0, 0, r.width, r.height);
-            u.drawImage(a, 0, 0, 96, 96, 0, 0, 96 * l, 96 * l);
-            paintedImage = a;
-          }
-        }
-        p = requestAnimationFrame(h);
-      }
-    };
-  return ((p = requestAnimationFrame(h)), r);
+  return glyphPreview(e,t);
 }
 var aw = [`var(--r0)`, `var(--r1)`, `var(--r2)`, `var(--r3)`, `var(--r4)`];
 function $(e) {
@@ -74204,7 +72235,7 @@ var iT = Math.PI / 180,
     }
     get def() {
       let e = this.run.player;
-      return Xh(e.roster?.id, e.types[0]);
+      return Xh(e.speciesId, e.types[0]);
     }
     get form() {
       return this.run.player.evoStage;
@@ -74263,6 +72294,7 @@ var iT = Math.PI / 180,
         this.active > 0 ? (this.active = Math.max(0, this.active - e)) : this.add(e / kT),
         this.drones.update(e),
         this.risers.update(e));
+      updateStarterSpeed(t,e,I.Soft);
       let n = t.input.down(`KeyR`);
       (n || (this.holdOk = !0),
         t.state === `play` &&
@@ -74304,12 +72336,14 @@ var iT = Math.PI / 180,
       ((this.charge = 0),
         (this.holdOk = !1),
         (this.active = a),
+        e.upgradeTiming.beginUltimate(),
         this.uses++,
         e.stats.ultimates++,
         e.meta.count(`ultimates`, 1),
         t.onUltimate(),
         e.coop?.ult(Zh(n, r)),
         (t.iframes = Math.max(t.iframes, a + 0.6)));
+      e.vfx.crafted.ultimate(u,a);
       let d = this.quiet;
       ((t.ultPoseT = d ? 0 : 0.6),
         !d &&
@@ -74347,7 +72381,7 @@ var iT = Math.PI / 180,
       (this.drones.render(), this.risers.render());
     }
     clear() {
-      (this.drones.clear(), this.risers.clear(), (this.active = 0), (this.castPending = !1));
+      (clearStarterSpeed(this.run), this.drones.clear(), this.risers.clear(), (this.active = 0), (this.castPending = !1), this.run.upgradeTiming.clear());
     }
   },
   PT = { burn: 1, poison: 2, para: 4, frozen: 8, sleep: 16, wet: 32, curse: 64, slow: 128 },
@@ -76025,7 +74059,6 @@ var GT = 15,
   _E = 3,
   vE = 0.22,
   yE = 1400,
-  bE = { live: { low: 500, medium: 650, high: 800 }, floor: 500, step: 50, low: 45, high: 55 },
   xE =
     `maxHp.regen.armor.evasion.shieldMax.lifesteal.healing.thorns.damage.physical.special.attackSpeed.projectiles.area.duration.projSpeed.critChance.critDamage.statusChance.statusDamage.eliteDamage.superEffective.moveSpeed.pickupRange.xpGain.gold.luck.extraJumps.jumpHeight.megaCrit.overheal.powerup.eliteSpawn.slam`.split(
       `.`,
@@ -76078,7 +74111,6 @@ var GT = 15,
     realDt = 0;
     gold = 0;
     keys = 0;
-    greed = 0;
     goldFrac = 0;
     killFrac = 0;
     curses = 0;
@@ -76099,15 +74131,15 @@ var GT = 15,
     slotSpent = 0;
     slotPrizes = {};
     tempMods = [];
-    recompiled = [];
     roars = 0;
-    shrines = { fossil: [], roars: 0, porygon: [] };
+    shrines = { fossil: [], roars: 0 };
     fusions = [];
     banished = new Set();
     rerolls = 0;
     skips = 0;
     banishes = 0;
     pendingLevels = 0;
+    upgradeTiming = new UpgradeTiming();
     bossSpawned = !1;
     stageCleared = !1;
     camYaw = 0;
@@ -76140,11 +74172,8 @@ var GT = 15,
     hideOwnFx = !1;
     regionCleared = !1;
     maxEnemies = yE;
-    liveCap = bE.live.high;
-    liveMax = bE.live.high;
-    hordeAcc = 0;
-    hordeFrames = 0;
-    hordeGood = 0;
+    liveCap = crowdBudgets.high.max;
+    liveMax = crowdBudgets.high.max;
     fpsCap = 0;
     get enemyCap() {
       return this.coop ? this.maxEnemies : Math.min(this.maxEnemies, this.liveCap);
@@ -76239,14 +74268,16 @@ var GT = 15,
           (this.diff.enemyHp *= this.coop.hpMul),
           (this.diff.enemyAmount *= this.coop.spawnMul)));
       let s = i.profile.settings;
+      this.performance=performanceProfile(s);
       ((this.hints = new yw(i)),
         (this.aimMode = s.aimMode),
         (this.maxEnemies = this.coop ? 800 : yE),
         this.setHordeQuality(s.quality),
-        (Fl.density =
-          (s.quality === `low` ? 0.5 : s.quality === `medium` ? 0.8 : 1) * (Uo(s.batterySaver) ? 0.7 : 1)),
+        (Fl.density = this.performance.particleDensity),
         (this.sprites = new rl(e.scene, e.shared)),
         (this.vfx = new Kl(e.scene, e.shared)),
+        this.vfx.crafted.attach(this),
+        this.vfx.setPerformance(this.performance,this.sprites),
         (this.vfx.calm = !!i.profile.settings.reduceFlashes),
         (this.vfx.fade = Math.max(0.2, Math.min(1, i.profile.settings.fxOpacity ?? 1))),
         (this.vfx.glow = Math.max(0.2, Math.min(1, i.profile.settings.fxGlow ?? 1))),
@@ -76265,23 +74296,33 @@ var GT = 15,
       ((this.boosts = new Set(a.boosts ?? [])),
         this.mode === `endless` && (this.endless = new Vw(this)),
         this.mode === `tower` && ((this.tower = new OT(this)), (this.stage = this.tower.curveStage)),
-        this.buildStage(!0),
-        this.applyBoosts(),
-        this.openStage());
+        (this.paperAssets=createPaperAssets()),
+        (this.onLoadProgress=a.onLoadProgress),
+        (this.loadingMetrics=[]),
+        (this.initialized=this.initialize()));
     }
-    async openStage() {
-      let e = this.stageSprites();
-      for (let t of e) this.sprites.get(t);
+    async initialize() {
+      this.state='transition';
+      await this.buildStageAsync(true);
+      this.applyBoosts();
+    }
+    async openStage(onProgress) {
+      let e = [...new Set([...this.stageSprites(),...this.sprites.batches.keys()])];
+      const check=()=>{if(this.disposed)throw Error('本局已结束');};
+      const sprites=this.sprites;
+      await runLoadingSteps((function*(){for(const id of e){sprites.get(id);yield;}})(),{check});
+      // stageSprites covers the player, evolutions, upcoming waves and the
+      // selected guardian. Later waves request their cutouts when needed.
+      // Do not allocate every future actor at every area entrance.
       if (
-        (this.sprites.preload([...this.director.everyone(), ...this.bossPools()], !0),
-        this.sprites.readyCount(e) < e.length && this.ui.loading)
+        this.sprites.readyCount(e) < e.length && this.ui.loading
       ) {
         let t = this.state;
         ((this.state = `transition`),
-          await this.ui.loading(e.length, () => this.sprites.readyCount(e)),
-          this.state === `transition` && (this.state = t === `transition` ? `play` : t));
+          await this.ui.loading(e.length, () => {check();return this.sprites.readyCount(e);},onProgress),
+          this.state === `transition` && (this.state = t));
       }
-      this.ui.stageIntro(this);
+      if(!onProgress)this.ui.stageIntro(this);
     }
     stageSprites() {
       let e = new Set([this.player.speciesId]);
@@ -76346,21 +74387,42 @@ var GT = 15,
     useMasterBall() {
       return this.masterBall ? ((this.masterBall = !1), !0) : this.player.items.has(`master-ball`);
     }
-    buildStage(e) {
+    createStageTerrain(deferred = false) {
+      const sanctuary=this.stage===4?(this.biome.sanctuary??null):null,tower=this.tower;
+      const zone=this.zone=tower?tower.zoneLook():fe(this.biome,sanctuary||this.endless?1:this.stage);
+      return new cd({...this.biome,zxStage:this.stage,sun:zone.sun,light:zone.light},
+        (this.seed+this.stage*7919)>>>0,this.r.shared,sanctuary?OC(sanctuary):tower?tower.layout():void 0,this.paperAssets,deferred);
+    }
+    async buildStageAsync(first) {
+      this.buildingStage=true;
+      let terrain;
+      try {
+        const metrics={stage:this.stage};this.loadingMetrics.push(metrics);
+        const check=()=>{if(this.disposed)throw Error('本局已结束');};
+        this.onLoadProgress?.({phase:'绘制桌面与纸张',detail:'正在生成场景',progress:.5});
+        // Let the transition cover paint before copying/building the next area.
+        await new Promise(resolve=>setTimeout(resolve,0));
+        check();
+        terrain=this.createStageTerrain(true);
+        metrics.terrain=await buildPaperWorldAsync(terrain,{check,
+          onProgress:stats=>this.onLoadProgress?.({phase:'绘制桌面与纸张',detail:'已完成 '+stats.steps+' 组'})});
+        await new Promise(resolve=>setTimeout(resolve,0));
+        check();
+        this.onLoadProgress?.({phase:'准备角色与场景物件',detail:'',progress:.7});
+        this.buildStage(first,terrain,true);
+        this.onLoadProgress?.({phase:'摆放场景物件',detail:'',progress:.75});
+        metrics.interactions=await this.interactables.populateAsync();
+      } catch(error){if(terrain&&terrain!==this.terrain)terrain.dispose();throw error;}
+      finally {this.buildingStage=false;}
+    }
+    buildStage(e, preparedTerrain, deferred = false) {
       let t = this.r,
-        n = (this.seed + this.stage * 7919) >>> 0,
         r = this.stage === 4 ? (this.biome.sanctuary ?? null) : null;
       this.streakPaid.clear();
-      let i = this.tower,
-        a = (this.zone = i ? i.zoneLook() : fe(this.biome, r || this.endless ? 1 : this.stage));
+      this.terrain=preparedTerrain??this.createStageTerrain();
+      let i = this.tower,a=this.zone;
       if (
-        ((this.terrain = new cd(
-          r ? this.biome : { ...this.biome, sun: a.sun, light: a.light },
-          n,
-          t.shared,
-          r ? OC(r) : i ? i.layout() : void 0,
-        )),
-        this.terrain.setSunDir(a.sunDir),
+        (this.terrain.setSunDir(a.sunDir),
         t.scene.add(this.terrain.group),
         t.setSun(a.sunDir, a.sunH, a.glow, a.glowK, a.stars),
         i?.buildFloor(),
@@ -76394,7 +74456,7 @@ var GT = 15,
         (this.events = new ub(this)),
         (this.director = new Av(this)),
         (this.capture = new Eb(this)),
-        (this.interactables = new GS(this)),
+        (this.interactables = new GS(this,deferred)),
         (this.roars = 0),
         (this.mewtwo = new Ab(this)),
         i?.onFloor(),
@@ -76837,6 +74899,7 @@ var GT = 15,
     };
     lookTmp = { top: new Ei(), bottom: new Ei(), fog: new Ei(), sun: new Ei() };
     pushLook() {
+      if(this.terrain?.zxPaper){applyPaperLight(this);return;}
       let e = this.look,
         t = this.r,
         n =
@@ -77182,7 +75245,6 @@ var GT = 15,
                     e.kind !== `shrine` &&
                     e.kind !== `magnet` &&
                     e.kind !== `berry` &&
-                    e.kind !== `rock` &&
                     e.kind !== `shroom`,
                 ) &&
                 this.ui.toast(
@@ -77316,7 +75378,7 @@ var GT = 15,
             (this.player.flash = 0),
             this.stage++,
             this.sprites.trim(3e3, uo ? 8e7 : 3e8),
-            this.buildStage(!1),
+            await this.buildStageAsync(!1),
             this.coop?.onStage(),
             await this.openStage());
         } catch (e) {
@@ -77357,7 +75419,7 @@ var GT = 15,
             e.advance(),
             (this.stage = e.curveStage),
             this.sprites.trim(3e3, uo ? 8e7 : 3e8),
-            this.buildStage(!1),
+            await this.buildStageAsync(!1),
             await this.openStage(),
             this.checkpoint());
         } catch (e) {
@@ -77537,12 +75599,11 @@ var GT = 15,
           shop: Math.round(this.econ.shop),
           sold: this.econ.sold,
         },
-        ...(this.shrines.fossil.length || this.shrines.roars || this.shrines.porygon.length
+        ...(this.shrines.fossil.length || this.shrines.roars
           ? {
               shrines: {
                 fossil: this.shrines.fossil.slice(),
                 roars: this.shrines.roars,
-                porygon: this.shrines.porygon.slice(),
               },
             }
           : {}),
@@ -77564,6 +75625,7 @@ var GT = 15,
       };
     }
     keepLive() {
+      if(!this.player||!this.director)return;
       if (!(this.state === `over` || this.sent))
         try {
           this.meta.keepLive(this.result(!1), {
@@ -77622,7 +75684,7 @@ var GT = 15,
         : !1;
     }
     doLevelUp() {
-      if (this.pendingLevels <= 0 || this.tryEvolve()) return;
+      if (this.state !== `play` || this.pendingLevels <= 0 || this.upgradeTiming.waiting(this.ult) || this.ui.experienceReady?.() === false || this.tryEvolve()) return;
       ((this.state = `modal`), this.audio.levelUp(), this.hints.show(`level`));
       let e = this.player.pos;
       (this.vfx.ring(e.x, e.y, e.z, 5, 16769162, 0.5),
@@ -77632,7 +75694,7 @@ var GT = 15,
           ((this.pendingLevels = Math.max(0, this.pendingLevels - 1)),
             (this.noResumeGrace = !e),
             this.ui.hideModal(),
-            this.pendingLevels > 0 ? (this.state = `play`) : this.resume());
+            this.pendingLevels > 0 ? ((this.state = `play`), this.doLevelUp()) : this.resume());
         },
         r = () => {
           try {
@@ -78007,25 +76069,6 @@ var GT = 15,
           },
         ));
     }
-    openPorygon(e) {
-      ((this.state = `modal`),
-        (e.data ??= {}),
-        (e.data.offers ??= Wv()),
-        this.ui.showTrade(
-          this,
-          {
-            title: c(`Altar de Porygon`),
-            help: c(
-              `Porygon reprograma tus estadísticas: una sube y otra baja para el resto de la partida. Solo una vez.`,
-            ),
-            species: 137,
-            offers: e.data.offers,
-          },
-          (t) => {
-            (this.resume(), t && Gv(this, e, t));
-          },
-        ));
-    }
     openSlots(e) {
       ((this.state = `modal`),
         this.ui.showSlots(
@@ -78123,13 +76166,22 @@ var GT = 15,
           (!!this.coop && (this.state === `modal` || this.state === `paused`)),
         a = this.state === `evolving` || this.state === `cinematic` || this.state === `capturing`;
       a && (r *= 0);
+      this.upgradeTiming.update(e,this.ult,this.state === `play`);
+      const finishingUltimate=this.upgradeTiming.waiting(this.ult);
+      // The short full-ring presentation is part of the upgrade pause. It
+      // must not freeze an ultimate mid-cast. Protect the player while its
+      // final damage/effects continue, then pause for the remaining ring work.
+      if(this.state === `play` && this.pendingLevels > 0){
+        if(finishingUltimate&&!this.coop)this.player.iframes=Math.max(this.player.iframes,r+.1);
+        if(!finishingUltimate&&this.ui.experienceReady?.() === false)r=0;
+      }
       let o = this.state === `capturing` ? this.capYaw : this.yawBack;
-      if (!Number.isNaN(o)) {
+      if (!this.terrain.zxPaper && !Number.isNaN(o)) {
         let t = Math.atan2(Math.sin(o - this.camYaw), Math.cos(o - this.camYaw));
         ((this.camYaw += t * Math.min(1, e * 3.2)),
           this.state !== `capturing` && Math.abs(t) < 0.01 && (this.yawBack = NaN));
       }
-      if (t.looking && (this.state === `play` || (a && this.state !== `capturing`))) {
+      if (!this.terrain.zxPaper && t.looking && (this.state === `play` || (a && this.state !== `capturing`))) {
         let e = 0.0024 * this.meta.profile.settings.sensitivity;
         (t.mouseDX && (this.yawBack = NaN),
           (this.camYaw -= t.mouseDX * e),
@@ -78142,7 +76194,7 @@ var GT = 15,
       let s = this.cine;
       ((s.blend =
         s.want > s.blend ? Math.min(s.want, s.blend + e / 0.6) : Math.max(s.want, s.blend - e * 1.4)),
-        (this.camYaw += e * s.orbit * s.blend),
+        (this.camYaw += this.terrain.zxPaper ? 0 : e * s.orbit * s.blend),
         this.evoHold > 0 && this.state === `play` && (this.evoHold -= e));
       let c = this.ultFx;
       c.t > 0 && (i || a) && (c.t -= e);
@@ -78172,26 +76224,12 @@ var GT = 15,
       }
     }
     setHordeQuality(e) {
-      let t = this.liveMax;
-      ((this.liveMax = Math.max(bE.floor, bE.live[e] ?? bE.live.high)),
-        (this.liveCap = this.liveCap >= t ? this.liveMax : Math.min(this.liveCap, this.liveMax)));
+      const budget=crowdBudgets[batterySaverEnabled(this.meta.profile.settings.batterySaver)?"low":e]||crowdBudgets.low,previous=this.liveMax;
+      this.liveMax=budget.max;this.liveMin=budget.min;
+      this.liveCap=this.liveCap>=previous?this.liveMax:Math.max(this.liveMin,Math.min(this.liveCap,this.liveMax));
     }
-    governHorde(e) {
-      if (this.coop || this.state !== `play` || this.timeScale !== 1 || document.hidden) {
-        this.hordeAcc = this.hordeFrames = 0;
-        return;
-      }
-      if (((this.hordeAcc += e), this.hordeFrames++, this.hordeAcc < 2)) return;
-      let t = this.hordeFrames / this.hordeAcc;
-      this.hordeAcc = this.hordeFrames = 0;
-      let n = this.fpsCap ? Math.min(bE.low, this.fpsCap * 0.75) : bE.low,
-        r = this.fpsCap ? Math.min(bE.high, this.fpsCap * 0.92) : bE.high;
-      t < n && this.enemies.count >= this.liveCap * 0.85
-        ? ((this.hordeGood = 0), (this.liveCap = Math.max(bE.floor, Math.round(this.liveCap * 0.085) * 10)))
-        : t >= r && this.liveCap < this.liveMax
-          ? ++this.hordeGood >= 3 &&
-            ((this.hordeGood = 0), (this.liveCap = Math.min(this.liveMax, this.liveCap + bE.step)))
-          : (this.hordeGood = 0);
+    governHorde() {
+      updateCrowdBudget(this,performance.now(),document.hidden);
     }
     simulate(e) {
       let t = this.input,
@@ -78385,85 +76423,71 @@ var GT = 15,
     weatherFx(e) {
       let t = this.weather;
       if (t === `clear` || t === `sun` || this.mewtwo.active) return;
+      // Rain has no ambient particles. Keep the weather's combat effects below.
       let n = this.r.camera.position,
-        r = Math.floor((t === `rain` ? 140 : t === `fog` ? 6 : 50) * e * 10);
+        r = t === `rain` ? 0 : Math.floor((t === `fog` ? 6 : 50) * e * 10);
       for (let e = 0; e < r; e++) {
         let e = n.x + F.range(-25, 25),
           r = n.z + F.range(-25, 25),
           i = n.y + F.range(4, 14);
-        t === `rain`
+        t === `sand`
           ? this.vfx.norm.spawn({
               x: e,
-              y: i,
+              y: i - 6,
               z: r,
-              vx: 2,
-              vy: -26,
-              vz: 0,
-              life: 0.55,
-              size: 0.22,
-              endSize: 0.22,
-              color: 10143999,
-              shape: I.Drop,
-              rot: Math.PI,
+              vx: 14,
+              vy: -1,
+              vz: 4,
+              life: 1.4,
+              size: 0.5,
+              endSize: 0.9,
+              color: 14203008,
+              shape: I.Soft,
             })
-          : t === `sand`
+          : t === `hail`
             ? this.vfx.norm.spawn({
                 x: e,
-                y: i - 6,
+                y: i,
                 z: r,
-                vx: 14,
-                vy: -1,
-                vz: 4,
-                life: 1.4,
-                size: 0.5,
-                endSize: 0.9,
-                color: 14203008,
-                shape: I.Soft,
+                vx: 1,
+                vy: -14,
+                vz: 0,
+                life: 1,
+                size: 0.3,
+                endSize: 0.3,
+                color: 16777215,
+                shape: I.Flake,
+                spin: 4,
               })
-            : t === `hail`
-              ? this.vfx.norm.spawn({
+            : t === `ash`
+              ? this.vfx.add.spawn({
                   x: e,
                   y: i,
                   z: r,
-                  vx: 1,
-                  vy: -14,
-                  vz: 0,
-                  life: 1,
-                  size: 0.3,
-                  endSize: 0.3,
-                  color: 16777215,
-                  shape: I.Flake,
-                  spin: 4,
+                  vx: F.range(-1, 1),
+                  vy: -2,
+                  vz: F.range(-1, 1),
+                  life: 3,
+                  size: 0.18,
+                  endSize: 0.1,
+                  color: 16747066,
+                  shape: I.Soft,
+                  glow: 0.5,
                 })
-              : t === `ash`
-                ? this.vfx.add.spawn({
-                    x: e,
-                    y: i,
-                    z: r,
-                    vx: F.range(-1, 1),
-                    vy: -2,
-                    vz: F.range(-1, 1),
-                    life: 3,
-                    size: 0.18,
-                    endSize: 0.1,
-                    color: 16747066,
-                    shape: I.Soft,
-                    glow: 0.5,
-                  })
-                : t === `fog` &&
-                  this.vfx.norm.spawn({
-                    x: e,
-                    y: i - 10,
-                    z: r,
-                    vx: 0.5,
-                    vy: 0,
-                    vz: 0.3,
-                    life: 4,
-                    size: 6,
-                    endSize: 9,
-                    color: 11575496,
-                    shape: I.Soft,
-                  });
+              : t === `fog` &&
+                this.vfx.norm.spawn({
+                  x: e,
+                  y: i - 10,
+                  z: r,
+                  vx: 0.5,
+                  vy: 0,
+                  vz: 0.3,
+                  life: 4,
+                  size: 6,
+                  endSize: 9,
+                  color: 11575496,
+                  shape: I.Soft,
+                });
       }
       if (Math.random() < e * 2) {
         let e = this.enemies;
@@ -78488,6 +76512,7 @@ var GT = 15,
     zoneMotes(e) {
       let t = this.zone.motes,
         n = this.weather;
+      if(!this.performance.ambient)return;
       if (!t || this.mewtwo.active || n === `rain` || n === `sand`) return;
       let r =
           t === `fireflies`
@@ -78614,6 +76639,7 @@ var GT = 15,
     }
     shakeOff = new ti();
     updateCamera(e) {
+      if(this.terrain?.zxPaper){updatePaperCamera(this,e);Il.yaw=0;return;}
       let t = this.coop?.camFocus() ?? null,
         n = this.r.camera,
         r = t ?? this.player.pos;
@@ -78689,7 +76715,9 @@ var GT = 15,
     }
     renderWorld(e) {
       let t = this.r.camera;
+      updateWorkshopScene(this,e);
       (this.sprites.begin(t),
+        updatePaperVisibility(this.terrain,this.sprites.frustum,this.terrain.workshopBoundary?true:this.performance.worldShadows),
         this.enemies.render(),
         this.boss.kit && !this.boss.kit.dead && this.boss.kit.render(),
         this.boss.mech?.render(),
@@ -78716,6 +76744,7 @@ var GT = 15,
         this.orbitalsGlow.end());
     }
     dispose() {
+      this.disposed=true;
       (this.coop?.dispose(),
         this.hints.dispose(),
         this.mapEvents.clear(),
@@ -78725,13 +76754,18 @@ var GT = 15,
         (this.r.shared.uWind.value = 1),
         this.capture?.dispose(),
         this.allies?.dispose(),
-        this.terrain.dispose(),
-        this.interactables.dispose(),
+        this.terrain?.dispose(),
+        this.interactables?.dispose(),
         this.sanctuary?.dispose(),
         this.tower?.dispose(),
         this.boss?.mech?.dispose(),
         this.sprites.clear());
+      this.sprites.standIn.dispose();
+      this.vfx.crafted.dispose();
+      this.vfx.atlas.dispose();
+      disposePaperAssets(this.paperAssets);
       for (let e of [
+        this.playerFootRing,
         this.vfx.add.mesh,
         this.vfx.norm.mesh,
         this.vfx.rings.mesh,
@@ -78741,13 +76775,13 @@ var GT = 15,
         this.vfx.text.mesh,
         this.orbitals.mesh,
         this.orbitalsGlow.mesh,
-        this.projectiles.pool.mesh,
-        this.projectiles.glow.mesh,
-        this.pickups.pool.mesh,
-        this.pickups.glow.mesh,
+        this.projectiles?.pool.mesh,
+        this.projectiles?.glow.mesh,
+        this.pickups?.pool.mesh,
+        this.pickups?.glow.mesh,
         this.sprites.shadows.mesh,
       ])
-        (e.parent?.remove(e), e.geometry.dispose(), e.material.dispose());
+        if(e)(e.parent?.remove(e), e.dispose?.(), e.geometry.dispose(), e.material.dispose());
     }
   },
   TE = 46,
@@ -78781,12 +76815,16 @@ var ME = class {
     lastType = ``;
     btnIds = new Set();
     fixed = !1;
+    centeredStick = !1;
+    swipeMove = !1;
+    swipeActive = !1;
     k = 1;
     setScale(e) {
       ((this.k = Math.max(0.7, Math.min(1.5, e || 1))), this.el.style.setProperty(`--tcs`, String(this.k)));
     }
     off;
     constructor(e) {
+      const extended=!window.nativeUI&&!document.documentElement.classList.contains('zixing');
       ((this.knob = X(`i`)),
         (this.stick = X(`div`, { class: `tc-stick` }, this.knob)),
         (this.ult = X(
@@ -78798,15 +76836,15 @@ var ME = class {
           X(`div`, { class: `ult-nm` }),
         )),
         (this.act = X(`div`, { class: `tc-btn tc-act`, style: { display: `none` } }, X(`i`), X(`span`))),
-        (this.aim = X(
+        (this.aim = extended ? X(
           `div`,
           { class: `tc-btn tc-sm tc-aim`, title: c(`Apuntado automático o manual`) },
           Z(`aim`, 26),
           X(`span`, {}, c(`Auto`)),
-        )));
-      let t = X(`div`, { class: `tc-btn tc-jump` }, Z(`jump`, 44)),
-        n = X(`div`, { class: `tc-btn tc-dash` }, Z(`dash`, 34)),
-        r = X(`div`, { class: `tc-btn tc-lock`, title: c(`Fijar objetivo`) }, Z(`target`, 28)),
+        ) : null));
+      let t = extended ? X(`div`, { class: `tc-btn tc-jump` }, Z(`jump`, 44)) : null,
+        n = extended ? X(`div`, { class: `tc-btn tc-dash` }, Z(`dash`, 34)) : null,
+        r = extended ? X(`div`, { class: `tc-btn tc-lock`, title: c(`Fijar objetivo`) }, Z(`target`, 28)) : null,
         i = X(`div`, { class: `tc-btn tc-sm tc-pause`, title: c(`Pausa`) }, Z(`pause`, 26));
       ((this.fs = X(
         `div`,
@@ -78856,6 +76894,7 @@ var ME = class {
         (this.letGo(), this.show(!1));
       }),
         addEventListener(`pagehide`, () => this.letGo()),
+        addEventListener(`resize`, () => this.letGo()),
         document.addEventListener(`visibilitychange`, () => {
           document.hidden && this.show(!1);
         }),
@@ -78865,6 +76904,7 @@ var ME = class {
         })));
     }
     button(e, t, n) {
+      if(!e)return;
       e.addEventListener(`pointerdown`, (n) => {
         (n.stopPropagation(),
           n.preventDefault(),
@@ -78890,7 +76930,7 @@ var ME = class {
     }
     mapTap = null;
     down = (e) => {
-      if (!this.run) return;
+      if (!this.run || this.run.state !== `play` || this.run.player.dead || document.hidden) return;
       if (
         (e.preventDefault(),
         jE(this.el, e.pointerId),
@@ -78914,7 +76954,19 @@ var ME = class {
           return;
         }
       }
-      if (this.stickId < 0 && e.clientX < innerWidth * 0.42) {
+      const stickBounds=this.centeredStick?this.stick.getBoundingClientRect():null;
+      const inStick=stickBounds
+        ? Math.hypot(e.clientX-stickBounds.left-stickBounds.width/2,e.clientY-stickBounds.top-stickBounds.height/2)<=stickBounds.width*.6
+        : e.clientX < innerWidth * 0.42;
+      if(this.swipeMove && !(this.centeredStick && inStick)){
+        if(this.stickId < 0){
+          this.swipeActive=true;this.stickId=e.pointerId;this.sx=e.clientX;this.sy=e.clientY;
+          this.run.input.stickX=this.run.input.stickY=0;
+        }
+        return;
+      }
+      if (this.stickId < 0 && inStick) {
+        this.swipeActive=false;
         if (((this.stickId = e.pointerId), this.fixed)) {
           let t = this.stick.getBoundingClientRect();
           ((this.sx = t.left + t.width / 2),
@@ -78932,6 +76984,7 @@ var ME = class {
           (this.knob.style.transform = ``));
         return;
       }
+      if(this.run.terrain?.zxPaper)return;
       let n = performance.now();
       (this.looks.set(e.pointerId, { x: e.clientX, y: e.clientY, t: n, t0: n }),
         (this.pinch = this.looks.size === 2 ? this.spread() : 0));
@@ -78939,7 +76992,22 @@ var ME = class {
     move = (e) => {
       let t = this.run?.input;
       if (!t || e.pointerId === this.mapTap?.id || this.btnIds.has(e.pointerId)) return;
+      if(this.run.state !== `play` || this.run.player.dead || document.hidden){this.releaseStick();return;}
+      if(this.swipeActive){
+        if(e.pointerId !== this.stickId)return;
+        const dx=e.clientX-this.sx,dy=e.clientY-this.sy,distance=Math.hypot(dx,dy);
+        // Follow each deliberate swipe, so turning never requires returning to
+        // an invisible joystick origin. Keep the heading while the finger rests.
+        if(distance < 4)return;
+        this.sx=e.clientX;this.sy=e.clientY;
+        t.stickX=dx/distance;t.stickY=-dy/distance;
+        return;
+      }
       if (e.pointerId === this.stickId) {
+        if(this.centeredStick){
+          const bounds=this.stick.getBoundingClientRect();
+          this.sx=bounds.left+bounds.width/2;this.sy=bounds.top+bounds.height/2;
+        }
         let n = e.clientX - this.sx,
           r = e.clientY - this.sy,
           i = Math.hypot(n, r);
@@ -78952,14 +77020,18 @@ var ME = class {
             (this.stick.style.left = this.sx + `px`),
             (this.stick.style.top = this.sy + `px`));
         }
-        let a = Math.min(1, Math.hypot(n, r) / (TE * this.k)),
+        const radius=this.centeredStick
+          ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
+          : TE*this.k;
+        let a = Math.min(1, Math.hypot(n, r) / radius),
           o = Math.atan2(r, n),
           s = a < EE ? 0 : 1;
         ((t.stickX = Math.cos(o) * s),
           (t.stickY = -Math.sin(o) * s),
-          (this.knob.style.transform = `translate(${Math.cos(o) * a * TE * this.k}px, ${Math.sin(o) * a * TE * this.k}px)`));
+          (this.knob.style.transform = `translate(${Math.cos(o) * a * radius}px, ${Math.sin(o) * a * radius}px)`));
         return;
       }
+      if(this.run.terrain?.zxPaper)return;
       let n = this.looks.get(e.pointerId);
       if (!n) {
         if (e.pointerType === `mouse`) return;
@@ -78996,6 +77068,7 @@ var ME = class {
     }
     releaseStick() {
       ((this.stickId = -1),
+        (this.swipeActive = !1),
         this.stick.classList.remove(`on`, `fixed`),
         (this.stick.style.left = this.stick.style.top = this.stick.style.bottom = ``),
         (this.knob.style.transform = ``),
@@ -79010,7 +77083,7 @@ var ME = class {
           try {
             this.el.releasePointerCapture(e);
           } catch {}
-      (this.releaseStick(), this.looks.clear(), (this.pinch = 0), (this.mapTap = null));
+      (this.releaseStick(), this.looks.clear(), this.btnIds.clear(), (this.pinch = 0), (this.mapTap = null));
       for (let e of this.el.querySelectorAll(`.tc-btn.on`)) e.classList.remove(`on`);
       let e = this.run?.input;
       if (e) for (let t of [`Space`, `ShiftLeft`, `KeyR`, `KeyE`, `Escape`, `KeyQ`]) e.touchKey(t, !1);
@@ -79032,7 +77105,7 @@ var ME = class {
           r.includes(c(`Poké Ball`)) || r.startsWith(c(`Capturar`)) ? Q(`poke-ball`) : X(`b`, {}, `E`),
         ));
       let i = e.aimMode === `auto`;
-      (this.aim.dataset.m !== e.aimMode &&
+      (this.aim && this.aim.dataset.m !== e.aimMode &&
         ((this.aim.dataset.m = e.aimMode),
         (this.aim.lastChild.textContent = c(i ? `Auto` : `Manual`)),
         this.aim.classList.toggle(`manual`, !i)),
@@ -81933,14 +80006,14 @@ function yO(e, t = `btn small ghost gl-btn`) {
     c(`Glosario`),
   );
 }
-var bO = [1, 4, 7],
+var bO = [...LITE_SPECIES],
   xO = () => ({ idx: 0, ids: [], prog: [], claimed: [], rerolls: 0 }),
   SO = {
     master: 0.8,
     music: 0.5,
     sfx: 0.7,
     cries: 0.6,
-    quality: `high`,
+    quality: `low`,
     aimMode: `auto`,
     sensitivity: 1,
     invertY: !1,
@@ -94258,6 +92331,7 @@ function dP(e, t, n, r = ``, i = !1, a) {
   );
 }
 function fP(e) {
+  return ZX(e).home();
   let t = e.guestClosed(),
     n = t ? (lP() ? `register` : `login`) : `guest`,
     r = !1,
@@ -94723,7 +92797,28 @@ function SP() {
     };
   return (document.addEventListener(`fullscreenchange`, n), t);
 }
+function ZX(app) {
+  const itemIcon=id=>Zt(k.items[id]?.icon||`items/${id}.png`);
+  return createZixingUI(app, {
+    defaults: {...SO, fpsLimit:60, batterySaver:false, zxTheme:'auto', zxBossHealth:'value'},
+    moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
+    ultDescription: id => Xh(id, k.get(id).types[0]).descs[0] || '积蓄能量，释放专属大招。',
+    baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
+    typeName: type => Pi[type] || type,
+    offer: (run, offer) => Wb(run, offer),
+    moveName: move => move.name,
+    moveIcon: move => Zt(`ui/types/${move.type}.png`),
+    moveColor: move => YC(Ni[move.type]),
+    vitaminName: id => Ne.get(id)?.name || id,
+    vitaminIcon: id => itemIcon(Ne.get(id)?.icon||id),
+    itemName: id => Zb(id)?.name || id,
+    itemIcon,
+    credits: () => nPFull(() => rI(app)),
+    glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
+  });
+}
 function CP(e) {
+  return ZX(e).home();
   if (location.hostname === "127.0.0.1" && location.port === "18189" && new URLSearchParams(location.search).get("qa") === "portrait") window.__portraitApp = e;
   mountLiteQA(e);
   const meta=e.meta, p=meta.profile;
@@ -95979,6 +94074,7 @@ function GP(e, t, n, r = !1) {
   );
 }
 function KP(e, t = `standard`, n, r) {
+  return ZX(e).choose();
   let i = e.meta,
     a = n != null && i.inLeague(n) ? n : i.inLeague(i.profile.lastSpecies) ? i.profile.lastSpecies : 4,
     o = !1,
@@ -96924,6 +95020,7 @@ var YP = (e) =>
     [45, 150, c(`Mewtwo`)],
   ];
 function QP(e,t,n='standard') {
+  return ZX(e).map();
   const meta=e.meta, forest=fr[0]; let tier=0,busy=false;
   const maxTier=Math.min(2,Math.max(0,meta.biomeTier('forest')));
   e.menuScene?.setBiome('forest'); e.menuScene?.setView('maps'); e.menuScene?.setFocus(t,meta.skinFor(t));
@@ -97734,6 +95831,7 @@ var hF = `pb.labItemsSeen`,
     }
   };
 function _F(e, t = `lab`) {
+  return ZX(e).lab();
   let n = e.meta,
     r = eF(n),
     i = Wt.reduce((e, t) => e + t.max, 0),
@@ -100995,6 +99093,7 @@ function QF(e, t, n) {
     document.body.append(f));
 }
 function $F(e) {
+  return ZX(e).settings();
   $P(
     e,
     `st`,
@@ -101190,7 +99289,6 @@ function nI(e) {
           `ownFxOpacity`,
           `fxGlow`,
           `hideOwnFx`,
-          `enemyView`,
           `calmCandies`,
           `pickupFx`,
           `reduceFlashes`,
@@ -101245,18 +99343,6 @@ function nI(e) {
             `hideOwnFx`,
             c(
               `No dibuja tus proyectiles ni sus efectos. Da muchos FPS con muchos ataques; los de los enemigos se siguen viendo`,
-            ),
-          ),
-          o(
-            c(`Enemigos que se dibujan`),
-            `enemyView`,
-            [
-              [`all`, c(`Todos`)],
-              [`near`, c(`Cercanos`)],
-              [`close`, c(`Muy cercanos`)],
-            ],
-            c(
-              `Solo dibuja los enemigos que tienes cerca (30 m o 18 m); los demás siguen ahí, solo que no se ven. Da muchos FPS en Supervivencia y en el enjambre final`,
             ),
           ),
           l(c(`Caramelos discretos`), `calmCandies`, c(`Más pequeños y sin brillo; se recogen igual`)),
@@ -101827,18 +99913,13 @@ function sI() {
     },
     shrine: { src: aI(`shrine`), ring: `#3ac85a`, name: c(`Santuario legendario`) },
     challenge: { src: aI(`challenge`), ring: `#ff6a3a`, name: c(`Altar de desafío`) },
-    cursed: { src: aI(`cursed`), ring: `#2a2a3a`, name: c(`Altar maldito`) },
-    cage: { src: aI(`cage`), ring: `#8a8aa0`, name: c(`Jaula`) },
-    rock: { src: aI(`rock`), ring: `#d8a830`, name: c(`Roca de oro`) },
     shroom: { src: aI(`shroom`), ring: `#ff8a3a`, name: c(`Seta rebote`) },
     slots: { src: `ui/icons/coin.png`, ring: `#c8306a`, name: c(`Tragaperras (apuesta por objetos)`) },
     magnet: { src: `items/magnet.png`, ring: `#8a8aa0`, name: c(`Imán`) },
     berry: { src: `items/oran-berry.png`, ring: `#3a7aff`, name: c(`Bayas`) },
     meowth: { src: oI(52), ring: `#ffc83a`, name: c(`Meowth (tienda)`), round: !0 },
-    greed: { src: oI(94), ring: `#8a4ad0`, name: c(`Altar de Gengar (más difícil, más botín)`), round: !0 },
     ditto: { src: oI(132), ring: `#c88aff`, name: c(`Ditto (clona un objeto)`), round: !0 },
     hypno: { src: oI(97), ring: `#e8c040`, name: c(`Hypno (olvida ataques)`), round: !0 },
-    snorlax: { src: oI(143), ring: `#3a6a8a`, name: c(`Snorlax (bendición o ₽)`), round: !0 },
     fossil: {
       src: oI(142),
       ring: `#ff9a2a`,
@@ -101849,12 +99930,6 @@ function sI() {
       src: oI(112),
       ring: `#c8783a`,
       name: c(`Grito de Rhydon (guardián más fuerte, más Super Balls)`),
-      round: !0,
-    },
-    porygon: {
-      src: oI(137),
-      ring: `#3ac8e8`,
-      name: c(`Altar de Porygon (cambia una estadística por otra)`),
       round: !0,
     },
     nest: {
@@ -101897,6 +99972,8 @@ var cI = {
   },
   lI = new Map();
 function uI(e) {
+  const species=glyphSpeciesFromImage(e);
+  if(species!==null)return glyphCanvas(glyphWordForSpecies(species));
   if (!lI.has(e)) {
     lI.set(e, null);
     let t = /^portraits\/(\d+)\.png$/.exec(e);
@@ -101999,17 +100076,12 @@ var yI = new Set([
   `freechest`,
   `cursedchest`,
   `altar`,
-  `cursed`,
   `challenge`,
-  `cage`,
   `meowth`,
   `hypno`,
   `ditto`,
-  `snorlax`,
-  `greed`,
   `slots`,
   `fossil`,
-  `porygon`,
   `nest`,
   `bill`,
 ]);
@@ -102825,7 +100897,7 @@ var OI = [
       c(`Letal`),
       c(`Imposible`),
     ][e],
-  RI = new Set([`meowth`, `ditto`, `hypno`, `snorlax`]);
+  RI = new Set([`meowth`, `ditto`, `hypno`]);
 function zI(e, t, n) {
   let r = e.textContent ?? ``,
     i = 0;
@@ -103425,7 +101497,7 @@ var JI = class {
         X(
           `div`,
           { class: `uc-row` },
-          X(`div`, { class: `uc-pt` }, ZI(e, !1)),
+          X(`div`, { class: `uc-pt` }, glyphPreview(e)),
           X(`div`, { class: `uc-txt` }, X(`small`, {}, c(`¡Ultimate!`)), X(`b`, {}, t)),
         ),
       );
@@ -103547,7 +101619,8 @@ var JI = class {
         setTimeout(() => i.classList.add(`out`), 5200),
         setTimeout(() => i.remove(), 5800));
     }
-    loading(e, t) {
+    loading(e, t, onProgress) {
+      if (window.__zixingApp?.zixing) return window.__zixingApp.zixing.loading(e,t,onProgress);
       let n = !this.fadeEl.classList.contains(`on`);
       n &&
         ((this.fadeEl.style.transition = `none`),
@@ -103807,17 +101880,16 @@ var JI = class {
           (t.tier.textContent = [c(`Normal`), c(`Difícil`), c(`Pesadilla`)][e.tier]),
           (t.tier.dataset.t = String(e.tier)));
       }
-      let o = e.weather + e.greed + `/` + e.curses;
+      let o = e.weather + `/` + e.curses;
       if (t.weather.dataset.k !== o) {
         t.weather.dataset.k = o;
         let n = { rain: `water`, sun: `fire`, sand: `rock`, hail: `ice`, fog: `ghost`, ash: `fire` };
         ($(t.weather).append(
           ...(n[e.weather] ? [ZC(n[e.weather], 16)] : []),
           v[e.weather].name,
-          e.greed ? X(`em`, {}, ` · ` + c(`Gengar ×{n}`, { n: e.greed })) : ``,
           e.curses ? X(`em`, {}, ` · ` + c(`Maldición ×{n}`, { n: e.curses })) : ``,
         ),
-          (t.weather.style.display = e.weather === `clear` && !e.greed && !e.curses ? `none` : ``));
+          (t.weather.style.display = e.weather === `clear` && !e.curses ? `none` : ``));
       }
     }
     xpFlashT = 0;
@@ -103959,9 +102031,16 @@ var JI = class {
       let t = e.player,
         n = this.els,
         r = Math.max(0, t.hp / t.maxHp);
-      n.hp.children[0].style.transform = `scaleX(${r})`;
       let i = performance.now(),
         a = Math.min(0.1, (i - this.lagT) / 1e3);
+      if(this.compact){
+        this.lagT=i;this.touch.update(e,this.promptText);this.ultHud(e);
+        n.lowhp.style.display=r<.25&&!t.dead?``:`none`;
+        const release=e.state===`play`&&e.allies.state===`down`;
+        this.releaseEl.style.display=release?``:`none`;
+        if(release)this.releaseEl.onclick=()=>{N.click();e.allies.dismiss();};
+      }else{
+      n.hp.children[0].style.transform = `scaleX(${r})`;
       ((this.lagT = i),
         r >= this.hpLag
           ? ((this.hpLag = r), (this.lagHold = 0.4))
@@ -104101,6 +102180,7 @@ var JI = class {
         }
       }
       this.party(e);
+      }
       let _ = e.boss;
       if (_.alive) {
         n.boss.style.display = ``;
@@ -104232,19 +102312,15 @@ var JI = class {
         },
         i = {
           freechest: c(`Gratis`),
-          greed: c(`Gengar`),
           meowth: c(`Tienda`),
           ditto: c(`Ditto`),
           hypno: c(`Hypno`),
-          snorlax: c(`Snorlax`),
           magnet: c(`Imán`),
           berry: c(`Bayas`),
           boss: c(`Guardián`),
-          rock: c(`Golpe Roca`),
           portal: c(`¡Portal!`),
           shrine: c(`Santuario`),
           challenge: c(`Desafío`),
-          cursed: c(`Altar maldito`),
           cursedchest: c(`Maldita`),
           shroom: c(`Seta rebote`),
         };
@@ -104293,14 +102369,9 @@ var JI = class {
               p.style.setProperty(`--p`, String(e)),
               p.style.setProperty(`--ac`, RS[a.data?.tier ?? 0].css),
               $(p).append(X(`span`, {}, e + `%`))));
-        } else if (a.kind === `chest` || a.kind === `cage` || a.kind === `slots`) {
+        } else if (a.kind === `chest` || a.kind === `slots`) {
           let t = a.kind === `chest` && !!a.data?.gift,
-            n =
-              a.kind === `chest`
-                ? e.interactables.chestCost()
-                : a.kind === `slots`
-                  ? ox(e)
-                  : e.interactables.cageCost(),
+            n = a.kind === `chest` ? e.interactables.chestCost() : ox(e),
             r = t || e.gold >= n;
           ((h = `wlabel ` + (r ? `cost` : `nocost`)),
             (m = `p` + (t ? `g` : n) + r),
@@ -104811,6 +102882,7 @@ var JI = class {
         e.cry(n.species));
     }
     modal(...e) {
+      this.touch.letGo();
       let t = !!this.modalEl?.isConnected;
       if (
         (this.hideModal(),
@@ -109300,6 +107372,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     cur = { ...OL.main };
     target = OL.main;
     constructor(e, t = `forest`) {
+      if(window.nativeUI){this.r=e;this.biome=t;applyPaperLight({r:e});return;}
       ((this.r = e),
         (this.sprites = new rl(e.scene, e.shared)),
         (this.biome = t),
@@ -109307,8 +107380,10 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.title.applySky());
     }
     makeTitle(e) {
-      let t = e ? new tf(this.r, this.sprites) : new Vd(this.r, this.sprites);
-      return (this.r.scene.add(t.group), (t.group.visible = this.mode === `title`), t);
+      const terrain=new cd({...fr[0],size:120,zxStage:1},1234,this.r.shared);
+      const preview={r:this.r,terrain,player:{pos:new ti(0,0,0)},camTarget:new ti(0,0,0)};
+      const title={paper:true,group:terrain.group,applySky:()=>applyPaperLight(preview),update:dt=>updatePaperCamera(preview,dt),dispose:()=>terrain.dispose()};
+      this.r.scene.add(title.group);title.group.visible=this.mode===`title`;return title;
     }
     build(e) {
       let t = fr.find((t) => t.id === e) ?? fr[0];
@@ -109351,6 +107426,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.r.setMoon(0));
     }
     setBiome(e) {
+      if(window.nativeUI)return;
       (e === this.biome && this.terrain) ||
         ((this.biome = e),
         this.terrain?.dispose(),
@@ -109358,6 +107434,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.mode === `biome` && ((this.terrain = this.build(e)), this.biomeSky()));
     }
     setView(e) {
+      if(window.nativeUI)return;
       this.target = OL[e];
       let t = e === `main` ? `title` : `biome`;
       t !== this.mode &&
@@ -109368,6 +107445,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         t === `title` ? this.title.applySky() : this.biomeSky());
     }
     setFocus(e, t = null) {
+      if(window.nativeUI)return;
       ((this.focus = e),
         (this.look = t === !0 ? `shiny` : t || null),
         (this.focusShiny = this.look === `shiny`),
@@ -109418,10 +107496,11 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     }
     spookyT = 0;
     update(e) {
+      if(window.nativeUI)return;
       if (((this.t += e), (this.spookyT -= e) <= 0)) {
         this.spookyT = 2;
         let e = TL();
-        (e !== this.title instanceof tf &&
+        (!this.title.paper && e !== this.title instanceof tf &&
           (this.title.dispose(),
           this.sprites.clear(),
           (this.title = this.makeTitle(e)),
@@ -109493,9 +107572,14 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.sprites.end());
     }
     dispose() {
+      if(window.nativeUI)return;
       (this.title.dispose(),
         this.terrain?.dispose(),
         this.sprites.clear(),
+        this.sprites.standIn.dispose(),
+        this.sprites.shadows.mesh.dispose(),
+        this.sprites.shadows.mesh.geometry.dispose(),
+        this.sprites.shadows.mesh.material.dispose(),
         this.r.scene.remove(this.sprites.shadows.mesh));
     }
   },
@@ -109790,7 +107874,11 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     }
     applySettings() {
       let e = this.meta.profile?.settings;
+      if(e&&(window.nativeUI||this.zixing))e.aimMode='auto';
       if (e && window.repairVolumeSettings?.(e)) this.meta.save();
+      const profile=performanceProfile(e);
+      if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio});
+      window.setUIPerformance?.(profile);
       e &&
         (N.setVolumes({ master: e.master, music: e.music, sfx: e.sfx, cries: e.cries }),
         N.setHiddenMute(document.hidden && e.muteHidden),
@@ -109798,10 +107886,11 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         (this.saver = Uo(e.batterySaver)),
         this.r &&
           (this.r.setQuality({
-            pixelScale: e.pixel ?? 0,
-            bloom: e.quality === `high`,
+            pixelScale: window.nativeUI||this.zixing ? 0 : e.pixel ?? 0,
+            bloom: profile.bloom,
+            outline: profile.outline,
             hires: e.quality !== `low`,
-            dyn: !0,
+            dyn: profile.dynamicResolution,
             saver: this.saver,
           }),
           this.r.setLook(!!e.reduceFlashes, e.fxGlow ?? 1)),
@@ -109821,8 +107910,9 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           (this.run.hideOwnFx = !!e.hideOwnFx),
           (this.run.camDist = Math.max(4.5, Math.min(26, e.camDist ?? 9))),
           (this.run.vfx.ownFade = Math.max(0.1, Math.min(1, e.ownFxOpacity ?? e.fxOpacity ?? 1))),
-          (Fl.density =
-            (e.quality === `low` ? 0.5 : e.quality === `medium` ? 0.8 : 1) * (this.saver ? 0.7 : 1)),
+          (this.run.performance=profile),
+          (Fl.density = profile.particleDensity),
+          this.run.vfx.setPerformance(profile,this.run.sprites),
           (this.run.fpsCap = this.fpsCap()),
           this.run.setHordeQuality(e.quality)));
     }
@@ -109834,21 +107924,24 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         } catch {}
     }
     starting = !1;
-    async startRun(e) {
+    async startRun(e, onLoadProgress) {
       if (this.starting) return !1;
+      if(!onLoadProgress&&this.zixing)return this.zixing.start(e);
+      this.lastStartError=null;
       (Oo(!0), (this.starting = !0));
       try {
-        return await this.openRun(e);
+        return await this.openRun(e,onLoadProgress);
       } catch (error) {
+        this.lastStartError=error;
         console.error('[宝可梦] 森林初始化失败', error);
-        if (window.onRunStartError) window.onRunStartError(error);
-        else { this.toMenu(); this.notice('森林未能打开：' + (error.message || error)); }
+        this.toMenu();
+        if(!onLoadProgress)this.notice('森林未能打开：' + (error.message || error));
         return false;
       } finally {
         this.starting = !1;
       }
     }
-    async openRun(e) {
+    async openRun(e, onLoadProgress) {
       this.lastCfg = e;
       let t;
       try {
@@ -109871,13 +107964,13 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           if (n === `cancel`) return !1;
         }
       } catch (e) {
+        this.lastStartError=e;
         return (this.notice(e.message), N.deny(), !1);
       }
       return (
         (e = { ...e, seed: t.seed, boosts: t.boosts ?? [] }),
         fN(),
         (this.lastCfg = e.coop ? null : { ...e, boosts: [] }),
-        this.setScreen(null),
         this.menuScene?.dispose(),
         (this.menuScene = null),
         this.hud?.destroy(),
@@ -109902,7 +107995,27 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           e = this.hud.pauseOverlay(t);
         }),
         N.init(),
-        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, e)),
+        onLoadProgress?.({phase:'准备对局',detail:'',progress:.45}),
+        await waitForLoadingPaint(this.r.renderer),
+        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress})),
+        await this.run.initialized,
+        onLoadProgress?.({phase:'准备字灵',detail:'',progress:.8}),
+        ZX(this).attachRun(this.run),
+        await this.run.openStage(onLoadProgress),
+        onLoadProgress?.({phase:'准备进入场景',detail:'',progress:.96}),
+        await waitForLoadingPaint(this.r.renderer),
+        // Upload textures, compile shaders and populate the HUD while the
+        // opaque loading page still covers the first frame. No play time elapses.
+        this.run.update(0),
+        this.r.render(0),
+        window.drawUI?.(this.r.renderer),
+        onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
+        await waitForLoadingPaint(this.r.renderer),
+        this.setScreen(null),
+        (this.run.onLoadProgress=null),
+        (this.run.state='play'),
+        this.run.ui.stageIntro(this.run),
+        document.hidden && this.run.pause(),
         (globalThis.__pb = globalThis.__pb || {}),
         (globalThis.__pb.run = this.run),
         (this.run.fpsCap = this.fpsCap()),
@@ -110085,11 +108198,12 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         N.playTrack(EL()),
         CP(this));
     }
-    perf = { sim: 0, draw: 0 };
+    perf = { sim: 0, draw: 0, fps: 0, frames: 0, started: 0, last: 0, run: null };
     failing = 0;
     saver = !1;
     frameGap() {
       let e = this.run?.state;
+      if(window.nativeUI&&window.modalAnimating?.())return 1000/(this.fpsCap()||60);
       if (window.nativeUI && (!e || e === `paused` || e === `modal` || e === `over`))
         return Math.max(1000 / (this.fpsCap() || 60), 1000 / 30);
       if (this.saver) return e === `paused` || e === `modal` ? 50 : 33.3;
@@ -110118,32 +108232,55 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       r.t = r.frames = r.js = 0;
       let s = window.__dynFps,
         c = s ?? a;
-      c < 45 && (o < 0.7 || s !== void 0) && i.dynRes > dc.DYN_MIN
+      const target=Math.min(this.fpsCap()||60,60);
+      // Native canvas uploads and graphics submission also count as JS time.
+      // Busy native submission must not block resolution reduction.
+      c < target*.75 && (window.nativeUI || o < 0.7 || s !== void 0) && i.dynRes > dc.DYN_MIN
         ? (n - r.lastUp < 25e3 && (r.wait = Math.min(60, r.wait * 2)),
           (r.good = 0),
           i.setDynRes(i.dynRes - 0.1))
-        : c >= 55 && i.dynRes < 1
+        : c >= target*(55/60) && i.dynRes < 1
           ? ++r.good * 2 >= r.wait && ((r.good = 0), (r.lastUp = n), i.setDynRes(i.dynRes + 0.1))
           : (r.good = 0);
     }
     halted = !1;
     nextDraw = 0;
     loop = (e) => {
-      if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) return;
+      if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) {this.perf.active=false;return;}
       let t = this.frameGap();
       if (t && e < this.nextDraw - 2 && !this.r.needsDraw) return;
-      this.nextDraw = t ? Math.max(this.nextDraw + t, e) : 0;
+      // Forced resize/menu draws must not accumulate a deadline far into the
+      // future while the renderer is idle behind an opaque screen.
+      this.nextDraw = t ? e + t : 0;
       let n = Math.min(0.1, (e - this.last) / 1e3);
       this.last = e;
       try {
+        // Opaque menus only upload changed UI; hidden scenery stays idle.
+        if(this.run?.buildingStage){this.perf.active=false;window.drawUI?.(this.r.renderer);return;}
+        if (this.screen?.classList.contains('zx-loading-screen') || window.nativeUI && this.screen?.classList.contains('zx')) {
+          if(!this.run){this.perf.run=null;this.perf.fps=0;}
+          this.perf.active=false;
+          window.drawUI?.(this.r.renderer, true);
+          this.r.needsDraw = false;
+          this.input.endFrame();
+          return;
+        }
         let t = performance.now();
-        (this.pad.update(n, this.run?.state === `play`),
-          this.run ? this.run.update(n) : this.menuScene?.update(n));
+        this.pad.update(n, this.run?.state === `play`);
+        if(!this.r.needsDraw&&window.drawFrozenModal?.(this.r.renderer)){
+          this.perf.active=false;this.failing=0;return;
+        }
+        this.run ? this.run.update(n) : this.menuScene?.update(n);
         let r = performance.now();
         if ((this.r.render(n), this.run?.state === `play`)) {
           let e = this.perf;
           ((e.sim += (r - t - e.sim) * 0.05), (e.draw += (performance.now() - r - e.draw) * 0.05));
-        }
+          const now=performance.now();
+          if(e.run!==this.run||!e.active){e.started=now;e.frames=0;if(e.run!==this.run)e.fps=0;e.run=this.run;}
+          else e.frames++;
+          e.last=now;e.active=true;
+          if(now-e.started>=1000){e.fps=e.frames*1000/(now-e.started);e.frames=0;e.started=now;}
+        }else this.perf.active=false;
         ((this.failing = 0), this.adaptRes(performance.now() - t, (e - this.dynAt) / 1e3, e));
       } catch (e) {
         if (

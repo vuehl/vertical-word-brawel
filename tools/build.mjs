@@ -5,12 +5,18 @@ import esbuild from 'esbuild';
 import {parse} from '../source/tools/vendor/acorn.mjs';
 import {addBootAssets,bootAssets} from './boot-assets.mjs';
 import {lowerUnicodeRegexes} from './device-syntax.mjs';
+import {assetPolicyVersion} from './asset-policy.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
-const out=path.join(root,'minigame'),engine=path.join(out,'engine');
+const development=process.argv.includes('--dev');
+const projectRoot=development?path.join(root,'验收','开发者工程'):root;
+const developer=development?await import('./developer/build-support.mjs'):null;
+const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
-if(!fs.existsSync(path.join(out,'assets.js'))||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
-  execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs')],{stdio:'inherit'});
+const manifest=path.join(out,'assets.js');
+const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
+if(installedAssets?.policyVersion!==assetPolicyVersion||(developer&&installedAssets?.developerFontKey!==developer.fontKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
+  execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{
   if(!s.includes(from)||s.indexOf(from)!==s.lastIndexOf(from))throw Error('Source anchor changed: '+from.slice(0,80));
@@ -92,6 +98,10 @@ const sources={
       code=replace(code,'await new Promise((e) => setTimeout(e, Math.min(5e3, 1e3 + t * 500))));',
         'await new Promise((e) => setTimeout(e, 500)));\n          if (t >= 2) throw Error("WebGL 2 初始化失败：" + (e.message || e));');
       code=replace(code,'(ac(), wL(), await new AL().boot());','export async function launch(){ac();wL();const app=new AL();window.onApp?.(app);await app.boot();return app;}');
+      // Browser-only legacy QA is never part of a native release.
+      code=replace(code,"import {mountLiteQA} from './lite-qa.js';",'');
+      code=replace(code,'  mountLiteQA(e);','');
+      if(developer)code=developer.instrumentGame(code);
       code=replace(code,'if ((this.r.render(n), this.run?.state === \x60play\x60))','if ((this.r.render(n), window.drawUI(this.r.renderer), this.run?.state === \x60play\x60))');
       code=replace(code,'(this.failing++ % 60 == 0','(window.onBootRenderError?.(e), this.failing++ % 60 == 0');
       return {contents:lowerUnicodeRegexes(code),resolveDir:path.join(src,'src')};
@@ -100,12 +110,12 @@ const sources={
 };
 // The preview service parses the submitted JavaScript before issuing a QR code.
 const previewESVersion=2017;
-const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es'+previewESVersion,charset:'utf8',legalComments:'eof',
-  nodePaths:[path.join(import.meta.dirname,'node_modules')],plugins:[sources],logLevel:'warning'};
+const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es'+previewESVersion,charset:'utf8',legalComments:'eof',metafile:process.argv.includes('--analyze'),
+  nodePaths:[path.join(import.meta.dirname,'node_modules')],plugins:[...(developer?[developer.isolatedStoragePlugin(platform)]:[]),sources],logLevel:'warning'};
 const hostBundle=await esbuild.build({...common,define:{document:'undefined'},entryPoints:[path.join(platform,'host.mjs')],write:false});
 await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
-const result=await esbuild.build({...common,define:{innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'},write:false,stdin:{contents:
+const result=await esbuild.build({...common,metafile:true,define:{innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'},write:false,stdin:{contents:
   'import "../public/turnstile-stub.js";import {l as language} from "./i18n.js";'+
   'export async function start(){language(window.locale,window.readLocale(window.locale));return require("./game.js").launch();}',resolveDir:path.join(src,'src')}});
 const bindings=('globalThis window self document navigator location history localStorage sessionStorage innerWidth innerHeight devicePixelRatio screen '+
@@ -126,6 +136,7 @@ fs.copyFileSync(path.join(platform,'boot-screen.js'),path.join(out,'boot-screen.
 fs.copyFileSync(path.join(platform,'resource-codec.js'),path.join(out,'resource-codec.js'));
 addBootAssets(out,bootAssets(root));
 for(const name of ['game.js','game.json'])fs.copyFileSync(path.join(root,name),path.join(out,name));
+if(developer)developer.writeProject(root,projectRoot);
 const runtimePackages=new Set(['linkedom','typeflex','fflate','@noble/hashes','brotli','core-js','base64-js']);
 const notices=[];
 for(const name of runtimePackages){
@@ -141,6 +152,13 @@ fs.writeFileSync(path.join(out,'packs','text','licenses.txt'),notices.join('\n\n
 for(const file of ['game.js','host.js','original.js','licenses.txt','layout.bin','styles.bin'])fs.rmSync(path.join(engine,file),{force:true});
 function files(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(f=>f.isDirectory()?files(path.join(dir,f.name)):[path.join(dir,f.name)]);}
 const built=files(out),size=list=>list.reduce((n,f)=>n+fs.statSync(f).size,0);
+if(!development){
+  if(Object.keys(result.metafile.inputs).some(file=>/tools[\\/]developer[\\/]|src[\\/]lite-qa\.js$/.test(file)))
+    throw Error('Developer module included in release dependency graph.');
+  const release=fs.readFileSync(path.join(out,'play.js'),'utf8');
+  for(const marker of ['__zixingDeveloper','zx-dev-panel','pokebonk-dev-save','mountLiteQA','隔离 QA'])
+    if(release.includes(marker))throw Error('Developer code leaked into release: '+marker);
+}
 for(const file of built.filter(f=>f.endsWith('.js'))){
   try{parse(fs.readFileSync(file,'utf8'),{ecmaVersion:previewESVersion});}
   catch(error){throw new Error(path.relative(out,file)+': '+error.message);}
@@ -151,3 +169,36 @@ const total=size(built),main=size(built.filter(file=>!subRoots.some(root=>file==
 console.log('Native project:',(total/1048576).toFixed(2),'MiB, main:',(main/1048576).toFixed(2),'MiB.');
 // Keep a conservative 20 MiB preview budget, with room for compiler metadata.
 if(total>20*1048576-128*1024||main>4*1048576-64*1024)throw Error('WeChat preview package budget exceeded.');
+// The unpacked container can also be imported into WeChat DevTools. Keep its
+// real runtime folder current; the IDE skips directory junctions on reopening.
+const wrapperRoot=path.dirname(root),wrapperFile=path.join(wrapperRoot,'build-wrapper.json');
+if(!development&&fs.existsSync(wrapperFile)){
+  const wrapper=JSON.parse(fs.readFileSync(wrapperFile,'utf8'));
+  if(path.resolve(wrapperRoot,wrapper.source)!==root||wrapper.target!=='minigame')throw Error('Invalid outer project build mapping.');
+  const wrapperOut=path.join(wrapperRoot,wrapper.target),wrapperConfig=JSON.parse(fs.readFileSync(path.join(wrapperRoot,'project.config.json'),'utf8'));
+  if(wrapperConfig.compileType!=='game'||wrapperConfig.miniprogramRoot!=='minigame/')throw Error('Outer project game root does not match build mapping.');
+  if(fs.existsSync(wrapperOut)&&fs.lstatSync(wrapperOut).isSymbolicLink())throw Error('Outer runtime must be a real directory.');
+  fs.cpSync(out,wrapperOut,{recursive:true});
+  console.log('Outer project runtime synchronized.');
+}
+if(process.argv.includes('--analyze')){
+  const core=Object.values(result.metafile.outputs)[0],inputs=Object.entries(core.inputs).map(([file,{bytesInOutput}])=>({file,bytes:bytesInOutput}));
+  const engineInputs=inputs.filter(({file})=>/\/three-[^/]+\.js$/.test(file));
+  const coreInputs=inputs.filter(input=>!engineInputs.includes(input));
+  const sum=list=>list.reduce((n,input)=>n+input.bytes,0);
+  const codeFiles=built.filter(file=>!file.includes(path.sep+'packs'+path.sep));
+  const codeBytes=size(codeFiles),hostBytes=hostBundle.outputFiles[0].contents.length;
+  const groups=[
+    {name:'玩法、界面与内置效果代码',bytes:sum(coreInputs)},
+    {name:'Three.js 3D 引擎',bytes:sum(engineInputs)},
+    {name:'微信界面、布局、存档与兼容层',bytes:hostBytes},
+    {name:'启动、资源加载与打包封装',bytes:codeBytes-sum(inputs)-hostBytes},
+  ];
+  const report={basis:'Minified esbuild output attribution plus actual startup files; on-disk bytes, NOT runtime RAM.',totalBytes:codeBytes,
+    groups:groups.map(group=>({...group,MiB:group.bytes/1048576})),
+    gameplayInputs:coreInputs.sort((a,b)=>b.bytes-a.bytes),engineInputs,
+    platformInputs:Object.entries(Object.values(hostBundle.metafile.outputs)[0].inputs).map(([file,{bytesInOutput}])=>({file,bytes:bytesInOutput})).sort((a,b)=>b.bytes-a.bytes)};
+  const reportDir=process.env.POKEBONK_QA||path.join(root,'验收');fs.mkdirSync(reportDir,{recursive:true});
+  fs.writeFileSync(path.join(reportDir,'代码组成.json'),JSON.stringify(report,null,2)+'\n');
+  console.table(report.groups.map(({name,bytes,MiB})=>({组成:name,字节:bytes,MiB:MiB.toFixed(2)})));
+}

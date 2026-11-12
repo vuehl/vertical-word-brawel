@@ -14,9 +14,12 @@ export function readUIAssets(files) {
     const bytes=wx.getFileSystemManager().readFileSync(files.pathFor(key));
     return JSON.parse(strFromU8(unzlibSync(new Uint8Array(bytes))));
   }
-  return {layout:read('engine/layout.bin'),rules:read('engine/styles.bin')};
+  // Zixing uses live CSS layout. The old desktop measurements are only an
+  // optional input to the offline layout-reference tool, not a phone asset.
+  return {rules:read('engine/styles.bin')};
 }
 export function readReference(view,data) {
+  if(!data)return {screens:{},styles:[],sx:1,sy:1};
   const distance=v=>Math.abs(Math.log((view.w/view.h)/(v.w/v.h)))+
     .25*Math.abs(Math.log(view.w/v.w));
   const sameOrientation=data.views.filter(v=>(v.w<=v.h)===(view.w<=view.h));

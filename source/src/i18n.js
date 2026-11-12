@@ -1,30 +1,15 @@
+import {glyphText} from './zixing-identity.js';
 var e = [
-    { id: `es`, name: `Español`, locale: `es-ES`, short: `ES` },
-    { id: `en`, name: `English`, locale: `en-US`, short: `EN` },
-    { id: `pt`, name: `Português`, locale: `pt-BR`, short: `PT` },
-    { id: `fr`, name: `Français`, locale: `fr-FR`, short: `FR` },
-    { id: `ja`, name: `日本語`, locale: `ja-JP`, short: `JA` },
     { id: `zh`, name: `简体中文`, locale: `zh-CN`, short: `ZH` },
-    { id: `zht`, name: `繁體中文`, locale: `zh-TW`, short: `繁` },
-    { id: `ko`, name: `한국어`, locale: `ko-KR`, short: `KO` },
-    { id: `ru`, name: `Русский`, locale: `ru-RU`, short: `RU` },
   ],
   t = (t) => typeof t == `string` && e.some((e) => e.id === t),
   n = `pokebonk.lang`,
-  r = `es`,
+  r = `zh`,
   i = {},
   a = () => r,
   o = () => e.find((e) => e.id === r).locale;
 function s() {
-  let e =
-    typeof navigator > `u` ? [] : navigator.languages?.length ? navigator.languages : [navigator.language];
-  for (let n of e) {
-    let e = (n || ``).toLowerCase(),
-      r = e.split(`-`)[0];
-    if (r === `zh` && /-(tw|hk|mo|hant)\b/.test(e)) return `zht`;
-    if (t(r)) return r;
-  }
-  return `en`;
+  return `zh`;
 }
 function c() {
   try {
@@ -35,11 +20,11 @@ function c() {
   }
 }
 function l(e, t) {
-  ((r = e), (i = t), (d = null));
+  ((r = `zh`), (i = t), (d = null));
 }
 function u(e, t) {
   let n = i[e] || e;
-  return t ? n.replace(/\{(\w+)\}/g, (e, n) => (n in t ? String(t[n]) : e)) : n;
+  return glyphText(t ? n.replace(/\{(\w+)\}/g, (e, n) => (n in t ? String(t[n]) : e)) : n);
 }
 var d = null,
   f = (e) => e.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`);
@@ -66,12 +51,12 @@ function p(e) {
   for (let t of d) {
     let n = t.re.exec(e);
     if (n)
-      return t.to.replace(/\{(\w+)\}/g, (e, r) => {
+      return glyphText(t.to.replace(/\{(\w+)\}/g, (e, r) => {
         let i = t.vars.indexOf(r);
         return i < 0 ? e : n[i + 1];
-      });
+      }));
   }
-  return e;
+  return glyphText(e);
 }
 var m = (e, t = 0) => e.toLocaleString(o(), { maximumFractionDigits: t, minimumFractionDigits: t });
 export { t as a, c, p as d, m as i, l, n, a as o, s as r, o as s, e as t, u };

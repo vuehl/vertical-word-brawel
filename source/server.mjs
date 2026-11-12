@@ -200,7 +200,7 @@ route('POST', '/profile/starter', async (req, res) => {
   const p = acc.profile;
   const id = Number(b.id);
   if(p.starter && p.starter !== id)return json(res,409,{error:'Starter already chosen.'});
-  if (![1, 4, 7].includes(id)) return json(res, 400, { error: 'Invalid starter.' });
+  if (!validLiteRun({species:id,biome:'forest'})) return json(res, 400, { error: 'Invalid starter.' });
   p.starter = id;
   p.lastSpecies = id;
   if (!p.league.includes(id)) p.league.push(id);

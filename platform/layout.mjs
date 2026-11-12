@@ -51,6 +51,8 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     set('Width',s.width);set('Height',s.height,view.h);
     if(s.width==='max-content'&&metric?.[6])node.setWidth(metric[6]*ref.sx);
     set('MaxWidth',s['max-width']);set('MaxHeight',s['max-height'],view.h);
+    const region=view.regions?.[el.dataset?.uiRegion];
+    if(region)node.setMaxWidth(region.w);
     set('MinWidth',s['min-width']);set('MinHeight',s['min-height'],view.h);
     let abs=/absolute|fixed/.test(s.position);
     if(abs)node.setPositionType(Y.POSITION_TYPE_ABSOLUTE);
@@ -98,7 +100,12 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       const row=gridDisplay||(flex?(s['flex-direction']||'row').startsWith('row'):inlineText);
       node.setFlexDirection(row?Y.FLEX_DIRECTION_ROW:Y.FLEX_DIRECTION_COLUMN);
       node.setAlignItems(align[s['align-items']||s['place-items']]??Y.ALIGN_STRETCH);
-      node.setJustifyContent(justify[(s['justify-content']||'').replace('safe ','')]??Y.JUSTIFY_FLEX_START);
+      // Native inline tags are represented as inline-flex containers. Their
+      // text must align within the full label, not its intrinsic text width.
+      // Explicit flex justification still takes precedence for real controls.
+      const textFlow=inlineText||row&&!gridDisplay&&!el.children.length;
+      const textJustify=textFlow?({'center':'center','right':'flex-end','end':'flex-end'}[s['text-align']]||'flex-start'):'';
+      node.setJustifyContent(justify[(s['justify-content']||textJustify).replace('safe ','')]??Y.JUSTIFY_FLEX_START);
       const columns=s['grid-template-columns']||'';
       let count=0;
       if(gridDisplay){const match=/repeat\(\s*(\d+)/.exec(columns);count=match?+match[1]:columns?(columns.match(/(?:minmax|repeat)\([^)]*\)|[^\s]+/g)||[]).length:1;}
@@ -187,6 +194,10 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       if(sc){const extent=axis==='X'?w:h,k=+sc[1],ratio=/left|top/.test(ox)?0:/right|bottom/.test(ox)?1:(parseFloat(ox)||0)/100;
         if(axis==='X'){x+=w*(1-k)*ratio;w=extent*k;}else{y+=h*(1-k)*ratio;h=extent*k;}}
     }
+    // Only explicitly registered overlay regions may extend outside the
+    // common safe-area clip; menus and touch controls keep their usual bounds.
+    const region=view.regions?.[el.dataset?.uiRegion];
+    if(region){x=region.x;y=region.y;parentClip={x:region.x,y:region.y,r:region.x+region.w,b:region.y+region.h};}
     const alpha=parseFloat(s.opacity);
     const opacity=parentOpacity*(Number.isFinite(alpha)?Math.max(0,Math.min(1,alpha)):1);
     const box={...item,s:style,x,y,w,h,naturalW,naturalH,opacity,clip:parentClip,singleLine:single&&(!changedText||liveLabel)};seen.set(el,box);boxes.push(box);
@@ -214,7 +225,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     boxes=[];seen=new WeakMap();
     const screens=doc.querySelectorAll('#ui > .screen');
     const screen=screens[screens.length-1];
-    const name=screen?Array.from(screen.classList).find(c=>ref.screens[c]):(runState==='paused'?'paused':'play');
+    const name=screen?.classList.contains('zx')||doc.documentElement.classList.contains('zixing')?null:screen?Array.from(screen.classList).find(c=>ref.screens[c]):(runState==='paused'?'paused':'play');
     metrics=ref.screens[name]||{};
     // CSS variables on :root are inherited by the body.
     const parent={s:engine.style(doc.documentElement,null)};
@@ -228,5 +239,23 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
   }
   function hit(x,y){for(let i=boxes.length-1;i>=0;i--){const b=boxes[i],c=b.clip;if(b.tag==='#text'||b.s['pointer-events']==='none'||x<c.x||x>c.r||y<c.y||y>c.b)continue;
     if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.el;}return doc.body;}
-  return {refresh,hit,box:el=>seen.get(el),font,wrap,context:ctx};
+  function refreshSubtree(element,previous){
+    const bounds=seen.get(element),index=boxes.indexOf(bounds);
+    if(!bounds||index<0)return previous;
+    const all=boxes,parent={s:seen.get(element.parentElement)?.s||engine.style(element.parentElement,null)};
+    const root=make(element,parent);
+    root.node.setPositionType(Y.POSITION_TYPE_RELATIVE);
+    root.node.setPosition(Y.EDGE_LEFT,0);root.node.setPosition(Y.EDGE_TOP,0);
+    root.node.setMargin(Y.EDGE_ALL,0);
+    root.node.setWidth(bounds.w);root.node.setHeight(bounds.h);
+    root.node.calculateLayout(bounds.w,bounds.h,Y.DIRECTION_LTR);
+    // The tile's outer footprint stays fixed. Recompute only its contents;
+    // resize/settings and changed slot counts still use the complete layout.
+    root.s={...root.s,position:'relative',transform:'none',translate:'none'};
+    boxes=[];
+    record(root,bounds.x,bounds.y,bounds.clip,bounds.w,bounds.h,null,bounds.opacity/(parseFloat(root.s.opacity)||1));
+    const local=boxes;boxes=all;boxes.splice(index,previous.length,...local);
+    root.node.freeRecursive();return local;
+  }
+  return {refresh,refreshSubtree,hit,box:el=>seen.get(el),font,wrap,context:ctx};
 }
