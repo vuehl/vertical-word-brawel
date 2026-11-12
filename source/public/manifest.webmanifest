@@ -3,7 +3,7 @@
   "name": "PokéBonk",
   "short_name": "PokéBonk",
   "description": "Survivor 3D gratis en el navegador con los 151 Pokémon de Kanto. Fan-game no oficial, gratuito y sin ánimo de lucro.",
-  "lang": "es",
+  "lang": "zh-CN",
   "dir": "ltr",
   "start_url": "/",
   "scope": "/",

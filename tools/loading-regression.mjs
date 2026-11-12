@@ -58,7 +58,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     stages.push(await snapshot());assert.equal(stages.at(-1).stage,stage);
   }
   await page.screenshot({path:path.join(dir,baseline?'loading-before.png':'loading-after.png')});
-  const probe=await page.evaluate(()=>({...loadProbe,imageLoads:[...(window.nativeImageLoads||[])],locale:inspected.env.locale,storedLocale:localStorage.getItem('pokebonk.web.pokebonk.lang')}));
+  const probe=await page.evaluate(()=>({...loadProbe,imageLoads:[...(window.nativeImageLoads||[])]}));
   const cleanup=await page.evaluate(async()=>{
     const assets=app.run.paperAssets,watched=[...(assets?.textures.values()||[]),...(assets?.mats.values()||[])];let disposed=0;
     for(const asset of watched)asset.addEventListener('dispose',()=>disposed++);
@@ -225,8 +225,6 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
   const report={environment:'Chrome / software WebGL / local WeChat fixture; not iPhone timings',...probe,stages,restart,cleanup,entryRecovery,resources};
   fs.writeFileSync(path.join(dir,baseline?'loading-before.json':'loading-after.json'),JSON.stringify(report,null,2));
   if(!baseline){
-    assert.equal(probe.locale,'zh');
-    assert.equal(probe.storedLocale,'zh','Old non-Chinese preferences must migrate');
     assert.equal(cleanup.disposed,cleanup.watched);assert.ok(cleanup.menuEmpty);
     for(const packs of [probe.homePackages,probe.entryPackages,resources.packagesAfterAudit])
       assert.deepEqual(packs.filter(p=>p==='sound'||p.startsWith('music_')),[],'No screen may download music');

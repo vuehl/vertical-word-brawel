@@ -63,8 +63,9 @@ for(const key of removedSceneAssets){
   assert.ok(!index.files[key],'Removed scene asset must not ship; rebuild with npm run build:assets: '+key);
 }
 assert.equal(Object.keys(index.files).filter(k=>k.startsWith('assets/cries/')).length,0,'Creature cries must not ship');
-assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('locale/')),['locale/zh.json']);
-assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('data/i18n/')),['data/i18n/zh.json']);
+assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('locale/')),[]);
+assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('data/i18n/')),[]);
+assert.ok(index.files['text/ui.json']);
 assert.equal(Object.keys(index.sprites).length,0,'Actor atlases must not be reconstructed on the phone');
 assert.ok(!index.files['engine/layout.bin'],'Unused desktop layout references must not ship');
 // Research reads family roots even when the root is not a spawnable actor.

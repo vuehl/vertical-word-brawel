@@ -1,5 +1,4 @@
 // Pure rules extracted from the published v0.8.34 client.
-import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
 import {
   $ as l,
   $n as u,

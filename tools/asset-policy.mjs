@@ -2,7 +2,7 @@ import {paperPropNames} from '../source/src/paper-prop-names.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=12;
+export const assetPolicyVersion=14;
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
 

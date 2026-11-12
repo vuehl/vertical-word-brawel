@@ -26,10 +26,11 @@ export async function reviewBattleVisual(page,dir){
     p.pos.copy(origin);draw();const half=greenPixels();
     p.hp=hp;draw();
     const foot=run.ui.project(run,p.pos.x,p.pos.y-.15,p.pos.z);
-    return {full,half,recovered:greenPixels(),clip:{x:Math.round(foot.x-screen.left-76),
+    return {platform:env.nativeDevice.platform,full,half,recovered:greenPixels(),clip:{x:Math.round(foot.x-screen.left-76),
       y:Math.round(foot.y-screen.top-100),width:152,height:144}};
   });
   const {full,half,recovered}=report.playerHealth;
+  assert.equal(report.playerHealth.platform,'ios');
   assert.ok(full>50&&half>full*.3&&half<full*.7&&recovered>half,JSON.stringify(report.playerHealth));
   await page.screenshot({path:path.join(dir,'主角脚下血条.png'),clip:report.playerHealth.clip});
   report.effects=await page.evaluate(()=>{

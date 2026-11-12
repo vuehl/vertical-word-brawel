@@ -41,7 +41,7 @@ export function createHUDLayer(makeCanvas,id,slot){
 }
 
 // A frequently changing canvas (the minimap) gets a small independent texture.
-export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground=null}={}){
+export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground=null,uploadPixels=false}={}){
   let canvas,context,box,parts=[],bounds,originX=0,originY=0,dirty=true;
   const owns=el=>el?.dataset?.uiLayer===id||!!(foreground&&el?.closest?.('[data-ui-layer="'+foreground+'"]'));
   return {
@@ -78,7 +78,7 @@ export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground
         const changed=dirty||canvas!==box.el._surface;
         canvas=box.el._surface;dirty=false;
         return {canvas,x:Math.round((box.x+view.x)*scale),y:Math.round((box.y+view.y)*scale),
-          width:Math.round(box.w*scale),height:Math.round(box.h*scale),opacity:box.opacity,changed,slot};
+          width:Math.round(box.w*scale),height:Math.round(box.h*scale),opacity:box.opacity,uploadPixels,changed,slot};
       }
       const pad=4,x=Math.floor((box.x+bounds.x+view.x-pad)*scale),y=Math.floor((box.y+bounds.y+view.y-pad)*scale);
       const width=Math.ceil((bounds.w+pad*2)*scale),height=Math.ceil((bounds.h+pad*2)*scale);

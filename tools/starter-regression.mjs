@@ -15,12 +15,17 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     await snapshot('choose-before-'+width);
     for(const [id,word,ult] of [[4,'炎','一点火苗'],[132,'摹','照着变'],[16,'风','一阵刮来']]){
       await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-'+width);
-      const data=await page.evaluate(()=>({text:app.screen.textContent,buttons:[...inspected.doc.querySelectorAll('.zx-choices button')].map(e=>{
-        const b=inspected.layout.box(e);return {id:e.dataset.species,x:b.x,w:b.w};
-      })}));
+      const data=await page.evaluate(()=>{
+        const canvas=app.screen.querySelector('.zx-glyph.large canvas'),box=canvas.getBoundingClientRect();
+        const buttons=[...inspected.doc.querySelectorAll('.zx-choices button')].map(e=>{
+          const b=inspected.layout.box(e);return {id:e.dataset.species,x:b.x,w:b.w};
+        });
+        return {text:app.screen.textContent,buttons,preview:{pixels:canvas.width,width:box.width}};
+      });
+      assert.ok(data.preview.width>0&&data.preview.pixels>=3*data.preview.width,'Large starter art must cover a 3x display');
       assert.ok(data.text.includes(word)&&data.text.includes(ult));assert.ok(!data.text.includes('积蓄能量，释放专属大招'));
       for(const b of data.buttons)assert.ok(b.x>=0&&b.x+b.w<=width+1);
-      report.menus.push({width,id,word,ult});
+      report.menus.push({width,id,word,ult,preview:data.preview});
     }
   }
   await resize(390,844);
@@ -38,7 +43,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
   const start=async id=>{
     await page.evaluate(async id=>{await app.startRun({species:id,biome:'forest',tier:0,boosts:[],mode:'standard'});app.halted=true;starterTestSetup();},id);
   };
-  for(const [choice,end] of [[17,58],[18,59]]){
+  for(const [choice,end] of [[17,18],[58,59]]){
     await start(16);
     const plan=await page.evaluate(()=>{
       const r=app.run;r.player.level=26;r.player.xpNext=r.player.xpFor(26);r.player.recompute();
@@ -52,7 +57,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       for(const b of bounds)assert.ok(b.x>=0&&b.x+b.w<=width+1&&b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1,'Both branch choices must be fully visible: '+JSON.stringify({width,b}));
     }
     await resize(390,844);await snapshot('branch-'+choice);
-    assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-branch-id]')].map(e=>Number(e.dataset.branchId))),[17,18]);
+    assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-branch-id]')].map(e=>Number(e.dataset.branchId))),[17,58]);
     await page.evaluate(()=>{window.staleBranches=[...inspected.doc.querySelectorAll('[data-branch-id]')];});
     await tap('[data-branch-id="'+choice+'"]');
     await page.evaluate(()=>{for(const b of staleBranches)b.click();});
@@ -61,18 +66,18 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     await tap('.zx-modal button','确认进阶');
     const middle=await page.evaluate(()=>{
       starterTestAdvance(300);const r=app.run;
-      return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types};
+      return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types,kit:r.player.roster.kit};
     });assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:44});
-    assert.equal(middle.ult,choice===17?'卷着打转':'刮倒一片');
+    assert.equal(middle.ult,choice===17?'环形扩散':'卷着打转');
     await page.evaluate(()=>{const r=app.run;r.player.level=44;r.player.xpNext=r.player.xpFor(44);r.tryEvolve();});
     await draw();await tap('.zx-modal button','确认进阶');
     const final=await page.evaluate(()=>{
       starterTestAdvance(300);const r=app.run;return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types,kit:r.player.roster.kit,passive:r.player.ability};
-    });assert.equal(final.id,end);assert.equal(final.next,null);assert.deepEqual(final.types,['fire']);
-    assert.equal(final.ult,end===58?'冲！':'没影了');assert.equal(final.passive,'loyal-guard');
-    assert.deepEqual(final.kit,['fire-fang','flame-wheel','extreme-speed','flare-blitz']);
+    });assert.equal(final.id,end);assert.equal(final.next,null);assert.deepEqual(final.types,['flying']);
+    assert.equal(final.ult,end===18?'攻速 ×10':'移速 ×10');assert.equal(final.passive,'tailwind');
+    assert.deepEqual(final.kit,middle.kit);
     await draw();
-    assert.deepEqual(await page.evaluate(()=>({name:inspected.doc.querySelector('.zx-hud-name').textContent,type:inspected.doc.querySelector('.zx-hud-element').textContent})),{name:end===58?'飒':'飙',type:'火'});
+    assert.deepEqual(await page.evaluate(()=>({name:inspected.doc.querySelector('.zx-hud-name').textContent,type:inspected.doc.querySelector('.zx-hud-element').textContent})),{name:end===18?'疯':'飙',type:'风'});
     await snapshot('evolved-'+end);report.routes.push({choice,end,plan,middle,final});
   }
   // Exercise all nine actual ultimate definitions. Keep enemies alive so normal
@@ -81,35 +86,42 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     await start([4,5,6].includes(id)?4:id===132?132:16);
     const sample=await page.evaluate(id=>{
       const r=app.run,p=r.player;
-      if(p.speciesId!==id){p.setSpecies(id);p.evoStage=[6,58,59].includes(id)?2:1;p.recompute();r.nextEvo=r.planEvolution(id,1);}
+      if(p.speciesId!==id){p.setSpecies(id);p.evoStage=[6,18,59].includes(id)?2:1;p.recompute();r.nextEvo=r.planEvolution(id,1);}
       p.level=30;p.recompute();r.pendingLevels=0;
       for(let j=0;j<12;j++){
         const a=j/12*Math.PI*2,x=p.pos.x+Math.cos(a)*5,z=p.pos.z+Math.sin(a)*5;
         const i=r.enemies.spawn(19,x,z,1,1,0);r.enemies.hp[i]=r.enemies.maxHp[i]=1e7;
       }
       window.starterHp=()=>Array.from({length:r.enemies.n},(_,i)=>r.enemies.alive[i]?r.enemies.hp[i]:0).reduce((a,b)=>a+b,0);
-      const before=starterHp(),speed=p.stats.moveSpeed;
+      const before=starterHp(),speed=p.stats[id===18?"attackSpeed":"moveSpeed"];
       r.ult.charge=1;r.ult.fire();starterTestAdvance(3);
-      const active={name:r.ult.name,def:r.ult.def.names,duration:r.ult.def.dur[0],speed:p.stats.moveSpeed,buffs:[...p.buffs].map(([key,b])=>[key,b.t,b.label])};
+      const active={name:r.ult.name,def:r.ult.def.names,duration:r.ult.def.dur[0],speed:p.stats[id===18?"attackSpeed":"moveSpeed"],buffs:[...p.buffs].map(([key,b])=>[key,b.t,b.label])};
       return {id,before,speed,active};
     },id);
     await snapshot('ultimate-'+id);
     if(id===18||id===59){
-      assert.ok(Math.abs(sample.active.speed/sample.speed-10)<1e-8,'Actual combat movement stat must be exactly tenfold');
-      const timers=await page.evaluate(()=>{
-        const r=app.run,p=r.player,key='ziling-wind-speed',before=p.buffs.get(key).t;
+      assert.ok(Math.abs(sample.active.speed/sample.speed-10)<1e-8,'Actual combat speed stat must be exactly tenfold');
+      const timers=await page.evaluate(id=>{
+        const r=app.run,p=r.player,key=id===18?'ziling-wind-attack-speed':'ziling-wind-speed',before=p.buffs.get(key).t;
         r.state='paused';r.update(2);const paused=p.buffs.get(key).t;r.state='play';
-        r.ult.def.cast({run:r});const refreshed=p.buffs.get(key).t,speed=p.stats.moveSpeed;
-        starterTestAdvance(330);return {before,paused,refreshed,speed,after:p.stats.moveSpeed,buffs:[...p.buffs.keys()]};
-      });assert.equal(timers.paused,timers.before);assert.equal(timers.refreshed,5);assert.equal(timers.speed,sample.active.speed);
-      assert.ok(Math.abs(timers.after-sample.speed)<1e-8);assert.ok(!timers.buffs.includes('ziling-wind-speed'));sample.timers=timers;
+        r.ult.def.cast({run:r});const refreshed=p.buffs.get(key).t,speed=p.stats[id===18?'attackSpeed':'moveSpeed'];
+        starterTestAdvance(330);return {before,paused,refreshed,speed,after:p.stats[id===18?'attackSpeed':'moveSpeed'],buffs:[...p.buffs.keys()]};
+      },id);assert.equal(timers.paused,timers.before);assert.equal(timers.refreshed,5);assert.equal(timers.speed,sample.active.speed);
+      assert.ok(Math.abs(timers.after-sample.speed)<1e-8);assert.ok(!timers.buffs.some(key=>key.startsWith('ziling-wind-')));sample.timers=timers;
     }else{
       const result=await page.evaluate(()=>{starterTestAdvance(480);return {after:starterHp(),uses:app.run.ult.uses};});
       assert.ok(result.after<sample.before,'Original ultimate must inflict real combat damage for '+id);assert.equal(result.uses,1);sample.result=result;
     }
     report.ultimates.push(sample);
   }
+  await page.evaluate(()=>{app.meta.profile.lab['slot-move']=1;});
   await start(132);assert.equal(await page.evaluate(()=>app.run.nextEvo),null);
+  report.slots=await page.evaluate(async()=>{
+    const r=app.run;
+    const count=()=>{r.ui.hud(r);return [r.stage,r.player.moveSlots,inspected.doc.querySelectorAll('[data-skill-slot]').length];};
+    const first=count();await r.changeZone();return [first,count()];
+  });
+  assert.deepEqual(report.slots,[[1,3,3],[2,4,4]]);
   fs.writeFileSync(path.join(dir,'starter-regression.json'),JSON.stringify(report,null,2));
   console.log('Starter regression passed:',report.menus.length,'menu variants, two complete routes, nine ultimates, 10x speed, pause and expiry');
 }

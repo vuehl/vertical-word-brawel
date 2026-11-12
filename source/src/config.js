@@ -1,5 +1,5 @@
 import {configureStarterRoster} from './starter-characters.js';
-import { t as e, u as t } from "./i18n.js";
+import {chineseText as t} from "./chinese-text.js";
 import {resolveItemIcon} from './item-icons.js';
 var n = [
   {
@@ -6311,14 +6311,6 @@ var Ei = [`gg`, `love`, `fire`, `star`, `lol`, `wow`],
     "ui/ranks": `TWsEfU0e`,
     "ui/types": `B21hKCIf`,
     "data/abilities.json": `Up_tqi1D`,
-    "data/i18n/en.json": `3yGJZ_Pq`,
-    "data/i18n/fr.json": `i-w1Qxfi`,
-    "data/i18n/ja.json": `CAaTnC1V`,
-    "data/i18n/ko.json": `JMvC6sv8`,
-    "data/i18n/pt.json": `3yGJZ_Pq`,
-    "data/i18n/ru.json": `S8t26dpS`,
-    "data/i18n/zh.json": `D7jT6o22`,
-    "data/i18n/zht.json": `ui4j02kr`,
     "data/items.json": `3BUkWvy1`,
     "data/learnsets.json": `tYT2wrvN`,
     "data/moves.json": `Ixf0MGdc`,
@@ -6339,9 +6331,7 @@ var Ei = [`gg`, `love`, `fire`, `star`, `lol`, `wow`],
     parche: { name: t(`Parche`), color: `#8a5cf6` },
     aviso: { name: t(`Aviso`), color: `#e5484d` },
   },
-  Ii = e.filter((e) => e.id !== `es`),
-  Li = (e, t) =>
-    t !== `es` && e.tr?.[t]?.title ? e.tr[t] : { title: e.title, summary: e.summary, body: e.body },
+  Li = (e) => e.tr?.zh?.title ? e.tr.zh : { title: e.title, summary: e.summary, body: e.body },
   Ri = { title: 90, summary: 220, body: 2e4, cover: 400, list: 30 },
   zi = { bug: t(`Fallo`), idea: t(`Idea`), otro: t(`Otro`) },
   Bi = { open: t(`Nuevo`), doing: t(`En curso`), done: t(`Resuelto`), closed: t(`Descartado`) },
@@ -6695,7 +6685,6 @@ export {
   on as rn,
   xe as rr,
   $r as rt,
-  Ii as s,
   pe as sn,
   ve as sr,
   qr as st,

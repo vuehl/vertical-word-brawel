@@ -63,7 +63,7 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-branch-choice{flex-direction:column;align-items:stretch;gap:8px;text-align:left}.zx-branch-choice>.zx-row{justify-content:flex-start}.zx-branch-choice .zx-col{align-items:flex-start}
 .zx-hud-element[data-element="flying"]{background:#5a9e9a}.zx-hud-element[data-element="normal"]{background:#8d79ae}
 .zx-choice .zx-glyph{height:38px;width:44px;font-size:34px}
-.zx-home-top{position:relative;z-index:2;min-height:68px;padding:12px 24px;flex:none;background:var(--paper)}.zx-home-top>.zx-row{min-height:44px}.zx-home-top small{font-size:14px;font-weight:700;color:#615477}
+.zx-home-top{position:relative;z-index:2;min-height:68px;padding:12px 24px;flex:none;background:var(--paper)}.zx-home-top>.zx-row{min-height:44px;justify-content:flex-end}
 .zx-gear{height:44px;width:44px;border:1px solid #e5dfed;border-radius:24px;background:#fff;font-size:22px}
 .zx-button.zx-gear{min-height:44px;padding:0;box-shadow:0 3px 0 #d9d2e8}.zx-home-top .zx-gear{width:44px}
 .zx-home-art{position:relative;flex:none;height:calc(100vw * .76923);width:100%;margin-top:0}.zx-forest{width:100%;height:150px;flex:none;border-radius:14px}
@@ -141,12 +141,6 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-hud{position:absolute;inset:0;pointer-events:none;z-index:5;color:#30383c;font-size:13px}.zx-hud-pause{pointer-events:auto}
 .zx-slot{display:flex;justify-content:center;gap:6px;background:#f4f0fa;border:6px solid #5c536f;border-radius:12px;padding:8px}.zx-slot b{display:flex;justify-content:center;align-items:center;flex:1;height:80px;font-size:48px;background:#fff;color:#5c536f;border-radius:6px}
 .zx-intro{position:absolute;left:24px;right:24px;top:130px;padding:14px;background:#ffffffee;border:1px solid #e5dfee;border-radius:14px;display:flex;flex-direction:column;gap:4px;align-items:center;pointer-events:none;z-index:10}
-.zx-dark .zx-card,.zx-dark .zx-modal,.zx-dark .zx-choice,.zx-dark .zx-difficulty,.zx-dark .zx-setting{background:#363047;color:#eee9f8;border-color:#564b68}
-.zx-dark .zx-note{color:#c4bbd4}.zx-dark .zx-tabs{background:#42394f}
-.zx-dark .zx-home-copy p,.zx-dark .zx-home-types .zx-row{color:#d6ccea}
-.zx-dark .zx-tab{color:#eee9f8}.zx-dark .zx-tab.on{color:#643799}
-.zx-dark .zx-link,.zx-dark .zx-button:not(.primary):not(.purple):not(.danger):not(.zx-buy){background:#484056;color:#eee9f8!important;border-color:#746285}
-.zx-dark .zx-build-tag{background:#49405d;color:#ece5fa}.zx-dark .zx-pause-attribute-title{color:#9cc5ff}.zx-dark .zx-pause-attribute-note{color:#d4c9e7}.zx-dark .zx-upgrade-stats{background:transparent!important}
 html.zixing #hud .hud-tl,html.zixing #hud .under,html.zixing #hud .hud-party,html.zixing #hud .hud-top,html.zixing #hud .hud-tr,html.zixing #hud .hud-bl,html.zixing #hud .hud-br,html.zixing #hud .lock-hint{display:none!important}
 html.zixing .zx-hud{z-index:50}
 html.zixing .zx-hud-pause{flex:none;width:40px;min-height:40px;height:40px;padding:0;border:0;box-shadow:none}

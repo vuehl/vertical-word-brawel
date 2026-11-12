@@ -24,19 +24,15 @@ test('packaging retains every enabled actor record and special altar without cha
   }
 });
 
-test('localized names follow the enabled actors while all moves, abilities, items and types remain',()=>{
-  const bytes=fs.readFileSync(new URL('../source/public/data/i18n/zh.json',import.meta.url));
-  const original=JSON.parse(bytes),packed=JSON.parse(runtimeData('data/i18n/zh.json',bytes));
-  for(const [kind,records] of Object.entries(original)){
-    if(['pokemon','flavor'].includes(kind)){
-      for(const [id,value] of Object.entries(records)){
-        if(Number(id)<=151||Number(id)===201)assert.deepEqual(packed[kind][id],value);
-        else assert.equal(packed[kind][id],undefined);
-      }
-    }else assert.deepEqual(packed[kind],records);
-  }
+test('Chinese gameplay data ships directly without a separate dictionary',()=>{
+  const tables={};
   for(const file of ['moves','abilities','items','types']){
     const bytes=fs.readFileSync(new URL('../source/public/data/'+file+'.json',import.meta.url));
     assert.deepEqual(runtimeData('data/'+file+'.json',bytes),bytes);
+    tables[file]=JSON.parse(bytes);
   }
+  assert.equal(tables.moves.find(move=>move.id===52).name,'火花');
+  assert.equal(tables.abilities[1].name,'恶臭');
+  assert.equal(tables.items.leftovers.name,'吃剩的东西');
+  assert.equal(tables.types.names.fire,'火');
 });

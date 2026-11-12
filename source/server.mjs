@@ -1,4 +1,4 @@
-import {constrainLiteProfile, validLiteRun, isLiteSpecies} from './src/lite-rules.js';
+import {constrainLiteProfile, validLiteRun, isLiteSpecies, SINGLE_STAGE, runRecordKey} from './src/lite-rules.js';
 // PokéBonk — local server.
 // Serves editable client code and local assets without upstream fallback.
 // Implements the client's HTTP API against a local JSON store.
@@ -357,7 +357,7 @@ route('POST', '/runs', async (req, res) => {
   const acc = requireAccount(req, res);
   if (!acc) return;
   const b = await body(req) || {};
-  if(!validLiteRun(b))return json(res,400,{error:'Forest Lite supports three partners, forest, and single-player classic mode only.'});
+  if(!validLiteRun(b))return json(res,400,{error:'Invalid Forest Lite run configuration.'});
   const id = `run-${store.nextRun++}`;
   // Co-op: the seed belongs to the party so every member builds the same world.
   let seed;
@@ -398,9 +398,10 @@ route('POST', '/runs/:id/finish', async (req, res, url, params) => {
   const run = store.runs[params.id];
   if (!run || run.account !== acc.id) return json(res,404,{error:'Run not found.'});
   if(run.response)return json(res,200,{...run.response,profile:p});
-  if(!validLiteRun(result) || result.species!==run.cfg.species || result.biome!==run.cfg.biome || (result.tier??0)!==(run.cfg.tier??0))return json(res,400,{error:'Result does not match this forest run.'});
+  if(!validLiteRun(result) || result.species!==run.cfg.species || result.biome!==run.cfg.biome || (result.tier??0)!==(run.cfg.tier??0) ||
+    (result.mode===SINGLE_STAGE)!==(run.cfg.mode===SINGLE_STAGE))return json(res,400,{error:'Result does not match this forest run.'});
   run.finished=now();
-  const recordKey=result.biome+'-'+(result.tier??0);
+  const recordKey=runRecordKey(result);
   const prevKills=p.kills[recordKey]??null;
   const prevBest=p.times[recordKey]?.time??null;
   const medal=(!result.mode||['standard','classic'].includes(result.mode)) ? medalFor(result.biome,result.tier??0,result.time,!!result.victory) : 0;

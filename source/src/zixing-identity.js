@@ -7,10 +7,10 @@ const escape=text=>text.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 
 // Change display identities only. Numeric species IDs, saves and combat data
 // continue to refer to the same actor, whose cutout uses this same glyph map.
-export function configureGlyphNames(species,localized={}){
+export function configureGlyphNames(species){
   for(const actor of species){
     const word=glyphWordForSpecies(actor.id);
-    for(const name of [actor.name,localized[actor.id]])if(name&&name!==word)aliases.set(name.toLowerCase(),word);
+    for(const name of [actor.name,actor.originalName])if(name&&name!==word)aliases.set(name.toLowerCase(),word);
   }
   pattern=new RegExp([...aliases.keys()].sort((a,b)=>b.length-a.length).map(escape).join('|'),'gi');
   cache.clear();

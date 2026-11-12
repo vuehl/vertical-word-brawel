@@ -76,8 +76,25 @@ export async function reviewBattleFeedback(context){
   });
   assert.deepEqual(report.ultimateLayout.ring,report.ultimateLayout.button);assert.deepEqual(report.ultimateLayout.label,report.ultimateLayout.button);assert.equal(report.ultimateLayout.legacyVisible,false);
   report.maps=[];
+  await page.evaluate(()=>{
+    const r=app.run,p=r.player.pos;
+    r.enemies.clear();
+    for(const [flags,dx,dz] of [[2,3,4],[4096,-100,0],[8192,0,20]]){
+      const i=r.enemies.spawn(16,p.x+dx,p.z+dz,1,1,flags);
+      // Terrain can displace a spawn. Pin the frozen actors at known distances.
+      r.enemies.x[i]=p.x+dx;r.enemies.z[i]=p.z+dz;
+    }
+  });
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
-    await context.resize(width,height);await page.evaluate(()=>{const r=app.run;r.pause();r.ui.showMap(r);});await sleep(700);
+    await context.resize(width,height);
+    const labels=await page.evaluate(()=>{
+      const r=app.run,labels=[],proto=CanvasRenderingContext2D.prototype,fill=proto.fillText;
+      proto.fillText=function(text,...args){if(text.endsWith?.(' 厘米'))labels.push(text);return fill.call(this,text,...args);};
+      try{r.pause();r.ui.showMap(r);}finally{proto.fillText=fill;}
+      return labels;
+    });
+    assert.deepEqual(labels.sort(),['100 厘米','20 厘米','5 厘米']);
+    await sleep(700);
     const map=await page.evaluate(()=>{
       const panel=inspected.doc.querySelector('.zx-battle-map'),canvas=panel.querySelector('canvas'),b=panel.getBoundingClientRect(),scale=canvas.width/120;
       return {text:panel.textContent,bottom:b.bottom,shadowPixel:Array.from(canvas.getContext('2d').getImageData(Math.floor(60*scale),Math.floor(116*scale),1,1).data)};

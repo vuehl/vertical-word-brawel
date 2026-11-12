@@ -12,14 +12,60 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
   await tap('[data-action="journey"]');
   await tap('.zx-footer button','选择关卡');
   await tap('.zx-footer button','选择难度');
+  assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('button.zx-difficulty h3')].map(el=>el.textContent)),['普通（单关）','普通','困难','噩梦']);
+  await tap('[data-mode="single-stage"]');
+  await shot('single-stage-selection');
   await tap('[data-action="enter"]');
-  await page.waitForFunction(()=>app.run?.time>1&&app.run.state==='play',{timeout:90000});
+  const playing=()=>page.waitForFunction(()=>app.run?.time>1&&app.run.state==='play',{timeout:90000});
+  await playing();
+  const singleDiff=await page.evaluate(async()=>{
+    const r=app.run;
+    await r.enterPortal();
+    if(r.stage!==1||r.state!=='play'||r.interactables.list.some(o=>o.kind==='portal'))throw Error('Premature portal or victory');
+    r.godMode=true;
+    r.interactables.interact(r.interactables.list.find(o=>o.kind==='boss'));
+    return r.diff;
+  });
+  await playing();
+  const cleared=await page.evaluate(()=>{
+    const r=app.run;
+    r.combat.killEnemy(r.boss.bossIndex,{type:'normal'});
+    return {cleared:r.stageCleared,bosses:r.stats.bosses,legendaries:r.stats.legendaries,state:r.state,portals:r.interactables.list.filter(o=>o.kind==='portal').length};
+  });
+  assert.deepEqual(cleared,{cleared:true,bosses:1,legendaries:0,state:'play',portals:1});
+  await page.evaluate(()=>{
+    const r=app.run,portal=r.interactables.list.find(o=>o.kind==='portal');
+    r.interactables.interact(portal);
+    if(r.state==='play')r.interactables.interact(portal); // Confirm when boss loot remains.
+  });
+  await page.waitForFunction(()=>!!inspected.doc.querySelector('.zx-summary'),{timeout:30000});
+  report.singleStage=await page.evaluate(()=>{
+    const p=app.meta.profile,record=p.runs[0];
+    return {mode:record.mode,stage:record.stage,victory:record.victory,tier:p.biomes.forest,text:app.screen.textContent};
+  });
+  assert.equal(report.singleStage.mode,'single-stage');assert.equal(report.singleStage.stage,1);assert.ok(report.singleStage.victory);
+  assert.equal(report.singleStage.tier,0);assert.match(report.singleStage.text,/1 \/ 1/);assert.match(report.singleStage.text,/单关通关/);
+  await shot('single-stage-victory');
+  await tap('.zx-footer button','调整文字与关卡');
+  await tap('.zx-footer button','选择关卡');
+  await tap('.zx-footer button','选择难度');
+  await tap('[data-mode="standard"][data-tier="0"]');
+  await tap('[data-action="enter"]');
+  await playing();
+  assert.deepEqual(await page.evaluate(()=>app.run.diff),singleDiff);
   await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;app.run.hints.show=()=>{};});
 
   for(let stage=1;stage<=4;stage++) {
     if(stage>1) {
       if(stage===4)await page.evaluate(()=>{app.meta.profile.settings.showBanners=false;});
-      await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();});
+      await page.evaluate(async stage=>{
+        const r=app.run;r.ui.hideModal();r.state='play';
+        if(stage===2){
+          await r.enterPortal();
+          if(r.stage===1&&r.state==='play')await r.enterPortal();
+        }
+        else await r.changeZone();
+      },stage);
       await page.waitForFunction(stage=>app.run.stage===stage&&(stage===4
         ?app.run.state==='modal'&&!!inspected.doc.querySelector('.zx-sanctuary-guide')
         :app.run.state==='play'),{timeout:90000},stage);
@@ -131,9 +177,9 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
         await sleep(500);
         const marker=await page.evaluate(()=>{
           const r=app.run,h=r.ui,tag=h.markTag.style.display!=='none'?h.markTag:h.arrow;
-          return {distance:Math.round(Math.hypot(r.player.pos.x,r.player.pos.z)),text:tag.textContent,visible:tag.style.display!=='none',kind:h.arrow.dataset.k,prompt:h.touch.actText};
+          return {distance:Number(Math.hypot(r.player.pos.x,r.player.pos.z).toFixed(2)),text:tag.textContent,visible:tag.style.display!=='none',kind:h.arrow.dataset.k,prompt:h.touch.actText};
         });
-        assert.ok(marker.visible);assert.ok(marker.text.includes('圣地 · '+marker.distance+' 米'));
+        assert.ok(marker.visible);assert.ok(marker.text.includes('圣地 · '+marker.distance+' 厘米'));
         report.sanctuaryNavigation.push(marker);
         await shot('sanctuary-distance-'+z);
       }

@@ -58,7 +58,8 @@ export async function setup(host) {
   });
   const controls=createControlLayer(makeCanvas);
   const minimap=createCanvasLayer(makeCanvas,'minimap');
-  const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true});
+  const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
+  const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true,uploadPixels:device.platform==='ios'});
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
   const hudLayers=['counters','score','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
   const modalTransition=createModalTransition(makeCanvas);
@@ -145,10 +146,8 @@ export async function setup(host) {
   Object.defineProperty(doc,'activeElement',{get:()=>active||doc.body});
   doc.exitPointerLock=()=>{};
   const fs=wx.getFileSystemManager(),localStorage=storage('pokebonk.web.');
-  // Migrate old language preferences before reading the Chinese-only package.
-  const locale='zh';localStorage.setItem('pokebonk.lang',locale);
   const loc=new LocalURL('https://pokebonk.local/?touch=1');
-  loc.reload=()=>wx.restartMiniProgram?.({});loc.replace=()=>{localStorage.setItem('pokebonk.lang','zh');loc.reload();};
+  loc.reload=()=>wx.restartMiniProgram?.({});loc.replace=loc.reload;
   const history={state:null,pushState(state){this.state=state;},replaceState(state){this.state=state;},back(){win.dispatchEvent(new D.Event('popstate'));}};
   const queries=new Map();
   function matchMedia(q){
@@ -226,7 +225,7 @@ export async function setup(host) {
     Blob,URL:LocalURL,URLSearchParams:Params,fetch,Request,Headers,Response,AbortController,AbortSignal,TextDecoder,TextEncoder,createImageBitmap:undefined,ImageBitmap:undefined,OffscreenCanvas:undefined,
     ProgressEvent:InputEvent,MouseEvent:InputEvent,KeyboardEvent:InputEvent,PointerEvent:InputEvent,Path2D:CanvasPath,MutationObserver:doc.defaultView.MutationObserver,
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
-    nativeUI:true,nativeDevice:readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{}),backgroundMusicEnabled:false,prefersDark:system.theme==='dark',nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    nativeUI:true,nativeDevice:device,backgroundMusicEnabled:false,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},
@@ -271,7 +270,7 @@ export async function setup(host) {
       const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),portrait.draw(layout,view,scale,state==='play'&&!opaque),...hudLayers.map(tile=>tile.draw(layout,view,scale,state==='play'&&!opaque)),...modalTransition.layers(scale,perf.now())];
       if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenModalKey());
     },
-    locale,readLocale(){const p=host.files.pathFor('locale/zh.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
+    readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},
   });
   env.window=env.self=env.globalThis=env;
   wx.onWindowResize?.(()=>{

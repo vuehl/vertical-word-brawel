@@ -39,14 +39,23 @@ test('HTTP blocks removed content, saves valid play once, and restores progressi
   assert.deepEqual(await call('/coop/access'),{show:false,play:false});
   for(const route of ['/coop/rooms','/clans/board','/events/halloween26','/seasons/awards'])await call(route,undefined,404);
   const base={species:16,biome:'forest',tier:0,mode:'standard'};
-  for(const overrides of [{species:25},{biome:'desert'},{mode:'endless'},{mode:'tower'},{party:'abc'}])await call('/runs',{...base,...overrides},400);
+  for(const overrides of [{species:25},{biome:'desert'},{mode:'endless'},{mode:'tower'},{mode:'single-stage',tier:1},{party:'abc'}])await call('/runs',{...base,...overrides},400);
   const run=await call('/runs',base);
   const result={...base,stage:4,kills:100,time:600,level:30,victory:true,progress:{league:[25],research:{25:5},seen:[25]}};
   await call('/runs/'+run.id+'/finish',{result:{...result,species:4}},400);
   const one=await call('/runs/'+run.id+'/finish',{result});const two=await call('/runs/'+run.id+'/finish',{result});
   assert.equal(two.profile.counters.runs,1);assert.equal(two.profile.stardust,one.profile.stardust);assert.deepEqual(two.profile.league,[4,132,16]);assert.deepEqual(two.profile.biomes,{forest:1});
+  const short=await call('/runs',{...base,mode:'single-stage'});
+  const finishShort='/runs/'+short.id+'/finish';
+  await call(finishShort,{result},400);
+  const singleResult={...base,mode:'single-stage',stage:1,bosses:1,kills:40,time:100,splits:[100],victory:true};
+  const single=await call(finishShort,{result:singleResult});
+  const retry=await call(finishShort,{result:singleResult});
+  assert.ok(single.stardust>0);assert.equal(single.profile.stardust,retry.profile.stardust);
   await stop();await start();const saved=(await call('/profile')).profile;
-  assert.equal(saved.research[25],5);assert.equal(saved.stardust,one.profile.stardust);
+  assert.equal(saved.research[25],5);assert.equal(saved.stardust,single.profile.stardust);
+  assert.equal(saved.times['forest-0'].time,600);assert.equal(saved.times['forest-single-stage'].time,100);
+  assert.equal(saved.runs[0].mode,'single-stage');assert.equal(saved.counters.runs,2);
  }finally{if(proc&&proc.exitCode===null)await stop();assert.equal(path.dirname(path.resolve(dir)),path.resolve(os.tmpdir()));assert.ok(path.basename(dir).startsWith('pokebonk-lite-test-'));await fs.rm(dir,{recursive:true,force:true});}
 });
 

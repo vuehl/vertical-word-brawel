@@ -2,11 +2,13 @@
 import {starterSpecies,starterWords as heroWords} from './starter-characters.js';
 export const LITE_SPECIES = starterSpecies;
 export const LITE_BIOME = 'forest';
+export const SINGLE_STAGE = 'single-stage';
+export const runRecordKey = run => run.biome + '-' + (run.mode === SINGLE_STAGE ? SINGLE_STAGE : (run.tier ?? 0));
 export const isLiteSpecies = id => LITE_SPECIES.includes(Number(id));
 export const isLiteFamily = id => Object.hasOwn(heroWords, Number(id));
 export function validLiteRun(run) {
   return !!run && isLiteSpecies(run.species) && run.biome === LITE_BIOME &&
-    (!run.mode || run.mode === 'standard' || run.mode === 'classic') && !run.party &&
+    (!run.mode || run.mode === 'standard' || run.mode === 'classic' || (run.mode === SINGLE_STAGE && (run.tier ?? 0) === 0)) && !run.party &&
     Number.isInteger(run.tier ?? 0) && (run.tier ?? 0) >= 0 && (run.tier ?? 0) <= 2;
 }
 export function constrainLiteProfile(p) {

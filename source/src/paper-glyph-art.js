@@ -49,6 +49,18 @@ export function glyphTone(word){
   if('金鑫光星晶镜'.includes(word))return 'metal';
   return 'ink';
 }
+export function drawMenuGlyph(canvas,word,tone,large){
+  const preview=large&&atlas?.complete&&glyphCatalog.words[word]?.preview;
+  if(preview){
+    const {left,top,size}=preview;
+    canvas.width=canvas.height=size;
+    canvas.getContext('2d').drawImage(atlas,left,top,size,size,0,0,size,size);
+  }else{
+    const image=glyphCanvas(word,tone);
+    canvas.width=canvas.height=image.width;
+    canvas.getContext('2d').drawImage(image,0,0);
+  }
+}
 export function glyphCanvas(word,tone=glyphTone(word),{battle=false}={}){
   const key=word+'-'+tone+(battle?'-battle':'');if(cache.has(key))return cache.get(key);
   const canvas=document.createElement('canvas');canvas.width=canvas.height=192;

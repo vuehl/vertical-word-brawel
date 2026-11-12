@@ -1,5 +1,31 @@
 import {glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 
+export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
+
+// Place labels in the map frame after projecting the icons, so zooming or
+// pinning an icon to the rim never changes the distance shown.
+function drawBossDistances(ctx,labels,fontSize){
+  ctx.font='bold '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.lineJoin='round';ctx.lineWidth=2.5;ctx.strokeStyle='#fffdf5';ctx.fillStyle='#873d32';
+  const placed=[];
+  for(const label of labels){
+    const half=ctx.measureText(label.text).width/2;
+    let x,y;
+    const step=fontSize+2,side=label.y>58?-1:1;
+    for(let row=0;row<9;row++){
+      const offset=(1+Math.floor(row/2))*step*(row%2?-side:side);
+      y=Math.max(25,Math.min(91,label.y+offset));
+      const chord=Math.sqrt(47**2-(Math.abs(y-58)+fontSize/2)**2);
+      const range=Math.max(0,chord-half);
+      x=Math.max(60-range,Math.min(60+range,label.x));
+      if(Math.abs(y-58)<fontSize/2+5&&Math.abs(x-60)<half+5)continue;
+      if(labels.some(icon=>Math.abs(y-icon.y)<fontSize/2+4&&Math.abs(x-icon.x)<half+4))continue;
+      if(!placed.some(p=>Math.abs(y-p.y)<step&&Math.abs(x-p.x)<half+p.half+1))break;
+    }
+    ctx.strokeText(label.text,x,y);ctx.fillText(label.text,x,y);placed.push({x,y,half});
+  }
+}
+
 export function drawBattleCooldown(canvas,progress,{ultimate=false,ready=false,active=false}={}) {
   const ctx=canvas.getContext('2d'),size=ultimate?84:42,c=size/2,r=c-(ultimate?3:2);
   ctx.setTransform(canvas.width/size,0,0,canvas.height/size,0,0);ctx.clearRect(0,0,size,size);
@@ -36,11 +62,17 @@ export function specialMapMarker(flags,dx,dz,isBoss=false,edgeRadius=40){
 export function drawBattleHealth(canvas,fraction,current,bonus=0) {
   const ctx=canvas.getContext('2d');
   ctx.setTransform(canvas.width/88,0,0,canvas.height/20,0,0);ctx.clearRect(0,0,88,20);
-  const pill=(x,y,w,h,r,color)=>{ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();};
+  const capsule=(x,y,w,h,r)=>{
+    ctx.beginPath();
+    ctx.arc(x+w-r,y+h/2,r,-Math.PI/2,Math.PI/2);
+    ctx.arc(x+r,y+h/2,r,Math.PI/2,Math.PI*1.5);
+    ctx.closePath();
+  };
+  const pill=(x,y,w,h,r,color)=>{ctx.fillStyle=color;capsule(x,y,w,h,r);ctx.fill();};
   pill(1,3,86,16,8,'#38576c99');pill(1,1,86,16,8,'#fffef8');pill(3,3,82,12,6,'#3e5759');
   const fill=ctx.createLinearGradient(0,3,0,15);
   fill.addColorStop(0,fraction<.3?'#ffb071':'#a3f59b');fill.addColorStop(1,fraction<.3?'#ef5e4e':'#29cd56');
-  ctx.save();ctx.beginPath();ctx.roundRect(3,3,82,12,6);ctx.clip();
+  ctx.save();capsule(3,3,82,12,6);ctx.clip();
   ctx.fillStyle=fill;ctx.fillRect(3,3,82*fraction,12);ctx.restore();
   const label=String(current)+(bonus?' +'+bonus:'');
   ctx.font='700 '+(label.length>9?9:11)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
@@ -67,6 +99,7 @@ export function drawBattlePortrait(canvas,word,tone,experience=0) {
 // every 120 ms; the enlarged view is drawn once while the battle is paused.
 export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=.9;
+  const distances=[];
   const radius=49*viewRatio,edgeRadius=radius-9;
   const point=(x,z)=>[60+(x-p.x)*scale,58+(z-p.z)*scale];
   const visible=(x,y)=>(x-60)**2+(y-58)**2<=radius**2;
@@ -129,6 +162,11 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
     for(let i=0;i<enemies.n;i++){
       if(!enemies.alive[i]||enemies.dying[i]>0||(enemies.flags[i]&32768))continue;
       const marker=specialMapMarker(enemies.flags[i],(enemies.x[i]-p.x)*scale,(enemies.z[i]-p.z)*scale,boss(i),edgeRadius);
+      // Alpha, Totem and Summoner are the three timed miniboss encounters.
+      if(marker&&(boss(i)||(enemies.flags[i]&2))){
+        const meters=Math.hypot(enemies.x[i]-p.x,enemies.z[i]-p.z);
+        distances.push({x:60+(marker.x-60)/viewRatio,y:58+(marker.y-58)/viewRatio,text:bossDistanceText(meters)});
+      }
       if(!marker||(!marker.edge&&marker.kind!=='rare'&&marker.kind!=='treasure'))continue;
       const {x,y,kind,edge,angle}=marker,color={rare:'#27b9cf',treasure:'#d7a32b',boss:'#d65b46',elite:'#e7b42d'}[kind];
       if(edge){ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(2,-4);ctx.lineTo(2,4);ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.restore();}
@@ -140,6 +178,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
   dot(60,58,8.3,'#688dc633',null);dot(60,58,5.7,'#647fbb');
   ctx.beginPath();ctx.moveTo(60,53.5);ctx.lineTo(63,60.7);ctx.lineTo(60,59);ctx.lineTo(57,60.7);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();
   ctx.restore();
+  if(distances.length)drawBossDistances(ctx,distances,shadow?10:6);
   // A quiet compass notch lives on the rim, outside the clipped map contents.
   ctx.beginPath();ctx.moveTo(60,3);ctx.lineTo(62.5,8);ctx.lineTo(57.5,8);ctx.closePath();ctx.fillStyle='#527ab2';ctx.fill();
 }

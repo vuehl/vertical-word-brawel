@@ -116,8 +116,8 @@ const hostBundle=await esbuild.build({...common,define:{document:'undefined'},en
 await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
 const result=await esbuild.build({...common,metafile:true,define:{innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'},write:false,stdin:{contents:
-  'import "../public/turnstile-stub.js";import {l as language} from "./i18n.js";'+
-  'export async function start(){language(window.locale,window.readLocale(window.locale));return require("./game.js").launch();}',resolveDir:path.join(src,'src')}});
+  'import "../public/turnstile-stub.js";import {setChineseText} from "./chinese-text.js";'+
+  'export async function start(){setChineseText(window.readChineseText());return require("./game.js").launch();}',resolveDir:path.join(src,'src')}});
 const bindings=('globalThis window self document navigator location history localStorage sessionStorage innerWidth innerHeight devicePixelRatio screen '+
   'getComputedStyle matchMedia performance addEventListener removeEventListener dispatchEvent requestAnimationFrame cancelAnimationFrame '+
   'Image HTMLImageElement HTMLCanvasElement HTMLElement HTMLInputElement HTMLButtonElement HTMLTextAreaElement HTMLSelectElement HTMLAnchorElement HTMLVideoElement Node Element '+

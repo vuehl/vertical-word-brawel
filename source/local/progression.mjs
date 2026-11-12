@@ -1,4 +1,4 @@
-import {constrainLiteProfile, isLiteSpecies, isLiteFamily} from '../src/lite-rules.js';
+import {constrainLiteProfile, isLiteSpecies, isLiteFamily, SINGLE_STAGE, runRecordKey} from '../src/lite-rules.js';
 import fs from 'node:fs';
 import '../src/customize.js';
 import * as rules from '../src/progression.js';
@@ -39,7 +39,8 @@ export function settleRun(p,result) {
   count('runs',1); count('playtime',Number(result.time??0));
   count('maxLevel',Number(result.level??0),'max');count('maxTime',Number(result.time??0),'max');count('maxKills',Number(result.kills??0),'max');
   const standard=!result.mode||['standard','classic'].includes(result.mode);
-  if(result.victory&&standard){count('wins',1);count('win_'+result.biome,1);}
+  if(result.victory&&(standard||result.mode===SINGLE_STAGE))count('wins',1);
+  if(result.victory&&standard)count('win_'+result.biome,1);
   if(!('kills_'+result.biome in delta))count('kills_'+result.biome,result.kills??0);
   count('boss_'+result.biome,result.bosses??0);count('leg_'+result.biome,result.legendaries??0);
   if(result.mode==='endless'){count('endlessTime',result.time??0,'max');count('endlessMewtwo',result.legendaries??0);p.endless[result.biome]=Math.max(p.endless[result.biome]??0,result.time??0);}
@@ -64,10 +65,11 @@ export function settleRun(p,result) {
   for(const id of p.league){const family=pokemon.get(id)?.family??id;if(!p.unlocked.includes(family)){p.unlocked.push(family);p.captured[family]=Date.now();if(!('captures' in delta))count('captures',1);}}
   addUnique(p.played,[result.species]);
   p.counters.speciesPlayed=p.played.length;
-  const key=result.biome+'-'+(result.tier??0);
+  const key=runRecordKey(result);
   p.kills[key]=Math.max(p.kills[key]??0,result.kills??0);
-  if(result.victory&&standard){
+  if(result.victory&&standard)
     p.biomes[result.biome]=Math.max(p.biomes[result.biome]??0,Math.min(3,(result.tier??0)+1));
+  if(result.victory&&(standard||result.mode===SINGLE_STAGE)){
     if(!p.times[key]||p.times[key].time>result.time)p.times[key]={time:result.time,splits:(result.splits??[]).filter(Number.isFinite),species:result.species};
   }
   p.counters.mapsWon=biomes.filter(b=>(p.biomes[b.id]??0)>=1).length;

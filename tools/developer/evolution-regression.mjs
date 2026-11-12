@@ -72,7 +72,7 @@ export async function reviewDeveloperEvolution(page,dir){
   await dev('close');assert.equal((await state()).state,'play');assert.equal((await state()).id,16);
   await dev('open');await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({mode:'timed',time:480,count:0,boss:'none'}));
   assert.equal((await state()).state,'paused','Applying a preset must keep the test panel paused');
-  await dev('close');assert.deepEqual((await state()).choices,[17,18]);
+  await dev('close');assert.deepEqual((await state()).choices,[17,58]);
   const waiting=await state();
   await page.evaluate(()=>{window.evoWaitingTime=app.run.time;for(let i=0;i<300;i++)app.run.update(1/60);});
   assert.deepEqual(await state(),waiting,'Waiting for input must never choose a direction');
@@ -83,19 +83,19 @@ export async function reviewDeveloperEvolution(page,dir){
     for(const b of bounds)assert.ok(b.x>=0&&b.x+b.w<=width+1&&b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1);
     await page.screenshot({path:path.join(dir,'dev-evolution-branch-'+width+'.png')});report.widths.push({width,bounds});
   }
-  for(const [choice,end] of [[17,58],[18,59]]){
-    if(choice===18){await dev('evolve-next');assert.equal((await state()).level,26);assert.deepEqual((await state()).choices,[17,18]);}
+  for(const [choice,end] of [[17,18],[58,59]]){
+    if(choice===58){await dev('evolve-next');assert.equal((await state()).level,26);assert.deepEqual((await state()).choices,[17,58]);}
     await tap('[data-branch-id="'+choice+'"]');
     assert.equal((await state()).id,16,'Branch choice must still require evolution confirmation');
     const middle=await finish();assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:44});
-    await dev('open');await preview(choice===17?'讽':'疯');
+    await dev('open');await preview(choice===17?'讽':'飒');
     await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({mode:'timed',time:600,count:0,boss:'none'}));
     await dev('close');assert.equal((await state()).id,choice);assert.deepEqual((await state()).choices,[]);
     await dev('open');await dev('evolve-next');assert.equal((await state()).level,44);
     const final=await finish();assert.equal(final.id,end);assert.equal(final.next,null);assert.equal(final.stage,2);
-    assert.equal(final.ult,end===58?'冲！':'没影了');assert.equal(final.ability,'loyal-guard');
+    assert.equal(final.ult,end===18?'攻速 ×10':'移速 ×10');assert.equal(final.ability,'tailwind');
     await dev('open');assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-dev-action="evolve-next"]').disabled),true);
-    await preview(end===58?'飒':'飙');
+    await preview(end===18?'疯':'飙');
     await dev('stop-workload');
     const restored=await state();assert.equal(restored.id,16);assert.equal(restored.level,1);assert.equal(restored.stage,0);assert.equal(restored.ability,'tailwind');assert.deepEqual(restored.next,{to:-1,level:26});
     report.routes.push({choice,middle,final,restored});
@@ -110,7 +110,7 @@ export async function reviewDeveloperEvolution(page,dir){
   assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-dev-action="evolve-next"]').disabled),true);
   assert.equal(await page.evaluate(()=>inspected.env.__zixingDeveloper.advanceEvolution()),false);
   await start(16);await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({mode:'stress',time:0,count:0,boss:'none'}));await dev('close');
-  report.stress=await state();assert.deepEqual(report.stress.choices,[17,18]);assert.equal(report.stress.id,16);
+  report.stress=await state();assert.deepEqual(report.stress.choices,[17,58]);assert.equal(report.stress.id,16);
   await page.evaluate(()=>app.toMenu());assert.equal(await page.evaluate(()=>!!inspected.doc.querySelector('[data-branch-id]')),false);
   fs.writeFileSync(path.join(dir,'developer-evolution.json'),JSON.stringify(report,null,2));
   console.log('Developer evolution passed: player-selected wind paths, both final forms, fire path, no-evolution hero, restore, stress and 3 screen widths.');

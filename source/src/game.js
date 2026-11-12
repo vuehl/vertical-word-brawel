@@ -1,8 +1,9 @@
-import {LITE_SPECIES, isLiteSpecies, isLiteFamily} from './lite-rules.js';
+import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, runRecordKey} from './lite-rules.js';
 import {enemyWord} from './character-rules.js';
-import {configureStarterSpecies,rosterForStarterForm,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
+import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
+import {bossDistanceText} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
@@ -26,7 +27,7 @@ import {UpgradeTiming} from './upgrade-timing.js';
 import {updatePaperVisibility} from './paper-visibility.js';
 import {hitsPaperBox,resolvePaperBox,moveEnemyPastProps} from './paper-collision.js';
 import './customize.js';
-import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
+import {chineseMessage as t,formatChineseNumber as n,chineseText as c} from "./chinese-text.js";
 import {
   $ as l,
   $n as u,
@@ -389,12 +390,12 @@ var Ni = {
           [`sprites`, (e) => (this.sprites = e)],
         ],
         r = 0;
-      (await Promise.all(
+      await Promise.all(
         n.map(async ([i, a]) => {
           (a(await Mi(i, t)), e?.(++r / n.length));
         }),
-      ),
-        i() !== `es` && (await this.localize()));
+      );
+      Object.assign(Pi,this.types.names);
       configureStarterSpecies(this.all);
       Pi.normal='基';Pi.flying='风';
       if(this.types?.names){this.types.names.normal='基';this.types.names.flying='风';}
@@ -411,29 +412,6 @@ var Ni = {
           (t || this.evolutions.set(e.evoFrom, (t = [])), t.push(e));
         }
       this.types?.types.forEach((e, t) => this.typeIndex.set(e, t));
-    }
-    async localize() {
-      let e;
-      try {
-        e = await Mi(`i18n/${i()}`);
-      } catch (e) {
-        return console.warn(e);
-      }
-      configureGlyphNames(this.all,e.pokemon);
-      for (let t of this.all)
-        (e.pokemon[t.id] && (t.name = e.pokemon[t.id]), e.flavor?.[t.id] && (t.flavor = e.flavor[t.id]));
-      for (let t of this.moves.values()) e.moves[t.id] && (t.name = e.moves[t.id]);
-      for (let [t, n] of Object.entries(this.abilities)) {
-        let r = e.abilities[t];
-        r?.name && ((n.name = r.name), (n.desc = r.desc || n.desc));
-      }
-      for (let [t, n] of Object.entries(this.items)) {
-        let r = e.items[t];
-        r?.name && ((n.name = r.name), (n.desc = r.desc || n.desc));
-      }
-      for (let t of Object.keys(Pi)) e.types[t] && (Pi[t] = e.types[t]);
-      if (this.types)
-        for (let t of Object.keys(this.types.names)) e.types[t] && (this.types.names[t] = e.types[t]);
     }
     get(e) {
       return this.byId.get(e);
@@ -4959,52 +4937,12 @@ function Xs(e) {
 function Zs(e) {
   return (e < 0 ? `−` : `+`) + Xs(Math.abs(e));
 }
-function P(e) {
-  let t = Qs[i()];
-  if (t) {
-    for (let [n, r] of t) if (e >= n) return (e / n).toFixed(1) + r;
-    return Math.round(e).toString();
-  }
-  for (let [t, n] of $s) if (e >= t) return (e / t).toFixed(1) + n;
-  return e >= 1e4 ? (e / 1e3).toFixed(1) + `k` : Math.round(e).toString();
+const largeNumberUnits=[[1e12,'万亿'],[1e8,'亿'],[1e4,'万']];
+function P(value){
+  for(const [unit,suffix] of largeNumberUnits)if(value>=unit)return (value/unit).toFixed(1)+suffix;
+  return String(Math.round(value));
 }
-var Qs = {
-    zh: [
-      [0xe8d4a51000, `万亿`],
-      [1e8, `亿`],
-      [1e4, `万`],
-    ],
-    zht: [
-      [0xe8d4a51000, `萬億`],
-      [1e8, `億`],
-      [1e4, `萬`],
-    ],
-    ja: [
-      [0xe8d4a51000, `兆`],
-      [1e8, `億`],
-      [1e4, `万`],
-    ],
-    ko: [
-      [0xe8d4a51000, `조`],
-      [1e8, `억`],
-      [1e4, `만`],
-    ],
-  },
-  $s = [
-    [0x38d7ea4c68000, `Q`],
-    [0xe8d4a51000, `T`],
-    [1e9, `B`],
-    [1e6, `M`],
-  ];
-function ec(e) {
-  return Qs[i()]
-    ? P(e)
-    : e >= 1e6
-      ? (e / 1e6).toFixed(1) + `M`
-      : e >= 1e4
-        ? (e / 1e3).toFixed(1) + `k`
-        : Math.round(e).toString();
-}
+const ec=P;
 var tc = 8,
   nc = [],
   rc = /(?:chrome|moz|safari|edge)-extension:\/\//;
@@ -36946,8 +36884,14 @@ var Yh = {
     (e) => Uh[35].cast({ ...e, tier: 0 }),
   ),
 };
+function castWindRing(ctx) {
+  const {run,x,y,z}=ctx, radius=9*ctx.R, duration=0.8, hit=new Set();
+  run.vfx.ring(x,y,z,radius,0xb8e8e0,duration,0,L.Ripple);
+  J.whoosh(run.audio,1,0.16,260);
+  run.animate(duration,progress=>Oh(ctx,hit,x,z,radius*progress,1,{knock:4}));
+}
 function Xh(e, t) {
-  return starterUltimate(e,Uh) ?? (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
+  return starterUltimate(e,Uh,castWindRing) ?? (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
 }
 var Zh = (e, t) => gh(e.names, t),
   Qh = (e, t) => gh(e.dur, t),
@@ -42796,7 +42740,6 @@ var mv = 30,
     }
     setSpecies(e) {
       let t = this.hp / this.maxHp;
-      this.roster=rosterForStarterForm(this.roster,e);
       this.ability=this.roster?.passive??this.ability;
       ((this.speciesId = e),
         (this.data = k.get(e)),
@@ -54024,9 +53967,14 @@ var Ay = 12,
       return this.list.some((t) => t.kind === e);
     }
     get marker() {
-      let e = this.list.find((e) => e.kind === `summoner`),
-        t = this.run.enemies;
-      return e ? { x: t.x[e.i], z: t.z[e.i], i: e.i } : null;
+      const {enemies,player}=this.run;
+      let nearest=-1,best=Infinity;
+      for(let i=0;i<enemies.n;i++){
+        if(!(enemies.flags[i]&(R.Alpha|R.Totem|R.Summoner))||!enemies.isAlive(i))continue;
+        const distance=(enemies.x[i]-player.pos.x)**2+(enemies.z[i]-player.pos.z)**2;
+        if(distance<best){nearest=i;best=distance;}
+      }
+      return nearest<0?null:{x:enemies.x[nearest],z:enemies.z[nearest],i:nearest};
     }
     pick(e) {
       let t = this.run,
@@ -75778,7 +75726,7 @@ var GT = 15,
         (this.audio = n),
         (this.ui = r),
         (this.meta = i),
-        (this.mode = a.mode === `endless` ? `endless` : a.mode === `tower` ? `tower` : `standard`),
+        (this.mode = [`endless`, `tower`, SINGLE_STAGE].includes(a.mode) ? a.mode : `standard`),
         (this.biome = lt(this.mode === `tower` ? `graveyard` : a.biome)),
         (this.tier = this.mode === `standard` ? a.tier : 0),
         (a = { ...a, tier: this.tier }),
@@ -75979,7 +75927,6 @@ var GT = 15,
           (this.allies = new Pm(this)),
           (this.ult = new NT(this)),
           this.sprites.preload(this.ult.def.preload ?? []),
-          this.meta.lab(`slot-move`) && (this.player.moveSlots = 4),
           (this.player.vitaminSlots = 3 + this.meta.lab(`slot-vit`)),
           this.meta.lab(`revive`) && this.player.addItem(`max-revive`));
         let e = this.player.roster ? k.movesByKey.get(this.player.roster.kit[0])?.id : void 0;
@@ -75992,6 +75939,7 @@ var GT = 15,
           this.zones.clear(),
           this.vfx.clear(),
           this.ult.clear());
+      this.player.moveSlots = this.stage > 1 && this.meta.lab('slot-move') ? 4 : 3;
       ((this.minibosses = new sb(this)),
         (this.events = new ub(this)),
         (this.director = new Av(this)),
@@ -76747,13 +76695,13 @@ var GT = 15,
         (this.stageCleared = !0),
         this.stats.stagesCleared++,
         this.splits.push(this.time));
-      let i = this.meta.profile.times[`${this.biome.id}-${this.tier}`]?.splits[this.splits.length - 1];
+      let i = this.meta.profile.times[runRecordKey({biome:this.biome.id, tier:this.tier, mode:this.mode})]?.splits[this.splits.length - 1];
       (this.ui.split(this, this.splits.length, this.time, i == null ? null : this.time - i),
         this.checkpoint(),
         this.hitstop(0.5),
         this.shake(0.8),
         (this.audio.intensity = 0.3));
-      let a = r
+      let a = r || this.mode === SINGLE_STAGE
         ? c(`Entra al portal para completar el mapa`)
         : n && this.stage === 3
           ? c(`Se ha abierto el portal al {name}`, { name: n.name })
@@ -76843,6 +76791,7 @@ var GT = 15,
     cineDeadT = 0;
     async enterPortal() {
       if (this.state !== `play` || this.player.dead || this.capture.throwing) return;
+      if (this.mode === SINGLE_STAGE && !this.stageCleared) return;
       let e = this.interactables.rewardsLeft();
       if (e > 0 && this.realTime - this.rewardWarnAt > 6) {
         ((this.rewardWarnAt = this.realTime),
@@ -76858,6 +76807,7 @@ var GT = 15,
         return;
       }
       this.rewardWarnAt = -99;
+      if (this.mode === SINGLE_STAGE) return this.finish(!0);
       let t = this.stage >= 4 || (this.stage >= 3 && !this.biome.sanctuary);
       t && this.capture.canWait() && this.realTime - this.leaveWarnAt > 5
         ? ((this.leaveWarnAt = this.realTime),
@@ -82948,96 +82898,6 @@ async function vk(e, t, n) {
     (N.deny(), e.notice(t.message));
   }
 }
-function yk(e) {
-  try {
-    e ? localStorage.setItem(r, e) : localStorage.removeItem(r);
-  } catch {}
-  let t = new URL(location.href);
-  if (t.searchParams.has(`lang`)) {
-    t.searchParams.delete(`lang`);
-    try {
-      history.replaceState(history.state, ``, t.pathname + t.search + t.hash);
-    } catch {}
-  }
-  (e ?? a()) !== i() && location.reload();
-}
-function bk() {
-  let e = s.find((e) => e.id === a());
-  return [{ id: null, name: c(`Automático`), sub: e.name }, ...s.map((e) => ({ id: e.id, name: e.name }))];
-}
-function xk(t = ``) {
-  let n = s.find((e) => e.id === i()),
-    r = X(`div`, { class: `lang-pick ` + t }),
-    a = X(`div`, { class: `lang-list`, role: `listbox` }),
-    o = () => {
-      (r.classList.remove(`open`), document.removeEventListener(`pointerdown`, l, !0));
-    },
-    l = (e) => {
-      r.contains(e.target) || o();
-    },
-    u = X(
-      `button`,
-      {
-        class: `lang-btn`,
-        title: c(`Idioma`),
-        "aria-label": c(`Idioma`),
-        onclick: () => {
-          if (r.classList.toggle(`open`)) {
-            let t = e();
-            ($(a).append(
-              ...bk().map((e) =>
-                X(
-                  `button`,
-                  {
-                    class: `lang-opt` + (e.id === t ? ` on` : ``),
-                    role: `option`,
-                    onclick: () => {
-                      (o(), yk(e.id));
-                    },
-                  },
-                  X(`b`, {}, e.name),
-                  e.sub ? X(`small`, {}, e.sub) : null,
-                  e.id === t ? Z(`check`, 16) : null,
-                ),
-              ),
-            ),
-              document.addEventListener(`pointerdown`, l, !0));
-          } else o();
-        },
-      },
-      Z(`globe`, 22),
-      X(`b`, {}, n.short),
-    );
-  return (
-    u.addEventListener(`keydown`, (e) => {
-      e.key === `Escape` && o();
-    }),
-    r.append(u, a),
-    r
-  );
-}
-function Sk() {
-  let t = X(`div`, { class: `seg lang-seg` }),
-    n = () => {
-      let r = e();
-      $(t).append(
-        ...bk().map((e) =>
-          X(
-            `button`,
-            {
-              class: `pill` + (e.id === r ? ` on` : ``),
-              title: e.sub ?? ``,
-              onclick: () => {
-                (yk(e.id), n());
-              },
-            },
-            e.id ? e.name : `${e.name} · ${e.sub}`,
-          ),
-        ),
-      );
-    };
-  return (n(), t);
-}
 var Ck = 2592e6,
   wk = 3e5,
   Tk = 0,
@@ -83808,7 +83668,7 @@ async function dA(e) {
     r = [...t].sort((e, t) => t.date - e.date)[0] ?? null;
   return { count: t.filter((e) => !n.has(e.id)).length, latest: r };
 }
-var fA = (e) => new Date(e).toLocaleDateString(o(), { day: `numeric`, month: `long`, year: `numeric` }),
+var fA = (e) => new Date(e).toLocaleDateString('zh-CN', { day: `numeric`, month: `long`, year: `numeric` }),
   pA = (e) => {
     let t = (e) => {
         let t = new Date(e);
@@ -83821,7 +83681,7 @@ var fA = (e) => new Date(e).toLocaleDateString(o(), { day: `numeric`, month: `lo
         ? c(`Ayer`)
         : n < 7
           ? c(`Hace {n} días`, { n })
-          : new Date(e).toLocaleDateString(o(), { day: `numeric`, month: `short` });
+          : new Date(e).toLocaleDateString('zh-CN', { day: `numeric`, month: `short` });
   },
   mA = (e) => (/^\/?assets\//.test(e) ? Zt(e.replace(/^\/?assets\//, ``).replace(/\?.*$/, ``)) : e),
   hA = { mon: (e) => Zt(`icons/${e}.png`), item: (e) => Zt(`items/${e}.png`) },
@@ -85367,7 +85227,7 @@ function ej(e, t) {
     Ce = (e, n) => {
       let r = t.room.members.find((t) => t.id === e.from),
         i = n?.from === e.from && e.at - n.at < 12e4,
-        a = new Date(e.at).toLocaleTimeString(o(), { hour: `2-digit`, minute: `2-digit` });
+        a = new Date(e.at).toLocaleTimeString('zh-CN', { hour: `2-digit`, minute: `2-digit` });
       return X(
         `div`,
         {
@@ -86690,7 +86550,7 @@ var _j = {
         ? c(`{n} puntos`, { n: P(t) })
         : P(t),
   yj = { win: c(`Victoria`), loss: c(`Derrota`), draw: c(`Empate`), bye: c(`Sin rival`) },
-  bj = (e) => new Date(e).toLocaleDateString(o(), { day: `numeric`, month: `short` });
+  bj = (e) => new Date(e).toLocaleDateString('zh-CN', { day: `numeric`, month: `short` });
 function xj(e, t, n, r, ...i) {
   return X(
     `section`,
@@ -87630,7 +87490,7 @@ function Lj(e, t, n, r, i) {
         ),
       );
     },
-    te = (e) => new Date(e).toLocaleDateString(o(), { weekday: `long`, day: `numeric`, month: `long` }),
+    te = (e) => new Date(e).toLocaleDateString('zh-CN', { weekday: `long`, day: `numeric`, month: `long` }),
     ne = (e) => {
       let n = [...u.values()].sort((e, t) => Number(e.id) - Number(t.id)),
         r = T(),
@@ -87757,7 +87617,7 @@ function Lj(e, t, n, r, i) {
         (w.textContent = t.me
           ? e
             ? c(`No puedes escribir en el tablón hasta el {date}.`, {
-                date: new Date(d).toLocaleString(o(), {
+                date: new Date(d).toLocaleString('zh-CN', {
                   day: `numeric`,
                   month: `short`,
                   hour: `2-digit`,
@@ -88048,7 +87908,7 @@ var Vj = () => [
     ),
     c(`Cada clan tiene su tablón para hablar, con reacciones rápidas, y sus récords.`),
   ],
-  Hj = (e) => new Date(e).toLocaleDateString(o(), { day: `numeric`, month: `short` }),
+  Hj = (e) => new Date(e).toLocaleDateString('zh-CN', { day: `numeric`, month: `short` }),
   Uj = (e, t = 18) => (e === `leader` ? Z(`crown`, t) : e === `officer` ? QC(3, t) : null),
   Wj = (e, t = 56) =>
     X(`img`, {
@@ -90007,9 +89867,9 @@ var CM = (e) => fr.find((t) => t.id === e)?.name ?? e,
         ? c(`hace {n} min`, { n: t })
         : t < 1440
           ? c(`hace {n} h`, { n: Math.floor(t / 60) })
-          : new Date(e).toLocaleDateString(o(), { day: `numeric`, month: `short` }) +
+          : new Date(e).toLocaleDateString('zh-CN', { day: `numeric`, month: `short` }) +
             ` · ` +
-            new Date(e).toLocaleTimeString(o(), { hour: `2-digit`, minute: `2-digit` });
+            new Date(e).toLocaleTimeString('zh-CN', { hour: `2-digit`, minute: `2-digit` });
   },
   DM = (e) => `#` + e.toString(16).padStart(6, `0`);
 function OM(e, t) {
@@ -91777,7 +91637,7 @@ var FM = `pb.seenVersion`,
     }
   },
   LM = (e) =>
-    new Date(e + `T12:00:00`).toLocaleDateString(o(), { day: `numeric`, month: `short`, year: `numeric` });
+    new Date(e + `T12:00:00`).toLocaleDateString('zh-CN', { day: `numeric`, month: `short`, year: `numeric` });
 function RM() {
   let e = X(
     `button`,
@@ -93620,7 +93480,6 @@ function rP(e, t, n = !0) {
     MN(
       e,
       `mm auth`,
-      X(`div`, { class: `mm-top` }, xk()),
       X(`div`, { class: `auth-hero` }, zN(`hero`)),
       X(`div`, { class: `auth-side` }, t),
       X(`div`, { class: `mm-foot` }, n ? ZN() : null, nP()),
@@ -94044,11 +93903,11 @@ function hP(e, t) {
         (r.textContent =
           e > 0
             ? c(`Hacia las {time}`, {
-                time: new Date(t.eta).toLocaleTimeString(o(), { hour: `2-digit`, minute: `2-digit` }),
+                time: new Date(t.eta).toLocaleTimeString('zh-CN', { hour: `2-digit`, minute: `2-digit` }),
               }) +
               (e > 864e5
                 ? c(` del {date}`, {
-                    date: new Date(t.eta).toLocaleDateString(o(), { day: `numeric`, month: `long` }),
+                    date: new Date(t.eta).toLocaleDateString('zh-CN', { day: `numeric`, month: `long` }),
                   })
                 : ``)
             : c(`Estamos terminando los últimos detalles.`)));
@@ -94117,8 +93976,8 @@ function gP(e, t) {
     t.until == null
       ? c(`Es una suspensión permanente.`)
       : c(`Termina el {date} a las {time}.`, {
-          date: new Date(t.until).toLocaleDateString(o(), { day: `numeric`, month: `long`, year: `numeric` }),
-          time: new Date(t.until).toLocaleTimeString(o(), { hour: `2-digit`, minute: `2-digit` }),
+          date: new Date(t.until).toLocaleDateString('zh-CN', { day: `numeric`, month: `long`, year: `numeric` }),
+          time: new Date(t.until).toLocaleTimeString('zh-CN', { hour: `2-digit`, minute: `2-digit` }),
         });
   rP(
     e,
@@ -94306,7 +94165,7 @@ function SP() {
     t = X(
       `button`,
       {
-        class: `lang-btn fs-btn`,
+        class: `fs-btn`,
         title: e(),
         "aria-label": e(),
         onclick: () => {
@@ -94326,7 +94185,7 @@ function SP() {
 function ZX(app) {
   const itemIcon=id=>Zt(k.items[id]?.icon||`items/${id}.png`);
   return createZixingUI(app, {
-    defaults: {...SO, fpsLimit:60, batterySaver:false, zxTheme:'auto', zxBossHealth:'value'},
+    defaults: {...SO, fpsLimit:60, batterySaver:false, zxBossHealth:'value'},
     moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
     ultDescription: id => Xh(id, k.get(id).types[0]).descs[0] || '积蓄能量，释放专属大招。',
     baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
@@ -99791,7 +99650,7 @@ var WF = (e) => (e === `leader` ? Z(`crown`, 16) : e === `officer` ? QC(3, 16) :
     e >= 3600
       ? c(`{hh} h {mm} min`, { hh: Math.floor(e / 3600), mm: Math.floor((e % 3600) / 60) })
       : c(`{mm} min`, { mm: Math.floor(e / 60) }),
-  KF = (e) => new Date(e).toLocaleDateString(o(), { day: `numeric`, month: `short`, year: `numeric` }),
+  KF = (e) => new Date(e).toLocaleDateString('zh-CN', { day: `numeric`, month: `short`, year: `numeric` }),
   qF = (e) => {
     let t = Math.max(0, Math.floor((Date.now() - e) / 6e4));
     return t < 1
@@ -101221,17 +101080,7 @@ function nI(e) {
         ],
       },
     ];
-  (e.run ||
-    p.push({
-      id: `lang`,
-      name: c(`Idioma`),
-      sub: c(`Textos del juego`),
-      icon: `ui:globe`,
-      c: `var(--purple)`,
-      keys: [],
-      rows: () => [i(c(`Idioma del juego`), Sk(), null, c(`Automático: el de tu navegador`), `segrow wide`)],
-    }),
-    !e.run &&
+  (!e.run &&
       e.backend.kind === `http` &&
       p.push({
         id: `account`,
@@ -103771,16 +103620,22 @@ var JI = class {
       const shrineTarget = e.sanctuary && !e.bossSpawned && !e.stageCleared
         ? e.interactables.list.find((target) => target.kind === `shrine` && !target.used) : null;
       let y = e.stageCleared ? (e.interactables.list.find((e) => e.kind === `portal`) ?? null) : null,
+        bossIndex = e.boss.bossIndex,
+        bossTarget = e.boss.alive ? {i:bossIndex,x:e.enemies.x[bossIndex],z:e.enemies.z[bossIndex]} : null,
         b =
           shrineTarget ??
+          bossTarget ??
           e.capture.marker ??
           e.allies.marker ??
           e.events?.marker ??
           e.minibosses?.marker ??
           (y ? { x: y.x, z: y.z } : null);
       if (b) {
-        const distance = Math.round(Math.hypot(b.x - e.player.pos.x, b.z - e.player.pos.z)),
-          markerText = shrineTarget ? `圣地 · ${distance} 米` : c(`{n} m`, { n: distance });
+        const distance = Math.hypot(b.x - e.player.pos.x, b.z - e.player.pos.z),
+          bossFlags = R.Boss | R.Alpha | R.Totem | R.Summoner,
+          markerText = shrineTarget ? '圣地 · '+bossDistanceText(distance)
+            : b===bossTarget || (b.i!=null && (e.enemies.flags[b.i]&bossFlags)) ? bossDistanceText(distance)
+            : c(`{n} m`, { n: Math.round(distance) });
         let t = this.project(e, b.x, e.terrain.height(b.x, b.z) + (shrineTarget ? (shrineTarget.group?.userData.h ?? 6.3) + 1 : 2), b.z),
           n = innerWidth / 2,
           r = innerHeight / 2,
@@ -103803,11 +103658,11 @@ var JI = class {
             s = e.enemies,
             l = b.i,
             u =
-              shrineTarget ? sI().shrine.ring : e.capture.marker || e.allies.marker
+              shrineTarget ? sI().shrine.ring : b===bossTarget ? sI().boss.ring : e.capture.marker || e.allies.marker
                 ? cI.capture
                 : e.events?.marker
                   ? cI.treasure
-                  : e.minibosses?.marker
+                  : l != null
                     ? cI.summoner
                     : sI().portal.ring,
             d = shrineTarget ? `shrine` : l == null ? `portal` : `m${s.species[l]}${u}`,
@@ -104247,7 +104102,8 @@ var JI = class {
             (p.style.display = ``),
             (p.style.transform = `rotate(${e + Math.PI / 2}rad)`));
         }
-        let m = c(`{n} m`, { n: Math.round(Math.hypot(i.x - t.x, i.z - t.z)) });
+        const distance=Math.hypot(i.x-t.x,i.z-t.z);
+        let m = f==='boss'||f==='shrine' ? bossDistanceText(distance) : c(`{n} m`, { n:Math.round(distance) });
         r.children[2].textContent !== m && (r.children[2].textContent = m);
       }
     }
@@ -105462,7 +105318,7 @@ var JI = class {
         X(
           `div`,
           { class: `help`, style: { fontSize: `15px` } },
-          '风 → 讽 → 飒；风 → 疯 → 飙。刮倒一片与没影了提供 5 秒移速×10。',
+          '攻速路线：风 → 讽 → 疯。移速路线：风 → 飒 → 飙。',
         ),
         r,
       ),
@@ -108012,7 +107868,7 @@ async function iL() {
       n = e.render(t, {
         sitekey: eL(),
         appearance: `interaction-only`,
-        language: `auto`,
+        language: `zh-cn`,
         callback: (e) => a(e),
         "error-callback": () => a(void 0),
         "expired-callback": () => a(void 0),
@@ -108606,7 +108462,7 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
     }
     async news() {
       return this.cached(`news`, 6e4, () =>
-        this.req(`/news`).then((e) => e.map((e) => ({ ...e, ...Lt(e, i()) }))),
+        this.req(`/news`).then((e) => e.map((e) => ({ ...e, ...Lt(e) }))),
       );
     }
     async sendFeedback(e, t) {

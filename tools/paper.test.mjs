@@ -4,7 +4,23 @@ import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from '../source/sr
 import fs from 'node:fs';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
-import {specialMapMarker} from '../source/src/paper-hud-art.js';
+import {drawBattleMinimap,specialMapMarker} from '../source/src/paper-hud-art.js';
+
+test('both maps label unscaled boss distances in centimeters, including off-map minibosses',()=>{
+  const flags=[2,4096,8192,4,1],labels=[];
+  const ctx=new Proxy({fillText:text=>labels.push(text),measureText:text=>({width:text.length*5})},
+    {get:(target,key)=>target[key]??(()=>{})});
+  const canvas={width:240,height:240,getContext:()=>ctx};
+  const enemies={n:5,flags,x:[4.8,100,-200,300,15],z:[0,0,0,0,0],alive:flags.map(()=>1),dying:flags.map(()=>0)};
+  const run={player:{pos:{x:0,z:0}},enemies,boss:{alive:false},terrain:{world:600},interactables:{markers:()=>[]},allies:{list:[]}};
+  for(const viewRatio of [1,2]){
+    drawBattleMinimap(canvas,run,{viewRatio,shadow:viewRatio===1});
+    assert.deepEqual(labels.splice(0),['4.8 厘米','100 厘米','200 厘米','300 厘米']);
+  }
+  run.player.pos.x=1;enemies.alive[1]=0;enemies.dying[2]=1;
+  drawBattleMinimap(canvas,run);
+  assert.deepEqual(labels,['3.8 厘米','299 厘米']);
+});
 
 test('special enemies keep distinctive near markers and directional edge markers',()=>{
   assert.equal(specialMapMarker(0,10,0),null);
@@ -20,11 +36,10 @@ test('special enemies keep distinctive near markers and directional edge markers
 
 test('species names in encounter and NPC prose resolve to the same glyphs as their artwork',()=>{
   const actors=JSON.parse(fs.readFileSync(new URL('../source/public/data/pokemon.json',import.meta.url),'utf8'));
-  const locale=JSON.parse(fs.readFileSync(new URL('../source/public/data/i18n/zh.json',import.meta.url),'utf8'));
-  configureGlyphNames(actors,locale.pokemon);
+  configureGlyphNames(actors);
   for(const actor of actors){
     assert.equal(glyphText(actor.name),glyphWordForSpecies(actor.id));
-    if(locale.pokemon[actor.id])assert.equal(glyphText(locale.pokemon[actor.id]),glyphWordForSpecies(actor.id));
+    assert.equal(glyphText(actor.originalName),glyphWordForSpecies(actor.id));
   }
   assert.equal(glyphText('妙蛙种子出现了，快去抓它！'),glyphWordForSpecies(1)+'出现了，快去抓它！');
   assert.equal(glyphText('喵喵（商店） / Pokémon'),glyphWordForSpecies(52)+'（商店） / 字灵');

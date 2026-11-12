@@ -6,7 +6,7 @@ export const runtimeSpecies=Object.freeze(Object.keys(actorMetrics).map(Number))
 const enabled=new Set(runtimeSpecies);
 const select=table=>Object.fromEntries(Object.entries(table).filter(([id])=>enabled.has(Number(id))));
 export function runtimeData(key,bytes){
-  if(!['data/pokemon.json','data/sprites.json','data/learnsets.json','data/i18n/zh.json'].includes(key))return bytes;
+  if(!['data/pokemon.json','data/sprites.json','data/learnsets.json'].includes(key))return bytes;
   let data=JSON.parse(bytes.toString('utf8'));
   if(key==='data/pokemon.json'){
     // Enabled actors can belong to a later-generation family. Combat research
@@ -15,7 +15,6 @@ export function runtimeData(key,bytes){
     const families=new Set(data.filter(actor=>enabled.has(actor.id)).map(actor=>actor.family));
     data=data.filter(actor=>enabled.has(actor.id)||families.has(actor.id));
   }
-  else if(key==='data/i18n/zh.json')data={...data,pokemon:select(data.pokemon),flavor:select(data.flavor)};
   else data=select(data);
   return Buffer.from(JSON.stringify(data));
 }

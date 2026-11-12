@@ -154,12 +154,26 @@ export function compositor(gl,canvas) {
       gl.bindTexture(gl.TEXTURE_2D,cache.texture);
       if(control.changed||cache.width!==tile.width||cache.height!==tile.height){
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,true);
-        if(cache.width!==tile.width||cache.height!==tile.height){
+        const resized=cache.width!==tile.width||cache.height!==tile.height;
+        if(resized){
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,tile);
-          cache.width=tile.width;cache.height=tile.height;
-        }else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,tile);
+        }
+        if(control.uploadPixels){
+          // The iOS health tile bypasses the native offscreen-canvas upload.
+          // getImageData returns straight alpha; the HUD blends premultiplied RGB.
+          const {data}=tile.getContext('2d').getImageData(0,0,tile.width,tile.height);
+          const pixels=new Uint8Array(data.buffer,data.byteOffset,data.byteLength);
+          for(let i=0;i<pixels.length;i+=4){
+            const alpha=pixels[i+3]/255;
+            for(let channel=0;channel<3;channel++)pixels[i+channel]=Math.round(pixels[i+channel]*alpha);
+          }
+          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+          if(resized)gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,tile.width,tile.height,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+          else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,tile.width,tile.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+        }else if(resized)gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,tile);
+        else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,tile);
+        cache.width=tile.width;cache.height=tile.height;
       }
       const sx=gl.drawingBufferWidth/canvas.width,sy=gl.drawingBufferHeight/canvas.height;
       gl.viewport(Math.round(control.x*sx),Math.round((canvas.height-control.y-control.height)*sy),Math.round(control.width*sx),Math.round(control.height*sy));

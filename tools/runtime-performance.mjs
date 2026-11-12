@@ -57,11 +57,13 @@ try{
     const proto=WebGL2RenderingContext.prototype;
     for(const name of ['texImage2D','texSubImage2D']){
       const original=proto[name];proto[name]=function(...args){
-        const canvas=args.at(-1);if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas||window.inspected?.hudLayers?.some(layer=>layer.canvas===canvas))){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
+        const canvas=args.at(-1);
+        if(platform==='ios'&&canvas&&canvas===window.inspected?.health?.canvas)throw Error('Health must use the iOS pixel-buffer upload');
+        if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas||window.inspected?.hudLayers?.some(layer=>layer.canvas===canvas))){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
         return original.apply(this,args);
       };
     }
-  },process.argv.includes('--ios-budget')?'ios':'devtools');
+  },process.argv.some(arg=>['--ios-budget','--battle-visual'].includes(arg))?'ios':'devtools');
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});

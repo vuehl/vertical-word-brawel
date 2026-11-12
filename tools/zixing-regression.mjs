@@ -44,7 +44,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         const top=Math.min(...labels.map(t=>t.y)),bottom=Math.max(...labels.map(t=>t.y+t.h));
         return {text:el.textContent,verticalOffset:(top+bottom)/2-(b.y+b.h/2),horizontalOffsets:labels.map(t=>(t.x+t.w/2)-(b.x+b.w/2)),topInset:top-b.y,bottomInset:b.y+b.h-bottom,color:b.s.color};
       }).filter(Boolean);
-      return {page:app.screen?.dataset.page,dark:inspected.doc.documentElement.classList.contains('zx-dark'),viewport:[inspected.env.innerWidth,inspected.env.innerHeight],centered,leftAligned,upgradeLayout,pauseLayout,homeLayout:homeLayout&&Object.fromEntries(Object.entries(homeLayout).map(([key,b])=>[key,{x:b.x,y:b.y,w:b.w,h:b.h}])),unresolvedColors,settingsColors,prices,boxes:all.map(e=>{
+      return {page:app.screen?.dataset.page,viewport:[inspected.env.innerWidth,inspected.env.innerHeight],centered,leftAligned,upgradeLayout,pauseLayout,homeLayout:homeLayout&&Object.fromEntries(Object.entries(homeLayout).map(([key,b])=>[key,{x:b.x,y:b.y,w:b.w,h:b.h}])),unresolvedColors,settingsColors,prices,boxes:all.map(e=>{
         const b=inspected.layout.box(e);return b&&{text:e.textContent.slice(0,60),class:e.className,x:b.x,y:b.y,w:b.w,h:b.h,clip:b.clip};
       }).filter(Boolean)};
     });
@@ -53,7 +53,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     for(const b of data.centered)assert.ok(Math.abs(b.offset)<=1.1,name+' text not centered: '+JSON.stringify(b));
     for(const b of data.leftAligned)assert.ok(Math.abs(b.offset)<=1.1,name+' offer text not left aligned: '+JSON.stringify(b));
     assert.deepEqual(data.unresolvedColors,[],name+' must resolve text colors before Canvas painting');
-    if(!data.dark)for(const b of data.settingsColors)assert.equal(b.color,'#29263c',name+' needs dark text on pale controls: '+b.text);
+    for(const b of data.settingsColors)assert.equal(b.color,'#29263c',name+' needs dark text on pale controls: '+b.text);
     for(const b of data.prices){
       assert.ok(Math.abs(b.verticalOffset)<=1.1&&b.horizontalOffsets.every(v=>Math.abs(v)<=1.1),name+' price label group is not centered: '+JSON.stringify(b));
       assert.ok(b.topInset>=4&&b.bottomInset>=4,name+' price labels overflow the circle: '+JSON.stringify(b));
@@ -217,6 +217,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         const track=inspected.doc.querySelector('.zx-player-health');
         samples.push({progress:Number(track.dataset.progress),value:Number(track.getAttribute('aria-valuenow')),expected:Math.ceil(p.hp)});
       }
+      if(oldSlots!==3||inspected.doc.querySelector('[data-skill-slot="3"]'))throw Error('First stage must show only three skill slots');
       const experience=[];
       for(const value of [0,.25,.75,.99]){
         p.xp=p.xpNext*value;refresh();
@@ -252,7 +253,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       const p=app.run.player,foot=app.run.ui.project(app.run,p.pos.x,p.pos.y-.15,p.pos.z);
       const screen=inspected.doc.getElementById('game').getBoundingClientRect();
       const header={offsetX:-screen.x,offsetY:-screen.y,safeTop:wx.getWindowInfo().safeArea.top,menu:wx.getMenuButtonBoundingClientRect(),badge:box('.zx-hud-level'),portrait:box('.zx-profile-art')};
-      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,header,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),name:box('.zx-hud-name-row'),supplies:box('.zx-inventory-items'),health:box('.zx-player-health'),foot,labels,skills:[0,1,2,3].map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
+      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,header,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),name:box('.zx-hud-name-row'),supplies:box('.zx-inventory-items'),health:box('.zx-player-health'),foot,labels,skills:Array.from({length:p.moveSlots},(_,i)=>i).map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
     });}
     function swipeControls(c){
       assert.ok(c.ult&&c.ult.x>=0&&c.ult.y>=0&&c.ult.x+c.ult.w<=c.width+1&&c.ult.y+c.ult.h<c.height,'Ultimate must fit above the safe bottom edge');

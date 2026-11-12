@@ -3,7 +3,6 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {pathToFileURL} from 'node:url';
 import sharp from 'sharp';
 import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
@@ -66,18 +65,11 @@ for (const folder of ['assets', 'overrides/assets']) {
 }
 for (const file of walk(path.join(pub,'data'))) {
   const key = path.relative(pub,file).replaceAll('\\','/');
-  if(key.startsWith('data/i18n/')&&key!=='data/i18n/zh.json')continue;
   const data=runtimeData(key,fs.readFileSync(file));
   add('text',key,data);fontText.push(data.toString('utf8'));
 }
-for (const file of fs.readdirSync(path.join(pub,'assets'))) {
-  const match = /^(zh)-.*\.js$/.exec(file);
-  if (match) {
-    const words = (await import(pathToFileURL(path.join(pub,'assets',file)).href)).default;
-    add('text','locale/'+match[1]+'.json',Buffer.from(JSON.stringify(words)));
-    fontText.push(JSON.stringify(words));
-  }
-}
+const uiText=fs.readFileSync(path.join(pub,'text/ui.json'));
+add('text','text/ui.json',uiText);fontText.push(uiText.toString('utf8'));
 for (const name of ['version.json','creditos.txt','legal']) add('text',name,fs.readFileSync(path.join(pub,name)));
 const python = process.env.POKEBONK_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
 if(development)fontText.push(fs.readFileSync(path.join(import.meta.dirname,'developer','panel.mjs'),'utf8'));
