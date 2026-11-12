@@ -117,7 +117,7 @@ async function reviewPortalProgression(page,dir,draw){
   for(let zone=1;zone<=3;zone++){
     const defeat=await page.evaluate(()=>{
       const api=inspected.env.__zixingDeveloper,r=app.run;
-      const snapshot=api.apply({boss:'guardian',mode:'timed',time:600,count:0}),actor=snapshot.encounter.current;
+      const snapshot=api.apply({boss:'guardian',mode:'stress',time:600,count:0}),actor=snapshot.encounter.current;
       // Advance past 10:00 with the ordinary fixed-build tools still active.
       for(let frame=0;frame<31;frame++)r.update(1/30);
       const stages=r.stats.stagesCleared,bosses=r.stats.bosses,splits=r.splits.length;
