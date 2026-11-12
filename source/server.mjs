@@ -214,7 +214,8 @@ route('POST', '/lab/buy', async (req, res) => {
   if (!acc) return;
   const b = await body(req) || {};
   const p = acc.profile;
-  applyProfileAction(p, { k: 'lab', id: b.id });
+  if (!applyProfileAction(p, { k: 'lab', id: b.id, lv: b.lv }))
+    return json(res, 409, {error:'星尘或研究等级已变化，请刷新后重试'});
   persist();
   json(res, 200, { profile: p });
 });
@@ -360,14 +361,7 @@ route('POST', '/runs', async (req, res) => {
   if(!validLiteRun(b))return json(res,400,{error:'Invalid Forest Lite run configuration.'});
   const id = `run-${store.nextRun++}`;
   // Co-op: the seed belongs to the party so every member builds the same world.
-  let seed;
-  if (b.party) {
-    const key = String(b.party);
-    if (store.coopParties[key] === undefined) store.coopParties[key] = crypto.randomInt(1, 2 ** 31);
-    seed = store.coopParties[key];
-  } else {
-    seed = b.seed ?? crypto.randomInt(1, 2 ** 31);
-  }
+  const seed = b.party ? b.coopSeed : (b.seed ?? crypto.randomInt(1, 2 ** 31));
   const boosts=[...new Set(Array.isArray(b.boosts)?b.boosts:[])].filter(k=>(acc.profile.bag[k]??0)>0);
   for(const k of boosts){acc.profile.bag[k]--;if(!acc.profile.bag[k])delete acc.profile.bag[k];}
   store.runs[id] = { id, account: acc.id, cfg: b, seed, started: now() };
@@ -400,6 +394,8 @@ route('POST', '/runs/:id/finish', async (req, res, url, params) => {
   if(run.response)return json(res,200,{...run.response,profile:p});
   if(!validLiteRun(result) || result.species!==run.cfg.species || result.biome!==run.cfg.biome || (result.tier??0)!==(run.cfg.tier??0) ||
     (result.mode===SINGLE_STAGE)!==(run.cfg.mode===SINGLE_STAGE))return json(res,400,{error:'Result does not match this forest run.'});
+  if ((result.coop?.party ?? null) !== (run.cfg.party ?? null))
+    return json(res,400,{error:'合作对局与房间不匹配'});
   run.finished=now();
   const recordKey=runRecordKey(result);
   const prevKills=p.kills[recordKey]??null;

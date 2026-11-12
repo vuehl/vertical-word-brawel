@@ -47,6 +47,13 @@ const srv=http.createServer((req,res)=>{
 });
 await new Promise(r=>srv.listen(0,'127.0.0.1',r));
 const b=await puppeteer.launch({executablePath:chrome,headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling']});
+if(process.argv.includes('--coop')){
+  try {
+    const {reviewCoop}=await import('./coop-regression.mjs');
+    await reviewCoop(b,srv.address().port);
+  } finally { await b.close();srv.close(); }
+  process.exit(0);
+}
 const page=await b.newPage(),errors=[];
 let homePainted=false;
 page.on('console',m=>{if(m.type()==='info'&&m.text().startsWith('[宝可梦启动] 游戏首页已绘制'))homePainted=true;});

@@ -1,6 +1,8 @@
 import {glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 
 export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
+const friendColors=['#246baa','#15826b','#7850a1'];
+export const friendColor=slot=>friendColors[slot]||friendColors[0];
 
 // Place labels in the map frame after projecting the icons, so zooming or
 // pinning an icon to the rim never changes the distance shown.
@@ -96,7 +98,7 @@ export function drawBattlePortrait(canvas,word,tone,experience=0) {
 }
 
 // One north-up projection for both map sizes. The small HUD refreshes at most
-// every 120 ms; the enlarged view is drawn once while the battle is paused.
+// at the HUD cadence; an open co-op map follows the same peer snapshots.
 export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=.9;
   const distances=[];
@@ -174,6 +176,17 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
       ctx.beginPath();ctx.moveTo(x,y-3.7);ctx.lineTo(x+3,y);ctx.lineTo(x,y+3.7);ctx.lineTo(x-3,y);ctx.closePath();ctx.fillStyle=color;ctx.fill();
     }
     for(const ally of run.allies.list){const [x,y]=point(ally.x,ally.z);if(visible(x,y))dot(x,y,2.8,'#559e78');}
+  }
+  for(const peer of run.coop?.visiblePeers()||[]){
+    const dx=(peer.x-p.x)*scale,dz=(peer.z-p.z)*scale;
+    const k=Math.min(1,40*viewRatio/(Math.hypot(dx,dz)||1));
+    const x=60+dx*k,y=58+dz*k;
+    ctx.save();ctx.translate(x,y);ctx.scale(viewRatio,viewRatio);
+    const color=friendColor(peer.slot);
+    if(k<1){
+      ctx.save();ctx.rotate(Math.atan2(dz,dx));ctx.beginPath();ctx.moveTo(8.5,0);ctx.lineTo(4,-4);ctx.lineTo(4,4);ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.restore();
+    }
+    dot(0,0,5.3,color);ctx.font='bold 8px sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('友',0,0);ctx.restore();
   }
   dot(60,58,8.3,'#688dc633',null);dot(60,58,5.7,'#647fbb');
   ctx.beginPath();ctx.moveTo(60,53.5);ctx.lineTo(63,60.7);ctx.lineTo(60,59);ctx.lineTo(57,60.7);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();

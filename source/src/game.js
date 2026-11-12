@@ -1,3 +1,4 @@
+import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, runRecordKey} from './lite-rules.js';
 import {enemyWord} from './character-rules.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
@@ -40892,7 +40893,7 @@ function J_(e, t, n, r) {
       Y_(e, `metronome`, `cast`),
       e.ui.popup(a.x, a.y + 2.8, a.z, i.def.name, `#` + Ni[i.def.type].toString(16).padStart(6, `0`), 0.75));
   }
-  ((i.level = n.level), Q_(e, t, i, r));
+  ((i.level = n.level), e.castMove(t, i, r));
 }
 function Y_(e, t, n, r, i) {
   e.audio.move(t, n, r) || i?.();
@@ -73827,7 +73828,7 @@ var iT = Math.PI / 180,
         e.stats.ultimates++,
         e.meta.count(`ultimates`, 1),
         t.onUltimate(),
-        e.coop?.ult(Zh(n, r)),
+        e.coop?.ult(Zh(n, r), a),
         (t.iframes = Math.max(t.iframes, a + 0.6)));
       let d = this.quiet;
       ((t.ultPoseT = d ? 0 : 0.6),
@@ -73883,6 +73884,7 @@ var iT = Math.PI / 180,
     dv = new DataView(this.buf);
     head = 0;
     begin(e, t, n, r) {
+      this.bonus = Math.max(0, Math.round(t.bonus || 0));
       let i = this.dv,
         a = 0;
       if (
@@ -73947,7 +73949,7 @@ var iT = Math.PI / 180,
     }
     finish(e, t) {
       let n = this.dv,
-        r = Math.min(e.length, t, Math.floor((this.buf.byteLength - this.head - 2) / zT)),
+        r = Math.min(e.length, t, Math.floor((this.buf.byteLength - this.head - 2 - (this.bonus ? 4 : 0)) / zT)),
         i = this.head;
       (n.setUint16(i, r, !0), (i += 2));
       for (let t = 0; t < r; t++) {
@@ -73967,6 +73969,9 @@ var iT = Math.PI / 180,
           n.setUint8(i, ((VT(r.fx, r.fz) >> 3) << 3) | (r.anim & 7)),
           (i += 1));
       }
+      // Optional trailer after the counted enemy records; older v2 readers
+      // ignore it and older senders have no bonus to display.
+      if (this.bonus) { n.setFloat32(i,this.bonus,true); i+=4; }
       return this.buf.slice(0, i);
     }
   };
@@ -74038,7 +74043,8 @@ function WT(e) {
         c = t.getUint8(n + 10);
       (T.push({ key: e, x: r, y: a, z: i, hp: o, st: s, face: c & 248, anim: c & 7 }), (n += zT));
     }
-    return ![s, c, l, o, h, g].every(Number.isFinite) || (S && !Number.isFinite(S.x + S.z))
+    const bonus = T.length===w && e.byteLength===n+4 ? t.getFloat32(n,true) : 0;
+    return ![s, c, l, o, h, g, bonus].every(Number.isFinite) || (S && !Number.isFinite(S.x + S.z))
       ? null
       : {
           ts: o,
@@ -74058,6 +74064,7 @@ function WT(e) {
             revive: b,
             bleed: x,
             hpNow: h,
+            bonus: Math.max(0,Math.round(bonus)),
             maxHp: g,
             focus: S,
           },
@@ -74072,16 +74079,12 @@ var GT = 15,
   KT = 170,
   qT = 52,
   JT = 0.1,
-  YT = 1.6,
-  XT = 0.4,
-  ZT = 0.25,
   QT = 8,
   $T = 0.2,
   eE = 1.6,
   tE = 1,
   nE = 0.5,
   rE = 0.1,
-  iE = 8,
   aE = 4,
   oE = 1.5,
   sE = () => (Da ? Pa(`E`) : ta(`interact`)),
@@ -74146,8 +74149,6 @@ var GT = 15,
     deaths = [];
     xpAcc = 0;
     shareT = 0;
-    fxT = 0;
-    fxN = 0;
     bossAuth = -1;
     bossShared = !1;
     bossStage = 0;
@@ -74184,6 +74185,7 @@ var GT = 15,
     constructor(e, t) {
       ((this.run = e), (this.room = t.room), (this.party = t.party));
       let n = this.room.room.members;
+      this.roster = n.slice();
       ((this.size = n.length), (this.mySlot = this.room.mine?.slot ?? 0));
       for (let e of n) {
         if (e.id === this.room.me) continue;
@@ -74201,7 +74203,6 @@ var GT = 15,
           lastAt: -99,
           stage: 0,
           off: 0,
-          offN: 0,
           jit: 0,
           delay: JT,
           buf: [],
@@ -74225,8 +74226,13 @@ var GT = 15,
           ctl: (e, t) => this.onCtl(e, t),
           snap: (e, t) => this.onSnap(e, t),
           link: (e, t) => this.onLink(e, t),
-          closed: () => {
+          closed: reason => {
             for (let e of this.peers.values()) this.peerGone(e);
+            if (this.room.startGate?.done && !this.room.startGate.error && !this.ended && this.run.state !== 'over') {
+              this.run.ui.toast(reason, null);
+              this.run.endHow = 'disconnect';
+              void this.run.finish(false);
+            }
           },
         }));
     }
@@ -74264,6 +74270,10 @@ var GT = 15,
     *active() {
       for (let e of this.peers.values())
         !e.gone && e.last && e.stage === this.run.stage && this.run.realTime - e.lastAt < 12 && (yield e);
+    }
+    *visiblePeers() {
+      for (const peer of this.active())
+        if (peer.link === 'open' && !(peer.last.flags & FT.out) && this.run.realTime - peer.lastAt < 4) yield peer;
     }
     tick(e) {
       let t = this.run;
@@ -74312,9 +74322,7 @@ var GT = 15,
           ((this.killsSent = t.stats.kills), this.broadcast({ t: `k`, n: t.stats.kills }))),
         this.bossTick(e),
         this.downedTick(e),
-        this.portalTick(e),
-        (this.fxT -= e),
-        this.fxT <= 0 && ((this.fxT = 1), (this.fxN = 0)));
+        this.portalTick(e));
       for (let e = this.marks.length - 1; e >= 0; e--)
         this.marks[e].t < t.realTime && this.marks.splice(e, 1);
       this.dropStale();
@@ -74363,6 +74371,7 @@ var GT = 15,
           revive: this.reviveK / 3,
           bleed: this.bleed,
           hpNow: Math.max(0, t.hp),
+          bonus: t.shield+t.overheal,
           maxHp: t.maxHp,
           focus: this.out && this.spec ? { x: this.spec.x, z: this.spec.z } : null,
         },
@@ -74454,20 +74463,15 @@ var GT = 15,
       if (!n || n.gone) return;
       let r = WT(t);
       if (!r) return;
-      let i = dE() - r.ts;
-      ((n.off = n.offN === 0 ? i : Math.min(i, n.off + 0.002)), n.offN++);
-      let a = Math.max(0, i - n.off);
-      ((n.jit = a > n.jit ? n.jit + (a - n.jit) * 0.5 : n.jit + (a - n.jit) * 0.01),
-        !(n.buf.length && r.ts <= n.buf[n.buf.length - 1].ts) &&
-          ((n.last = r.player),
-          (n.lastAt = this.run.realTime),
-          (n.stage = r.stage),
-          r.player.species && r.player.species !== n.species && (n.species = r.player.species),
-          n.buf.push({ ts: r.ts, x: r.player.x, y: r.player.y, z: r.player.z, face: r.player.face }),
-          n.buf.length > 12 && n.buf.shift(),
-          r.stage === this.run.stage &&
-            this.run.state !== `transition` &&
-            (r.boss && this.onBossSnap(n, r), this.applyEnemies(n, r))));
+      if (!acceptPeerSample(n,{ts:r.ts,x:r.player.x,y:r.player.y,z:r.player.z,face:r.player.face},r.stage,dE())) return;
+      n.last = r.player;
+      n.lastAt = this.run.realTime;
+      n.stage = r.stage;
+      if (r.player.species) n.species = r.player.species;
+      if (r.stage === this.run.stage && this.run.state !== `transition`) {
+        if (r.boss) this.onBossSnap(n,r);
+        this.applyEnemies(n,r);
+      }
     }
     renderTs(e) {
       return dE() - e.off - e.delay;
@@ -74476,25 +74480,8 @@ var GT = 15,
       return n > t ? Math.max(0, Math.min(1 + $T / (n - t), (e - t) / (n - t))) : 1;
     }
     interpPeers() {
-      let t = this.run.realDt;
-      for (let n of this.peers.values()) {
-        if (!n.buf.length) continue;
-        let r = Math.min(XT, JT + n.jit * YT);
-        n.delay += Math.max(-0.25 * t, Math.min(ZT * t, r - n.delay));
-        let i = this.renderTs(n),
-          a = n.buf,
-          o = a[0],
-          s = a[Math.min(1, a.length - 1)];
-        for (let e = a.length - 1; e > 0; e--)
-          if (a[e - 1].ts <= i) {
-            ((o = a[e - 1]), (s = a[e]));
-            break;
-          }
-        let c = e.lerpK(i, o.ts, s.ts);
-        ((n.x = o.x + (s.x - o.x) * c), (n.y = o.y + (s.y - o.y) * c), (n.z = o.z + (s.z - o.z) * c));
-        let l = HT(s.face);
-        ((n.fx = Math.cos(l)), (n.fz = Math.sin(l)));
-      }
+      const now=dE();
+      for(const peer of this.peers.values())advancePeerMotion(peer,now,this.run.realDt);
     }
     applyEnemies(e, t) {
       let n = this.run,
@@ -75313,35 +75300,52 @@ var GT = 15,
         this.pSlot[n] === e.slot && (t.alive[n] && t.flags[n] & R.Remote && t.kill(n), this.unmap(n));
       (this.hits.delete(e.slot), this.bossAuth === e.slot && this.reassignBoss());
     }
-    cast(e, t, n) {
-      if (this.fxN >= iE) return;
-      this.fxN++;
+    castPosition() {
+      const {x,y,z}=this.run.player.pos;
+      return [x,y,z].map(value=>Math.round(value*20)/20);
+    }
+    effectOrigin(peer,event) {
+      if(Array.isArray(event.pos) && event.pos.length===3 && event.pos.every(Number.isFinite))
+        return {x:event.pos[0],y:event.pos[1],z:event.pos[2]};
+      return peer.last && peer.stage===this.run.stage ? peer : null;
+    }
+    cast(e, t, n, move) {
       let r = this.run.lastAim;
       this.broadcast({
         t: `fx`,
         k: e,
         ty: t,
+        move,
+        pos: this.castPosition(),
+        st: this.run.stage,
         r: Math.round(n * 10) / 10,
         ax: Math.round(r.x * 100) / 100,
         az: Math.round(r.z * 100) / 100,
       });
     }
-    ult(e) {
-      this.broadcast({ t: `ult`, n: e });
+    ult(name, duration) {
+      this.broadcast({ t: `ult`, n: name, duration, st: this.run.stage, pos:this.castPosition() });
     }
     castFx(e, t) {
       let n = this.run;
-      if (e.stage !== n.stage || !e.last || !n.sprites.visible(e.x, e.y + 1, e.z, 8)) return;
+      if ((t.st ?? e.stage) !== n.stage || e.gone) return;
+      if (typeof t.move === 'string') {
+        e.castName = t.move.slice(0, 40);
+        e.castUntil = n.realTime + 1.2;
+        e.castStage = n.stage;
+      }
+      const origin=this.effectOrigin(e,t);
+      if (!origin || !n.sprites.visible(origin.x, origin.y + 1, origin.z, 8)) return;
       let r = typeof t.ty == `string` && t.ty in Ni ? t.ty : `normal`,
         i = Ni[r],
         a = Math.max(0.5, Math.min(12, +t.r || 2)),
-        o = Number.isFinite(+t.ax) ? +t.ax : e.last.aimX,
-        s = Number.isFinite(+t.az) ? +t.az : e.last.aimZ,
+        o = Number.isFinite(+t.ax) ? +t.ax : e.last?.aimX ?? e.fx,
+        s = Number.isFinite(+t.az) ? +t.az : e.last?.aimZ ?? e.fz,
         c = Math.hypot(o, s);
       c < 0.05 ? ((o = e.fx), (s = e.fz)) : ((o /= c), (s /= c));
-      let l = e.x,
-        u = e.y + 0.9,
-        d = e.z,
+      let l = origin.x,
+        u = origin.y + 0.9,
+        d = origin.z,
         f = n.vfx;
       switch (t.k) {
         case `shot`:
@@ -75376,26 +75380,32 @@ var GT = 15,
           break;
         }
         case `ring`:
-          f.rings.spawn(l, e.y + 0.15, d, a * 0.2, Math.min(a, 10), i, 0.4, Hl(i), 0.2, 0.4);
+          f.rings.spawn(l, origin.y + 0.15, d, a * 0.2, Math.min(a, 10), i, 0.4, Hl(i), 0.2, 0.4);
           break;
         default:
-          f.rings.spawn(l, e.y + 0.15, d, Math.min(a, 6) * 0.5, Math.min(a, 6), i, 0.3, L.Plain, 0.16, 0.28);
+          f.rings.spawn(l, origin.y + 0.15, d, Math.min(a, 6) * 0.5, Math.min(a, 6), i, 0.3, L.Plain, 0.16, 0.28);
       }
     }
     ultFx(e, t) {
       let n = this.run;
-      if (e.stage !== n.stage) return;
+      if ((t.st ?? e.stage) !== n.stage || e.gone) return;
+      e.ultName = typeof t.n === 'string' ? t.n.slice(0, 40) : '';
+      e.ultUntil = n.realTime + Math.min(30, Math.max(1.2, Number(t.duration) || 0));
+      e.ultStage = n.stage;
       let r = Ni[k.get(e.species)?.types[0] ?? `normal`] ?? 16777215;
-      (n.vfx.ring(e.x, e.y, e.z, 12, r, 0.6),
-        n.vfx.ring(e.x, e.y, e.z, 7, 16777215, 0.45),
-        n.vfx.flash(e.x, e.y + 1, e.z, r, 10, 0.25),
-        n.ui.toast(
+      const origin=this.effectOrigin(e,t);
+      if(origin){
+        n.vfx.ring(origin.x,origin.y,origin.z,12,r,0.6);
+        n.vfx.ring(origin.x,origin.y,origin.z,7,16777215,0.45);
+        n.vfx.flash(origin.x,origin.y+1,origin.z,r,10,0.25);
+      }
+      n.ui.toast(
           c(`¡{name} lanza su Ultimate: {move}!`, {
             name: e.name,
             move: typeof t.n == `string` ? t.n.slice(0, 40) : ``,
           }),
           null,
-        ));
+        );
     }
     mark() {
       let e = this.run,
@@ -75417,7 +75427,7 @@ var GT = 15,
     }
     render() {
       let e = this.run;
-      for (let t of this.active()) {
+      for (let t of this.visiblePeers()) {
         let n = t.last;
         if (n.flags & FT.out) continue;
         let r = t.skin === `classic` || t.skin === `m1` || t.skin === `m2` ? t.skin : null,
@@ -77078,7 +77088,8 @@ var GT = 15,
         items: [...this.player.items.keys()],
         splits: this.splits.slice(),
         mode: this.mode,
-        ...(this.coop ? { coop: { party: this.coop.party, size: this.coop.size } } : {}),
+        ...(this.coop ? { coop: { party: this.coop.party, size: this.coop.size, kills: this.coop.teamKills, members:
+          this.coop.roster.map(m=>({...m,kills:m.id===this.coop.room.me?t.kills:this.coop.peers.get(m.id)?.kills||0})) } } : {}),
         ...(this.endless ? { pacts: this.endless.pacts.slice() } : {}),
         ...(this.tower ? { tower: this.tower.result() } : {}),
         ...(this.slotSpins
@@ -77892,7 +77903,8 @@ var GT = 15,
       }
       let i = t.timer,
         a = t.active;
-      if ((Q_(this, e, t, n), t.timer > i + 0.05 || t.active > a + 0.05)) {
+      Q_(this, e, t, n);
+      if (!t.waitingForTarget && (t.timer > i || t.active > a)) {
         let e = t.def.arch,
           n = t.def.area * this.player.stats.area,
           i =
@@ -77908,7 +77920,7 @@ var GT = 15,
                     e === `buff`
                   ? `ring`
                   : `shot`;
-        r.cast(i, t.def.type, n);
+        r.cast(i, t.def.type, n, t.def.name);
       }
     }
     weatherFx(e) {
@@ -102137,10 +102149,14 @@ var OI = [
                     ? c(`¡Debilitado! {s} s`, { s: l.bleed })
                     : p
                       ? c(`En el portal`)
-                      : this.distance(e, s)));
+                      : s.ultStage === e.stage && s.ultUntil > e.realTime
+                        ? '大招 · ' + s.ultName
+                        : s.castStage === e.stage && s.castUntil > e.realTime
+                          ? '技能 · ' + s.castName
+                          : this.distance(e, s)));
         }
         let m = !1;
-        if (!s.gone && l && !f && s.stage === e.stage) {
+        if (!s.gone && !u && l && !f && s.stage === e.stage && (!e.ui.portraitPeerHud || d)) {
           let n = this.v.set(s.x, s.y + 2.4, s.z).applyMatrix4(r.matrixWorldInverse).z < -0.5;
           this.v.set(s.x, s.y + 2.4, s.z).project(r);
           let o = n && Math.abs(this.v.x) < 1.05 && Math.abs(this.v.y) < 1.05,
@@ -108383,8 +108399,8 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
     async chooseStarter(e, t) {
       return wO((await this.req(`/profile/starter`, `POST`, { id: t }, e.token)).profile);
     }
-    async buyLab(e, t) {
-      return wO((await this.req(`/lab/buy`, `POST`, { id: t }, e.token)).profile);
+    async buyLab(e, t, lv) {
+      return wO((await this.req(`/lab/buy`, `POST`, { id: t, lv }, e.token)).profile);
     }
     async buyItem(e, t) {
       return wO((await this.req(`/items/buy`, `POST`, { key: t }, e.token)).profile);
@@ -109349,6 +109365,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
               boosts: e.boosts,
               mode: e.mode,
               party: e.coop?.party,
+              coopSeed: e.coop?.seed,
             })),
             e.coop && (t.offline || t.party !== e.coop.party))
           )
@@ -109407,6 +109424,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         window.drawUI?.(this.r.renderer),
         onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
         await waitForLoadingPaint(this.r.renderer),
+        await e.coop?.room.waitForBattleStart((title,teamReady)=>onLoadProgress?.({phase:title,teamStatus:title,teamReady,progress:1})),
         this.setScreen(null),
         (this.run.onLoadProgress=null),
         (this.run.state='play'),

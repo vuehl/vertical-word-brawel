@@ -26,26 +26,44 @@ const shellServer=read('server.mjs');
 function serverCode() {
   const imports=shellServer.slice(0,shellServer.indexOf('const PORT')).replace(/^import .+ from 'node:(?:fs(?:\/promises)?|http|path)';\n/gm,'');
   let routes=shellServer.slice(shellServer.indexOf('function accountByToken'),shellServer.indexOf('async function sendFile'));
-  // Commit a finish atomically with its idempotency record. No partial result
-  // becomes visible to another request if a storage write or handler fails.
-  return imports+'\nimport {readStore,writeStore} from "pokebonk:store";\n'+
-    'let store,dirty=false;function persist(){dirty=true;}\n'+routes+
-    '\nlet queue=Promise.resolve();\nexport function dispatchApi(url,method,headers,bodyText){\n'+
-    '  const next=queue.then(async()=>{\n'+
-    '    const key=url.pathname.slice(4);if(key==="/coop/access")return {status:200,data:{show:false,play:false}};\n'+
-    '    if(/^\\/(coop|friends|rooms|invites|clans|mail|events|seasons|leaderboard)(\\/|$)/.test(key))return {status:404};\n'+
-    '    store??=readStore();store.coopParties??={};for(const a of Object.values(store.accounts))constrainLiteProfile(a.profile);\n'+
-    '    const route=matchRoute(method,key);if(!route)return {status:404,data:{error:"Not found."}};\n'+
-    '    const before=method==="GET"?null:JSON.stringify(store);dirty=false;\n'+
-    '    const res={status:200,data:undefined};try{const value=await route.handler({headers:{authorization:headers.Authorization||headers.authorization},bodyText},res,url,route.params);if(value!==undefined)res.data=value;if(dirty)writeStore(store);return res;}\n'+
-    '    catch(error){if(before)store=JSON.parse(before);throw error;}\n'+
-    '  });queue=next.catch(()=>{});return next;\n}\n';
+  return imports + `
+import {readStore,writeStore} from "pokebonk:store";
+import {progressDispatcher,callProgress} from "pokebonk:progress";
+let store,dirty;
+function persist(){dirty=true;}
+` + routes + `
+async function localRoute(draft,url,method,headers,bodyText){
+  store=draft;
+  store.coopParties??={};
+  dirty=false;
+  for(const account of Object.values(store.accounts))constrainLiteProfile(account.profile);
+  const key=url.pathname.slice(4);
+  if(key==="/coop/access")return {response:{status:200,data:{show:false,play:false}}};
+  const social=["coop","friends","rooms","invites","clans","mail","events","seasons","leaderboard"];
+  if(social.includes(key.split("/")[1]))return {response:{status:404}};
+  const route=matchRoute(method,key);
+  if(!route)return {response:{status:404,data:{error:"Not found."}}};
+  const response={status:200,data:undefined};
+  const value=await route.handler({headers:{authorization:headers.Authorization||headers.authorization},bodyText},response,url,route.params);
+  if(value!==undefined)response.data=value;
+  return {response,dirty};
+}
+const dispatch=progressDispatcher({load:readStore,save:writeStore,call:${development?'null':'callProgress'},
+  mutationID:()=>crypto.randomBytes(16).toString("hex"),localRoute});
+let queue=Promise.resolve();
+export function dispatchApi(...args){
+  const next=queue.then(()=>dispatch(...args));
+  queue=next.catch(()=>{});
+  return next;
+}
+`;
 }
 const sources={
   name:'pokebonk-platform',setup(build){
     build.onResolve({filter:/^pokebonk:api$/},args=>({path:args.path,namespace:'pokebonk'}));
     build.onResolve({filter:/^node:crypto$/},()=>({path:path.join(platform,'crypto.mjs')}));
     build.onResolve({filter:/^pokebonk:store$/},()=>({path:path.join(platform,'store.mjs')}));
+    build.onResolve({filter:/^pokebonk:progress$/},()=>({path:path.join(platform,'cloud-progress.mjs')}));
     build.onResolve({filter:/^pokebonk:clone$/},()=>({path:path.join(platform,'clone.mjs')}));
     build.onResolve({filter:/^pokebonk:base64$/},()=>({path:path.join(platform,'base64.mjs')}));
     build.onResolve({filter:/^pokebonk:css-number$/},()=>({path:path.join(platform,'css-number.mjs')}));

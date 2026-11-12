@@ -64,7 +64,22 @@ Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(ho
   const resolveAsync=host.files.resolvePath;
   host.files.resolvePath=async url=>{const p=await resolveAsync(url);if(!p)window.missingAssets.add(String(url));return p;};
 }});
+let fixtureSave;
+const fixtureReceipts=new Set();
+const fixtureCloud={init(){},async callContainer(options){
+  if(window.fixtureProgress)return window.fixtureProgress(options);
+  if(options.path!=='/v1/progress')throw Error('Unknown fixture cloud route');
+  const {data,method}=options;
+  if(method==='POST' && !fixtureSave)fixtureSave={revision:1,owner:'fixture',progress:structuredClone(data.progress)};
+  if(method==='PUT' && !fixtureReceipts.has(data.mutation)){
+    if(data.revision!==fixtureSave.revision)return {statusCode:409};
+    fixtureSave={...fixtureSave,revision:fixtureSave.revision+1,progress:structuredClone(data.progress)};
+    fixtureReceipts.add(data.mutation);
+  }
+  return {statusCode:fixtureSave?200:404,data:structuredClone(fixtureSave)};
+}};
 globalThis.wx={
+    cloud:fixtureCloud,
   env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>fs,
   getDeviceInfo:()=>({platform:window.fixturePlatform||'devtools'}),
   getWindowInfo:()=>({windowWidth:innerWidth,windowHeight:innerHeight,pixelRatio:devicePixelRatio,

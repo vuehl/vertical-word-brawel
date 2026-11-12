@@ -15,7 +15,7 @@
     "analyze:package": "node tools/package-report.mjs",
     "analyze:code": "node tools/build.mjs --analyze",
     "layout": "node tools/layout-reference.mjs",
-    "test": "node --test source/tools/lite.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs tools/paper.test.mjs tools/loading.test.mjs tools/surfaces.test.mjs tools/performance.test.mjs tools/optimization.test.mjs tools/experience.test.mjs tools/runtime-data.test.mjs tools/characters.test.mjs tools/starter-characters.test.mjs",
+    "test": "node --test source/tools/lite.test.mjs tools/cloud-progress.test.mjs tools/cloud-coop.test.mjs tools/peer-motion.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs tools/paper.test.mjs tools/loading.test.mjs tools/surfaces.test.mjs tools/performance.test.mjs tools/optimization.test.mjs tools/experience.test.mjs tools/runtime-data.test.mjs tools/characters.test.mjs tools/starter-characters.test.mjs",
     "test:ui-perf": "node tools/smoke.mjs --phone-layout --software-render --ui-perf",
     "test:performance": "node tools/runtime-performance.mjs",
     "test:optimizations": "node tools/runtime-performance.mjs --optimize",

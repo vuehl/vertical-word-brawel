@@ -225,6 +225,8 @@ html.zixing .zx-hud{color:#25243c}
 .zx-hud-water .zx-hud-element{background:#5aa8df}.zx-hud-wood .zx-hud-element{background:#76ab81}
 .zx-hud-level{position:absolute;left:15px;top:72px;width:50px;height:20px;display:flex;align-items:center;justify-content:center;gap:0;border:2px solid #fffdf7;border-radius:11px;background:#3c4767;color:#fffdf7;font-size:12px;line-height:1;font-weight:700;white-space:nowrap}
 .zx .zx-player-health{position:absolute;left:0;top:0;width:88px;height:20px;pointer-events:none}
+.zx .zx-peer-health,.zx .zx-peer-tag{position:absolute;left:0;top:0;width:88px;height:20px;pointer-events:none}
+.zx .zx-peer-tag{width:100px;height:26px}
 .zx .zx-minimap{position:absolute;right:0;top:5px;width:96px;height:96px;border:0;border-radius:0;background:transparent;box-shadow:none;pointer-events:auto;zoom:1}
 .zx-hud-meta{position:absolute;bottom:3px;left:14px;right:14px;display:flex;align-items:center;gap:7px;height:19px;padding:0 8px;border-radius:9px;background:#fffdf5c9}
 .zx-hud-score{font-size:11px;line-height:1.2;color:#405270;white-space:nowrap}.zx small.zx-hud-stage{flex:none;padding:1px 6px;border-radius:8px;background:#e3edf8;font-size:10px;line-height:1.3;color:#4f76a4;white-space:nowrap}

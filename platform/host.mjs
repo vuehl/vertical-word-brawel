@@ -1,3 +1,4 @@
+import {cloudSocket} from './cloud-coop.mjs';
 import 'core-js/modules/es.array.at.js';
 import 'core-js/modules/es.array.flat.js';
 import 'core-js/modules/es.array.flat-map.js';
@@ -60,6 +61,10 @@ export async function setup(host) {
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
   const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true,uploadPixels:device.platform==='ios'});
+  const peerTiles=['peer-health-0','peer-health-1','peer-tag-0','peer-tag-1'].map((id,i)=>
+    createCanvasLayer(makeCanvas,id,{slot:14+i,movable:true,uploadPixels:device.platform==='ios'}));
+  const healthLayer=element=>health.owns(element)?health:
+    element?.dataset?.uiLayer?.startsWith('peer-')?peerTiles.find(t=>t.owns(element)):null;
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
   const hudLayers=['counters','score','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
   const modalTransition=createModalTransition(makeCanvas);
@@ -93,8 +98,9 @@ export async function setup(host) {
         if(record.attributeName==='data-frame')portrait.invalidate();
         continue;
       }
-      if(record.type==='attributes'&&health.owns(element)&&['style','data-frame','data-progress','aria-valuenow','aria-valuemax','aria-label'].includes(record.attributeName)){
-        if(record.attributeName==='data-frame')health.invalidate();
+      const movable=record.type==='attributes'&&healthLayer(element);
+      if(movable&&['style','data-frame','data-progress','aria-valuenow','aria-valuemax','aria-label'].includes(record.attributeName)){
+        if(record.attributeName==='data-frame')movable.invalidate();
         continue;
       }
       if(record.type==='attributes'&&controls.owns(element)&&['style','class'].includes(record.attributeName)){
@@ -236,6 +242,10 @@ export async function setup(host) {
     addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),dispatchEvent:win.dispatchEvent.bind(win),
     alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
+    createCoopSocket:events=>cloudSocket(wx,events),
+    copyRoomCode:code=>new Promise((resolve,reject)=>wx.setClipboardData({data:code,success:resolve,fail:reject})),
+    askRoomCode:()=>new Promise((resolve,reject)=>wx.showModal({title:'加入房间',editable:true,placeholderText:'请输入六位房间号',
+      success:result=>resolve(result.confirm ? (result.content||'').trim() : null),fail:reject})),
     setUIPerformance(){
       // Settings also change inherited CSS variables (e.g. button size).
       // Refresh their hit boxes even when the pixel ratio stays the same.
@@ -262,12 +272,13 @@ export async function setup(host) {
       const state=env.__pb?.run?.state;
       const changed=uiFrames.draw(now,state,layout,boxes=>{
         controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
+        if(env.__pb?.run?.coop)for(const tile of peerTiles)tile.capture(boxes);
         for(const tile of hudLayers)tile.capture(boxes);
         const visible=modalTransition.capture(layout,boxes,view,scale);
-        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||health.owns(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
+        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||healthLayer(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
       });
       if(opaque&&!changed)return;
-      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),portrait.draw(layout,view,scale,state==='play'&&!opaque),...hudLayers.map(tile=>tile.draw(layout,view,scale,state==='play'&&!opaque)),...modalTransition.layers(scale,perf.now())];
+      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),...(state==='play'&&!opaque&&env.__pb?.run?.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,state==='play'&&!opaque),...hudLayers.map(tile=>tile.draw(layout,view,scale,state==='play'&&!opaque)),...modalTransition.layers(scale,perf.now())];
       if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenModalKey());
     },
     readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},
