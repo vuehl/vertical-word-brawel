@@ -30,8 +30,9 @@ function prepareSheet(name){
 
 export function windFaintTile(species,elapsedMs){
   if(rigs[species]?.word!=='风'||!sheets.get(windFaint.atlas.image)?.image)return;
-  const {frames,frameMs}=windFaint.anims.faint;
-  const index=Math.min(frames.length-1,Math.floor(Math.max(0,elapsedMs)/frameMs));
+  const {frames,frameMs,loop}=windFaint.anims.faint;
+  const frame=Math.floor(Math.max(0,elapsedMs)/frameMs);
+  const index=loop?frame%frames.length:Math.min(frame,frames.length-1);
   return windFaint.tiles[frames[index]];
 }
 

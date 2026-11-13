@@ -8,18 +8,21 @@ function geometry(p,n,uv,indices){
 }
 // All six faces share the same analytic rounded surface, including top edges.
 // A single geometry is instanced at many scales; there are no overlapping boxes.
-export function beveledBoxGeometry(radius=.07,segments=8){
+export function beveledBoxGeometry(radius=.07,artworkFace){
   const p=[],n=[],uv=[],indices=[],inner=.5-radius;
   // Concentrate vertices in the bevel itself. A uniform grid puts almost all
   // of its vertices on the flat face and leaves a single angular edge strip.
-  const c=[-.5,-inner-radius*.8660254,-inner-radius*.5,-inner,0,inner,inner+radius*.5,inner+radius*.8660254,.5];segments=c.length-1;
+  const c=[-.5,-inner-radius*.8660254,-inner-radius*.5,-inner,0,inner,inner+radius*.5,inner+radius*.8660254,.5],segments=c.length-1;
   const faces=[[[1,0,0],[0,0,-1],[0,1,0]],[[-1,0,0],[0,0,1],[0,1,0]],[[0,1,0],[1,0,0],[0,0,-1]],[[0,-1,0],[1,0,0],[0,0,1]],[[0,0,1],[1,0,0],[0,1,0]],[[0,0,-1],[-1,0,0],[0,1,0]]];
   for(const [normal,u,v] of faces){
     const start=p.length/3;
     for(let j=0;j<=segments;j++)for(let i=0;i<=segments;i++){
       const a=c[i],b=c[j],xyz=normal.map((x,k)=>x*.5+u[k]*a+v[k]*b);
       const center=xyz.map(x=>Math.max(-inner,Math.min(inner,x))),d=xyz.map((x,k)=>x-center[k]),len=Math.hypot(...d)||1;
-      p.push(...center.map((x,k)=>x+d[k]/len*radius));n.push(...d.map(x=>x/len));uv.push(a+.5,b+.5);
+      p.push(...center.map((x,k)=>x+d[k]/len*radius));n.push(...d.map(x=>x/len));
+      // Undecorated faces sample the blank margin of the same printed sheet.
+      if(artworkFace&&(artworkFace==='top'?normal[1]:normal[2])!==1)uv.push(.01,.01);
+      else uv.push(a+.5,b+.5);
       if(i<segments&&j<segments){const k=start+j*(segments+1)+i;indices.push(k,k+1,k+segments+1,k+1,k+segments+2,k+segments+1);}
     }
   }

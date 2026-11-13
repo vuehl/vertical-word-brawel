@@ -63,7 +63,8 @@ function factoryPaths(){
 export function createWorkshopAssets(){
   const helixPoints=r=>Array.from({length:161},(_,i)=>{const t=i/160,a=t*TAU*2.6;return [Math.cos(a)*r,23-20.5*t+.45,Math.sin(a)*r];});
   const paths=factoryPaths(),switchback=marbleTrack(paths.switchback.points),twin=marbleTrack(paths.twin.points);
-  return {boxes:new BoxGeometry(1,1,1),bevels:beveledBoxGeometry(),planes:new PlaneGeometry(1,1),cylinders:new CylinderGeometry(1,1,1,48),
+  return {boxes:new BoxGeometry(1,1,1),bevels:beveledBoxGeometry(),bookCovers:beveledBoxGeometry(.07,'top'),
+    bookSpines:beveledBoxGeometry(.07,'front'),planes:new PlaneGeometry(1,1),cylinders:new CylinderGeometry(1,1,1,48),
     cones:new ConeGeometry(1,1,32),spheres:new SphereGeometry(1,32,20),rings:torusGeometry(1,.075,72,12),
     spool:latheGeometry([[0,-.5],[.82,-.5],[.98,-.44],[1,-.34],[.94,-.24],[.56,-.16],[.47,-.1],[.47,.1],[.56,.16],[.94,.24],[1,.34],[.98,.44],[.82,.5],[0,.5]]),
     helix:helixTrackGeometry(),railInner:tubeGeometry(helixPoints(3.85),.1),railOuter:tubeGeometry(helixPoints(5.35),.1),
@@ -109,13 +110,25 @@ export function* workshopWorldSteps(terrain){
   const brass=mat('aged-brass',{color:0xd8b66c,roughness:.32,metalness:.5});
   const cloth=c=>workshopSurface(assets,'bookcloth-'+c,{photo:'linen',color:c,roughness:.91,bump:.045});
   const paperMaterial=workshopSurface(assets,'paper-edges',{photo:'paper',color:0xf1f8ff});
-  const redCover=workshopSurface(assets,'gilt-storybook',{photo:'storybook',roughness:.83,bump:.027});
   function texture(key,w,h,draw){
     if(textures.has(key))return textures.get(key);
     const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;draw(canvas.getContext('2d'),w,h);
     const t=new CanvasTexture(canvas);t.colorSpace=SRGB;t.anisotropy=4;textures.set(key,t);return t;
   }
   const texMat=(key,t,roughness=.8)=>mat(key,{color:0xffffff,map:t,roughness,metalness:0});
+  function bookCover(color,gilt){
+    const key='book-cover-'+color+(gilt?'-gilt':'');
+    const map=texture(key,512,512,c=>{
+      c.fillStyle=color;c.fillRect(0,0,512,512);
+      if(gilt)c.drawImage(workshopPhoto(assets,'storybook').texture.image,10,8,492,496);
+      c.strokeStyle='#d8b66c';c.lineWidth=1.5;
+      for(const z of [-8,-6.7,6.7,8]){
+        const y=(.5+z/20.2)*512;
+        c.beginPath();c.moveTo(19,y);c.lineTo(493,y);c.stroke();
+      }
+    });
+    return texMat(key,map);
+  }
   function mesh(g,geo,material,x,y,z,sx,sy,sz,rx=0,ry=0,rz=0){
     transform.position.set(x,y,z);transform.scale.set(sx,sy,sz);transform.rotation.set(rx,ry,rz);transform.updateMatrix();g.updateWorldMatrix(true,false);
     const tint=typeof material==='string'?color(material):null,m=tint?solid:material,key=geo.uuid+'/'+m.uuid;
@@ -188,7 +201,7 @@ export function* workshopWorldSteps(terrain){
     };
     const pageTex=texture('warm-notebook-page',1024,1024,drawPaper);
     if(!pageTex.userData.paperPhoto){pageTex.userData.paperPhoto=true;assets.photoJobs.push(workshopPhoto(assets,'paper').ready.then(()=>{if(!assets.disposed){drawPaper(pageTex.image.getContext('2d'));pageTex.needsUpdate=true;}}));}
-    roundedBox(g,0,(height+.08)/2,0,w,height-.08,d,paperMaterial);plane(g,0,height+.012,0,w-.25,d-.25,texMat('notebook-paper',pageTex,.94));
+    mesh(g,assets.bookCovers,texMat('notebook-paper',pageTex,.94),0,(height+.012+.08)/2,0,w,height+.012-.08,d);
     groundSurface(x,z,w+.7,d+.7,a,base+height+.012,'notebook');
     for(let i=0;i<11;i++){ring(g,-w/2+.2,height+.04,-d/2+2+i*(d-4)/10,.48,brass,0,Math.PI/2);}
     // A narrow fabric bookmark lies over one corner, away from the open page.
@@ -211,14 +224,15 @@ export function* workshopWorldSteps(terrain){
     const g=group(x,z,a),cover=cloth('#9a7759');
     roundedBox(g,0,.04,0,w+.55,.08,d+.55,cover);
     roundedBox(g,0,height/2,0,w,height-.12,d,paperMaterial);
-    roundedBox(g,0,height-.035,0,w+.55,.07,d+.55,cover);
     const label=texture('sketchbook-cover',512,512,c=>{
-      c.clearRect(0,0,512,512);c.strokeStyle='#eadbb7';c.lineWidth=3;c.strokeRect(80,132,352,240);
+      c.fillStyle='#9a7759';c.fillRect(0,0,512,512);
+      c.save();c.translate(64,90);c.scale(.75,.65);
+      c.strokeStyle='#eadbb7';c.lineWidth=3;c.strokeRect(80,132,352,240);
       c.beginPath();c.moveTo(160,307);c.lineTo(241,201);c.lineTo(292,268);c.lineTo(328,237);c.lineTo(372,307);c.stroke();
-      c.beginPath();c.arc(335,194,18,0,TAU);c.stroke();
+      c.beginPath();c.arc(335,194,18,0,TAU);c.stroke();c.restore();
+      c.fillStyle='#667b70';c.fillRect(414,0,10,512);
     });
-    plane(g,0,height+.015,0,w*.75,d*.65,mat('sketchbook-cover',{map:label,transparent:true,depthWrite:false}));
-    box(g,w*.32,height+.016,0,.55,.03,d+.6,cloth('#667b70'));
+    mesh(g,assets.bookCovers,texMat('sketchbook-cover',label),0,height-.035,0,w+.55,.07,d+.55);
     groundSurface(x,z,w+.55,d+.55,a,height+.032,'sketchbook');
   }
   function pencil(x,z,a,c='#eeaf3b',s=1){
@@ -229,18 +243,18 @@ export function* workshopWorldSteps(terrain){
   function bookStack(x,z,s=1,a=0){
     const g=prop('giant-storybook-stack',x,z,17*s,23*s,13.2*s,a);
     for(let i=0;i<4;i++){
-      const b=new Group();b.position.set([-.4,.55,-.2,.3][i]*s,i*3.12*s,[.2,-.45,.4,-.2][i]*s);b.rotation.y=[-.07,.075,-.1,.025][i];g.add(b);
+      const b=new Group();b.position.set([-.4,.55,-.2,.3][i]*s,i*3.25*s,[.2,-.45,.4,-.2][i]*s);b.rotation.y=[-.07,.075,-.1,.025][i];g.add(b);
       const c=['#2e737a','#ae5545','#caa153','#625778'][i],cover=cloth(c);
       roundedBox(b,0,.22*s,0,14.8*s,.44*s,20.2*s,cover);
       roundedBox(b,.2*s,1.65*s,.05*s,14.15*s,2.5*s,19.5*s,paperMaterial);
       // Page signatures live in the paper material. Thin stacked geometry
       // aliases against its own shadow at the phone camera distance.
-      roundedBox(b,0,3.03*s,0,14.8*s,.43*s,20.2*s,cover);
-      if(i===1||i===3)plane(b,0,3.252*s,0,14.2*s,19.6*s,redCover);
-      roundedBox(b,-7.28*s,1.64*s,0,.68*s,3.15*s,20.2*s,cover);
+      // Print the art and foil on the upper board. A separate decal here
+      // competes with the board for depth on 16-bit mobile render targets.
+      mesh(b,assets.bookCovers,bookCover(c,i===1||i===3),0,3.03*s,0,14.8*s,.43*s,20.2*s);
+      roundedBox(b,-7.28*s,1.64*s,0,.68*s,2.45*s,20.2*s,cover);
       for(const zBand of [-8,-6.7,6.7,8]){
         roundedBox(b,-7.65*s,1.65*s,zBand*s,.12*s,2.6*s,.12*s,brass);
-        box(b,0,3.26*s,zBand*s,13.7*s,.025*s,.04*s,brass);
       }
       // A cloth bookmark hangs loosely over the front page block.
       box(b,3.8*s,2.95*s,9.4*s,1.05*s,.08*s,4.5*s,cloth(i%2?'#7b9278':'#b06b56'));
@@ -586,10 +600,16 @@ export function* workshopWorldSteps(terrain){
         terrain.addCollider(paperBox(point.x,point.z,w,7,h+.2,angle));
       }else{
       for(let b=0;b<5;b++){
-        const h=cutaway?2.8+(b%3)*.45:24+(b%3)*6.1,xx=x-7+b*3.1,cover=cloth(palette[(b+side)%6]);
-        roundedBox(g,xx,h/2,z,2.6,h,6.4,cover);
-        for(const yy of [.14,.23,.78,.87])roundedBox(g,xx,h*yy,z+3.25,2.45,.07,.09,brass);
-        roundedBox(g,xx,h*.52,z+3.27,1.85,cutaway?.65:1.45,.08,paperMaterial);
+        const h=cutaway?2.8+(b%3)*.45:24+(b%3)*6.1,xx=x-7+b*3.1,color=palette[(b+side)%6];
+        const key='book-spine-'+color+(cutaway?'-short':'');
+        const map=texture(key,128,512,c=>{
+          c.fillStyle=color;c.fillRect(0,0,128,512);
+          c.fillStyle='#d8b66c';
+          for(const y of [.14,.23,.78,.87])c.fillRect(4,(1-y)*512,120,cutaway?9:2);
+          const labelHeight=cutaway?95:26;
+          c.fillStyle='#eff5fb';c.fillRect(19,.48*512-labelHeight/2,90,labelHeight);
+        });
+        mesh(g,assets.bookSpines,texMat(key,map),xx,h/2,z,2.6,h,6.4);
         const point=new Vector3(x-7+b*3.1,0,z);g.localToWorld(point);
         terrain.zxProps.push({kind:'boundary-book',x:point.x,z:point.z,w:2.6,d:6.4,h,angle,boundaryGroup:cluster.id});terrain.addCollider(paperBox(point.x,point.z,2.6,6.4,h+.2,angle));
       }
@@ -617,7 +637,7 @@ export function* workshopWorldSteps(terrain){
     if(geo!==planes&&geo!==boxes&&geo!==rings){
       const ink=new InstancedMesh(geo,workshopInk(assets),matrices.length);
       matrices.forEach((m,i)=>ink.setMatrixAt(i,m));ink.instanceMatrix.needsUpdate=true;
-      ink.name='painted-prop-contour';ink.matrixAutoUpdate=false;ink.computeBoundingSphere();
+      ink.name='painted-prop-contour';ink.renderOrder=1;ink.matrixAutoUpdate=false;ink.computeBoundingSphere();
       preparePaperBatch(ink);root.add(ink);
     }
     yield;

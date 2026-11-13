@@ -97,7 +97,9 @@ export function workshopSurface(assets,key,{color=0xffffff,photo='linen',roughne
 // It reuses the same geometry and instance culling as the coloured surface.
 export function workshopInk(assets){
   if(assets.mats.has('ink-contour'))return assets.mats.get('ink-contour');
-  const material=new ShaderMaterial({side:1,depthWrite:false,uniforms:{uInkViewport:{value:{x:780,y:1688}}},
+  // The hull shares vertices with its painted surface. Reject equal depth
+  // so a quantized back face cannot draw ink across the front of a thin prop.
+  const material=new ShaderMaterial({side:1,depthWrite:false,depthFunc:2,uniforms:{uInkViewport:{value:{x:780,y:1688}}},
     vertexShader:`uniform vec2 uInkViewport;
       void main(){
         vec4 local=vec4(position,1.);vec3 n=normal;
