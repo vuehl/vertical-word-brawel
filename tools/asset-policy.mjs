@@ -2,7 +2,7 @@ import {paperPropNames} from '../source/src/paper-prop-names.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=17;
+export const assetPolicyVersion=18;
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
 
@@ -18,6 +18,7 @@ export function excludedAssetReason(key){
   if(model&&/^(?:tower|desert|coast|glacier|ruins|halloween)_/.test(model))return '未开放地图或关闭活动的模型';
   if(/^assets\/env\/(?:forest|sanctum)\//.test(key))return '已由桌面与纸张贴图替代';
   if(key.startsWith('assets/ui/events/'))return '当前版本活动列表为空';
+  if(/^assets\/ui\/icons\/r-(?:gg|fire|love|lol|star|wow)\.png$/.test(key))return '仅旧公会和社交动态使用的表情';
   if(/^assets\/ui\/(?:avatars|frames|ranks)\//.test(key))return '旧社交头像、头像框和排行榜界面未启用';
   return null;
 }

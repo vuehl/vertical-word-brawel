@@ -1,3 +1,4 @@
+import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, runRecordKey} from './lite-rules.js';
 import {enemyWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
@@ -6771,8 +6772,8 @@ var Al = new Ei(),
     );
   })({}),
   Ml = `float wh = clamp(min(c.r, min(c.g, c.b)), 0., 1.); c *= (1. - 0.45 * wh) / (1. + vGlow * 0.5);`;
-function Nl() {
-  const texture=createStylizedEffectAtlas();
+async function Nl() {
+  const texture=await createStylizedEffectAtlas();
   Pl(texture.image.getContext('2d'),texture,EFFECT_CELL);
   return texture;
 }
@@ -7590,8 +7591,8 @@ var Gl = class {
     track(e) {
       return (this.faded.push(e), (e.fade = this.opacity), e);
     }
-    constructor(e, t) {
-      ((this.atlas = Nl()),
+    constructor(e, t, atlas) {
+      ((this.atlas = atlas),
         (this.add = new zl(e, this.atlas, 3000, !0, !1, t)),
         (this.norm = new zl(e, this.atlas, 1800, !1, !1, t)),
         (this.ground = new zl(e, this.atlas, 1500, !0, !0, t)),
@@ -72434,8 +72435,14 @@ var iT = Math.PI / 180,
   UT = class {
     buf = new ArrayBuffer(65536);
     dv = new DataView(this.buf);
+    // Reuse the first teammate's encoded records when the second can see
+    // the same enemies. Distances and reliable descriptors remain per peer.
+    previousRecords = new Uint8Array(KT * zT);
+    previousView = new DataView(this.previousRecords.buffer);
+    previousOffsets = new Uint16Array(xf);
     head = 0;
     begin(e, t, n, r) {
+      this.hasPrevious = false;
       this.bonus = Math.max(0, Math.round(t.bonus || 0));
       let i = this.dv,
         a = 0;
@@ -72499,12 +72506,25 @@ var iT = Math.PI / 180,
       }
       this.head = a;
     }
-    finish(ids, coop) {
+    finish(ids, coop, remember = false) {
       const view = this.dv, enemies = coop.run.enemies;
       let i = this.head;
       view.setUint16(i, ids.length, true);
       i += 2;
+      const start = i;
+      if (remember) this.previousOffsets.fill(0);
       for (const id of ids) {
+        const offset = this.hasPrevious ? this.previousOffsets[id] - 1 : -1;
+        if (offset >= 0) {
+          const previous = this.previousView;
+          view.setUint32(i, previous.getUint32(offset));
+          view.setUint32(i + 4, previous.getUint32(offset + 4));
+          view.setUint16(i + 8, previous.getUint16(offset + 8));
+          view.setUint8(i + 10, previous.getUint8(offset + 10));
+          i += zT;
+          continue;
+        }
+        if (remember) this.previousOffsets[id] = i - start + 1;
         const hp = enemies.hp[id] / Math.max(1e-9, enemies.maxHp[id]);
         const anim = enemies.atkAnim[id] > 0 ? 1 : enemies.frozen[id] > 0 || enemies.sleep[id] > 0 ? 2 : 0;
         view.setUint16(i, IT(id, enemies.gen[id]), true);
@@ -72518,6 +72538,10 @@ var iT = Math.PI / 180,
       }
       // Optional trailer after the counted enemy records; older v2 readers
       // ignore it and older senders have no bonus to display.
+      if (remember && ids.length) {
+        this.previousRecords.set(new Uint8Array(this.buf, start, i - start));
+        this.hasPrevious = true;
+      }
       if (this.bonus) { view.setFloat32(i,this.bonus,true); i+=4; }
       // Both transports take ownership of the bytes during sendSnap.
       return new Uint8Array(this.buf, 0, i);
@@ -72626,7 +72650,6 @@ var GT = 15,
   rE = 0.1,
   aE = 4,
   oE = 1.5,
-  sE = () => (Da ? Pa(`E`) : ta(`interact`)),
   cE =
     R.Capture |
     R.Elite |
@@ -72667,6 +72690,8 @@ var GT = 15,
     peers = new Map();
     bySlot = new Map();
     writer = new UT();
+    nextCheckpoint = 0;
+    nextCleanup = 0;
     snapshotIds = [];
     snapshotDistances = new Float64Array(xf);
     sendT = 0;
@@ -72707,8 +72732,6 @@ var GT = 15,
     out = !1;
     liftedBy = null;
     liftPeer = null;
-    liftAt = -99;
-    liftSend = 0;
     killsSent = -1;
     killsT = 0;
     portalReady = !1;
@@ -72727,6 +72750,7 @@ var GT = 15,
       let n = this.room.room.members;
       this.roster = n.slice();
       ((this.size = n.length), (this.mySlot = this.room.mine?.slot ?? 0));
+      this.budgetRank=n.filter(m=>m.slot<this.mySlot).length;
       for (let e of n) {
         if (e.id === this.room.me) continue;
         let t = {
@@ -72738,7 +72762,7 @@ var GT = 15,
           skin: e.skin ?? null,
           tag: e.tag ?? null,
           link: this.room.linkState(e.id),
-          gone: !1,
+          gone: !!e.offline,
           last: null,
           lastAt: -99,
           stage: 0,
@@ -72756,11 +72780,12 @@ var GT = 15,
           bossMax: 0,
           ack: 0,
           animT: 0,
-          rvAt: -99,
           kills: 0,
         };
         (this.peers.set(e.id, t), this.bySlot.set(e.slot, t), this.known.set(e.id, new Map()));
       }
+      this.onHide=()=>{if(this.room.open && !this.ended)saveProgress(this.run);};
+      window.addEventListener('pagehide',this.onHide);
       ((this.room.inRun = !0),
         (this.room.ev = {
           ctl: (e, t) => this.onCtl(e, t),
@@ -72768,7 +72793,8 @@ var GT = 15,
           link: (e, t) => this.onLink(e, t),
           closed: reason => {
             for (let e of this.peers.values()) this.peerGone(e);
-            if (this.room.startGate?.done && !this.room.startGate.error && !this.ended && this.run.state !== 'over') {
+            if ((this.room.returning || (this.room.startGate?.done && !this.room.startGate.error)) && !this.ended && this.run.state !== 'over') {
+              if(this.room.onInterrupted){this.room.onInterrupted();return;}
               this.run.ui.toast(reason, null);
               this.run.endHow = 'disconnect';
               void this.run.finish(false);
@@ -72865,7 +72891,10 @@ var GT = 15,
         this.portalTick(e));
       for (let e = this.marks.length - 1; e >= 0; e--)
         this.marks[e].t < t.realTime && this.marks.splice(e, 1);
-      this.dropStale();
+      if(t.realTime>=this.nextCleanup){this.dropStale();this.nextCleanup=t.realTime+.25;}
+      if(this.room.open && t.state!=='transition' && t.realTime>=this.nextCheckpoint){
+        this.nextCheckpoint=t.realTime+5;saveProgress(t);
+      }
       let r = t.player.pos,
         i = this.targets;
       ((i.length = 0), t.player.dead || i.push(r.x, r.z));
@@ -72978,7 +73007,7 @@ var GT = 15,
         for (let e = 0; e < a.length; e += 1080)
           this.room.mesh.sendCtl(t.id, { t: `en`, l: a.slice(e, e + 1080) });
         known.forEach((seen, key) => { if (l - seen > tE) known.delete(key); });
-        this.room.mesh.sendSnap(t.id, this.writer.finish(ids, this));
+        this.room.mesh.sendSnap(t.id, this.writer.finish(ids, this, r.length > 1 && t === r[0]));
       }
     }
     stBits(e) {
@@ -73002,6 +73031,7 @@ var GT = 15,
       if (!acceptPeerSample(n,{ts:r.ts,x:r.player.x,y:r.player.y,z:r.player.z,face:r.player.face},r.stage,dE())) return;
       n.last = r.player;
       n.lastAt = this.run.realTime;
+      n.receivedAt=dE();
       n.stage = r.stage;
       if (r.player.species) n.species = r.player.species;
       if (r.stage === this.run.stage && this.run.state !== `transition`) {
@@ -73473,7 +73503,7 @@ var GT = 15,
         e.audio.defeat(),
         e.ui.banner(
           c(`¡Te han debilitado!`),
-          c(`Un compañero tiene que ir a tu lado y mantener pulsado {key} para reanimarte`, { key: sE() }),
+          '等待队友在身边停留 3 秒',
           `#ff5a6a`,
           { species: e.player.speciesId },
         ),
@@ -73488,42 +73518,38 @@ var GT = 15,
       let e = this.run.player.pos,
         t = null,
         n = Cb * Cb;
-      for (let r of this.active()) {
+      for (let r of this.visiblePeers()) {
         if (!(r.last.flags & FT.downed)) continue;
         let i = (r.x - e.x) ** 2 + (r.z - e.z) ** 2;
         i < n && ((n = i), (t = r));
       }
       return t;
     }
-    lift(e, t) {
-      e
-        ? ((this.liftPeer = e),
-          (this.liftAt = this.run.realTime),
-          (this.liftSend -= t) <= 0 && ((this.liftSend = 0.15), this.room.mesh.sendCtl(e.id, { t: `rv` })))
-        : ((this.liftPeer = null), (this.liftSend = 0));
-    }
     get lifting() {
       let e = this.liftPeer;
-      return e && this.run.realTime - this.liftAt < 0.25 && e.last && e.last.flags & FT.downed ? e : null;
+      return e && e.last && e.last.flags & FT.downed ? e : null;
     }
     downedTick(e) {
       let t = this.run,
         n = t.player;
+      const now=dE(),previous=this.liftedBy;
+      this.liftPeer=!n.dead?this.downedNear():null;
       if (((this.liftedBy = null), n.dead && !this.out)) {
-        let r = Cb + 1.5;
+        let r = Cb;
         for (let e of this.active())
           if (
-            !(e.last.flags & (FT.downed | FT.out) || t.realTime - e.rvAt > 0.45) &&
-            (e.x - n.pos.x) ** 2 + (e.z - n.pos.z) ** 2 < r * r
+            (e===previous || !this.liftedBy) &&
+            !(e.last.flags & (FT.downed | FT.out)) && e.link==='open' &&
+            now-e.receivedAt<4 &&
+            (e.last.x - n.pos.x) ** 2 + (e.last.z - n.pos.z) ** 2 < r * r
           ) {
             this.liftedBy = e;
-            break;
+            if(e===previous)break;
           }
         let i = this.liftedBy;
-        if (
-          ((this.reviveK = i ? this.reviveK + e : Math.max(0, this.reviveK - e * 1.5)),
-          i && this.reviveK >= 3)
-        ) {
+        if(previous!==i)this.rescueStarted=now;
+        this.reviveK=i ? Math.max(0,i.receivedAt-this.rescueStarted) : 0;
+        if (i && this.reviveK >= 3) {
           ((this.liftedBy = null), this.revive(c(`¡{name} te ha reanimado!`, { name: i.name }), i.slot));
           return;
         }
@@ -73545,6 +73571,7 @@ var GT = 15,
     revive(e, t = -1) {
       let n = this.run,
         r = n.player;
+      if(t>=0)this.rescueCompleteUntil=dE()+0.45;
       ((r.dead = !1),
         (r.hp = Math.max(r.hp, r.maxHp * wb)),
         (r.iframes = Math.max(r.iframes, 2.5)),
@@ -73653,8 +73680,9 @@ var GT = 15,
           : ((t.state = `dead`), (t.timeScale = 0.25), t.audio.defeat(), t.later(0.6, () => t.finish(!1))));
     }
     onFinish() {
+      forgetSeat(this.room.me);
       (this.ended || ((this.ended = !0), this.broadcast({ t: `bye` })),
-        window.setTimeout(() => void this.room.leave(), 1500));
+        void this.room.leave());
     }
     captureFound(e) {
       this.broadcast({ t: `cap`, st: this.run.stage, sp: e });
@@ -73722,6 +73750,16 @@ var GT = 15,
       if (!n || !t || typeof t.t != `string`) return;
       let r = this.run;
       switch (t.t) {
+        case 'resume-query': {
+          if(!r.player || r.buildingStage || r.state==='transition' || this.ended)return;
+          const portal=r.interactables.list.find(i=>i.kind==='portal');
+          const index=r.boss.bossIndex;
+          this.room.mesh.sendCtl(e,{t:'resume-world',stage:r.stage,stageTime:r.stageTime,time:r.time,
+            x:r.player.pos.x,z:r.player.pos.z,
+            portal:portal && {x:portal.x,z:portal.z,sanct:!!portal.data?.sanct},
+            boss:this.bossShared && r.boss.alive ? {x:r.enemies.x[index],z:r.enemies.z[index],slot:this.bossAuth}:null});
+          break;
+        }
         case `en`:
           Array.isArray(t.l) && this.onDescriptors(n, t.l);
           break;
@@ -73763,20 +73801,16 @@ var GT = 15,
           break;
         case `down`:
           r.ui.toast(
-            c(`¡{name} está debilitado! Ve a su lado y mantén {key} para reanimarlo`, {
-              name: n.name,
-              key: sE(),
-            }),
+            n.name+' 已倒地，靠近并停留 3 秒可救起',
             null,
           );
           break;
-        case `rv`:
-          n.rvAt = r.realTime;
-          break;
+
         case `k`:
           n.kills = Math.max(n.kills, Math.max(0, t.n | 0));
           break;
         case `up`:
+          if(t.by===this.mySlot)this.rescueCompleteUntil=dE()+0.45;
           t.by === this.mySlot
             ? (r.audio.levelUp(),
               r.vfx.burst(n.x, n.y + 1, n.z, 8060826, 16, 5, I.Heart, 0.5, 0.7),
@@ -73826,6 +73860,13 @@ var GT = 15,
     }
     onLink(e, t) {
       let n = this.peers.get(e);
+      if(n && t==='open'){
+        this.peerGone(n);
+        Object.assign(n,{gone:false,link:t,last:null,lastAt:-99,stage:0,buf:[],boss:[],ack:0});
+        this.known.get(n.id).clear();
+        this.bdAcks.delete(n.slot);
+        return;
+      }
       n &&
         ((n.link = t),
         (t === `closed` || t === `failed`) &&
@@ -74076,7 +74117,8 @@ var GT = 15,
       this.room.mesh.broadcast(e);
     }
     dispose() {
-      ((this.ended = !0), this.room.open && (this.broadcast({ t: `bye` }), this.room.leave()));
+      window.removeEventListener('pagehide',this.onHide);
+      ((this.ended = !0), this.room.open && (forgetSeat(this.room.me),this.broadcast({ t: `bye` }), this.room.leave()));
     }
   },
   pE = new Ei(16777215),
@@ -74298,7 +74340,8 @@ var GT = 15,
       }),
         a.coop &&
           this.mode === `standard` &&
-          ((this.coop = new fE(this, a.coop)),
+          ((this.stage = a.coop.world?.stage ?? 1),
+          (this.coop = new fE(this, a.coop)),
           (this.diff.enemyHp *= this.coop.hpMul),
           (this.diff.enemyAmount *= this.coop.spawnMul)));
       let s = i.profile.settings;
@@ -74309,7 +74352,7 @@ var GT = 15,
         this.setHordeQuality(s.quality),
         (Fl.density = this.performance.particleDensity),
         (this.sprites = new rl(e.scene, e.shared)),
-        (this.vfx = new Kl(e.scene, e.shared)),
+        (this.vfx = new Kl(e.scene, e.shared, a.effectAtlas)),
         this.vfx.crafted.attach(this),
         this.vfx.setPerformance(this.performance,this.sprites),
         (this.vfx.calm = !!i.profile.settings.reduceFlashes),
@@ -74364,6 +74407,7 @@ var GT = 15,
     }
     stageSprites() {
       let e = new Set([this.player.speciesId]);
+      if(this.coop)for(const peer of this.coop.peers.values())if(!peer.gone)e.add(peer.species);
       if (this.tower) for (let t of this.tower.sprites()) e.add(t);
       let t = (n) => {
         for (let r of k.evolutionsOf(n)) !e.has(r.id) && k.hasSprite(r.id) && (e.add(r.id), t(r.id));
@@ -76310,13 +76354,11 @@ var GT = 15,
           ? this.allies.dismiss()
           : this.state === `play` && this.coop && t.hit(`KeyG`) && this.coop.mark());
       let i = this.interactables.nearest,
-        a = this.coop && this.state === `play` && !r ? this.coop.downedNear() : null,
-        o = !!a && t.down(`KeyE`);
-      (this.coop?.lift(o ? a : null, e),
-        this.state !== `play` || r
+        a = this.coop?.lifting;
+      (this.state !== `play` || r
           ? this.ui.setPrompt(null)
           : a
-            ? this.ui.setPrompt(o ? null : c(`[E] Mantén pulsado para reanimar a {name}`, { name: a.name }))
+            ? this.ui.setPrompt(null)
             : this.capture.throwing
               ? this.ui.setPrompt(null)
               : this.capture.canThrow()
@@ -100600,6 +100642,14 @@ var OI = [
         this.teamLayer = X('div', {'data-ui-layer':'coop-team',
           style:{position:'absolute',left:'0',top:'0',width:'0',height:'0',overflow:'visible','pointer-events':'none'}}, this.team);
       }
+      this.downLabel=X('span');
+      this.down.append(this.downLabel);
+      this.rescueRing=document.createElement('canvas');
+      this.rescueRing.width=this.rescueRing.height=80;
+      this.rescueRing.style.width=this.rescueRing.style.height='40px';
+      this.rescueRing.dataset.static='true';
+      this.rescueLabel=X('b');
+      this.lift.append(this.rescueRing,this.rescueLabel);
       e.append(this.teamLayer ?? this.team, this.down, this.portal, this.lift, this.watch);
     }
     els(e) {
@@ -100737,7 +100787,7 @@ var OI = [
               ? o
                 ? l.revive > 0
                   ? c(`Reanimando…`)
-                  : c(`Mantén {key} a su lado`, { key: sE() })
+                  : '在身边停留 3 秒'
                 : c(`¡Reanímalo! · {m} m`, {
                     m: Math.round(Math.hypot(s.x - e.player.pos.x, s.z - e.player.pos.z)),
                   })
@@ -100747,45 +100797,30 @@ var OI = [
         }
         t.tag.hidden = !m;
       }
-      if (e.player.dead && e.state !== `over`) {
-        if (((this.down.hidden = !1), o)) {
-          let e = Math.min(1, t.reviveK / 3),
-            n = t.liftedBy;
-          (this.down.classList.toggle(`lifting`, !t.out && e > 0),
-            ow(
-              $(this.down),
-              X(`b`, {}, t.out ? c(`Fuera de combate`) : c(`¡Debilitado!`)),
-              X(
-                `span`,
-                {},
-                t.out
-                  ? c(`Vuelves en la siguiente zona si tu equipo llega`)
-                  : n
-                    ? c(`{name} te está reanimando…`, { name: n.name })
-                    : e > 0
-                      ? c(`Te estaban reanimando: que no se aleje`)
-                      : c(`Un compañero tiene que ir a tu lado y mantener pulsado {key}`, { key: sE() }),
-              ),
-              t.out
-                ? null
-                : X(
-                    `div`,
-                    { class: `coop-hp` },
-                    X(`i`, { style: { width: `${Math.round((e > 0 ? e : t.bleed / 30) * 100)}%` } }),
-                  ),
-              t.out || e > 0 ? null : X(`em`, {}, c(`{s} s`, { s: Math.ceil(t.bleed) })),
-            ));
+      const down=e.player.dead && e.state!=='over';
+      const rescuer=t.lifting;
+      this.down.hidden=!down || !!t.liftedBy;
+      if(down && o){
+        const seconds=Math.ceil(t.bleed);
+        const label=t.out?c(`Vuelves en la siguiente zona si tu equipo llega`):
+          t.liftedBy?t.liftedBy.name+' 正在救援':'等待队友在身边停留 3 秒 · '+seconds+' 秒';
+        if(this.downLabel.textContent!==label)this.downLabel.textContent=label;
+      }
+      const complete=dE()<t.rescueCompleteUntil;
+      const progress=complete?1:down && !t.out && t.liftedBy?t.reviveK/3:rescuer?rescuer.last.revive:null;
+      this.lift.hidden=progress===null;
+      if(progress!==null){
+        const step=Math.round(Math.min(1,progress)*100),label=complete?'救援完成':rescuer?'正在救援 '+rescuer.name:'正在获救';
+        if(this.rescueLabel.textContent!==label)this.rescueLabel.textContent=label;
+        if(this.rescueRing.dataset.frame!==String(step)){
+          const ctx=this.rescueRing.getContext('2d');
+          ctx.clearRect(0,0,80,80);ctx.lineWidth=8;ctx.lineCap='round';
+          for(const [color,angle] of [['#514963',Math.PI*2],['#65dc97',Math.PI*2*step/100]]){
+            ctx.strokeStyle=color;ctx.beginPath();ctx.arc(40,40,32,-Math.PI/2,angle-Math.PI/2);ctx.stroke();
+          }
+          this.rescueRing.dataset.frame=String(step);
         }
-      } else this.down.hidden = !0;
-      let s = t.lifting;
-      if (((this.lift.hidden = !s), s)) {
-        let e = s.last.revive,
-          t = c(`Reanimando a {name}`, { name: s.name });
-        (this.lift.dataset.t !== t &&
-          ((this.lift.dataset.t = t),
-          ow($(this.lift), X(`b`, {}, t), X(`div`, { class: `coop-hp` }, X(`i`, {})))),
-          (this.lift.lastChild.firstChild.style.width = `${Math.round(e * 100)}%`));
-      } else delete this.lift.dataset.t;
+      }
       let l = t.out ? t.spec : null;
       if (((this.watch.hidden = !l), l && o)) {
         let e = [...t.peers.values()].filter(
@@ -106899,7 +106934,8 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
     async flushNow(e) {
       this.lastFlush = { saved: 0, refused: void 0 };
       let t = sL.get(`pb.live`);
-      if (t && t.acc === e.id && t.ticket.id !== this.live?.id && !(await pL(t.ticket.id))) {
+      const returning=t?.ticket.party && t.ticket.party===savedSeat()?.party;
+      if (t && !returning && t.acc === e.id && t.ticket.id !== this.live?.id && !(await pL(t.ticket.id))) {
         (sL.del(`pb.live`), sL.del(uL(t.ticket.id)));
         let e = (sL.get(`pb.pending`) ?? []).filter((e) => e.ticket.id !== t.ticket.id);
         (e.push({ ticket: t.ticket, result: t.result, acc: t.acc, cps: t.cps, rescued: !0 }),
@@ -107967,8 +108003,9 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         N.init(),
         onLoadProgress?.({phase:'准备对局',detail:'',progress:.45}),
         await waitForLoadingPaint(this.r.renderer),
-        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress})),
+        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress,effectAtlas:await Nl()})),
         await this.run.initialized,
+        e.coop?.world && restoreProgress(this.run,e.coop.progress,e.coop.world),
         onLoadProgress?.({phase:'准备字灵',detail:'',progress:.8}),
         ZX(this).attachRun(this.run),
         await this.run.openStage(onLoadProgress),
@@ -107986,6 +108023,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.setScreen(null),
         (this.run.onLoadProgress=null),
         (this.run.state='play'),
+        e.coop && (saveProgress(this.run),e.coop.room.request('playing',{party:e.coop.party}).catch(()=>{})),
         this.run.ui.stageIntro(this.run),
         document.hidden && this.run.pause(),
         (globalThis.__pb = globalThis.__pb || {}),

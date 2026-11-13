@@ -22,9 +22,10 @@ export class RelayRoom {
       rtt: () => this.roundTrip || 0,
     };
   }
-  static async connect({code, name, species = 4, factory}) {
+  static async connect({code, name, species = 4, factory, resume}) {
     if (typeof factory !== 'function') throw Error('请在微信小游戏内进入多人联机');
     const session = new RelayRoom();
+    session.resume = resume;
     try {
       await new Promise((resolve, reject) => {
         session.connectReject = reject;
@@ -41,7 +42,7 @@ export class RelayRoom {
         });
         if (!session.alive) session.socket?.close();
       });
-      await session.request(code ? 'join' : 'create', {code, name, species, protocol: multiplayerConfig.protocol, build: multiplayerConfig.build});
+      await session.request(code ? 'join' : 'create', {code, name, species, seat:resume?.seat, party:resume?.party, protocol: multiplayerConfig.protocol, build: multiplayerConfig.build});
       session.pongAt = Date.now();
       session.heartbeat = setInterval(() => {
         if (Date.now() - session.pongAt > 45000) session.end('网络连接已超时，请重新组队');
@@ -55,7 +56,7 @@ export class RelayRoom {
   get mine() { return this.room.members.find(member => member.id === this.me); }
   get others() { return this.room.members.filter(member => member.id !== this.me); }
   get isHost() { return this.room.host === this.me; }
-  linkState(id) { return this.alive && this.room.members.some(member => member.id === id) ? 'open' : 'closed'; }
+  linkState(id) { return this.alive && this.room.members.some(member => member.id === id && !member.offline) ? 'open' : 'closed'; }
   send(message) { return this.alive && this.socket?.send(JSON.stringify(message)); }
   request(op, data = {}) {
     return new Promise((resolve, reject) => {
@@ -72,10 +73,16 @@ export class RelayRoom {
     this.room = room;
     this.startGate?.checkRoom(room);
     for (const member of previous) if (!room.members.some(next => next.id === member.id)) this.ev.link?.(member.id, 'closed');
+    for (const member of room.members) {
+      const old = previous.find(m => m.id === member.id);
+      if (old && (old.offline !== member.offline || old.generation !== member.generation))
+        this.ev.link?.(member.id, member.offline ? 'closed' : 'open');
+    }
     this.ev.change?.();
     if (room.state === 'started' && !this.startedSeen) {
       this.startedSeen = true;
-      this.startGate=new CoopStart({me:this.me,host:room.host,members:room.members,party:room.party,
+      this.returning = !!this.resume && !!room.running;
+      if (!this.returning) this.startGate=new CoopStart({me:this.me,host:room.host,members:room.members,party:room.party,
         profile:'portrait',send:(to,data)=>this.control(to,data)});
       this.ev.start?.(room);
     }
@@ -94,6 +101,10 @@ export class RelayRoom {
     if (message.op === 'closed') { this.end(message.reason); return; }
     if (message.op === 'room') { this.apply(message.room); return; }
     if (message.op === 'ctl') {
+      if (message.data?.t==='resume-world' && this.worldReply && this.room.members.some(m=>m.id===message.from && !m.offline)) {
+        this.worldReply(message.data);
+        return;
+      }
       if(this.others.some(member=>member.id===message.from)&&!this.startGate?.receive(message.from,message.data)){
         if(message.data?.t==='fx')this.traffic.castReceived++;
         if(message.data?.t==='ult')this.traffic.ultReceived++;
@@ -129,7 +140,24 @@ export class RelayRoom {
   kick(to) { return this.request('kick', {to}); }
   start() { return this.request('start'); }
   waitForBattleStart(progress) {
+    if(!this.alive)return Promise.reject(Error('连接已断开，请重试'));
+    if(this.returning)return Promise.resolve();
     return this.startGate?this.startGate.ready(progress):Promise.reject(Error('开局同步尚未建立，请重新组队'));
+  }
+  currentWorld() {
+    return new Promise((resolve,reject)=>{
+      const finish=(world)=>{
+        clearInterval(retry);clearTimeout(timeout);this.worldReply=null;
+        if(world)resolve(world);else reject(Error('暂时无法同步队友所在区域，请重试'));
+      };
+      const ask=()=>this.control('',{t:'resume-query'});
+      const retry=setInterval(ask,500),timeout=setTimeout(()=>finish(null),12000);
+      this.worldReply=world=>{
+        if(Number.isInteger(world.stage) && world.stage>=1 && world.stage<=4 &&
+           [world.time,world.stageTime,world.x,world.z].every(Number.isFinite))finish(world);
+      };
+      ask();
+    });
   }
   duringLoading(work) {
     this.checkStart();
@@ -140,7 +168,11 @@ export class RelayRoom {
     if(this.startGate?.error)throw this.startGate.error;
   }
   cancelStart(reason) { this.startGate?.cancel(reason); }
-  leave() { this.send({op: 'leave'}); this.end('已离开房间', false); return Promise.resolve(); }
+  leave() {
+    if(!this.alive)return Promise.resolve();
+    if(!this.leaving)this.leaving=this.request('leave').catch(()=>{}).finally(()=>this.end('已离开房间',false));
+    return this.leaving;
+  }
   end(reason = '房间已关闭', notify = true) {
     if (!this.alive) return;
     this.startGate?.cancel(reason);

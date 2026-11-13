@@ -16,7 +16,10 @@ export function naturalCreditRate(baseRate,seconds,stage){
   return baseRate*SPAWN_RATE_SCALE+openingBonus;
 }
 export function runOrdinaryLimit(run){
-  return Math.min(ordinaryLimit(run.endless?run.time:run.stageTime,run.stage),run.enemyCap??MAX_ORDINARY);
+  const total=Math.min(ordinaryLimit(run.endless?run.time:run.stageTime,run.stage),run.enemyCap??MAX_ORDINARY);
+  if(!run.coop)return total;
+  const {size,budgetRank:rank}=run.coop;
+  return Math.floor(total/size)+(rank<total%size?1:0);
 }
 export function countOrdinary(enemies){
   let count=0;

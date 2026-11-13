@@ -359,6 +359,10 @@ route('POST', '/runs', async (req, res) => {
   if (!acc) return;
   const b = await body(req) || {};
   if(!validLiteRun(b))return json(res,400,{error:'Invalid Forest Lite run configuration.'});
+  if(b.party){
+    const prior=Object.values(store.runs).find(r=>r.account===acc.id && r.cfg.party===b.party && r.seed===b.coopSeed && !r.finished);
+    if(prior)return json(res,200,{id:prior.id,seed:prior.seed,party:b.party,ranked:true,boosts:[]});
+  }
   const id = `run-${store.nextRun++}`;
   // Co-op: the seed belongs to the party so every member builds the same world.
   const seed = b.party ? b.coopSeed : (b.seed ?? crypto.randomInt(1, 2 ** 31));

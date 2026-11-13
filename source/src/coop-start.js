@@ -81,7 +81,7 @@ export class CoopStart {
     if(reschedule&&!this.done)this.timer=this.setTimer(()=>this.tick(),this.committed?Math.min(100,Math.max(1,this.at-this.hostNow())):100);
   }
   checkRoom(room){
-    if(!this.done&&(room.host!==this.host||this.members.some(id=>!room.members.some(m=>m.id===id))))
+    if(!this.done&&(room.host!==this.host||this.members.some(id=>!room.members.some(m=>m.id===id&&!m.offline))))
       this.cancel('有队友在加载时离开，请重新组队');
   }
   cancel(reason='开局已取消',notify=true){

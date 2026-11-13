@@ -1,4 +1,5 @@
 import {b as CanvasTexture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
+import {runLoadingSteps} from './loading-work.js';
 
 // Semantic cell numbers stay compatible with every combat script. All combat
 // silhouettes are now antialiased Bezier paths, never enlarged pixel drawings.
@@ -64,26 +65,40 @@ function paint(c,shape,color){
     default:star(c,4,25,10);
   }
 }
-export function createStylizedEffectAtlas(){
+export async function createStylizedEffectAtlas(){
   const canvas=document.createElement('canvas');canvas.width=EFFECT_CELL*8;canvas.height=EFFECT_CELL*18;
   const out=canvas.getContext('2d');out.imageSmoothingEnabled=true;
   const cell=document.createElement('canvas');cell.width=cell.height=EFFECT_CELL;const c=cell.getContext('2d');
   const ink=document.createElement('canvas');ink.width=ink.height=EFFECT_CELL;const ic=ink.getContext('2d');
-  for(let i=0;i<144;i++){
-    c.clearRect(0,0,EFFECT_CELL,EFFECT_CELL);c.save();c.translate(EFFECT_CELL*.5,EFFECT_CELL*.5);c.scale(EFFECT_CELL/64,EFFECT_CELL/64);
-    if(i>=52&&i<=55){c.fillStyle='#edc569';ellipse(c,0,0,i===54?7:24,26);c.strokeStyle='#fff0b4';c.lineWidth=3;path(c,c=>c.ellipse(0,0,i===54?3:18,20,0,0,TAU),false);}
-    else paint(c,i>=140?i:i===33||i===38?139:aliases[i]??(i<33?i:29),tinted[i]||'#ffffff');c.restore();
-    if(i<52||i>55){
-      ic.clearRect(0,0,EFFECT_CELL,EFFECT_CELL);ic.globalCompositeOperation='source-over';
-      for(const [x,y] of [[-2,0],[2,0],[0,-2],[0,2],[-1,-1],[1,1]])ic.drawImage(cell,x,y);
-      ic.globalCompositeOperation='source-in';ic.fillStyle='#27334b';ic.fillRect(0,0,EFFECT_CELL,EFFECT_CELL);
-      ic.globalCompositeOperation='source-over';ic.drawImage(cell,0,0);
-      ic.globalCompositeOperation='source-atop';ic.fillStyle='#27334b26';
-      for(let y=70;y<122;y+=9)for(let x=7+(y%2)*4;x<122;x+=9){ic.beginPath();ic.arc(x,y,1.1,0,TAU);ic.fill();}
-      ic.strokeStyle='#ffffff66';ic.lineWidth=.9;for(let j=0;j<9;j++){const x=13+j*11;ic.beginPath();ic.moveTo(x,19+j%3*9);ic.lineTo(x-4,30+j%3*9);ic.stroke();}
-      out.drawImage(ink,i%8*EFFECT_CELL,Math.floor(i/8)*EFFECT_CELL);
-    }else out.drawImage(cell,i%8*EFFECT_CELL,Math.floor(i/8)*EFFECT_CELL);
+  function* tiles(){
+    let previousShape,previousColor;
+    for(let i=0;i<144;i++){
+      const coin=i>=52&&i<=55;
+      const shape=i>=140?i:i===33||i===38?139:aliases[i]??(i<33?i:29);
+      const color=tinted[i]||'#ffffff';
+      if(!coin && shape===previousShape && color===previousColor){
+        out.drawImage(ink,i%8*EFFECT_CELL,Math.floor(i/8)*EFFECT_CELL);
+        yield;
+        continue;
+      }
+      previousShape=coin?undefined:shape;previousColor=color;
+      c.clearRect(0,0,EFFECT_CELL,EFFECT_CELL);c.save();c.translate(EFFECT_CELL*.5,EFFECT_CELL*.5);c.scale(EFFECT_CELL/64,EFFECT_CELL/64);
+      if(coin){c.fillStyle='#edc569';ellipse(c,0,0,i===54?7:24,26);c.strokeStyle='#fff0b4';c.lineWidth=3;path(c,c=>c.ellipse(0,0,i===54?3:18,20,0,0,TAU),false);}
+      else paint(c,shape,color);c.restore();
+      if(!coin){
+        ic.clearRect(0,0,EFFECT_CELL,EFFECT_CELL);ic.globalCompositeOperation='source-over';
+        for(const [x,y] of [[-2,0],[2,0],[0,-2],[0,2],[-1,-1],[1,1]])ic.drawImage(cell,x,y);
+        ic.globalCompositeOperation='source-in';ic.fillStyle='#27334b';ic.fillRect(0,0,EFFECT_CELL,EFFECT_CELL);
+        ic.globalCompositeOperation='source-over';ic.drawImage(cell,0,0);
+        ic.globalCompositeOperation='source-atop';ic.fillStyle='#27334b26';
+        for(let y=70;y<122;y+=9)for(let x=7+(y%2)*4;x<122;x+=9){ic.beginPath();ic.arc(x,y,1.1,0,TAU);ic.fill();}
+        ic.strokeStyle='#ffffff66';ic.lineWidth=.9;for(let j=0;j<9;j++){const x=13+j*11;ic.beginPath();ic.moveTo(x,19+j%3*9);ic.lineTo(x-4,30+j%3*9);ic.stroke();}
+        out.drawImage(ink,i%8*EFFECT_CELL,Math.floor(i/8)*EFFECT_CELL);
+      }else out.drawImage(cell,i%8*EFFECT_CELL,Math.floor(i/8)*EFFECT_CELL);
+      yield;
+    }
   }
+  await runLoadingSteps(tiles(),{maxSteps:24});
   const texture=new CanvasTexture(canvas);texture.colorSpace=SRGB;texture.magFilter=1006;texture.minFilter=1008;texture.generateMipmaps=true;
   texture.name='smooth-handcrafted-combat-atlas';texture.userData={cell:EFFECT_CELL,style:'ink-cel-combat-v3'};return texture;
 }

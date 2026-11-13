@@ -75,7 +75,7 @@ export async function setup(host) {
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
-  const uiAssets=readUIAssets(host.files);
+  const uiAssets=await readUIAssets(host.files);
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
   const frozenModalKey=()=>{

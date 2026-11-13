@@ -9,7 +9,7 @@ import {crowdStep,separationBudget} from '../source/src/crowd-cadence.js';
 import {performanceProfiles} from '../source/src/performance-profile.js';
 import {createActorTypeLookup} from '../source/src/actor-types.js';
 import {createGlyphBatches} from '../source/src/glyph-batches.js';
-import {minuteCaps,ordinaryLimit,allowOrdinarySpawn,countOrdinary,naturalCreditRate} from '../source/src/spawn-budget.js';
+import {minuteCaps,ordinaryLimit,runOrdinaryLimit,allowOrdinarySpawn,countOrdinary,naturalCreditRate} from '../source/src/spawn-budget.js';
 import {performanceProfile} from '../source/src/performance-profile.js';
 import {readDevice} from '../platform/device.mjs';
 
@@ -36,6 +36,14 @@ test('first-stage ordinary spawns refill faster and rejoin the regular curve at 
   assert.deepEqual(seconds.map(t=>ordinaryLimit(t,2)),[5,10,15,22,30,50]);
   assert.deepEqual(seconds.map(t=>naturalCreditRate(2,t,1)),[1.65,1.65,1.65,1.325,1,1]);
   assert.ok(seconds.every(t=>naturalCreditRate(2,t,2)===1));
+});
+
+test('the team shares the stage population budget through late waves',()=>{
+  for(const size of [2,3])for(const stageTime of [0,60,300,600,1800]){
+    const total=Array.from({length:size},(_,budgetRank)=>
+      runOrdinaryLimit({stage:1,stageTime,coop:{size,budgetRank}})).reduce((a,b)=>a+b);
+    assert.equal(total,ordinaryLimit(stageTime));
+  }
 });
 
 test('iOS and Android keep exactly the player-selected quality',()=>{

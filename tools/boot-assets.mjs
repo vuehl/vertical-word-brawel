@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {brotliDecompressSync,deflateSync} from 'node:zlib';
+import {brotliDecompressSync} from 'node:zlib';
 import postcss from 'postcss';
 import sharp from 'sharp';
 import {packStream} from './pack-resources.mjs';
@@ -41,7 +41,7 @@ export function bootAssets(root) {
     }
   });
   return {
-    'engine/styles.bin':deflateSync(JSON.stringify(rules),{level:9})
+    'engine/styles.json':Buffer.from(JSON.stringify(rules))
   };
 }
 

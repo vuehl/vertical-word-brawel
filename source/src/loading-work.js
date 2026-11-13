@@ -7,10 +7,13 @@ export function waitForLoadingPaint(renderer) {
   return new Promise(resolve=>{
     let done=false;
     const finish=()=>{if(done)return;done=true;clearTimeout(timer);resolve();};
-    // Two frames also cover a throttled 30 FPS UI. Hidden apps may suspend
-    // animation callbacks; resuming must not leave an entry promise stuck.
+    // Native drawUI already submitted the frame. The DOM path needs a paint
+    // between callbacks. Hidden apps can suspend either callback.
     const timer=setTimeout(finish,100);
-    requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(finish,0)));
+    requestAnimationFrame(()=>{
+      if(renderer && window.nativeUI)setTimeout(finish,0);
+      else requestAnimationFrame(()=>setTimeout(finish,0));
+    });
   });
 }
 

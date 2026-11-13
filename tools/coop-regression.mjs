@@ -65,6 +65,7 @@ export async function reviewCoop(browser, gamePort) {
     assert.equal(times[0].startAt,times[1].startAt);
   } finally { await Promise.all([first.leave(),second.leave(),third.leave()]); }
   try {
+    const configure=[];
     for (let i = 0; i < 3; i++) {
       const ctx = await browser.createBrowserContext();
       const page = await ctx.newPage();
@@ -94,7 +95,7 @@ export async function reviewCoop(browser, gamePort) {
       await page.goto('http://127.0.0.1:'+gamePort);
       await page.evaluate(() => { releaseTextDownload(); releaseOptionalDownloads(); });
       await page.waitForFunction(() => window.app?.screen?.querySelector('[data-action="multiplayer"]'), {timeout:90000});
-      await page.evaluate(({config,url,loginCode}) => {
+      configure[i]=()=>page.evaluate(({config,url,loginCode}) => {
         function openRelay(path) {
           const ws = new WebSocket(new URL(path,url));
           window.dropRelay = () => ws.close();
@@ -124,8 +125,9 @@ export async function reviewCoop(browser, gamePort) {
           },
         };
         wx.showModal = opts => opts.success({confirm:true,content:window.roomCode});
-        app.frameGap=()=>120;
+        if(window.app)app.frameGap=()=>80;
       }, {config:multiplayerConfig,url:endpoint.href,loginCode:userPrefix+'seat-'+i});
+      await configure[i]();
       if(sqlTest && i===0){
         await page.evaluate(()=>app.screen.querySelector('[data-action="lab"]').click());
         await page.waitForFunction(()=>app.screen?.dataset.page==='lab' && app.meta.profile.stardust===150);
@@ -158,6 +160,10 @@ export async function reviewCoop(browser, gamePort) {
       console.log('Lobby ready', i+1);
     }
     const [host,...guests]=clients;
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      app.meta.profile.settings.quality='low';
+      app.applySettings();
+    })));
     await click(host,'创建房间');
     await host.waitForFunction(()=>app.coopRoom?.code);
     const code=await host.evaluate(()=>app.coopRoom.code);
@@ -169,7 +175,46 @@ export async function reviewCoop(browser, gamePort) {
     assert.deepEqual(await Promise.all(clients.map(page=>page.evaluate(()=>window.routes))),
       clients.map(()=>['login','exchange','cloud']));
     await assert.rejects(makeRoom(code,4),/最多三人/);
-    await Promise.all(clients.map(page=>click(page,'准备')));
+    for(const page of clients){
+      await page.waitForFunction(()=>app.screen?.querySelectorAll('.zx-stat-row').length===3);
+      await page.evaluate(()=>{
+        const root=app.screen, nodes=[...root.querySelectorAll('button,.zx-stat-row,.zx-body')];
+        const body=root.querySelector('.zx-body');
+        body.scrollTop=18;
+        const scroll=body.scrollTop;
+        window.checkLobby=()=>root===app.screen && nodes.every(n=>root.contains(n)) && body.scrollTop===scroll;
+      });
+    }
+    // Hold the host's request to check the UI while the network reply is pending.
+    await host.evaluate(()=>{
+      const room=app.coopRoom,setReady=room.setReady.bind(room);
+      room.setReady=async value=>{
+        room.setReady=setReady;
+        await new Promise(resolve=>window.releaseReady=resolve);
+        return setReady(value);
+      };
+    });
+    await click(host,'准备');
+    await host.waitForFunction(()=>typeof releaseReady==='function');
+    assert.ok(await host.evaluate(()=>checkLobby() &&
+      [...app.screen.querySelectorAll('button')].find(b=>b.textContent==='复制房间号').disabled===false));
+    await host.evaluate(()=>releaseReady());
+    async function checkHostReady(ready){
+      await Promise.all(clients.map(page=>page.waitForFunction(ready=>
+        [...app.screen.querySelectorAll('.zx-stat-row')].find(row=>row.firstElementChild.textContent.startsWith('房主'))
+          ?.lastElementChild.textContent===(ready?'已准备':'未准备'),{},ready)));
+      for(const page of clients)assert.ok(await page.evaluate(()=>checkLobby()));
+    }
+    await checkHostReady(true);
+    await Promise.all(guests.map(page=>click(page,'准备')));
+    const startEnabled=enabled=>[...app.screen.querySelectorAll('button')]
+      .find(b=>b.textContent==='开始冒险').disabled===!enabled;
+    await host.waitForFunction(startEnabled,{},true);
+    await click(host,'取消准备');
+    await checkHostReady(false);
+    await host.waitForFunction(startEnabled,{},false);
+    await click(host,'准备');
+    await checkHostReady(true);
     // Hold one device's scene-ready signal until both other loading pages
     // are visibly waiting. Lobby readiness alone must never display 100%.
     await guests[1].evaluate(()=>{
@@ -194,7 +239,27 @@ export async function reviewCoop(browser, gamePort) {
     await Promise.all(clients.map(page=>page.evaluate(()=>{
       app.run.player.iframes=3600;
       app.run.queueLevelUp=()=>{};
+      app.run.stageTime=120;
     })));
+    // Separate the network timing check from three competing software rasterizers.
+    // The HUD, its canvas ring, simulation, and relay still tick normally.
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      window.renderDuringCoop=app.r.render;app.r.render=()=>{};
+    })));
+    // Rescue from proximity alone. The third player waits out of range.
+    const downAt=await host.evaluate(()=>{
+      const r=app.run;r.player.dead=true;r.player.hp=0;r.coop.onDowned();return {x:r.player.pos.x,z:r.player.pos.z};
+    });
+    await guests[1].evaluate(p=>{app.run.player.pos.x=p.x+15;},downAt);
+    await guests[0].evaluate(p=>{app.run.player.pos.x=p.x+1;app.run.player.pos.z=p.z;},downAt);
+    await host.waitForFunction(()=>app.run.coop.reviveK>.3 && !app.hud.coopHud.lift.hidden &&
+      +app.hud.coopHud.rescueRing.dataset.frame>0,{timeout:15000});
+    await guests[0].evaluate(p=>{app.run.player.pos.x=p.x+12;},downAt);
+    await host.waitForFunction(()=>app.run.player.dead && app.run.coop.reviveK===0);
+    await guests[0].evaluate(p=>{app.run.player.pos.x=p.x+1;},downAt);
+    await host.waitForFunction(()=>!app.run.player.dead && app.run.player.hp>0,{timeout:20000});
+    await guests[1].evaluate(p=>{app.run.player.pos.x=p.x-1;app.run.player.pos.z=p.z;},downAt);
+    await Promise.all(clients.map(page=>page.evaluate(()=>{app.r.render=window.renderDuringCoop;})));
     const origin=await host.evaluate(()=>({x:app.run.player.pos.x,z:app.run.player.pos.z}));
     const mate=guests[0];
     await mate.evaluate(({x,z})=>{
@@ -223,7 +288,19 @@ export async function reviewCoop(browser, gamePort) {
     await host.evaluate(()=>app.run.resume());
     await mate.evaluate(({x,z})=>{app.run.player.pos.x=x+3;app.run.player.pos.z=z;},origin);
     console.log('Delayed scene readiness, teammate health, distance and both live maps passed');
-    await host.waitForFunction(()=>app.run.coop.proxies.size>0,{timeout:30000});
+    // Verify a known enemy from this seat even if the opening wave is empty.
+    const remoteEnemy=await mate.evaluate(()=>{
+      const {enemies,player,coop}=app.run;
+      const id=enemies.spawn(52,player.pos.x+8,player.pos.z,1,1,0);
+      if(id<0)throw Error('Could not spawn snapshot test enemy');
+      enemies.frozen[id]=600;
+      enemies.hp[id]=enemies.maxHp[id]=100000;
+      return {slot:coop.mySlot,id,key:(enemies.gen[id]&15)<<12|id};
+    });
+    await host.waitForFunction(({slot,id,key})=>{
+      const coop=app.run.coop,proxy=coop.proxies.get(slot<<12|id);
+      return proxy!==undefined && coop.pKey[proxy]===key && app.run.enemies.alive[proxy];
+    },{timeout:30000},remoteEnemy);
     const peers=await host.evaluate(()=>app.run.coop.proxies.size);
     const teamWork=await host.evaluate(()=>{
       const run=app.run, hud=run.ui.coopHud, layout=inspected.layout;
@@ -349,25 +426,53 @@ export async function reviewCoop(browser, gamePort) {
           }
           return count;
         });
-        return counts.every(count=>count>=150) && counts;
+        return counts.every(count=>count>=50 && count<=67) && counts;
       },{timeout:30000,polling:100});
       return result.jsonValue();
     }));
     console.log('Live frozen enemies with synced HP from each peer',crowds);
-    await guests[0].evaluate(()=>window.dropRelay());
-    await guests[0].waitForFunction(()=>app.screen?.dataset.page==='summary' && app.meta.profile.runs[0]?.coop?.size===3);
+    const sameBytes=await host.evaluate(()=>{
+      const coop=app.run.coop, writer=new coop.writer.constructor();
+      const ids=Array.from({length:app.run.enemies.n},(_,i)=>i).filter(i=>app.run.enemies.alive[i]).slice(0,170);
+      const second=ids.slice(40).reverse();
+      const first=ids.slice(0,110);
+      const player={...coop.peers.values().next().value.last,bonus:8};
+      writer.begin(1,player,null,app.run.stage);
+      const expected=writer.finish(second,coop).slice();
+      writer.begin(1,player,null,app.run.stage);
+      writer.finish(first,coop,true);
+      const actual=writer.finish(second,coop);
+      return ids.length===170 && expected.length===actual.length && expected.every((byte,i)=>byte===actual[i]);
+    });
+    assert.ok(sameBytes,'A partially overlapping view must match independent encoding byte for byte');
+    const returning=guests[0];
+    const seat=await returning.evaluate(()=>{
+      const run=app.run;
+      run.player.level=17;run.gold=543;run.pause();
+      // The fixture's filesystem is in memory. Preserve the native save
+      // across this cold launch just as wx.env.USER_DATA_PATH does on device.
+      sessionStorage.setItem('resume-fixture-save',wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8'));
+      return {id:app.coopRoom.me,party:run.coop.party,seed:run.seed,level:run.player.level,ticket:app.meta.ticket.id};
+    });
+    await returning.reload();
+    await returning.evaluate(()=>wx.getFileSystemManager().writeFileSync('/userdata/pokebonk-save.json',sessionStorage.getItem('resume-fixture-save')));
+    await configure[1]();
+    await returning.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
+    await returning.waitForFunction(()=>window.app?.run?.state==='play' && !app.screen && app.run.coop.room.returning,{timeout:100000});
+    const recovered=await returning.evaluate(()=>({id:app.coopRoom.me,party:app.run.coop.party,seed:app.run.seed,level:app.run.player.level,ticket:app.meta.ticket.id}));
+    assert.deepEqual(recovered,seat);
+    await host.waitForFunction(id=>{const p=app.run.coop.peers.get(id);return !p.gone && p.last?.level===17;},{},seat.id);
+    await returning.evaluate(()=>{app.run.endHow='quit';return app.run.finish(false);});
+    await returning.waitForFunction(()=>app.screen?.dataset.page==='summary');
     if(sqlTest){
       const remote=await cloudRequest(1,'GET','/v1/progress/stardust');
-      assert.equal(remote.statusCode,200);assert.ok(remote.data.stardust>0);
-      assert.equal(remote.data.stardust,await guests[0].evaluate(()=>app.meta.profile.stardust));
+      assert.equal(remote.statusCode,200);assert.equal(remote.data.stardust,await returning.evaluate(()=>app.meta.profile.stardust));
     }
-    await host.waitForFunction(()=>[...app.run.coop.peers.values()].filter(p=>p.gone).length===1);
-    await host.waitForFunction(()=>['health','tag'].every(kind=>inspected.doc.querySelector('[data-ui-layer="peer-'+kind+'-0"]').hidden));
     assert.deepEqual(errors,[]);
     console.log('3-player battle passed',JSON.stringify({sample,sharedEnemies:peers}));
   } catch(error) {
     for(const page of clients) console.error(await page.evaluate(()=>({screen:window.app?.screen?.textContent.slice(-420),state:window.app?.run?.state,
-      error:window.app?.lastStartError?.message,gate:window.app?.coopRoom?.startGate?.error?.message,proxies:window.app?.run?.coop?.proxies.size,
+      rescue:window.app?.run && [app.run.coop.reviveK,app.run.coop.bleed,app.run.player.dead,app.run.player.pos.x,app.run.player.pos.z],error:window.app?.lastStartError?.message,gate:window.app?.coopRoom?.startGate?.error?.message,proxies:window.app?.run?.coop?.proxies.size,
       end:window.app?.run?.endHow,close:window.testRelayClose,traffic:window.app?.coopRoom?.traffic,enemyCount:window.app?.run?.enemies?.count,
       peerVisuals:window.peerVisuals,skillNames:window.app?.run?.coop && [...app.run.coop.peers.values()].map(p=>[p.castName,p.ultName]),problem:window.problem})).catch(()=>null));
     throw error;

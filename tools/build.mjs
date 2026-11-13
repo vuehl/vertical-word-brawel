@@ -133,7 +133,8 @@ const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es
 const hostBundle=await esbuild.build({...common,define:{document:'undefined'},entryPoints:[path.join(platform,'host.mjs')],write:false});
 await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
-const result=await esbuild.build({...common,metafile:true,define:{innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'},write:false,stdin:{contents:
+// Native layout consumes the compiled rules in the text pack.
+const result=await esbuild.build({...common,metafile:true,define:{'globalThis.__ZILING_COMPILED_STYLES__':'true',innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'},write:false,stdin:{contents:
   'import "../public/turnstile-stub.js";import {setChineseText} from "./chinese-text.js";'+
   'export async function start(){setChineseText(window.readChineseText());return require("./game.js").launch();}',resolveDir:path.join(src,'src')}});
 const bindings=('globalThis window self document navigator location history localStorage sessionStorage innerWidth innerHeight devicePixelRatio screen '+
