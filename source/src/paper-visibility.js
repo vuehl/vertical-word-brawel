@@ -37,7 +37,9 @@ export function updatePaperVisibility(terrain,frustum,shadows=true){
     if(data.shadow&&!shadows){mesh.visible=false;continue;}
     let count=0,changed=false;
     instance:for(let i=0;i<total;i++){
-      const b=i*4,radius=bounds[b+3]+2;
+      // Retain offscreen casters whose sun projection can reach the view.
+      // This also keeps the cached shadow map valid at the camera boundary.
+      const b=i*4,radius=bounds[b+3]+2+(mesh.castShadow?Math.max(0,bounds[b+1]+bounds[b+3])*.75:0);
       for(const p of planes)if(p.normal.x*bounds[b]+p.normal.y*bounds[b+1]+p.normal.z*bounds[b+2]+p.constant < -radius)continue instance;
       if(selected[count]!==i){
         selected[count]=i;changed=true;
@@ -52,5 +54,6 @@ export function updatePaperVisibility(terrain,frustum,shadows=true){
       if(colors){mesh.instanceColor.clearUpdateRanges();mesh.instanceColor.addUpdateRange(0,count*3);mesh.instanceColor.needsUpdate=true;}
     }
   }
+  if(terrain.workshopShadowLight)terrain.workshopShadowLight.shadow.needsUpdate=true;
   return true;
 }

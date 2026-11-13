@@ -18,5 +18,5 @@ export const batterySaverEnabled=value=>value===true||value==='true'||value===1;
 // player setting; neither FPS, crowd size nor OS may select a lower preset.
 export function performanceProfile(settings={}){
   if(batterySaverEnabled(settings.batterySaver))return performanceProfiles.low;
-  return performanceProfiles[settings.quality]||performanceProfiles.low;
+  return performanceProfiles[settings.quality]||performanceProfiles.high;
 }

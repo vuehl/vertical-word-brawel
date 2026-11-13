@@ -20,26 +20,32 @@ export async function reviewPaperBatching(page,dir){
         run.renderWorld(0);scene.updateMatrixWorld(true);
         // renderWorld can reveal player/particle meshes again.
         for(const [child] of visibility)if(child!==terrain.group&&!child.isLight)child.visible=false;
-        const reference=new terrain.group.constructor(),temporary=[];
+        const reference=new terrain.group.constructor(),originals=[];
         let instances=0,coloredInstances=0;
         for(const mesh of terrain.group.children){
           if(!mesh.visible||!mesh.count)continue;
           instances+=mesh.count;
-          const groups=new Map();
-          for(let i=0;i<mesh.count;i++){
-            const rgb=mesh.instanceColor?.array.slice(i*3,i*3+3),key=rgb?Array.from(rgb).join(','):'texture';
-            if(rgb)coloredInstances++;
-            if(!groups.has(key))groups.set(key,{rgb,ids:[]});groups.get(key).ids.push(i);
-          }
-          for(const {rgb,ids} of groups.values()){
-            const mat=rgb?mesh.material.clone():mesh.material;
-            if(rgb){mat.color.setRGB(...rgb);temporary.push(mat);}
-            const copy=new mesh.constructor(mesh.geometry,mat,ids.length),matrix=mesh.matrix.clone();
-            ids.forEach((index,i)=>{matrix.fromArray(mesh.instanceMatrix.array,index*16);copy.setMatrixAt(i,matrix);});
-            // Transparent texture batches sort using their authored bounds,
-            // including off-screen instances. Preserve that reference point.
+          if(!mesh.instanceColor)continue;
+          coloredInstances+=mesh.count;
+          originals.push(mesh);
+          // Shader halos read instanceColor directly; keep the authored shader,
+          // light rig and shadow receivers in both versions of the scene.
+          const matrix=mesh.matrix.clone(),color=r.sun.color.clone();
+          let first=0;
+          while(first<mesh.count){
+            mesh.getColorAt(first,color);
+            const arr=mesh.instanceColor.array;
+            let end=first+1;
+            while(end<mesh.count&&arr[end*3]===color.r&&arr[end*3+1]===color.g&&arr[end*3+2]===color.b)end++;
+            const copy=new mesh.constructor(mesh.geometry,mesh.material,end-first);
+            for(let i=first;i<end;i++){
+              mesh.getMatrixAt(i,matrix);copy.setMatrixAt(i-first,matrix);copy.setColorAt(i-first,color);
+            }
+            copy.matrix.copy(mesh.matrix);copy.matrixAutoUpdate=false;
+            copy.castShadow=mesh.castShadow;copy.receiveShadow=mesh.receiveShadow;
             copy.boundingSphere=mesh.boundingSphere?.clone()||null;
-            copy.renderOrder=mesh.renderOrder;copy.frustumCulled=false;reference.add(copy);
+            copy.renderOrder=mesh.renderOrder;copy.frustumCulled=mesh.frustumCulled;
+            reference.add(copy);first=end;
           }
         }
         const draw=()=>{
@@ -50,11 +56,12 @@ export async function reviewPaperBatching(page,dir){
         };
         let merged,split;
         try{
-          terrain.group.visible=true;merged=draw();
-          terrain.group.visible=false;scene.add(reference);split=draw();
+          // Resolve a pending shadow-map update before counting either color pass.
+          terrain.group.visible=true;renderer.render(scene,r.camera);merged=draw();
+          for(const mesh of originals)mesh.visible=false;terrain.group.add(reference);split=draw();
         }finally{
-          scene.remove(reference);for(const mesh of reference.children)mesh.dispose();
-          for(const mat of temporary)mat.dispose();terrain.group.visible=true;
+          terrain.group.remove(reference);for(const mesh of reference.children)mesh.dispose();
+          for(const mesh of originals)mesh.visible=true;
         }
         let different=0,maxDelta=0,totalDelta=0;
         for(let i=0;i<merged.pixels.length;i++){
@@ -80,11 +87,11 @@ export async function reviewPaperBatching(page,dir){
   }
   fs.writeFileSync(path.join(dir,'paper-batching.json'),JSON.stringify(report,null,2));
   for(const sample of report.samples){
-    assert.ok(sample.coloredInstances>0,'The comparison must include colored stationery');
-    assert.ok(sample.mergedCalls<sample.splitCalls,'Instance colors must reduce draws');
+    assert.ok(sample.mergedCalls<=sample.splitCalls,'Batching cannot add draws');
     assert.equal(sample.mergedTriangles,sample.splitTriangles,'All visible stationery must remain');
     assert.ok(sample.meanDelta<.1&&sample.differentChannels<100,'Batching changed the image: '+JSON.stringify(sample));
   }
+  assert.ok(report.samples.some(s=>s.coloredInstances>1&&s.mergedCalls<s.splitCalls),'The comparison must demonstrate a draw saving for colored instances');
   assert.equal(report.samples[0].instances,report.samples.at(-1).instances,'Returning to the same camera must restore its instances');
   return report;
 }

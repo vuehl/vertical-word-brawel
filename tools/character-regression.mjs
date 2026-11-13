@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {enemyWords,eliteWords,minibossWords} from '../source/src/character-rules.js';
 
 export async function reviewCharacters(page,dir) {
   const report={heroes:[],branches:[],spawns:[],buffs:[]};
@@ -68,23 +69,55 @@ export async function reviewCharacters(page,dir) {
         const word=en.glyphWords[index],batch=r.sprites.get(59,false,word);
         samples.push({flags:flags[i],word,batchWord:batch.zxGlyph});
       }
-      const words=new Set();for(let i=0;i<400;i++){const index=en.spawn(19,30,30,1,1,i%2);words.add(en.glyphWords[index]);en.kill(index);}
+      const words=new Set();
+      for(let i=0;i<400;i++){
+        const index=en.spawn(19,30,30,1,1,i%2);
+        if(index<0)throw Error('Spawn rejected during glyph sampling');
+        words.add(en.glyphWords[index]);en.kill(index);
+      }
       await new Promise(resolve=>setTimeout(resolve,500));
       return {samples,pool:[...words],playerWord:r.sprites.get(p.speciesId).zxGlyph};
     });
-    assert.equal(spawns.pool.length,19);assert.equal(spawns.playerWord,finalWord);
-    for(const sample of spawns.samples){assert.equal(sample.word,sample.batchWord);if(sample.flags&(4|4096|8192))assert.equal(sample.word,'敌');}
+    assert.deepEqual(new Set(spawns.pool),new Set([...enemyWords,...eliteWords]));assert.equal(spawns.playerWord,finalWord);
+    for(const {word,batchWord,flags} of spawns.samples){
+      assert.equal(word,batchWord);
+      assert.ok((flags===128?['飙']:flags===0?enemyWords:flags===1?eliteWords:minibossWords).includes(word));
+    }
     report.spawns.push(spawns);await draw();
     assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-name').textContent),finalWord);
     await page.screenshot({path:path.join(dir,`battle-${species}-${branch}.png`)});
   }
   report.boss=await page.evaluate(async()=>{
-    const r=app.run,p=r.player;r.enemies.clear();r.boss.spawn(59,p.pos.x+4,p.pos.z-6,false);
-    for(let i=0;i<100;i++)r.update(1/30);
-    await new Promise(resolve=>setTimeout(resolve,300));r.ui.hud(r);
-    return {name:r.boss.name,word:r.enemies.glyphWords[r.boss.bossIndex],hudName:r.ui.els.bossName.textContent,portrait:r.ui.els.bossPt.querySelector('canvas')?.dataset.glyph};
+    const r=app.run,en=r.enemies,p=r.player.pos;
+    en.clear();r.stageTime=30;
+    const altar=r.interactables.list.find(item=>item.kind==='boss');
+    r.interactables.interact(altar);
+    const index=r.boss.bossIndex,word=en.glyphWords[index];
+    r.interactables.interact(altar);
+    const intro=r.ui.hudEl.querySelector('.bossintro h1')?.textContent;
+    r.ui.hud(r);
+    const second=en.spawn(en.species[index],p.x+1,p.z,1,1,4);
+    en.x[index]=p.x-1;en.z[index]=p.z;
+    const batch=r.sprites.get(en.species[index],false,word);
+    await batch.material.uniforms.zxGlyph.value.userData.ready;
+    const frames=batch.zxStrokeFrames;
+    const sample=()=>{
+      r.sprites.begin(r.r.camera);en.render();r.sprites.end();
+      const group=batch.zxGroup,result=[];
+      for(let i=0;i<group.count;i++){
+        const uv=group.aUV.array.subarray(i*4,i*4+4);
+        result.push(frames.findIndex(rect=>rect.every((v,k)=>v===uv[k]))+1);
+      }
+      return result;
+    };
+    en.hp[index]=en.maxHp[index]/2;
+    en.hp[second]=1;en.maxHp[second]=4800;
+    const injured=sample();
+    en.hp[index]=en.maxHp[index];en.hp[second]=0;
+    return {name:r.boss.name,word,hudName:r.ui.els.bossName.textContent,portrait:r.ui.els.bossPt.querySelector('canvas')?.dataset.glyph,
+      intro,species:en.species[index],used:altar.used,injured,healed:sample()};
   });
-  assert.deepEqual(report.boss,{name:'敌',word:'敌',hudName:'敌',portrait:'敌'});
+  assert.deepEqual(report.boss,{name:'龘',word:'龘',hudName:'龘',portrait:'龘',intro:'龘',species:151,used:true,injured:[24,1],healed:[48]});
   fs.writeFileSync(path.join(dir,'characters.json'),JSON.stringify(report,null,2));
-  console.log('New heroes, both evolution branches, timed buffs, copy ultimate and shared enemy pool passed.');
+  console.log('Hero branches, tiered spawns, summon-point boss and independent health frames passed.');
 }

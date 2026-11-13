@@ -5,6 +5,8 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
 import {reviewCharacters} from './character-regression.mjs';
+import {reviewWorkshop} from './workshop-regression.mjs';
+import {reviewStylizedVFX} from './stylized-vfx-regression.mjs';
 import {reviewPaperBatching} from './paper-batching-regression.mjs';
 import {profileRuntime} from './runtime-profile.mjs';
 import {reviewLateCrowd} from './late-crowd-regression.mjs';
@@ -49,7 +51,8 @@ await new Promise(r=>srv.listen(0,'127.0.0.1',r));
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required']});
 try{
   const page=await browser.newPage(),errors=[];
-  page.on('pageerror',e=>errors.push(String(e)));
+  page.on('pageerror',e=>{errors.push(String(e));console.error('Runtime error:',String(e));});
+  page.on('console',m=>{if(m.type()==='error'&&/WebGLProgram|Shader Error|VALIDATE_STATUS/.test(m.text())){errors.push(m.text());if(process.argv.includes('--debug-shaders'))console.error(m.text().slice(0,1800));}});
   await page.setViewport({width:390,height:844,deviceScaleFactor:3});
   await page.evaluateOnNewDocument(platform=>{
     window.fixturePlatform=platform;
@@ -91,9 +94,20 @@ try{
     app.run.update(1/60);
     return initial;
   },development);
+  assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--phone-performance')){
+  if(process.argv.includes('--desktop-layout')){
+    const {reviewDesktopLayout}=await import('./desktop-layout-regression.mjs');
+    await reviewDesktopLayout(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--map-play')){
+    const {reviewMapPlay}=await import('./map-play-regression.mjs');
+    await reviewMapPlay(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--vfx')){
+    await reviewStylizedVFX(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--workshop')){
+    await reviewWorkshop(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--phone-performance')){
     await reviewPhonePerformance(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--ios-budget')){
     await reviewIOSBudget(page,dir);assert.deepEqual(errors,[]);
@@ -105,7 +119,7 @@ try{
     await reviewCrowdRender(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--characters')){
     await reviewCharacters(page,dir);assert.deepEqual(errors,[]);
-  }else if(process.argv.includes('--map-effects')){
+  }else if((process.argv.includes('--map-effects')||process.argv.includes('--minimap'))){
     await reviewMapEffects(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--clarity')){
     await reviewClarity(page,dir);assert.deepEqual(errors,[]);
@@ -113,6 +127,8 @@ try{
     await reviewQuality(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--optimize')){
     await reviewOptimizations(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--paper-batching')){
+    await reviewPaperBatching(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--rings')){
     await reviewRingShader(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--crowd')){
@@ -141,7 +157,7 @@ try{
     report.samples.push(await page.evaluate(quality=>{
       const run=app.run,r=app.r;app.meta.profile.settings.quality=quality;app.applySettings();r.setDynRes(1);
       run.updateCamera(1);run.renderWorld(0);run.vfx.update(0);r.scene.updateMatrixWorld(true);
-      let submitted=0;for(const mesh of run.terrain.group.children)mesh.onBeforeRender=()=>submitted+=mesh.count;
+      let submitted=0;for(const mesh of run.terrain.group.children)if(mesh.isInstancedMesh)mesh.onBeforeRender=()=>submitted+=mesh.count;
       const info=r.renderer.info;info.autoReset=false;r.render(0);info.reset();submitted=0;r.render(0);
       inspected.env.invalidateUI();inspected.env.drawUI(r.renderer);
       return {quality,calls:info.render.calls,triangles:info.render.triangles,submitted,
@@ -369,7 +385,6 @@ try{
   }
   fs.writeFileSync(path.join(dir,'runtime-performance.json'),JSON.stringify(report,null,2));
   assert.deepEqual(errors,[]);
-  assert.equal(initial.quality,'low');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   assert.equal(report.touch.idleUploads,0);assert.equal(report.touch.fullUploads,0);
   assert.equal(report.touch.controlUploads,10);assert.ok(report.touch.uploadedBytes<10*5266560*.1);
   assert.ok(report.touch.released&&report.touch.hiddenOnRelease&&report.touch.centerError<1);

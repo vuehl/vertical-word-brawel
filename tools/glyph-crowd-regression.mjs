@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
+import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
 
 export async function reviewGlyphCrowd(page,dir){
   const report={};
@@ -55,7 +56,7 @@ export async function reviewGlyphCrowd(page,dir){
     const modal=run.ui.modalEl;
     return {text:modal.textContent,glyphs:[...modal.querySelectorAll('canvas[data-glyph]')].map(c=>c.dataset.glyph),legacyLoads:(window.nativeImageLoads||[]).filter(r=>/(?:portraits(?:-shiny)?|icons|front|pmd(?:-shiny)?)\/\d+\.png/.test(r.path)).map(r=>r.path)};
   });
-  assert.ok(report.map.glyphs.includes('拳')&&report.map.glyphs.includes('岩'));
+  for(const npc of [52,97])assert.ok(report.map.glyphs.includes(glyphWordForSpecies(npc)));
   assert.ok(!/妙蛙种子|小火龙|杰尼龟|喵喵|宝可梦|百变怪/.test(report.map.text));assert.deepEqual(report.map.legacyLoads,[]);
   await page.screenshot({path:path.join(dir,'glyph-map-legend.png')});
   await page.evaluate(()=>app.run.resume());

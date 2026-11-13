@@ -1,4 +1,4 @@
-import {glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
+import {glyphCanvas} from './paper-glyph-art.js';
 
 export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
 const friendColors=['#246baa','#15826b','#7850a1'];
@@ -97,11 +97,40 @@ export function drawBattlePortrait(canvas,word,tone,experience=0) {
   ctx.drawImage(glyphCanvas(word,tone),12,11,56,56);canvas.dataset.word=word;
 }
 
-// One north-up projection for both map sizes. The small HUD refreshes at most
-// at the HUD cadence; an open co-op map follows the same peer snapshots.
+export function buildingMapName(marker){
+  if(marker.kind==='tower')return {stairs:'上层入口',altar:'祝福祭坛',trick:'试炼',portal:'传送门',leave:'出口'}[marker.data?.sub]||'试炼塔';
+  if(marker.kind==='altar'&&marker.data?.comet)return '彗星碎片';
+  return {bill:'技能融合',meowth:'商店',ditto:'物品复制',hypno:'技能遗忘',slots:'扭蛋机',
+    altar:'祝福祭坛',challenge:'挑战祭坛',boss:'首领祭坛',shrine:'圣地',portal:'传送门',sanct_portal:'出口',
+    fossil:'化石遗迹',rhydon:'首领强化',nest:'孵化巢',magnet:'经验磁铁',shroom:'弹跳蘑菇'}[marker.kind]||'';
+}
+function drawBuildingNames(ctx,labels,fontSize){
+  ctx.font='700 '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  const boxes=[{x:53,y:51,w:14,h:14}];
+  labels.sort((a,b)=>Number(a.kind!=='bill')-Number(b.kind!=='bill')||a.distance-b.distance);
+  for(const label of labels){
+    const w=ctx.measureText(label.text).width+4,h=fontSize+3;
+    let box;
+    for(const offset of [7,-7,18,-18,29,-29,40,-40]){
+      const y=Math.max(14,Math.min(102-h,label.y+offset-(offset<0?h:0)));
+      const half=Math.sqrt(Math.max(0,49**2-Math.max((y-58)**2,(y+h-58)**2)));
+      if(half*2<w)continue;
+      const x=Math.max(60-half,Math.min(60+half-w,label.x-w/2));
+      if(boxes.some(b=>x<b.x+b.w+1&&x+w+1>b.x&&y<b.y+b.h+1&&y+h+1>b.y))continue;
+      box={x,y,w,h};break;
+    }
+    if(!box)continue;
+    boxes.push(box);ctx.strokeStyle='#65767e';ctx.lineWidth=.6;
+    ctx.beginPath();ctx.moveTo(label.x,label.y);ctx.lineTo(box.x+box.w/2,box.y+box.h/2);ctx.stroke();
+    ctx.fillStyle='#fffdf5ee';ctx.fillRect(box.x,box.y,box.w,box.h);
+    ctx.fillStyle=label.kind==='bill'?'#895016':'#394f60';ctx.fillText(label.text,box.x+box.w/2,box.y+box.h/2);
+  }
+}
+
+// Both map sizes use a north-up projection. In co-op the open map follows peer snapshots.
 export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=.9;
-  const distances=[];
+  const distances=[],buildingNames=[];
   const radius=49*viewRatio,edgeRadius=radius-9;
   const point=(x,z)=>[60+(x-p.x)*scale,58+(z-p.z)*scale];
   const visible=(x,y)=>(x-60)**2+(y-58)**2<=radius**2;
@@ -137,6 +166,8 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
     for(const marker of run.interactables.markers()){
       const [x,y]=point(marker.x,marker.z);if(!visible(x,y))continue;
       const portal=marker.kind==='portal'||marker.kind==='sanct_portal';
+      const name=buildingMapName(marker);
+      if(name)buildingNames.push({text:name,kind:marker.kind,x:60+(x-60)/viewRatio,y:58+(y-58)/viewRatio,distance:(x-60)**2+(y-58)**2});
       dot(x,y,portal?4.4:3.7,portal?'#a480c8':'#dfb950');
       ctx.strokeStyle='#fff';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(x-1.8,y);ctx.lineTo(x+1.8,y);ctx.moveTo(x,y-1.8);ctx.lineTo(x,y+1.8);ctx.stroke();
     }
@@ -154,7 +185,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
         if(kind>0&&(x-60)**2+(y-58)**2>edgeRadius**2)continue;
         if(kind===2){
           dot(x,y,6.3,'#fff4dd','#d65b46');
-          ctx.drawImage(glyphCanvas(glyphWordForSpecies(enemies.species[i])),x-6,y-6,12,12);
+          ctx.drawImage(glyphCanvas(enemies.glyphWords[i]),x-6,y-6,12,12);
         }else{
           const radius=kind?3:1.7;ctx.moveTo(x+radius,y);ctx.arc(x,y,radius,0,Math.PI*2);
         }
@@ -191,6 +222,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
   dot(60,58,8.3,'#688dc633',null);dot(60,58,5.7,'#647fbb');
   ctx.beginPath();ctx.moveTo(60,53.5);ctx.lineTo(63,60.7);ctx.lineTo(60,59);ctx.lineTo(57,60.7);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();
   ctx.restore();
+  if(buildingNames.length)drawBuildingNames(ctx,buildingNames,shadow?10:5.5);
   if(distances.length)drawBossDistances(ctx,distances,shadow?10:6);
   // A quiet compass notch lives on the rim, outside the clipped map contents.
   ctx.beginPath();ctx.moveTo(60,3);ctx.lineTo(62.5,8);ctx.lineTo(57.5,8);ctx.closePath();ctx.fillStyle='#527ab2';ctx.fill();

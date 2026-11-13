@@ -830,7 +830,7 @@ export function createZixingUI(app,api) {
         sanctuaryGuidePending=false;
         if(run.sanctuary&&!run.bossSpawned&&!run.stageCleared){
           run.state='modal';run.input.releaseLock();
-          overlay([el('span','','触碰圣地，'),el('span','','召唤最终 Boss')],'字灵书庭 · 圣地终战',[
+          overlay([el('span','','触碰圣地，'),el('span','','召唤最终 Boss')],paperStages[3]+' · 圣地终战',[
             text('这里不会自动刷怪。请跟随「圣地」方向与距离标记，前往地图中央的祭坛。'),
             card(el('b','','靠近祭坛 → 触碰圣地'),text('手机：点击「触碰圣地」按钮','zx-note'),text('电脑：按 E','zx-note')),
           ],[button('知道了，前往圣地',()=>run.resume(),'primary',{'data-action':'sanctuary-guide-close'})],hud,'zx-sanctuary-guide');

@@ -94,7 +94,7 @@ test('performance presets preserve the selected quality when leaving battery sav
   assert.equal(performanceProfile(settings),high);assert.equal(settings.touchScale,.85);
   assert.equal(saver.bloom,false);assert.equal(saver.outline,false);
   assert.ok(high.pixelBudget>saver.pixelBudget&&high.maxPixelRatio>saver.maxPixelRatio);
-  assert.equal(performanceProfile().name,'流畅');
+  assert.equal(performanceProfile(),high);
 });
 test('rotated stationery blocks its footprint, permits rounded corner clearance and resolves embedded actors',()=>{
   for(const angle of [0,.4,Math.PI/2,-.7]){
