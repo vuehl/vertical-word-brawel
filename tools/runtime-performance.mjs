@@ -113,6 +113,9 @@ try{
     if(process.argv.includes('--soak'))await playFiveMinutes(page,dir);
     else await reviewFiveMinute(page,dir,process.argv.includes('--baseline'));
     assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--wind-animation')){
+    const {reviewWindAnimation}=await import('./wind-animation-regression.mjs');
+    await reviewWindAnimation(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--desktop-layout')){
     const {reviewDesktopLayout}=await import('./desktop-layout-regression.mjs');
     await reviewDesktopLayout(page,dir);assert.deepEqual(errors,[]);

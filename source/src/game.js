@@ -8,7 +8,7 @@ import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
 import {bossDistanceText,buildingMapName} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
-import {startWindFaint,windFaintRenderScale,windFaintTile} from './hero-poses.js';
+import {startWindFaint,windFaintTile,windHeroFrame} from './hero-poses.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
 import {createPlayerFootRing} from './player-foot-ring.js';
@@ -41214,6 +41214,8 @@ var mv = 30,
     revives = 0;
     dead = !1;
     windFaint;
+    windIdle;
+    windWalk;
     lastHit = null;
     sturdyUsed = !1;
     speedBoostT = 0;
@@ -43032,8 +43034,8 @@ var mv = 30,
     }
     render() {
       let e = this.run,
-        faintTile = this.dead && this.windFaint?.(e.realTime*1000),
-        t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.heroPose??this.firePose,faintTile),
+        heroFrame = windHeroFrame(this),
+        t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.heroPose??this.firePose,heroFrame),
         n = this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
         r = this.animT,
         i = !1,
@@ -43066,11 +43068,11 @@ var mv = 30,
         n,
         r,
         l,
-        this.renderScale * (faintTile ? windFaintRenderScale : 1),
-        faintTile ? 0 : Math.max(this.flash, u ? 0.5 : 0),
+        this.renderScale * (heroFrame ? heroFrame.layout.renderScale : 1),
+        this.dead && heroFrame ? 0 : Math.max(this.flash, u ? 0.5 : 0),
         d,
         e.shinySkin ? Zc(this.speciesId) : 0,
-        faintTile ? 0 : this.squash + c + a + (this.slideT > 0 ? 0.4 : 0),
+        heroFrame ? 0 : this.squash + c + a + (this.slideT > 0 ? 0.4 : 0),
         ...f,
         i,
         e.skinGl,
