@@ -1,4 +1,4 @@
-import {I as Group,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,A as SphereGeometry,et as PlaneGeometry,y as BufferGeometry,v as BufferAttribute,b as CanvasTexture,ot as SRGB,w as Color,ht as Vector3,k as DirectionalLight,WorkshopStandardMaterial as StandardMaterial,WorkshopPointLight as PointLight} from '../assets/three-DmSYIDKK.js';
+import {I as Group,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,ut as SphereGeometry,et as PlaneGeometry,y as BufferGeometry,v as BufferAttribute,b as CanvasTexture,ot as SRGB,w as Color,ht as Vector3,k as DirectionalLight,WorkshopStandardMaterial as StandardMaterial,WorkshopPointLight as PointLight} from '../assets/three-DmSYIDKK.js';
 import {preparePaperBatch} from './paper-visibility.js';
 import {paperBox} from './paper-collision.js';
 import {beveledBoxGeometry,latheGeometry,tubeGeometry,helixTrackGeometry,curtainGeometry} from './handcrafted-geometry.js';
@@ -6,6 +6,10 @@ import {workshopPhoto,workshopSurface,stabiliseWorkshopBump,workshopInk,workshop
 import {workshopLampHalo} from './workshop-paint-art.js';
 import {proximityBulb,updateToyProximity} from './workshop-proximity.js';
 import {WORKSHOP_SHADOW} from './workshop-shadows.js';
+import {arrangeWorkshopBoundary} from './workshop-boundary.js';
+import {drawDeskPaper,drawDeskWall} from './workshop-desk-art.js';
+import {buildAlarmClock,ALARM_CLOCK_BOUNDS} from './workshop-alarm-clock.js';
+import {createForegroundLights,updateForegroundLights} from './workshop-foreground-lights.js';
 
 const TAU=Math.PI*2;
 const sunDirection=new Vector3(-50,85,38).normalize(),sunRight=new Vector3(38,0,50).normalize();
@@ -82,16 +86,18 @@ export function* workshopWorldSteps(terrain){
   terrain.minH=terrain.maxH=0;terrain.heights.fill(0);terrain.pathMask.fill(0);
   terrain.spawn.set(terrain.arena?.entry?.x||0,0,terrain.arena?.entry?.z||0);
   terrain.landmarks=[];terrain.zxProps=[];terrain.workshopLamps=[];terrain.workshopGlows=[];terrain.workshopMarbleRuns=[];terrain.workshopMarbleSites=[];
+  terrain.workshopLooseMarbles=[];
   terrain.ownsPaperAssets=!terrain.paperAssets;const assets=terrain.paperAssets??=createWorkshopAssets();
   const {boxes,bevels,planes,cylinders,cones,spheres,rings,mats,textures,colors}=assets;
   const batches=new Map(),transform=new Group(),groundSurfaces=[];
   terrain.workshopGroundSurfaces=groundSurfaces;
   terrain.workshopLightStrands=[];terrain.workshopShadowStyle='distance-faded-soft-shadows';
   function groundY(x,z){
-    let y=-.12;
-    for(const p of groundSurfaces){const dx=x-p.x,dz=z-p.z,c=Math.cos(p.a),s=Math.sin(p.a);if(Math.abs(c*dx-s*dz)<p.w/2&&Math.abs(s*dx+c*dz)<p.d/2)y=Math.max(y,p.y);}
+    let y=0;
+    for(const p of groundSurfaces){const dx=x-p.x,dz=z-p.z;if(Math.abs(p.cos*dx-p.sin*dz)<p.w/2&&Math.abs(p.sin*dx+p.cos*dz)<p.d/2)y=Math.max(y,p.y);}
     return y;
   }
+  function groundSurface(x,z,w,d,a,y,kind){groundSurfaces.push({x,z,w,d,a,y,kind,cos:Math.cos(a),sin:Math.sin(a)});terrain.maxH=Math.max(terrain.maxH,y);}
   terrain.workshopGroundY=groundY;
   function color(c){if(!colors.has(c))colors.set(c,new Color(c));return colors.get(c);}
   function mat(key,options){if(!mats.has(key))mats.set(key,stabiliseWorkshopBump(new StandardMaterial(options)));return mats.get(key);}
@@ -126,8 +132,8 @@ export function* workshopWorldSteps(terrain){
   }
   function group(x,z,angle=0){const g=new Group();g.position.set(x,0,z);g.rotation.y=angle;root.add(g);return g;}
   function prop(kind,x,z,w,d,h,angle=0){
-    const g=group(x,z,angle);terrain.zxProps.push({kind,x,z,w,d,h,angle});
-    terrain.addCollider(paperBox(x,z,w,d,h+.2,angle));terrain.reserve(x,z,Math.hypot(w,d)/2+1);
+    const g=group(x,z,angle),baseY=groundY(x,z);g.position.y=baseY;terrain.zxProps.push({kind,x,z,w,d,h,angle,baseY});
+    terrain.addCollider(paperBox(x,z,w,d,baseY+h+.2,angle));terrain.reserve(x,z,Math.hypot(w,d)/2+1);
     terrain.landmarks.push({kind:'meadow',x,z,r:Math.hypot(w,d)/2});return g;
   }
   function glow(c,reactive=false){const key=(reactive?'sensor-glow-':'glow-')+c,m=mat(key,{color:c,emissive:c,emissiveIntensity:reactive?3.4:.12});if(reactive&&!m.userData.proximity)proximityBulb(m,assets);if(!terrain.workshopGlows.includes(m))terrain.workshopGlows.push(m);return m;}
@@ -144,27 +150,29 @@ export function* workshopWorldSteps(terrain){
     }
   }
   function fairyString(g,x1,z1,x2,z2,y,count=14){
-    const endpoints=[[x1,z1],[x2,z2]];
-    if(g===root)for(const [x,z] of endpoints){
-      const post=prop('fairy-light-post',x,z,.75,.75,y+.2);
-      cyl(post,0,y*.5,0,.14,y,'#52616e');cyl(post,0,.16,0,.42,.32,'#668897');
-      ball(post,0,y,0,.20,.20,.20,'#d5b783');
-    }
     const points=[];for(let i=0;i<=count;i++){const t=i/count,x=x1+(x2-x1)*t,z=z1+(z2-z1)*t,yy=y-Math.sin(t*Math.PI)*1.4;points.push([x,yy,z]);
       if(i&&i<count){cyl(g,x,yy-.16,z,.075,.24,'#554a3e');lamp(g,x,yy-.38,z,['#73dbe7','#f4a5c0','#b6a7ee','#a4dfbf','#ffe0a0'][i%5],.16,42,true);}}
     cable(g,points);
-    terrain.workshopLightStrands.push({attachment:g===root?'posts':'fixture',points:points.map(p=>{const v=new Vector3(...p);g.localToWorld(v);return v.toArray();}),segmentCount:count});
+    terrain.workshopLightStrands.push({attachment:'fixture',points:points.map(p=>{const v=new Vector3(...p);g.localToWorld(v);return v.toArray();}),segmentCount:count});
   }
-  const wood=workshopFloorTexture(assets);wood.repeat.set(terrain.world/36,terrain.world/28);
+  const wood=workshopFloorTexture(assets);wood.repeat.set(terrain.world/62,terrain.world/48);
   const floorMat=mat('maple-desktop',{map:wood,color:0xffffff,roughness:1});
-  plane(root,0,-.12,0,terrain.world+20,terrain.world+20,floorMat);
+  plane(root,0,0,0,terrain.world+20,terrain.world+20,floorMat);
   box(root,0,-1.4,0,terrain.world+20,2.5,terrain.world+20,woodMaterial);
   // The continuous desktop uses seamless painted grain. Raised seam strips
   // produced dark, jagged lines across the playfield and cast tiny shadows.
-  const deskMat=workshopSurface(assets,'teal-desk-pad',{photo:'linen',color:0x429b9c,roughness:.64,bump:.008});
-  function island(x,z,w,d,a=0){const g=group(x,z,a);roundedBox(g,0,-.015,0,w,.12,d,'#124659',.5);plane(g,0,.06,0,w-.4,d-.4,deskMat);groundSurfaces.push({x,z,w,d,a,y:.06,kind:'cloth'});return g;}
-  function notebook(x,z,w=25,d=28,a=0){
-    const g=group(x,z,a);roundedBox(g,0,-.015,0,w+.7,.18,d+.7,cloth('#6a94b4'),.4);
+  const deskMat=workshopSurface(assets,'teal-desk-pad',{photo:'linen',color:0x779b96,roughness:.64,bump:.008});
+  function island(x,z,w,d,a=0){
+    const g=group(x,z,a);roundedBox(g,0,.035,0,w,.07,d,cloth('#567d79'));
+    roundedBox(g,0,.067,0,w-.65,.025,d-.65,deskMat);
+    // A broad stitched rim reads as a desk mat, without a busy cutting grid.
+    const rim=texture('desk-pad-stitches',512,512,c=>{c.clearRect(0,0,512,512);c.strokeStyle='#c0d3b25c';c.lineWidth=2;c.setLineDash([6,8]);c.strokeRect(18,18,476,476);});
+    plane(g,0,.088,0,w-.9,d-.9,mat('desk-pad-stitches',{map:rim,transparent:true,depthWrite:false}));
+    groundSurface(x,z,w,d,a,.09,'cloth');return g;
+  }
+  function notebook(x,z,w=25,d=28,a=0,height=.3){
+    const g=group(x,z,a),base=groundY(x,z);g.position.y=base;
+    roundedBox(g,0,.045,0,w+.7,.09,d+.7,cloth('#6a8494'),.4);
     const drawPaper=(c,width=1024,height=1024)=>{
       c.save();c.scale(width/512,height/512);c.fillStyle='#dcefff';c.fillRect(0,0,512,512);
       const photo=assets.photos.get('paper')?.texture.image;if(photo?.width>32)c.drawImage(photo,0,0,512,512);
@@ -180,9 +188,38 @@ export function* workshopWorldSteps(terrain){
     };
     const pageTex=texture('warm-notebook-page',1024,1024,drawPaper);
     if(!pageTex.userData.paperPhoto){pageTex.userData.paperPhoto=true;assets.photoJobs.push(workshopPhoto(assets,'paper').ready.then(()=>{if(!assets.disposed){drawPaper(pageTex.image.getContext('2d'));pageTex.needsUpdate=true;}}));}
-    roundedBox(g,0,.08,0,w,.14,d,paperMaterial);plane(g,0,.157,0,w,d,texMat('notebook-paper',pageTex,.94));
-    groundSurfaces.push({x,z,w,d,a,y:.157,kind:'paper'});
-    for(let i=0;i<11;i++){ring(g,-w/2+.2,.2,-d/2+2+i*(d-4)/10,.7,brass,0,Math.PI/2);}
+    roundedBox(g,0,(height+.08)/2,0,w,height-.08,d,paperMaterial);plane(g,0,height+.012,0,w-.25,d-.25,texMat('notebook-paper',pageTex,.94));
+    groundSurface(x,z,w+.7,d+.7,a,base+height+.012,'notebook');
+    for(let i=0;i<11;i++){ring(g,-w/2+.2,height+.04,-d/2+2+i*(d-4)/10,.48,brass,0,Math.PI/2);}
+    // A narrow fabric bookmark lies over one corner, away from the open page.
+    box(g,w*.32,height+.03,d*.43,.5,.035,3.6,cloth('#b88d64'));
+  }
+  function paperPile(x,z,w,d,a=0,height=.24,variant='sketch'){
+    const page=texture('desk-paper-'+variant,768,1024,(c,w,h)=>drawDeskPaper(c,w,h,variant));
+    for(let i=0;i<3;i++){
+      const xx=x+(i-1)*.7,zz=z+(1-i)*.45,angle=a+[-.055,.035,0][i],g=group(xx,zz,angle),top=height*(i+1)/3;
+      roundedBox(g,0,top-height/6,0,w,height/3,d,paperMaterial);
+      plane(g,0,top+.012,0,w-.12,d-.12,texMat('desk-paper-'+variant,page));
+      groundSurface(xx,zz,w,d,angle,top+.012,'loose-paper');
+      if(i===2){
+        plane(g,-w*.36,top+.025,-d*.44,3.1,1.25,cloth('#c8ad7b'),-.12);
+        plane(g,w*.38,top+.025,d*.44,2.8,1.1,cloth('#c8ad7b'),.18);
+      }
+    }
+  }
+  function sketchbook(x,z,w,d,a=0,height=.4){
+    const g=group(x,z,a),cover=cloth('#9a7759');
+    roundedBox(g,0,.04,0,w+.55,.08,d+.55,cover);
+    roundedBox(g,0,height/2,0,w,height-.12,d,paperMaterial);
+    roundedBox(g,0,height-.035,0,w+.55,.07,d+.55,cover);
+    const label=texture('sketchbook-cover',512,512,c=>{
+      c.clearRect(0,0,512,512);c.strokeStyle='#eadbb7';c.lineWidth=3;c.strokeRect(80,132,352,240);
+      c.beginPath();c.moveTo(160,307);c.lineTo(241,201);c.lineTo(292,268);c.lineTo(328,237);c.lineTo(372,307);c.stroke();
+      c.beginPath();c.arc(335,194,18,0,TAU);c.stroke();
+    });
+    plane(g,0,height+.015,0,w*.75,d*.65,mat('sketchbook-cover',{map:label,transparent:true,depthWrite:false}));
+    box(g,w*.32,height+.016,0,.55,.03,d+.6,cloth('#667b70'));
+    groundSurface(x,z,w+.55,d+.55,a,height+.032,'sketchbook');
   }
   function pencil(x,z,a,c='#eeaf3b',s=1){
     const g=prop('colored-pencil',x,z,1.1*s,12*s,1.1*s,a);
@@ -220,7 +257,7 @@ export function* workshopWorldSteps(terrain){
   }
   function marbleFactory(x,z,s=1,a=.21+(stage-1)*.13){
     const g=prop('marble-factory',x,z,13*s,13*s,26*s,a);
-    terrain.workshopMarbleRuns.push({kind:'helix',x,z,s,angle:a,radius:4.6,top:23,bottom:2.5,turns:2.6});
+    terrain.workshopMarbleRuns.push({kind:'helix',x,z,s,angle:a,radius:4.6,top:23,bottom:2.5,turns:2.6,baseY:g.position.y});
     terrain.workshopMarbleSites.push({kind:'marble-factory',x,z,w:13*s,d:13*s,h:26*s,angle:a});
     roundedBox(g,0,.52*s,0,13*s,1.04*s,13*s,woodMaterial);
     roundedBox(g,0,1.12*s,0,11.8*s,.2*s,11.8*s,cloth('#5d776e'));
@@ -246,7 +283,7 @@ export function* workshopWorldSteps(terrain){
   function marbleMachine(kind,x,z,s=1,a=0){
     const [w,d,h]=factorySize[kind],name='marble-'+kind,g=prop(name,x,z,w*s,d*s,h*s,a);
     terrain.workshopMarbleSites.push({kind:name,x,z,w:w*s,d:d*s,h:h*s,angle:a});
-    terrain.workshopMarbleRuns.push({kind,x,z,s,angle:a,path:assets.marblePaths[kind],speed:kind==='switchback'?.065:.085});
+    terrain.workshopMarbleRuns.push({kind,x,z,s,angle:a,path:assets.marblePaths[kind],speed:kind==='switchback'?.065:.085,baseY:g.position.y});
     roundedBox(g,0,.52*s,0,w*s,1.04*s,d*s,woodMaterial);
     roundedBox(g,0,1.1*s,0,(w-1)*s,.16*s,(d-1)*s,cloth('#397d7b'));
     const teal=mat('marble-enamel',{color:0x3c9b94,roughness:.4,metalness:.04});
@@ -291,6 +328,7 @@ export function* workshopWorldSteps(terrain){
     return axes.every(([x,z])=>Math.abs(dx*x+dz*z)<(a.w/2+padding)*Math.abs(x*ac-z*as)+(a.d/2+padding)*Math.abs(x*as+z*ac)+(b.w/2+padding)*Math.abs(x*bc-z*bs)+(b.d/2+padding)*Math.abs(x*bs+z*bc));
   }
   function placeMarble(kind,x,z,s=1,a=0,search=15){
+    if(kind==='twin')s*=1.2;
     const dimensions=kind==='helix'?[13,13,26]:factorySize[kind],candidate={x,z,w:dimensions[0]*s,d:dimensions[1]*s,angle:a};
     const notebookField={x:-2,z:7,w:30,d:37,angle:.115};
     for(let radius=0;radius<=search;radius+=3)for(let i=0;i<(radius?24:1);i++){
@@ -318,12 +356,12 @@ export function* workshopWorldSteps(terrain){
     for(const xx of [-1,1])lamp(car,xx*1.12*s,1.02*s,-2.65*s,'#ffe4b4',.14*s,3.5);
   }
   function racePark(x,z,s=1,angle=-.52){
-    const g=group(x,z,angle);g.position.y=.12;
+    const g=group(x,z,angle);g.position.y=groundY(x,z)+.12;
     mesh(g,assets.road,mat('race-track',{color:0x476f91,roughness:.65}),0,0,0,s,s,s);
     mesh(g,assets.roadInner,cloth('#d4bc8d'),0,0,0,s,s,s);mesh(g,assets.roadOuter,cloth('#c0a371'),0,0,0,s,s,s);
     raceCar(g,-7*s,4*s,s);
     // Only the car is solid; the track itself remains part of the playfield.
-    const carPoint=new Vector3(-7*s,0,4*s);g.localToWorld(carPoint);terrain.zxProps.push({kind:'mini-4wd',x:carPoint.x,z:carPoint.z,w:4.2*s,d:6.2*s,h:2.1*s,angle:angle-.2});terrain.addCollider(paperBox(carPoint.x,carPoint.z,4.2*s,6.2*s,2.2*s,angle-.2));terrain.reserve(carPoint.x,carPoint.z,4*s);
+    const carPoint=new Vector3(-7*s,0,4*s);g.localToWorld(carPoint);terrain.zxProps.push({kind:'mini-4wd',x:carPoint.x,z:carPoint.z,w:4.2*s,d:6.2*s,h:2.1*s,angle:angle-.2,baseY:g.position.y});terrain.addCollider(paperBox(carPoint.x,carPoint.z,4.2*s,6.2*s,g.position.y+2.2*s,angle-.2));terrain.reserve(carPoint.x,carPoint.z,4*s);
   }
   function pencilCup(x,z,s=1,angle=.16){
     const g=prop('pencil-cup',x,z,5.6*s,5.6*s,11.5*s,angle);
@@ -359,32 +397,73 @@ export function* workshopWorldSteps(terrain){
     lamp(g,4*s,13.3*s,0,'#ffe0a8',.4*s,115);
     cyl(g,.8*s,.6*s,1.7*s,.28*s,.16*s,brass);
   }
+  function pencilTin(x,z,a=-.2){
+    const g=prop('pencil-tin',x,z,18,17,10.3,a),enamel=cloth('#577d84'),inside=cloth('#c6c7ae');
+    roundedBox(g,0,.45,1.5,17,.9,10.5,enamel);
+    roundedBox(g,0,.96,1.5,15.9,.2,9.4,inside);
+    for(const side of [-1,1])roundedBox(g,side*8.1,1.25,1.5,.65,1.5,10.5,enamel);
+    for(const zz of [-3.4,6.4])roundedBox(g,0,1.25,zz,16.2,1.5,.65,enamel);
+    const lid=new Group();lid.position.set(0,1.25,-3.5);lid.rotation.x=1.04;g.add(lid);
+    roundedBox(lid,0,0,-4.9,17,.55,10,enamel);roundedBox(lid,0,.31,-4.9,15.6,.12,8.6,inside);
+    roundedBox(lid,0,.39,-4.9,10,.03,4.5,cloth('#728c84'));
+    for(let i=0;i<4;i++){
+      const zz=-1.6+i*1.85,c=['#b26d52','#d0aa63','#517d87','#7b8e72'][i];
+      mesh(g,cylinders,c,0,1.44,zz,.37,11.4,.37,0,0,Math.PI/2);
+      mesh(g,cones,'#d8b98b',-6.25,1.44,zz,.37,1.1,.37,0,0,Math.PI/2);
+      mesh(g,cones,'#3b4d53',-6.92,1.44,zz,.12,.27,.12,0,0,Math.PI/2);
+    }
+    roundedBox(g,6.8,1.52,4.1,1.35,.7,2.5,'#d8ad98');
+    for(const xx of [-5.5,5.5])cyl(g,xx,1.24,-3.6,.3,1.4,metal,0,Math.PI/2);
+  }
+  function ruler(x,z,a=-.55){
+    const g=prop('wooden-ruler',x,z,2.4,19,.3,a);
+    roundedBox(g,0,.15,0,2.4,.3,19,woodMaterial);
+    for(let i=0;i<37;i++)box(g,.85-(i%4===0?.62:.35),.31,-8.5+i*.47,i%4===0?1.25:.7,.018,.045,'#65766e');
+    ring(g,0,.32,8.2,.26,'#65766e');
+  }
+  function threadSpool(x,z,a=.15){
+    const g=prop('thread-spool',x,z,5,5,5.4,a);
+    mesh(g,assets.spool,woodMaterial,0,2.7,0,2.4,5.4,2.4);
+    const thread=texture('small-spool-thread',256,256,c=>{
+      c.fillStyle='#a38691';c.fillRect(0,0,256,256);c.strokeStyle='#c8b0b2';c.lineWidth=1;
+      for(let y=4;y<256;y+=9){c.beginPath();c.moveTo(0,y);c.lineTo(256,y-2);c.stroke();}
+    });
+    cyl(g,0,2.7,0,1.55,3.6,texMat('small-spool-thread',thread));
+    cyl(g,0,5.43,0,.44,.05,'#576d70');
+  }
+  function binderClips(x,z,a=-.28){
+    const g=prop('binder-clips',x,z,4.8,4.8,2.9,a);
+    for(const [xx,zz,turn,c] of [[-1,-.6,.15,'#586f79'],[1.05,1.1,-.4,'#8b786c']]){
+      const clip=new Group();clip.position.set(xx,0,zz);clip.rotation.y=turn;g.add(clip);
+      roundedBox(clip,0,.65,0,2.1,1.2,1.35,c);
+      box(clip,0,.15,.74,1.8,.18,.2,'#384c57');
+      for(const side of [-1,1])cable(clip,[[-.65,.85,side*.62],[-.65,2.4,side*1.1],[-.43,2.7,side*1.13],[.43,2.7,side*1.13],[.65,2.4,side*1.1],[.65,.85,side*.62]],metal,.06);
+    }
+  }
   function looseMarbles(x,z,count=5){
-    const glass=mat('sea-glass-marbles',{color:0x78b9b1,roughness:.19,metalness:.13,transparent:true,opacity:.76});
     for(let i=0;i<count;i++){
       const xx=x+Math.sin(i*2.6)*3.7,zz=z+Math.cos(i*1.7)*2.5,r=.48+(i%3)*.09;
-      ball(root,xx,r,zz,r,r,r,glass);ball(root,xx+.08,r+.03,zz,.11,r*.73,.12,cloth(palette[i%6]));
+      if(terrain.hitProp(xx,r,zz,r+.2)||Math.abs(xx)>terrain.play-r||Math.abs(zz)>terrain.play-r)continue;
+      terrain.workshopLooseMarbles.push({x:xx,z:zz,r,vx:0,vz:0,rollX:0,rollZ:0,armed:false,color:palette[i%6]});
     }
   }
   // Mixed small/medium stationery leaves an open playfield at the original camera.
   // Monumental silhouettes are reserved for the boundary.
   terrain.workshopLayout={style:'ink-painted-desk',anchors:[],giantScale:false,sceneText:false};
-  // Large, quiet cool surfaces are spread across the whole room. Wooden gaps
-  // remain between them instead of an almost uninterrupted warm desktop.
-  const spread=Math.ceil(terrain.play/54);
-  for(let row=-spread;row<=spread;row++){
-    for(let col=-spread;col<=spread;col++){
-      const pattern=((row*3+col*5+stage)%7+7)%7,paper=pattern%3===0;
-      const x=col*54+(row%2)*3,z=row*54+(col%2)*2,w=43+pattern%3*2,d=44+(pattern+1)%3*2,a=(pattern-3)*.009;
-      const g=group(x,z,a),y=paper?-.035:-.065;
-      const material=workshopSurface(assets,'spread-'+(paper?'paper':pattern%3),{photo:paper?'paper':'linen',color:paper?0xe9f6ff:[0x6fb9ce,0x89cebe,0x8cbbe9][pattern%3]});
-      plane(g,0,y-.012,0,w+.3,d+.3,cloth(paper?'#99b7d0':'#7198ae'));
-      plane(g,0,y,0,w,d,material);
-      groundSurfaces.push({x,z,w,d,a,y,kind:paper?'paper':'cloth',spread:true});
-    }
-    yield;
+  // A few different activities share one continuous wooden desk. Surfaces are
+  // authored as objects with pages, bindings and thickness, not terrain tiles.
+  island(-18,-20,30,28,-.24);notebook(-2,7,28,35,.115,.3);yield;
+  if(terrain.play>80){
+    paperPile(-terrain.play*.59,-terrain.play*.37,29,38,-.27,.27,'sketch');yield;
+    island(terrain.play*.49,-terrain.play*.61,39,28,.19);
+    notebook(terrain.play*.50,-terrain.play*.59,24,30,.05,.27);yield;
+    sketchbook(-terrain.play*.43,terrain.play*.59,27,35,.24,.4);
+    paperPile(-terrain.play*.22,terrain.play*.70,16,22,-.36,.15,'notes');yield;
+    paperPile(terrain.play*.66,terrain.play*.20,25,33,.29,.30,'blueprint');
+    paperPile(terrain.play*.30,terrain.play*.62,19,26,-.12,.18,'notes');yield;
+    notebook(-terrain.play*.20,-terrain.play*.78,21,29,-.14,.34);yield;
   }
-  island(-18,-20,30,28,-.24);notebook(-2,7,28,35,.115);yield;
+  terrain.spawn.y=groundY(terrain.spawn.x,terrain.spawn.z);
   bookStack(-5.8,-13,.31,-.29);marbleFactory(7.8,-11.5,.30);yield;
   racePark(15,6,.52);pencilCup(-11,16,.44);yoYo(10,21,.50);yield;
   // Keep the handheld beside the pencil rather than intersecting its shaft.
@@ -395,14 +474,32 @@ export function* workshopWorldSteps(terrain){
   placeMarble('switchback',-30,4,.38,-.13,24);yield;
   placeMarble('funnel',-7,33,.48,.12,24);yield;
   placeMarble('twin',30,-30,.4,-.08,24);yield;
-  fairyString(root,-20,-21,20,-16,11,17);fairyString(root,-21,26,22,22,9,17);yield;
+  if(terrain.play>80){
+    // A single clock replaces the north-west book stack and crowded crayon trays.
+    const p=terrain.play,first=terrain.zxProps.length;
+    const {width,depth,height}=ALARM_CLOCK_BOUNDS,clock=prop('boundary-alarm-clock',-p*.90,-p*.92,width,depth,height,.55);
+    const clockShape=buildAlarmClock({mesh,ball,cyl,ring,roundedBox,cable,texture,texMat,mat,assets},clock);
+    terrain.workshopLayout.alarmClock={x:clock.position.x,z:clock.position.z,angle:.55,...clockShape};
+    pencilCup(-p*.59,-p*.84,.72,.25);
+    pencil(-p*.62,-p*.70,1.18,'#4d8495',.68);tapeRoll(-p*.80,-p*.70,.65,-.22);
+    eraser(-p*.53,-p*.73,.35);
+    threadSpool(-p*.71,-p*.88);binderClips(-p*.82,-p*.77);
+    handheld(-p*.70,-p*.61,.75,.26);
+    terrain.workshopLayout.cornerCluster={x:-p*.81,z:-p*.84,r:28,props:terrain.zxProps.slice(first)};
+    const lowerFirst=terrain.zxProps.length;
+    pencilTin(-p*.72,p*.32,-.24);ruler(-p*.54,p*.32,-.66);
+    yoYo(-p*.59,p*.13,.72,.22);eraser(-p*.79,p*.52,-.35);looseMarbles(-p*.69,p*.50,4);
+    terrain.workshopLayout.lowerLeftCluster={x:-p*.69,z:p*.34,r:26,props:terrain.zxProps.slice(lowerFirst)};
+    yield;
+  }
   // A seeded, irregular scatter leaves broad paths between differently sized
   // clusters. Each cluster is offset and rotated; no repeated base tile exists.
   let seed=(terrain.seed^0x51f15e)>>>0;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   const limit=terrain.play-25,anchors=[];
   for(let attempt=0;attempt<240&&anchors.length<25&&limit>48;attempt++){
     const r=51+Math.sqrt(random())*(limit-51),a=random()*TAU,x=Math.cos(a)*r,z=Math.sin(a)*r;
-    if(Math.abs(x)>limit||Math.abs(z)>limit||anchors.some(p=>Math.hypot(x-p.x,z-p.z)<44)||terrain.workshopMarbleSites.some(p=>Math.hypot(x-p.x,z-p.z)<Math.hypot(p.w,p.d)/2+28))continue;
+    const authored=[terrain.workshopLayout.cornerCluster,terrain.workshopLayout.lowerLeftCluster].filter(Boolean);
+    if(Math.abs(x)>limit||Math.abs(z)>limit||authored.some(p=>Math.hypot(x-p.x,z-p.z)<p.r+15)||anchors.some(p=>Math.hypot(x-p.x,z-p.z)<44)||terrain.workshopMarbleSites.some(p=>Math.hypot(x-p.x,z-p.z)<Math.hypot(p.w,p.d)/2+28))continue;
     anchors.push({x,z});const turn=(random()-.5)*1.25,size=.26+random()*.16,kind=anchors.length%6;
     terrain.workshopLayout.anchors.push({x,z,turn,size,kind});
     if(kind===0)bookStack(x,z,size,turn);
@@ -410,19 +507,14 @@ export function* workshopWorldSteps(terrain){
     if(kind===2){racePark(x,z,size,turn);handheld(x+12,z-11,size*.85,turn+.7);}
     if(kind===3){pencilCup(x,z,size*1.25,turn);tapeRoll(x-10,z+8,size*.8,turn);}
     if(kind===4){yoYo(x,z,size*1.3,turn);pencil(x+12,z-6,turn+1.2,'#4d8495',size*1.3);}
-    if(kind===5){bookStack(x,z,size,turn);notebook(x+14,z+12,23,31,turn+.4);}
+    if(kind===5){bookStack(x,z,size,turn);handheld(x+7,z+9,size*.9,turn+.4);}
     if(kind%2)looseMarbles(x-7,z+8,3);
-    if(kind===0||kind===1)fairyString(root,x-15,z+3,x+16,z-7,8,11);
     yield;
   }
   // Indoor boundary: tall painted walls, oak skirting, book shelves and festoons.
   // They sit beyond the gameplay limit, keeping the existing movement boundary.
   const edge=terrain.play+5;
-  terrain.workshopBoundary={edge,height:65,sides:4};
-  const wallpaper=texture('storybook-wallpaper',256,256,c=>{
-    c.fillStyle='#2d4b68';c.fillRect(0,0,256,256);c.fillStyle='#3d5e78';c.fillRect(0,0,3,256);c.fillRect(128,0,3,256);
-    for(const [x,y] of [[64,64],[192,192]]){c.fillStyle='#7794a0';c.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?6:14;c.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);}c.closePath();c.fill();}
-  });wallpaper.wrapS=wallpaper.wrapT=1000;wallpaper.repeat.set(18,3);
+  terrain.workshopBoundary={edge,height:65,sides:4,groups:[]};
   for(let side=0;side<4;side++){
     const g=group(0,0,side*Math.PI/2);
     // The near wall is a dollhouse cutaway: a camera behind the player must
@@ -430,18 +522,81 @@ export function* workshopWorldSteps(terrain){
     const cutaway=side===2;
     box(g,0,cutaway?1.5:31,-edge,edge*2+12,cutaway?3:66,4,'#243e60');
     roundedBox(g,0,cutaway?1.4:4,-edge+2.2,edge*2,cutaway?2.8:8,1,woodMaterial);roundedBox(g,0,cutaway?3:8,-edge+3,edge*2,.7,1.2,woodMaterial);
-    if(!cutaway)mesh(g,planes,texMat('wallpaper',wallpaper,.95),0,34,-edge+2.05,edge*2,60,1);
-    for(let x=-edge+12;x<edge;x+=24){
-      if(!cutaway){box(g,x,24,-edge+2.2,.7,32,.7,'#30577a');box(g,x,12,-edge+2.2,20,.4,.6,'#416485');}
+    if(!cutaway){
+      const variant=(stage+side)%3,wallpaper=texture('desk-wall-mural-'+variant,1536,512,(c,w,h)=>drawDeskWall(c,w,h,variant));
+      mesh(g,planes,texMat('desk-wall-mural-'+variant,wallpaper,.95),0,34,-edge+2.05,edge*2,60,1);
+    }
+    const wall=g,arrangement=arrangeWorkshopBoundary(edge,stage,side,terrain.seed).map(cluster=>{
+      if(terrain.play<=80)return cluster;
+      const members=cluster.members.filter(p=>{
+        const v=new Vector3(p.x,0,p.z);wall.localToWorld(v);
+        const a=side*Math.PI/2+p.angle,c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
+        return !(v.x-(c*p.w+s*p.d)/2<-terrain.play*.6&&v.z-(s*p.w+c*p.d)/2<-terrain.play*.7);
+      });
+      if(!members.length)return null;
+      const start=Math.min(...members.map(p=>p.x-p.extent/2)),end=Math.max(...members.map(p=>p.x+p.extent/2));
+      return {...cluster,members,start,end,width:end-start,cluster:members.length>1};
+    }).filter(Boolean);
+    terrain.workshopBoundary.groups.push(...arrangement);
+    for(const cluster of arrangement){
+      for(let slot=0;slot<cluster.members.length;slot++){
+      const placement=cluster.members[slot],variant=placement.variant,g=new Group();
+      g.position.set(placement.x,0,placement.z);g.rotation.y=placement.angle;wall.add(g);
+      const x=0,z=0,angle=side*Math.PI/2+placement.angle;
+      if(variant){
+        // Different giant toy silhouettes share the same shallow boundary strip.
+        // South-facing props stay low so the camera can see the player.
+        const h=cutaway?3.2:variant===1?30:variant===2?19:variant===3?23:4;
+        let kind;
+        if(variant===1&&!cutaway){
+          kind='boundary-pencil-cup';
+          mesh(g,assets.cup,cloth('#508f9b'),x,6,z,3.2,12,3.2);ring(g,x,12,z,3.1,brass);
+          for(let i=0;i<5;i++){const xx=x-2+i,zz=z+(i%2-.5)*1.7,top=25+(i%3)*2;
+            cyl(g,xx,(top+6)/2,zz,.38,top-6,palette[i]);mesh(g,cones,'#edc88c',xx,top+.9,zz,.4,1.8,.4);}
+        }else if(variant===2&&!cutaway){
+          kind='boundary-thread-spool';
+          mesh(g,assets.spool,woodMaterial,x,h/2,z,3.3,h,3.3);
+          cyl(g,x,h/2,z,2.1,12,cloth('#bd7794'));
+          for(let i=0;i<12;i++)ring(g,x,4+i,z,2.12,cloth('#d698ad'));
+        }else if(variant===3&&!cutaway){
+          kind='boundary-toy-blocks';
+          for(let row=0;row<3;row++){
+            const xx=x+(row%2?2:-2),yy=3.7+row*7.3;
+            roundedBox(g,xx,yy,z,7.5,7.4,6.4,cloth(palette[(row+side)%6]));
+            roundedBox(g,xx,yy,z+3.25,5.5,5.5,.1,paperMaterial);
+            for(let dot=0;dot<=row;dot++)ball(g,xx+(dot-row/2)*1.45,yy,z+3.36,.5,.5,.14,cloth(palette[(row+side)%6]));
+          }
+        }else if(variant===4){
+          kind='boundary-crayon-box';
+          roundedBox(g,x,1.2,z,18,2.4,6.4,cloth('#437a9a'));
+          for(let i=0;i<6;i++){
+            mesh(g,cylinders,palette[i],x-6.5+i*2.6,2.9,z,.72,4.7,.72,Math.PI/2);
+            mesh(g,cones,palette[i],x-6.5+i*2.6,2.9,z+2.7,.72,.7,.72,Math.PI/2);
+          }
+        }else{
+          kind='boundary-tape-rolls';
+          for(let i=0;i<2;i++){
+            mesh(g,assets.tape,cloth(palette[(side+i+slot)%6]),x-4+i*8,1.4,z,3,2.8,3);
+            ring(g,x-4+i*8,2.83,z,2.95,paperMaterial);
+          }
+        }
+        const point=new Vector3(x,0,z);g.localToWorld(point);
+        const w=placement.w;
+        terrain.zxProps.push({kind,x:point.x,z:point.z,w,d:7,h,angle,boundaryGroup:cluster.id});
+        terrain.addCollider(paperBox(point.x,point.z,w,7,h+.2,angle));
+      }else{
       for(let b=0;b<5;b++){
         const h=cutaway?2.8+(b%3)*.45:24+(b%3)*6.1,xx=x-7+b*3.1,cover=cloth(palette[(b+side)%6]);
-        roundedBox(g,xx,h/2,-edge+5,2.6,h,6.4,cover);
-        for(const yy of [.14,.23,.78,.87])roundedBox(g,xx,h*yy,-edge+8.25,2.45,.07,.09,brass);
-        roundedBox(g,xx,h*.52,-edge+8.27,1.85,cutaway?.65:1.45,.08,paperMaterial);
-        const point=new Vector3(x-7+b*3.1,0,-edge+5);g.localToWorld(point);
-        terrain.zxProps.push({kind:'boundary-book',x:point.x,z:point.z,w:2.6,d:6.4,h});terrain.addCollider(paperBox(point.x,point.z,2.6,6.4,h+.2,side*Math.PI/2));
+        roundedBox(g,xx,h/2,z,2.6,h,6.4,cover);
+        for(const yy of [.14,.23,.78,.87])roundedBox(g,xx,h*yy,z+3.25,2.45,.07,.09,brass);
+        roundedBox(g,xx,h*.52,z+3.27,1.85,cutaway?.65:1.45,.08,paperMaterial);
+        const point=new Vector3(x-7+b*3.1,0,z);g.localToWorld(point);
+        terrain.zxProps.push({kind:'boundary-book',x:point.x,z:point.z,w:2.6,d:6.4,h,angle,boundaryGroup:cluster.id});terrain.addCollider(paperBox(point.x,point.z,2.6,6.4,h+.2,angle));
       }
-      fairyString(g,x-12,-edge+4,x+12,-edge+4,15,10);
+      }
+      }
+      // Each light strand follows a whole group and leaves the broad gaps quiet.
+      fairyString(wall,cluster.start,-edge+4,cluster.end,-edge+4,cutaway?8:15,Math.max(6,Math.round(cluster.width/2.4)));
     }
     // A large warm window set into each wall makes the enclosure read as a room.
     if(!cutaway){
@@ -474,8 +629,23 @@ export function* workshopWorldSteps(terrain){
   terrain.workshopPointLights=Array.from({length:4},()=>{const light=new PointLight(0xffd5a0,0,58,2);light.castShadow=false;root.add(light);return light;});
   terrain.workshopFillLight=new DirectionalLight(0x8acfe8,.55);terrain.workshopFillLight.position.set(20,35,-40);root.add(terrain.workshopFillLight);
   const rolling=new InstancedMesh(spheres,mat('rolling-glass',{color:0x7db8ad,roughness:.16,metalness:.16}),terrain.workshopMarbleRuns.length*3);rolling.name='rolling-marbles';rolling.count=0;rolling.receiveShadow=true;rolling.frustumCulled=false;root.add(rolling);terrain.workshopRollingMarbles=rolling;terrain.workshopAnimationTime=0;terrain.workshopTransform=new Group();
+  // Later clusters can occupy an earlier loose-marble candidate. Keep every
+  // playable marble clear of the finished scene and the final-arena boundary.
+  terrain.workshopLooseMarbles=terrain.workshopLooseMarbles.filter(m=>!terrain.hitProp(m.x,m.r,m.z,m.r+.1)&&Math.hypot(m.x,m.z)<terrain.arenaR-m.r);
+  const looseCount=terrain.workshopLooseMarbles.length;
+  const loose=new InstancedMesh(spheres,mat('sea-glass-marbles',{color:0x78b9b1,roughness:.19,metalness:.13,transparent:true,opacity:.76}),looseCount);
+  const cores=new InstancedMesh(spheres,solid,looseCount);
+  loose.name='pushable-floor-marbles';cores.name='floor-marble-cores';
+  for(const mesh of [loose,cores]){mesh.frustumCulled=false;mesh.receiveShadow=true;root.add(mesh);}
+  terrain.workshopLooseMarbles.forEach((marble,i)=>cores.setColorAt(i,color(marble.color)));
+  terrain.workshopLooseMesh=loose;terrain.workshopLooseCores=cores;
   terrain.mats=[...mats.values()];terrain.textures=[...textures.values()];
-  terrain.isFlatOpen=(x,z)=>!terrain.hitProp(x,.3,z,.6)&&!terrain.inSolid(x,z);
+  createForegroundLights(terrain);
+  terrain.isFlatOpen=(x,z)=>{
+    const y=groundY(x,z);
+    return !terrain.hitProp(x,y+.3,z,.6)&&!terrain.inSolid(x,z)&&
+      [[-1,0],[1,0],[0,-1],[0,1]].every(([dx,dz])=>Math.abs(groundY(x+dx,z+dz)-y)<.1);
+  };
 }
 
 export function applyWorkshopLight(run){
@@ -496,11 +666,13 @@ export function updateWorkshopScene(run,dt){
   const terrain=run.terrain;if(!terrain?.zxPaper)return;
   if(run.sprites)run.sprites.shadows.surface=terrain.workshopGroundY;
   const r=run.r,p=run.player?.pos||terrain.spawn;
+  updateForegroundLights(run,dt);
   updateToyProximity(run,dt);
   const impulse=terrain.workshopImpulse||0;
   terrain.workshopImpulse=Math.max(0,impulse-Math.max(0,dt||0)*2.5);
   terrain.workshopAnimationTime+=Math.max(0,Math.min(.1,dt||0))*(1+impulse*.3);
   const rolling=terrain.workshopRollingMarbles,transform=terrain.workshopTransform;let marbleCount=0;
+  transform.rotation.set(0,0,0);
   for(const track of terrain.workshopMarbleRuns){
     if(Math.abs(track.x-p.x)>46||Math.abs(track.z-p.z)>46)continue;
     for(let i=0;i<3;i++){
@@ -510,15 +682,22 @@ export function updateWorkshopScene(run,dt){
         while(high-low>1){const middle=(low+high)>>1;if(lengths[middle]<=distance)low=middle;else high=middle;}
         const blend=(distance-lengths[low])/Math.max(.0001,lengths[high]-lengths[low]),a=points[low],b=points[high];
         const x=(a[0]+(b[0]-a[0])*blend)*track.s,z=(a[2]+(b[2]-a[2])*blend)*track.s,c=Math.cos(track.angle),s=Math.sin(track.angle);
-        transform.position.set(track.x+c*x+s*z,(a[1]+(b[1]-a[1])*blend+.47)*track.s+bounce,track.z-s*x+c*z);
+        transform.position.set(track.x+c*x+s*z,(track.baseY||0)+(a[1]+(b[1]-a[1])*blend+.47)*track.s+bounce,track.z-s*x+c*z);
       }else{
         const angle=phase*TAU*track.turns+track.angle,radius=track.radius*track.s;
-        transform.position.set(track.x+Math.cos(angle)*radius,(track.top+(track.bottom-track.top)*phase+.47)*track.s+bounce,track.z+Math.sin(angle)*radius);
+        transform.position.set(track.x+Math.cos(angle)*radius,(track.baseY||0)+(track.top+(track.bottom-track.top)*phase+.47)*track.s+bounce,track.z+Math.sin(angle)*radius);
       }
       transform.scale.setScalar(.34*track.s);transform.updateMatrix();rolling.setMatrixAt(marbleCount++,transform.matrix);
     }
   }
   rolling.count=marbleCount;if(marbleCount)rolling.instanceMatrix.needsUpdate=true;
+  for(let i=0;i<terrain.workshopLooseMarbles.length;i++){
+    const marble=terrain.workshopLooseMarbles[i],y=Math.max(terrain.surface(marble.x,marble.z),terrain.workshopGroundY(marble.x,marble.z))+marble.r;
+    transform.position.set(marble.x,y,marble.z);transform.rotation.set(marble.rollX,0,marble.rollZ);
+    transform.scale.setScalar(marble.r);transform.updateMatrix();terrain.workshopLooseMesh.setMatrixAt(i,transform.matrix);
+    transform.scale.set(.11,marble.r*.73,.12);transform.updateMatrix();terrain.workshopLooseCores.setMatrixAt(i,transform.matrix);
+  }
+  if(terrain.workshopLooseMarbles.length){terrain.workshopLooseMesh.instanceMatrix.needsUpdate=true;terrain.workshopLooseCores.instanceMatrix.needsUpdate=true;}
   const ink=terrain.paperAssets.mats.get('ink-contour');if(ink){ink.uniforms.uInkViewport.value.x=r.composer.inputBuffer.width;ink.uniforms.uInkViewport.value.y=r.composer.inputBuffer.height;}
   r.outlinePass.enabled=true;r.outline.uniforms.get('uColor').value.set(0x30394c);r.outline.uniforms.get('uStrength').value=.78;
   updateWorkshopShadows(run);

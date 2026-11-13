@@ -886,7 +886,7 @@ var a = [{
       id: `forest`,
       name: t(`Bosque Verde`),
       desc: t(`Un bosque frondoso lleno de vida. Y de Pokémon que no quieren compartirlo.`),
-      size: 360,
+      size: 240,
       types: [`grass`, `bug`, `normal`, `flying`],
       late: [`fairy`, `poison`],
       residents: [60, 54, 79, 118, 25, 100, 81, 74, 50, 27, 96, 63, 77, 58, 37, 56, 92],

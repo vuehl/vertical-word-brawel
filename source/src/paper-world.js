@@ -2,6 +2,7 @@
 import {ht as Vector3} from '../assets/three-DmSYIDKK.js';
 import {runLoadingSteps} from './loading-work.js';
 import {createWorkshopAssets,workshopWorldSteps,applyWorkshopLight,updateWorkshopScene} from './workshop-world.js';
+import {disposeForegroundLights} from './workshop-foreground-lights.js';
 export {updateWorkshopScene};
 export const paperStages=['童年文具乐园','弹珠梦工厂','四驱幻想城','星灯书庭'];
 export const PAPER_CAMERA={yaw:0,pitch:Math.PI*.30,distance:42,fov:37};
@@ -15,6 +16,7 @@ export function disposePaperAssets(assets){
   assets.photos?.clear();if(assets.photoJobs)assets.photoJobs.length=0;
 }
 export function disposePaperWorld(terrain){
+  disposeForegroundLights(terrain);
   const sun=terrain.workshopShadowLight;
   if(sun){
     sun.castShadow=false;sun.target.position.set(0,0,0);sun.target.updateMatrixWorld();
@@ -26,6 +28,7 @@ export function disposePaperWorld(terrain){
   terrain.group.parent?.remove(terrain.group);terrain.group.clear();
   if(terrain.ownsPaperAssets)disposePaperAssets(terrain.paperAssets);
   terrain.workshopPointLights=[];terrain.workshopLamps=[];terrain.workshopGlows=[];terrain.workshopMarbleRuns=[];terrain.workshopRollingMarbles=null;terrain.workshopFillLight=null;terrain.mats=[];terrain.textures=[];
+  terrain.workshopLooseMarbles=[];terrain.workshopLooseMesh=null;terrain.workshopLooseCores=null;terrain.workshopMarblePlayer=null;
 }
 export function buildPaperWorld(terrain){for(const _ of workshopWorldSteps(terrain)){} }
 export function buildPaperWorldAsync(terrain,options){return runLoadingSteps(workshopWorldSteps(terrain),options);}

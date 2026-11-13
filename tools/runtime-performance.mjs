@@ -97,7 +97,13 @@ try{
   assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--vfx')){
+  if(process.argv.includes('--desktop-layout')){
+    const {reviewDesktopLayout}=await import('./desktop-layout-regression.mjs');
+    await reviewDesktopLayout(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--map-play')){
+    const {reviewMapPlay}=await import('./map-play-regression.mjs');
+    await reviewMapPlay(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--vfx')){
     await reviewStylizedVFX(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--workshop')){
     await reviewWorkshop(page,dir);assert.deepEqual(errors,[]);

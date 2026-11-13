@@ -1,35 +1,36 @@
 import {b as CanvasTexture,ot as SRGB,ct as ShaderMaterial} from '../assets/three-DmSYIDKK.js';
 import {lampPlayerUniform,lampDistanceGLSL} from './workshop-proximity.js';
 
-// Painted plank shapes, not a height/noise field. Opposite tile edges agree;
-// broad angular grain and short tapered cracks never become periodic ripples.
+// One continuous honey-walnut tabletop. Sparse, wrapped brush shapes keep
+// opposite texture edges seamless without plank seams or regular grain bands.
 export function paintedPlankCanvas(){
   const canvas=document.createElement('canvas');canvas.width=canvas.height=1024;
-  const c=canvas.getContext('2d'),height=1024/6;
-  const colors=['#a77550','#b68157','#aa7852','#b6865e','#a97750','#b17e55'];
+  const c=canvas.getContext('2d');
   let seed=719;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  c.fillStyle='#674932';c.fillRect(0,0,1024,1024);
-  for(let row=0;row<6;row++){
-    const y=row*height;c.fillStyle=colors[row];c.fillRect(0,y+2,1024,height-3);
-    // One broad wash per board, with a quiet centre and shaded lower bevel.
-    const wash=c.createLinearGradient(0,y,0,y+height);
-    wash.addColorStop(0,'#f5cc9330');wash.addColorStop(.18,'#f5cc9305');wash.addColorStop(.75,'#543a2800');wash.addColorStop(1,'#543a2820');
-    c.fillStyle=wash;c.fillRect(0,y+3,1024,height-5);
-    for(let j=0;j<8;j++){
-      const x=22+random()*800,yy=y+20+random()*(height-45),w=65+random()*190,h=3+random()*10;
-      c.fillStyle=j%3?'#e1b38319':'#6d492e17';
-      c.beginPath();c.moveTo(x,yy);c.lineTo(x+w*.23,yy-h*.5);c.lineTo(x+w*.78,yy-h*.35);
-      c.lineTo(x+w,yy+h*.15);c.lineTo(x+w*.6,yy+h*.4);c.lineTo(x+w*.18,yy+h);c.closePath();c.fill();
+  c.fillStyle='#b18b65';c.fillRect(0,0,1024,1024);
+  const wrap=draw=>{
+    for(const x of [-1024,0,1024])for(const y of [-1024,0,1024]){
+      c.save();c.translate(x,y);draw();c.restore();
     }
-    for(let j=0;j<2;j++){
-      const x=90+random()*690,yy=y+35+random()*(height-65),w=55+random()*110;
-      c.fillStyle='#714a3460';c.beginPath();c.moveTo(x,yy);c.lineTo(x+w*.3,yy-2);c.lineTo(x+w*.54,yy+1);
-      c.lineTo(x+w,yy-1);c.lineTo(x+w*.68,yy+3);c.lineTo(x+w*.24,yy+2);c.closePath();c.fill();
-    }
-    const joint=[325,778,540,185,690,450][row];
-    c.strokeStyle='#65452e9c';c.lineWidth=2.4;c.beginPath();c.moveTo(joint,y+2);c.lineTo(joint,y+height*.32);c.lineTo(joint+3,y+height*.34);c.lineTo(joint+3,y+height-1);c.stroke();
-    c.strokeStyle='#e7b98155';c.lineWidth=1.3;c.beginPath();c.moveTo(joint+5,y+4);c.lineTo(joint+5,y+height-4);c.stroke();
-    c.fillStyle='#654732b3';c.fillRect(0,y,1024,2.2);c.fillStyle='#e4b57d66';c.fillRect(0,y+3,1024,1.4);
+  };
+  for(let j=0;j<11;j++){
+    const x=random()*1024,y=random()*1024,w=270+random()*520,h=14+random()*43,tilt=(random()-.5)*16;
+    wrap(()=>{
+      const wash=c.createLinearGradient(0,y-h,0,y+h);
+      wash.addColorStop(0,'#795a3d00');wash.addColorStop(.48,j%3?'#e5c49712':'#795a3d0d');wash.addColorStop(1,'#795a3d00');
+      c.fillStyle=wash;c.beginPath();c.moveTo(x,y);
+      c.bezierCurveTo(x+w*.19,y-h*.82,x+w*.67,y-h+tilt,x+w,y+tilt);
+      c.bezierCurveTo(x+w*.69,y+h*.67+tilt,x+w*.24,y+h*.45,x,y);c.closePath();c.fill();
+    });
+  }
+  c.lineCap='round';
+  for(let j=0;j<19;j++){
+    const x=random()*1024,y=random()*1024,w=38+random()*185,bend=(random()-.5)*7;
+    wrap(()=>{
+      c.strokeStyle=j%4?'#79583b17':'#f0d3a71a';c.lineWidth=j%3?1.2:2;
+      c.beginPath();c.moveTo(x,y);c.bezierCurveTo(x+w*.28,y+bend,x+w*.7,y+bend*.5,x+w,y+bend*.65);c.stroke();
+      if(j%5===0){c.strokeStyle='#8063470d';c.lineWidth=1;c.beginPath();c.moveTo(x+w*.17,y+4);c.quadraticCurveTo(x+w*.52,y+4+bend*.5,x+w*.84,y+3+bend*.65);c.stroke();}
+    });
   }
   return canvas;
 }
@@ -66,5 +67,5 @@ export function workshopLampHalo(assets){
 export function createPlankTexture(){
   const texture=new CanvasTexture(paintedPlankCanvas());texture.colorSpace=SRGB;
   texture.anisotropy=4;texture.wrapS=texture.wrapT=1000;texture.generateMipmaps=true;
-  texture.name='hand-painted-brown-planks';return texture;
+  texture.name='continuous-honey-walnut-desktop';return texture;
 }
