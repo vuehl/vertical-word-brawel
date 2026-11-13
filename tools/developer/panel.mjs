@@ -272,7 +272,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     // startRun can route through the loading flow and call itself again.
     if(run===next)return;
     panel?.remove();panel=null;values=null;error=null;button?.remove();monitorLayer?.remove();
-    workload?.stop();strokePreview=null;run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run,speciesName);lastMaintain=0;showOnEntry=true;
+    workload?.stop();strokePreview=null;run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run);lastMaintain=0;showOnEntry=true;
     syncScenery();
     const renderWorld=run.renderWorld.bind(run);
     run.renderWorld=dt=>{

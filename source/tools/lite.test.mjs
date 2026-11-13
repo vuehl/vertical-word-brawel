@@ -9,11 +9,11 @@ import {createProfile} from '../src/progression.js';
 import {settleRun,applyAction} from '../local/progression.mjs';
 import {constrainLiteProfile} from '../src/lite-rules.js';
 
-test('one full forest, original three guardian groups, sanctuary, three starter kits',()=>{
+test('all three forest summoning points and the sanctuary use the same final boss',()=>{
  assert.deepEqual(roster.map(p=>p.id),[4,132,16]);
  assert.deepEqual(biomes.map(b=>b.id),['forest']);
  assert.equal(events.length,0);
- assert.deepEqual(biomes[0].guardians,[[123,26,55],[127,62,53],[34,76,59]]);
+ assert.deepEqual(biomes[0].guardians,[[151],[151],[151]]);
  assert.deepEqual(biomes[0].sanctuary.legendaries,[151]);
  assert.equal(biomes[0].zones.length,2);
  for(const p of roster)assert.equal(p.kit.length,4);

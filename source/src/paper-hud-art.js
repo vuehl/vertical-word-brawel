@@ -1,4 +1,4 @@
-import {glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
+import {glyphCanvas} from './paper-glyph-art.js';
 
 export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
 
@@ -152,7 +152,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
         if(kind>0&&(x-60)**2+(y-58)**2>edgeRadius**2)continue;
         if(kind===2){
           dot(x,y,6.3,'#fff4dd','#d65b46');
-          ctx.drawImage(glyphCanvas(glyphWordForSpecies(enemies.species[i])),x-6,y-6,12,12);
+          ctx.drawImage(glyphCanvas(enemies.glyphWords[i]),x-6,y-6,12,12);
         }else{
           const radius=kind?3:1.7;ctx.moveTo(x+radius,y);ctx.arc(x,y,radius,0,Math.PI*2);
         }

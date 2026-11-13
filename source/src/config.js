@@ -1,4 +1,5 @@
 import {configureStarterRoster} from './starter-characters.js';
+import {finalBossSpecies} from './character-rules.js';
 import {chineseText as t} from "./chinese-text.js";
 import {resolveItemIcon} from './item-icons.js';
 var n = [
@@ -905,8 +906,8 @@ var a = [{
       propDensity: 1,
       relief: { levels: 5, massifs: 2 },
       weather: [`clear`, `clear`, `rain`],
-      bosses: [123, 127, 34],
-      legendaries: [151],
+      bosses: [finalBossSpecies, finalBossSpecies, finalBossSpecies],
+      legendaries: [finalBossSpecies],
       zones: [
         {
           name: t(`Tarde dorada`),
@@ -948,9 +949,9 @@ var a = [{
         },
       ],
       guardians: [
-        [123, 26, 55],
-        [127, 62, 53],
-        [34, 76, 59],
+        [finalBossSpecies],
+        [finalBossSpecies],
+        [finalBossSpecies],
       ],
       totems: [
         [20, 47, 24, 17],
@@ -967,7 +968,7 @@ var a = [{
         arena: `forest`,
         heart: t(`Corazón del bosque`),
         pack: `sanctum`,
-        legendaries: [151],
+        legendaries: [finalBossSpecies],
         shrine: `shrine`,
         portal: `sanct_portal`,
         color: 9109354,

@@ -13,7 +13,7 @@ export function nextEncounter(timeline,seconds){
   for(const event of timeline)if(TIMED.has(event.kind)&&event.t>seconds&&(!next||event.t<next.t))next={kind:event.kind,t:event.t};
   return next;
 }
-export function createEncounterTest(run,speciesName){
+export function createEncounterTest(run){
   // Only spawning/rewinding is controlled. Real defeats use the release
   // credit and guardian callbacks, including research, rewards and portals.
   let current=null;
@@ -72,7 +72,7 @@ export function createEncounterTest(run,speciesName){
       run.minibosses[spawn](undefined,point);
     }
     for(let i=0;i<e.n;i++)if(e.alive[i]&&(e.flags[i]&ENCOUNTER_MASK)&&!(e.flags[i]&(128|32768|65536))){
-      current={kind:plan.kind,at:plan.t,index:i,gen:e.gen[i],species:e.species[i],name:speciesName(e.species[i])};break;
+      current={kind:plan.kind,at:plan.t,index:i,gen:e.gen[i],species:e.species[i],name:e.glyphWords[i]};break;
     }
     if(!current)throw Error('Developer encounter spawn failed');
     e.grid.build(e.n,e.x,e.z,e.alive,e.radius,e.dying);

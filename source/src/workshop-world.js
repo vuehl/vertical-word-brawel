@@ -538,7 +538,7 @@ export function updateWorkshopScene(run,dt){
 
 function updateWorkshopShadows(run){
   const r=run.r,terrain=run.terrain,sun=r.sun,shadow=sun.shadow;
-  const quality=run.meta?.profile?.settings?.quality||'medium',size=quality==='low'?1024:quality==='medium'?1536:2048;
+  const quality=run.meta?.profile?.settings?.quality,size=quality==='low'?1024:quality==='medium'?1536:2048;
   r.renderer.shadowMap.enabled=true;r.renderer.shadowMap.type=0;
   sun.castShadow=true;shadow.autoUpdate=false;
   // Only static scenery casts into this map. Reuse it while the view is still;

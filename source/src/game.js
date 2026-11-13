@@ -1,5 +1,5 @@
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, runRecordKey} from './lite-rules.js';
-import {enemyWord} from './character-rules.js';
+import {enemyWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
@@ -5928,7 +5928,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     begin() {
       this.count = 0;
     }
-    push(e, t, n, r, i, a, o, s = 0, c = 0, l = 0, u = 0, d = 1, f = 1, p = 1, m = 0, h = !1, g = 0) {
+    push(e, t, n, r, i, a, o, s = 0, c = 0, l = 0, u = 0, d = 1, f = 1, p = 1, m = 0, h = !1, g = 0, glyphRect = this.zxGlyphRect) {
       if (!this.ready) {
         this.standIn?.push(
           e,
@@ -5957,7 +5957,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         const pos=buffer.aPos.array,dim=buffer.aSize.array,uv=buffer.aUV.array,fx=buffer.aFx.array,tint=buffer.aTint.array,look=buffer.aLook.array;
         pos[index*3]=e;pos[index*3+1]=t+.08;pos[index*3+2]=n;
         dim[index*2]=dim[index*2+1]=size;
-        uv.set(this.zxGlyphRect,index*4);
+        uv.set(glyphRect,index*4);
         fx[index*4]=s;fx[index*4+1]=c;fx[index*4+2]=l;fx[index*4+3]=u;
         tint[index*4]=d;tint[index*4+1]=f;tint[index*4+2]=p;tint[index*4+3]=m;
         look[index*2]=g&15;look[index*2+1]=g>>4;
@@ -13495,6 +13495,12 @@ var Df = 0.4,
         }
         n >= 0 && r !== n && ((v *= 0.42), (y *= 0.42), (b *= 0.5), (x = Math.max(x, 0.85)));
         let w = f ? 1 - this.dying[r] / 0.35 : 0;
+        let glyphRect=d.zxGlyphRect;
+        if(d.zxStrokeFrames){
+          const remaining=remainingStrokes(d.zxStrokeFrames.length,this.hp[r],this.maxHp[r]);
+          if(!remaining||f)continue;
+          glyphRect=d.zxStrokeFrames[remaining-1];
+        }
         if (
           (d.push(
             c,
@@ -13513,6 +13519,8 @@ var Df = 0.4,
             b,
             x,
             g,
+            0,
+            glyphRect,
           ),
           !f && S !== 2 && enemyShadow(e,c,l,!!(u & wf)))
         ) {
@@ -25335,7 +25343,7 @@ var Pm = class {
         i = c(`Apoyo: {label}`, { label: jm[k.get(n.species[e]).types[0]].label });
       return (
         t.ui.banner(
-          c(`¡{name} Alfa está debilitado!`, { name: k.get(n.species[e]).name }),
+          c(`¡{name} Alfa está debilitado!`, { name: n.glyphWords[e] }),
           i +
             ` · ` +
             c(
@@ -25345,7 +25353,7 @@ var Pm = class {
               { key: Lo(`E`) },
             ),
           `#5af0ff`,
-          { species: n.species[e] },
+          { species: n.species[e], glyph: n.glyphWords[e] },
         ),
         t.audio.power(),
         !0
@@ -43404,15 +43412,17 @@ var mv = 30,
             if (!n) return;
             let r = e.id,
               i = k.evolutionsOf(r);
-            (i.length && t.stage >= 1 && (r = this.rng.pick(i).id),
-              k.hasSprite(r) || (r = e.id),
-              t.sprites.get(r),
-              t.enemies.spawn(r, n.x, n.z, this.hpMult(), this.dmgMult(), R.Alpha),
+            if(i.length && t.stage >= 1)r = this.rng.pick(i).id;
+            if(!k.hasSprite(r))r = e.id;
+            const index=t.enemies.spawn(r, n.x, n.z, this.hpMult(), this.dmgMult(), R.Alpha);
+            if(index<0)return;
+            const word=t.enemies.glyphWords[index];
+            (
               t.ui.banner(
                 c(`¡Pokémon Alfa!`),
-                c(`Un {name} gigante y furioso ha aparecido`, { name: k.get(r).name }),
+                c(`Un {name} gigante y furioso ha aparecido`, { name: word }),
                 `#ff5a4a`,
-                { species: r },
+                { species: r, glyph: word },
               ),
               t.audio.alarm(),
               t.cry(r),
@@ -51127,7 +51137,7 @@ var Ay = 12,
         (this.exhaustSaid = !1),
         (this.bossIndex = l),
         l >= 0 && (this.bossGen = a.enemies.gen[l]),
-        (this.name = '敌'),
+        (this.name = l >= 0 ? a.enemies.glyphWords[l] : ''),
         (this.t = 2.5),
         (this.enraged = !1),
         (this.sigNext = !1),
@@ -51430,7 +51440,7 @@ var Ay = 12,
           c(`¡Furia!`),
           c(`{name} se enfurece: ataques nuevos y más rápidos`, { name: this.name }),
           `#ff3a3a`,
-          { species: n.species[e] },
+          { species: n.species[e], glyph: this.name },
         ),
         (n.speed[e] *= 1.2),
         t.shake(0.5),
@@ -53975,7 +53985,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     interceptBoss(e) {
       let t = this.run,
         n = t.enemies;
-      return t.endless || !(n.flags[e] & R.Shiny) || e !== t.boss.bossIndex
+      return t.endless || !isLiteSpecies(n.species[e]) || !(n.flags[e] & R.Shiny) || e !== t.boss.bossIndex
         ? !1
         : (t.onBossKilled(e), t.boss.release(), this.takeOver(e, n.species[e], `shiny`), !0);
     }
@@ -65889,9 +65899,7 @@ var GS = class e {
         case `boss`:
           return this.run.bossSpawned
             ? c(`El guardián ya despertó`)
-            : this.run.stage >= 3 && !this.run.biome.sanctuary
-              ? c(`Invocar al legendario`)
-              : c(`Despertar al guardián`);
+            : '召唤'+finalBossWord;
         case `shrine`:
           return this.run.bossSpawned ? c(`El santuario late con fuerza`) : c(`Tocar el santuario`);
         case `portal`:
@@ -74119,7 +74127,6 @@ var GT = 15,
     masterBall = !1;
     interactables;
     sanctuary = null;
-    forceLegendary = 0;
     player;
     coop = null;
     ult;
@@ -74765,7 +74772,7 @@ var GT = 15,
       this.state = `cinematic`;
       let a = this.camYaw;
       (this.setCine({ follow: e, dist: 4.5 + n.hgt[e] * 1.4, pitch: 0.12, orbit: 0.3 }),
-        this.ui.bossIntro(i, t, r),
+        this.ui.bossIntro(i, t, r, n.glyphWords[e]),
         this.audio.duck(0.25, r));
       let o = t ? 16765498 : 16730762,
         s = !1;
@@ -75169,7 +75176,7 @@ var GT = 15,
       (this.coop?.bossCalled(e, t), (this.bossSpawned = !0));
       let n = this.biome.sanctuary;
       if (this.stage === 4 && n) {
-        this.spawnLegendary(Je(n.legendaries));
+        this.spawnLegendary();
         return;
       }
       let r = this.stage >= 3 && !n,
@@ -75184,9 +75191,8 @@ var GT = 15,
       (r && s >= 0 && this.capture.rollLegendShiny() && this.capture.shinyBoss(s),
         (this.audio.intensity = 1));
     }
-    spawnLegendary(e) {
-      let t = this.forceLegendary || e[Math.abs(this.seed) % e.length];
-      k.hasSprite(t) || (t = e[0]);
+    spawnLegendary() {
+      const t = finalBossSpecies;
       let n =
           Av.hpCurve(3, 7.5) *
           Av.BOSS_ZONE_HP[3] *
@@ -75201,10 +75207,10 @@ var GT = 15,
     debugMewtwo() {
       !this.sanctuary && !this.mewtwo.active && ((this.mewtwoFought = !1), (this.mewtwo = new Ab(this, !0)));
     }
-    async warpSanctuary(e = 0) {
+    async warpSanctuary() {
       this.biome.sanctuary &&
         this.stage !== 4 &&
-        ((this.forceLegendary = e), (this.stage = 3), await this.enterPortal());
+        ((this.stage = 3), await this.enterPortal());
     }
     onBossKilled(e) {
       if (this.endless) {
@@ -75244,7 +75250,7 @@ var GT = 15,
           ? c(`Se ha abierto el portal al {name}`, { name: n.name })
           : c(`Se ha abierto un portal a la siguiente zona`);
       (this.ui.banner(c(r ? `¡Legendario derrotado!` : `¡Guardián derrotado!`), a, `#ffd23a`, {
-        species: t.species[e],
+        species: t.species[e], glyph: t.glyphWords[e],
       }),
         this.audio.victory(),
         this.later(4, () => {
@@ -76252,7 +76258,7 @@ var GT = 15,
       }
     }
     setHordeQuality(e) {
-      const budget=crowdBudgets[batterySaverEnabled(this.meta.profile.settings.batterySaver)?"low":e]||crowdBudgets.low,previous=this.liveMax;
+      const budget=crowdBudgets[batterySaverEnabled(this.meta.profile.settings.batterySaver)?"low":e]||crowdBudgets.high,previous=this.liveMax;
       this.liveMax=budget.max;this.liveMin=budget.min;
       this.liveCap=this.performance?.lockVisualQuality||this.liveCap>=previous?this.liveMax:Math.max(this.liveMin,Math.min(this.liveCap,this.liveMax));
     }
@@ -80043,7 +80049,7 @@ var bO = [...LITE_SPECIES],
     music: 0.5,
     sfx: 0.7,
     cries: 0.6,
-    quality: `low`,
+    quality: `high`,
     aimMode: `auto`,
     sensitivity: 1,
     invertY: !1,
@@ -99902,7 +99908,7 @@ function uI(e) {
   let t = lI.get(e) ?? null;
   return t && (!t.complete || !t.naturalWidth) ? (lI.delete(e), uI(e)) : t;
 }
-function dI(e, t, n, r, i = !1) {
+function dI(e, t, n, r, i = !1, word) {
   ((e.fillStyle = `#1d1236`),
     e.beginPath(),
     e.arc(0, 0, r + 2, 0, 7),
@@ -99915,7 +99921,7 @@ function dI(e, t, n, r, i = !1) {
     e.beginPath(),
     e.arc(0, 0, r - 3, 0, 7),
     e.fill());
-  let a = uI(t);
+  let a = word ? glyphCanvas(word) : uI(t);
   if (!a) ((e.fillStyle = n), e.beginPath(), e.arc(0, 0, Math.max(2, (r - 3) * 0.45), 0, 7), e.fill());
   else if (((e.imageSmoothingEnabled = !1), i)) {
     (e.save(), e.beginPath(), e.arc(0, 0, r - 3, 0, 7), e.clip());
@@ -99926,11 +99932,12 @@ function dI(e, t, n, r, i = !1) {
     e.drawImage(a, -t / 2, -t / 2, t, t);
   }
 }
-function fI(e, t, n, r = !1) {
+function fI(e, t, n, r = !1, word) {
   return X(
     `span`,
     { class: `mapbadge` + (r ? ` round` : ``), style: { "--rc": t, "--s": n + `px` } },
-    X(`img`, { class: `pix`, src: Zt(e), alt: ``, draggable: `false` }),
+    word ? glyphPreview(glyphSpeciesFromImage(e),.75,'pix',word)
+      : X(`img`, { class: `pix`, src: Zt(e), alt: ``, draggable: `false` }),
   );
 }
 function pI(e, t) {
@@ -100260,7 +100267,7 @@ function DI(e, t, n, r = [], i = !1) {
                         : cI.alpha,
             [s, c] = v(n.x[t], n.z[t]),
             l = a & R.Boss ? b * 1.25 : b * 1.05;
-          (d.save(), d.translate(s, c), dI(d, `portraits/${n.species[t]}.png`, o, l, !0), d.restore());
+          (d.save(), d.translate(s, c), dI(d, `portraits/${n.species[t]}.png`, o, l, !0, n.glyphWords[t]), d.restore());
         }
       }
       if (!x)
@@ -101833,7 +101840,7 @@ var JI = class {
           (e.key !== o &&
             ((e.key = o),
             (e.lag = 1),
-            $(e.pt).append(rw(a.species)),
+            $(e.pt).append(glyphPreview(a.species,.75,'pix',a.name)),
             e.el.style.setProperty(`--c`, YC(Ni[k.get(a.species).types[0]])),
             (e.name.textContent = a.name),
             (e.tag.textContent = a.kind === `totem` ? c(`Dominante`) : c(`Invocador`)),
@@ -102102,11 +102109,12 @@ var JI = class {
         let t = _.bossIndex,
           r = _.kit,
           i = e.enemies.species[t];
-        (n.boss.dataset.k !== String(i) &&
-          ((n.boss.dataset.k = String(i)),
-          $(n.bossPt).append(glyphPreview(i,.75,'pix','敌')),
+        const bossKey=i+'-'+_.name;
+        (n.boss.dataset.k !== bossKey &&
+          ((n.boss.dataset.k = bossKey),
+          $(n.bossPt).append(glyphPreview(i,.75,'pix',_.name)),
           n.boss.style.setProperty(`--c`, YC(Ni[k.get(i).types[0]])),
-          (n.bossName.textContent = '敌'),
+          (n.bossName.textContent = _.name),
           (this.bossLag = 1)),
           (n.bossTag.textContent = c(r ? `Legendario` : `Guardián`)),
           (n.bossRage.style.display = _.enraged ? `` : `none`),
@@ -102205,13 +102213,13 @@ var JI = class {
                   : l != null
                     ? cI.summoner
                     : sI().portal.ring,
-            d = shrineTarget ? `shrine` : l == null ? `portal` : `m${s.species[l]}${u}`,
+            d = shrineTarget ? `shrine` : l == null ? `portal` : `m${s.glyphWords[l]}${u}`,
             f = this.arrow;
           (f.dataset.k !== d &&
             ((f.dataset.k = d),
             f.style.setProperty(`--rc`, u),
             $(f.children[1]).append(
-              l == null ? pI(shrineTarget ? `shrine` : `portal`, 46) : fI(`portraits/${s.species[l]}.png`, u, 46, !0),
+              l == null ? pI(shrineTarget ? `shrine` : `portal`, 46) : fI(`portraits/${s.species[l]}.png`, u, 46, !0, s.glyphWords[l]),
             )),
             (f.style.display = ``),
             (f.style.left = (shrineTarget ? Gs(n + Math.cos(t) * o, 76, innerWidth - 76) : n + Math.cos(t) * o) + `px`),
@@ -102541,7 +102549,7 @@ var JI = class {
         (n.save(),
           n.translate(i[0], i[1]),
           n.rotate(u),
-          dI(n, `portraits/${h.species[t]}.png`, a, (r & R.Boss ? 27 : 22) * c, !0),
+          dI(n, `portraits/${h.species[t]}.png`, a, (r & R.Boss ? 27 : 22) * c, !0, h.glyphWords[t]),
           n.restore());
       }
       ((n.fillStyle = `#7aff9a`), (n.strokeStyle = `#1d1236`), (n.lineWidth = 2));
@@ -103882,7 +103890,7 @@ var JI = class {
           n * 1e3 + 4e3,
         ));
     }
-    bossIntro(e, t, n) {
+    bossIntro(e, t, n, word) {
       let r = k.get(e),
         i = t ? `#e8a81a` : `#ff4a8a`,
         a = X(
@@ -103893,12 +103901,12 @@ var JI = class {
           X(
             `div`,
             { class: `plate` },
-            X(`div`, { class: `evo-portrait` }, glyphPreview(e,.75,'pix','敌')),
+            X(`div`, { class: `evo-portrait` }, glyphPreview(e,.75,'pix',word)),
             X(
               `div`,
               {},
               X(`p`, {}, c(t ? `POKÉMON LEGENDARIO` : `GUARDIÁN DE LA ZONA`)),
-              X(`h1`, {}, '敌'),
+              X(`h1`, {}, word),
               X(`div`, { class: `row evo-types` }, ...r.types.map((e) => XC(e))),
             ),
           ),

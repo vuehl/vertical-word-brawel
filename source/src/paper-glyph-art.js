@@ -1,5 +1,5 @@
 import {glyphCatalog} from './glyph-catalog.js';
-import {heroWords,enemyWords} from './character-rules.js';
+import {heroWords,enemyWords,finalBossSpecies,finalBossWord} from './character-rules.js';
 import heroRigs from './hero-rigs.json' with {type:'json'};
 
 const colors={fire:['#ff963e','#ed3438'],water:['#b9f2e7','#50bebd'],wood:['#c5e797','#72b778'],earth:['#e9b480','#b57649'],metal:['#ffe99a','#d5ac57'],ink:['#a5aac7','#6b719c'],dark:['#53695e','#1c302e']};
@@ -22,22 +22,26 @@ export function drawBattleOutline(ctx,mask,bakedFraction=0){
   ctx.globalCompositeOperation='source-over';
 }
 export function isOriginalHeroGlyph(word){return Object.values(heroWords).includes(word);}
-export function glyphAtlasReady(){
-  if(!ready)ready=new Promise((resolve,reject)=>{
+export function loadGlyphImage(filename){
+  return new Promise((resolve,reject)=>{
     const image=new Image();let done=false;
     const finish=error=>{
       if(done)return;done=true;clearTimeout(timer);image.onload=image.onerror=null;
-      if(error){ready=null;reject(error);}else{atlas=image;resolve(image);}
+      if(error)reject(error);else resolve(image);
     };
     // Some native image failures never call onerror. Let startup report the
     // error and clear the pending request so a retry can load the atlas.
     const timer=setTimeout(()=>finish(Error('字形图集读取超时')),12000);
     image.onload=()=>finish();image.onerror=()=>finish(Error('字形图集加载失败'));
-    image.src='assets/glyphs/atlas.png';
+    image.src='assets/glyphs/'+filename;
   });
+}
+export function glyphAtlasReady(){
+  ready??=loadGlyphImage('atlas.png').then(image=>(atlas=image),error=>{ready=null;throw error;});
   return ready;
 }
 export function glyphWordForSpecies(id){
+  if(Number(id)===finalBossSpecies)return finalBossWord;
   return heroWords[id]||enemyWords[(Math.abs(Number(id))||0)%enemyWords.length];
 }
 export function glyphTone(word){
@@ -70,7 +74,7 @@ export function glyphCanvas(word,tone=glyphTone(word),{battle=false}={}){
   else {m.font='bold 144px "Ziling Swei", sans-serif';m.textAlign='center';m.textBaseline='middle';m.fillText(word,96,100);}
   if(battle)drawBattleOutline(ctx,mask,record&&atlas?.complete?bakedInkFraction(word):0);
   // Draw the supplied hero colors over the battle border.
-  if(isOriginalHeroGlyph(word)){
+  if(isOriginalHeroGlyph(word)||glyphCatalog.enemies[word]){
     ctx.drawImage(mask,0,0);
     if(record&&atlas?.complete)cache.set(key,canvas);
     return canvas;

@@ -94,6 +94,7 @@ try{
     app.run.update(1/60);
     return initial;
   },development);
+  assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
   if(process.argv.includes('--vfx')){
@@ -372,7 +373,6 @@ try{
   }
   fs.writeFileSync(path.join(dir,'runtime-performance.json'),JSON.stringify(report,null,2));
   assert.deepEqual(errors,[]);
-  assert.equal(initial.quality,'low');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   assert.equal(report.touch.idleUploads,0);assert.equal(report.touch.fullUploads,0);
   assert.equal(report.touch.controlUploads,10);assert.ok(report.touch.uploadedBytes<10*5266560*.1);
   assert.ok(report.touch.released&&report.touch.centerError<1);
