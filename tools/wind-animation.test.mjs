@@ -101,10 +101,10 @@ test('idle_N supplies the 28-frame idle loop and pauses with gameplay time',asyn
   assert.notEqual(frame,paused);
 });
 
-test('combat, custom poses and evolution interrupt locomotion and reset its next entry',async t=>{
+test('damage, custom poses and evolution interrupt locomotion and reset its next entry',async t=>{
   const {api}=await harness(t);await api.prepareHeroStrokes(16);
   for(const speed of [0,2])for(const [field,value] of [
-    ['attackT',.2],['hurtT',.2],['ultPoseT',.2],
+    ['hurtT',.2],
     ['grounded',false],['gliding',true],['swimNow',true],['slideT',.2],
     ['heroPose',{word:'风'}],['firePose',{word:'炎'}],['speciesId',17],['speciesId',4]
   ]){
@@ -116,6 +116,24 @@ test('combat, custom poses and evolution interrupt locomotion and reset its next
     assert.equal(api.windHeroFrame(player),undefined,field+' uses the existing character pose');
     player[field]=previous;player.run.time+=10;
     assert.equal(api.windHeroFrame(player),first,field+' restarts idle without catching up');
+  }
+});
+
+test('repeated attacks and ultimates preserve idle/walk frames and playback progress',async t=>{
+  const {api}=await harness(t);await api.prepareHeroStrokes(16);
+  for(const speed of [0,2])for(const attack of [{attackT:.3},{ultPoseT:.6},{attackT:.3,ultPoseT:.6}]){
+    const player=standing(),control=standing();player.speedNow=control.speedNow=speed;
+    assert.equal(api.windHeroFrame(player),api.windHeroFrame(control));
+    for(let i=0;i<7;i++){tick(api,player);tick(api,control);}
+    const playback=speed?'windWalk':'windIdle',original=player[playback];
+    for(let i=0;i<140;i++){
+      // Refresh attacks through multiple animation cycles, then let them end.
+      Object.assign(player,i<100?attack:{attackT:0,ultPoseT:0});
+      assert.equal(tick(api,player),tick(api,control),'Attack must not freeze, replace or restart the current frame');
+      assert.equal(player[playback],original,'Attack must retain the active playback clock');
+    }
+    Object.assign(player,attack);player.speedNow=speed?0:2;
+    assertSourceFrame(api.windHeroFrame(player),speed?idleData:walkData,0,speed?'idle':'walk');
   }
 });
 

@@ -86,6 +86,42 @@ export async function reviewWindAnimation(page,dir){
     windDraw();
   },{fixtures,rig});
 
+  if(process.argv.includes('--attack-only')){
+    const attacks=await page.evaluate(()=>{
+      const r=app.run,p=r.player,results=[];
+      r.meta.profile.settings.ultPose=false;
+      for(const speed of [0,2]){
+        Object.assign(p,{speedNow:speed,windIdle:undefined,windWalk:undefined,attackT:0,ultPoseT:0});
+        p.render();
+        for(let i=0;i<9;i++){r.time+=1/60;r.realTime+=1/60;p.render();}
+        const key=speed?'windWalk':'windIdle',playback=p[key],frame=windObserved.frame;
+        p.attackAnim();p.render();
+        const normal=p.attackT>0&&windObserved.frame===frame&&p[key]===playback;
+        r.ult.clear();r.ult.charge=1;const uses=r.ult.uses;r.ult.fire();p.render();
+        const ultimate=r.ult.uses===uses+1&&p.ultPoseT>0&&windObserved.frame===frame&&p[key]===playback;
+        const seen=new Set();let continuous=true;
+        for(let i=0;i<150;i++){
+          p.attackT=0;p.attackAnim();p.ultPoseT=.6;
+          r.time+=1/60;r.realTime+=1/60;p.render();
+          continuous&&=p[key]===playback&&windObserved.frame?.layout.image===`wind-${speed?'walk':'idle'}-atlas.png`;
+          seen.add(windObserved.frame);
+        }
+        results.push({state:speed?'walk':'idle',normal,ultimate,continuous,frames:seen.size});
+      }
+      windDraw();return results;
+    });
+    for(const result of attacks){
+      assert.equal(result.normal,true,'Normal attack must preserve '+result.state);
+      assert.equal(result.ultimate,true,'Ultimate must preserve '+result.state);
+      assert.equal(result.continuous,true,'Repeated attacks must preserve the playback clock');
+      assert.equal(result.frames,result.state==='idle'?28:15);
+    }
+    fs.writeFileSync(path.join(dir,'wind-attacks.json'),JSON.stringify(attacks,null,2));
+    await page.screenshot({path:path.join(dir,'wind-walking-attack.png')});
+    console.log('Wind attacks preserve idle/walk playback:',JSON.stringify(attacks));
+    return;
+  }
+
   const report={environment:'Compiled WeChat package in Chrome / real Canvas and WebGL',idle:[],walk:[],death:[]};
   const sample=async(state,seconds)=>page.evaluate(({state,seconds})=>{
     app.run.time+=seconds;app.run.realTime+=seconds;windDraw();return windVerify(state);

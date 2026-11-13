@@ -111,9 +111,10 @@ function startWindClip(species,clip){
 }
 
 export function windHeroFrame(player){
+  // Attacks and ultimates keep the current idle/walk playback and its clock.
   const locomotion=rigs[player.speciesId]?.word==='风'&&!player.dead&&player.grounded&&
     !player.gliding&&!player.swimNow&&!(player.slideT>0)&&!(player.hurtT>0)&&
-    !(player.attackT>0)&&!(player.ultPoseT>0)&&!(player.heroPose??player.firePose);
+    !(player.heroPose??player.firePose);
   const idle=locomotion&&player.speedNow<=.6,walking=locomotion&&player.speedNow>.6;
   if(!idle)player.windIdle=undefined;
   if(!walking)player.windWalk=undefined;
