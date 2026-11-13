@@ -36,12 +36,12 @@ export async function reviewWorkshop(page,dir){
     const r=app.run,t=r.terrain,a=t.paperAssets,hero=r.sprites.get(r.player.speciesId);
     return {photos:[...a.photos].map(([name,p])=>({name,width:p.texture.image.width,height:p.texture.image.height})),failures:a.photoFailures,
       sculpture:t.zxProps.some(p=>/guardian|robot/.test(p.kind)),bevelVertices:a.bevels.getAttribute('position').count,
-      tallest:Math.max(...t.zxProps.filter(p=>p.kind!=='boundary-book').map(p=>p.h)),heroHeight:hero.aSize.array[1],
+      tallest:Math.max(...t.zxProps.filter(p=>!p.kind.startsWith('boundary-')).map(p=>p.h)),heroHeight:hero.bodyHeight(r.player.renderScale),
       anchors:t.workshopLayout.anchors,layout:t.workshopLayout.style};
   });
   assert.equal(report.craft.sculpture,false);assert.deepEqual(report.craft.failures,[]);assert.equal(report.craft.photos.length,4);
   assert.ok(report.craft.photos.every(p=>p.width>=600&&p.height>=600));assert.ok(report.craft.bevelVertices>300);
-  assert.ok(report.craft.tallest/report.craft.heroHeight<8,'Interior landmarks stay proportional to the glyphs');assert.ok(report.craft.anchors.length>8);
+  assert.ok(report.craft.tallest/report.craft.heroHeight<8,'Interior landmarks stay proportional to the glyphs');assert.ok(report.craft.anchors.length>=4,'The smaller map retains scattered toy clusters');
   report.animation=await page.evaluate(()=>{const r=app.run,m=r.terrain.workshopRollingMarbles,before=[...m.instanceMatrix.array.slice(0,16)];r.renderWorld(.1);return {visible:m.count,moved:before.some((n,i)=>n!==m.instanceMatrix.array[i])};});
   assert.ok(report.animation.visible>0&&report.animation.moved);
   report.presets=[];
@@ -51,7 +51,28 @@ export async function reviewWorkshop(page,dir){
   }
   report.collision=await page.evaluate(()=>{const t=app.run.terrain,book=t.zxProps.find(p=>p.kind==='boundary-book');return {props:t.zxProps.length,colliders:t.colliders.length,boundarySolid:t.hitProp(book.x,.3,book.z,.3)};});
   assert.equal(report.collision.props,report.collision.colliders);assert.ok(report.collision.boundarySolid);
-  for(const [name,x,z] of [['03-wooden-marble-run',10,-7],['04-giant-storybooks',-20,9],['05-racing-toy',13,26],['06-indoor-boundary',0,-152],['07-south-cutaway',0,160],['08-east-boundary',160,0],['09-west-boundary',-160,0]]){
+  if(process.argv.includes('--boundary-layout')){
+    await page.setViewport({width:1200,height:620,deviceScaleFactor:1});
+    await page.evaluate(()=>{
+      window.dispatchEvent(new Event('resize'));const r=app.run,t=r.terrain,c=app.r.camera;
+      r.player.pos.set(0,0,-t.play+18);r.camTarget.copy(r.player.pos);
+      const focus={x:0,y:14,z:-t.workshopBoundary.edge+5},pitch=.65,distance=190;
+      // The wide inspection camera needs a farther near plane to keep thin
+      // paper layers distinguishable at this distance. Gameplay keeps its lens.
+      window.boundaryOverviewNear=c.near;c.near=2;c.updateProjectionMatrix();
+      c.position.set(0,focus.y+Math.sin(pitch)*distance,focus.z+Math.cos(pitch)*distance);c.lookAt(focus.x,focus.y,focus.z);c.updateMatrixWorld(true);
+      app.r.renderer.resetState();r.renderWorld(0);r.vfx.update(0);app.r.render(0);
+    });
+    await page.screenshot({path:path.join(dir,'boundary-groups-overview.png')});report.screens.push('boundary-groups-overview');
+    await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+    await page.evaluate(()=>{
+      app.r.camera.near=boundaryOverviewNear;app.r.camera.updateProjectionMatrix();
+      window.dispatchEvent(new Event('resize'));const r=app.run,t=r.terrain,g=t.workshopBoundary.groups.find(g=>g.side===0&&g.cluster);
+      r.player.pos.set((g.start+g.end)/2,0,-t.play+12);r.camTarget.copy(r.player.pos);
+    });await shot('boundary-cluster-gameplay');
+  }
+  const edgeView=await page.evaluate(()=>app.run.terrain.play-10);
+  for(const [name,x,z] of [['03-wooden-marble-run',10,-7],['04-giant-storybooks',-20,9],['05-racing-toy',13,26],['06-indoor-boundary',0,-edgeView],['07-south-cutaway',0,edgeView],['08-east-boundary',edgeView,0],['09-west-boundary',-edgeView,0]]){
     await page.evaluate(([x,z])=>{
       const r=app.run,t=r.terrain;let point={x,z};
       search:for(let radius=0;radius<=10;radius++)for(let i=0;i<16;i++){const a=i/16*Math.PI*2,xx=x+Math.cos(a)*radius,zz=z+Math.sin(a)*radius;if(t.isFlatOpen(xx,zz)){point={x:xx,z:zz};break search;}}

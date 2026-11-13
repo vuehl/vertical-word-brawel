@@ -21,6 +21,7 @@ import {createStylizedEffectAtlas,EFFECT_CELL} from './stylized-effect-atlas.js'
 import {StylizedSkillFX,installStylizedMoveVFX} from './stylized-skill-vfx.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera,updateWorkshopScene} from './paper-world.js';
+import {updateLooseMarbles} from './workshop-marbles.js';
 import {createSceneAntialias} from './scene-antialias.js';
 import {paperProp} from './paper-props.js';
 import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
@@ -10007,7 +10008,7 @@ var qu = `
         }
     }
     height(e, t) {
-      if(this.zxPaper)return 0;
+      if(this.zxPaper)return this.workshopGroundY?.(e,t)??0;
       let n = this.world / 2,
         r = Gs((e + n) / this.cell, 0, this.res - 0.001),
         i = Gs((t + n) / this.cell, 0, this.res - 0.001),
@@ -10030,7 +10031,7 @@ var qu = `
       }
     }
     surface(e, t) {
-      if(this.zxPaper&&!this.hasWater)return 0;
+      if(this.zxPaper&&!this.hasWater)return this.height(e,t);
       let n = this.height(e, t),
         r = this.waterAt(e, t);
       return n < r ? r : n;
@@ -76364,6 +76365,7 @@ var GT = 15,
         globalThis.__pbCoop && __pbCoop.tick && __pbCoop.tick(this, e),
         globalThis.__pbCoop && __pbCoop.tickShots && __pbCoop.tickShots(this, e),
         this.enemies.update(e),
+        updateLooseMarbles(this,e),
         this.coop?.afterEnemies(),
         this.boss.tick(e),
         this.combat.meter.tick(e),
