@@ -6,7 +6,7 @@ import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
 import {bossDistanceText} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
-import {windFaintTile} from './hero-poses.js';
+import {startWindFaint,windFaintRenderScale,windFaintTile} from './hero-poses.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
 import {createPlayerFootRing} from './player-foot-ring.js';
@@ -41194,7 +41194,7 @@ var mv = 30,
     sashUsed = !1;
     revives = 0;
     dead = !1;
-    faintedAt = 0;
+    windFaint;
     lastHit = null;
     sturdyUsed = !1;
     speedBoostT = 0;
@@ -41678,7 +41678,7 @@ var mv = 30,
         (this.squash = 0.5),
         (u.stats.damageTaken += f),
         u.stats.hits++,
-        u.vfx.number(this.pos.x, this.pos.y + 2, this.pos.z, f, 16730714),
+        u.vfx.number(this.pos.x, this.pos.y + (this.hp<=0 && windFaintTile(this.speciesId,0) ? 4 : 2), this.pos.z, f, 16730714),
         u.r.kick(0.006),
         u.shake(0.12),
         Na(0.25 + 0.6 * Math.min(1, (f / this.maxHp) * 4), 110),
@@ -43013,7 +43013,7 @@ var mv = 30,
     }
     render() {
       let e = this.run,
-        faintTile = this.dead && windFaintTile(this.speciesId,(e.realTime-this.faintedAt)*1000),
+        faintTile = this.dead && this.windFaint?.(e.realTime*1000),
         t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.heroPose??this.firePose,faintTile),
         n = this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
         r = this.animT,
@@ -43047,7 +43047,7 @@ var mv = 30,
         n,
         r,
         l,
-        this.renderScale,
+        this.renderScale * (faintTile ? windFaintRenderScale : 1),
         faintTile ? 0 : Math.max(this.flash, u ? 0.5 : 0),
         d,
         e.shinySkin ? Zc(this.speciesId) : 0,
@@ -75542,7 +75542,7 @@ var GT = 15,
       }
     }
     onPlayerDeath() {
-      this.player.faintedAt = this.realTime;
+      this.player.windFaint = startWindFaint(this.player.speciesId);
       if (this.coop) this.coop.onDowned();
       else if (this.regionCleared) {
         if (this.capture.canWait()) {

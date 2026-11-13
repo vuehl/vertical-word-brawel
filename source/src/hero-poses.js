@@ -3,6 +3,22 @@ import windFaint from './faint_01_anim.json' with {type:'json'};
 import {drawBattleOutline} from './paper-glyph-art.js';
 
 const sheets=new Map();
+function rigScale(rig){
+  return (80/96)/Math.max(rig.frame.width,rig.frame.height);
+}
+
+// Register the first authored frame to the standing ink. All later frames use
+// this same transform so the hold, tilt and collapse keep their original motion.
+const windRig=Object.values(rigs).find(rig=>rig.word==='风');
+const windStrokes=windRig.groups.flatMap(group=>group.strokes);
+const left=Math.min(...windStrokes.map(s=>s.x)),right=Math.max(...windStrokes.map(s=>s.x+s.w));
+const bottom=Math.max(...windStrokes.map(s=>s.y+s.h));
+const first=windFaint.tiles[windFaint.anims.faint.frames[0]];
+const idleScale=rigScale(windRig);
+export const windFaintRenderScale=(right-left)*idleScale/(first.w/windFaint.canvas.w);
+const centerOffset=((left+right)/2-windRig.frame.left-windRig.frame.width/2)*idleScale;
+const footGap=.5-(bottom-windRig.frame.top-windRig.frame.height/2)*idleScale;
+
 export function prepareHeroStrokes(species){
   const name=rigs[species]?.sheet;
   if(!name)return;
@@ -35,6 +51,20 @@ export function windFaintTile(species,elapsedMs){
   return windFaint.tiles[frames[index]];
 }
 
+export function startWindFaint(species){
+  if(rigs[species]?.word!=='风')return;
+  let lastRenderMs,elapsedMs=0;
+  return nowMs=>{
+    if(!sheets.get(windFaint.atlas.image)?.image)return;
+    if(lastRenderMs!==undefined){
+      // A missed draw may extend a pose, but must not skip its successor.
+      elapsedMs+=Math.min(windFaint.anims.faint.frameMs,Math.max(0,nowMs-lastRenderMs));
+    }
+    lastRenderMs=nowMs;
+    return windFaintTile(species,elapsedMs);
+  };
+}
+
 function transform(ctx,node,pose){
   if(!pose)return;
   const px=pose.px??node.px,py=pose.py??node.py;
@@ -56,7 +86,7 @@ export function createHeroPoseTexture(Texture,colorSpace){
   function drawRig(rig,pose){
     const sheet=sheets.get(rig.sheet+'-strokes.png').image;
     const {left,top,width,height}=rig.frame;
-    const scale=size*(80/96)/Math.max(width,height);
+    const scale=size*rigScale(rig);
     ctx.save();
     ctx.translate(size/2,size/2);ctx.scale(scale,scale);
     ctx.translate(-left-width/2,-top-height/2);
@@ -74,15 +104,17 @@ export function createHeroPoseTexture(Texture,colorSpace){
     if(rig===previousRig&&pose===previousPose&&tile===previousTile)return;
     ctx.clearRect(0,0,size,size);
     if(tile){
-      // The trimmed frames all share the same bottom-center pivot.
       const scale=size/windFaint.canvas.h;
-      const x=size/2+(tile.ox-windFaint.pivot.x)*scale;
-      const y=size+(tile.oy-windFaint.pivot.y)*scale;
+      const x=size*(.5+centerOffset/windFaintRenderScale)+(tile.ox-first.ox-first.w/2)*scale;
+      const y=size*(1-footGap/windFaintRenderScale)+(tile.oy-first.oy-first.h)*scale;
+      // The held pose alternates with p4 by only 1–2 source pixels. Give
+      // that upward pulse 12 more pixels on the 512px canvas, keeping its feet planted.
+      const pulse=tile===windFaint.tiles.p4?12*scale:0;
       ctx.drawImage(sheets.get(windFaint.atlas.image).image,tile.x,tile.y,tile.w,tile.h,
-        x,y,tile.w*scale,tile.h*scale);
+        x,y-pulse,tile.w*scale,tile.h*scale+pulse);
     }else drawRig(rig,pose);
     ink.clearRect(0,0,size,size);
-    drawBattleOutline(ink,fill);
+    drawBattleOutline(ink,fill,0,tile?windFaintRenderScale:1);
     ink.drawImage(fill,0,0);
     texture.needsUpdate=true;
     previousRig=rig;previousPose=pose;previousTile=tile;

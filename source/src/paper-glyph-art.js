@@ -11,8 +11,8 @@ function bakedInkFraction(word){
   const rig=Object.values(heroRigs).find(rig=>rig.word===word);
   return rig?14*(80/96)/Math.max(rig.frame.width,rig.frame.height):0;
 }
-export function drawBattleOutline(ctx,mask,bakedFraction=0){
-  const size=mask.width,radius=size*(14/192-bakedFraction);
+export function drawBattleOutline(ctx,mask,bakedFraction=0,renderScale=1){
+  const size=mask.width,radius=size*(14/192-bakedFraction)/renderScale;
   for(let i=0;i<32;i++){
     const angle=i*Math.PI/16;
     ctx.drawImage(mask,Math.round(radius*Math.cos(angle)),Math.round(radius*Math.sin(angle)));
