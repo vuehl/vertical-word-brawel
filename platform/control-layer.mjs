@@ -9,6 +9,7 @@ export function createHUDLayer(makeCanvas,id,slot){
   return {
     owns,
     invalidate(){dirty=layoutDirty=true;},
+    invalidatePixels(){dirty=true;},
     capture(boxes){root=boxes.find(b=>b.el.dataset?.uiLayer===id);parts=boxes.filter(b=>owns(element(b)));bounds=null;dirty=true;layoutDirty=false;},
     draw(layout,view,scale,enabled){
       if(!enabled||!root||!root.el.isConnected||root.opacity<=0)return null;
@@ -42,11 +43,12 @@ export function createHUDLayer(makeCanvas,id,slot){
 
 // A frequently changing canvas (the minimap) gets a small independent texture.
 export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground=null,uploadPixels=false}={}){
-  let canvas,context,box,parts=[],bounds,originX=0,originY=0,dirty=true;
+  let canvas,context,box,parts=[],bounds,originX=0,originY=0,dirty=true,foregroundDirty=false;
   const owns=el=>el?.dataset?.uiLayer===id||!!(foreground&&el?.closest?.('[data-ui-layer="'+foreground+'"]'));
   return {
     owns,
     invalidate(){dirty=true;},
+    invalidateForeground(){foregroundDirty=dirty=true;},
     capture(boxes){
       const previous=box;
       box=boxes.find(b=>b.el.dataset?.uiLayer===id&&b.opacity>0&&b.w>0);
@@ -63,7 +65,7 @@ export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground
       // A label overlapping the animated canvas must stay in front of it.
       // Cache both in this small tile, preserving their original paint order.
       const front=foreground?boxes.filter(b=>b.el.dataset?.uiLayer!==id&&owns(b.el.nodeType===1?b.el:b.el.parentElement)):[];
-      parts=[];bounds=null;
+      parts=[];bounds=null;foregroundDirty=false;
       if(box){
         parts=[box,...front];
         const left=Math.min(...parts.map(b=>b.x)),top=Math.min(...parts.map(b=>b.y));
@@ -73,6 +75,10 @@ export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground
     },
     draw(layout,view,scale,enabled){
       if(!enabled||!box||!box.el.isConnected||box.el.hidden)return null;
+      if(foregroundDirty&&parts[1]){
+        // The level badge has fixed bounds. Recenter its glyphs even at 9 → 10.
+        parts=[box,...layout.refreshSubtree(parts[1].el,parts.slice(1))];foregroundDirty=false;
+      }
       if(movable){
         const [dx,dy]=translation(box.el);box.x=originX+dx;box.y=originY+dy;
         // Upload the HP canvas itself. Painting through the screen clip would

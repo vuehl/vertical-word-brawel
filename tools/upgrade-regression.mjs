@@ -27,15 +27,15 @@ export async function reviewUpgrade({page,resize,dir}){
         r.ui.hud(r);r.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
         const began=performance.now();r.doLevelUp();const buildMs=performance.now()-began;r.ui.hud(r);
         const clock=performance.now(),descriptor=Object.getOwnPropertyDescriptor(performance,'now');
-        const refresh=inspected.layout.refresh;
-        window.upgradeAudit={clock,descriptor,refresh,uploads:0,panelUploads:0,layouts:0,sceneRenders:0,time:r.time};
+        const refresh=inspected.layout.refreshOverlay;
+        window.upgradeAudit={clock,descriptor,refresh,uploads:0,panelUploads:0,firstUploadMs:100,layouts:0,sceneRenders:0,time:r.time};
         window.drawUpgradeFrame=()=>{
           if(!inspected.env.drawFrozenModal?.(app.r.renderer)){
             upgradeAudit.sceneRenders++;r.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
           }
         };
         Object.defineProperty(performance,'now',{configurable:true,value:()=>upgradeAudit.clock});
-        inspected.layout.refresh=function(...args){
+        inspected.layout.refreshOverlay=function(...args){
           upgradeAudit.layouts++;const result=refresh.apply(this,args);
           if(upgradeAudit.layouts===1)upgradeAudit.clock+=300; // Simulate a slow first layout.
           return result;
@@ -64,10 +64,10 @@ export async function reviewUpgrade({page,resize,dir}){
         }
         if(!baseline){
           assert.equal(frames[0].transition.progress,0);
-          assert.ok(frames[0].transition.started>=build.clock+300-.001,'Slow preparation must not consume the intro animation: '+JSON.stringify({width,build,first:frames[0]}));
+          assert.ok(frames[0].transition.started>=build.clock+400-.001,'Slow layout and texture upload must not consume the intro animation: '+JSON.stringify({width,build,first:frames[0]}));
           assert.ok(frames[2].transition.active&&frames[2].transition.progress>0&&frames[2].transition.progress<1);
           assert.equal(frames.at(-1).transition.active,false);
-          assert.ok(frames[0].uploads>0&&frames[0].panelUploads===2,'Both cached layers must actually upload');
+          assert.equal(frames[0].panelUploads,2,'Both cached modal layers must actually upload');
           assert.ok(frames.every(f=>f.state==='modal'&&f.pending===1),'Appearing cards must not consume a tap from combat');
           assert.ok(frames.every(f=>f.time===frames[0].time),'Dialog transition cannot advance combat');
           // No full-screen layout or pixel upload between prepared and settled frames.
@@ -86,6 +86,8 @@ export async function reviewUpgrade({page,resize,dir}){
               const b=inspected.layout.box(inspected.doc.querySelector(selector)),s=inspected.doc.getElementById('game').getBoundingClientRect();
               window.tap(b.x+b.w/2-s.left,b.y+b.h/2-s.top);
             };
+            const stars=[],effect=r.levelUpEffect;
+            r.levelUpEffect=function(count){stars.push(count);return effect.call(this,count);};
             const finishExit=()=>{drawUpgradeFrame();a.clock+=150;drawUpgradeFrame();};
             click('.zx-reroll');const rerollsBeforeExit=r.rerolls;
             const rerollTransition=inspected.modalTransition.snapshot.phase==='exit';
@@ -100,16 +102,17 @@ export async function reviewUpgrade({page,resize,dir}){
             const sceneRenders=a.sceneRenders;
             a.clock+=260;drawUpgradeFrame();click('[data-offer]');finishExit();
             const restored=inspected.env.drawFrozenModal(app.r.renderer);
-            return {rerollsBeforeExit,rerolls,rerollTransition,beforeExit,chained,sceneRenders,restored,pending:r.pendingLevels,state:r.state};
+            r.levelUpEffect=effect;
+            return {rerollsBeforeExit,rerolls,rerollTransition,beforeExit,chained,sceneRenders,restored,stars,pending:r.pendingLevels,state:r.state};
           });
           assert.deepEqual(actions,{rerollsBeforeExit:2,rerolls:1,rerollTransition:true,beforeExit:{pending:2,state:'modal'},
-            chained:{pending:1,state:'modal',phase:'enter'},sceneRenders:1,restored:false,pending:0,state:'play'});
+            chained:{pending:1,state:'modal',phase:'enter'},sceneRenders:1,restored:false,stars:[10],pending:0,state:'play'});
         }
         samples.push({width,buildMs:build.buildMs,frames});
       }finally{
         await page.evaluate(()=>{
           const a=upgradeAudit;if(a.descriptor)Object.defineProperty(performance,'now',a.descriptor);else delete performance.now;
-          inspected.layout.refresh=a.refresh;
+          inspected.layout.refreshOverlay=a.refresh;
           delete window.upgradeAudit;app.run.ui.hideModal();app.run.state='play';
         });
       }

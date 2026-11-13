@@ -604,16 +604,31 @@ export function createZixingUI(app,api) {
   function build(run) {
     return card(small('本局构筑'),...buildLabels(run).map(label=>text(label,'zx-note')));
   }
-  function loadout(run) {
-    const p=run.player;
-    const image=(src,name)=>el('img','zx-loadout-icon',[],{src,alt:name,draggable:false});
-    const slotCount=run.stage===1?p.moveSlots:Math.max(4,p.moveSlots);
-    const slots=Array.from({length:slotCount},(_,index)=>{
+  const loadoutIcon=(src,name)=>el('img','zx-loadout-icon',[],{src,alt:name,draggable:false});
+  function updateSkillSlots(slots,run){
+    const p=run.player,count=run.stage===1?p.moveSlots:Math.max(4,p.moveSlots);
+    while(slots.children.length>count)slots.lastElementChild.remove();
+    for(let index=0;index<count;index++){
       const move=p.moves[index],locked=index>=p.moveSlots;
-      return el('div','zx-skill-slot'+(locked?' locked':move?' filled':' empty'),locked?[icon('lock',17)]:move?[
-        image(api.moveIcon(move.def),api.moveName(move.def)),el('canvas','zx-skill-cooldown',[],{width:84,height:84,'data-static':'true'}),el('b','zx-slot-level',String(move.level)),
-      ]:[],{'data-skill-slot':index,'data-level':move?.level||0,'aria-label':locked?'技能槽未解锁':move?api.moveName(move.def)+' 等级 '+move.level:'空技能槽'});
-    });
+      const key=locked?'locked':move?move.def.key:'empty',level=String(move?.level||0);
+      let slot=slots.children[index];
+      if(!slot){
+        slot=el('div','zx-skill-slot',[],{'data-skill-slot':index});slots.append(slot);
+      }
+      if(slot.dataset.move===key&&slot.dataset.level===level)continue;
+      if(slot.dataset.move!==key){
+        slot.dataset.move=key;slot.className='zx-skill-slot '+(locked?'locked':move?'filled':'empty');
+        slot.replaceChildren(...(locked?[icon('lock',17)]:move?[
+          loadoutIcon(api.moveIcon(move.def),api.moveName(move.def)),
+          el('canvas','zx-skill-cooldown',[],{width:84,height:84,'data-static':'true'}),el('b','zx-slot-level',level),
+        ]:[]));
+      }else if(move&&!locked)updateText(slot.lastElementChild,level);
+      slot.dataset.level=level;
+      slot.setAttribute('aria-label',locked?'技能槽未解锁':move?api.moveName(move.def)+' 等级 '+level:'空技能槽');
+    }
+  }
+  function supplyIcons(run) {
+    const p=run.player;
     // Match the space beneath the name at each portrait/minimap breakpoint.
     const narrow=innerWidth<=350,available=innerWidth-(narrow?200:232);
     const capacity=Math.max(3,Math.min(6,Math.floor((available+4)/((narrow?24:26)+4))));
@@ -621,19 +636,19 @@ export function createZixingUI(app,api) {
       ...[...p.vitamins].map(([id,value])=>({id,count:value.level,kind:'vitamin',name:api.vitaminName(id),src:api.vitaminIcon(id)}))];
     const visible=entries.length>capacity?capacity-1:capacity;
     const items=el('div','zx-inventory-items',entries.slice(0,visible).map(({id,count,kind,name,src})=>el('div','zx-mini-slot filled',[
-      image(src,name),el('b','zx-slot-count',String(count)),
+      loadoutIcon(src,name),el('b','zx-slot-count',String(count)),
     ],{['data-'+kind]:id,'data-count':count,title:name+' ×'+count,'aria-label':name+' ×'+count})));
     if(entries.length>visible)items.append(button('+'+(entries.length-visible),()=>run.pause(),'zx-mini-slot zx-loadout-more',{'aria-label':'查看全部道具与强化','data-action':'inventory-more'}));
     while(items.children.length<capacity)items.append(el('div','zx-mini-slot empty',[],{'aria-hidden':true}));
-    return [el('div','zx-skill-slots',slots,{'data-ui-layer':'skills'}),items];
+    return items;
   }
-  function offerContent(symbol,title,notes) {
-    return row(glyph(symbol),col(el('b','',title),...notes));
+  function offerContent(art,title,notes) {
+    return row(art,col(el('b','',title),...notes));
   }
   function offerBody(cards,onStats) {
     return [button([el('span','','查看当前属性'),icon('stats',15,'#65577b'),el('span','','›')],onStats,'zx-upgrade-stats',{'data-action':'upgrade-stats'}),...cards];
   }
-  function levelUp(run,offers,chooseOffer) {
+  function levelUp(run,offers,chooseOffer,art) {
     let choosing=false;
     const choose=(offer,action)=>{
       if(choosing)return;choosing=true;
@@ -641,7 +656,7 @@ export function createZixingUI(app,api) {
       if(window.closeAnimatedModal)window.closeAnimatedModal(run.ui.modalEl,done,action==='reroll'||run.pendingLevels>1);
       else done();
     };
-    const cards=offers.map((offer,index)=>{const desc=api.offer(run,offer);return button(offerContent(index===0?current():'升',desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});});
+    const cards=offers.map((offer,index)=>{const desc=api.offer(run,offer);return button(offerContent(art[index],desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});});
     overlay('择一而进','',cards,
       [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
   }
@@ -666,7 +681,7 @@ export function createZixingUI(app,api) {
       if(opacity)node.style.opacity=opacity;
       else if(locked)node.style.opacity='.45';
       node.dataset.offer=String(index);
-      node.replaceChildren(offerContent(symbol,heading.textContent,notes));
+      node.replaceChildren(offerContent(glyph(symbol),heading.textContent,notes));
     });
     const actions=[...wrap.querySelectorAll('.actions > button')];
     actions.forEach(node=>{node.className='zx-button zx-reroll';node.querySelectorAll('kbd').forEach(key=>key.remove());});
@@ -726,7 +741,10 @@ export function createZixingUI(app,api) {
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
     run.hints.show=key=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key);};
-    hud.showPause=pause;hud.showLevelUp=levelUp;hud.showSummary=summary;hud.showSlots=slots;
+    // Offers reuse these four glyph canvases throughout the run. Paint them on the loading screen.
+    const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
+    hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
+    hud.showSummary=summary;hud.showSlots=slots;
     let expandedMap=null;
     hud.showMap=(r,fromPause=false)=>{
       const close=fromPause?()=>pause(r):()=>r.resume();
@@ -782,6 +800,7 @@ export function createZixingUI(app,api) {
     const level=el('b','zx-hud-level',[...['L','V','.'].map(ch=>el('span','',ch)),levelValue]);
     level.dataset.uiLayer='portrait-level';
     const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
+    const skillSlots=el('div','zx-skill-slots',[],{'data-ui-layer':'skills'});inventory.append(skillSlots);
     const stageLabel=el('small','zx-hud-stage',''),score=el('span','zx-hud-score',''),c=character(run.startSpecies);
     const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化'});
     supplies.dataset.uiLayer='items';
@@ -826,6 +845,9 @@ export function createZixingUI(app,api) {
     node.querySelector('.zx-hud-counters').dataset.uiLayer='counters';
     node.querySelector('.zx-hud-meta').dataset.uiLayer='score';
     hud.touch.ult.dataset.uiLayer='ultimate';
+    const toastLayer=el('div','zx-toast-layer',[],{'data-ui-layer':'toasts'});
+    toastLayer.style.cssText='position:absolute;left:0;top:0;width:100%;height:0;overflow:visible;pointer-events:none';
+    hud.toastsEl.replaceWith(toastLayer);toastLayer.append(hud.toastsEl);
     // Preserve absolute HUD coordinates, but refresh only the visible overlay.
     for(const id of ['markers','notices']){
       const layer=el('div','zx-combat-overlay',[],{'data-ui-layer':id});
@@ -885,7 +907,7 @@ export function createZixingUI(app,api) {
       if(label.textContent!==value)label.textContent=value;
     };
     const original=hud.hud.bind(hud);
-    let last=-Infinity,lastState='',lastLoadout='',lastHealth='',healthFrame=0;
+    let last=-Infinity,lastState='',lastSupplies='',lastHealth='',healthFrame=0;
     const updateHealth=()=>{
       const p=run.player,point=hud.project(run,p.pos.x,p.pos.y-.15,p.pos.z);
       health.hidden=!point.vis||p.dead;
@@ -943,17 +965,12 @@ export function createZixingUI(app,api) {
       updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+(run.mode===SINGLE_STAGE?'/1区':'/3区')));updateText(stageLabel,difficultyName(run));
       stageLabel.dataset.tier=String(run.tier);
       updateText(score,'积分 '+number(run.stats.kills));updateText(clock,time(run.time));updateText(gold,number(run.gold));
-      const loadoutKey=JSON.stringify([run.stage,p.moves.map(m=>m&&[m.def.key,m.level]),p.moveSlots,[...p.vitamins].map(([id,v])=>[id,v.level]),p.vitaminSlots,[...p.items],profile().settings.showItems,innerWidth]);
-      if(loadoutKey!==lastLoadout){
-        lastLoadout=loadoutKey;const [skills,items]=loadout(run),previous=inventory.firstElementChild;
-        // Keep decoded icons when only a level/count changed.
-        for(const [old,next] of [[previous,skills],[supplies,items]]){
-          const images=new Map();
-          for(const image of old?.querySelectorAll('img')||[]){const src=image.getAttribute('src');if(!images.has(src))images.set(src,[]);images.get(src).push(image);}
-          for(const image of next.querySelectorAll('img')){const reused=images.get(image.getAttribute('src'))?.shift();if(reused){reused.alt=image.alt;image.replaceWith(reused);}}
-        }
-        if(previous&&previous.children.length===skills.children.length)previous.replaceChildren(...skills.childNodes);
-        else inventory.replaceChildren(skills);
+      updateSkillSlots(skillSlots,run);
+      const supplyKey=JSON.stringify([[...p.vitamins].map(([id,v])=>[id,v.level]),[...p.items],profile().settings.showItems,innerWidth]);
+      if(supplyKey!==lastSupplies){
+        lastSupplies=supplyKey;const items=supplyIcons(run),images=new Map();
+        for(const image of supplies.querySelectorAll('img')){const src=image.getAttribute('src');if(!images.has(src))images.set(src,[]);images.get(src).push(image);}
+        for(const image of items.querySelectorAll('img')){const reused=images.get(image.getAttribute('src'))?.shift();if(reused){reused.alt=image.alt;image.replaceWith(reused);}}
         supplies.replaceChildren(items);
       }
       for(const slot of inventory.querySelectorAll('.zx-skill-slot')){

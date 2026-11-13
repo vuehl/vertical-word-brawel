@@ -241,6 +241,7 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 .zx-mini-slot.filled{background:#e6edf3}.zx-mini-slot>.zx-loadout-icon{width:20px;height:20px;object-fit:contain}
 .zx-slot-count{position:absolute;right:-1px;bottom:-3px;min-width:10px;padding:0 2px;border-radius:5px;background:#fffdf3e6;font-size:9px;line-height:1.1;color:#28233c;text-align:center}
 .zx-skill-slots{position:absolute;left:18px;bottom:26px;display:flex;flex-direction:column;gap:14px}
+#hud.cinematic>.zx-toast-layer{opacity:1!important}
 .zx-skill-slot{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:42px;height:42px;background:#e8ede530;border:1px solid #fffdf580;border-radius:50%;overflow:visible}
 .zx-skill-slot.filled{background:#f8f4e9f2;border-color:#fffdf5}
 .zx-skill-slot.locked{background:#e8ede51f}.zx-skill-slot>.zx-loadout-icon{width:32px;height:32px;object-fit:contain}

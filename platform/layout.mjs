@@ -13,6 +13,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
   const ctx=native.getContext('2d'),engine=styleEngine(view,uiAssets.rules);
   const ref=readReference(view,uiAssets.layout);
   let boxes=[],seen=new WeakMap(),metrics={},clampedScroll=false;
+  let overlay=null,overlayBoxes=[],overlaySeen=new WeakMap();
   const font=s=>(parseInt(s['font-weight'],10)>=600?'bold ':'')+s.font+'px "'+
     (parseInt(s['font-weight'],10)>=600?fonts.bold:fonts.regular)+'", sans-serif';
   const widths=new Map(),wrapped=new Map();
@@ -114,6 +115,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       const gridMax=/minmax\(\s*0\s*,\s*([\d.]+)px\s*\)/.exec(columns);
       const counts={};
       for(const child of el.childNodes){
+        if(child===overlay)continue;
         if(child.nodeType!==1&&child.nodeType!==3||child.nodeType===3&&!child.textContent.trim())continue;
         const key=keyPart(child),index=counts[key]||0;counts[key]=index+1;
         const item2=make(child,item,count?{count,max:gridMax?+gridMax[1]:0}:null,keyHash(id,key,index));if(!item2)continue;
@@ -237,7 +239,27 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     root.node.freeRecursive();
     return boxes;
   }
-  function hit(x,y){for(let i=boxes.length-1;i>=0;i--){const b=boxes[i],c=b.clip;if(b.tag==='#text'||b.s['pointer-events']==='none'||x<c.x||x>c.r||y<c.y||y>c.b)continue;
+  function setOverlay(el){
+    if(el===overlay)return;
+    overlay=el;overlayBoxes=[];overlaySeen=new WeakMap();
+  }
+  function refreshOverlay(){
+    if(!overlay)return [];
+    const parent=seen.get(overlay.parentElement);
+    const root=make(overlay,{s:parent?.s||engine.style(overlay.parentElement,null)});
+    const clip=parent?.clip||{x:0,y:0,r:view.w,b:view.h},w=parent?.w??view.w,h=parent?.h??view.h;
+    root.node.setWidth(w);root.node.setHeight(h);root.node.calculateLayout(w,h,Y.DIRECTION_LTR);
+    const base=boxes,baseSeen=seen;
+    try{
+      seen=overlaySeen=new WeakMap();boxes=[];
+      const collect=()=>record(root,parent?.x||0,parent?.y||0,clip,w,h,null,parent?.opacity??1);
+      clampedScroll=false;collect();
+      if(clampedScroll){boxes=[];collect();}
+      overlayBoxes=boxes;
+    }finally{boxes=base;seen=baseSeen;root.node.freeRecursive();}
+    return overlayBoxes;
+  }
+  function hit(x,y){const targets=overlay?.isConnected?overlayBoxes:boxes;for(let i=targets.length-1;i>=0;i--){const b=targets[i],c=b.clip;if(b.tag==='#text'||b.s['pointer-events']==='none'||x<c.x||x>c.r||y<c.y||y>c.b)continue;
     if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.el;}return doc.body;}
   function refreshSubtree(element,previous){
     const bounds=seen.get(element),index=boxes.indexOf(bounds);
@@ -257,5 +279,5 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     const local=boxes;boxes=all;boxes.splice(index,previous.length,...local);
     root.node.freeRecursive();return local;
   }
-  return {refresh,refreshSubtree,hit,box:el=>seen.get(el),font,wrap,context:ctx};
+  return {refresh,refreshSubtree,setOverlay,refreshOverlay,hit,box:el=>overlaySeen.get(el)||seen.get(el),font,wrap,context:ctx};
 }

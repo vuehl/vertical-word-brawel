@@ -54981,7 +54981,9 @@ function Gb(e, t) {
     case `newVit`:
     case `upVit`:
       n.addVitamin(t.vit, E[t.rarity]);
+      return;
   }
+  n.recompute();
 }
 var Kb = (e, t) => !!e.tower && t === `dowsing-machine`;
 function qb(e, t = 0) {
@@ -75857,18 +75859,28 @@ var GT = 15,
           : (this.startEvolution(), !0)
         : !1;
     }
+    levelUpEffect(stars) {
+      const {x,y,z}=this.player.pos;
+      this.vfx.ring(x,y,z,5,16769162,0.5);
+      this.vfx.burst(x,y+1,z,16769162,stars,7,I.Star,0.5,0.7);
+    }
     doLevelUp() {
       if (this.state !== `play` || this.pendingLevels <= 0 || this.upgradeTiming.waiting(this.ult) || this.ui.experienceReady?.() === false || this.tryEvolve()) return;
       ((this.state = `modal`), this.audio.levelUp(), this.hints.show(`level`));
-      let e = this.player.pos;
-      (this.vfx.ring(e.x, e.y, e.z, 5, 16769162, 0.5),
-        this.vfx.burst(e.x, e.y + 1, e.z, 16769162, 30, 7, I.Star, 0.5, 0.7));
+      if(this.coop)this.levelUpEffect(30);
       let t = this.meta.lab(`choice4`) ? 4 : 3,
         n = (e = !0) => {
-          ((this.pendingLevels = Math.max(0, this.pendingLevels - 1)),
-            (this.noResumeGrace = !e),
-            this.ui.hideModal(),
-            this.pendingLevels > 0 ? ((this.state = `play`), this.doLevelUp()) : this.resume());
+          this.pendingLevels = Math.max(0, this.pendingLevels - 1);
+          this.noResumeGrace = !e;
+          if(this.pendingLevels>0){
+            this.ui.hideModal();
+            this.state='play';
+            this.doLevelUp();
+          }else{
+            // Solo combat is frozen between choices. Show one burst when it can animate.
+            if(!this.coop)this.levelUpEffect(10);
+            this.resume();
+          }
         },
         r = () => {
           try {
@@ -75881,7 +75893,7 @@ var GT = 15,
         },
         i = (e) => {
           try {
-            (Gb(this, e), this.player.recompute());
+            Gb(this, e);
             let t = Wb(this, e);
             this.ui.toast(c(`Nivel: {name} ({sub})`, { name: t.title, sub: t.sub }), null);
           } catch (e) {
@@ -75901,8 +75913,7 @@ var GT = 15,
                     try {
                       (r === `skip` &&
                         (this.skips--, this.addGold(Math.max(10 * this.stage, 0.2 * OS(this)))),
-                        e && Gb(this, e),
-                        this.player.recompute());
+                        e ? Gb(this, e) : this.player.recompute());
                     } catch (e) {
                       oc(`levelup`, e);
                     } finally {
@@ -76345,9 +76356,13 @@ var GT = 15,
       // The short full-ring presentation is part of the upgrade pause. It
       // must not freeze an ultimate mid-cast. Protect the player while its
       // final damage/effects continue, then pause for the remaining ring work.
+      let frozenWorld=false;
       if(this.state === `play` && this.pendingLevels > 0){
         if(finishingUltimate&&!this.coop)this.player.iframes=Math.max(this.player.iframes,r+.1);
-        if(!this.coop&&!finishingUltimate&&this.ui.experienceReady?.() === false)r=0;
+        if(!this.coop&&!finishingUltimate&&this.ui.experienceReady?.() === false){
+          r=0;
+          frozenWorld=!this.r.needsDraw&&window.hasFrozenUpgrade?.(this);
+        }
       }
       let o = this.state === `capturing` ? this.capYaw : this.yawBack;
       if (!this.terrain.zxPaper && !Number.isNaN(o)) {
@@ -76379,10 +76394,10 @@ var GT = 15,
         this.state === `capturing` &&
           (this.orbitals.begin(), this.orbitalsGlow.begin(), this.capBall?.update(e)),
         i && r > 0 && this.simulate(r),
-        this.updateCamera(e),
+        !frozenWorld&&this.updateCamera(e),
         this.state === `capturing` && this.clearCaptureView(),
-        this.renderWorld(i ? r : 0),
-        this.vfx.update(i ? r : a ? e : 0),
+        !frozenWorld&&this.renderWorld(i ? r : 0),
+        !frozenWorld&&this.vfx.update(i ? r : a ? e : 0),
         this.ui.hud(this),
         this.state === `play` && this.pendingLevels > 0 && this.evoHold <= 0 && !this.ult.castPending)
       )
@@ -107752,8 +107767,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         N.preloadTrack(EL()));
       let i = !1,
         a = () => {
+          // Waking audio uses the stored volumes. A gesture must not reconfigure the renderer.
           (N.init(),
-            this.applySettings(),
             !this.run && !i && ((i = !0), N.playTrack(EL())),
             setTimeout(() => {
               N.running &&
@@ -108372,13 +108387,13 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         let t = performance.now();
         this.pad.update(n, this.run?.state === `play`);
         if(!this.r.needsDraw&&window.drawFrozenModal?.(this.r.renderer)){
-          this.perf.active=false;this.failing=0;return;
+          this.perf.active=false;this.run.crowdSample=null;this.adaptRes(0,0,e);this.failing=0;return;
         }
         this.run ? this.run.update(n) : this.menuScene?.update(n);
         // The XP ring still needs HUD updates while combat is paused. Reuse
         // that same scene when the choice first appears.
         if(this.run?.pendingLevels>0&&!this.r.needsDraw&&window.drawFrozenUpgrade?.(this.r.renderer)){
-          this.perf.active=false;this.failing=0;return;
+          this.perf.active=false;this.run.crowdSample=null;this.adaptRes(0,0,e);this.failing=0;return;
         }
         let r = performance.now();
         if ((this.r.render(n), this.run?.state === `play`)) {

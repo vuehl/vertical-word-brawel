@@ -76,7 +76,8 @@ await page.evaluateOnNewDocument(()=>{
       if(window.upgradeAudit){
         const canvas=args[args.length-1];
         if(canvas===window.inspected?.uiCanvas)upgradeAudit.uploads++;
-        if(window.inspected?.modalTransition?.canvases.includes(canvas))upgradeAudit.panelUploads++;
+        if(window.inspected?.modalTransition?.canvases.includes(canvas)&&++upgradeAudit.panelUploads===1)
+          upgradeAudit.clock+=upgradeAudit.firstUploadMs||0;
       }
       return original.apply(this,args);
     };

@@ -113,22 +113,26 @@ export function compositor(gl,canvas) {
   const flip=gl.getUniformLocation(prog,'flip');
   const texture=gl.createTexture(),tiles=[],vao=gl.createVertexArray();
   let width=0,height=0;
-  let frozen=null,frozenKey=null,frozenWidth=0,frozenHeight=0;
+  let frozen=null,frozenKey=null,frozenOwner=null,frozenWidth=0,frozenHeight=0;
   const hasFrozen=key=>!!key&&key===frozenKey&&!!frozen&&frozenWidth===gl.drawingBufferWidth&&frozenHeight===gl.drawingBufferHeight;
-  const release=()=>{if(frozen)gl.deleteTexture(frozen);frozen=null;frozenKey=null;};
-  const draw=(renderer,changed,opaque=false,layers=[],freezeKey=null)=>{
+  const release=()=>{if(frozen)gl.deleteTexture(frozen);frozen=frozenKey=frozenOwner=null;frozenWidth=frozenHeight=0;};
+  const draw=(renderer,changed,opaque=false,layers=[],freezeKey=null,run=freezeKey)=>{
     renderer.resetState();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
     gl.activeTexture(gl.TEXTURE0);
     // Copy the scene before UI composition, once per paused choice sequence.
     // Everything stays on the GPU; never read pixels back or create a bitmap.
+    if(frozen&&(frozenOwner!==run||frozenWidth!==gl.drawingBufferWidth||frozenHeight!==gl.drawingBufferHeight))release();
     if(freezeKey&&!hasFrozen(freezeKey)){
-      if(!frozen)frozen=gl.createTexture();
+      const allocate=!frozen;
+      if(allocate)frozen=gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D,frozen);
-      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-      gl.copyTexImage2D(gl.TEXTURE_2D,0,gl.RGBA,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,0);
-      frozenKey=freezeKey;frozenWidth=gl.drawingBufferWidth;frozenHeight=gl.drawingBufferHeight;
-    }else if(!freezeKey)release();
+      if(allocate){
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+        gl.copyTexImage2D(gl.TEXTURE_2D,0,gl.RGBA,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,0);
+      }else gl.copyTexSubImage2D(gl.TEXTURE_2D,0,0,0,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
+      frozenOwner=run;frozenKey=freezeKey;frozenWidth=gl.drawingBufferWidth;frozenHeight=gl.drawingBufferHeight;
+    }else if(!freezeKey)frozenKey=null;
     if(opaque){gl.disable(gl.SCISSOR_TEST);gl.clearColor(.957,.949,.98,1);gl.clear(gl.COLOR_BUFFER_BIT);}
     gl.useProgram(prog);gl.uniform1f(opacity,1);gl.bindVertexArray(vao);
     gl.disable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);gl.disable(gl.SCISSOR_TEST);gl.depthMask(false);

@@ -83,7 +83,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   const modeNames={none:'只调怪物',timed:'按时间实战',stress:'满负载压测'};
   let run=null,button=null,monitor=null,monitorLayer=null,panel=null,target=30,seconds=120;
   let strokePreview=null;
-  let frames=0,since=performance.now(),fps=0,frameMs=0,calls=0,triangles=0,lastSample=0,lastMaintain=0;
+  let calls=0,triangles=0,lastSample=0,lastMaintain=0;
   let values=null,error=null;
   let mountEntrance=()=>{};
   const invalidate=()=>window.developerInvalidateUI?.();
@@ -125,7 +125,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     let projectiles=0;for(let i=0;i<run.projectiles.n;i++)if(run.projectiles.alive[i])projectiles++;
     return {stage:run.stage,stageTime:run.stageTime,total:e.count,ordinary:normal,visible,
       device:window.nativeDevice,simMs:app.perf.sim,submitMs:app.perf.draw,
-      fps,frameMs,calls,triangles,particles:run.vfx.add.n+run.vfx.norm.n,pickups:run.pickups.count,
+      fps:app.perf.fps,frameMs:app.perf.fps>0?1000/app.perf.fps:0,calls,triangles,particles:run.vfx.add.n+run.vfx.norm.n,pickups:run.pickups.count,
       projectiles,zones:run.zones.list.length,texts:run.vfx.text.items.length,workload:workload?.snapshot(),encounter:encounters?.snapshot(),
       textures:app.r.renderer.info.memory.textures,geometries:app.r.renderer.info.memory.geometries,
       hpMultiplier:run.director.hpMult(),cards:run.director.cards.map(card=>card.id)};
@@ -352,11 +352,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
         if(showOnEntry)open();
       }
     }
-    const now=performance.now(),info=app.r.renderer.info,autoReset=info.autoReset;
-    if(run?.state==='play'){
-      frames++;const elapsed=now-since;
-      if(elapsed>=1000){fps=frames*1000/elapsed;frameMs=elapsed/frames;frames=0;since=now;}
-    }else{frames=0;since=now;}
+    const info=app.r.renderer.info,autoReset=info.autoReset;
     info.autoReset=false;info.reset();
     try{return render(...args);}finally{calls=info.render.calls;triangles=info.render.triangles;info.autoReset=autoReset;}
   };

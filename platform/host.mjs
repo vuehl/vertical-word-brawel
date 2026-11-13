@@ -54,7 +54,8 @@ export async function setup(host) {
   const view=viewport(system);
   const uiFrames=createUIFrameCache();
   const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,element=>{
-    const tile=win.__pb?.run?.state==='play'&&activeHudLayers().find(layer=>layer.owns(element));
+    if(modalTransition.owns(element)){modalTransition.invalidate();return;}
+    const tile=usingBattleHUD()&&activeHudLayers().find(layer=>layer.owns(element));
     if(tile)tile.invalidate();else uiFrames.invalidate();
   });
   const controls=createControlLayer(makeCanvas);
@@ -67,10 +68,13 @@ export async function setup(host) {
     element?.dataset?.uiLayer?.startsWith('peer-')?peerTiles.find(t=>t.owns(element)):null;
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
   const soloLayers=['counters','score','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
+  const skillLayer=soloLayers[3];
+  soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
   const modalTransition=createModalTransition(makeCanvas);
+  const usingBattleHUD=()=>win.__pb?.run?.state==='play'||(win.__pb?.run?.state==='modal'&&!!modalTransition.element);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
@@ -89,14 +93,23 @@ export async function setup(host) {
       if(record.target===screen)continue;
       const target=mutationTarget(record);
       const element=target.nodeType===1?target:target.parentElement;
+      if(modalTransition.owns(element)){
+        modalTransition.invalidate();continue;
+      }
+      if(record.type==='childList'){
+        const nodes=[...record.addedNodes,...record.removedNodes];
+        if(nodes.length&&nodes.every(node=>modalTransition.owns(node.nodeType===1?node:node.parentElement)))continue;
+      }
       if(element?.closest?.('[data-ui-hidden="true"]'))continue;
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
       if(record.type==='attributes'&&minimap.owns(element)&&record.attributeName==='data-frame'){
         minimap.invalidate();continue;
       }
-      if(env.__pb?.run?.state==='play'&&record.type==='attributes'&&element?.dataset?.uiLayer==='portrait'&&['data-frame','data-progress','data-word','aria-valuenow'].includes(record.attributeName)){
-        if(record.attributeName==='data-frame')portrait.invalidate();
-        continue;
+      if(usingBattleHUD()&&record.type==='attributes'&&element?.dataset?.uiLayer==='portrait'&&['data-frame','data-progress','data-word','aria-valuenow'].includes(record.attributeName)){
+        if(record.attributeName==='data-frame')portrait.invalidate();continue;
+      }
+      if(usingBattleHUD()&&record.type!=='attributes'&&element?.closest?.('[data-ui-layer="portrait-level"]')){
+        portrait.invalidateForeground();continue;
       }
       const movable=record.type==='attributes'&&healthLayer(element);
       if(movable&&['style','data-frame','data-progress','aria-valuenow','aria-valuemax','aria-label'].includes(record.attributeName)){
@@ -106,7 +119,15 @@ export async function setup(host) {
       if(record.type==='attributes'&&controls.owns(element)&&['style','class'].includes(record.attributeName)){
         controls.invalidate();continue;
       }
-      if(env.__pb?.run?.state==='play'){
+      if(usingBattleHUD()){
+        if(record.type==='attributes'&&element?.classList?.contains('zx-skill-cooldown')&&['data-frame','data-progress'].includes(record.attributeName)){
+          if(record.attributeName==='data-frame')skillLayer.invalidatePixels();
+          continue;
+        }
+        // Adding or removing a slot moves the bottom-anchored column as a whole.
+        if(record.type==='childList'&&element?.dataset?.uiLayer==='skills'){
+          uiFrames.invalidate(true,true);continue;
+        }
         const tile=activeHudLayers().find(layer=>layer.owns(element));
         if(tile){tile.invalidate();continue;}
       }
@@ -129,7 +150,10 @@ export async function setup(host) {
   property('offsetLeft',function(){return rect(this).left;});property('offsetTop',function(){return rect(this).top;});
   property('scrollHeight',function(){return this.clientHeight+(this._scrollMax||0);});
   property('scrollWidth',function(){return this.clientWidth;});
-  property('scrollTop',function(){return this._scroll||0;},function(n){this._scroll=Math.min(this._scrollMax||0,Math.max(0,n));uiFrames.invalidate(true,true);});
+  property('scrollTop',function(){return this._scroll||0;},function(n){
+    const next=Math.min(this._scrollMax||0,Math.max(0,n));if(next===(this._scroll||0))return;
+    this._scroll=next;if(modalTransition.owns(this))modalTransition.invalidate();else uiFrames.invalidate(true,true);
+  });
   D.Element.prototype.getBoundingClientRect=function(){return rect(this);};
   D.Element.prototype.getClientRects=function(){return this.offsetWidth?[rect(this)]:[];};
   D.Element.prototype.setPointerCapture=function(id){captured.set(id,this);};
@@ -168,7 +192,7 @@ export async function setup(host) {
     const key=String(k).replace(/[A-Z]/g,m=>'-'+m.toLowerCase());return layout.box(el)?.s[key]||t.getPropertyValue(key)||(k==='gridTemplateColumns'?'1fr':'');}});}
   function show(hide){
     doc.hidden=hide;doc.visibilityState=hide?'hidden':'visible';doc.dispatchEvent(new D.Event('visibilitychange'));win.dispatchEvent(new D.Event(hide?'pagehide':'pageshow'));
-    if(hide){for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
+    if(hide){draw?.releaseFrozen();for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
   }
   wx.onHide(()=>show(true));wx.onShow(()=>show(false));
   function keyboard(el){
@@ -184,7 +208,7 @@ export async function setup(host) {
     if(modalTransition.active){pointers.clear();captured.clear();return;}
     // Menus still react immediately. In battle, DOM mutations invalidate the
     // controls that actually changed; an empty-space swipe needs no UI upload.
-    if(kind!=='move'&&win.__pb?.run?.state!=='play')uiFrames.invalidate(false,true);
+    if(kind!=='move'&&win.__pb?.run?.state!=='play'&&!modalTransition.element)uiFrames.invalidate(false,true);
     const local=t=>{
       const x=(t.clientX??t.pageX)-view.x,y=(t.clientY??t.pageY)-view.y;
       return {...t,identifier:t.identifier,clientX:x,clientY:y,pageX:x,pageY:y};
@@ -253,7 +277,7 @@ export async function setup(host) {
     setUIPerformance(){
       // Settings also change inherited CSS variables (e.g. button size).
       // Refresh their hit boxes even when the pixel ratio stays the same.
-      uiFrames.invalidate(true,true);
+      uiFrames.invalidate(true,true);modalTransition.invalidate();
       const next=uiScale(view);
       if(Math.abs(next-scale)<.001)return;
       scale=env.uiPixelRatio=next;
@@ -261,9 +285,10 @@ export async function setup(host) {
       layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
-    animateModal(wrap){modalTransition.begin(wrap,env.__pb?.run);uiFrames.invalidate(true,true);},
-    closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop);},
+    animateModal(wrap){modalTransition.begin(wrap,env.__pb?.run);},
+    closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop,perf.now());},
     modalAnimating:()=>modalTransition.active,
+    hasFrozenUpgrade:run=>!env.__pb?.screen&&upgradeCue(run)&&draw?.hasFrozen(run),
     drawFrozenModal(renderer){
       return env.__pb?.run?.state==='modal'&&env.drawFrozenUpgrade(renderer);
     },
@@ -274,22 +299,26 @@ export async function setup(host) {
     },
     drawUI(renderer,opaque=false,frozenFrame=null){
       const now=perf.now();
-      if(modalTransition.advance(now))uiFrames.invalidate(false,true);
+      modalTransition.advance(now);
       mutations(observer.takeRecords());
       const run=env.__pb?.run,state=run?.state;
+      const overlay=modalTransition.element;
+      layout.setOverlay(overlay);
+      const playing=usingBattleHUD()&&!opaque;
       const hudLayers=activeHudLayers();
-      const changed=uiFrames.draw(now,state,layout,boxes=>{
+      const changed=uiFrames.draw(now,playing?'play':state,layout,boxes=>{
         controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
         if(env.__pb?.run?.coop)for(const tile of peerTiles)tile.capture(boxes);
         for(const tile of hudLayers)tile.capture(boxes);
-        const visible=modalTransition.capture(layout,boxes,view,scale);
-        paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||healthLayer(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
+        paint(layout,boxes.filter(b=>!controls.owns(b.el)&&!(playing&&(minimap.owns(b.el)||healthLayer(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
       });
       if(opaque&&!changed)return;
-      const playing=state==='play'&&!opaque;
+      modalTransition.prepare(layout,view,scale);
       const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
-      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale,perf.now())];
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey());
+      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);
+      draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
+      if(overlay)modalTransition.presented(perf.now());
     },
     readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},
   });
@@ -300,7 +329,7 @@ export async function setup(host) {
     env.innerWidth=env.screen.width=view.w;env.innerHeight=env.screen.height=view.h;
     env.devicePixelRatio=view.dpr;
     scale=env.uiPixelRatio=uiScale(view);uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
-    layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
+    layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);modalTransition.invalidate();
     for(const query of queries.values()){
       const matches=mediaMatches(query.media,view);
       if(matches!==query.matches){query.matches=matches;query.dispatchEvent(new InputEvent('change',{matches,media:query.media}));}

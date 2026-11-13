@@ -78,16 +78,17 @@ try{
     await page.screenshot({path:path.join(dir,'dev-home.png')});
   }
   const fiveMinute=process.argv.includes('--five-minute');
-  const initial=await page.evaluate(async({development,fiveMinute})=>{
+  const upgradeResume=process.argv.includes('--upgrade-resume');
+  const initial=await page.evaluate(async({development,fiveMinute,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
     const initial={quality:app.meta.profile.settings.quality,saver:app.saver,fpsCap:app.fpsCap(),frameGap:app.frameGap()};
-    Object.assign(app.meta.profile.settings,{quality:'high',fpsLimit:60,batterySaver:false});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:upgradeResume?'low':'high',fpsLimit:60,batterySaver:false});app.applySettings();
     // Prevent the software rasterizer from monopolizing startup. Manual sample frames follow.
     window.realFrameGap=app.frameGap.bind(app);
     app.frameGap=()=>250;
     if(development)return initial;
-    if(fiveMinute){
+    if(fiveMinute||upgradeResume){
       const start=app.backend.startRun.bind(app.backend);
       app.backend.startRun=async(...args)=>({...await start(...args),seed:53090});
       let seed=53090;
@@ -100,11 +101,14 @@ try{
     // gameplay HUD once before freezing frames for deterministic measurements.
     app.run.update(1/60);
     return initial;
-  },{development,fiveMinute});
+  },{development,fiveMinute,upgradeResume});
   assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(fiveMinute){
+  if(upgradeResume){
+    const {reviewUpgradeResume}=await import('./upgrade-resume-regression.mjs');
+    await reviewUpgradeResume(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
+  }else if(fiveMinute){
     const {reviewFiveMinute,playFiveMinutes}=await import('./five-minute-regression.mjs');
     if(process.argv.includes('--soak'))await playFiveMinutes(page,dir);
     else await reviewFiveMinute(page,dir,process.argv.includes('--baseline'));
