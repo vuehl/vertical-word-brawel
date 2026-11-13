@@ -86,11 +86,11 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     m.needsUpdate=true;batches.add(batch,t.uuid+(batch.zxOriginalGlyph?'-original':''),playerEntry?1:1024);return batch;
   }
   let playerEntry;
-  run.sprites.getPlayerGlyph=(id,speciesId,pose)=>{
+  run.sprites.getPlayerGlyph=(id,speciesId,pose,faintTile)=>{
     const rig=loadedHeroRig(speciesId);
     if(!rig)return run.sprites.get(id);
     playerEntry??=createHeroPoseTexture(Texture,colorSpace);
-    playerEntry.draw(rig,pose?.word===rig.word?pose:null);
+    playerEntry.draw(rig,!faintTile&&pose?.word===rig.word?pose:null,faintTile);
     return skin(get(id,false,'player-strokes'),rig.word,playerEntry);
   };
   run.sprites.prepareGlyphTextures=async (renderer,playerSpecies)=>{
