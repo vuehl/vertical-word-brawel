@@ -66,3 +66,20 @@ test('a simultaneous update is recalculated from the newer revision',async()=>{
   assert.equal((await other()).data.profile.stardust,46);
 });
 
+test('periodic checkpoints retain their active run without serializing saved history',async()=>{
+  let copies=0,saved;
+  const history={toJSON(){copies++;return {large:'past run'};}};
+  const base={accounts:{},runs:{past:history,current:{cps:[]}}};
+  const dispatch=progressDispatcher({load:()=>base,save:value=>{saved=value;},
+    async localRoute(store,url){
+      if(url.pathname.endsWith('/checkpoint')){
+        store.runs.current.cps.push(300);return {response:{status:204}};
+      }
+      return {dirty:true,response:{status:200}};
+    }});
+  await dispatch({pathname:'/api/runs/current/checkpoint'},'POST',{},'{}');
+  assert.equal(copies,0);assert.equal(saved,undefined);
+  await dispatch({pathname:'/api/profile/prefs'},'PUT',{},'{}');
+  assert.equal(copies,1);assert.deepEqual(saved.runs.current.cps,[300]);
+});
+

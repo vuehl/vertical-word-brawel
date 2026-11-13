@@ -77,7 +77,8 @@ try{
     assert.equal(await page.evaluate(()=>inspected.doc.querySelector('#zx-dev-version')?.textContent),'开发测试版 DEV 8');
     await page.screenshot({path:path.join(dir,'dev-home.png')});
   }
-  const initial=await page.evaluate(async development=>{
+  const fiveMinute=process.argv.includes('--five-minute');
+  const initial=await page.evaluate(async({development,fiveMinute})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
     const initial={quality:app.meta.profile.settings.quality,saver:app.saver,fpsCap:app.fpsCap(),frameGap:app.frameGap()};
@@ -86,6 +87,12 @@ try{
     window.realFrameGap=app.frameGap.bind(app);
     app.frameGap=()=>250;
     if(development)return initial;
+    if(fiveMinute){
+      const start=app.backend.startRun.bind(app.backend);
+      app.backend.startRun=async(...args)=>({...await start(...args),seed:53090});
+      let seed=53090;
+      Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+    }
     await inspected.env.prepareForest();
     if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Start failed');
     app.halted=true;app.run.godMode=true;app.run.queueLevelUp=()=>{};
@@ -93,11 +100,16 @@ try{
     // gameplay HUD once before freezing frames for deterministic measurements.
     app.run.update(1/60);
     return initial;
-  },development);
+  },{development,fiveMinute});
   assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--desktop-layout')){
+  if(fiveMinute){
+    const {reviewFiveMinute,playFiveMinutes}=await import('./five-minute-regression.mjs');
+    if(process.argv.includes('--soak'))await playFiveMinutes(page,dir);
+    else await reviewFiveMinute(page,dir,process.argv.includes('--baseline'));
+    assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--desktop-layout')){
     const {reviewDesktopLayout}=await import('./desktop-layout-regression.mjs');
     await reviewDesktopLayout(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--map-play')){

@@ -5,11 +5,26 @@ import {paint} from './paint.mjs';
 export function createModalTransition(makeCanvas,duration=240,exitDuration=140){
   let target=null,started=null,panel,shade,content,backdrop,dirty=false,progress=0;
   let phase='idle',complete=null,keepShade=false,shadeStart=0,nextShade=false;
+  let cueOwner=null,cueStarted=0,cueOpacity=0,cueShade;
   const connected=()=>!!target?.isConnected;
   return {
-    begin(wrap){
+    begin(wrap,owner){
       target=wrap;started=null;content=backdrop=null;progress=0;phase='enter';complete=null;
-      shadeStart=nextShade?1:0;nextShade=false;keepShade=false;
+      shadeStart=nextShade?1:owner&&owner===cueOwner?cueOpacity:0;
+      cueOwner=null;nextShade=false;keepShade=false;
+    },
+    // The XP ring and this one-pixel backdrop start together. Keep the last
+    // presented opacity when the card texture becomes available.
+    cue(owner,view,scale,now){
+      if(!owner||connected()){cueOwner=null;return null;}
+      if(owner!==cueOwner){cueOwner=owner;cueStarted=now;}
+      const fresh=!cueShade;
+      if(fresh){
+        cueShade=makeCanvas();cueShade.width=cueShade.height=1;
+        const ctx=cueShade.getContext('2d');ctx.fillStyle='#28233980';ctx.fillRect(0,0,1,1);
+      }
+      cueOpacity=.12+.48*Math.min(1,Math.max(0,now-cueStarted)/120);
+      return {canvas:cueShade,x:0,y:0,width:view.width*scale,height:view.height*scale,slot:3,opacity:cueOpacity,changed:fresh||now===cueStarted};
     },
     close(wrap,done,retainBackdrop=false){
       if(target!==wrap||!connected()||!content){done();return;}

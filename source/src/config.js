@@ -2003,7 +2003,7 @@ var u = { season: 2, name: t(`Temporada 2`), maxDex: 151, biomes: [`forest`] },
     },
     {
       key: `stardust`,
-      name: t(`Polvo Estelar`),
+      name: t(`Polvo Estelar (vitamina)`),
       icon: `stardust`,
       stat: `area`,
       per: 0.1,
@@ -3419,7 +3419,7 @@ var Ue = (e) =>
     { id: `honey`, name: t(`Miel`), desc: t(`Atrae a un Pokémon Alfa más en cada zona.`) },
     {
       id: `shiny-stone`,
-      name: t(`Piedra Alba`),
+      name: t(`Piedra Día`),
       desc: t(`Un Pokémon variocolor aparece seguro en la zona 1.`),
     },
     {

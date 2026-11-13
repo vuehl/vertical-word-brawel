@@ -11,6 +11,7 @@ function socketErrorDetail(error) {
 
 export class RelayRoom {
   constructor() {
+    this.serverMonsterMotion = true;
     this.ev = {}; this.pending = new Map();
     this.sequence = 0; this.alive = true; this.inRun = false; this.startedSeen = false;
     this.traffic={snapSent:0,snapReceived:0,castSent:0,castReceived:0,ultSent:0,ultReceived:0};
@@ -97,6 +98,8 @@ export class RelayRoom {
       return;
     }
     let message; try { message = JSON.parse(raw); } catch { return; }
+    if(message.op==='boss-move'){this.ev.bossMove?.(message);return;}
+    if (message.op === 'monsters') { this.ev.monsters?.(message); return; }
     if (message.op === 'pong') { this.pongAt = Date.now(); this.roundTrip = this.pongAt - (this.pingAt || this.pongAt); return; }
     if (message.op === 'closed') { this.end(message.reason); return; }
     if (message.op === 'room') { this.apply(message.room); return; }

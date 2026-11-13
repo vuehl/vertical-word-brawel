@@ -11,7 +11,7 @@ export async function reviewItems({page,tap,resize,dir,sleep,snapshot}) {
     window.qaChest=chest;r.gold=1000;p.set(chest.x,chest.y,chest.z);r.player.vel.set(0,0,0);
     return before;
   });
-  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-title')?.textContent==='开启宝箱');
+  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-title')?.textContent==='开启扭蛋');
   const layouts=[];
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await resize(width,height);
@@ -27,7 +27,7 @@ export async function reviewItems({page,tap,resize,dir,sleep,snapshot}) {
       assert.ok(act.x>=0&&act.x+act.w<=width&&act.y+act.h<=layout.height,'Interaction must fit on screen');
       assert.ok(!overlap(act,stick),'Interaction must stay clear of the joystick: '+JSON.stringify({scale,...layout}));
       assert.equal(layout.extras,0,'Old saved extra-controls flags must not create removed buttons');
-      assert.match(layout.label,/开启宝箱.*金币/);layouts.push({scale,...layout});
+      assert.match(layout.label,/开启扭蛋.*金币/);layouts.push({scale,...layout});
     }
     await page.evaluate(()=>{app.meta.profile.settings.touchScale=1;app.meta.profile.settings.zxExtraControls=false;app.applySettings();});
     await snapshot('14-interaction-'+width);

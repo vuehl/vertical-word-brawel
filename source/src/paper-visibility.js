@@ -31,6 +31,7 @@ export function updatePaperVisibility(terrain,frustum,shadows=true){
   // can reuse the selection, instead of retesting every prop every frame.
   if(same)return false;
   view.meshes=meshes;view.count=meshes.length;view.shadows=shadows;
+  let castersChanged=false;
   for(const mesh of meshes){
     const data=mesh.userData.paperInstances;if(!data)continue;
     const {total,matrices,colors,bounds,selected}=data;
@@ -48,12 +49,13 @@ export function updatePaperVisibility(terrain,frustum,shadows=true){
       }
       count++;
     }
+    if(mesh.castShadow&&(changed||count!==mesh.count||mesh.visible!==(count>0)))castersChanged=true;
     mesh.count=count;mesh.visible=count>0;
     if(changed&&count){
       mesh.instanceMatrix.clearUpdateRanges();mesh.instanceMatrix.addUpdateRange(0,count*16);mesh.instanceMatrix.needsUpdate=true;
       if(colors){mesh.instanceColor.clearUpdateRanges();mesh.instanceColor.addUpdateRange(0,count*3);mesh.instanceColor.needsUpdate=true;}
     }
   }
-  if(terrain.workshopShadowLight)terrain.workshopShadowLight.shadow.needsUpdate=true;
+  if(castersChanged&&terrain.workshopShadowLight)terrain.workshopShadowLight.shadow.needsUpdate=true;
   return true;
 }

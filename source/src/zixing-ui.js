@@ -3,7 +3,7 @@ import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
 import {drawMenuGlyph,glyphWordForSpecies} from './paper-glyph-art.js';
 import {drawPaperIllustration} from './paper-ui-art.js';
-import {drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
+import {buildingMapName,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
@@ -546,7 +546,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取','靠近掉落的经验、金币与道具就会自动吸附拾取，进入吸附范围后无需停留。宝箱等场景互动仍使用交互按钮。'],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取','靠近掉落的经验、金币与道具就会自动吸附拾取，进入吸附范围后无需停留。扭蛋等场景互动仍使用交互按钮。'],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -642,7 +642,7 @@ export function createZixingUI(app,api) {
       else done();
     };
     const cards=offers.map((offer,index)=>{const desc=api.offer(run,offer);return button(offerContent(index===0?current():'升',desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});});
-    overlay('择一而进','',offerBody(cards,()=>stats(run,()=>levelUp(run,offers,chooseOffer))),
+    overlay('择一而进','',cards,
       [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
   }
   function restyleChoice(run,method,args,symbol) {
@@ -857,7 +857,7 @@ export function createZixingUI(app,api) {
       if(itemTarget){
         const free=target.kind!=='chest'||target.data?.gift,cost=r.interactables.chestCost();
         poor=!free&&r.gold<cost;
-        title=poor?'金币不足':target.kind==='cursedchest'?'开启咒箱':'开启宝箱';
+        title=poor?'金币不足':target.kind==='cursedchest'?'开启咒箱':'开启'+buildingMapName(target);
         detail=free?(target.kind==='cursedchest'?'附带诅咒':'免费'):number(cost)+' 金币';
       }
       if(itemTarget)hud.touch.act.firstChild.replaceChildren(icon('interact',18,'#76684e'));

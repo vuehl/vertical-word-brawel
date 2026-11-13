@@ -78,9 +78,10 @@ export async function setup(host) {
   const uiAssets=await readUIAssets(host.files);
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
-  const frozenModalKey=()=>{
+  const upgradeCue=run=>run?.state==='play'&&!run.coop&&run.pendingLevels>0&&run.evoHold<=0&&!run.upgradeTiming.waiting(run.ult)&&run.ui.experienceReady?.()===false;
+  const frozenUpgradeKey=()=>{
     const app=win.__pb,run=app?.run;
-    return !app?.screen&&!run?.coop&&run?.state==='modal'&&run.ui.modalEl?.querySelector('.zx-upgrade')?run:null;
+    return !app?.screen&&(upgradeCue(run)||(!run?.coop&&run?.state==='modal'&&run.ui.modalEl?.querySelector('.zx-upgrade')))?run:null;
   };
   const mutationTarget=createMutationTargets(doc.documentElement);
   function mutations(records){
@@ -260,11 +261,14 @@ export async function setup(host) {
       layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
-    animateModal(wrap){modalTransition.begin(wrap);uiFrames.invalidate(true,true);},
+    animateModal(wrap){modalTransition.begin(wrap,env.__pb?.run);uiFrames.invalidate(true,true);},
     closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop);},
     modalAnimating:()=>modalTransition.active,
     drawFrozenModal(renderer){
-      const key=frozenModalKey();
+      return env.__pb?.run?.state==='modal'&&env.drawFrozenUpgrade(renderer);
+    },
+    drawFrozenUpgrade(renderer){
+      const key=frozenUpgradeKey();
       if(!key||!draw?.hasFrozen(key))return false;
       env.drawUI(renderer,false,key);return true;
     },
@@ -272,7 +276,7 @@ export async function setup(host) {
       const now=perf.now();
       if(modalTransition.advance(now))uiFrames.invalidate(false,true);
       mutations(observer.takeRecords());
-      const state=env.__pb?.run?.state;
+      const run=env.__pb?.run,state=run?.state;
       const hudLayers=activeHudLayers();
       const changed=uiFrames.draw(now,state,layout,boxes=>{
         controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
@@ -283,8 +287,9 @@ export async function setup(host) {
       });
       if(opaque&&!changed)return;
       const playing=state==='play'&&!opaque;
-      const layers=[playing&&env.__pb?.run?.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&env.__pb?.run?.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),...modalTransition.layers(scale,perf.now())];
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenModalKey());
+      const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
+      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale,perf.now())];
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey());
     },
     readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},
   });

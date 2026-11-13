@@ -1,11 +1,12 @@
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
+import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, runRecordKey} from './lite-rules.js';
 import {enemyWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
-import {bossDistanceText} from './paper-hud-art.js';
+import {bossDistanceText,buildingMapName} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
 import {startWindFaint,windFaintRenderScale,windFaintTile} from './hero-poses.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
@@ -9260,6 +9261,7 @@ var qu = `
     }
     group = new Cr();
     colGrid = new Map();
+    colliderNeighborhoods = new Map();
     spawn = new ti();
     noise;
     noise2;
@@ -10489,6 +10491,7 @@ var qu = `
     }
     addCollider(e) {
       this.colliders.push(e);
+      this.colliderNeighborhoods.clear();
       if(e.paperBox){
         const rx=Math.abs(e.cos)*e.halfX+Math.abs(e.sin)*e.halfZ,rz=Math.abs(e.sin)*e.halfX+Math.abs(e.cos)*e.halfZ;
         for(let x=Math.floor((e.x-rx)/8);x<=Math.floor((e.x+rx)/8);x++)for(let z=Math.floor((e.z-rz)/8);z<=Math.floor((e.z+rz)/8);z++){
@@ -10504,6 +10507,19 @@ var qu = `
     cellKey(e, t) {
       return (Math.floor(e / 8) + 1e3) * 4096 + (Math.floor(t / 8) + 1e3);
     }
+    nearbyColliders(x,z) {
+      const key=this.cellKey(x,z),cached=this.colliderNeighborhoods.get(key);
+      if(cached)return cached;
+      // Keep the original resolution order, including for a box in several buckets.
+      const neighbors=new Set();
+      for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
+        const bucket=this.colGrid.get(key+4096*dx+dz);
+        if(bucket)for(const prop of bucket)neighbors.add(prop);
+      }
+      const list=Array.from(neighbors);
+      this.colliderNeighborhoods.set(key,list);
+      return list;
+    }
     lineClear(e, t, n, r, i, a) {
       let o = Math.ceil(Math.hypot(r - e, a - n));
       for (let s = 1; s < o; s++) {
@@ -10513,23 +10529,12 @@ var qu = `
       return !0;
     }
     hitProp(e, t, n, r) {
-      const query=this.collisionQuery=(this.collisionQuery||0)+1;
-      let i = Math.floor(e / 8),
-        a = Math.floor(n / 8);
-      for (let o = -1; o <= 1; o++)
-        for (let s = -1; s <= 1; s++) {
-          let c = this.colGrid.get((i + o + 1e3) * 4096 + (a + s + 1e3));
-          if (c)
-            for (let i of c) {
-              if (t > i.h || i.off) continue;
-              if(i.query===query)continue;i.query=query;
-              if(i.paperBox){if(hitsPaperBox(i,e,n,r))return true;continue;}
-              let a = e - i.x,
-                o = n - i.z,
-                s = i.r + r;
-              if (a * a + o * o < s * s) return !0;
-            }
-        }
+      for(const prop of this.nearbyColliders(e,n)){
+        if(t>prop.h||prop.off)continue;
+        if(prop.paperBox){if(hitsPaperBox(prop,e,n,r))return true;continue;}
+        const dx=e-prop.x,dz=n-prop.z,reach=prop.r+r;
+        if(dx*dx+dz*dz<reach*reach)return true;
+      }
       return !1;
     }
     walkClear(e, t, n, r, i, a) {
@@ -10559,29 +10564,17 @@ var qu = `
       return null;
     }
     resolve(e, t, n, r, i) {
-      const query=this.collisionQuery=(this.collisionQuery||0)+1;
       ((i.x = e), (i.z = t));
-      let a = Math.floor(e / 8),
-        o = Math.floor(t / 8);
-      for (let e = -1; e <= 1; e++)
-        for (let t = -1; t <= 1; t++) {
-          let s = this.colGrid.get((a + e + 1e3) * 4096 + (o + t + 1e3));
-          if (s)
-            for (let e of s) {
-              if (r > e.h || e.off) continue;
-              if(e.query===query)continue;e.query=query;
-              if(e.paperBox){resolvePaperBox(e,i,n);continue;}
-              let t = i.x - e.x,
-                a = i.z - e.z,
-                o = e.r + n,
-                s = t * t + a * a;
-              if (s < o * o) {
-                let n = Math.sqrt(s);
-                i.x = e.x + (n ? t / n : 1) * (o + .0001);
-                i.z = e.z + (n ? a / n : 0) * (o + .0001);
-              }
-            }
+      for(const prop of this.nearbyColliders(e,t)){
+        if(r>prop.h||prop.off)continue;
+        if(prop.paperBox){resolvePaperBox(prop,i,n);continue;}
+        const dx=i.x-prop.x,dz=i.z-prop.z,reach=prop.r+n,d2=dx*dx+dz*dz;
+        if(d2<reach*reach){
+          const distance=Math.sqrt(d2);
+          i.x=prop.x+(distance?dx/distance:1)*(reach+.0001);
+          i.z=prop.z+(distance?dz/distance:0)*(reach+.0001);
         }
+      }
       return i;
     }
     randomPoint(e, t = 0, n = 0, r = 0, i = this.world) {
@@ -13010,11 +13003,31 @@ var Df = 0.4,
       let d = this.grid,
         f = (this.sepOdd ^= 1),
         p = ++this.lodFrame;
-      const proxySquashDecay = this.remotes ? Math.exp(-e * 10) : 1;
+      const proxySquashDecay = this.remotes || t.coop?.monsters ? Math.exp(-e * 10) : 1;
       for (let i = 0; i < this.n; i++) {
         if (!this.alive[i]) continue;
         if (this.dying[i] > 0) {
           ((this.dying[i] -= e), this.dying[i] <= 0 && this.kill(i));
+          continue;
+        }
+        if(t.coop?.monsters && (this.flags[i]&R.Object)){
+          t.combat.tickStatus(i,e);
+          continue;
+        }
+        if(t.coop?.monsters && (this.flags[i]&R.Boss) && t.coop.isBossMirror(i)){
+          t.coop.monsters.updateBoss(i,e);
+          continue;
+        }
+        if (t.coop?.monsters && roomMonster(this.flags[i])) {
+          t.combat.tickStatus(i,e);
+          if(this.isAlive(i) && !this.parked(i)) {
+            if(this.flags[i]&12292)this.canMoveAfterControl(i,e);
+            t.coop.monsters.place(i,e);
+            this.flash[i]=Math.max(0,this.flash[i]-e*6);
+            this.squash[i]*=proxySquashDecay;
+            this.atkAnim[i]=Math.max(0,this.atkAnim[i]-e);
+            this.proxyContact(i,a,s,o);
+          }
           continue;
         }
         if (this.flags[i] & 65536) {
@@ -13067,33 +13080,8 @@ var Df = 0.4,
           this.vx[i] = this.vz[i] = this.kx[i] = this.kz[i] = 0;
           continue;
         }
-        let b = this.speed[i],
-          x = !0;
-        ((this.frozen[i] > 0 || this.sleep[i] > 0 || this.stun[i] > 0) && (x = !1),
-          y & 12292 &&
-            (this.ccImmune[i] > 0
-              ? ((this.ccImmune[i] -= m),
-                (this.frozen[i] = this.sleep[i] = this.stun[i] = 0),
-                (this.chill[i] = 0),
-                (x = !0))
-              : x
-                ? (this.ccT[i] = Math.max(0, this.ccT[i] - m * 0.5))
-                : ((this.ccT[i] += m),
-                  this.ccT[i] >= 2 &&
-                    ((this.ccT[i] = 0),
-                    (this.ccImmune[i] = 5),
-                    (this.frozen[i] = this.sleep[i] = this.stun[i] = 0),
-                    (this.chill[i] = 0),
-                    (x = !0),
-                    t.ui.popup(
-                      this.x[i],
-                      this.y[i] + this.hgt[i] + 1.2,
-                      this.z[i],
-                      c(`¡Se libera!`),
-                      `#ffd23a`,
-                      0.9,
-                    ),
-                    t.vfx.ring(this.x[i], this.y[i], this.z[i], 4, 16765498, 0.4)))),
+        let b = this.speed[i], x = this.canMoveAfterControl(i,m);
+        (
           this.para[i] > 0 && (b *= 0.5),
           this.root[i] > 0 && (b *= 0.35),
           this.chill[i] > 0 && (b *= 1 - this.chill[i] * 0.15),
@@ -13101,17 +13089,19 @@ var Df = 0.4,
         let S = 0,
           C = NaN;
         if (!(y & 32788)) {
-          let e = r.waterAt(this.x[i], this.z[i]),
-            n = r.height(this.x[i], this.z[i]);
-          if (n < e) {
-            if (r.frozen) S = +!this.hasType(i, `ice`);
-            else if (n < e - 0.55) {
-              let n = this.hasType(i, `water`);
-              ((b *= n ? 1.2 : 0.6),
-                (C = e - (n ? 0.2 : Math.min(0.6, this.hgt[i] * 0.3))),
-                Math.random() < m * 2.5 &&
-                  (this.vx[i] !== 0 || this.vz[i] !== 0) &&
-                  t.vfx.ring(this.x[i], e + 0.03, this.z[i], this.radius[i] + 0.6, 9099519, 0.5, 0.35));
+          if(r.hasWater){
+            let e = r.waterAt(this.x[i], this.z[i]),
+              n = r.height(this.x[i], this.z[i]);
+            if (n < e) {
+              if (r.frozen) S = +!this.hasType(i, `ice`);
+              else if (n < e - 0.55) {
+                let n = this.hasType(i, `water`);
+                ((b *= n ? 1.2 : 0.6),
+                  (C = e - (n ? 0.2 : Math.min(0.6, this.hgt[i] * 0.3))),
+                  Math.random() < m * 2.5 &&
+                    (this.vx[i] !== 0 || this.vz[i] !== 0) &&
+                    t.vfx.ring(this.x[i], e + 0.03, this.z[i], this.radius[i] + 0.6, 9099519, 0.5, 0.35));
+              }
             }
           }
           let a = t.sanctuary?.slipAt(this.x[i], this.z[i]) ?? 0;
@@ -13314,6 +13304,24 @@ var Df = 0.4,
         }
       }
     }
+    canMoveAfterControl(id,dt){
+      const controlled=this.frozen[id]>0 || this.sleep[id]>0 || this.stun[id]>0;
+      if(!(this.flags[id]&12292))return !controlled;
+      if(this.ccImmune[id]>0){
+        this.ccImmune[id]-=dt;
+      }else if(!controlled){
+        this.ccT[id]=Math.max(0,this.ccT[id]-dt*.5);
+        return true;
+      }else{
+        this.ccT[id]+=dt;
+        if(this.ccT[id]<2)return false;
+        this.ccT[id]=0;this.ccImmune[id]=5;
+        this.run.ui.popup(this.x[id],this.y[id]+this.hgt[id]+1.2,this.z[id],c(`¡Se libera!`),`#ffd23a`,.9);
+        this.run.vfx.ring(this.x[id],this.y[id],this.z[id],4,16765498,.4);
+      }
+      this.frozen[id]=this.sleep[id]=this.stun[id]=this.chill[id]=0;
+      return true;
+    }
     updateProxy(e, t, n, r, i, squashDecay) {
       let a = this.run,
         o = a.player;
@@ -13329,6 +13337,11 @@ var Df = 0.4,
           (this.radius[e] = Math.max(0.45, Math.min(4, t.bodyWidth(this.scale[e]) * 0.42))),
           (this.hgt[e] = Math.max(0.8, t.bodyHeight(this.scale[e]))));
       }
+      if(a.coop?.monsters?.ownsProxy(e)){
+        a.coop.monsters.place(e,t);
+        this.proxyContact(e,n,r,i);
+        return;
+      }
       (a.coop?.placeProxy(e),
         (this.burn[e] -= t),
         (this.poison[e] -= t),
@@ -13341,6 +13354,10 @@ var Df = 0.4,
         (this.root[e] -= t),
         (this.charm[e] -= t),
         (this.confuse[e] -= t));
+      this.proxyContact(e,n,r,i);
+    }
+    proxyContact(e,n,r,i){
+      const a=this.run,o=a.player;
       let s = this.flags[e],
         c = this.radius[e];
       if (s & 16512) return;
@@ -13354,14 +13371,14 @@ var Df = 0.4,
           n = t > 0.001 ? l / t : -this.fx[e],
           r = t > 0.001 ? u / t : -this.fz[e],
           i = f - t,
-          a = s & 8192 ? 1e3 : c * c,
+          a = s & 8196 ? 1e3 : c * c,
           p = a / (a + kf);
         ((o.crowdX -= n * i * p), (o.crowdZ -= r * i * p));
       }
       let p = Math.sqrt(d) || 1,
         m = !(this.frozen[e] > 0 || this.sleep[e] > 0 || this.stun[e] > 0);
       if (p < c + o.radius && Math.abs(this.y[e] - r) < this.hgt[e] + 0.8 && m) {
-        let t = s & Cf,
+        let t = s & (Cf|R.Boss),
           n = s & 2 ? Tf(a) : t ? 0.25 : 0;
         o.hurt(
           this.dmg[e] * (this.charm[e] > 0 ? 0.6 : 1) * a.diff.enemyDamage,
@@ -13372,6 +13389,7 @@ var Df = 0.4,
           !1,
           n,
           e,
+          s & R.Boss ? {floor:.05*(T.strike[a.tier]??1)} : {},
         ) && ((this.atkAnim[e] = 0.35), o.shove(-l / p, -u / p, t ? 9 : 3 + Math.min(4, c * 2.5)));
       }
     }
@@ -43774,6 +43792,8 @@ var Kv = [0.66, 0.33],
     get bz() {
       return this.E.z[this.i];
     }
+    get attackTarget(){return this.run.boss.roomAim??this.run.player.pos;}
+    get attackRandom(){return this.run.boss.attackRandom??F;}
     get hpFrac() {
       return this.E.hp[this.i] / this.E.maxHp[this.i];
     }
@@ -43802,7 +43822,7 @@ var Kv = [0.66, 0.33],
         (this.lock -= e),
         this.tickBarrier(e),
         this.tick(e),
-        !(this.immune > 0) &&
+        !this.run.coop?.monsters && !(this.immune > 0) &&
           ((this.cd -= e * Zv[this.phase - 1]),
           this.cd <= 0 &&
             this.lock <= 0 &&
@@ -44107,8 +44127,8 @@ var Kv = [0.66, 0.33],
     }
     psychic() {
       let e = this.run,
-        t = e.player.pos,
-        n = e.player.vel,
+        t = this.attackTarget,
+        n = e.boss.attackVelocity,
         r = 2 + this.phase;
       for (let e = 0; e < r; e++) {
         let r = t.x + (e === 0 ? n.x * 0.9 : F.range(-7, 7)),
@@ -44282,7 +44302,7 @@ var Kv = [0.66, 0.33],
         let n = this.echoes[t];
         ((n.t -= e), n.t <= -0.4 && this.echoes.splice(t, 1));
       }
-      this.phase >= 3 &&
+      !this.run.coop?.monsters && this.phase >= 3 &&
         this.immune <= 0 &&
         ((this.ultT -= e), this.ultT <= 0 && this.lock <= 0 && ((this.ultT = 14), this.ultimate()));
     }
@@ -45283,9 +45303,9 @@ var Kv = [0.66, 0.33],
     ultT = 9;
     mines = [];
     clones = [];
-    attack() {
+    attack(serverMove,variant) {
       switch (
-        this.pick(
+        serverMove??this.pick(
           this.phase === 1
             ? [`bubbles`, `psychic`, `aura`, `teleport`, `mines`]
             : [
@@ -45312,7 +45332,7 @@ var Kv = [0.66, 0.33],
         case `mines`:
           return this.bubbleMines();
         case `metronome`:
-          return this.metronome();
+          return this.metronome(variant);
         case `ancient`:
           return this.ancientPower();
         case `double`:
@@ -45323,12 +45343,12 @@ var Kv = [0.66, 0.33],
     }
     bubbleMines() {
       let e = this.run,
-        t = e.player.pos,
+        t = this.attackTarget,
         n = 4 + this.phase;
       this.E.atkAnim[this.i] = 0.6;
       for (let r = 0; r < n; r++) {
-        let i = (r / n) * Math.PI * 2 + F.range(-0.3, 0.3),
-          a = F.range(3.5, 9),
+        let i = (r / n) * Math.PI * 2 + this.attackRandom.range(-0.3, 0.3),
+          a = this.attackRandom.range(3.5, 9),
           o = { x: t.x + Math.cos(i) * a, z: t.z + Math.sin(i) * a };
         (e.sanctuary?.confine(o.x, o.z, 2, o),
           this.mines.push({ x: o.x, z: o.z, t: 7, arm: 0.9, fuse: -1 }),
@@ -45354,8 +45374,8 @@ var Kv = [0.66, 0.33],
     }
     doubleTeam() {
       let e = this.run,
-        t = e.player.pos,
-        n = F.range(0, Math.PI * 2),
+        t = this.attackTarget,
+        n = e.boss.roomAim?.angle??this.attackRandom.range(0, Math.PI * 2),
         r = this.phase >= 3 ? 3 : 2;
       for (let i = 0; i < r; i++) {
         let a = n + (i / r) * Math.PI * 2,
@@ -45375,7 +45395,7 @@ var Kv = [0.66, 0.33],
       for (let t = 0; t < 3; t++)
         e.later(t * 0.45, () => {
           let n = 8 + this.phase * 2,
-            r = F.range(0, 1);
+            r = this.attackRandom.range(0, 1);
           for (let e = 0; e < n; e++) {
             let i = (e / n) * Math.PI * 2 + r;
             this.shot(Math.cos(i), Math.sin(i), 6.5, 0.5, {
@@ -45394,12 +45414,12 @@ var Kv = [0.66, 0.33],
     }
     psychic() {
       let e = this.run,
-        t = e.player.pos,
-        n = e.player.vel,
+        t = this.attackTarget,
+        n = e.boss.attackVelocity,
         r = 2 + this.phase;
       for (let e = 0; e < r; e++) {
-        let r = t.x + (e === 0 ? n.x * 0.9 : F.range(-7, 7)),
-          i = t.z + (e === 0 ? n.z * 0.9 : F.range(-7, 7));
+        let r = t.x + (e === 0 ? n.x * 0.9 : this.attackRandom.range(-7, 7)),
+          i = t.z + (e === 0 ? n.z * 0.9 : this.attackRandom.range(-7, 7));
         this.circle(r, i, 3.4, 1.15 + e * 0.12, 1.4, 16739032, I.Swirl);
       }
       return ((this.E.atkAnim[this.i] = 0.5), e.audio.shot(`psychic`, 0.7), 2.8);
@@ -45409,7 +45429,7 @@ var Kv = [0.66, 0.33],
         t = this.phase >= 3 ? 4 : 3;
       for (let n = 0; n < t; n++)
         e.later(n * 0.3, () => {
-          let r = e.player.pos,
+          let r = this.attackTarget,
             i = this.aimAt(r.x, r.z),
             a = Math.atan2(i.z, i.x) + (n - (t - 1) / 2) * 0.5;
           (this.shot(Math.cos(a), Math.sin(a), 8, 1.1, {
@@ -45438,12 +45458,11 @@ var Kv = [0.66, 0.33],
             this.fade = 1 - e;
           },
           () => {
-            let r = e.player.pos,
-              i = Math.atan2(this.bz - r.z, this.bx - r.x) + Math.PI + F.range(-1, 1),
-              a = { x: r.x + Math.cos(i) * 12, z: r.z + Math.sin(i) * 12 };
+            const aim=e.boss.roomAim,r=this.attackTarget;
+            const i=Math.atan2(this.bz-r.z,this.bx-r.x)+Math.PI+(aim?aim.angle/Math.PI-1:this.attackRandom.range(-1,1));
+            const a=aim?{x:aim.warpX,z:aim.warpZ}:{x:r.x+Math.cos(i)*12,z:r.z+Math.sin(i)*12};
             (e.sanctuary?.confine(a.x, a.z, 3, a),
-              (t.x[n] = a.x),
-              (t.z[n] = a.z),
+              !aim && ((t.x[n] = a.x),(t.z[n] = a.z)),
               (t.y[n] = e.terrain.surface(a.x, a.z) + 1.1),
               e.vfx.ring(a.x, t.y[n] - 1, a.z, 4, 16751328, 0.4),
               e.animate(
@@ -45453,7 +45472,7 @@ var Kv = [0.66, 0.33],
                 },
                 () => {
                   ((this.fade = 1),
-                    this.ringShots(this.phase >= 3 ? 18 : 12, 8, 0.6, F.range(0, 1), {
+                    this.ringShots(this.phase >= 3 ? 18 : 12, 8, 0.6, this.attackRandom.range(0, 1), {
                       shape: I.PixStar,
                       color: 16777215,
                     }),
@@ -45465,7 +45484,7 @@ var Kv = [0.66, 0.33],
         this.phase >= 2 ? 3.2 : 2.6
       );
     }
-    metronome() {
+    metronome(variant) {
       let e = this.run;
       ((this.lock = 1), (this.E.atkAnim[this.i] = 1));
       for (let t = 0; t < 5; t++)
@@ -45490,7 +45509,7 @@ var Kv = [0.66, 0.33],
           [c(`Terremoto`), `#d8b07a`, () => this.quake()],
           [c(`Rayo Solar`), `#9aff5a`, () => this.solar()],
         ],
-        [n, r, i] = F.pick(t);
+        [n, r, i] = t[variant]??F.pick(t);
       return (
         e.later(0.65, () => {
           (e.ui.popup(this.bx, this.by + 4.6, this.bz, c(`¡{name}!`, { name: n }), r, 1), i());
@@ -45499,7 +45518,7 @@ var Kv = [0.66, 0.33],
       );
     }
     fireBlast() {
-      let e = this.run.player.pos;
+      let e = this.attackTarget;
       for (let t = 0; t < 5; t++) {
         let n = (t / 5) * Math.PI * 2 - Math.PI / 2;
         this.line(
@@ -45519,13 +45538,13 @@ var Kv = [0.66, 0.33],
     }
     blizzard() {
       let e = this.run,
-        t = e.player.pos,
+        t = this.attackTarget,
         n = this.aimAt(t.x, t.z),
         r = Math.atan2(n.z, n.x);
       for (let t = 0; t < 6; t++)
         e.later(t * 0.12, () => {
           for (let e = 0; e < 7; e++) {
-            let t = r + (e - 3) * 0.13 + F.range(-0.05, 0.05);
+            let t = r + (e - 3) * 0.13 + this.attackRandom.range(-0.05, 0.05);
             this.shot(Math.cos(t), Math.sin(t), 13, 0.4, { shape: I.PixSnow, color: 16777215, life: 2.2 });
           }
         });
@@ -45533,10 +45552,10 @@ var Kv = [0.66, 0.33],
     }
     thunder() {
       let e = this.run,
-        t = e.player.pos;
+        t = this.attackTarget;
       for (let n = 0; n < 5; n++) {
-        let r = t.x + (n ? F.range(-8, 8) : 0),
-          i = t.z + (n ? F.range(-8, 8) : 0),
+        let r = t.x + (n ? this.attackRandom.range(-8, 8) : 0),
+          i = t.z + (n ? this.attackRandom.range(-8, 8) : 0),
           a = this.groundY(r, i);
         this.circle(r, i, 3, 1 + n * 0.1, 1.4, 16769594, I.PixBolt, () =>
           e.vfx.lightning(r, a + 26, i, r, a, i, 16769594, 0.6, 9, 0.25),
@@ -45569,7 +45588,7 @@ var Kv = [0.66, 0.33],
     }
     solar() {
       let e = this.run,
-        t = e.player.pos,
+        t = this.attackTarget,
         n = this.aimAt(t.x, t.z);
       ((this.lock = 1.4),
         this.line(
@@ -45593,7 +45612,7 @@ var Kv = [0.66, 0.33],
       return (
         e.audio.shot(`rock`, 0.6),
         e.later(1.1, () => {
-          (this.ringShots(this.phase >= 3 ? 16 : 12, 9, 0.8, F.range(0, 1), {
+          (this.ringShots(this.phase >= 3 ? 16 : 12, 9, 0.8, this.attackRandom.range(0, 1), {
             shape: I.PixRock,
             color: 16777215,
             size: 1.3,
@@ -45622,8 +45641,7 @@ var Kv = [0.66, 0.33],
       ((this.lock = 6.4), (this.cd = 3));
       let r = this.hx,
         i = this.hz + 7.5;
-      ((t.x[n] = r),
-        (t.z[n] = i),
+      (!e.coop?.monsters && ((t.x[n] = r),(t.z[n] = i)),
         (t.y[n] = e.terrain.surface(r, i) + 1.1),
         e.vfx.ring(r, t.y[n] - 1, i, 6, 16751328, 0.6));
       for (let t = 0; t < 5; t++)
@@ -45740,7 +45758,7 @@ var Kv = [0.66, 0.33],
           (t.vfx.burst(i.x, this.groundY(i.x, i.z) + 2, i.z, 16751328, 12, 5, I.PixSparkle, 0.4, 0.4),
           this.clones.splice(r, 1));
       }
-      this.phase >= 3 &&
+      !this.run.coop?.monsters && this.phase >= 3 &&
         this.immune <= 0 &&
         ((this.ultT -= e), this.ultT <= 0 && this.lock <= 0 && ((this.ultT = 14), this.ultimate()));
     }
@@ -45751,7 +45769,7 @@ var Kv = [0.66, 0.33],
       ((this.mimicT = 0), (this.mines.length = 0), (this.clones.length = 0));
       let i = this.hx,
         a = this.hz + 8;
-      ((n.x[r] = i), (n.z[r] = a), (n.y[r] = t.terrain.surface(i, a) + 1.1));
+      (!t.coop?.monsters && ((n.x[r] = i), (n.z[r] = a)), (n.y[r] = t.terrain.surface(i, a) + 1.1));
       for (let e = 0; e < 3; e++)
         t.later(e * 0.2, () => t.vfx.ring(i, n.y[r] - 1, a, 6 + e * 6, 16751328, 0.7));
       (t.vfx.burst(i, n.y[r] + 1, a, 16751328, 30, 8, I.Bubble, 0.7, 0.8), e === 3 && (this.ultT = 2));
@@ -46486,7 +46504,7 @@ var Kv = [0.66, 0.33],
         t = this.phase >= 3 ? 3 : 2;
       for (let n = 0; n < t; n++)
         e.later(n * 0.35, () => {
-          let r = e.player.pos,
+          let r = this.attackTarget,
             i = this.aimAt(r.x, r.z),
             a = Math.atan2(i.z, i.x) + (n - (t - 1) / 2) * 0.7;
           (this.shot(Math.cos(a), Math.sin(a), 7.5, 1.2, {
@@ -51144,6 +51162,7 @@ var Ay = 12,
         (this.fightT = 0),
         (this.exhaustSaid = !1),
         (this.bossIndex = l),
+        (this.roomAim=this.roomRandom=null),
         l >= 0 && (this.bossGen = a.enemies.gen[l]),
         (this.name = l >= 0 ? a.enemies.glyphWords[l] : ''),
         (this.t = 2.5),
@@ -51360,6 +51379,7 @@ var Ay = 12,
         }
         return;
       }
+      if(r.coop?.monsters){this.moveT-=t;return;}
       if (((this.moveT -= t), r.coop && !r.coop.bossEngages(e))) {
         ((this.t = Math.max(this.t, 0.5)), (this.farT = 0));
         return;
@@ -51405,8 +51425,33 @@ var Ay = 12,
         return;
       }
       this.sigNext = !0;
-      let u = (this.enraged ? Py : Ny).filter((e) => e !== this.last),
-        d = F.pick(u);
+      const d=F.pick((this.enraged ? Py : Ny).filter(move=>move!==this.last));
+      this.roomAttack(e,d);
+    }
+    get attackTarget(){return this.roomAim??this.run.player.pos;}
+    get attackRandom(){return this.roomRandom??F;}
+    beginRoomMove(command){this.roomAim=command;this.roomRandom=new Ol(command.seed);}
+    get attackVelocity(){return this.roomAim?{x:this.roomAim.vx,z:this.roomAim.vz}:this.run.player.vel;}
+    hasSignature(e){return !!(this.mech || Ly[this.run.enemies.species[e]]);}
+    roomAttack(e,d){
+      const r=this.run,i=r.enemies,o=Ni[i.typesOf(e)[0]];
+      if(d==='escorts'){
+        if(r.coop?.monsters && !r.coop.bossAuthority)return this.t;
+        const extra=(T.escorts[r.tier]??0)+this.roars;
+        if(this.escorts.length<4+r.stage*2+extra*2)this.callEscorts(e,2+r.stage+extra,(r.stage>=2?2:1)+extra);
+        return this.t;
+      }
+      if(d==='signature'){
+        i.atkAnim[e]=.5;
+        if(this.mech){this.say(this.mech.name());return this.mech.cast(this.enraged);}
+        const sig=Ly[i.species[e]],fx=fy[i.species[e]]??{};
+        if(!sig)return 1;
+        this.say(sig.name);
+        if(sig.kind==='cross')return this.sigCross(e,sig.color,fx);
+        if(sig.kind==='leap')return this.sigLeap(e,sig.color,fx,this.enraged);
+        return this.sigCharge(e,sig.color,fx);
+      }
+      if(d==='far-leap')return this.sigLeap(e,o,{},false)-1;
       switch (((this.last = d), (i.atkAnim[e] = 0.5), Fy[d] && this.say(Fy[d]), d)) {
         case `slams`:
           this.t = this.slams(e, o);
@@ -51432,6 +51477,7 @@ var Ay = 12,
         case `pools`:
           this.t = this.hostileGround(e, o);
       }
+      return this.t;
     }
     say(e) {
       ((this.moveName = e), (this.moveT = 2.2));
@@ -51492,11 +51538,11 @@ var Ay = 12,
         i = n.player,
         a = r.typesOf(e)[0],
         o = (r, o) => {
-          let s = i.pos,
-            c = i.vel;
+          let s = this.attackTarget,
+            c = this.attackVelocity;
           for (let l = 0; l < r; l++) {
-            let r = s.x + (l === 0 ? c.x * 0.8 : F.range(-7, 7)),
-              u = s.z + (l === 0 ? c.z * 0.8 : F.range(-7, 7)),
+            let r = s.x + (l === 0 ? c.x * 0.8 : this.attackRandom.range(-7, 7)),
+              u = s.z + (l === 0 ? c.z * 0.8 : this.attackRandom.range(-7, 7)),
               d = n.terrain.height(r, u),
               f = 3.6;
             (n.vfx.telegraph(r, d, u, f, 16726586, o),
@@ -51526,7 +51572,7 @@ var Ay = 12,
         r = n.enemies,
         i = this.enraged ? 18 : 14,
         a = this.enraged ? 3 : 1,
-        o = F.range(0, 1);
+        o = this.attackRandom.range(0, 1);
       n.vfx.telegraph(r.x[e], r.y[e], r.z[e], 3, t, 0.4);
       for (let s = 0; s < a; s++)
         n.later(0.4 + s * 0.5, () => {
@@ -51541,8 +51587,8 @@ var Ay = 12,
       let n = this.run,
         r = n.enemies,
         i = n.player,
-        a = i.pos.x - r.x[e],
-        o = i.pos.z - r.z[e],
+        a = this.attackTarget.x - r.x[e],
+        o = this.attackTarget.z - r.z[e],
         s = Math.hypot(a, o) || 1,
         c = a / s,
         l = o / s,
@@ -51587,9 +51633,9 @@ var Ay = 12,
       for (let t = 0; t < a; t++)
         n.later((0.45 + t * 0.4) * this.tk, () => {
           if (!this.live(e)) return;
-          let t = i.pos,
-            a = t.x + i.vel.x * 0.5,
-            o = t.z + i.vel.z * 0.5,
+          let t = this.attackTarget,
+            a = t.x + this.attackVelocity.x * 0.5,
+            o = t.z + this.attackVelocity.z * 0.5,
             s = Math.atan2(o - r.z[e], a - r.x[e]);
           for (let t = -2; t <= 2; t++) this.shot(e, s + t * 0.17, 15, 0.6, { size: 0.9, life: 3 });
           ((r.atkAnim[e] = 0.3), n.audio.shot(r.typesOf(e)[0], 0.6));
@@ -51625,10 +51671,10 @@ var Ay = 12,
           this.live(e) &&
             (this.spiral = {
               t: 2.6,
-              a: F.range(0, Math.PI * 2),
+              a: this.attackRandom.range(0, Math.PI * 2),
               acc: 0,
               arms: 3,
-              spin: F.chance(0.5) ? 1.9 : -1.9,
+              spin: this.attackRandom.chance(0.5) ? 1.9 : -1.9,
             });
         }),
         3.8
@@ -51644,9 +51690,9 @@ var Ay = 12,
       for (let r = 0; r < o; r++)
         n.later(r * 0.2, () => {
           if (!this.live(e)) return;
-          let a = i.pos,
-            o = a.x + (r % 3 == 0 ? i.vel.x * 0.9 : F.range(-9, 9)),
-            c = a.z + (r % 3 == 0 ? i.vel.z * 0.9 : F.range(-9, 9));
+          let a = this.attackTarget,
+            o = a.x + (r % 3 == 0 ? this.attackVelocity.x * 0.9 : this.attackRandom.range(-9, 9)),
+            c = a.z + (r % 3 == 0 ? this.attackVelocity.z * 0.9 : this.attackRandom.range(-9, 9));
           if (!n.terrain.inBounds(o, c, 2)) return;
           let l = n.terrain.height(o, c),
             u = 2.6,
@@ -51686,9 +51732,9 @@ var Ay = 12,
       let n = this.run,
         r = n.player;
       for (let i = 0; i < 3; i++) {
-        let a = r.pos,
-          o = a.x + (i ? F.range(-6, 6) : 0),
-          s = a.z + (i ? F.range(-6, 6) : 0);
+        let a = this.attackTarget,
+          o = a.x + (i ? this.attackRandom.range(-6, 6) : 0),
+          s = a.z + (i ? this.attackRandom.range(-6, 6) : 0);
         if (!n.terrain.inBounds(o, s, 2)) continue;
         let c = n.terrain.height(o, s),
           l = 3.4;
@@ -51748,8 +51794,8 @@ var Ay = 12,
     sigCross(e, t, n = {}) {
       let r = this.run,
         i = r.enemies,
-        a = r.player.pos,
-        o = F.range(0, Math.PI / 2);
+        a = this.attackTarget,
+        o = this.attackRandom.range(0, Math.PI / 2);
       (this.enraged ? [Math.PI / 4, -Math.PI / 4, Math.PI / 2] : [Math.PI / 4, -Math.PI / 4]).forEach(
         (r, i) => {
           let s = o + r,
@@ -51773,6 +51819,7 @@ var Ay = 12,
             (this.chargeHit = !1),
             (this.chargeMul = 1.2),
             (this.chargeT = Math.min(0.7, (u + 4) / 34)),
+            r.coop?.monsters?.bossSkill({dashX:this.cdx*34,dashZ:this.cdz*34,dashTime:this.chargeT}),
             (this.dashFx = n.dash ?? null),
             (this.chargeEnd = l ? () => this.shards(e, t, 10, n.shard) : null),
             r.audio.whoosh());
@@ -51813,7 +51860,7 @@ var Ay = 12,
       let i = this.run,
         a = i.enemies,
         o = i.player,
-        s = o.pos,
+        s = this.attackTarget,
         c = a.typesOf(e)[0],
         l = a.x[e],
         u = a.z[e],
@@ -51823,6 +51870,7 @@ var Ay = 12,
         m = 1.07 * this.tk;
       return (
         i.vfx.telegraph(d, p, f, 5, 16747066, m),
+        this.roomAim?.move==='signature' && i.coop?.monsters?.bossSkill({leap:[d,f,m]}),
         (a.air[e] = 1),
         (a.vy[e] = 16),
         i.audio.jump(0.5),
@@ -51833,7 +51881,7 @@ var Ay = 12,
         i.animate(
           m,
           (t) => {
-            this.live(e) && ((a.x[e] = l + (d - l) * t), (a.z[e] = u + (f - u) * t), (a.vx[e] = a.vz[e] = 0));
+            !i.coop?.monsters && this.live(e) && ((a.x[e] = l + (d - l) * t), (a.z[e] = u + (f - u) * t), (a.vx[e] = a.vz[e] = 0));
           },
           () => {
             this.live(e) &&
@@ -51856,7 +51904,7 @@ var Ay = 12,
     sigCharge(e, t, n = {}, r = this.enraged) {
       let i = this.run,
         a = i.enemies,
-        o = i.player.pos,
+        o = this.attackTarget,
         s = o.x - a.x[e],
         c = o.z - a.z[e],
         l = Math.hypot(s, c) || 1,
@@ -51877,6 +51925,7 @@ var Ay = 12,
             (this.chargeHit = !1),
             (this.chargeMul = 2.2),
             (this.chargeT = u / 42),
+            i.coop?.monsters?.bossSkill({dashX:d*42,dashZ:f*42,dashTime:u/42}),
             (this.dashFx = n.dash ?? null),
             (this.chargeEnd = r
               ? () => {
@@ -52674,6 +52723,7 @@ var Ay = 12,
           continue;
         }
         let a = i.i;
+        if(t.coop?.monsters && i.chargeT>0)this.chargeContact(i,e);
         ((i.moveT -= e), (i.minions = i.minions.filter(([e, t]) => n.gen[e] === t && n.isAlive(e))));
         let o = i.kind === `totem` ? (i.enraged ? 16734858 : 12737279) : 5963642;
         if (
@@ -52721,6 +52771,32 @@ var Ay = 12,
       let r = this.get(e);
       r && (r.kind === `summoner` ? this.actSummoner(r, t, n) : this.actTotem(r, t));
     }
+    roomAction(id,kind,x,z,replica){
+      const mini=replica??this.get(id),r=this.run,e=r.enemies;
+      if(!mini||!this.alive(mini))return;
+      e.atkAnim[id]=.5;
+      if(kind===6){
+        const summoner=mini.kind==='summoner',limit=summoner?10+r.stage*2:10;
+        if(mini.minions.length<limit)this.call(mini,Math.min(3+r.stage,limit-mini.minions.length),summoner?1:1.25,summoner?0:+(r.stage>=2));
+        return;
+      }
+      mini.enraged=e.hp[id]<e.maxHp[id]*(T.fury[r.tier]??.5);
+      this.say(mini,kind===4?mini.specName:mini.physName);
+      if(kind===3)this.leap(mini,{x,z});
+      if(kind===4)this.ring(mini,mini.kind==='summoner'?.6:.7);
+      if(kind===5)this.slams(mini,{x,z});
+      if(kind===7)this.charge(mini,{x,z});
+      if((kind===3||kind===7)&&mini.enraged)r.later(kind===3?1.3:1.6,()=>{if(this.alive(mini))this.ring(mini,.6);});
+    }
+    chargeContact(mini,dt){
+      const r=this.run,e=r.enemies,id=mini.i,p=r.player;
+      mini.chargeT-=dt;
+      if(Math.random()<.7)r.vfx.trail(e.x[id],e.y[id]+.8,e.z[id],mini.color,.9,am(e.typesOf(id)[0]),.35);
+      if(!mini.chargeHit && Math.hypot(p.pos.x-e.x[id],p.pos.z-e.z[id])<e.radius[id]+1.2 && p.pos.y-e.y[id]<2){
+        mini.chargeHit=true;
+        if(this.strike(mini,1.8,.1))p.shove(mini.cdx,mini.cdz,10);
+      }
+    }
     actTotem(e, t) {
       let n = this.run,
         r = n.enemies,
@@ -52733,16 +52809,9 @@ var Ay = 12,
         n.vfx.ring(r.x[a], r.y[a], r.z[a], 7, 16734858, 0.6),
         n.cry(e.species),
         n.shake(0.3));
-      let o = r.typesOf(a)[0];
       if (e.chargeT > 0) {
-        ((e.chargeT -= t),
-          (r.kx[a] = e.cdx * 34),
-          (r.kz[a] = e.cdz * 34),
-          Math.random() < 0.7 && n.vfx.trail(r.x[a], r.y[a] + 0.8, r.z[a], e.color, 0.9, am(o), 0.35),
-          !e.chargeHit &&
-            Math.hypot(i.pos.x - r.x[a], i.pos.z - r.z[a]) < r.radius[a] + 1.2 &&
-            i.pos.y - r.y[a] < 2 &&
-            ((e.chargeHit = !0), this.strike(e, 1.8, 0.1) && i.shove(e.cdx, e.cdz, 10)));
+        r.kx[a]=e.cdx*34;r.kz[a]=e.cdz*34;
+        this.chargeContact(e,t);
         return;
       }
       let s = e.enraged ? 1.35 : 1;
@@ -52793,15 +52862,15 @@ var Ay = 12,
         ? (i.wound(Jv(r)), !0)
         : !1;
     }
-    slams(e) {
+    slams(e,target) {
       let t = this.run,
         n = t.enemies,
         r = t.player,
         i = n.typesOf(e.i)[0],
         a = e.enraged ? 4 : 3;
       for (let n = 0; n < a; n++) {
-        let a = r.pos.x + (n === 0 ? r.vel.x * 0.8 : F.range(-6, 6)),
-          o = r.pos.z + (n === 0 ? r.vel.z * 0.8 : F.range(-6, 6)),
+        let a = (target??r.pos).x + (n === 0 ? (target?0:r.vel.x*.8) : F.range(-6, 6)),
+          o = (target??r.pos).z + (n === 0 ? (target?0:r.vel.z*.8) : F.range(-6, 6)),
           s = t.terrain.height(a, o),
           c = 3.2,
           l = 1.1 + n * 0.1;
@@ -52877,7 +52946,7 @@ var Ay = 12,
           i.vfx.burst(u, m + 0.8, d, e.kind === `totem` ? 15247615 : 9109402, 6, 3, I.Twinkle, 0.4, 0.4));
       }
     }
-    leap(e) {
+    leap(e, target) {
       let t = this.run,
         n = t.enemies,
         r = t.player,
@@ -52885,8 +52954,8 @@ var Ay = 12,
         a = n.typesOf(i)[0],
         o = n.x[i],
         s = n.z[i],
-        c = r.pos.x,
-        l = r.pos.z,
+        c = target?.x ?? r.pos.x,
+        l = target?.z ?? r.pos.z,
         u = t.terrain.height(c, l),
         d = 4.5,
         f = 1.07;
@@ -52898,7 +52967,7 @@ var Ay = 12,
         t.animate(
           f,
           (t) => {
-            this.alive(e) &&
+            !target && this.alive(e) &&
               ((n.x[i] = o + (c - o) * t), (n.z[i] = s + (l - s) * t), (n.vx[i] = n.vz[i] = 0));
           },
           () => {
@@ -52936,10 +53005,10 @@ var Ay = 12,
         4.2
       );
     }
-    charge(e) {
+    charge(e, target) {
       let t = this.run,
         n = t.enemies,
-        r = t.player.pos,
+        r = target ?? t.player.pos,
         i = e.i,
         a = r.x - n.x[i],
         o = r.z - n.z[i],
@@ -69572,7 +69641,7 @@ var mw = 7500,
     altar: {
       letter: `a`,
       icon: () => Q(`star-piece`),
-      title: () => c(`Altar`),
+      title: () => c(`Altar Unown`),
       text: () =>
         c(
           `Quédate dentro de su círculo hasta que se cargue: te dejará elegir una bendición. Si sales, se va vaciando.`,
@@ -72749,6 +72818,7 @@ var GT = 15,
       ((this.run = e), (this.room = t.room), (this.party = t.party));
       let n = this.room.room.members;
       this.roster = n.slice();
+      if(this.room.serverMonsterMotion)this.monsters=new RoomMonsters(this);
       ((this.size = n.length), (this.mySlot = this.room.mine?.slot ?? 0));
       this.budgetRank=n.filter(m=>m.slot<this.mySlot).length;
       for (let e of n) {
@@ -72788,6 +72858,8 @@ var GT = 15,
       window.addEventListener('pagehide',this.onHide);
       ((this.room.inRun = !0),
         (this.room.ev = {
+          monsters: frame => this.monsters?.frame(frame),
+          bossMove: frame=>this.monsters?.receiveBossMove(frame),
           ctl: (e, t) => this.onCtl(e, t),
           snap: (id, bytes, offset) => this.onSnap(id, bytes, offset),
           link: (e, t) => this.onLink(e, t),
@@ -72844,6 +72916,7 @@ var GT = 15,
     tick(e) {
       let t = this.run;
       if (this.ended) return;
+      this.monsters?.publish();
       for (let e of this.peers.values()) e.link = this.room.linkState(e.id);
       let n = this.portalWant;
       if (
@@ -72946,9 +73019,9 @@ var GT = 15,
         },
         s = null,
         c = e.boss.bossIndex;
-      if (this.bossAuthority && this.isBossMirror(c) && n.alive[c]) {
-        let e = [];
-        for (let [t, n] of this.bdAcks) e.push([t, n]);
+      if (this.bossAuthority && this.isBossMirror(c) && n.alive[c] && (!this.monsters || e.realTime >= (this.nextBossVitals || 0))) {
+        this.nextBossVitals=e.realTime+.25;
+        const acks=Array.from(this.bdAcks);
         s = {
           x: n.x[c],
           y: n.y[c],
@@ -72957,11 +73030,17 @@ var GT = 15,
           anim: +(n.atkAnim[c] > 0),
           hp: Math.max(0, n.hp[c]),
           maxHp: n.maxHp[c],
-          acks: e,
+          acks,
         };
       }
       this.writer.begin(dE() - this.clock0, o, s, e.stage);
       let l = e.realTime;
+      if(this.monsters){
+        this.snapshotIds.length=0;
+        const packet=this.writer.finish(this.snapshotIds,this);
+        for(const peer of r)this.room.mesh.sendSnap(peer.id,packet);
+        return;
+      }
       for (let t of r) {
         const ids = this.snapshotIds;
         ids.length = 0;
@@ -73146,7 +73225,7 @@ var GT = 15,
         !e.alive[n] || !(e.flags[n] & R.Remote)
           ? this.unmap(n)
           : e.dying[n] > 0 ||
-            ((t - this.pSeen[n] > eE || this.bySlot.get(this.pSlot[n])?.gone) && (e.kill(n), this.unmap(n)));
+            (((!this.monsters?.ownsProxy(n) && t - this.pSeen[n] > eE) || this.bySlot.get(this.pSlot[n])?.gone) && (e.kill(n), this.unmap(n)));
     }
     pushPos(e, t, n, r, i) {
       let a = e * QT,
@@ -73282,7 +73361,7 @@ var GT = 15,
     }
     onShare(e, t, n, r) {
       let i = this.run.player;
-      !i.dead &&
+      i && !i.dead &&
         e.stage === this.run.stage &&
         r > 0 &&
         Number.isFinite(r) &&
@@ -73387,6 +73466,12 @@ var GT = 15,
       }
     }
     bossNearest(e, t) {
+      if(this.monsters?.bossPose){
+        const slot=this.monsters.bossPose.target,mine=slot===this.mySlot;
+        const p=mine?this.run.player.pos:this.bySlot.get(slot);
+        if(p)return {x:p.x,z:p.z,mine,d2:(p.x-e)**2+(p.z-t)**2};
+        return {x:e,z:t,mine:false,d2:Infinity};
+      }
       let n = this.run.player.pos,
         r = this.run.player.dead ? 1 / 0 : (n.x - e) ** 2 + (n.z - t) ** 2,
         i = n.x,
@@ -73435,9 +73520,9 @@ var GT = 15,
         }
       let l = e.lerpK(a, s.ts, c.ts);
       if (
-        ((n.x[r] = s.x + (c.x - s.x) * l),
+        ((this.monsters || ((n.x[r] = s.x + (c.x - s.x) * l),
         (n.y[r] = s.y + (c.y - s.y) * l),
-        (n.z[r] = s.z + (c.z - s.z) * l),
+        (n.z[r] = s.z + (c.z - s.z) * l))),
         i.bossMax > 0)
       ) {
         n.maxHp[r] = i.bossMax;
@@ -73647,6 +73732,7 @@ var GT = 15,
       });
     }
     onStage() {
+      this.monsters?.reset();
       (this.proxies.clear(), this.pSlot.fill(-1));
       for (let e of this.known.values()) e.clear();
       for (let e of this.peers.values()) ((e.boss = []), (e.bossHp = e.bossMax = 0));
@@ -73659,6 +73745,7 @@ var GT = 15,
         (this.portalInfo = { inside: 0, need: 0, wait: [] }),
         (this.bossShared = !1),
         (this.bossAuth = -1),
+        (this.nextBossVitals = 0),
         (this.bossDownOk = !1),
         (this.pendingBoss = null),
         (this.bdPending = []),
@@ -73876,6 +73963,7 @@ var GT = 15,
     peerGone(e) {
       if (e.gone) return;
       e.gone = !0;
+      this.monsters?.dropPeer(e.slot);
       let t = this.run.enemies;
       for (let n of [...this.proxies.values()])
         this.pSlot[n] === e.slot && (t.alive[n] && t.flags[n] & R.Remote && t.kill(n), this.unmap(n));
@@ -76259,7 +76347,7 @@ var GT = 15,
       // final damage/effects continue, then pause for the remaining ring work.
       if(this.state === `play` && this.pendingLevels > 0){
         if(finishingUltimate&&!this.coop)this.player.iframes=Math.max(this.player.iframes,r+.1);
-        if(!finishingUltimate&&this.ui.experienceReady?.() === false)r=0;
+        if(!this.coop&&!finishingUltimate&&this.ui.experienceReady?.() === false)r=0;
       }
       let o = this.state === `capturing` ? this.capYaw : this.yawBack;
       if (!this.terrain.zxPaper && !Number.isNaN(o)) {
@@ -76457,6 +76545,7 @@ var GT = 15,
             (R.Boss | R.Capture | R.Alpha | R.Totem | R.Summoner | R.Treasure | R.Object | R.Remote)
           )
         ) {
+          if (this.coop?.monsters && roomMonster(u.flags[e])) continue;
           if (u.flags[e] & R.Stampede) {
             u.kill(e);
             continue;
@@ -99888,7 +99977,7 @@ function sI() {
     challenge: { src: aI(`challenge`), ring: `#ff6a3a`, name: c(`Altar de desafío`) },
     shroom: { src: aI(`shroom`), ring: `#ff8a3a`, name: c(`Seta rebote`) },
     slots: { src: `ui/icons/coin.png`, ring: `#c8306a`, name: c(`Tragaperras (apuesta por objetos)`) },
-    magnet: { src: `items/magnet.png`, ring: `#8a8aa0`, name: c(`Imán`) },
+    magnet: { src: `items/magnet.png`, ring: `#8a8aa0`, name: buildingMapName({kind:'magnet'}) },
     berry: { src: `items/oran-berry.png`, ring: `#3a7aff`, name: c(`Bayas`) },
     meowth: { src: oI(52), ring: `#ffc83a`, name: c(`Meowth (tienda)`), round: !0 },
     ditto: { src: oI(132), ring: `#c88aff`, name: c(`Ditto (clona un objeto)`), round: !0 },
@@ -101929,8 +102018,9 @@ var JI = class {
             : (e.hold -= t) <= 0 && (e.lag = Math.max(u, e.lag - t * 0.6)),
             (e.bar.children[1].style.transform = `scaleX(${u})`),
             (e.bar.children[0].style.transform = `scaleX(${e.lag})`),
-            (e.bar.children[2].textContent = P(Math.max(0, i.hp[a.i]))),
             (e.foot.style.display = e.st.update(i, a.i) || l ? `` : `none`));
+          const hp=P(Math.max(0,i.hp[a.i]));
+          if(e.bar.children[2].textContent!==hp)e.bar.children[2].textContent=hp;
         }));
     }
     fitTop() {
@@ -102305,13 +102395,15 @@ var JI = class {
           leave: c(`Bajar`),
         },
         i = {
-          freechest: c(`Gratis`),
+          freechest: c(`Poké Ball gratis`),
           meowth: c(`Tienda`),
-          ditto: c(`Ditto`),
+          ditto: c(`Ditto (clona un objeto)`),
+          bill: c(`Máquina de Bill`),
+          nest: c(`Huevo Pokémon`),
           hypno: c(`Hypno`),
-          magnet: c(`Imán`),
+          magnet: buildingMapName({kind:'magnet'}),
           berry: c(`Bayas`),
-          boss: c(`Guardián`),
+          boss: c(`Altar del guardián`),
           portal: c(`¡Portal!`),
           shrine: c(`Santuario`),
           challenge: c(`Desafío`),
@@ -102374,7 +102466,7 @@ var JI = class {
             p.dataset.k !== m &&
               ((p.dataset.k = m),
               (p.className = h),
-              $(p).append(...(t ? [c(`Gratis`)] : [Q(`nugget`), `${n} ₽`]))));
+              $(p).append(...(t ? [c(`Poké Ball gratis`)] : [Q(`nugget`), `${n} ₽`]))));
         } else if (a.kind === `challenge` && a.data?.wave)
           ((m = `w` + a.data.left),
             p.dataset.k !== m &&
@@ -108283,6 +108375,11 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           this.perf.active=false;this.failing=0;return;
         }
         this.run ? this.run.update(n) : this.menuScene?.update(n);
+        // The XP ring still needs HUD updates while combat is paused. Reuse
+        // that same scene when the choice first appears.
+        if(this.run?.pendingLevels>0&&!this.r.needsDraw&&window.drawFrozenUpgrade?.(this.r.renderer)){
+          this.perf.active=false;this.failing=0;return;
+        }
         let r = performance.now();
         if ((this.r.render(n), this.run?.state === `play`)) {
           let e = this.perf;

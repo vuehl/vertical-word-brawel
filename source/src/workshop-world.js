@@ -90,14 +90,28 @@ export function* workshopWorldSteps(terrain){
   terrain.ownsPaperAssets=!terrain.paperAssets;const assets=terrain.paperAssets??=createWorkshopAssets();
   const {boxes,bevels,planes,cylinders,cones,spheres,rings,mats,textures,colors}=assets;
   const batches=new Map(),transform=new Group(),groundSurfaces=[];
+  const groundCells=new Map();
   terrain.workshopGroundSurfaces=groundSurfaces;
   terrain.workshopLightStrands=[];terrain.workshopShadowStyle='distance-faded-soft-shadows';
   function groundY(x,z){
+    const surfaces=groundCells.get(terrain.cellKey(x,z));
+    if(!surfaces)return 0;
     let y=0;
-    for(const p of groundSurfaces){const dx=x-p.x,dz=z-p.z;if(Math.abs(p.cos*dx-p.sin*dz)<p.w/2&&Math.abs(p.sin*dx+p.cos*dz)<p.d/2)y=Math.max(y,p.y);}
+    for(const p of surfaces){const dx=x-p.x,dz=z-p.z;if(Math.abs(p.cos*dx-p.sin*dz)<p.w/2&&Math.abs(p.sin*dx+p.cos*dz)<p.d/2)y=Math.max(y,p.y);}
     return y;
   }
-  function groundSurface(x,z,w,d,a,y,kind){groundSurfaces.push({x,z,w,d,a,y,kind,cos:Math.cos(a),sin:Math.sin(a)});terrain.maxH=Math.max(terrain.maxH,y);}
+  function groundSurface(x,z,w,d,a,y,kind){
+    const cos=Math.cos(a),sin=Math.sin(a),surface={x,z,w,d,a,y,kind,cos,sin};
+    groundSurfaces.push(surface);terrain.maxH=Math.max(terrain.maxH,y);
+    const halfX=(Math.abs(cos)*w+Math.abs(sin)*d)/2,halfZ=(Math.abs(sin)*w+Math.abs(cos)*d)/2;
+    for(let col=Math.floor((x-halfX)/8);col<=Math.floor((x+halfX)/8);col++){
+      for(let row=Math.floor((z-halfZ)/8);row<=Math.floor((z+halfZ)/8);row++){
+        const key=terrain.cellKey(col*8,row*8);
+        if(!groundCells.has(key))groundCells.set(key,[]);
+        groundCells.get(key).push(surface);
+      }
+    }
+  }
   terrain.workshopGroundY=groundY;
   function color(c){if(!colors.has(c))colors.set(c,new Color(c));return colors.get(c);}
   function mat(key,options){if(!mats.has(key))mats.set(key,stabiliseWorkshopBump(new StandardMaterial(options)));return mats.get(key);}
@@ -691,13 +705,18 @@ export function updateWorkshopScene(run,dt){
     }
   }
   rolling.count=marbleCount;if(marbleCount)rolling.instanceMatrix.needsUpdate=true;
+  let looseChanged=false;
   for(let i=0;i<terrain.workshopLooseMarbles.length;i++){
-    const marble=terrain.workshopLooseMarbles[i],y=Math.max(terrain.surface(marble.x,marble.z),terrain.workshopGroundY(marble.x,marble.z))+marble.r;
+    const marble=terrain.workshopLooseMarbles[i];
+    if(marble.renderX===marble.x&&marble.renderZ===marble.z&&marble.renderRollX===marble.rollX&&marble.renderRollZ===marble.rollZ)continue;
+    marble.renderX=marble.x;marble.renderZ=marble.z;
+    marble.renderRollX=marble.rollX;marble.renderRollZ=marble.rollZ;looseChanged=true;
+    const y=terrain.surface(marble.x,marble.z)+marble.r;
     transform.position.set(marble.x,y,marble.z);transform.rotation.set(marble.rollX,0,marble.rollZ);
     transform.scale.setScalar(marble.r);transform.updateMatrix();terrain.workshopLooseMesh.setMatrixAt(i,transform.matrix);
     transform.scale.set(.11,marble.r*.73,.12);transform.updateMatrix();terrain.workshopLooseCores.setMatrixAt(i,transform.matrix);
   }
-  if(terrain.workshopLooseMarbles.length){terrain.workshopLooseMesh.instanceMatrix.needsUpdate=true;terrain.workshopLooseCores.instanceMatrix.needsUpdate=true;}
+  if(looseChanged){terrain.workshopLooseMesh.instanceMatrix.needsUpdate=true;terrain.workshopLooseCores.instanceMatrix.needsUpdate=true;}
   const ink=terrain.paperAssets.mats.get('ink-contour');if(ink){ink.uniforms.uInkViewport.value.x=r.composer.inputBuffer.width;ink.uniforms.uInkViewport.value.y=r.composer.inputBuffer.height;}
   r.outlinePass.enabled=true;r.outline.uniforms.get('uColor').value.set(0x30394c);r.outline.uniforms.get('uStrength').value=.78;
   updateWorkshopShadows(run);
@@ -724,15 +743,17 @@ function updateWorkshopShadows(run){
   // player/enemy contact shadows and rolling marbles keep their own animation.
   const {span,near,far}=WORKSHOP_SHADOW,texel=span*2/size;
   const focus=run.camTarget||run.player?.pos||terrain.spawn;
-  const centre=shadowCentre.set(focus.x,0,focus.z-2.5);
+  // The 96-unit map covers the camera with room to spare. Re-anchor on a
+  // two-unit grid so walking or subpixel camera shake can reuse static shadows.
+  const anchorX=Math.round(focus.x/2)*2,anchorZ=Math.round((focus.z-2.5)/2)*2;
+  const centre=shadowCentre.set(anchorX,0,anchorZ);
   // Snap in the light's horizontal AND vertical axes. Snapping world X/Z
   // leaves diagonal sub-texel motion and makes moving shadows shimmer.
   const x=centre.dot(sunRight),y=centre.dot(sunUp);
   centre.addScaledVector(sunRight,Math.round(x/texel)*texel-x);
   centre.addScaledVector(sunUp,Math.round(y/texel)*texel-y);
-  const key=[size,centre.x,centre.y,centre.z].join('/');
-  if(terrain.workshopShadowKey!==key){
-    terrain.workshopShadowKey=key;
+  if(terrain.workshopShadowX!==anchorX||terrain.workshopShadowZ!==anchorZ||shadow.mapSize.x!==size){
+    terrain.workshopShadowX=anchorX;terrain.workshopShadowZ=anchorZ;
     if(shadow.mapSize.x!==size){shadow.map?.dispose();shadow.map=null;shadow.mapSize.set(size,size);}
     Object.assign(shadow.camera,{left:-span,right:span,top:span,bottom:-span,near,far});shadow.camera.updateProjectionMatrix();
     shadow.bias=-.00008;shadow.normalBias=.035;shadow.radius=2;

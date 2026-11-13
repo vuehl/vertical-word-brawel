@@ -84,7 +84,14 @@ export async function reviewCoop(browser, gamePort) {
         }
       });
       page.on('pageerror', e => {errors.push(e.message);console.error('client',i,e.stack);});
-      page.on('console', m => { if(m.type()==='error') console.error('client',i,m.text().slice(0,350)); });
+      page.on('console', async m => {
+        if(m.type()!=='error')return;
+        console.error('client',i,m.text().slice(0,350));
+        if(m.text().includes('Error en el fotograma')){
+          errors.push(m.text());
+          for(const arg of m.args())console.error(await arg.evaluate(value=>value?.stack||'').catch(()=>''));
+        }
+      });
       await page.setViewport({width:360,height:740,deviceScaleFactor:i===1?2:1});
       await page.exposeFunction('fixtureLogin',opts=>cloudRequest(i,opts.method,opts.path,opts.data));
       if(sqlTest){
@@ -238,6 +245,7 @@ export async function reviewCoop(browser, gamePort) {
     // and the late-game crowd. Random defeats or upgrade menus end the sample.
     await Promise.all(clients.map(page=>page.evaluate(()=>{
       app.run.player.iframes=3600;
+      app.run.godMode=true;
       app.run.queueLevelUp=()=>{};
       app.run.stageTime=120;
     })));
@@ -259,15 +267,16 @@ export async function reviewCoop(browser, gamePort) {
     await guests[0].evaluate(p=>{app.run.player.pos.x=p.x+1;},downAt);
     await host.waitForFunction(()=>!app.run.player.dead && app.run.player.hp>0,{timeout:20000});
     await guests[1].evaluate(p=>{app.run.player.pos.x=p.x-1;app.run.player.pos.z=p.z;},downAt);
-    await Promise.all(clients.map(page=>page.evaluate(()=>{app.r.render=window.renderDuringCoop;})));
+    await host.evaluate(()=>{app.r.render=window.renderDuringCoop;});
     const origin=await host.evaluate(()=>({x:app.run.player.pos.x,z:app.run.player.pos.z}));
     const mate=guests[0];
     await mate.evaluate(({x,z})=>{
-      const p=app.run.player;p.pos.x=x+3;p.pos.z=z;p.hp=p.maxHp*.5;p.overheal=12;p.iframes=60;
+      const p=app.run.player;p.pos.x=x+1;p.pos.z=z;p.hp=p.maxHp*.5;p.shield=12;p.overheal=12;p.iframes=3600;
     },origin);
     await host.waitForFunction(()=>{
-      const bar=inspected.doc.querySelector('[data-ui-layer="peer-health-0"]');
-      return !bar.hidden && bar.getAttribute('aria-label').includes('护盾与额外生命') && +bar.getAttribute('aria-valuenow')>0 && +bar.getAttribute('aria-valuenow')<+bar.getAttribute('aria-valuemax')*.6;
+      const bars=inspected.doc.querySelectorAll('.zx-peer-health');
+      return [...bars].some(bar=>!bar.hidden && bar.getAttribute('aria-label').includes('护盾与额外生命') &&
+        +bar.getAttribute('aria-valuenow')>0 && +bar.getAttribute('aria-valuenow')<+bar.getAttribute('aria-valuemax')*.6);
     });
     // Locate seat 1's green marker in actual canvas pixels.
     await host.evaluate(()=>{
@@ -287,11 +296,14 @@ export async function reviewCoop(browser, gamePort) {
     await host.waitForFunction(()=>{const x=window.greenFriendX(inspected.doc.querySelector('.zx-battle-map-art'));return x>=0&&x<.35;});
     await host.evaluate(()=>app.run.resume());
     await mate.evaluate(({x,z})=>{app.run.player.pos.x=x+3;app.run.player.pos.z=z;},origin);
+    await host.evaluate(()=>{app.r.render=()=>{};});
     console.log('Delayed scene readiness, teammate health, distance and both live maps passed');
     // Verify a known enemy from this seat even if the opening wave is empty.
     const remoteEnemy=await mate.evaluate(()=>{
       const {enemies,player,coop}=app.run;
+      const originalTime=app.run.stageTime;app.run.stageTime=600;
       const id=enemies.spawn(52,player.pos.x+8,player.pos.z,1,1,0);
+      app.run.stageTime=originalTime;
       if(id<0)throw Error('Could not spawn snapshot test enemy');
       enemies.frozen[id]=600;
       enemies.hp[id]=enemies.maxHp[id]=100000;
@@ -342,6 +354,15 @@ export async function reviewCoop(browser, gamePort) {
     await Promise.all(clients.map(page=>page.evaluate(()=>{
       const {coop,vfx}=app.run;
       const seen=window.peerVisuals={};
+      const labels=window.peerLabels=new Map(),hud=app.hud.coopHud,update=hud.update.bind(hud);
+      hud.update=(...args)=>{
+        const result=update(...args);
+        for(const [id,card] of hud.mates){
+          if(!labels.has(id))labels.set(id,new Set());
+          labels.get(id).add(card.sub.textContent);
+        }
+        return result;
+      };
       let caster;
       for(const method of ['castFx','ultFx']){
         const original=coop[method].bind(coop);
@@ -360,7 +381,10 @@ export async function reviewCoop(browser, gamePort) {
     })));
     const target=await host.evaluate(()=>{
       const r=app.run, e=r.enemies, p=r.player.pos;
+      const previousTime=r.stageTime;r.stageTime=600;
       const i=e.spawn(52,p.x+12,p.z-3,1,1,0);
+      r.stageTime=previousTime;
+      if(i<0)throw Error('Could not allocate the shared damage target');
       e.hp[i]=e.maxHp[i]=100000; e.frozen[i]=3600;
       return {slot:r.coop.mySlot,key:((e.gen[i]&15)<<12)|(i&4095),index:i};
     });
@@ -376,7 +400,9 @@ export async function reviewCoop(browser, gamePort) {
     await host.waitForFunction(i=>app.run.enemies.hp[i]<80000,{},target.index);
     for(const caster of clients){
       const id=await caster.evaluate(()=>{
-        const r=app.run,p=r.player.pos,i=r.enemies.spawn(52,p.x+2,p.z+2,1,1,0);
+        const r=app.run,p=r.player.pos,time=r.stageTime;r.stageTime=600;
+        const i=r.enemies.spawn(52,p.x+2,p.z+2,1,1,0);r.stageTime=time;
+        if(i<0)throw Error('Could not allocate skill target');
         r.enemies.hp[i]=r.enemies.maxHp[i]=100000;r.enemies.frozen[i]=3600;
         return app.coopRoom.me;
       });
@@ -384,7 +410,7 @@ export async function reviewCoop(browser, gamePort) {
       await Promise.all(others.map(page=>page.waitForFunction(id=>{
         const peer=app.run.coop.peers.get(id);
         return window.peerVisuals[id+'/castFx']>0 && peer.castName &&
-          app.hud.coopHud.mates.get(id)?.sub.textContent==='技能 · '+peer.castName;
+          window.peerLabels.get(id)?.has('技能 · '+peer.castName);
       },{timeout:40000},id)));
       const name=await caster.evaluate(()=>{
         const r=app.run,names=r.ult.def.names,name=names[Math.min(r.ult.form,names.length-1)];
@@ -392,15 +418,16 @@ export async function reviewCoop(browser, gamePort) {
       });
       console.log('Checking skill and ultimate from seat',clients.indexOf(caster)+1,name);
       await Promise.all(others.map(page=>page.waitForFunction((id,name)=>
-        window.peerVisuals[id+'/ultFx']>0 && app.hud.coopHud.mates.get(id)?.sub.textContent==='大招 · '+name,{},id,name)));
+        window.peerVisuals[id+'/ultFx']>0 && window.peerLabels.get(id)?.has('大招 · '+name),{},id,name)));
     }
     // Exercise dense network traffic and simulation separately from the
     // three SwiftShader rasterizers. The preceding battle uses normal rendering.
-    await Promise.all(clients.map(page=>page.evaluate(()=>{
+    const filled=await Promise.all(clients.map(page=>page.evaluate(()=>{
       const run=app.run, enemies=run.enemies, p=run.player.pos;
       run.player.iframes=3600;
       app.r.render=()=>{};
       const originalTime=run.stageTime;
+      let created=0;
       try{
         run.stageTime=600;
         for(let i=0;i<200;i++){
@@ -408,18 +435,21 @@ export async function reviewCoop(browser, gamePort) {
           const id=enemies.spawn(52,x,z,1,1,0);
           if(id<0)break;
           enemies.frozen[id]=600;
-          enemies.hp[id]=750000;enemies.maxHp[id]=1000000;
+          enemies.hp[id]=750000;enemies.maxHp[id]=1000000;created++;
         }
       }finally{run.stageTime=originalTime;}
+      return {created,owned:enemies.count,stage:run.stage,actors:enemies.n,cap:run.enemyCap,slot:run.coop.mySlot};
     })));
+    console.log('Dense fixture actors',filled);
     const crowds=await Promise.all(clients.map(async page=>{
       const result=await page.waitForFunction(()=>{
         const run=app.run, coop=run.coop, enemies=run.enemies;
         const counts=[...coop.peers.values()].map(peer=>{
           let count=0;
           for(const id of coop.proxies.values()){
-            if(coop.pSlot[id]!==peer.slot || coop.pN[id]<3 || enemies.maxHp[id]!==1000000)continue;
-            if(run.realTime-coop.pSeen[id]>.5 || enemies.frozen[id]<=0 ||
+            if(coop.pSlot[id]!==peer.slot || !coop.monsters.ownsProxy(id) || enemies.maxHp[id]!==1000000)continue;
+            // A stationary frozen actor receives no update until its state changes.
+            if(enemies.frozen[id]<=0 ||
                Math.abs(enemies.hp[id]/enemies.maxHp[id]-.75)>.02 ||
                !Number.isFinite(enemies.x[id]+enemies.y[id]+enemies.z[id]))continue;
             count++;
@@ -430,7 +460,7 @@ export async function reviewCoop(browser, gamePort) {
       },{timeout:30000,polling:100});
       return result.jsonValue();
     }));
-    console.log('Live frozen enemies with synced HP from each peer',crowds);
+    console.log('Live frozen monsters retained from Go interest deltas',crowds);
     const sameBytes=await host.evaluate(()=>{
       const coop=app.run.coop, writer=new coop.writer.constructor();
       const ids=Array.from({length:app.run.enemies.n},(_,i)=>i).filter(i=>app.run.enemies.alive[i]).slice(0,170);
@@ -445,6 +475,42 @@ export async function reviewCoop(browser, gamePort) {
       return ids.length===170 && expected.length===actual.length && expected.every((byte,i)=>byte===actual[i]);
     });
     assert.ok(sameBytes,'A partially overlapping view must match independent encoding byte for byte');
+    const totem=await host.evaluate(()=>{
+      const r=app.run,p=r.player.pos;
+      if(!r.minibosses.spawnTotem(20,{x:p.x+5,z:p.z}))throw Error('Missing totem');
+      const id=r.minibosses.lastIndex;
+      r.enemies.hp[id]=r.enemies.maxHp[id]=1000000;
+      return {id,gen:r.enemies.gen[id],seat:r.coop.mySlot};
+    });
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      const mini=app.run.minibosses,act=mini.roomAction.bind(mini);
+      window.totemMoves=[];
+      mini.roomAction=(id,kind,...args)=>{window.totemMoves.push([id,kind]);return act(id,kind,...args);};
+    })));
+    const physical=await Promise.all(clients.map(async page=>{
+      const result=await page.waitForFunction(({id,gen,seat})=>{
+        const entry=app.run.coop.monsters.worldSlots.get(seat*4096+id);
+        return entry?.gen===gen && window.totemMoves.find(([who,kind])=>who===entry.id && (kind===3||kind===7))?.[1];
+      },{timeout:30000},totem);
+      return result.jsonValue();
+    }));
+    assert.equal(new Set(physical).size,1);
+    console.log('Server-selected totem attack on all three clients',physical);
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      const boss=app.run.boss,attack=boss.roomAttack.bind(boss);
+      window.roomBossMoves=[];
+      boss.roomAttack=(id,move)=>{window.roomBossMoves.push(move);return attack(id,move);};
+    })));
+    await host.evaluate(()=>{const r=app.run,p=r.player.pos;r.spawnBoss(p.x,p.z);});
+    const bossMoves=await Promise.all(clients.map(async page=>{
+      const result=await page.waitForFunction(()=>{
+        const world=app.run.coop.monsters;
+        return app.run.boss.alive && world.bossPose && world.completedTurn>0 && window.roomBossMoves.find(move=>move!=='escorts');
+      },{timeout:45000,polling:100});
+      return result.jsonValue();
+    }));
+    assert.equal(new Set(bossMoves).size,1);
+    console.log('Server-selected guardian skill on all three clients',bossMoves);
     const returning=guests[0];
     const seat=await returning.evaluate(()=>{
       const run=app.run;
@@ -462,6 +528,47 @@ export async function reviewCoop(browser, gamePort) {
     const recovered=await returning.evaluate(()=>({id:app.coopRoom.me,party:app.run.coop.party,seed:app.run.seed,level:app.run.player.level,ticket:app.meta.ticket.id}));
     assert.deepEqual(recovered,seat);
     await host.waitForFunction(id=>{const p=app.run.coop.peers.get(id);return !p.gone && p.last?.level===17;},{},seat.id);
+    await returning.waitForFunction(()=>app.run.boss.alive && app.run.coop.monsters.bossPose,{timeout:25000});
+    // Enter the final sanctuary through the game's normal zone builder.
+    await Promise.all(clients.map(page=>page.evaluate(async()=>{
+      const r=app.run;r.stage=3;await r.coopAdvance(false);
+      r.player.iframes=3600;r.queueLevelUp=()=>{};app.r.render=()=>{};
+    })));
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      // Auto-dismiss player-only upgrade choices while exercising a shared fight.
+      const r=app.run,update=r.update.bind(r);
+      r.update=dt=>{if(r.state==='modal')r.resume();return update(dt);};
+      r.pendingLevels=0;r.pendingBlessings.length=0;r.player.iframes=3600;
+    })));
+    await host.evaluate(()=>app.run.spawnBoss(0,8));
+    await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run.stage===4 && app.run.boss.kit &&
+      app.run.coop.monsters.completedTurn>0 && app.run.boss.roomAim,{timeout:45000})));
+    // The original health gates trigger both phase transitions. Inject only
+    // test damage and elapsed barrier time to avoid a multi-minute encounter.
+    for(const phase of [2,3]){
+      await host.evaluate(()=>{const r=app.run,b=r.boss;b.kit.phaseT=60;b.kit.immune=0;
+        r.enemies.hp[b.bossIndex]=1;b.kit.clampHp();});
+      await Promise.all(clients.map(page=>page.waitForFunction(phase=>app.run.boss.kit.phase===phase,{timeout:25000},phase)));
+    }
+    await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run.boss.roomAim?.move==='ultimate',{timeout:45000})));
+
+    await host.evaluate(()=>{const r=app.run,b=r.boss;b.kit.immune=0;b.kit.phaseT=60;
+      r.enemies.hp[b.bossIndex]=0;r.combat.killEnemy(b.bossIndex,{});});
+    await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run.stageCleared && !app.run.boss.alive &&
+      app.run.interactables.list.some(item=>item.kind==='portal'),{timeout:25000})));
+    const catchable=await host.evaluate(()=>{
+      const r=app.run,c=r.capture;c.spawnShiny();
+      if(c.state!=='roaming')throw Error('Missing capturable partner');
+      r.combat.killEnemy(c.index,{});return c.species;
+    });
+    await Promise.all(clients.map(page=>page.waitForFunction(species=>app.run.capture.state==='weakened' &&
+      app.run.capture.species===species,{timeout:15000},catchable)));
+    await host.evaluate(()=>{
+      const r=app.run,c=r.capture;r.player.pos.x=r.enemies.x[c.index];r.player.pos.z=r.enemies.z[c.index];
+      c.sure=true;c.throwBall();
+    });
+    await host.waitForFunction(()=>app.run.capture.state==='done',{timeout:25000});
+    console.log('Sanctuary phases, ultimate, victory portal and partner capture passed');
     await returning.evaluate(()=>{app.run.endHow='quit';return app.run.finish(false);});
     await returning.waitForFunction(()=>app.screen?.dataset.page==='summary');
     if(sqlTest){
@@ -471,10 +578,10 @@ export async function reviewCoop(browser, gamePort) {
     assert.deepEqual(errors,[]);
     console.log('3-player battle passed',JSON.stringify({sample,sharedEnemies:peers}));
   } catch(error) {
-    for(const page of clients) console.error(await page.evaluate(()=>({screen:window.app?.screen?.textContent.slice(-420),state:window.app?.run?.state,
+    for(const page of clients) console.error(await page.evaluate(()=>({boss:window.app?.run?.boss && {alive:app.run.boss.alive,phase:app.run.boss.kit?.phase,move:app.run.boss.roomAim?.move,turn:app.run.coop.monsters?.turn,auth:app.run.coop.bossAuth,capture:app.run.capture.state},screen:window.app?.screen?.textContent.slice(-420),state:window.app?.run?.state,
       rescue:window.app?.run && [app.run.coop.reviveK,app.run.coop.bleed,app.run.player.dead,app.run.player.pos.x,app.run.player.pos.z],error:window.app?.lastStartError?.message,gate:window.app?.coopRoom?.startGate?.error?.message,proxies:window.app?.run?.coop?.proxies.size,
       end:window.app?.run?.endHow,close:window.testRelayClose,traffic:window.app?.coopRoom?.traffic,enemyCount:window.app?.run?.enemies?.count,
-      peerVisuals:window.peerVisuals,skillNames:window.app?.run?.coop && [...app.run.coop.peers.values()].map(p=>[p.castName,p.ultName]),problem:window.problem})).catch(()=>null));
+      monsterWorld:window.app?.run?.coop?.monsters && {stage:app.run.stage,seq:app.run.coop.monsters.seq,published:app.run.coop.monsters.published.size,latest:app.run.coop.monsters.poses.size,samples:[...app.run.coop.proxies.values()].slice(-3).map(i=>[app.run.coop.pSlot[i],app.run.enemies.hp[i],app.run.enemies.maxHp[i],app.run.enemies.frozen[i]])},peerVisuals:window.peerVisuals,skillNames:window.app?.run?.coop && [...app.run.coop.peers.values()].map(p=>[p.castName,p.ultName]),problem:window.problem})).catch(()=>null));
     throw error;
   }
 }

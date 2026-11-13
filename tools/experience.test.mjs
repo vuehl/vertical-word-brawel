@@ -24,10 +24,10 @@ test('experience fills completely before the displayed level changes or upgrades
   assert.equal(ring.progress,.99);assert.ok(ring.ready);
   Object.assign(player,{level:2,xp:12,xpNext:120});
   ring.update(player,10);assert.equal(ring.level,1);assert.equal(ring.ready,false);
-  ring.update(player,80);assert.ok(ring.progress>.99&&ring.progress<1);
-  ring.update(player,150);assert.equal(ring.progress,1);assert.equal(ring.level,1);assert.equal(ring.ready,false);
-  ring.update(player,329);assert.equal(ring.progress,1);assert.equal(ring.ready,false);
-  ring.update(player,330);assert.equal(ring.level,2);assert.equal(ring.progress,.1);assert.ok(ring.ready);
+  ring.update(player,30);assert.ok(ring.progress>.99&&ring.progress<1);
+  ring.update(player,51);assert.equal(ring.progress,1);assert.equal(ring.level,1);assert.equal(ring.ready,false);
+  ring.update(player,90);assert.equal(ring.progress,1);assert.equal(ring.ready,false);
+  ring.update(player,91);assert.equal(ring.level,2);assert.equal(ring.progress,.1);assert.ok(ring.ready);
 });
 
 test('low FPS cannot skip the full ring, and paused time cannot consume its hold',()=>{
@@ -36,8 +36,8 @@ test('low FPS cannot skip the full ring, and paused time cannot consume its hold
   ring.update(player,1000);ring.update(player,2000);
   assert.equal(ring.progress,1);assert.equal(ring.ready,false);
   ring.update(player,8000,false);assert.equal(ring.level,1);assert.equal(ring.ready,false);
-  ring.update(player,8100);assert.equal(ring.level,1);
-  ring.update(player,8200);assert.equal(ring.level,2);assert.ok(ring.ready);
+  ring.update(player,8020);assert.equal(ring.level,1);
+  ring.update(player,8040);assert.equal(ring.level,2);assert.ok(ring.ready);
 });
 
 test('multiple earned levels each complete a lap and preserve the final overflow',()=>{

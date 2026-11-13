@@ -47,12 +47,12 @@ test('marbles bounce off thin scenery and map edges, slow down and can be kicked
   }
 });
 test('both map sizes name functional buildings; used markers stay absent',()=>{
-  assert.equal(buildingMapName({kind:'bill'}),'技能融合');
+  assert.equal(buildingMapName({kind:'bill'}),'订书机');
   assert.equal(buildingMapName({kind:'tower',data:{sub:'stairs'}}),'上层入口');
   const text=[],ctx=new Proxy({fillText:t=>text.push(t),measureText:t=>({width:t.length*5})},{get:(t,k)=>t[k]??(()=>{})});
   const canvas={width:240,height:240,getContext:()=>ctx};
   const run={player:{pos:{x:0,z:0}},terrain:{world:240},boss:{alive:false},enemies:{n:0},allies:{list:[]},
     interactables:{markers:()=>[{kind:'bill',x:10,z:0},{kind:'meowth',x:-25,z:-20}]}};
-  for(const viewRatio of [1,2]){text.length=0;drawBattleMinimap(canvas,run,{viewRatio,shadow:viewRatio===1});assert.ok(text.includes('技能融合'));assert.ok(text.includes('商店'));}
+  for(const viewRatio of [1,2]){text.length=0;drawBattleMinimap(canvas,run,{viewRatio,shadow:viewRatio===1});assert.ok(text.includes('订书机'));assert.ok(text.includes('商店'));}
   text.length=0;run.interactables.markers=()=>[];drawBattleMinimap(canvas,run);assert.deepEqual(text,[]);
 });

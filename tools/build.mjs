@@ -32,12 +32,12 @@ import {progressDispatcher,callProgress} from "pokebonk:progress";
 let store,dirty;
 function persist(){dirty=true;}
 ` + routes + `
-async function localRoute(draft,url,method,headers,bodyText){
+async function localRoute(draft,url,method,headers,bodyText,checkpoint){
   store=draft;
   store.coopParties??={};
   dirty=false;
-  for(const account of Object.values(store.accounts))constrainLiteProfile(account.profile);
   const key=url.pathname.slice(4);
+  if(!checkpoint)for(const account of Object.values(store.accounts))constrainLiteProfile(account.profile);
   if(key==="/coop/access")return {response:{status:200,data:{show:false,play:false}}};
   const social=["coop","friends","rooms","invites","clans","mail","events","seasons","leaderboard"];
   if(social.includes(key.split("/")[1]))return {response:{status:404}};

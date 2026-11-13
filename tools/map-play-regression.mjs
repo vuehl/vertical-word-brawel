@@ -36,7 +36,7 @@ export async function reviewMapPlay(page,dir){
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await page.setViewport({width,height,deviceScaleFactor:1});
     const labels=await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));mapPlayLabels.length=0;mapPlayFrame();return mapPlayLabels;});
-    assert.ok(labels.includes('技能融合'));report.labels.push({width,labels:labels.filter(t=>/融合|祭坛|商店|遗忘|复制/.test(t))});
+    assert.ok(labels.includes('订书机'));report.labels.push({width,labels:labels.filter(t=>/订书机|时尚小垃圾|商店|遗忘|拍立得/.test(t))});
     await page.screenshot({path:path.join(dir,`building-label-${width}.png`)});
   }
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});

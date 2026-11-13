@@ -64,6 +64,9 @@ export function progressDispatcher({load,save,call,mutationID,localRoute}) {
   return async function dispatch(url,method,headers,bodyText){
     base??=load();
     const key=url.pathname.slice(4);
+    // This route parses its request before appending to the active run's
+    // in-memory checkpoint list. No profile, receipt or disk write is involved.
+    const checkpoint=method==='POST' && /^\/runs\/[^/]+\/checkpoint$/.test(key);
     const token=(headers.Authorization||headers.authorization||'').replace(/^Bearer /,'');
     const accountId=Object.values(base.accounts).find(a=>token && a.token===token)?.id;
     const sync=call && accountId && progressRoutes.test(key);
@@ -76,11 +79,11 @@ export function progressDispatcher({load,save,call,mutationID,localRoute}) {
         if(sync && account){
           state=account.cloudOwner ? await call('GET') : await call('POST',{progress:progressOf(account.profile)});
         }
-        const draft=method==='GET' && !state ? base : copy(base);
+        const draft=(method==='GET' && !state)||checkpoint ? base : copy(base);
         const player=draft.accounts[accountId];
         if(state)applySave(player,state);
         const before=state && JSON.stringify(progressOf(player.profile));
-        const {response,dirty}=await localRoute(draft,url,method,headers,bodyText);
+        const {response,dirty}=await localRoute(draft,url,method,headers,bodyText,checkpoint);
         if(response.status>=400)return response;
         const updated=draft.accounts[accountId];
         if(state && dirty && (before!==JSON.stringify(progressOf(updated?.profile)) || key==='/account/reset' || !updated)){

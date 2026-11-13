@@ -31,8 +31,8 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         return b&&tb&&{text:el.textContent,offset:tb.x-b.x};
       }).filter(Boolean);
       const box=sel=>inspected.layout.box(inspected.doc.querySelector(sel));
-      const upgrade=inspected.doc.querySelector('.zx-upgrade'),pause=inspected.doc.querySelector('.zx-pause');
-      const upgradeLayout=upgrade&&{extraHints:[...upgrade.children].filter(e=>e.localName==='small').length,linkRight:box('.zx-upgrade-stats').x+box('.zx-upgrade-stats').w,cardRight:box('.zx-offer').x+box('.zx-offer').w};
+      const upgrade=inspected.doc.querySelector('.zx-upgrade:not(.zx-choice-dialog)'),pause=inspected.doc.querySelector('.zx-pause');
+      const upgradeLayout=upgrade&&{extraHints:[...upgrade.children].filter(e=>e.localName==='small').length,hasStatsLink:upgrade.textContent.includes('查看当前属性')};
       const pauseLayout=pause&&{page:{x:box('.zx-pause').x,y:box('.zx-pause').y,w:box('.zx-pause').w,h:box('.zx-pause').h},tags:pause.querySelectorAll('.zx-build-tag').length,buildHeading:pause.textContent.includes('本局构筑'),actions:[...pause.querySelectorAll('.zx-pause-actions button')].map(el=>{const b=inspected.layout.box(el);return {x:b.x,w:b.w,h:b.h};})};
       const home=inspected.doc.querySelector('.zx-home-top'),homeLayout=home&&{gear:box('.zx-gear'),header:box('.zx-home-top'),scroll:box('.zx-home-scroll')};
       const unresolvedColors=[...inspected.doc.querySelectorAll('.zx *')].flatMap(el=>[...el.childNodes]).filter(n=>n.nodeType===3&&n.textContent.trim()).map(n=>({text:n.textContent,color:inspected.layout.box(n)?.s.color})).filter(t=>t.color&&/^(inherit|initial|unset|currentcolor)$/i.test(t.color));
@@ -59,7 +59,10 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       assert.ok(b.topInset>=4&&b.bottomInset>=4,name+' price labels overflow the circle: '+JSON.stringify(b));
       assert.equal(b.color,'#29263c',name+' prices need dark text on pastel buttons');
     }
-    if(data.upgradeLayout){assert.equal(data.upgradeLayout.extraHints,0,'Upgrade dialog must omit the three extra hints');assert.ok(Math.abs(data.upgradeLayout.linkRight-data.upgradeLayout.cardRight)<=1.1,'Upgrade attributes link must align with the right card edge');}
+    if(data.upgradeLayout){
+      assert.equal(data.upgradeLayout.extraHints,0,'Upgrade dialog must omit the three extra hints');
+      assert.equal(data.upgradeLayout.hasStatsLink,false,'Level-up choices must omit the attributes link');
+    }
     if(data.pauseLayout){assert.ok(data.pauseLayout.tags>0&&!data.pauseLayout.buildHeading,'Pause build should use compact tags');assert.equal(data.pauseLayout.actions.length,2);assert.ok(Math.abs(data.pauseLayout.actions[0].w-data.pauseLayout.actions[1].w)<=1.1,'Pause actions must have equal widths');}
     if(data.pauseLayout)assert.deepEqual(data.pauseLayout.page,{x:0,y:0,w:data.viewport[0],h:data.viewport[1]},'Pause must cover the full usable viewport');
     if(data.homeLayout){const {gear,header,scroll}=data.homeLayout;assert.ok(gear.y>=header.y+8&&gear.y+gear.h+8<=scroll.y&&gear.x+gear.w<=data.viewport[0]-16,'Settings must remain clear of the illustration and screen edge');}
@@ -305,11 +308,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     assert.equal(await page.evaluate(()=>!!inspected.doc.querySelector('.run-hint')),false,'Tutorial hints must not cover upgrade choices');
     for(const [w,h] of [[320,568],[430,932]]){await resize(w,h);await snapshot('08-level-up-'+w);await checkUpgradeModal('08-level-up-'+w);}
     await resize(390,844);await sleep(400);
-    const choices=await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-offer]')].map(el=>el.textContent));
-    await tap('.zx-upgrade-stats');await snapshot('08-upgrade-attributes');await tap('.zx-footer button','返回');
-    assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-offer]')].map(el=>el.textContent)),choices,'Viewing attributes must preserve all upgrade choices');
-    await checkUpgradeModal('08-upgrade-return');
-    assert.deepEqual(await page.evaluate(()=>qaOfferSelections),[],'Opening the dialog and returning from attributes must not choose an upgrade');
+    assert.deepEqual(await page.evaluate(()=>qaOfferSelections),[],'Opening the dialog must not choose an upgrade');
     const rerolls=await page.evaluate(()=>app.run.rerolls);await tap('.zx-reroll');await settleModal();
     assert.equal(await page.evaluate(()=>app.run.rerolls),rerolls-1,'Reroll must consume exactly one existing charge');await snapshot('08-rerolled');await checkUpgradeModal('08-rerolled');
     await tap('[data-offer="1"]');
