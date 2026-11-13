@@ -54,7 +54,7 @@ export async function setup(host) {
   const view=viewport(system);
   const uiFrames=createUIFrameCache();
   const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,element=>{
-    const tile=win.__pb?.run?.state==='play'&&hudLayers.find(layer=>layer.owns(element));
+    const tile=win.__pb?.run?.state==='play'&&activeHudLayers().find(layer=>layer.owns(element));
     if(tile)tile.invalidate();else uiFrames.invalidate();
   });
   const controls=createControlLayer(makeCanvas);
@@ -66,7 +66,10 @@ export async function setup(host) {
   const healthLayer=element=>health.owns(element)?health:
     element?.dataset?.uiLayer?.startsWith('peer-')?peerTiles.find(t=>t.owns(element)):null;
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
-  const hudLayers=['counters','score','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
+  const soloLayers=['counters','score','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
+  const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
+  const coopLayers=[teamLayer,...soloLayers];
+  const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
   const modalTransition=createModalTransition(makeCanvas);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
@@ -87,10 +90,6 @@ export async function setup(host) {
       const element=target.nodeType===1?target:target.parentElement;
       if(element?.closest?.('[data-ui-hidden="true"]'))continue;
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
-      if(env.__pb?.run?.state==='play'){
-        const tile=hudLayers.find(layer=>layer.owns(element));
-        if(tile){tile.invalidate();continue;}
-      }
       if(record.type==='attributes'&&minimap.owns(element)&&record.attributeName==='data-frame'){
         minimap.invalidate();continue;
       }
@@ -105,6 +104,10 @@ export async function setup(host) {
       }
       if(record.type==='attributes'&&controls.owns(element)&&['style','class'].includes(record.attributeName)){
         controls.invalidate();continue;
+      }
+      if(env.__pb?.run?.state==='play'){
+        const tile=activeHudLayers().find(layer=>layer.owns(element));
+        if(tile){tile.invalidate();continue;}
       }
       // Text/HUD updates may happen every game tick; coalesce them. A newly
       // mounted menu must replace the previous pixels on the very next draw.
@@ -270,6 +273,7 @@ export async function setup(host) {
       if(modalTransition.advance(now))uiFrames.invalidate(false,true);
       mutations(observer.takeRecords());
       const state=env.__pb?.run?.state;
+      const hudLayers=activeHudLayers();
       const changed=uiFrames.draw(now,state,layout,boxes=>{
         controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
         if(env.__pb?.run?.coop)for(const tile of peerTiles)tile.capture(boxes);
@@ -278,7 +282,8 @@ export async function setup(host) {
         paint(layout,visible.filter(b=>!controls.owns(b.el)&&!(state==='play'&&(minimap.owns(b.el)||healthLayer(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
       });
       if(opaque&&!changed)return;
-      const layers=[controls.draw(layout,view,scale,state==='play'&&!opaque),minimap.draw(layout,view,scale,state==='play'&&!opaque),health.draw(layout,view,scale,state==='play'&&!opaque),...(state==='play'&&!opaque&&env.__pb?.run?.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,state==='play'&&!opaque),...hudLayers.map(tile=>tile.draw(layout,view,scale,state==='play'&&!opaque)),...modalTransition.layers(scale,perf.now())];
+      const playing=state==='play'&&!opaque;
+      const layers=[playing&&env.__pb?.run?.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&env.__pb?.run?.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),...modalTransition.layers(scale,perf.now())];
       if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenModalKey());
     },
     readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},
@@ -297,6 +302,6 @@ export async function setup(host) {
     }
     env.dispatchEvent(new D.Event('resize'));
   });
-  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,portrait,hudLayers,modalTransition});
+  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,portrait,get hudLayers(){return activeHudLayers();},modalTransition});
   return env;
 }

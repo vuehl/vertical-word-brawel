@@ -197,8 +197,13 @@ try{
       tileSize:[inspected.controls.canvas.width,inspected.controls.canvas.height],screenSize:[inspected.uiCanvas.width,inspected.uiCanvas.height]};
     window.tap(x+30,y-8,'up',77);inspected.env.drawUI(r.renderer);
     result.released=input.stickX===0&&input.stickY===0;
+    result.hiddenOnRelease=!stick.classList.contains('on');
+    // The floating stick is no longer drawn on release. Check its displayed
+    // center on the next contact, including when the touch origin changes.
+    window.tap(x+8,y+8,'down',78);inspected.env.drawUI(r.renderer);
     const b=inspected.layout.box(stick),k=inspected.layout.box(run.ui.touch.knob);
     result.centerError=Math.hypot(k.x+k.w/2-b.x-b.w/2,k.y+k.h/2-b.y-b.h/2);
+    window.tap(x+8,y+8,'up',78);inspected.env.drawUI(r.renderer);
     return result;
   });
   // Manual drawUI calls above intentionally isolate texture work. Repaint the
@@ -253,6 +258,7 @@ try{
     const first=colliders[0],resolved={x:0,z:0};terrain.resolve(first.x,first.z,.5,.3,resolved);
     const escaped=!terrain.hitProp(resolved.x,.3,resolved.z,.49);
     run.enemies.clear();run.director.update=()=>{};run.queueLevelUp=()=>{};run.pendingLevels=0;
+    run.stageTime=600; // The natural spawn budget reaches 200 at ten minutes.
     const far=[];
     for(let i=0;i<200;i++){
       const a=i*2.39996,d=i<120?8+(i%15):30+(i%30),x=run.player.pos.x+Math.cos(a)*d,z=run.player.pos.z+Math.sin(a)*d;
@@ -328,7 +334,7 @@ try{
       click('.zx-option',label);
       applied.push({label,actual:run.performance.name,uiPixels:inspected.uiCanvas.width*inspected.uiCanvas.height,
         worldPixels:app.r.composer.inputBuffer.width*app.r.composer.inputBuffer.height,
-        note:inspected.doc.querySelector('.zx-performance-status').textContent});
+        selected:inspected.doc.querySelector('.zx-options .zx-option.on').textContent});
     }
     app.meta.profile.settings.touchScale=.85;app.applySettings();await app.meta.saveNow();
     const saved=JSON.parse(wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8')).accounts[app.meta.account.id].profile.settings;
@@ -366,7 +372,7 @@ try{
   assert.equal(initial.quality,'low');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   assert.equal(report.touch.idleUploads,0);assert.equal(report.touch.fullUploads,0);
   assert.equal(report.touch.controlUploads,10);assert.ok(report.touch.uploadedBytes<10*5266560*.1);
-  assert.ok(report.touch.released&&report.touch.centerError<1);
+  assert.ok(report.touch.released&&report.touch.hiddenOnRelease&&report.touch.centerError<1);
   assert.ok(report.touch.directions.every(([x,y])=>x>0&&y>0));
   assert.ok(report.visibility.visibleFarDistance>18);assert.deepEqual(report.visibility.counts.map(c=>c.draws),[2,2,2]);
   assert.equal(report.visibility.revealedAfterMoving,1);assert.equal(report.visibility.alive,4);
@@ -381,7 +387,7 @@ try{
   assert.ok(report.gameplay.stress.particles<=report.gameplay.stress.particleLimit&&report.gameplay.stress.texts<=report.gameplay.stress.textLimit);
   assert.deepEqual(report.settings.saved,{quality:'high',touchScale:.85});assert.equal(report.settings.saver.quality,'high');assert.equal(report.settings.saver.profile,'流畅');assert.equal(report.settings.restored,'精致');
   assert.deepEqual(report.settings.removedControls,{count:0,aimMode:'auto'});
-  for(const result of report.settings.applied){assert.equal(result.actual,result.label);assert.ok(result.note.includes('当前生效：'+result.label));}
+  for(const result of report.settings.applied){assert.equal(result.actual,result.label);assert.equal(result.selected,result.label);}
   const [smooth,balanced,fine]=report.settings.applied;
   assert.ok(smooth.worldPixels<balanced.worldPixels&&balanced.worldPixels<fine.worldPixels);
   assert.equal(smooth.uiPixels,fine.uiPixels);assert.equal(balanced.uiPixels,fine.uiPixels);

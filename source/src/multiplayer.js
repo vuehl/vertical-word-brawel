@@ -84,8 +84,9 @@ export class RelayRoom {
     if (!this.alive) return;
     if (raw instanceof ArrayBuffer) {
       if (raw.byteLength < 2) return;
-      const from = this.room.members.find(member => member.slot === new Uint8Array(raw)[0]);
-      if (from && from.id !== this.me) {this.traffic.snapReceived++;this.ev.snap?.(from.id, raw.slice(1));}
+      const slot = new Uint8Array(raw,0,1)[0];
+      const from = this.room.members.find(member => member.slot === slot);
+      if (from && from.id !== this.me) {this.traffic.snapReceived++;this.ev.snap?.(from.id, raw, 1);}
       return;
     }
     let message; try { message = JSON.parse(raw); } catch { return; }

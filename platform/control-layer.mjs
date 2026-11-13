@@ -54,7 +54,9 @@ export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground
         // A paint-only refresh may reuse a layout box after the player moved.
         if(box&&box!==previous){
           const [x,y]=offset(box.s.transform);
-          originX=box.x-x;originY=box.y-y;dirty=true;
+          originX=box.x-x;originY=box.y-y;
+          // Layout can move the same canvas. Its pixels change on data-frame.
+          if(box.el!==previous?.el)dirty=true;
         }
         return;
       }
@@ -102,14 +104,13 @@ const translation=el=>offset(el?.style.transform);
 // The floating joystick has its own small texture. Its transforms never require a
 // screen-wide layout, canvas repaint or texture upload.
 export function createControlLayer(makeCanvas){
-  let canvas,context,base,knob,originX=0,originY=0,lastKey='',dirty=true;
+  let canvas,context,base,knob,lastKey='',dirty=true;
   const layer={
     owns(el){return !!el?.closest?.('[data-ui-layer="stick"]');},
     invalidate(){dirty=true;},
     capture(boxes){
       base=boxes.find(b=>b.el.dataset?.uiLayer==='stick'&&b.w>0);
       knob=base&&boxes.find(b=>b.el===base.el.firstElementChild);
-      if(knob){const [x,y]=translation(knob.el);originX=knob.x-x-base.x;originY=knob.y-y-base.y;}
       dirty=true;
     },
     draw(layout,view,scale,enabled){
@@ -119,15 +120,16 @@ export function createControlLayer(makeCanvas){
       const pad=4,x=Math.floor((base.x+view.x-pad)*scale),y=Math.floor((base.y+view.y-pad)*scale);
       const width=Math.ceil((base.w+pad*2)*scale),height=Math.ceil((base.h+pad*2)*scale);
       const [dx,dy]=translation(knob.el),active=base.el.classList.contains('on');
-      const key=[x,y,width,height,dx,dy,active,base.opacity].join('/');
+      const key=[width,height,dx,dy,active,base.opacity].join('/');
       const changed=dirty||key!==lastKey;
       if(!canvas){canvas=makeCanvas();context=canvas.getContext('2d');}
+      knob.x=base.x+(base.w-knob.w)/2+dx;
+      knob.y=base.y+(base.h-knob.h)/2+dy;
       if(changed){
         if(canvas.width!==width)canvas.width=width;if(canvas.height!==height)canvas.height=height;
         const root={...base,opacity:1};
         // Keep cached geometry aligned with the current touch origin. The
         // control is visual only; the gesture surface owns pointer events.
-        knob.x=base.x+originX+dx;knob.y=base.y+originY+dy;
         paint({...layout,context},[root,{...knob,opacity:1}],{width:width/scale,height:height/scale,x:view.x-x/scale,y:view.y-y/scale},scale);
         dirty=false;lastKey=key;
       }

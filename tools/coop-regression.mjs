@@ -69,9 +69,22 @@ export async function reviewCoop(browser, gamePort) {
       const ctx = await browser.createBrowserContext();
       const page = await ctx.newPage();
       clients.push(page);
+      await page.evaluateOnNewDocument(platform=>{window.fixturePlatform=platform;},i===1?'ios':'android');
+      if(i===0)await page.evaluateOnNewDocument(()=>{
+        const gl=WebGL2RenderingContext.prototype;
+        for(const name of ['texImage2D','texSubImage2D']){
+          const original=gl[name];
+          gl[name]=function(...args){
+            const audit=window.teamUploadAudit;
+            if(audit && args.at(-1)===inspected.uiCanvas)audit.full++;
+            if(audit && args.at(-1)===audit.canvas)audit.tile++;
+            return original.apply(this,args);
+          };
+        }
+      });
       page.on('pageerror', e => {errors.push(e.message);console.error('client',i,e.stack);});
       page.on('console', m => { if(m.type()==='error') console.error('client',i,m.text().slice(0,350)); });
-      await page.setViewport({width:360,height:740});
+      await page.setViewport({width:360,height:740,deviceScaleFactor:i===1?2:1});
       await page.exposeFunction('fixtureLogin',opts=>cloudRequest(i,opts.method,opts.path,opts.data));
       if(sqlTest){
         await page.exposeFunction('fixtureProgress',({method,path,data})=>cloudRequest(i,method,path,data));
@@ -85,6 +98,7 @@ export async function reviewCoop(browser, gamePort) {
         function openRelay(path) {
           const ws = new WebSocket(new URL(path,url));
           window.dropRelay = () => ws.close();
+          ws.addEventListener('close',event=>{window.testRelayClose={code:event.code,reason:event.reason};});
           ws.binaryType = 'arraybuffer';
           return {
             get readyState(){return ws.readyState;},
@@ -175,6 +189,12 @@ export async function reviewCoop(browser, gamePort) {
     assert.equal(new Set(sample.map(r=>r.seed)).size,1);
     assert.ok(sample.every(s=>s.received>0));
     assert.ok((await Promise.all(clients.map(p=>p.evaluate(()=>app.zixing.entryDiagnostics.percentages.at(-1))))).every(n=>n===100));
+    // Keep this networking scenario in live combat through all three casts
+    // and the late-game crowd. Random defeats or upgrade menus end the sample.
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      app.run.player.iframes=3600;
+      app.run.queueLevelUp=()=>{};
+    })));
     const origin=await host.evaluate(()=>({x:app.run.player.pos.x,z:app.run.player.pos.z}));
     const mate=guests[0];
     await mate.evaluate(({x,z})=>{
@@ -205,6 +225,42 @@ export async function reviewCoop(browser, gamePort) {
     console.log('Delayed scene readiness, teammate health, distance and both live maps passed');
     await host.waitForFunction(()=>app.run.coop.proxies.size>0,{timeout:30000});
     const peers=await host.evaluate(()=>app.run.coop.proxies.size);
+    const teamWork=await host.evaluate(()=>{
+      const run=app.run, hud=run.ui.coopHud, layout=inspected.layout;
+      const refresh=layout.refresh, originalAt=hud.at;
+      const peer=[...run.coop.active()][0];
+      const sample={...peer,last:{...peer.last},ultUntil:0,castUntil:0};
+      const scene=Object.create(run);
+      scene.coop=Object.create(run.coop);
+      scene.coop.peers=new Map([[sample.id,sample]]);
+      let layouts=0;
+      const nativeNow=performance.now.bind(performance), start=nativeNow();
+      try{
+        const step=i=>{
+          scene.realTime=run.realTime+i*.3;sample.lastAt=scene.realTime;
+          performance.now=()=>start+i*300;
+          hud.update(scene);
+          inspected.env.drawUI(app.r.renderer);
+        };
+        step(1);
+        layout.refresh=function(...args){layouts++;return refresh.apply(this,args);};
+        const layer=inspected.hudLayers.find(layer=>layer.owns(hud.team));
+        window.teamUploadAudit={full:0,tile:0,canvas:layer.canvas};
+        for(let i=2;i<=13;i++){
+          sample.last.hpNow=40+i;sample.last.maxHp=100;sample.last.hp=sample.last.hpNow/100;
+          step(i);
+        }
+        return {layouts,uploads:window.teamUploadAudit.full,tiles:window.teamUploadAudit.tile,
+          tilePixels:layer.canvas.width*layer.canvas.height,screenPixels:inspected.uiCanvas.width*inspected.uiCanvas.height,
+          health:hud.mates.get(sample.id).barTx.textContent};
+      }finally{layout.refresh=refresh;delete performance.now;hud.at=originalAt;delete window.teamUploadAudit;inspected.env.invalidateUI();}
+    });
+    console.log('12 teammate HP updates',teamWork);
+    assert.equal(teamWork.health,'53/100');
+    assert.equal(teamWork.layouts,0);
+    assert.equal(teamWork.uploads,0);
+    assert.equal(teamWork.tiles,12);
+    assert.ok(teamWork.tilePixels<teamWork.screenPixels);
     // Count only visuals emitted while handling a teammate's cast.
     await Promise.all(clients.map(page=>page.evaluate(()=>{
       const {coop,vfx}=app.run;
@@ -261,6 +317,43 @@ export async function reviewCoop(browser, gamePort) {
       await Promise.all(others.map(page=>page.waitForFunction((id,name)=>
         window.peerVisuals[id+'/ultFx']>0 && app.hud.coopHud.mates.get(id)?.sub.textContent==='大招 · '+name,{},id,name)));
     }
+    // Exercise dense network traffic and simulation separately from the
+    // three SwiftShader rasterizers. The preceding battle uses normal rendering.
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      const run=app.run, enemies=run.enemies, p=run.player.pos;
+      run.player.iframes=3600;
+      app.r.render=()=>{};
+      const originalTime=run.stageTime;
+      try{
+        run.stageTime=600;
+        for(let i=0;i<200;i++){
+          const x=p.x+10+(i%20)*.2, z=p.z+Math.floor(i/20)*.3;
+          const id=enemies.spawn(52,x,z,1,1,0);
+          if(id<0)break;
+          enemies.frozen[id]=600;
+          enemies.hp[id]=750000;enemies.maxHp[id]=1000000;
+        }
+      }finally{run.stageTime=originalTime;}
+    })));
+    const crowds=await Promise.all(clients.map(async page=>{
+      const result=await page.waitForFunction(()=>{
+        const run=app.run, coop=run.coop, enemies=run.enemies;
+        const counts=[...coop.peers.values()].map(peer=>{
+          let count=0;
+          for(const id of coop.proxies.values()){
+            if(coop.pSlot[id]!==peer.slot || coop.pN[id]<3 || enemies.maxHp[id]!==1000000)continue;
+            if(run.realTime-coop.pSeen[id]>.5 || enemies.frozen[id]<=0 ||
+               Math.abs(enemies.hp[id]/enemies.maxHp[id]-.75)>.02 ||
+               !Number.isFinite(enemies.x[id]+enemies.y[id]+enemies.z[id]))continue;
+            count++;
+          }
+          return count;
+        });
+        return counts.every(count=>count>=150) && counts;
+      },{timeout:30000,polling:100});
+      return result.jsonValue();
+    }));
+    console.log('Live frozen enemies with synced HP from each peer',crowds);
     await guests[0].evaluate(()=>window.dropRelay());
     await guests[0].waitForFunction(()=>app.screen?.dataset.page==='summary' && app.meta.profile.runs[0]?.coop?.size===3);
     if(sqlTest){
@@ -275,6 +368,7 @@ export async function reviewCoop(browser, gamePort) {
   } catch(error) {
     for(const page of clients) console.error(await page.evaluate(()=>({screen:window.app?.screen?.textContent.slice(-420),state:window.app?.run?.state,
       error:window.app?.lastStartError?.message,gate:window.app?.coopRoom?.startGate?.error?.message,proxies:window.app?.run?.coop?.proxies.size,
+      end:window.app?.run?.endHow,close:window.testRelayClose,traffic:window.app?.coopRoom?.traffic,enemyCount:window.app?.run?.enemies?.count,
       peerVisuals:window.peerVisuals,skillNames:window.app?.run?.coop && [...app.run.coop.peers.values()].map(p=>[p.castName,p.ultName]),problem:window.problem})).catch(()=>null));
     throw error;
   }

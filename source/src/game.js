@@ -14404,6 +14404,7 @@ var Df = 0.4,
       let d = this.grid,
         f = (this.sepOdd ^= 1),
         p = ++this.lodFrame;
+      const proxySquashDecay = this.remotes ? Math.exp(-e * 10) : 1;
       for (let i = 0; i < this.n; i++) {
         if (!this.alive[i]) continue;
         if (this.dying[i] > 0) {
@@ -14411,7 +14412,7 @@ var Df = 0.4,
           continue;
         }
         if (this.flags[i] & 65536) {
-          this.updateProxy(i, e, a, s, o);
+          this.updateProxy(i, e, a, s, o, proxySquashDecay);
           continue;
         }
         let m = this.lodDt[i] + e,
@@ -14707,12 +14708,12 @@ var Df = 0.4,
         }
       }
     }
-    updateProxy(e, t, n, r, i) {
+    updateProxy(e, t, n, r, i, squashDecay) {
       let a = this.run,
         o = a.player;
       if (
         ((this.flash[e] = Math.max(0, this.flash[e] - t * 6)),
-        (this.squash[e] *= Math.exp(-t * 10)),
+        (this.squash[e] *= squashDecay),
         (this.atkAnim[e] = Math.max(0, this.atkAnim[e] - t)),
         !this.sized[e])
       ) {
@@ -14741,6 +14742,7 @@ var Df = 0.4,
         u = this.z[e] - i,
         d = l * l + u * u,
         f = (c + o.radius) * 0.8;
+      if (d >= (c + o.radius) ** 2) return;
       if (d < f * f && r < this.y[e] + this.hgt[e] * 0.8 && r > this.y[e] - 1) {
         let t = Math.sqrt(d),
           n = t > 0.001 ? l / t : -this.fx[e],
@@ -73878,7 +73880,9 @@ var iT = Math.PI / 180,
   zT = 11,
   BT = (e, t) => Math.max(-32768, Math.min(32767, Math.round(e * t))),
   VT = (e, t) => Math.round((Math.atan2(t, e) / (Math.PI * 2) + 1) * 256) & 255,
-  HT = (e) => (e / 256) * Math.PI * 2,
+  // The wire format carries only 32 different enemy headings.
+  enemyFacingX = Float32Array.from({length:32}, (_, i) => Math.cos(i * Math.PI / 16)),
+  enemyFacingZ = Float32Array.from({length:32}, (_, i) => Math.sin(i * Math.PI / 16)),
   UT = class {
     buf = new ArrayBuffer(65536);
     dv = new DataView(this.buf);
@@ -73947,37 +73951,33 @@ var iT = Math.PI / 180,
       }
       this.head = a;
     }
-    finish(e, t) {
-      let n = this.dv,
-        r = Math.min(e.length, t, Math.floor((this.buf.byteLength - this.head - 2 - (this.bonus ? 4 : 0)) / zT)),
-        i = this.head;
-      (n.setUint16(i, r, !0), (i += 2));
-      for (let t = 0; t < r; t++) {
-        let r = e[t];
-        (n.setUint16(i, r.key, !0),
-          (i += 2),
-          n.setInt16(i, BT(r.x, 20), !0),
-          (i += 2),
-          n.setInt16(i, BT(r.z, 20), !0),
-          (i += 2),
-          n.setInt16(i, BT(r.y, 20), !0),
-          (i += 2),
-          n.setUint8(i, Math.round(Math.max(0, Math.min(1, r.hp)) * 255)),
-          (i += 1),
-          n.setUint8(i, r.st & 255),
-          (i += 1),
-          n.setUint8(i, ((VT(r.fx, r.fz) >> 3) << 3) | (r.anim & 7)),
-          (i += 1));
+    finish(ids, coop) {
+      const view = this.dv, enemies = coop.run.enemies;
+      let i = this.head;
+      view.setUint16(i, ids.length, true);
+      i += 2;
+      for (const id of ids) {
+        const hp = enemies.hp[id] / Math.max(1e-9, enemies.maxHp[id]);
+        const anim = enemies.atkAnim[id] > 0 ? 1 : enemies.frozen[id] > 0 || enemies.sleep[id] > 0 ? 2 : 0;
+        view.setUint16(i, IT(id, enemies.gen[id]), true);
+        view.setInt16(i + 2, BT(enemies.x[id], 20), true);
+        view.setInt16(i + 4, BT(enemies.z[id], 20), true);
+        view.setInt16(i + 6, BT(enemies.y[id], 20), true);
+        view.setUint8(i + 8, Math.round(Math.max(0, Math.min(1, hp)) * 255));
+        view.setUint8(i + 9, coop.stBits(id));
+        view.setUint8(i + 10, (VT(enemies.fx[id], enemies.fz[id]) & 248) | anim);
+        i += zT;
       }
       // Optional trailer after the counted enemy records; older v2 readers
       // ignore it and older senders have no bonus to display.
-      if (this.bonus) { n.setFloat32(i,this.bonus,true); i+=4; }
-      return this.buf.slice(0, i);
+      if (this.bonus) { view.setFloat32(i,this.bonus,true); i+=4; }
+      // Both transports take ownership of the bytes during sendSnap.
+      return new Uint8Array(this.buf, 0, i);
     }
   };
-function WT(e) {
+function WT(e, offset = 0) {
   try {
-    let t = new DataView(e),
+    let t = new DataView(e, offset),
       n = 0;
     if (t.getUint8(n) !== 2) return null;
     n += 1;
@@ -74032,18 +74032,9 @@ function WT(e) {
     }
     let w = t.getUint16(n, !0);
     n += 2;
-    let T = [];
-    for (let r = 0; r < w && n + zT <= e.byteLength; r++) {
-      let e = t.getUint16(n, !0),
-        r = t.getInt16(n + 2, !0) / 20,
-        i = t.getInt16(n + 4, !0) / 20,
-        a = t.getInt16(n + 6, !0) / 20,
-        o = t.getUint8(n + 8) / 255,
-        s = t.getUint8(n + 9),
-        c = t.getUint8(n + 10);
-      (T.push({ key: e, x: r, y: a, z: i, hp: o, st: s, face: c & 248, anim: c & 7 }), (n += zT));
-    }
-    const bonus = T.length===w && e.byteLength===n+4 ? t.getFloat32(n,true) : 0;
+    const end = n + w * zT;
+    if (end > t.byteLength) return null;
+    const bonus = t.byteLength === end + 4 ? t.getFloat32(end,true) : 0;
     return ![s, c, l, o, h, g, bonus].every(Number.isFinite) || (S && !Number.isFinite(S.x + S.z))
       ? null
       : {
@@ -74069,7 +74060,7 @@ function WT(e) {
             focus: S,
           },
           boss: C,
-          enemies: T,
+          view: t, enemyStart: n, enemyEnd: end,
         };
   } catch {
     return null;
@@ -74128,6 +74119,8 @@ var GT = 15,
     peers = new Map();
     bySlot = new Map();
     writer = new UT();
+    snapshotIds = [];
+    snapshotDistances = new Float64Array(xf);
     sendT = 0;
     known = new Map();
     pSlot = new Int8Array(xf).fill(-1);
@@ -74140,7 +74133,6 @@ var GT = 15,
     pN = new Uint8Array(xf);
     pSeen = new Float64Array(xf);
     pHit = new Float64Array(xf);
-    pHp = new Float32Array(xf);
     pAnim = new Uint8Array(xf);
     proxies = new Map();
     wants = new Map();
@@ -74224,7 +74216,7 @@ var GT = 15,
       ((this.room.inRun = !0),
         (this.room.ev = {
           ctl: (e, t) => this.onCtl(e, t),
-          snap: (e, t) => this.onSnap(e, t),
+          snap: (id, bytes, offset) => this.onSnap(id, bytes, offset),
           link: (e, t) => this.onLink(e, t),
           closed: reason => {
             for (let e of this.peers.values()) this.peerGone(e);
@@ -74394,39 +74386,35 @@ var GT = 15,
       this.writer.begin(dE() - this.clock0, o, s, e.stage);
       let l = e.realTime;
       for (let t of r) {
-        let r = [],
-          i = this.known.get(t.id);
+        const ids = this.snapshotIds;
+        ids.length = 0;
+        const known = this.known.get(t.id);
         if (t.last && t.stage === e.stage) {
           let i = t.last.focus,
             a = i ? i.x : t.x,
             o = i ? i.z : t.z;
-          for (let t of n.within(a, o, qT)) {
-            let i = n.flags[t];
-            i & lE ||
-              n.parked(t) ||
-              (i & R.Capture && t === e.capture.index && e.capture.state !== `roaming`) ||
-              r.push({
-                key: IT(t, n.gen[t]),
-                x: n.x[t],
-                y: n.y[t],
-                z: n.z[t],
-                hp: n.hp[t] / Math.max(1e-9, n.maxHp[t]),
-                st: this.stBits(t),
-                fx: n.fx[t],
-                fz: n.fz[t],
-                anim: n.atkAnim[t] > 0 ? 1 : n.frozen[t] > 0 || n.sleep[t] > 0 ? 2 : 0,
-                d: (n.x[t] - a) ** 2 + (n.z[t] - o) ** 2,
-                i: t,
-              });
+          n.within(a, o, qT, ids);
+          let count = 0;
+          for (const id of ids) {
+            const flags = n.flags[id];
+            if (flags & lE || n.parked(id) ||
+                (flags & R.Capture && id === e.capture.index && e.capture.state !== 'roaming')) continue;
+            ids[count++] = id;
           }
-          r.length > KT && (r.sort((e, t) => e.d - t.d), (r.length = KT));
+          ids.length = count;
+          if (count > KT) {
+            const distance = this.snapshotDistances;
+            for (const id of ids) distance[id] = (n.x[id] - a) ** 2 + (n.z[id] - o) ** 2;
+            ids.sort((lhs, rhs) => distance[lhs] - distance[rhs]);
+            ids.length = KT;
+          }
         }
         let a = [];
-        for (let e of r) {
-          if (!i.has(e.key)) {
-            let t = e.i;
+        for (const t of ids) {
+          const key = IT(t, n.gen[t]);
+          if (!known.has(key)) {
             a.push(
-              e.key,
+              key,
               n.species[t],
               n.flags[t] & cE,
               Math.round(n.maxHp[t]),
@@ -74437,12 +74425,12 @@ var GT = 15,
               Math.round(n.z[t] * 10) / 10,
             );
           }
-          i.set(e.key, l);
+          known.set(key, l);
         }
         for (let e = 0; e < a.length; e += 1080)
           this.room.mesh.sendCtl(t.id, { t: `en`, l: a.slice(e, e + 1080) });
-        for (let [e, t] of i) l - t > tE && i.delete(e);
-        this.room.mesh.sendSnap(t.id, this.writer.finish(r, KT));
+        known.forEach((seen, key) => { if (l - seen > tE) known.delete(key); });
+        this.room.mesh.sendSnap(t.id, this.writer.finish(ids, this));
       }
     }
     stBits(e) {
@@ -74458,10 +74446,10 @@ var GT = 15,
         (t.chill[e] > 0 || t.root[e] > 0 ? PT.slow : 0)
       );
     }
-    onSnap(e, t) {
+    onSnap(e, t, offset) {
       let n = this.peers.get(e);
       if (!n || n.gone) return;
-      let r = WT(t);
+      let r = WT(t, offset);
       if (!r) return;
       if (!acceptPeerSample(n,{ts:r.ts,x:r.player.x,y:r.player.y,z:r.player.z,face:r.player.face},r.stage,dE())) return;
       n.last = r.player;
@@ -74481,36 +74469,40 @@ var GT = 15,
     }
     interpPeers() {
       const now=dE();
-      for(const peer of this.peers.values())advancePeerMotion(peer,now,this.run.realDt);
+      for(const peer of this.peers.values()){
+        advancePeerMotion(peer,now,this.run.realDt);
+        peer.proxyRenderTime = now - peer.off - peer.delay;
+      }
     }
     applyEnemies(e, t) {
       let n = this.run,
         r = n.enemies,
         i = n.realTime;
-      for (let n of t.enemies) {
-        let a = (e.slot << 12) | LT(n.key),
+      const view = t.view;
+      for (let pos = t.enemyStart; pos < t.enemyEnd; pos += zT) {
+        const key = view.getUint16(pos, true);
+        let a = (e.slot << 12) | LT(key),
           o = this.proxies.get(a);
-        if (o === void 0 || this.pKey[o] !== n.key || !r.alive[o]) {
+        if (o === void 0 || this.pKey[o] !== key || !r.alive[o]) {
           let t = this.wantAt.get(a);
           if (t === void 0) this.wantAt.set(a, i);
           else if (i - t > 0.4) {
             this.wantAt.set(a, i + 0.6);
             let t = this.wants.get(e.slot);
-            (t || this.wants.set(e.slot, (t = [])), t.push(n.key));
+            (t || this.wants.set(e.slot, (t = [])), t.push(key));
           }
           continue;
         }
-        (this.pushPos(o, t.ts, n.x, n.y, n.z),
-          (this.pSeen[o] = i),
-          (this.pHp[o] = n.hp),
-          (this.pAnim[o] = n.anim));
-        let s = HT(n.face);
-        ((r.fx[o] = Math.cos(s)),
-          (r.fz[o] = Math.sin(s)),
-          n.anim === 1 && r.atkAnim[o] <= 0 && (r.atkAnim[o] = 0.35));
-        let c = Math.max(1, n.hp * r.maxHp[o]);
+        this.pushPos(o, t.ts, view.getInt16(pos+2,true)/20, view.getInt16(pos+6,true)/20, view.getInt16(pos+4,true)/20);
+        this.pSeen[o] = i;
+        const facingAnim = view.getUint8(pos+10), facing = facingAnim >> 3;
+        this.pAnim[o] = facingAnim & 7;
+        r.fx[o] = enemyFacingX[facing];
+        r.fz[o] = enemyFacingZ[facing];
+        if (this.pAnim[o] === 1 && r.atkAnim[o] <= 0) r.atkAnim[o] = 0.35;
+        let c = Math.max(1, view.getUint8(pos+8) / 255 * r.maxHp[o]);
         r.hp[o] = i - this.pHit[o] < 0.35 ? Math.min(r.hp[o], c) : c;
-        let l = n.st,
+        let l = view.getUint8(pos+9),
           u = 0.3;
         ((r.burn[o] = l & PT.burn ? u : 0),
           (r.poison[o] = l & PT.poison ? u : 0),
@@ -74597,7 +74589,7 @@ var GT = 15,
       let i = t * QT,
         a = this.pN[t],
         o = this.pHead[t],
-        s = this.renderTs(r),
+        s = r.proxyRenderTime,
         c = o,
         l = o;
       for (let e = 1; e < a && ((l = (o + QT - e) % QT), (c = (l + 1) % QT), !(this.pT[i + l] <= s)); e++);
@@ -102048,7 +102040,14 @@ var OI = [
     v = new ti();
     at = 0;
     constructor(e) {
-      ((this.hud = e), e.append(this.team, this.down, this.portal, this.lift, this.watch));
+      this.hud = e;
+      if (window.nativeUI) {
+        // The card group can grow when a skill name changes. Give its cached
+        // subtree a fixed origin while its contents keep their natural size.
+        this.teamLayer = X('div', {'data-ui-layer':'coop-team',
+          style:{position:'absolute',left:'0',top:'0',width:'0',height:'0',overflow:'visible','pointer-events':'none'}}, this.team);
+      }
+      e.append(this.teamLayer ?? this.team, this.down, this.portal, this.lift, this.watch);
     }
     els(e) {
       let t = this.mates.get(e.id);
@@ -102113,7 +102112,8 @@ var OI = [
           (n !== `.hud-party` || r.childElementCount) &&
           (t = Math.max(t, r.getBoundingClientRect().bottom - e));
       }
-      t > 0 && (this.team.style.top = `${Math.round(t + 22)}px`);
+      const top = Math.round(t + 22) + 'px';
+      if (t > 0 && this.team.style.top !== top) this.team.style.top = top;
     }
     update(e) {
       let t = e.coop;
@@ -102132,14 +102132,17 @@ var OI = [
           f = !!l && !!(l.flags & FT.out),
           p = !!l && !!(l.flags & FT.portal);
         if (o) {
-          ((t.card.className =
-            `coop-mate` + (s.gone ? ` lost` : d ? ` down` : f ? ` out` : p ? ` portal` : ``)),
-            t.card.style.setProperty(`--hp`, String(Math.max(0, Math.min(1, l?.hp ?? 0)))),
-            (t.lvl.textContent = l ? c(`Nv. {lvl}`, { lvl: l.level }) : ``));
+          const cardClass = 'coop-mate' + (s.gone ? ' lost' : d ? ' down' : f ? ' out' : p ? ' portal' : '');
+          const hp = Math.max(0, Math.min(1, l?.hp ?? 0));
+          const width = Math.round(hp * 100) + '%';
+          const level = l ? c(`Nv. {lvl}`, { lvl: l.level }) : '';
+          if (t.card.className !== cardClass) t.card.className = cardClass;
+          if (t.card.style.getPropertyValue('--hp') !== String(hp)) t.card.style.setProperty('--hp', String(hp));
+          if (t.bar.firstChild.style.width !== width) t.bar.firstChild.style.width = width;
+          if (t.lvl.textContent !== level) t.lvl.textContent = level;
           let n = l && !s.gone ? `${ec(Math.ceil(l.hpNow))}/${ec(Math.ceil(l.maxHp))}` : ``;
-          ((t.bar.firstChild.style.width = `${Math.round(Math.max(0, Math.min(1, l?.hp ?? 0)) * 100)}%`),
-            t.barTx.textContent !== n && (t.barTx.textContent = n),
-            (t.sub.textContent = s.gone
+          if (t.barTx.textContent !== n) t.barTx.textContent = n;
+          const status = s.gone
               ? c(`Ha dejado la partida`)
               : u
                 ? c(`Sin conexión`)
@@ -102153,7 +102156,8 @@ var OI = [
                         ? '大招 · ' + s.ultName
                         : s.castStage === e.stage && s.castUntil > e.realTime
                           ? '技能 · ' + s.castName
-                          : this.distance(e, s)));
+                          : this.distance(e, s);
+          if (t.sub.textContent !== status) t.sub.textContent = status;
         }
         let m = !1;
         if (!s.gone && !u && l && !f && s.stage === e.stage && (!e.ui.portraitPeerHud || d)) {
@@ -102268,7 +102272,7 @@ var OI = [
       return n < 12 ? c(`A tu lado`) : c(`A {m} m`, { m: Math.round(n) });
     }
     destroy() {
-      (this.team.remove(), this.down.remove(), this.portal.remove(), this.lift.remove(), this.watch.remove());
+      ((this.teamLayer ?? this.team).remove(), this.down.remove(), this.portal.remove(), this.lift.remove(), this.watch.remove());
       for (let e of this.mates.values()) e.tag.remove();
     }
   },
