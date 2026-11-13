@@ -52,6 +52,20 @@ export function windFaintTile(species,elapsedMs){
   return windFaint.tiles[frames[index]];
 }
 
+export function startWindFaint(species){
+  if(rigs[species]?.word!=='风')return;
+  let lastRenderMs,elapsedMs=0;
+  return nowMs=>{
+    if(!sheets.get(windFaint.atlas.image)?.image)return;
+    if(lastRenderMs!==undefined){
+      // A missed draw may extend a pose, but must not skip its successor.
+      elapsedMs+=Math.min(windFaint.anims.faint.frameMs,Math.max(0,nowMs-lastRenderMs));
+    }
+    lastRenderMs=nowMs;
+    return windFaintTile(species,elapsedMs);
+  };
+}
+
 function transform(ctx,node,pose){
   if(!pose)return;
   const px=pose.px??node.px,py=pose.py??node.py;
@@ -89,19 +103,20 @@ export function createHeroPoseTexture(Texture,colorSpace){
   }
   function draw(rig,pose,tile){
     if(rig===previousRig&&pose===previousPose&&tile===previousTile)return;
-    ink.clearRect(0,0,size,size);
+    ctx.clearRect(0,0,size,size);
     if(tile){
       const scale=size/windFaint.canvas.h;
       const x=size*(.5+centerOffset/windFaintRenderScale)+(tile.ox-first.ox-first.w/2)*scale;
       const y=size*(1-footGap/windFaintRenderScale)+(tile.oy-first.oy-first.h)*scale;
-      ink.drawImage(sheets.get(windFaint.atlas.image).image,tile.x,tile.y,tile.w,tile.h,
-        x,y,tile.w*scale,tile.h*scale);
-    }else{
-      ctx.clearRect(0,0,size,size);
-      drawRig(rig,pose);
-      drawBattleOutline(ink,fill);
-      ink.drawImage(fill,0,0);
-    }
+      // The held pose alternates with p4 by only 1–2 source pixels. Give
+      // that upward pulse 12 more pixels on the 512px canvas, keeping its feet planted.
+      const pulse=tile===windFaint.tiles.p4?12*scale:0;
+      ctx.drawImage(sheets.get(windFaint.atlas.image).image,tile.x,tile.y,tile.w,tile.h,
+        x,y-pulse,tile.w*scale,tile.h*scale+pulse);
+    }else drawRig(rig,pose);
+    ink.clearRect(0,0,size,size);
+    drawBattleOutline(ink,fill,0,tile?windFaintRenderScale:1);
+    ink.drawImage(fill,0,0);
     texture.needsUpdate=true;
     previousRig=rig;previousPose=pose;previousTile=tile;
   }

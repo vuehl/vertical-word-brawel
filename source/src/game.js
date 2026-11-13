@@ -5,7 +5,7 @@ import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
 import {bossDistanceText} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
-import {windFaintRenderScale,windFaintTile} from './hero-poses.js';
+import {startWindFaint,windFaintRenderScale,windFaintTile} from './hero-poses.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
 import {createPlayerFootRing} from './player-foot-ring.js';
@@ -41191,7 +41191,7 @@ var mv = 30,
     sashUsed = !1;
     revives = 0;
     dead = !1;
-    faintedAt = 0;
+    windFaint;
     lastHit = null;
     sturdyUsed = !1;
     speedBoostT = 0;
@@ -43010,7 +43010,7 @@ var mv = 30,
     }
     render() {
       let e = this.run,
-        faintTile = this.dead && windFaintTile(this.speciesId,(e.realTime-this.faintedAt)*1000),
+        faintTile = this.dead && this.windFaint?.(e.realTime*1000),
         t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.heroPose??this.firePose,faintTile),
         n = this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
         r = this.animT,
@@ -75540,7 +75540,7 @@ var GT = 15,
       }
     }
     onPlayerDeath() {
-      this.player.faintedAt = this.realTime;
+      this.player.windFaint = startWindFaint(this.player.speciesId);
       if (this.coop) this.coop.onDowned();
       else if (this.regionCleared) {
         if (this.capture.canWait()) {
