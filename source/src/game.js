@@ -2,7 +2,7 @@ import {isActiveFacility} from './active-content.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
-import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, runRecordKey} from './lite-rules.js';
+import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey} from './lite-rules.js';
 import {enemyWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
@@ -65728,10 +65728,7 @@ var GS = class e {
     *populationSteps() {
       let e = this.run,
         t = e.terrain;
-      if (e.sanctuary) {
-        this.add(`boss`, 0, 0);
-        return;
-      }
+      if (e.sanctuary) return;
 
       let n = new Ol(e.seed ^ 30634),
         r = (e, r, i) => {
@@ -65927,7 +65924,7 @@ var GS = class e {
         case `boss`:
           return this.run.bossSpawned
             ? c(`El guardián ya despertó`)
-            : this.run.sanctuary ? '开启门?' : '召唤'+finalBossWord;
+            : '召唤'+finalBossWord;
         case `shrine`:
           return this.run.bossSpawned ? c(`El santuario late con fuerza`) : c(`Tocar el santuario`);
         case `portal`:
@@ -75256,7 +75253,7 @@ var GT = 15,
     async warpSanctuary() {
       this.biome.sanctuary &&
         this.stage !== 4 &&
-        ((this.stage = 3), await this.enterPortal());
+        ((this.stage = FOREST_COMBAT_ZONES), await this.enterPortal());
     }
     onBossKilled(e) {
       if (this.endless) {
@@ -75292,8 +75289,8 @@ var GT = 15,
         (this.audio.intensity = 0.3));
       let a = r || this.mode === SINGLE_STAGE
         ? c(`Entra al portal para completar el mapa`)
-        : n && this.stage === 3
-          ? c(`Se ha abierto el portal al {name}`, { name: n.name })
+        : n && this.stage === FOREST_COMBAT_ZONES
+          ? `进入传送门，迎战最终 Boss ${finalBossWord}`
           : c(`Se ha abierto un portal a la siguiente zona`);
       (this.ui.banner(c(r ? `¡Legendario derrotado!` : `¡Guardián derrotado!`), a, `#ffd23a`, {
         species: t.species[e], glyph: t.glyphWords[e],
@@ -75333,8 +75330,8 @@ var GT = 15,
       let o = t.x[e],
         s = t.z[e];
       (this.coop
-        ? this.coop.placePortal(o, s, !!n && this.stage >= 3)
-        : this.interactables.spawnPortal(o, s, !!n && this.stage >= 3),
+        ? this.coop.placePortal(o, s, !!n && this.stage >= FOREST_COMBAT_ZONES)
+        : this.interactables.spawnPortal(o, s, !!n && this.stage >= FOREST_COMBAT_ZONES),
         this.spawnChestAt(o + 3, s + 2, `free`, o, s));
       for (let e = 0; e < this.boss.roars; e++) {
         let t = (e / this.boss.roars) * Math.PI * 2 + 0.6;
@@ -75456,7 +75453,7 @@ var GT = 15,
             (this.cine.want = 0),
             (this.player.renderScale = 1),
             (this.player.flash = 0),
-            this.stage++,
+            (this.stage = this.biome.sanctuary ? (FOREST_ROUTE[this.stage] ?? this.stage + 1) : this.stage + 1),
             this.sprites.trim(3e3, uo ? 8e7 : 3e8),
             await this.buildStageAsync(!1),
             this.coop?.onStage(),
@@ -76207,6 +76204,14 @@ var GT = 15,
     }
     update(e) {
       let t = this.input;
+      // Start after loading or restoring the room, so the boss intro owns its cinematic state.
+      if (this.sanctuary && this.state === 'play' && !this.bossSpawned && !this.stageCleared && !this.coop?.pendingBoss) {
+        if (this.coop && !this.coop.isHost) {
+          // The host's summon may have arrived while this seat was loading the previous zone.
+          this.coop.reassignBoss();
+          this.coop.onBossCall(null, this.stage, 0, 0, this.coop.bossAuth);
+        } else this.spawnBoss(0, 0);
+      }
       ((this.realTime += e),
         (this.realDt = e),
         (this.fpsAcc += e),
@@ -92824,7 +92829,7 @@ function CP(e) {
     X('div',{class:'lite-partners'},...LITE_SPECIES.map(id=>X('button',{class:'lite-mon',onclick:()=>KP(e,'standard',id)},rw(id),X('b',{},k.get(id).name)))),
     X('div',{class:'lite-actions'},button('开始冒险',()=>KP(e),'red'),button('研究所',()=>_F(e)),button('设置',()=>$F(e),'ghost')),
     X('p',{class:'lite-save'},'本机存档 · '+(p.counters.runs??0)+' 局 · 星星沙子 '+p.stardust),
-    X('p',{class:'lite-note'},'三个区域 + 森林圣地｜保留原有野怪、Boss、技能与进化'),
+    X('p',{class:'lite-note'},'两个区域 + 圣地终战｜保留原有野怪、Boss、技能与进化'),
     X('div',{class:'lite-credits'},nP(()=>rI(e)))
   ));
   NN(event=>{if(event.key==='Enter')KP(e);});
@@ -95038,7 +95043,7 @@ function QP(e,t,n='standard') {
   const screen=MN(e,'lite-map',X('section',{class:'lite-panel'},
     X('div',{class:'lite-map-head'},X('div',{class:'lite-kicker'},'唯一地图 · 完整经典模式'),
       X('button',{class:'btn ghost',onclick:()=>KP(e,'standard',t)},'返回角色选择')),X('h1',{},forest.name),
-    X('p',{class:'lite-lead'},'区域 1 → 区域 2 → 区域 3 → 森林圣地'),
+    X('p',{class:'lite-lead'},'区域 1 → 区域 2 → 圣地终战'),
     X('div',{class:'lite-bosses'},...forest.guardians.map((ids,i)=>X('div',{},rw(ids[0]),X('b',{},'区域 '+(i+1)))),X('div',{},rw(forest.sanctuary.legendaries[0]),X('b',{},'森林圣地'))),
     X('p',{},'出战伙伴：'+k.get(t).name),choices,
     X('div',{class:'lite-map-foot'},status,enter)
@@ -101560,7 +101565,7 @@ var JI = class {
       let i = X(
         `div`,
         { class: `split-pop` + (r == null ? `` : r < 0 ? ` ahead` : ` behind`) },
-        X(`small`, {}, c(`Zona {n}`, { n: t })),
+        X(`small`, {}, e.sanctuary ? `圣地终战` : c(`Zona {n}`, { n: t })),
         X(`b`, {}, Xs(n)),
         r == null ? X(`em`, {}, c(`Primer tiempo`)) : X(`em`, {}, Zs(r)),
       );
@@ -101685,7 +101690,7 @@ var JI = class {
             {},
             t
               ? c(`{biome} · Combate final`, { biome: e.biome.name })
-              : c(`{biome} · Zona {n}/3`, { biome: e.biome.name, n: e.stage }),
+              : `${e.biome.name} · 区域 ${e.stage}/${e.mode === SINGLE_STAGE ? 1 : FOREST_COMBAT_ZONES}`,
           ),
           X(
             `h1`,
@@ -101815,17 +101820,16 @@ var JI = class {
         ((t.biome.dataset.k = r),
           (t.biome.textContent = e.biome.name),
           XI(t).style.setProperty(`--bc`, YC(e.biome.tex.leaf)));
-        let i = n ? 4 : 3;
+        const stages = e.mode === SINGLE_STAGE ? [1] : n ? FOREST_ROUTE : [1, 2, 3];
         ($(t.pips).append(
-          ...Array.from({ length: i }, (t, r) => {
-            let i = r + 1;
+          ...stages.map(i => {
             return X(`i`, {
               class: `${i < e.stage || (i === e.stage && e.stageCleared) ? `done` : i === e.stage ? `now` : ``}${i === 4 ? ` sanct` : ``}`,
               title: i === 4 ? n.name : c(`Zona {n}`, { n: i }),
             });
           }),
         ),
-          (t.zone.textContent = e.sanctuary ? e.sanctuary.def.name : c(`Zona {n}/3`, { n: e.stage })),
+          (t.zone.textContent = e.sanctuary ? e.sanctuary.def.name : `区域 ${e.stage}/${e.mode === SINGLE_STAGE ? 1 : FOREST_COMBAT_ZONES}`),
           (t.tier.textContent = [c(`Normal`), c(`Difícil`), c(`Pesadilla`)][e.tier]),
           (t.tier.dataset.t = String(e.tier)));
       }
@@ -102193,13 +102197,10 @@ var JI = class {
           (this.reticle.style.top = r.y + `px`));
       } else this.reticle.style.display = `none`;
       this.crosshair.style.display = e.aimMode === `manual` && e.state === `play` ? `` : `none`;
-      const gateTarget = e.sanctuary && !e.bossSpawned && !e.stageCleared
-        ? e.interactables.list.find((target) => target.kind === `boss` && !target.used) : null;
       let y = e.stageCleared ? (e.interactables.list.find((e) => e.kind === `portal`) ?? null) : null,
         bossIndex = e.boss.bossIndex,
         bossTarget = e.boss.alive ? {i:bossIndex,x:e.enemies.x[bossIndex],z:e.enemies.z[bossIndex]} : null,
         b =
-          gateTarget ??
           bossTarget ??
           e.capture.marker ??
           e.allies.marker ??
@@ -102209,10 +102210,9 @@ var JI = class {
       if (b) {
         const distance = Math.hypot(b.x - e.player.pos.x, b.z - e.player.pos.z),
           bossFlags = R.Boss | R.Alpha | R.Totem | R.Summoner,
-          markerText = gateTarget ? '门? · '+bossDistanceText(distance)
-            : b===bossTarget || (b.i!=null && (e.enemies.flags[b.i]&bossFlags)) ? bossDistanceText(distance)
+          markerText = b===bossTarget || (b.i!=null && (e.enemies.flags[b.i]&bossFlags)) ? bossDistanceText(distance)
             : c(`{n} m`, { n: Math.round(distance) });
-        let t = this.project(e, b.x, e.terrain.height(b.x, b.z) + (gateTarget ? (gateTarget.group?.userData.h ?? 6.3) + 1 : 2), b.z),
+        let t = this.project(e, b.x, e.terrain.height(b.x, b.z) + 2, b.z),
           n = innerWidth / 2,
           r = innerHeight / 2,
           i = t.x - n,
@@ -102224,8 +102224,8 @@ var JI = class {
           this.arrow.style.display = `none`;
           let r = markerText, i = this.markTag;
           ((i.style.display = ``),
-            (i.style.left = (gateTarget ? Gs(t.x, 76, innerWidth - 76) : t.x) + `px`),
-            (i.style.top = (gateTarget ? Gs(t.y, 238, innerHeight - 96) : t.y) + `px`));
+            (i.style.left = t.x + `px`),
+            (i.style.top = t.y + `px`));
           let a = i.children[0];
           a.textContent !== r && (a.textContent = r);
         } else {
@@ -102234,24 +102234,24 @@ var JI = class {
             s = e.enemies,
             l = b.i,
             u =
-              gateTarget ? sI().boss.ring : b===bossTarget ? sI().boss.ring : e.capture.marker || e.allies.marker
+              b===bossTarget ? sI().boss.ring : e.capture.marker || e.allies.marker
                 ? cI.capture
                 : e.events?.marker
                   ? cI.treasure
                   : l != null
                     ? cI.summoner
                     : sI().portal.ring,
-            d = gateTarget ? `boss` : l == null ? `portal` : `m${s.glyphWords[l]}${u}`,
+            d = l == null ? `portal` : `m${s.glyphWords[l]}${u}`,
             f = this.arrow;
           (f.dataset.k !== d &&
             ((f.dataset.k = d),
             f.style.setProperty(`--rc`, u),
             $(f.children[1]).append(
-              l == null ? pI(gateTarget ? `boss` : `portal`, 32) : fI(`portraits/${s.species[l]}.png`, u, 32, !0, s.glyphWords[l]),
+              l == null ? pI(`portal`, 32) : fI(`portraits/${s.species[l]}.png`, u, 32, !0, s.glyphWords[l]),
             )),
             (f.style.display = ``),
-            (f.style.left = (gateTarget ? Gs(n + Math.cos(t) * o, 76, innerWidth - 76) : n + Math.cos(t) * o) + `px`),
-            (f.style.top = (gateTarget ? Gs(r + Math.sin(t) * o, 238, innerHeight - 96) : r + Math.sin(t) * o) + `px`),
+            (f.style.left = (n + Math.cos(t) * o) + `px`),
+            (f.style.top = (r + Math.sin(t) * o) + `px`),
             drawCompassDial(f.children[0], t));
           let m = markerText;
           (f.children[2].textContent !== m && (f.children[2].textContent = m),
@@ -102288,8 +102288,6 @@ var JI = class {
           shroom: c(`Seta rebote`),
         };
       for (let a of e.interactables.list) {
-        // The sanctuary navigation marker already labels the unopened boss gate.
-        if (a.kind === `boss` && e.sanctuary && !e.bossSpawned) continue;
         let o = Math.hypot(a.x - t.x, a.z - t.z),
           s =
             a.kind === `meowth` ||

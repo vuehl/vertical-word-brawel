@@ -952,7 +952,6 @@ var a = [{
       guardians: [
         [finalBossSpecies],
         [finalBossSpecies],
-        [finalBossSpecies],
       ],
       totems: [
         [20, 47, 24, 17],

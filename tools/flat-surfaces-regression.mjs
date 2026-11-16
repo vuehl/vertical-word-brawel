@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,7 +44,7 @@ export async function reviewFlatSurfaces(page,dir){
     }
   }
   await page.evaluate(()=>{app.meta.profile.settings.quality='high';app.applySettings();app.run.pushLook();});
-  for(let stage=1;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE){
     if(stage>1)await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.halted=true;});
     const state=await page.evaluate(()=>{
       const r=app.run,t=r.terrain;r.player.pos.copy(t.spawn);r.camTarget.copy(r.player.pos);vfxDraw(false);
@@ -52,5 +53,5 @@ export async function reviewFlatSurfaces(page,dir){
     });assert.ok(state.flat);assert.equal(state.stage,stage);assert.deepEqual(state.camera,[42,37,Math.PI*.3]);report.stages.push(state);await shot('stage-'+stage);
   }
   fs.writeFileSync(path.join(dir,'flat-surfaces-report.json'),JSON.stringify(report,null,2)+'\n');
-  console.log(`Flat surfaces: ${report.uniformSurfaces.length} uniform pixel checks, clean paper, three presets, daylight and all four areas passed.`);
+  console.log(`Flat surfaces: ${report.uniformSurfaces.length} uniform pixel checks, clean paper, three presets, daylight and all three areas passed.`);
 }

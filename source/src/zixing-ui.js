@@ -11,7 +11,7 @@ import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {batterySaverEnabled} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
 import {characters,characterForSpecies,windRoutes} from './starter-characters.js';
-import {SINGLE_STAGE} from './lite-rules.js';
+import {SINGLE_STAGE,FOREST_COMBAT_ZONES} from './lite-rules.js';
 
 export {characters};
 const character=characterForSpecies;
@@ -326,7 +326,7 @@ export function createZixingUI(app,api) {
     hero.classList.add('zx-map-card');
     screen('map','选择关卡','02 / 03 · 经典旅程',[
       hero,
-      el('div','zx-map-summary',[text('裁切垫 · 手帐纸 · 巨型文具','zx-note'),text('3 个区域 → 圣地终战')]),
+      el('div','zx-map-summary',[text('裁切垫 · 手帐纸 · 巨型文具','zx-note'),text(`${FOREST_COMBAT_ZONES} 个区域 → 圣地终战`)]),
       profile().cloudSaveError?small('当前显示本机进度 · '+profile().cloudSaveError):null,
       row(el('b','','后续关卡'),small('等待开放')),
       el('div','zx-lock-list',[['attic','玩具阁楼'],['studio','画室奇境'],['bookshelf','书架云端']].map(([id,name],i)=>el('div','zx-lock',[mapThumbnail(i),col(small('第 0'+(i+2)+' 站'),el('b','',name),small(id in stages?'进度已解锁 · 内容待开放':'暂未开放')),icon(id in stages?'check':'lock',22)]))),
@@ -733,10 +733,10 @@ export function createZixingUI(app,api) {
   }
   function summary(run,result,reward,error) {
     const win=result.victory,amount=reward?.stardust,leave=()=>{app.setScreen(null);app.toMenu();};
-    const single=result.mode===SINGLE_STAGE,guardians=single?1:3;
+    const single=result.mode===SINGLE_STAGE,guardians=single?1:FOREST_COMBAT_ZONES;
     run.ui.hideModal();
     screen('summary','','',[
-      el('div','zx-hero',[small('桌上世界 · '+difficultyName(result)),el('div',win?'zx-banner':'zx-card',win?'破境':'未竟'),el('h2','',win?'这一程，已写成':'落字未成，再来一程'),small(win?(single?'第一区镇守已被击败':'圣地镇守已被击败'):'止步于区域 '+result.stage),row(glyph(character(result.species)),small(character(result.species).word+' · Lv.'+result.level))]),
+      el('div','zx-hero',[small('桌上世界 · '+difficultyName(result)),el('div',win?'zx-banner':'zx-card',win?'破境':'未竟'),el('h2','',win?'这一程，已写成':'落字未成，再来一程'),small(win?(single?'第一区镇守已被击败':'圣地镇守已被击败'):run.sanctuary?'止步于圣地终战':'止步于区域 '+result.stage),row(glyph(character(result.species)),small(character(result.species).word+' · Lv.'+result.level))]),
       el('div','zx-summary-grid',[[time(result.time),win?'通关时间':'生存时间'],[number(result.kills),'击败敌人'],[Math.min(guardians,result.bosses||0)+' / '+guardians,'区域镇守']].map(([v,k])=>col(el('b','',v),small(k)))),
       win&&single?card(el('b','','单关通关'),small('完整通关普通模式可解锁困难。')):
         card(el('b','',win?'新的挑战已开放':'避其锋芒'),small(win?(app.meta.biomeTier('forest')>result.tier?'桌上世界下一难度已开放。':'已完成当前桌面挑战。'):'调整走位与强化，寻找更好的出手机会。')),
@@ -794,10 +794,8 @@ export function createZixingUI(app,api) {
       const node=el('div','zx zx-intro',[el('b','',title),small(subtitle)]);
       introLayer.append(node);setTimeout(()=>node.remove(),1800);
     }
-    let sanctuaryGuidePending=false;
     hud.stageIntro=r=>{
-      sanctuaryGuidePending=!!r.sanctuary&&!r.bossSpawned&&!r.stageCleared;
-      if(!sanctuaryGuidePending)intro(paperStages[Math.min(3,r.stage-1)],'小小字灵，漫游桌上世界。');
+      if(!r.sanctuary)intro(paperStages[r.stage-1],'小小字灵，漫游桌上世界。');
     };
     hud.showEvolution=()=>intro('字意更进一步','进阶中 · 保留当前招式与强化');
     const evolve=run.startEvolution.bind(run);
@@ -942,19 +940,6 @@ export function createZixingUI(app,api) {
       health.setAttribute('aria-label','生命 '+current+' / '+maximum+(bonus?'，护盾与额外生命 '+bonus:''));
     };
     hud.hud=function(...args){
-      // Stage loading still owns the transition state when stageIntro runs.
-      // Open the guide on the first playable frame so changing zones cannot
-      // resume gameplay underneath the dialog. Essential guidance ignores banners.
-      if(sanctuaryGuidePending&&run.state==='play'&&!hud.hasModal()){
-        sanctuaryGuidePending=false;
-        if(run.sanctuary&&!run.bossSpawned&&!run.stageCleared){
-          run.state='modal';run.input.releaseLock();
-          overlay([el('span','','开启「门?」，'),el('span','','召唤最终 Boss')],paperStages[3]+' · 圣地终战',[
-            text('这里不会自动刷怪。请跟随「门?」的方向与距离标记前往地图中央。'),
-            card(el('b','','靠近「门?」并开启'),text('手机：点击「开启门?」按钮','zx-note'),text('电脑：按 E','zx-note')),
-          ],[button('知道了，前往圣地',()=>run.resume(),'primary',{'data-action':'sanctuary-guide-close'})],hud,'zx-sanctuary-guide');
-        }
-      }
       updateHealth();
       const now=performance.now();
       updatePeers?.();
@@ -977,7 +962,7 @@ export function createZixingUI(app,api) {
       original(...args);
       if(profile().settings.zxBossHealth==='percent'&&run.boss.alive){const index=run.boss.bossIndex;hud.els.bossBar.children[4].textContent=percent(Math.max(0,run.enemies.hp[index]/run.enemies.maxHp[index]));}
       const p=run.player;
-      updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+(run.mode===SINGLE_STAGE?'/1区':'/3区')));updateText(stageLabel,difficultyName(run));
+      updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'/'+(run.mode===SINGLE_STAGE?1:FOREST_COMBAT_ZONES)+'区'));updateText(stageLabel,difficultyName(run));
       stageLabel.dataset.tier=String(run.tier);
       updateText(clock,time(run.time));updateText(gold,number(run.gold));
       updateSkillSlots(skillSlots,run);

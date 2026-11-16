@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,7 +54,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     });
   }
   stages.push(await snapshot());
-  for(let stage=2;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(async()=>{const r=app.run;r.ui.hideModal();r.state='play';r.enemies.clear();await r.changeZone();});
     stages.push(await snapshot());assert.equal(stages.at(-1).stage,stage);
   }
@@ -244,10 +245,11 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     const before=path.join(dir,'loading-before.json');
     if(fs.existsSync(before)){
       const previous=JSON.parse(fs.readFileSync(before));
-      for(let i=0;i<4;i++){
-        assert.equal(stages[i].colliders,previous.stages[i].colliders,'World collider count changed');
-        assert.equal(stages[i].props,previous.stages[i].props,'World props changed');
-        for(const [id,foot] of Object.entries(stages[i].feet))if(previous.stages[i].feet[id])assert.deepEqual(foot,previous.stages[i].feet[id],'Actor collision dimensions changed: '+id);
+      for(const stage of stages){
+        const beforeStage=previous.stages.find(s=>s.stage===stage.stage);
+        assert.equal(stage.colliders,beforeStage.colliders,'World collider count changed');
+        assert.equal(stage.props,beforeStage.props,'World props changed');
+        for(const [id,foot] of Object.entries(stage.feet))if(beforeStage.feet[id])assert.deepEqual(foot,beforeStage.feet[id],'Actor collision dimensions changed: '+id);
       }
     }
   }

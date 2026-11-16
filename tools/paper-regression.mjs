@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -115,9 +116,8 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
     const r=app.run;r.state='paused';r.enemies.clear();r.projectiles.clear();r.vfx.clear();r.player.pos.set(0,0,0);r.camTarget.copy(r.player.pos);r.updateCamera(.1);
     for(const [id,x,z,flag] of [[121,3.3,-3.1,4],[96,-3.3,-5,0],[96,5,3,0],[129,-4,2,0],[130,-2,4,0],[144,0,-5.5,0],[129,3,6,0]])r.enemies.spawn(id,x,z,1,1,flag);
   });await sleep(1400);await shot('06-staged-reference-composition');
-  for(let stage=2;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';app.run.enemies.clear();await app.run.changeZone();});
-    if(stage===4)await tap('[data-action="sanctuary-guide-close"]');
     await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
     const data=await page.evaluate(()=>({stage:app.run.stage,paper:app.run.terrain.zxPaper,props:app.run.terrain.zxProps.length,yaw:app.run.camYaw,spawnClear:!app.run.terrain.hitProp(app.run.player.pos.x,.3,app.run.player.pos.z,.5),oldTerrain:!!app.run.terrain.env}));
     assert.ok(data.paper&&!data.oldTerrain&&data.spawnClear);report.stages.push(data);await shot('07-stage-'+stage);

@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -93,7 +94,7 @@ export async function reviewDeskPaint(page,dir){
     await shot('hud-'+width);
   }
   await page.setViewport({width:390,height:844,deviceScaleFactor:2});await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
-  for(let stage=1;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE){
     if(stage>1)await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.halted=true;app.run.enemies.clear();});
     const state=await page.evaluate(()=>{
       const r=app.run,t=r.terrain,counts={wood:0,paper:0,cloth:0},quadrants=Array.from({length:4},()=>({wood:0,total:0}));
@@ -112,5 +113,5 @@ export async function reviewDeskPaint(page,dir){
     report.stages.push(state);await shot('stage-'+stage);
   }
   fs.writeFileSync(path.join(dir,'desk-paint-report.json'),JSON.stringify(report,null,2)+'\n');
-  console.log('Daylight-only HUD, colored proximity lamps with monotonic pixel brightness and no stationary flicker, floor distribution in all four areas, three quality presets and phone layouts passed.');
+  console.log('Daylight-only HUD, colored proximity lamps with monotonic pixel brightness and no stationary flicker, floor distribution in all three areas, three quality presets and phone layouts passed.');
 }

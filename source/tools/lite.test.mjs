@@ -22,11 +22,11 @@ test('a new profile can roll every configured official item without a research p
  assert.ok(itemInPool(profile,'lucky-punch'));
 });
 
-test('all three forest summoning points and the sanctuary use the same final boss',()=>{
+test('both forest summoning points and the sanctuary use the same final boss',()=>{
  assert.deepEqual(roster.map(p=>p.id),[4,132,16]);
  assert.deepEqual(biomes.map(b=>b.id),['forest']);
  assert.equal(events.length,0);
- assert.deepEqual(biomes[0].guardians,[[151],[151],[151]]);
+ assert.deepEqual(biomes[0].guardians,[[151],[151]]);
  assert.deepEqual(biomes[0].sanctuary.legendaries,[151]);
  assert.equal(biomes[0].zones.length,2);
  for(const p of roster)assert.equal(p.kit.length,4);

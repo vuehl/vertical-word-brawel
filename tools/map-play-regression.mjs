@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -88,7 +89,7 @@ export async function reviewMapPlay(page,dir){
     await page.setViewport({width:390,height:844,deviceScaleFactor:1});
     await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
   }
-  for(let stage=2;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.halted=true;});
     await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
     const layout=await page.evaluate(()=>{mapPlayFrame();return mapPlayLayout();});report.stages.push(layout);
@@ -96,5 +97,5 @@ export async function reviewMapPlay(page,dir){
     assert.ok(layout.buildings.every(b=>b.inside));
   }
   fs.writeFileSync(path.join(dir,'map-play-report.json'),JSON.stringify(report,null,2));
-  console.log('Map play verified: 240-unit combat maps, all building positions, labels at three phone widths, six boundary styles, 20% larger twin track, marble kill/rewards, pause and four-stage transitions.');
+  console.log('Map play verified: 240-unit combat maps, all building positions, labels at three phone widths, six boundary styles, 20% larger twin track, marble kill/rewards, pause and area transitions.');
 }

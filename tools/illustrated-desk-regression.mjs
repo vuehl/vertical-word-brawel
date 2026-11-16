@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +14,7 @@ export async function reviewIllustratedDesk(page,dir){
       r.timers.length=0;r.anims.length=0;r.input.releaseAll();r.input.endFrame();r.weather=r.baseWeather='clear';r.weatherT=0;
       inspected.doc.querySelectorAll('.zx-intro,.run-hint,.banner').forEach(n=>n.remove());
     };
-    window.deskFrame=()=>{const r=app.run;app.r.renderer.resetState();r.updateCamera(1);r.renderWorld(0);r.vfx.update(0);r.ui.hud(r);const guide=inspected.doc.querySelector('[data-action="sanctuary-guide-close"]');if(guide)guide.click();app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);};
+    window.deskFrame=()=>{const r=app.run;app.r.renderer.resetState();r.updateCamera(1);r.renderWorld(0);r.vfx.update(0);r.ui.hud(r);app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);};
     window.deskPlace=(x,z)=>{const r=app.run,p=r.player,t=r.terrain;
       if(t.hitProp(x,t.height(x,z)+.03,z,p.radius+.1)){
         search:for(let radius=.5;radius<10;radius+=.5)for(let i=0;i<32;i++){
@@ -182,11 +183,11 @@ export async function reviewIllustratedDesk(page,dir){
     c.position.set(0,65,46);c.lookAt(0,0,0);c.updateMatrixWorld(true);r.renderWorld(0);r.vfx.update(0);app.r.render(0);
   });await page.screenshot({path:path.join(dir,'新版-桌面全景.png')});
   await page.setViewport({width:390,height:844,deviceScaleFactor:2});await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.r.camera.near=.1;app.r.camera.updateProjectionMatrix();});
-  for(let stage=2;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.halted=true;deskPrepare();});
     await page.waitForFunction(s=>app.run.stage===s&&app.run.state==='play',{timeout:90000},stage);
     await shot('区域-'+stage);await audit();
   }
   fs.writeFileSync(path.join(dir,'illustrated-desk-report.json'),JSON.stringify(report,null,2));
-  console.log('Illustrated desk: four areas, connected routes, matching collisions, actual player movement, colored outlines, 320/430 layouts verified.');
+  console.log('Illustrated desk: three areas, connected routes, matching collisions, actual player movement, colored outlines, 320/430 layouts verified.');
 }

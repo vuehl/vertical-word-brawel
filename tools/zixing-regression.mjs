@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -334,7 +335,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         },species);
         await page.waitForFunction(species=>app.run.player.speciesId===species&&app.run.time>1&&app.run.state==='play',{timeout:90000},species);
         const stages=[];
-        for(let stage=1;stage<=4;stage++){
+        for(const stage of FOREST_ROUTE){
           if(stage>1)await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();});
           await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
           await snapshot('forest-'+species+'-stage-'+stage);

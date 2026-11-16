@@ -13,7 +13,7 @@ const bounded=(value,max)=>Math.max(0,Math.min(max,Number.isFinite(Number(value)
 const time=seconds=>Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0');
 
 export function seekWave(run,seconds){
-  if(run.stage>3||run.sanctuary||run.endless||run.tower)throw Error('时间跳转仅用于普通三区。');
+  if(run.stage>2||run.sanctuary||run.endless||run.tower)throw Error('时间跳转仅用于普通战斗区域。');
   seconds=bounded(seconds,600);
   const old=run.stageTime,Director=run.director.constructor;
   // Rebuild card draws at their authored times. Encounter restoration happens

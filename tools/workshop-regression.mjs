@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -86,12 +87,12 @@ export async function reviewWorkshop(page,dir){
     assert.equal(p.switches,0);assert.ok(p.x>=0&&p.r<=w+1&&p.b<=h);await shot('hud-layout-'+w);
   }
   report.stages=[];
-  for(let stage=2;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.halted=true;});await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
     await page.evaluate(async()=>{await Promise.all(app.run.terrain.paperAssets.photoJobs);});
     await frame();const s=await page.evaluate(()=>{let activeLights=0;app.r.scene.traverse(o=>{if(o.isPointLight)activeLights++;});return {stage:app.run.stage,daylight:app.run.terrain.workshopLighting==='daylight',lights:app.run.terrain.workshopPointLights.length,activeLights,clear:!app.run.terrain.hitProp(app.run.player.pos.x,.3,app.run.player.pos.z,.6)};});
     assert.ok(s.daylight&&s.clear);assert.equal(s.lights,4);assert.equal(s.activeLights,4,'Outgoing room lights must be removed');report.stages.push(s);
   }
   fs.writeFileSync(path.join(dir,'workshop-report.json'),JSON.stringify(report,null,2)+'\n');
-  console.log('Workshop verified: daylight-only HUD, lit materials, four local lights, indoor boundary, 320/430 layouts and all four areas.');
+  console.log('Workshop verified: daylight-only HUD, lit materials, four local lights, indoor boundary, 320/430 layouts and all three areas.');
 }

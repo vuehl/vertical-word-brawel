@@ -2,6 +2,9 @@
 import {starterSpecies,starterWords as heroWords} from './starter-characters.js';
 export const LITE_SPECIES = starterSpecies;
 export const LITE_BIOME = 'forest';
+// Stage 4 identifies the sanctuary in scenery, saved runs and co-op messages.
+export const FOREST_ROUTE = Object.freeze([1, 2, 4]);
+export const FOREST_COMBAT_ZONES = FOREST_ROUTE.length - 1;
 export const SINGLE_STAGE = 'single-stage';
 export const runRecordKey = run => run.biome + '-' + (run.mode === SINGLE_STAGE ? SINGLE_STAGE : (run.tier ?? 0));
 export const isLiteSpecies = id => LITE_SPECIES.includes(Number(id));

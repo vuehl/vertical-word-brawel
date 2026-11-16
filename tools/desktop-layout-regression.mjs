@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -384,7 +385,7 @@ export async function reviewDesktopLayout(page,dir){
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.evaluate(()=>{app.run.terrain.workshopForegroundLights.debugShowAll=false;app.r.camera.near=desktopSavedNear;app.r.camera.updateProjectionMatrix();window.dispatchEvent(new Event('resize'));});
   report.foregroundDisposal=[];
-  for(let stage=2;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(()=>{
       const f=app.run.terrain.workshopForegroundLights;window.desktopOutgoingForeground=f;
       window.desktopDisposeEvents=[];
@@ -401,5 +402,5 @@ export async function reviewDesktopLayout(page,dir){
     const s=await page.evaluate(()=>desktopState());checkStage(s);report.stages.push(s);
   }
   fs.writeFileSync(path.join(dir,'desktop-layout-report.json'),JSON.stringify(report,null,2)+'\n');
-  console.log('Desktop verified: two lightweight fixed-world light routes, original scale, real projection/parallax pixel evidence, proximity fading and cleanup, ground traversal and four areas.');
+  console.log('Desktop verified: two lightweight fixed-world light routes, original scale, real projection/parallax pixel evidence, proximity fading and cleanup, ground traversal and three areas.');
 }

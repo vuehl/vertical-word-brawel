@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -451,7 +452,7 @@ async function verifyStartup(){
       },species);
       await page.waitForFunction(species=>app.run.player.speciesId===species&&app.run.time>1,{timeout:60000},species);
       const stages=[];
-      for(let stage=1;stage<=4;stage++){
+      for(const stage of FOREST_ROUTE){
         if(stage>1)await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();});
         await page.waitForFunction(stage=>app.run.stage===stage,{timeout:60000},stage);
         await sleep(1500);
@@ -470,7 +471,7 @@ async function verifyStartup(){
       report.push({species,stages,settlement});
     }
     fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
-    console.log('Three original partners, all four forest stages and native file settlement verified');
+    console.log('Three original partners, all forest stages and native file settlement verified');
   }
   const missing=await page.evaluate(()=>[...missingAssets]);if(missing.length)throw Error('Missing local assets: '+missing.join(', '));
   if(errors.length)throw Error(errors[0]);

@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -99,7 +100,7 @@ export async function reviewLighting(page,dir){
     await page.setViewport({width,height,deviceScaleFactor:2});await page.evaluate(()=>window.dispatchEvent(new Event('resize')));await draw(0,5,true);await shot('phone-'+width);
   }
   await page.setViewport({width:390,height:844,deviceScaleFactor:2});await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
-  for(let stage=1;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE){
     if(stage>1)await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.halted=true;app.run.enemies.clear();});
     await draw();
     const state=await page.evaluate(()=>{const r=app.run,t=r.terrain;let points=0;app.r.scene.traverse(o=>{if(o.isPointLight)points++;});return {stage:r.stage,shadows:app.r.renderer.shadowMap.enabled,casters:t.group.children.filter(m=>m.castShadow).length,points,clear:!t.hitProp(t.spawn.x,.3,t.spawn.z,.6)};});
@@ -108,5 +109,5 @@ export async function reviewLighting(page,dir){
   report.disposal=await page.evaluate(()=>{const sun=app.r.sun;app.run.dispose();app.run=null;return {casts:sun.castShadow,mapReleased:sun.shadow.map===null,target:sun.target.position.toArray(),enabled:app.r.renderer.shadowMap.enabled};});
   assert.deepEqual(report.disposal,{casts:false,mapReleased:true,target:[0,0,0],enabled:false});
   fs.writeFileSync(path.join(dir,'lighting-report.json'),JSON.stringify(report,null,2)+'\n');
-  console.log('Warm light / cool shade pixels, real projected shadows, three quality presets, three phone widths and four areas passed.');
+  console.log('Warm light / cool shade pixels, real projected shadows, three quality presets, three phone widths and three areas passed.');
 }

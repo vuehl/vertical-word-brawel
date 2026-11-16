@@ -548,7 +548,7 @@ export async function reviewCoop(browser, gamePort) {
     await returning.waitForFunction(()=>app.run.boss.alive && app.run.coop.monsters.bossPose,{timeout:25000});
     // Enter the final sanctuary through the game's normal zone builder.
     await Promise.all(clients.map(page=>page.evaluate(async()=>{
-      const r=app.run;r.stage=3;await r.coopAdvance(false);
+      const r=app.run;r.stage=2;await r.coopAdvance(false);
       r.player.iframes=3600;r.queueLevelUp=()=>{};app.r.render=()=>{};
     })));
     await Promise.all(clients.map(page=>page.evaluate(()=>{
@@ -557,7 +557,6 @@ export async function reviewCoop(browser, gamePort) {
       r.update=dt=>{if(r.state==='modal')r.resume();return update(dt);};
       r.pendingLevels=0;r.pendingBlessings.length=0;r.player.iframes=3600;
     })));
-    await host.evaluate(()=>app.run.spawnBoss(0,8));
     await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run.stage===4 && app.run.boss.kit &&
       app.run.coop.monsters.completedTurn>0 && app.run.boss.roomAim,{timeout:45000})));
     // The original health gates trigger both phase transitions. Inject only

@@ -6,7 +6,7 @@ const removed=['cursed','greed','porygon','snorlax','cage','rock','challenge','f
 const retained=['boss','altar','bill','nest','ditto','magnet','freechest','berry','chest'];
 
 // Exercise the compiled game, including dynamic placement and real NPC callbacks.
-export async function reviewScenes({page,tap,resize,dir,sleep}) {
+export async function reviewScenes({page,tap,dir,sleep}) {
   const report={mode:'Compiled WeChat bundle in Chrome fixture. Controlled zone traversal and isolated NPC transactions, not a natural playthrough or phone test.',removed,stages:[]};
   const shot=async name=>{await sleep(400);await page.screenshot({path:path.join(dir,name+'.png')});};
   await tap('[data-action="journey"]');
@@ -55,38 +55,11 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
   assert.deepEqual(await page.evaluate(()=>app.run.diff),singleDiff);
   await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;app.run.hints.show=()=>{};});
 
-  for(let stage=1;stage<=4;stage++) {
-    if(stage>1) {
-      if(stage===4)await page.evaluate(()=>{app.meta.profile.settings.showBanners=false;});
-      await page.evaluate(async stage=>{
-        const r=app.run;r.ui.hideModal();r.state='play';
-        if(stage===2){
-          await r.enterPortal();
-          if(r.stage===1&&r.state==='play')await r.enterPortal();
-        }
-        else await r.changeZone();
-      },stage);
-      await page.waitForFunction(stage=>app.run.stage===stage&&(stage===4
-        ?app.run.state==='modal'&&!!inspected.doc.querySelector('.zx-sanctuary-guide')
-        :app.run.state==='play'),{timeout:90000},stage);
-      if(stage===4){
-        const before=await page.evaluate(()=>({time:app.run.stageTime,text:app.run.ui.modalEl.textContent}));
-        assert.match(before.text,/开启「门\?」，召唤最终 Boss/);
-        assert.match(before.text,/地图中央/);
-        for(const [width,height] of [[320,568],[390,844],[430,932]]){
-          await resize(width,height);await shot('sanctuary-guide-'+width);
-          const visible=await page.evaluate(()=>[...inspected.doc.querySelectorAll('.zx-sanctuary-guide h2,.zx-sanctuary-guide p,.zx-sanctuary-guide button')].every(el=>{
-            const b=inspected.layout.box(el);return b&&b.w>0&&b.h>0&&b.x>=b.clip.x-1&&b.y>=b.clip.y-1&&b.x+b.w<=b.clip.r+1&&b.y+b.h<=b.clip.b+1;
-          }));
-          assert.ok(visible,'Sanctuary instructions and acknowledgement fit on '+width);
-        }
-        assert.equal(await page.evaluate(()=>app.run.stageTime),before.time,'Guide pauses the simulation');
-        await tap('[data-action="sanctuary-guide-close"]');
-        assert.equal(await page.evaluate(()=>app.run.state),'play');
-        await resize(390,844);
-        report.sanctuaryGuide={text:before.text,paused:true,visibleWidths:[320,390,430],bannersDisabled:true};
-      }
-    }
+  for(const stage of [1,2,4]) {
+    await page.waitForFunction(stage=>{
+      const r=app.run;
+      return r?.stage===stage && r.state==='play' && (stage!==4 || r.boss.alive);
+    },{timeout:90000},stage);
     const inventory=await page.evaluate(removed=>{
       const r=app.run,interactions=r.interactables;r.state='paused';
       const counts={};for(const o of interactions.list)counts[o.kind]=(counts[o.kind]||0)+1;
@@ -98,8 +71,8 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
     assert.equal(inventory.rejected,true,'Removed types must not be recreated through any placement API');
     assert.deepEqual(inventory.after,inventory.before,'Rejected objects must not reserve terrain or add invisible meshes');
     for(const kind of removed){assert.equal(inventory.counts[kind]||0,0,kind+' must not spawn');assert.ok(!inventory.markers.includes(kind));}
-    assert.deepEqual(Object.keys(inventory.counts).sort(),(stage<=3?retained:['boss']).slice().sort());
-    if(stage<=3)assert.equal(inventory.counts.ditto,1);
+    assert.deepEqual(Object.keys(inventory.counts).sort(),(stage===4?[]:retained).slice().sort());
+    if(stage!==4)assert.equal(inventory.counts.ditto,1);
     report.stages.push(inventory);
     console.log('Scene inventory',stage,JSON.stringify(inventory.counts));
     await shot('scene-zone-'+stage);
@@ -129,47 +102,44 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
       report.copied=copied;
       await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});
     }
-    if(stage===1||stage===3) {
-      const portal=await page.evaluate(()=>{
-        const r=app.run,o=r.interactables.spawnPortal(30,30,r.stage===3);
-        return {kind:o.kind,sanct:!!o.data.sanct,marked:r.interactables.markers().some(m=>m.kind==='portal')};
-      });
-      assert.deepEqual(portal,{kind:'portal',sanct:stage===3,marked:true});
-      (report.portals??=[]).push(portal);
-    }
-    if(stage===4) {
-      report.sanctuaryNavigation=[];
-      for(const z of [39,24,4.8]){
-        await page.evaluate(z=>{
-          const r=app.run;r.state='play';r.player.pos.set(0,r.terrain.surface(0,z),z);r.player.vel.set(0,0,0);
-        },z);
-        const handle=await page.waitForFunction(near=>{
-          const r=app.run,h=r.ui,shrine=r.interactables.list.find(o=>o.kind==='boss');
-          const distance=Number(Math.hypot(r.player.pos.x-shrine.x,r.player.pos.z-shrine.z).toFixed(2));
-          const tag=[h.markTag,h.arrow].find(el=>el.style.display!=='none'&&el.textContent.includes('门? · '+distance+' 厘米'));
-          return tag&&(!near||h.touch.actText?.includes('开启门?'))?{distance,text:tag.textContent,visible:true,kind:h.arrow.dataset.k,prompt:h.touch.actText}:false;
-        },{timeout:15000},z<5);
-        const marker=await handle.jsonValue();await handle.dispose();
-        report.sanctuaryNavigation.push(marker);
-        await shot('sanctuary-distance-'+z);
-      }
-      assert.ok(report.sanctuaryNavigation[0].distance>report.sanctuaryNavigation[1].distance);
-      assert.match(report.sanctuaryNavigation.at(-1).prompt,/开启门\?/);
-      await tap('.tc-act','开启门?');
-      await page.waitForFunction(()=>app.run.bossSpawned&&app.run.boss.alive,{timeout:15000});
-      await sleep(300);
-      assert.equal(await page.evaluate(()=>{
-        const h=app.run.ui;return [h.arrow,h.markTag].some(el=>el.style.display!=='none'&&el.textContent.includes('门? ·'));
-      }),false,'Shrine navigation ends after summoning');
-      assert.equal(await page.evaluate(()=>!!inspected.doc.querySelector('.zx-sanctuary-guide')),false);
-      await shot('sanctuary-boss-summoned');
+    const area=await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-area').textContent);
+    assert.match(area,stage===4?/星灯书庭.*圣地/:new RegExp(stage+'/2区'));
+    if(stage===4){
       report.sanctuary=await page.evaluate(()=>{
         const s=app.run.sanctuary;s.onPhase(2);s.onPhase(3);
         return {roots:s.roots.length,brambles:s.brambles.length,columns:s.covers.filter(c=>c.kind==='column').length};
       });
-      assert.ok(report.sanctuary.roots>0&&report.sanctuary.brambles>0&&report.sanctuary.columns>0,'Sanctuary cover and phase mechanics must remain');
+      assert.ok(report.sanctuary.roots && report.sanctuary.brambles && report.sanctuary.columns);
+    } else {
+      await page.evaluate(()=>{
+        const r=app.run;r.state='play';
+        r.interactables.interact(r.interactables.list.find(o=>o.kind==='boss'));
+      });
+      await playing();
     }
+    const defeated=await page.evaluate(()=>{
+      const r=app.run;
+      const name=r.boss.name,final=!!r.boss.kit;
+      const bossCount=Array.from(r.enemies.flags.subarray(0,r.enemies.n)).filter((flag,i)=>
+        (flag&4) && r.enemies.isAlive(i)).length;
+      r.state='play';r.combat.killEnemy(r.boss.bossIndex,{type:'normal'});
+      const portals=r.interactables.list.filter(o=>o.kind==='portal');
+      return {name,final,bossCount,portals:portals.length,sanct:portals[0]?.data.sanct,cleared:r.stageCleared,
+        bosses:r.stats.bosses,legendaries:r.stats.legendaries};
+    });
+    assert.deepEqual(defeated,{name:'龘',final:stage===4,bossCount:1,portals:1,sanct:stage!==1,cleared:true,
+      bosses:stage===4?3:stage,legendaries:stage===4?1:0});
+    (report.defeats??=[]).push(defeated);
+    await page.evaluate(()=>{
+      const r=app.run,portal=r.interactables.list.find(o=>o.kind==='portal');
+      // Confirm any remaining rewards or capture opportunity using the normal portal interaction.
+      for(let i=0;i<4&&r.state==='play';i++)r.interactables.interact(portal);
+    });
   }
+  await page.waitForFunction(()=>!!inspected.doc.querySelector('.zx-summary'),{timeout:30000});
+  const result=await page.evaluate(()=>({run:app.meta.profile.runs[0],text:app.screen.textContent}));
+  assert.ok(result.run.victory);assert.equal(result.run.splits.length,3);
+  assert.match(result.text,/2 \/ 2/);
   fs.writeFileSync(path.join(dir,'scene-regression.json'),JSON.stringify(report,null,2));
-  console.log('Scene removal regression passed: four zones, official facility pools, item copying and portals.');
+  console.log('Scene removal regression passed: two combat zones, automatic final boss, victory, official facility pools, item copying and portals.');
 }

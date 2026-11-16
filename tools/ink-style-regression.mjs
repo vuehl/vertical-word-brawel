@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,7 +44,7 @@ export async function reviewInkStyle(page,dir,moves){
     assert.ok(state.count<=state.limit&&state.particles<=state.max&&state.paused&&state.hidden&&state.cleared);report.budgets.push(state);
   }
   for(const [width,height] of [[320,568],[390,844],[430,932]]){await page.setViewport({width,height,deviceScaleFactor:2});await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));vfxSetup();vfxDraw();});await shot('phone-'+width);}
-  for(let stage=1;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE){
     if(stage>1)await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();app.halted=true;});
     const state=await page.evaluate(()=>{const r=app.run,t=r.terrain;r.pushLook();r.player.pos.copy(t.spawn);r.camTarget.copy(r.player.pos);vfxDraw(false);return {stage:r.stage,spawnFree:!t.hitProp(t.spawn.x,.3,t.spawn.z,.6),inkBatches:t.group.children.filter(m=>m.name==='painted-prop-contour').length,lights:t.workshopPointLights.length,finite:t.group.children.filter(m=>m.isInstancedMesh).every(m=>Array.from(m.instanceMatrix.array).every(Number.isFinite)),props:t.zxProps.length};});
     assert.equal(state.stage,stage);assert.ok(state.spawnFree&&state.inkBatches>0&&state.finite);assert.equal(state.lights,4);report.stages.push(state);await shot('stage-'+stage);
