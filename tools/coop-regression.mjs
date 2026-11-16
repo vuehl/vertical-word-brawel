@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {RelayRoom} from '../source/src/multiplayer.js';
-import {multiplayerConfig} from '../source/src/multiplayer-config.js';
+import {multiplayerConfig,roomShareImage} from '../source/src/multiplayer-config.js';
 import {cloudSocket} from '../platform/cloud-coop.mjs';
 
 export async function reviewCoop(browser, gamePort) {
@@ -178,6 +178,12 @@ export async function reviewCoop(browser, gamePort) {
         await click(page,'分享房间号');
         const card=await page.evaluate(()=>window.sharedCard);
         assert.ok(card.title.includes(code));
+        if(roomShareImage.imageUrlId && roomShareImage.imageUrl){
+          assert.equal(card.imageUrlId,roomShareImage.imageUrlId);
+          assert.equal(card.imageUrl,roomShareImage.imageUrl);
+        }else{
+          assert.ok(!('imageUrlId' in card) && !('imageUrl' in card));
+        }
         cardQuery=Object.fromEntries(new URLSearchParams(card.query));
         assert.deepEqual(cardQuery,{roomCode:code});
       }else{

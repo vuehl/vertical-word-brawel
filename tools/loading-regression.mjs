@@ -3,6 +3,46 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Delay acknowledgements at the transport boundary while the actual room UI is active.
+export async function reviewNetworkActions({page,tap}) {
+  await tap('[data-action="multiplayer"]');
+  await page.evaluate(()=>{
+    inspected.env.createCoopSocket=callbacks=>{
+      setTimeout(()=>callbacks.open(),0);
+      const room={code:'123456',host:'me',state:'lobby',members:[{id:'me',species:4,ready:false}]};
+      return {close(){},send(json){
+        const message=JSON.parse(json);
+        if(message.op==='ready')room.members[0].ready=message.ready;
+        window.ackRoom=()=>callbacks.message(JSON.stringify({op:'reply',id:message.id,me:'me',room}));
+        return true;
+      }};
+    };
+  });
+  for(const [label,message] of [['创建房间','正在创建房间'],['准备','正在更新准备状态'],['离开房间','正在离开房间']]){
+    await tap('.zx-footer button',label);
+    assert.equal(await page.evaluate(()=>app.screen.querySelector('[role="status"]')?.textContent),message);
+    await page.evaluate(()=>ackRoom());
+    await page.waitForFunction(()=>!app.screen.querySelector('[role="status"]'));
+  }
+  await tap('.zx-footer button','返回首页');
+  await tap('[data-action="journey"]');
+  await tap('.zx-footer button','选择关卡');
+  await tap('.zx-footer button','选择难度');
+  await tap('[data-action="enter"]');
+  await page.waitForFunction(()=>app.run?.state==='play' && !app.screen,{timeout:90000});
+  await page.evaluate(()=>{
+    const finish=app.backend.finishRun.bind(app.backend);
+    app.backend.finishRun=(...args)=>new Promise(resolve=>{window.ackFinish=()=>resolve(finish(...args));});
+    app.run.finish(false);
+  });
+  assert.equal(await page.evaluate(()=>app.screen.querySelector('[role="status"]')?.textContent),'正在保存本局战绩与星尘');
+  await page.waitForFunction(()=>typeof ackFinish==='function');
+  await page.evaluate(()=>ackFinish());
+  await page.waitForFunction(()=>app.screen?.dataset.page==='summary');
+  assert.match(await page.evaluate(()=>app.screen.textContent),/星尘 \+/);
+  console.log('Room requests and settlement displayed loading until acknowledged');
+}
+
 // Run the real packaged game through entry, every forest area and a restart.
 // Desktop timings are diagnostics, never an estimate of iPhone frame rates.
 export async function reviewLoading({page,tap,resize,dir,sleep}) {

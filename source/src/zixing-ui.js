@@ -124,6 +124,48 @@ function button(label,action,kind='',attrs={}) {
   return node;
 }
 const link=(label,action)=>button(label,action,'zx-link');
+// Paint the turning paper directly so the WeChat canvas and browser share the animation.
+function requestIndicator(message,compact=false) {
+  const art=el('canvas','zx-request-art',[],{width:240,height:152,'aria-hidden':true});
+  const status=el('div','zx-request-status'+(compact?' compact':''),[art,el('b','',message)],{role:'status'});
+  const ctx=art.getContext('2d');
+  function pageEdge(direction,width,lift,fill) {
+    ctx.beginPath();ctx.moveTo(60,30);
+    ctx.quadraticCurveTo(60+direction*width*.48,20-lift,60+direction*width,27-lift);
+    ctx.lineTo(60+direction*width,57-lift);
+    ctx.quadraticCurveTo(60+direction*width*.48,51-lift,60,61);
+    ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.stroke();
+  }
+  function draw(){
+    const phase=(Date.now()%1600)/1600,turn=Math.cos(phase*Math.PI);
+    ctx.setTransform(2,0,0,2,0,0);ctx.clearRect(0,0,120,76);
+    ctx.fillStyle='#dde3d5';ctx.beginPath();ctx.ellipse(60,65,45,4,0,0,2*Math.PI);ctx.fill();
+    ctx.lineJoin='round';ctx.lineWidth=1.7;ctx.strokeStyle='#495b59';
+    for(const side of [-1,1]){
+      ctx.save();ctx.translate(0,4);pageEdge(side,42,0,'#94b4ab');ctx.restore();
+      pageEdge(side,38,0,'#fff9e6');
+      ctx.strokeStyle='#c7c8ad';
+      for(const y of [36,42,48]){
+        ctx.beginPath();ctx.moveTo(60+side*8,y);ctx.quadraticCurveTo(60+side*21,y-5,60+side*30,y-3);ctx.stroke();
+      }
+      ctx.strokeStyle='#495b59';
+    }
+    pageEdge(Math.sign(turn),Math.abs(turn)*37,13*Math.sin(phase*Math.PI),turn>0?'#fff6d8':'#f0e5c5');
+    for(const [x,y,offset] of [[20,17,0],[95,12,.32],[105,23,.64]]){
+      const r=2.5+1.6*Math.sin(2*Math.PI*(phase+offset));
+      ctx.fillStyle='#c09b50';ctx.beginPath();ctx.moveTo(x,y-r*1.4);ctx.lineTo(x+r,y);
+      ctx.lineTo(x,y+r*1.4);ctx.lineTo(x-r,y);ctx.closePath();ctx.fill();
+    }
+  }
+  draw();
+  function tick(){
+    if(!art.isConnected)return;
+    if(!document.hidden)draw();
+    setTimeout(tick,80);
+  }
+  setTimeout(tick,80);
+  return status;
+}
 function tabs(labels,index,change,kind='') {
   return el('div','zx-tabs '+kind,labels.map((label,i)=>el('button','zx-tab'+(index===i?' on':''),label,
     {type:'button','aria-pressed':index===i,onclick:()=>change(i)})));
@@ -144,7 +186,7 @@ export function createZixingUI(app,api) {
   const goBack=()=>returnTo?returnTo():home();
   function screen(name,title,subtitle,body,actions=[],color='') {
     const node=el('section','screen zx zx-'+name,[],{'data-page':name,'data-fullscreen':'true'});
-    if(title)node.append(el('header','zx-header '+color,[el('h1','',title),el('small','',subtitle)]));
+    if(title)node.append(el('header','zx-header '+color,[el('h1','',title),subtitle?el('small','',subtitle):null]));
     node.append(el('div','zx-body',body));
     if(actions.length)node.append(el('footer','zx-footer',actions));
     app.setScreen(node);return node;
@@ -153,6 +195,30 @@ export function createZixingUI(app,api) {
     if(profile())return;
     if(!authPromise)authPromise=(async()=>{const account=await app.backend.guest();await app.meta.load(account);app.applySettings();})().finally(()=>{authPromise=null;});
     return authPromise;
+  }
+  function pendingScreen(title,message,back) {
+    const node=screen('request',title,'',[requestIndicator(message)],back?[button('返回',back)]:[]);
+    node.classList.add('zx-request-page');
+    return node;
+  }
+  async function loadPage(title,message,load,show,back) {
+    const node=pendingScreen(title,message,back);
+    try {
+      await load();
+    }catch(error){
+      if(app.screen===node)screen('request-error',title,'',[card(text(error.message||'读取失败，请重试。'))],[
+        button('重试',()=>loadPage(title,message,load,show,back),'primary'),button('返回',back)
+      ]);
+      return;
+    }
+    if(app.screen===node)show();
+  }
+  function openProfilePage(title,show) {
+    if(profile())return show();
+    return loadPage(title,'正在读取存档',ready,show,home);
+  }
+  function openLab() {
+    return loadPage('研究所','正在读取星尘与研究进度',()=>profile()?app.meta.resync(true):ready(),lab,home);
   }
   const invites=window.roomInvites;
   let checkedSeat=false,joinLobbyInvite=null;
@@ -183,31 +249,31 @@ export function createZixingUI(app,api) {
     const root=screen('home','','',[
       el('div','zx-home-copy',[el('h2','','从一个字开始'),text('走位避险，自动出招。'),text('在五行之间，写下你的这一局。')]),
       el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
-      button([el('span','','开始旅程'),el('span','','→')],async()=>{await ready();if(app.screen===root)choose();},'primary zx-home-start',{'data-action':'journey'}),
-      button('多人联机',async()=>{await ready();if(app.screen===root)multiplayer();},'zx-home-coop',{'data-action':'multiplayer'}),
-      button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),async()=>{await ready();await app.meta.resync();if(app.screen===root)lab();},'purple zx-home-lab',{'data-action':'lab'}),
+      button([el('span','','开始旅程'),el('span','','→')],()=>openProfilePage('选择文字',choose),'primary zx-home-start',{'data-action':'journey'}),
+      button('多人联机',()=>openProfilePage('多人联机',multiplayer),'zx-home-coop',{'data-action':'multiplayer'}),
+      button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),openLab,'purple zx-home-lab',{'data-action':'lab'}),
       el('div','zx-home-foot',button([icon('book',16,'#61567b'),el('span','','玩法说明')],()=>help(),'zx-plain')),
     ]);
     const body=root.querySelector('.zx-body');body.classList.add('zx-home-body');
     const art=el('div','zx-home-art',homeArt());
-    root.replaceChildren(el('div','zx-home-top',row(button(icon('settings',21,'#382c4e'),async()=>{await ready();if(app.screen===root)settings();},'zx-gear',{'aria-label':'设置'}))),el('div','zx-home-scroll',[art,body]));
+    root.replaceChildren(el('div','zx-home-top',row(button(icon('settings',21,'#382c4e'),()=>openProfilePage('设置',settings),'zx-gear',{'aria-label':'设置'}))),el('div','zx-home-scroll',[art,body]));
   }
   function multiplayer(resume=savedSeat()) {
-    let room=null, view=null, busy=false, starting=false, status='', joiningCode='';
+    let room=null, view=null, busy=false, starting=false, status='', pending='', joiningCode='';
     let pick=characters.find(c=>c.id===selected)?.id || 4;
-    async function perform(fn) {
+    async function perform(fn,message='') {
       if(busy || starting)return;
       busy=true;
-      if(status){status='';render();}
+      status='';pending=message;render();
       try { await fn(); }
       catch(error) { status=error.message || error.errMsg || String(error); }
       finally {
-        joiningCode='';busy=false;
+        joiningCode='';busy=false;if(!starting)pending='';
         if(!starting && view.node===app.screen){render();joinInvite();}
       }
     }
-    function action(label,fn,kind='') {
-      return button(label,()=>perform(fn),kind);
+    function action(label,fn,kind='',message='') {
+      return button(label,()=>perform(fn,message),kind);
     }
     function joinInvite(){
       const code=invites?.code;
@@ -224,7 +290,7 @@ export function createZixingUI(app,api) {
       if(code===null)return;
       if(join && !/^\d{6}$/.test(code))throw Error('请输入完整的六位房间号');
       joiningCode=code;
-      status=restore?'正在重连原房间…':join?'正在加入房间…':'正在创建房间…';render();
+      pending=restore?'正在重连原房间':join?'正在加入房间':'正在创建房间';render();
       await ready();
       const options={code,species:pick,name:app.meta.account?.name || '伙伴',factory:window.createCoopSocket};
       let next;
@@ -259,6 +325,7 @@ export function createZixingUI(app,api) {
         start:async state=>{
           if(starting)return;
           starting=true;
+          pending='正在同步队伍进度';render();
           const session=room;
           try {
             if(!profile().starter)await app.meta.chooseStarter(session.mine.species);
@@ -270,7 +337,7 @@ export function createZixingUI(app,api) {
           } catch(error) {
             if(session.returning){session.end(error.message,false);resume=savedSeat();}
             else {session.cancelStart(error.message);forgetSeat(session.me);await session.leave();}
-            room=null;app.coopRoom=null;starting=false;status=error.message;render();
+            room=null;app.coopRoom=null;starting=false;pending='';status=error.message;render();
           }
         },
       };
@@ -286,21 +353,28 @@ export function createZixingUI(app,api) {
         choices=characters.map(c=>action(c.word,async()=>{
           await session.setPick(c.id);
           pick=c.id;
-        }));
+        },'','正在切换字灵'));
         roster=card();
         body.push(card(el('b','','选择字灵'),row(...choices)),roster);
-        readyButton=action('准备',()=>session.setReady(!session.mine.ready),'primary');
-        startButton=action('开始冒险',()=>session.start(),'primary');
-        actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;}));
+        readyButton=action('准备',()=>session.setReady(!session.mine.ready),'primary','正在更新准备状态');
+        startButton=action('开始冒险',()=>session.start(),'primary','正在开启冒险');
+        actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;},'','正在离开房间'));
       }else{
         if(resume)actions.push(action('重连原房间',()=>connect(true,resume),'primary'));
         actions.push(action('创建房间',()=>connect(false),'primary'),action('加入房间',()=>connect(true)),action('返回首页',home));
       }
-      const note=text('','zx-note');
-      body.push(note);
+      const note=text('','zx-note'),activity=el('div');
+      body.unshift(activity,note);
       const node=screen('coop',session?'队伍房间':'多人联机','桌上世界 · 2–3 人合作',body,actions);
       const subtitle=node.querySelector('.zx-header small');
+      let shownMessage;
       function update(){
+        if(shownMessage!==pending){
+          shownMessage=pending;
+          activity.replaceChildren(...(pending?[requestIndicator(pending,!!session)]:[]));
+          activity.hidden=!pending;
+          node.classList.toggle('zx-request-page',!!pending&&!session);
+        }
         updateText(note,status);
         if(note.hidden!==!status)note.hidden=!status;
         if(!session)return;
@@ -326,7 +400,7 @@ export function createZixingUI(app,api) {
           if(session.isHost && m.offline){
             if(kick?.dataset.seat!==m.id){
               kick?.remove();
-              const remove=action('移出',()=>session.kick(m.id));
+              const remove=action('移出',()=>session.kick(m.id),'','正在移出队员');
               remove.dataset.seat=m.id;memberRow.append(remove);
             }
           }else if(kick)kick.remove();
@@ -349,17 +423,17 @@ export function createZixingUI(app,api) {
   }
   function choose() {
     const c=current();
-    const page=screen('choose','选择文字','01 / 03 · 选择你的起点',[
+    screen('choose','选择文字','01 / 03 · 选择你的起点',[
       el('div','zx-hero',[small('字灵 · '+c.word),glyph(c,true),text(c.motto,'zx-note')]),
       el('div','zx-choices',characters.map(ch=>button([glyph(ch),small(ch.role)],()=>{selected=ch.id;choose();},'zx-choice '+ch.tone+(selected===ch.id?' on':''),{'data-species':ch.id,'aria-pressed':selected===ch.id,'aria-label':ch.word+'，'+ch.role}))),
       card(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id))))),
       small(c.evolution),
-      link('▥ 查看属性                         基础 + 研究加成 ›',async()=>{
-        const page=app.screen;
-        await app.meta.resync();
-        if(app.screen===page)stats();
-      }),
-    ],[button('选择关卡  →',async()=>{if(!profile().starter)await app.meta.chooseStarter(selected);profile().lastSpecies=selected;app.meta.save();await app.meta.resync();if(app.screen===page)map();},'primary'),button('返回',home)]);
+      link('▥ 查看属性                         基础 + 研究加成 ›',()=>loadPage('文字属性','正在读取研究加成',()=>app.meta.resync(true),stats,choose)),
+    ],[button('选择关卡  →',()=>loadPage('选择关卡','正在读取关卡进度',async()=>{
+      if(!profile().starter)await app.meta.chooseStarter(c.id);
+      profile().lastSpecies=c.id;app.meta.save();
+      await app.meta.resync(true);
+    },map,choose),'primary'),button('返回',home)]);
   }
   function map() {
     const stages=profile().stageUnlocks??{forest:profile().biomes?.forest??0};
@@ -385,7 +459,8 @@ export function createZixingUI(app,api) {
     ],[button('进入桌上世界  →',start,'primary',{'data-action':'enter'}),button('返回',map)]);
   }
   function loadingScreen(name,coop=false) {
-    const status=coop?small(''):null;
+    const status=el('div');
+    status.hidden=true;
     const value=el('b','zx-loading-percent','0%');
     const ring=el('canvas','zx-loading-ring',[],{width:400,height:400,'data-static':'true','aria-hidden':true});
     const progress=el('div','zx-loading-progress',[ring,value],{role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':0});
@@ -393,11 +468,13 @@ export function createZixingUI(app,api) {
       el('h1','zx-loading-title','正在布置场景'),progress,status,
     ])]);
     node.classList.add('zx-loading-screen');
-    let shown=-1;
-    const update=({progress:fraction=0,teamReady=false,teamStatus=''})=>{
-      if(status){
-        fraction=teamReady?1:Math.min(.9,fraction);
-        if(status.textContent!==teamStatus)status.textContent=teamStatus;
+    let shown=-1,shownStatus='';
+    const update=({progress:fraction=0,teamReady=false,teamStatus='',phase=''})=>{
+      if(coop)fraction=teamReady?1:Math.min(.9,fraction);
+      const message=teamStatus||(phase==='保存出发设置'?'正在同步出发设置':'');
+      if(message!==shownStatus){
+        shownStatus=message;status.hidden=!message;
+        status.replaceChildren(...(message?[requestIndicator(message,true)]:[]));
       }
       const next=Math.max(shown,Math.min(100,Math.max(0,Math.floor(fraction*100))));
       if(next===shown)return shown;
@@ -425,7 +502,7 @@ export function createZixingUI(app,api) {
       if(changed){lastPhase=title;phases.push({phase:title,atMs:Math.round(now-began)});}
       if(app.screen!==node)return;
       if(changed||now-lastDetailAt>120||!message||progress*100>percentages[percentages.length-1]){
-        const value=view.update({progress,teamReady,teamStatus});lastDetailAt=now;
+        const value=view.update({progress,teamReady,teamStatus,phase:title});lastDetailAt=now;
         if(value!==percentages[percentages.length-1])percentages.push(value);
       }
     };
@@ -506,12 +583,16 @@ export function createZixingUI(app,api) {
     const level=app.meta.lab(item.id),cost=item.cost(level),dust=profile().stardust,can=dust>=cost;
     let popup;const close=()=>popup.remove();
     const act=button(can?'确认研究 · '+cost+' 星尘  →':'星尘不足 · 无法研究',async()=>{
-      act.disabled=true;
-      app.meta.flush();await app.meta.queue;
+      close();
+      const node=pendingScreen('研究所','正在保存研究升级');
       try {
+        app.meta.flush();await app.meta.queue;
         app.meta.adopt(await app.backend.buyLab(app.meta.account,item.id,level+1));
-        if(popup.parentNode){close();lab('升级成功 · '+labNames[item.id][1]+' '+labValue(item,level+1));}
-      } catch(error) {await app.meta.resync();if(popup.parentNode){close();lab(error.message||'研究未保存，请重试。');}}
+        if(app.screen===node)lab('升级成功 · '+labNames[item.id][1]+' '+labValue(item,level+1));
+      } catch(error) {
+        await app.meta.resync();
+        if(app.screen===node)lab(error.message||'研究未保存，请重试。');
+      }
     },'primary',{disabled:!can,'data-action':'confirm-research'});
     popup=overlay(can?'提升一级':'再积累一些星尘','永久研究 / '+labNames[item.id][1],[
       el('div','zx-center',glyph(labNames[item.id][0],true)),
@@ -584,7 +665,9 @@ export function createZixingUI(app,api) {
       sublabels.length?el('div','zx-subtabs',sublabels.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),label,{onclick:()=>{settingsSub=i;renderSettings();}}))):null,
       row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key]??({fpsLimit:60,batterySaver:false}[key]);save();renderSettings();},'zx-plain')),
       ...content,
-    ],[button('返回',async()=>{const page=app.screen;await app.meta.saveNow();if(app.screen===page){const back=returnTo;app.setScreen(null);back();}})]);
+    ],[button('返回',()=>loadPage('设置','正在保存设置',()=>app.meta.saveNow(),()=>{
+      const back=returnTo;app.setScreen(null);back();
+    },renderSettings))]);
   }
   function help(back=home) {
     const chart=el('canvas','zx-help-map',[],{width:680,height:470}),ctx=chart.getContext('2d');
@@ -785,7 +868,7 @@ export function createZixingUI(app,api) {
       el('div','zx-summary-grid',[[time(result.time),win?'通关时间':'生存时间'],[number(result.kills),'击败敌人'],[Math.min(guardians,result.bosses||0)+' / '+guardians,'区域镇守']].map(([v,k])=>col(el('b','',v),small(k)))),
       win&&single?card(el('b','','单关通关'),small('完整通关普通模式可解锁困难。')):
         card(el('b','',win?'新的挑战已开放':'避其锋芒'),small(win?(app.meta.biomeTier('forest')>result.tier?'桌上世界下一难度已开放。':'已完成当前桌面挑战。'):'调整走位与强化，寻找更好的出手机会。')),
-      button(row(col(el('b','',amount!==undefined?'星尘 +'+number(amount):'结算尚未保存'),small('当前 '+number(profile().stardust))),el('span','','去研究所 ›')),()=>{if(leave())lab();},'zx-banner'),
+      button(row(col(el('b','',amount!==undefined?'星尘 +'+number(amount):'结算尚未保存'),small('当前 '+number(profile().stardust))),el('span','','去研究所 ›')),()=>{if(leave())return openLab();},'zx-banner'),
       error?small(error):null,build(run),
     ],[row(run.coop?button('重新组队',()=>{if(leave())multiplayer();},'primary'):button(win?'再来一局':'再试一次',()=>app.startRun(app.lastCfg),'primary'),button('调整文字与关卡',()=>{if(leave())choose();})),button('返回',leave)]);
   }
@@ -797,6 +880,9 @@ export function createZixingUI(app,api) {
     // Offers reuse these four glyph canvases throughout the run. Paint them on the loading screen.
     const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
     hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
+    hud.saving=active=>{
+      if(active){hud.hideModal();pendingScreen('对局结算','正在保存本局战绩与星尘');}
+    };
     hud.showSummary=summary;hud.showSlots=slots;
     let expandedMap=null;
     hud.showMap=(r,fromPause=false)=>{

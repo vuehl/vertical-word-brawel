@@ -80521,14 +80521,14 @@ var KO = 300,
       for (let [r, i] of Object.entries(t.captured))
         !(r in n.captured) && !(r in e.captured) && (e.captured[r] = i);
     }
-    resync() {
+    resync(reportError = false) {
       let e = this.epoch;
       return this.backend
         .loadProfile(this.account)
         .then((t) => {
           e === this.epoch && this.queued === 0 && this.adopt(t);
         })
-        .catch(() => {});
+        .catch(error => { if (reportError) throw error; });
     }
     epoch = 0;
     now() {

@@ -11,7 +11,7 @@ import {reviewMenus} from './menu-regression.mjs';
 import {reviewUIPerformance} from './ui-perf.mjs';
 import {reviewZixing} from './zixing-regression.mjs';
 import {reviewPaper} from './paper-regression.mjs';
-import {reviewLoading} from './loading-regression.mjs';
+import {reviewLoading,reviewNetworkActions} from './loading-regression.mjs';
 import {reviewScenes} from './scene-regression.mjs';
 import {reviewStarters} from './starter-regression.mjs';
 import {reviewUpgrade} from './upgrade-regression.mjs';
@@ -271,6 +271,7 @@ async function verifyStartup(){
   }
   if(await page.evaluate(()=>!!app.zixing)){
     if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
+    else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});

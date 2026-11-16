@@ -155,7 +155,28 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   assert.equal(await page.evaluate(()=>app.screen.querySelector('.zx-body').firstElementChild.dataset.mode),'single-stage');
   assert.equal(await page.evaluate(()=>inspected.doc.querySelectorAll('[data-tier]:disabled').length),2);
   await page.evaluate(()=>app.zixing.home());await sleep(350);
+  // Hold the foreground read while tapping through the packaged, canvas-rendered UI.
+  await page.evaluate(()=>{
+    window.readLabProfile=app.backend.loadProfile.bind(app.backend);
+    app.backend.loadProfile=()=>new Promise((resolve,reject)=>{
+      window.releaseLabRead=()=>resolve(readLabProfile(app.meta.account));
+      window.failLabRead=()=>reject(Error('测试网络中断'));
+    });
+  });
   await tap('[data-action="lab"]');
+  assert.equal(await page.evaluate(()=>app.screen.querySelector('h1').textContent),'研究所');
+  assert.equal(await page.evaluate(()=>!!app.screen.querySelector('.zx-wallet,[data-research]')),false);
+  const pendingFrame=await page.evaluate(()=>inspected.uiCanvas.toDataURL());
+  await page.waitForFunction(frame=>inspected.uiCanvas.toDataURL()!==frame,{timeout:4000,polling:100},pendingFrame);
+  await snapshot('lab-loading-390');
+  await tap('.zx-footer button','返回');
+  await page.evaluate(()=>releaseLabRead());await sleep(200);
+  assert.equal(await page.evaluate(()=>app.screen.dataset.page),'home');
+  await tap('[data-action="lab"]');
+  await page.evaluate(()=>failLabRead());
+  await page.waitForFunction(()=>app.screen.dataset.page==='request-error' && app.screen.textContent.includes('测试网络中断'));
+  await page.evaluate(()=>{app.backend.loadProfile=readLabProfile;});
+  await tap('.zx-footer button','重试');
   await snapshot('30-lab-empty-390');await tap('[data-research="dmg"]');await snapshot('35-research-insufficient');
   await tap('.zx-dialog .zx-button','返回');
   // Earn test currency through the real settlement API. Preference saves must

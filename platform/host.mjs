@@ -1,4 +1,5 @@
 import {cloudSocket} from './cloud-coop.mjs';
+import {roomInviteCard} from '../source/src/multiplayer-config.js';
 import 'core-js/modules/es.array.at.js';
 import 'core-js/modules/es.array.flat.js';
 import 'core-js/modules/es.array.flat-map.js';
@@ -275,7 +276,7 @@ export async function setup(host) {
     roomInvites:host.roomInvites,
     shareRoomCode(code){
       if(!wx.shareAppMessage)throw Error('请在微信小游戏内分享房间号');
-      wx.shareAppMessage({title:'来字行和我组队吧！房间号 '+code,query:'roomCode='+code});
+      wx.shareAppMessage(roomInviteCard(code));
     },
     askRoomCode:()=>new Promise((resolve,reject)=>wx.showModal({title:'加入房间',editable:true,placeholderText:'请输入六位房间号',
       success:result=>resolve(result.confirm ? (result.content||'').trim() : null),fail:reject})),

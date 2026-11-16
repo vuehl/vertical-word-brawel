@@ -23,6 +23,12 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-header small{display:block;margin-top:2px;color:#fff}
 .zx-body{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;padding:14px 24px;gap:12px}
 .zx-body>*{flex-shrink:0}
+.zx-request-page>.zx-body{align-items:center;justify-content:center}
+.zx-request-status{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;color:#526d64}
+.zx-request-status>b{font-size:15px}
+.zx-request-art{display:block;flex:none;width:120px;height:76px}
+.zx-request-status.compact{flex-direction:row;gap:8px}
+.zx-request-status.compact>.zx-request-art{width:48px;height:31px}
 .screen.zx-loading-screen{z-index:140}
 .zx-loading-screen>.zx-body{justify-content:center;align-items:center;overflow:hidden;padding:24px}
 .zx-loading-content{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:360px;text-align:center}
