@@ -141,13 +141,18 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   await tap('[data-action="journey"]');
   await snapshot('02-fire-390');
   for(const id of [16,132,4]){await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-390');}
-  await tap('.zx-link','查看属性');await snapshot('29-preview-390');await tap('.zx-footer button','返回');
+  await tap('.zx-link','查看属性');await snapshot('29-preview-390');
+  const previewDamage=()=>page.evaluate(()=>inspected.doc.querySelector('.zx-stat-grid strong').textContent);
+  const baseDamage=await previewDamage();
+  await tap('.zx-footer button','返回');
   await tap('.zx-footer button','选择关卡');await snapshot('05-maps-390');
   const locks=await page.evaluate(()=>[...inspected.doc.querySelectorAll('.zx-lock [data-icon="lock"]')].map(c=>{
     const pixels=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
     return {static:c.dataset.static,drawn:pixels.some((v,i)=>i%4===3&&v>0)};
   }));assert.equal(locks.length,3);assert.ok(locks.every(i=>i.drawn&&i.static==='true'),'Locked maps need drawn lock icons');
   await tap('.zx-footer button','选择难度');await snapshot('06-difficulty-390');
+  assert.equal(await page.evaluate(()=>app.screen.querySelector('.zx-header small').textContent),'炎 · 桌上世界 · 单人');
+  assert.equal(await page.evaluate(()=>app.screen.querySelector('.zx-body').firstElementChild.dataset.mode),'single-stage');
   assert.equal(await page.evaluate(()=>inspected.doc.querySelectorAll('[data-tier]:disabled').length),2);
   await page.evaluate(()=>app.zixing.home());await sleep(350);
   await tap('[data-action="lab"]');
@@ -170,6 +175,12 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   const after=await page.evaluate(()=>({dust:app.meta.profile.stardust,level:app.meta.lab('dmg')}));
   assert.equal(after.level,before.level+1);assert.ok(after.dust<before.dust);
   await snapshot('34-research-saved');
+  await tap('.zx-footer button','返回');await tap('[data-action="journey"]');
+  // Simulate a stale in-memory profile while the fixture cloud has the saved upgrade.
+  await page.evaluate(()=>{app.meta.profile.lab.dmg=0;});
+  await tap('.zx-link','查看属性');
+  assert.equal(await previewDamage(),(parseFloat(baseDamage)+4)+'%');
+  await tap('.zx-footer button','返回');await tap('.zx-footer button','返回');await tap('[data-action="lab"]');
   await tap('.zx-wallet button','如何获得');await snapshot('36-stardust');await tap('.zx-footer button','返回');
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await resize(width,height);

@@ -317,7 +317,11 @@ export function createZixingUI(app,api) {
       el('div','zx-choices',characters.map(ch=>button([glyph(ch),small(ch.role)],()=>{selected=ch.id;choose();},'zx-choice '+ch.tone+(selected===ch.id?' on':''),{'data-species':ch.id,'aria-pressed':selected===ch.id,'aria-label':ch.word+'，'+ch.role}))),
       card(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id))))),
       small(c.evolution),
-      link('▥ 查看属性                         基础 + 研究加成 ›',()=>stats(null,()=>choose())),
+      link('▥ 查看属性                         基础 + 研究加成 ›',async()=>{
+        const page=app.screen;
+        await app.meta.resync();
+        if(app.screen===page)stats();
+      }),
     ],[button('选择关卡  →',async()=>{if(!profile().starter)await app.meta.chooseStarter(selected);profile().lastSpecies=selected;app.meta.save();await app.meta.resync();map();},'primary'),button('返回',home)]);
   }
   function map() {
@@ -335,14 +339,12 @@ export function createZixingUI(app,api) {
   function difficulty() {
     const max=Math.min(2,Math.max(0,app.meta.biomeTier('forest')));
     if(selectedDifficulty.tier>max)selectedDifficulty=difficulties[1+max];
-    screen('difficulty','选择难度','03 / 03 · 最后一步',[
-      card(row(glyph(current()),col(el('b','',current().word+' · 桌上世界'),small('单人 / 经典')))),
+    screen('difficulty','选择难度',current().word+' · 桌上世界 · 单人',[
       ...difficulties.map(option=>{
         const locked=option.tier>max,chosen=option===selectedDifficulty;
         return button([glyph(option.glyph),col(el('h3','',option.name),small(option.note),locked?small('通关上一难度后解锁'):null),locked?icon('lock',22):chosen?icon('check',24):icon('radio-empty',24)],
           ()=>{selectedDifficulty=option;difficulty();},'zx-difficulty'+(chosen?' on':''),{disabled:locked,'aria-pressed':chosen,'data-tier':option.tier,'data-mode':option.mode});
       }),
-      small('难度按地图分别解锁，无需额外携带消耗品。'),
     ],[button('进入桌上世界  →',start,'primary',{'data-action':'enter'}),button('返回',map)]);
   }
   function loadingScreen(name,coop=false) {
@@ -442,7 +444,7 @@ export function createZixingUI(app,api) {
         return el('div','zx-lab-row',[glyph(labNames[item.id][0]),col(row(el('b','',labNames[item.id][1]),small('Lv.'+level+'/'+item.max)),text(labValue(item,level)+(max?' · 已满级':' → '+labValue(item,level+1)),'zx-note'),el('div','zx-pips',Array.from({length:item.max},(_,i)=>el('i',i<level?'on':'')))),
           button([el('b','',max?'满':number(cost)),el('small','','星尘')],()=>research(item),'zx-buy'+(can?'':' poor'),{disabled:max,'data-research':item.id})]);
       })),
-      small('研究加成用于下一次新对局。'),message?el('div','zx-success',message):null,
+      message?el('div','zx-success',message):null,
     ],[button('返回',home)],'purple');
   }
   function overlay(title,subtitle,body,actions=[],hud=null,kind='') {
@@ -471,11 +473,11 @@ export function createZixingUI(app,api) {
       app.meta.flush();await app.meta.queue;
       try {
         app.meta.adopt(await app.backend.buyLab(app.meta.account,item.id,level+1));
-        close();lab('升级成功 · '+labNames[item.id][1]+' '+labValue(item,level+1)+'，下一次新对局生效。');
+        close();lab('升级成功 · '+labNames[item.id][1]+' '+labValue(item,level+1));
       } catch(error) {await app.meta.resync();close();lab(error.message||'研究未保存，请重试。');}
     },'primary',{disabled:!can,'data-action':'confirm-research'});
     popup=overlay(can?'提升一级':'再积累一些星尘','永久研究 / '+labNames[item.id][1],[
-      el('div','zx-center',glyph(labNames[item.id][0],true)),small('强化适用于所有文字，下一次新对局生效。'),
+      el('div','zx-center',glyph(labNames[item.id][0],true)),
       card(row(col(small('当前'),el('h2','',labValue(item,level))),el('b','','→'),col(small('升级后'),el('h2','',labValue(item,level+1))))),
       statRow('持有星尘',number(dust)),statRow(can?'本次消耗':'升级需要',number(cost)),statRow(can?'升级后剩余':'还差',number(Math.abs(dust-cost))),
     ],[act,...(!can?[button('去冒险获取星尘  →',()=>{close();choose();},'primary')]:[]),button('返回',close)]);
@@ -522,30 +524,30 @@ export function createZixingUI(app,api) {
     const sublabels=settingsTab===1?['性能视野','震动闪光','特效强度','攻击拾取']:settingsTab===3?['显示设置','战斗提示','流程提示']:[];
     let title='',content=[];
     if(settingsTab===0) {
-      title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
+      title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音'))];
     }else if(settingsTab===1&&settingsSub===0) {
       title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','上限 30 帧，场景临时使用流畅画质；选择精致会关闭省电'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']]))];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
-      title='攻击特效强度';content=[card(range('特效不透明度','fxOpacity',.2,1,.05,percent,'仅影响特效，不影响危险预警。'),range('我的攻击不透明度','ownFxOpacity',.1,1,.05),range('特效亮度','fxGlow',.2,1,.05)),small('战斗预警不受透明度和隐藏攻击设置影响。')];
+      title='攻击特效强度';content=[card(range('特效不透明度','fxOpacity',.2,1,.05,percent,'仅影响特效，不影响危险预警。'),range('我的攻击不透明度','ownFxOpacity',.1,1,.05),range('特效亮度','fxGlow',.2,1,.05))];
     }else if(settingsTab===1) {
-      title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']])),small('战斗预警不受透明度和隐藏攻击设置影响。')];
+      title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']]))];
     }else if(settingsTab===2) {
-      title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),toggle('自动大招','autoUlt','就绪且附近有敌人时自动释放。'),small('固定俯视镜头 · 自动跟随字灵'))];
+      title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),toggle('自动大招','autoUlt','就绪且附近有敌人时自动释放。'))];
     }else if(settingsSub===0) {
       title='界面外观';content=[card(range('界面大小','hudScale',.6,1.3,.05),range('界面不透明度','hudOpacity',.3,1,.05)),card(range('首领血条不透明度','bossBarOpacity',.2,1,.05),options('首领体力','zxBossHealth',[['value','数值'],['percent','百分比']]))];
     }else if(settingsSub===1) {
-      title='战斗信息提示';content=[card(toggle('伤害数字','damageNumbers'),toggle('浮动文字','floatText','保留治疗等即时反馈。'),toggle('大幅提示','showBanners'),toggle('道具与事件提示','showToasts')),small('危险范围提示等必要战斗信息始终保留。')];
+      title='战斗信息提示';content=[card(toggle('伤害数字','damageNumbers'),toggle('浮动文字','floatText','保留治疗等即时反馈。'),toggle('大幅提示','showBanners'),toggle('道具与事件提示','showToasts'))];
     }else {
-      title='对局流程提示';content=[card(toggle('显示本局道具','showItems','暂停页仍保留本局道具。'),toggle('仅一项升级时自动选择','skipEmptyLevelUp'),toggle('前几局玩法提示','tips')),small('危险范围提示等必要战斗信息始终保留。')];
+      title='对局流程提示';content=[card(toggle('显示本局道具','showItems','暂停页仍保留本局道具。'),toggle('仅一项升级时自动选择','skipEmptyLevelUp'),toggle('前几局玩法提示','tips'))];
     }
     screen('settings','设置','仅调整当前设备的体验',[
       tabs(['声音','画面','操作','界面'],settingsTab,i=>{settingsTab=i;settingsSub=0;renderSettings();},'main'),
       sublabels.length?el('div','zx-subtabs',sublabels.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),label,{onclick:()=>{settingsSub=i;renderSettings();}}))):null,
       row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key]??({fpsLimit:60,batterySaver:false}[key]);save();renderSettings();},'zx-plain')),
       ...content,
-    ],[small('调整即时生效'),button('返回',async()=>{await app.meta.saveNow();const back=returnTo;app.setScreen(null);back();})]);
+    ],[button('返回',async()=>{await app.meta.saveNow();const back=returnTo;app.setScreen(null);back();})]);
   }
   function help(back=home) {
     const chart=el('canvas','zx-help-map',[],{width:680,height:470}),ctx=chart.getContext('2d');
@@ -567,12 +569,12 @@ export function createZixingUI(app,api) {
     const body=[card(row(glyph(c),col(el('b','',c.word+' · '+(run?'Lv.'+run.player.level:'开局属性')),small(run?'桌上世界 · 已暂停':'基础 + 永久研究')))),
       ...(run?[tabs(['战斗属性','成长属性'],tab,i=>stats(run,back,i))]:[])];
     if(tab===0)body.push(el('div','zx-stat-grid',[
-      row(item('全局伤害倍率',percent(s.damage),'查看加成来源',()=>damageSources(run,preview)),item('最大生命',number(s.maxHp),run?'当前生命 '+Math.ceil(run.player.hp)+' / '+Math.round(run.player.maxHp):'角色基础生命')),
+      row(item('全局伤害倍率',percent(s.damage),'查看加成来源',()=>damageSources(run,preview)),item('最大生命',number(s.maxHp),run?'当前生命 '+Math.ceil(run.player.hp)+' / '+Math.round(run.player.maxHp):'含永久研究加成')),
       row(item('攻击速度',percent(s.attackSpeed),'含永久研究加成'),item('移动速度',percent(s.moveSpeed),'含永久研究加成')),
     ]),card(statRow('暴击率',percent(s.critChance)),statRow('攻击范围',percent(s.area)),statRow('护甲',Number(s.armor.toFixed(1))),statRow('生命回复',Number(s.regen.toFixed(2))+' / 秒')));
-    else body.push(card(statRow('经验获取',percent(s.xpGain)),statRow('金币获取',percent(s.gold)),statRow('幸运',number(s.luck)),statRow('拾取范围',Number(s.pickupRange.toFixed(1))+' 厘米')),small('金币获取影响局内金币，与研究所星尘收益独立。'));
-    body.push(small(run?'查看时保持暂停，返回不改变本局强化。':'研究加成用于下一次新对局。'));
-    screen('stats',run?'当前属性':'文字属性',run?'查看时保持暂停 · 本局属性':'开局预览 · 不包含局内临时强化',body,[button('返回',()=>{app.setScreen(null);back();})],'blue');
+    else body.push(card(statRow('经验获取',percent(s.xpGain)),statRow('金币获取',percent(s.gold)),statRow('幸运',number(s.luck)),statRow('拾取范围',Number(s.pickupRange.toFixed(1))+' 厘米')));
+    const subtitle=run?'查看时保持暂停 · 本局属性':profile().cloudSaveError?'开局预览 · 当前显示本机进度':'开局预览 · 基础与永久加成';
+    screen('stats',run?'当前属性':'文字属性',subtitle,body,[button('返回',()=>{app.setScreen(null);back();})],'blue');
   }
   function damageSources(run,back) {
     const total=run?run.player.stats.damage:api.baseStats(selected,app.meta.labStats()).damage;
@@ -582,7 +584,6 @@ export function createZixingUI(app,api) {
       el('div','zx-hero',[el('h1','',percent(total)),small('当前全局伤害倍率')]),
       card(statRow('文字基础与成长',percent(base)),statRow('研究所 · 伤害',percent(research)),statRow('本局招式、道具与临时加成',run?'已计入当前倍率':'未计入')),
       el('div','zx-banner','基础与研究加成先合并，再由现有战斗规则计算道具、被动与临时效果。'),
-      small('倍率不等于最终伤害，还受招式、暴击、敌方防御与属性关系影响。'),
     ],[button('返回',back)],'blue');
   }
   function pause(run) {
@@ -1007,7 +1008,6 @@ export function createZixingUI(app,api) {
     overlay(result?(result.prize==='none'?'字运未至':'好运入字'):'老虎机',result?'结果已生效':'场景设施 · 已暂停',[
       small('◎ 本局金币 '+number(run.gold)),el('div','zx-slot',(result?.reels||['pikachu','meowth','berry']).map(s=>el('b','',symbols[s]))),
       text('字 运 当 头','zx-note'),el('b','',result?prizes[result.prize]:'本次投入 '+machine.cost()+' 金币'),
-      small('每次消耗以按钮显示为准，金币仅限本局使用。'),
     ],[mustResume?button('继续旅程  →',resume,'primary'):button((result?'继续 · ':'')+'投入 '+machine.cost()+' 金币  →',spin,'primary',{disabled:run.gold<machine.cost()}),button('返回',resume)],run.ui);
   }
   return ui;
