@@ -5,7 +5,7 @@ import esbuild from 'esbuild';
 import {parse} from '../source/tools/vendor/acorn.mjs';
 import {addBootAssets,bootAssets,writeBootHeroArt} from './boot-assets.mjs';
 import {lowerUnicodeRegexes} from './device-syntax.mjs';
-import {assetPolicyVersion} from './asset-policy.mjs';
+import {assetPolicyVersion,itemIconSelectionChanged} from './asset-policy.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
 const development=process.argv.includes('--dev');
@@ -15,7 +15,8 @@ const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
 const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
-if(installedAssets?.policyVersion!==assetPolicyVersion||(developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
+if(installedAssets?.policyVersion!==assetPolicyVersion||itemIconSelectionChanged(installedAssets.files)||
+  (developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
   execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{

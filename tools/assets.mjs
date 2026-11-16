@@ -94,7 +94,9 @@ if(fs.existsSync(packRoot))for(const entry of fs.readdirSync(packRoot,{withFileT
 }
 packModels(packs.world);
 for (const [name, entries] of Object.entries(packs)) {
-  const {bytes,rawSize}=packStream(entries,name==='text'?11:10), dir=path.join(out,'packs',name);
+  // A 1 MiB window keeps the small icon block compressible alongside the large atlases.
+  const {bytes,rawSize}=packStream(entries,name==='text'?11:10,name==='art'?20:23);
+  const dir=path.join(out,'packs',name);
   fs.mkdirSync(dir,{recursive:true});
   fs.writeFileSync(path.join(dir,'assets.br'),bytes);
   fs.rmSync(path.join(dir,'assets.zip'),{force:true});

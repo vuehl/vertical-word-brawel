@@ -11,7 +11,8 @@ import {unpackStream} from './resource-stream.mjs';
 import {measureActor} from './actor-metrics.mjs';
 import {actorMetrics} from '../source/src/actor-metrics.js';
 import {assetPolicyVersion,excludedAssetReason,musicTracks} from './asset-policy.mjs';
-import {biomes,events,roster} from '../source/src/catalogs.js';
+import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/catalogs.js';
+import {isActiveItem} from '../source/src/active-content.js';
 import {resolveItemIcon} from '../source/src/item-icons.js';
 import {glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
@@ -48,9 +49,29 @@ assert.deepEqual(fs.readdirSync(path.join(root,'minigame/packs')).filter(name=>n
 assert.equal(Object.keys(index.files).filter(k=>k.startsWith('assets/music/')).length,musicTracks.length);
 assert.ok(index.files['assets/env/common/atlas.png']&&index.files['assets/env/common/hazards.png'],'Shared berries and combat hazards must remain');
 const itemCatalog=JSON.parse(fs.readFileSync(path.join(pub,'data/items.json'),'utf8'));
+const itemIconKey=id=>'assets/'+resolveItemIcon(itemCatalog[id]?.icon||'items/'+id+'.png');
+const requiredItemIds=new Set([
+  ...Object.keys(itemCatalog).filter(isActiveItem),
+  ...heldItems.map(item=>item.key),...shop.map(item=>item.key),
+  ...vitamins.map(item=>item.icon),
+  // The portrait lab draws glyphs. Its legacy "tm" slot uses Q's poke-ball fallback.
+  ...laboratory.map(item=>item.icon==='tm'?'poke-ball':item.icon),
+]);
+for(const id of requiredItemIds){
+  const key=itemIconKey(id);
+  assert.ok(index.files[key]&&bytes(key)?.length,'Missing gameplay or shared icon: '+id);
+}
+const excludedCatalogIcons={};
+let verifiedCatalogItems=0;
 for(const [id,item] of Object.entries(itemCatalog)){
-  const key='assets/'+resolveItemIcon(item.icon||'items/'+id+'.png');
-  assert.ok(index.files[key]&&bytes(key)?.length,'Every item must have a loadable image: '+id);
+  const key=itemIconKey(id);
+  if(excludedAssetReason(key)){
+    assert.ok(!index.files[key],'Excluded item icon still in the package: '+key);
+    excludedCatalogIcons[key]=item.name;
+  }else{
+    assert.ok(index.files[key]&&bytes(key)?.length,'Missing retained catalog icon: '+id);
+    verifiedCatalogItems++;
+  }
 }
 const count={};
 const removedSceneAssets=[
@@ -105,7 +126,7 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
 const report={mappedResources:Object.keys(index.files).length,RGBA:count,originalModels:models.length,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:[],
   removedSceneAssetsVerified:removedSceneAssets.length,
-  actorBoundsVerified:152,itemIconsVerified:Object.keys(itemCatalog).length,cries:0,locales:['zh'],legacyActorImages:0,
+  actorBoundsVerified:152,itemIconsVerified:verifiedCatalogItems,excludedCatalogIcons,cries:0,locales:['zh'],legacyActorImages:0,
   altarGlyphIncluded:!!actorMetrics[201],allArchiveHashesVerified:true};
 report.runtimeSpecies=runtimeSpecies.length;
 const out=path.join(root,'验收');fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'资源核验.json'),JSON.stringify(report,null,2));
