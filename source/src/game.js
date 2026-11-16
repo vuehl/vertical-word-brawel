@@ -6,7 +6,7 @@ import {enemyWord,remainingStrokes,finalBossSpecies,finalBossWord} from './chara
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
-import {bossDistanceText,buildingMapName} from './paper-hud-art.js';
+import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
 import {startWindFaint,windFaintTile,windHeroFrame} from './hero-poses.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
@@ -33,7 +33,7 @@ import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pick
 import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
 import {UpgradeTiming} from './upgrade-timing.js';
 import {updatePaperVisibility} from './paper-visibility.js';
-import {hitsPaperBox,resolvePaperBox,moveEnemyPastProps} from './paper-collision.js';
+import {hitsPaperBox,resolvePaperBox,moveEnemyPastProps,obstacleJumpSpeed} from './paper-collision.js';
 import './customize.js';
 import {chineseMessage as t,formatChineseNumber as n,chineseText as c} from "./chinese-text.js";
 import {
@@ -10528,9 +10528,19 @@ var qu = `
       }
       return !0;
     }
+    propTop(x,z,radius,ceiling=Infinity) {
+      let top=-Infinity;
+      for(const prop of this.nearbyColliders(x,z)){
+        if(prop.off || prop.standY==null || prop.standY<=top || prop.standY>ceiling)continue;
+        const overlaps=prop.paperBox ? hitsPaperBox(prop,x,z,radius)
+          : (x-prop.x)**2+(z-prop.z)**2<(prop.r+radius)**2;
+        if(overlaps)top=prop.standY;
+      }
+      return top;
+    }
     hitProp(e, t, n, r) {
       for(const prop of this.nearbyColliders(e,n)){
-        if(t>prop.h||prop.off)continue;
+        if(prop.off || (prop.standY!=null ? t>=prop.standY-.0001 : t>prop.h))continue;
         if(prop.paperBox){if(hitsPaperBox(prop,e,n,r))return true;continue;}
         const dx=e-prop.x,dz=n-prop.z,reach=prop.r+r;
         if(dx*dx+dz*dz<reach*reach)return true;
@@ -10566,7 +10576,7 @@ var qu = `
     resolve(e, t, n, r, i) {
       ((i.x = e), (i.z = t));
       for(const prop of this.nearbyColliders(e,t)){
-        if(r>prop.h||prop.off)continue;
+        if(prop.off || (prop.standY!=null ? r>=prop.standY-.0001 : r>prop.h))continue;
         if(prop.paperBox){resolvePaperBox(prop,i,n);continue;}
         const dx=i.x-prop.x,dz=i.z-prop.z,reach=prop.r+n,d2=dx*dx+dz*dz;
         if(d2<reach*reach){
@@ -13201,25 +13211,22 @@ var Df = 0.4,
           ((this.x[i] = e * 4), (this.z[i] *= 0.8));
         }
         const steerDistance = x && !(y & 1024) ? Math.hypot(O, te) * b * m : 0;
-        const pos = moveEnemyPastProps(r, ce, le, this.x[i], this.z[i], ne, this.y[i],
-          steerDistance, this.propSide[i], this.propPosition);
-        this.x[i] = pos.x;
-        this.z[i] = pos.z;
-        this.propSide[i] = pos.side;
+        this.moveAcrossProps(i,ce,le,this.x[i],this.z[i],m,x,steerDistance);
         if (x && Math.abs(this.vx[i]) + Math.abs(this.vz[i]) > 0.2) {
           let e = Math.sqrt(this.vx[i] * this.vx[i] + this.vz[i] * this.vz[i]);
           ((this.fx[i] = this.vx[i] / e), (this.fz[i] = this.vz[i] / e), (this.anim[i] += m * (0.6 + b / 4)));
         }
-        if ((y & 8 && D < 18 && ((this.fx[i] = w), (this.fz[i] = E)), y & 16)) {
+        const ground = this.floorAt(i);
+        if ((y & 8 && D < 18 && ((this.fx[i] = w), (this.fz[i] = E)), (y & 16) && !this.air[i])) {
           let e =
-            (this.gnd[i] = r.surface(this.x[i], this.z[i])) +
+            (this.gnd[i] = ground) +
             1.1 +
             Math.max(0, this.scale[i] - 1) * 0.55 +
             this.alt[i] +
             Math.sin(this.anim[i] * 2) * 0.2 * this.scale[i];
           this.y[i] += (e - this.y[i]) * Math.min(1, m * (this.alt[i] > 0 ? 3 : 6));
         } else {
-          let e = Number.isNaN(C) ? (this.gnd[i] = r.surface(this.x[i], this.z[i])) : C;
+          let e = Number.isNaN(C) ? (this.gnd[i] = ground) : C;
           (Number.isNaN(C) || (this.gnd[i] = NaN),
             this.air[i]
               ? ((this.vy[i] -= 30 * m),
@@ -13321,6 +13328,23 @@ var Df = 0.4,
       }
       this.frozen[id]=this.sleep[id]=this.stun[id]=this.chill[id]=0;
       return true;
+    }
+    floorAt(id,ceiling=this.y[id]+.0001) {
+      const terrain=this.run.terrain,x=this.x[id],z=this.z[id];
+      return Math.max(terrain.surface(x,z),terrain.propTop(x,z,this.radius[id],ceiling));
+    }
+    moveAcrossProps(id,fromX,fromZ,x,z,dt,canJump,steerDistance=0) {
+      const feet=this.y[id];
+      const pos=moveEnemyPastProps(this.run.terrain,fromX,fromZ,x,z,this.radius[id],feet,
+        steerDistance,this.propSide[id],this.propPosition,canJump);
+      this.x[id]=pos.x;
+      this.z[id]=pos.z;
+      this.propSide[id]=pos.side;
+      if(!this.air[id] && pos.jumpTop>feet){
+        this.vy[id]=obstacleJumpSpeed(pos.jumpTop-feet,0,30,dt);
+        this.air[id]=1;
+        this.squash[id]=-.5;
+      }
     }
     updateProxy(e, t, n, r, i, squashDecay) {
       let a = this.run,
@@ -24042,6 +24066,13 @@ var Yp = 3e3,
       let i = this.run.enemies,
         a = i.typesOf(e)[0],
         o = i.y[e] + i.hgt[e] * 0.6;
+      // Traversable props still provide cover below their tops, including
+      // when the room server sends a shot along its horizontal path.
+      const dx=t-i.x[e],dz=r-i.z[e],steps=Math.ceil(Math.hypot(dx,dz));
+      for(let step=1;step<steps;step++){
+        const u=step/steps;
+        if(this.run.terrain.propTop(i.x[e]+dx*u,i.z[e]+dz*u,.2)>o+(n-o)*u)return;
+      }
       (this.fire({
         x: i.x[e],
         y: o,
@@ -42783,8 +42814,14 @@ var mv = 30,
         r > i && ((this.vel.x *= i / r), (this.vel.z *= i / r));
       }
       this.landBuffer -= e;
-      let O = 11 * Math.sqrt(i.jumpHeight);
-      n.hit(`Space`) &&
+      const hasShoes=this.items.has('air-balloon');
+      const probe=w*e+.04;
+      const jumpTop=hasShoes && this.grounded && y>0
+        ? r.propTop(this.pos.x+_*probe,this.pos.z+v*probe,this.radius) : -Infinity;
+      const autoJump=jumpTop>this.pos.y+.0001;
+      const baseJump=11*Math.sqrt(i.jumpHeight);
+      let O=autoJump?obstacleJumpSpeed(jumpTop-this.pos.y,baseJump,mv,e):baseJump;
+      hasShoes && (n.hit(`Space`) || autoJump) &&
         !S &&
         (this.grounded || (D && this.pos.y <= E + 0.35)
           ? ((this.vel.y = O),
@@ -42851,6 +42888,7 @@ var mv = 30,
       (ie(ue, this.pos.z, ce, 0) ? ((this.vel.x = 0), (this.kx = 0), (me = !0)) : (this.pos.x = ue),
         ie(this.pos.x, de, 0, le) ? ((this.vel.z = 0), (this.kz = 0), (me = !0)) : (this.pos.z = de),
         me &&
+          hasShoes &&
           y > 0 &&
           (Ev.some((e) => this.types.includes(e)) || this.floats) &&
           ((this.vel.y = Math.max(this.vel.y, 7.5)),
@@ -42914,8 +42952,9 @@ var mv = 30,
           t = r.arenaR - 0.3;
         e > t && ((this.pos.x *= t / e), (this.pos.z *= t / e));
       }
+      const platform=r.propTop(this.pos.x,this.pos.z,this.radius,this.pos.y+.0001);
       this.pos.y += this.vel.y * e;
-      let ve = r.height(this.pos.x, this.pos.z);
+      let ve = Math.max(r.height(this.pos.x, this.pos.z),platform);
       if (
         (D && (ve = E - (this.surfing ? 0.15 : 0.5)),
         ee && (ve = E),
@@ -43077,7 +43116,8 @@ var mv = 30,
         i,
         e.skinGl,
       );
-      let p = Math.max(e.terrain.surface(this.pos.x, this.pos.z),e.terrain.workshopGroundY?.(this.pos.x,this.pos.z)??-Infinity);
+      let p = Math.max(e.terrain.surface(this.pos.x, this.pos.z),
+        e.terrain.propTop(this.pos.x,this.pos.z,this.radius,this.pos.y+.0001));
       (e.skinGl &&
         !this.dead &&
         eu(
@@ -66478,6 +66518,7 @@ var GS = class e {
       }
       o > 0 ||
         this.launch ||
+        !i.items.has('air-balloon') ||
         !i.grounded ||
         i.dead ||
         Math.hypot(i.pos.x - t.x, i.pos.z - t.z) > t.r ||
@@ -67125,8 +67166,8 @@ var GS = class e {
       let r = e.terrain;
       for (let e of n.columns) {
         let t = r.height(e.x, e.z),
-          i = { x: e.x, z: e.z, r: 1, h: t + 4.6 },
-          a = { x: e.x, z: e.z, r: 1.05, h: t + 1.3, off: !0 };
+          i = { x: e.x, z: e.z, r: 1, h: t + 4.6, standY:t+4.4 },
+          a = { x: e.x, z: e.z, r: 1.05, h: t + 1.3, standY:t+1.3, off: !0 };
         (r.addCollider(i), r.addCollider(a), r.reserve(e.x, e.z, 2.4));
         let o = this.addCover({
           x: e.x,
@@ -67167,10 +67208,10 @@ var GS = class e {
             kind: `lantern`,
           }));
       (this.addCover({ x: 0, z: 0, r: 3, top: r.height(0, 0) + 5.4, breakable: !1, hp: 1, kind: `shrine` }),
-        r.addCollider({ x: 0, z: 0, r: 3, h: r.height(0, 0) + 5.4 }));
+        r.addCollider({ x: 0, z: 0, r: 3, h: r.height(0, 0) + 5.4, standY:r.height(0,0)+5.4 }));
       let i = this.layout.entry.z - 7;
       for (let e of [-2.7, 2.7])
-        (r.addCollider({ x: e, z: i, r: 0.6, h: r.height(e, i) + 6 }),
+        (r.addCollider({ x: e, z: i, r: 0.6, h: r.height(e, i) + 6, standY:r.height(e,i)+5 }),
           this.addCover({ x: e, z: i, r: 0.5, top: r.height(e, i) + 5, breakable: !1, hp: 1, kind: `gate` }));
       (r.reserve(0, i, 4.5), this.model(n.gate, 0, i, 0, 1.1));
     }
@@ -67525,7 +67566,7 @@ var GS = class e {
             s = n.z + o * e * 1.1,
             c = t.height(r, s),
             l = 0.9 + 1.9 * (1 - (e / 5.6) ** 2),
-            u = { x: r, z: s, r: 0.85, h: c + l, off: !0 };
+            u = { x: r, z: s, r: 0.85, h: c + l, standY:c+l, off: !0 };
           (t.addCollider(u),
             i.covers.push(
               this.addCover(
@@ -68250,8 +68291,8 @@ var nC = Math.PI / 180,
       for (let e of fC) {
         let t = n.height(e.x, e.z),
           r = t + 6.4;
-        (n.addCollider({ x: e.x, z: e.z, r: 1.7, h: t + 1.2 }),
-          n.addCollider({ x: e.x, z: e.z, r: 0.45, h: r }),
+        (n.addCollider({ x: e.x, z: e.z, r: 1.7, h: t + 1.2, standY:t+1.2 }),
+          n.addCollider({ x: e.x, z: e.z, r: 0.45, h: r, standY:r }),
           n.reserve(e.x, e.z, 3.6),
           this.addCover({ x: e.x, z: e.z, r: 0.45, top: r, breakable: !1, hp: 1, kind: `rod` }));
         let i = {
@@ -72458,7 +72499,7 @@ var iT = Math.PI / 180,
       ((t.ultPoseT = d ? 0 : 0.6),
         !d &&
           e.meta.profile.settings.ultPose !== !1 &&
-          (e.hitstop(0.32), e.ui.ultCutIn(t.speciesId, Zh(n, r), Ni[n.type])),
+          e.ui.ultCutIn(t.speciesId, Zh(n, r), Ni[n.type]),
         d || (e.ultLook(n.tint, a + 0.3), e.audio.duck(0.35, a + 0.6), J.start(e.audio)),
         (n.sfx ?? (() => {}))(e.audio, u),
         e.vfx.ring(u.x, u.y, u.z, 4.5, Ni[n.type], 0.5, 0.9));
@@ -77035,8 +77076,7 @@ var ME = class {
           Z(`aim`, 26),
           X(`span`, {}, c(`Auto`)),
         ) : null));
-      let t = extended ? X(`div`, { class: `tc-btn tc-jump` }, Z(`jump`, 44)) : null,
-        n = extended ? X(`div`, { class: `tc-btn tc-dash` }, Z(`dash`, 34)) : null,
+      let n = extended ? X(`div`, { class: `tc-btn tc-dash` }, Z(`dash`, 34)) : null,
         r = extended ? X(`div`, { class: `tc-btn tc-lock`, title: c(`Fijar objetivo`) }, Z(`target`, 28)) : null,
         i = X(`div`, { class: `tc-btn tc-sm tc-pause`, title: c(`Pausa`) }, Z(`pause`, 26));
       ((this.fs = X(
@@ -77044,9 +77084,8 @@ var ME = class {
         { class: `tc-btn tc-sm tc-fs`, title: c(`Pantalla completa`), style: { display: `none` } },
         Z(`fullscreen`, 26),
       )),
-        (this.el = X(`div`, { class: `tc` }, this.stick, this.act, t, n, r, this.ult, i, this.aim, this.fs)),
+        (this.el = X(`div`, { class: `tc` }, this.stick, this.act, n, r, this.ult, i, this.aim, this.fs)),
         this.button(this.fs, () => Oo()),
-        this.key(t, `Space`),
         this.key(n, `ShiftLeft`),
         this.key(this.ult, `KeyR`),
         this.key(this.act, `KeyE`),
@@ -77736,11 +77775,11 @@ function QE(e, t) {
   return (
     r.push([c(`Recarga`), WE(n.cd) + ` s` + (e.fusion && n.cd <= 0.6 ? ` ` + c(`(mín.)`) : ``)]),
     n.reach >= 1
-      ? r.push([c(`Alcance`), WE(n.reach) + ` m`])
+      ? r.push([c(`Alcance`), WE(n.reach) + ` 厘米`])
       : n.area >= 1 &&
         r.push([
           XE(e.arch) === c(`Radio`) ? c(`Radio`) : c(`Área`),
-          WE(n.area) + ` m` + (a ? ` ` + c(`(máx.)`) : ``),
+          WE(n.area) + ` 厘米` + (a ? ` ` + c(`(máx.)`) : ``),
         ]),
     e.status && e.statusChance >= 0.12 && r.push([Qg[e.status] ?? e.status, GE(n.statusChance)]),
     r
@@ -77851,14 +77890,14 @@ function tD(e, t) {
     t.reach >= 1 &&
       n.push([
         e.arch === `dash` ? c(`Distancia`) : e.arch === `beam` ? c(`Longitud`) : c(`Alcance`),
-        WE(t.reach) + ` m`,
+        WE(t.reach) + ` 厘米`,
       ]),
     t.area >= 0.8 &&
       e.arch !== `dash` &&
       !(e.arch === `cone` && t.reach >= 1) &&
       n.push([
         XE(e.arch),
-        WE(t.area) + ` m`,
+        WE(t.area) + ` 厘米`,
         e.fusion && t.area >= e.area * 3.39
           ? c(`Una fusión no crece más de ×3,4 su radio base, tengas el Área que tengas.`)
           : void 0,
@@ -77868,7 +77907,7 @@ function tD(e, t) {
       n.push([c(`Duración`), WE(t.dur) + ` s`]),
     e.speed > 0 &&
       [`bolt`, `orb`, `homing`, `boomerang`, `drain`, `barrage`].includes(e.arch) &&
-      n.push([c(`Velocidad`), WE(t.speed) + ` m/s`]),
+      n.push([c(`Velocidad`), WE(t.speed) + ` 厘米/秒`]),
     t.pierce >= 99 && [`beam`, `boomerang`, `dash`, `wave`, `cone`, `spin`, `nova`].includes(e.arch)
       ? n.push([c(`Perforación`), c(`Atraviesa todo`)])
       : t.pierce > 0 && g_[e.arch].stats.includes(`pierce`) && n.push([c(`Perforación`), `+` + t.pierce]),
@@ -78308,12 +78347,12 @@ function gD(e, t, n, r) {
       s.push(
         hD(e.arch === `orbit` ? c(`Objetos orbitando`) : c(`Proyectiles`), String(a.count), String(o.count)),
       ),
-    l(a.reach, o.reach) && o.reach >= 1 && s.push(hD(c(`Alcance`), WE(a.reach) + ` m`, WE(o.reach) + ` m`)),
-    l(a.area, o.area) && e.area >= 0.8 && s.push(hD(XE(e.arch), WE(a.area) + ` m`, WE(o.area) + ` m`)),
+    l(a.reach, o.reach) && o.reach >= 1 && s.push(hD(c(`Alcance`), WE(a.reach) + ` 厘米`, WE(o.reach) + ` 厘米`)),
+    l(a.area, o.area) && e.area >= 0.8 && s.push(hD(XE(e.arch), WE(a.area) + ` 厘米`, WE(o.area) + ` 厘米`)),
     l(a.dur, o.dur) && e.dur > 0 && s.push(hD(c(`Duración`), WE(a.dur) + ` s`, WE(o.dur) + ` s`)),
     l(a.speed, o.speed) &&
       e.speed > 0 &&
-      s.push(hD(c(`Velocidad`), WE(a.speed) + ` m/s`, WE(o.speed) + ` m/s`)),
+      s.push(hD(c(`Velocidad`), WE(a.speed) + ` 厘米/秒`, WE(o.speed) + ` 厘米/秒`)),
     a.pierce !== o.pierce &&
       o.pierce < 99 &&
       s.push(hD(c(`Perforación`), String(a.pierce), String(o.pierce))),
@@ -95380,7 +95419,7 @@ function iF(e, t) {
         X(
           `div`,
           { class: `row`, style: { flexWrap: `wrap`, gap: `6px` } },
-          X(`span`, { class: `chip dx-chip` }, c(`Altura {n} m`, { n: t.height / 10 })),
+          X(`span`, { class: `chip dx-chip` }, c(`Altura {n} m`, { n: t.height * 10 })),
           X(`span`, { class: `chip dx-chip` }, c(`Peso {n} kg`, { n: t.weight / 10 })),
           o
             ? X(
@@ -101330,8 +101369,8 @@ var JI = class {
         (this.reticle = X(`div`, { class: `reticle`, style: { display: `none` } })),
         (this.arrow = X(
           `div`,
-          { class: `compass`, style: { display: `none` } },
-          X(`i`, { class: `cp-tip` }),
+          { class: `compass zx-compass`, style: { display: `none` } },
+          Object.assign(X(`canvas`, { class: `zx-compass-dial`, 'data-static': 'true', 'aria-hidden': 'true' }), {width:128,height:128}),
           X(`span`, { class: `cp-ic` }),
           X(`b`, { class: `cp-d` }),
         )),
@@ -101514,7 +101553,7 @@ var JI = class {
       e.style.top = r > 0 ? `${Math.round(r + 8)}px` : ``;
     }
     toast(e, t) {
-      let n = X(`div`, { class: `toast` }, t ? Q(t) : null, e);
+      let n = X(`div`, { class: `toast` }, t ? Q(t) : X(`i`, { class: `zx-note-tab`, 'aria-hidden': 'true' }), X(`span`, { class: `zx-note-text` }, e));
       for (this.toastsEl.append(n); this.toastsEl.children.length > 4; ) this.toastsEl.firstChild.remove();
       setTimeout(() => {
         ((n.style.transition = `opacity .4s`), (n.style.opacity = `0`), setTimeout(() => n.remove(), 400));
@@ -102387,12 +102426,12 @@ var JI = class {
             ((f.dataset.k = d),
             f.style.setProperty(`--rc`, u),
             $(f.children[1]).append(
-              l == null ? pI(shrineTarget ? `shrine` : `portal`, 46) : fI(`portraits/${s.species[l]}.png`, u, 46, !0, s.glyphWords[l]),
+              l == null ? pI(shrineTarget ? `shrine` : `portal`, 32) : fI(`portraits/${s.species[l]}.png`, u, 32, !0, s.glyphWords[l]),
             )),
             (f.style.display = ``),
             (f.style.left = (shrineTarget ? Gs(n + Math.cos(t) * o, 76, innerWidth - 76) : n + Math.cos(t) * o) + `px`),
             (f.style.top = (shrineTarget ? Gs(r + Math.sin(t) * o, 238, innerHeight - 96) : r + Math.sin(t) * o) + `px`),
-            (f.children[0].style.transform = `rotate(${t + Math.PI / 2}rad)`));
+            drawCompassDial(f.children[0], t));
           let m = markerText;
           (f.children[2].textContent !== m && (f.children[2].textContent = m),
             (this.markTag.style.display = `none`));

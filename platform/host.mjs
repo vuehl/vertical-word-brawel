@@ -67,8 +67,8 @@ export async function setup(host) {
   const healthLayer=element=>health.owns(element)?health:
     element?.dataset?.uiLayer?.startsWith('peer-')?peerTiles.find(t=>t.owns(element)):null;
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
-  const soloLayers=['counters','score','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
-  const skillLayer=soloLayers[3];
+  const soloLayers=['counters','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
+  const skillLayer=soloLayers[2];
   soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];

@@ -4,6 +4,27 @@ export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
 const friendColors=['#246baa','#15826b','#7850a1'];
 export const friendColor=slot=>friendColors[slot]||friendColors[0];
 
+// Draw the bearing in the same canvas as the paper dial. The native HUD
+// compositor does not rotate CSS border triangles around a transform origin.
+export function drawCompassDial(canvas,angle){
+  const step=Math.round(angle*90/Math.PI);
+  if(canvas.dataset.frame===String(step))return;
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(canvas.width/64,0,0,canvas.height/64,0,0);
+  ctx.clearRect(0,0,64,64);
+  const disc=(y,r,color)=>{
+    ctx.beginPath();ctx.arc(32,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+  };
+  disc(34,20,'#6b5948');disc(32,20,'#575b61');disc(32,18.6,'#fff8e8');
+  ctx.save();ctx.translate(32,32);ctx.rotate(step*Math.PI/90);
+  ctx.beginPath();ctx.moveTo(30,0);ctx.lineTo(16,6);ctx.lineTo(18,0);ctx.lineTo(16,-6);ctx.closePath();
+  ctx.fillStyle='#e9ae5e';ctx.fill();ctx.strokeStyle='#64513e';ctx.lineWidth=1.6;ctx.lineJoin='round';ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle='#dac499';ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(32,32,15.8,0,Math.PI*2);ctx.stroke();
+  canvas.dataset.frame=String(step);
+}
+
 // Place labels in the map frame after projecting the icons, so zooming or
 // pinning an icon to the rim never changes the distance shown.
 function drawBossDistances(ctx,labels,fontSize){

@@ -9,7 +9,9 @@ export function roomMonster(flags){return !(flags&specialActors);}
 function obstacles(terrain){
   const walls=[];
   for(const b of terrain.colliders){
-    if(b.off)continue;
+    // The relay solves horizontal paths. Each client handles the ascent and
+    // landing on traversable scenery using the same seeded terrain as solo.
+    if(b.off || b.standY!=null)continue;
     walls.push(b.paperBox?[b.x,b.z,b.halfX,b.halfZ,b.cos,b.sin]:[b.x,b.z,b.r,0,1,0]);
   }
   for(const b of terrain.solidBoxes)walls.push([(b.x0+b.x1)/2,(b.z0+b.z1)/2,(b.x1-b.x0)/2,(b.z1-b.z0)/2,1,0]);
@@ -61,16 +63,10 @@ export class RoomMonsters{
     if(pose){
       const kit=b.kit;
       if(!this.coop.bossAuthority && kit && pose.phase>kit.phase)kit.enterPhase(pose.phase);
-      const t=Math.min(1,Math.max(0,(r.realTime-pose.at)/.25));
-      e.x[id]=pose.fromX+(pose.x-pose.fromX)*t;e.z[id]=pose.fromZ+(pose.z-pose.fromZ)*t;
       e.fx[id]=Math.cos(pose.face*Math.PI/16);e.fz[id]=Math.sin(pose.face*Math.PI/16);
     }
-    const ground=r.terrain.surface(e.x[id],e.z[id]);
-    if(e.air[id]){
-      e.vy[id]-=30*dt;e.y[id]+=e.vy[id]*dt;
-      if(e.y[id]<=ground){e.air[id]=0;e.vy[id]=0;e.y[id]=ground;}
-    }else e.y[id]=ground+(e.flags[id]&16?1.1:0);
-    e.gnd[id]=ground;e.anim[id]+=dt;e.flash[id]=Math.max(0,e.flash[id]-dt*6);
+    this.placeOnTerrain(id,pose,dt);
+    e.anim[id]+=dt;e.flash[id]=Math.max(0,e.flash[id]-dt*6);
     e.atkAnim[id]=Math.max(0,e.atkAnim[id]-dt);
     e.squash[id]*=Math.exp(-dt*10);e.kx[id]=e.kz[id]=0;
     r.combat.tickStatus(id,dt);
@@ -140,6 +136,7 @@ export class RoomMonsters{
     this.seq=f.seq;
     if(f.boss && r.boss){const [x,z,face,target,phase]=f.boss,id=r.boss.bossIndex;
       const snap=!this.bossPose || !r.boss.alive || Math.hypot(e.x[id]-x/20,e.z[id]-z/20)>12;
+      if(snap && r.boss.alive)this.snapTo(id,x/20,z/20);
       this.bossPose={x:x/20,z:z/20,fromX:snap?x/20:e.x[id],fromZ:snap?z/20:e.z[id],face,target,phase,at:r.realTime};
     }
     for(const [seat,index,gen] of f.leave||[]){
@@ -178,7 +175,7 @@ export class RoomMonsters{
       if(!e.isAlive(id)||e.gen[id]!==entry.localGen||(remote&&c.pSlot[id]!==seat))continue;
       const old=this.poses.get(id);
       if(!old || old.localGen!==e.gen[id] || Math.hypot(e.x[id]-x,e.z[id]-z)>12){
-        e.x[id]=x;e.z[id]=z;e.y[id]=r.terrain.surface(x,z);
+        this.snapTo(id,x,z);
       }
       this.poses.set(id,{x,z,fromX:e.x[id],fromZ:e.z[id],at:r.realTime,gen,remote,status,mini:entry.mini,localGen:e.gen[id]});
       e.fx[id]=Math.cos(face*Math.PI/16);e.fz[id]=Math.sin(face*Math.PI/16);
@@ -191,23 +188,40 @@ export class RoomMonsters{
       if(kind===8){if(seat===c.mySlot && e.gen[index]===gen && e.isAlive(index))e.kill(index);continue;}
       const entry=this.worldSlots.get(seat*4096+index);
       if(!entry||entry.gen!==gen||!e.isAlive(entry.id)||e.gen[entry.id]!==entry.localGen)continue;
-      if(kind===1)r.projectiles.enemyShot(entry.id,x,r.terrain.surface(x,z)+.8,z);
+      if(kind===1){
+        const ground=Math.max(r.terrain.surface(x,z),r.terrain.propTop(x,z,.02));
+        r.projectiles.enemyShot(entry.id,x,ground+.8,z);
+      }
       if(kind===2&&seat===c.mySlot)r.combat.enemySupport(entry.id);
       if(kind>=3)r.minibosses.roomAction(entry.id,kind,x,z,entry.mini);
     }
   }
+  snapTo(id,x,z){
+    const e=this.coop.run.enemies;
+    e.x[id]=x;e.z[id]=z;e.y[id]=e.floorAt(id,Infinity);
+    e.air[id]=0;e.vy[id]=0;
+  }
+  placeOnTerrain(id,pose,dt){
+    const r=this.coop.run,e=r.enemies;
+    if(pose){
+      const t=Math.min(1,Math.max(0,(r.realTime-pose.at)/.25));
+      const x=pose.fromX+(pose.x-pose.fromX)*t,z=pose.fromZ+(pose.z-pose.fromZ)*t;
+      if(x!==e.x[id] || z!==e.z[id])e.moveAcrossProps(id,e.x[id],e.z[id],x,z,dt,true);
+    }
+    const ground=e.floorAt(id);
+    e.gnd[id]=ground;
+    const hover=e.flags[id]&16?1.1:0;
+    if(!e.air[id] && e.y[id]>ground+hover+.6){e.air[id]=1;e.vy[id]=0;}
+    if(e.air[id]){
+      e.vy[id]-=30*dt;e.y[id]+=e.vy[id]*dt;
+      if(e.vy[id]<=0 && e.y[id]<=ground+hover){e.air[id]=0;e.vy[id]=0;e.y[id]=ground+hover;}
+    }else e.y[id]=ground+hover;
+  }
   place(id,dt){
     const pose=this.poses.get(id),r=this.coop.run,e=r.enemies;
     if(!pose || pose.localGen!==e.gen[id])return false;
-    const t=Math.min(1,Math.max(0,(r.realTime-pose.at)/.25));
-    e.x[id]=pose.fromX+(pose.x-pose.fromX)*t;e.z[id]=pose.fromZ+(pose.z-pose.fromZ)*t;
-    const ground=r.terrain.surface(e.x[id],e.z[id]);
-    e.gnd[id]=ground;
+    this.placeOnTerrain(id,pose,dt);
     if(pose.mini?.chargeT>0)r.minibosses.chargeContact(pose.mini,dt);
-    if(e.air[id]){
-      e.vy[id]-=30*dt;e.y[id]+=e.vy[id]*dt;
-      if(e.y[id]<=ground){e.air[id]=0;e.vy[id]=0;e.y[id]=ground;}
-    }else e.y[id]=ground+(e.flags[id]&16?1.1:0);
     const far=(e.x[id]-r.player.pos.x)**2+(e.z[id]-r.player.pos.z)**2>24*24;
     if(!(pose.status&(8|16|256)) && (!far||(id+e.lodFrame)%4===0))e.anim[id]+=r.realDt*1.6*(far?4:1);
     return true;

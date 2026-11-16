@@ -1,6 +1,12 @@
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-export function paperBox(x,z,width,depth,height,angle){
-  return {x,z,h:height,r:Math.hypot(width,depth)/2,halfX:width/2,halfZ:depth/2,cos:Math.cos(angle),sin:Math.sin(angle),paperBox:true};
+export function paperBox(x,z,width,depth,height,angle,standY){
+  return {x,z,h:height,r:Math.hypot(width,depth)/2,halfX:width/2,halfZ:depth/2,cos:Math.cos(angle),sin:Math.sin(angle),paperBox:true,standY};
+}
+
+// The original impulse clears low objects. Taller objects need enough rise to
+// cross the lip, including the half-step lost to semi-implicit gravity.
+export function obstacleJumpSpeed(rise, base, gravity, dt){
+  return Math.max(base, Math.sqrt(2*gravity*(rise+.65)) + gravity*dt/2);
 }
 export function hitsPaperBox(box,x,z,radius){
   const dx=x-box.x,dz=z-box.z,lx=box.cos*dx-box.sin*dz,lz=box.sin*dx+box.cos*dz;
@@ -21,11 +27,12 @@ export function resolvePaperBox(box,point,radius){
 
 // Use steps smaller than the body radius so a dash cannot skip a thin prop.
 // A pursuing enemy keeps its chosen direction along the wall until it clears it.
-export function moveEnemyPastProps(terrain, x, z, endX, endZ, radius, feet, steerDistance, side, out){
+export function moveEnemyPastProps(terrain, x, z, endX, endZ, radius, feet, steerDistance, side, out, jump=false){
   const dx = endX - x, dz = endZ - z;
   const distance = Math.hypot(dx, dz);
   const steps = Math.max(1, Math.ceil(distance / radius));
   const stepX = dx / steps, stepZ = dz / steps;
+  out.jumpTop = -Infinity;
   for(let i = 0; i < steps; i++){
     const nextX = x + stepX, nextZ = z + stepZ;
     terrain.resolve(nextX, nextZ, radius, feet, out);
@@ -34,6 +41,14 @@ export function moveEnemyPastProps(terrain, x, z, endX, endZ, radius, feet, stee
       side = 0;
     } else {
       const normalLength = Math.hypot(nx, nz);
+      if(jump && stepX * nx + stepZ * nz < 0){
+        const top = terrain.propTop(nextX,nextZ,radius);
+        if(top > feet+.0001){
+          out.jumpTop = top;
+          side = 0;
+          break;
+        }
+      }
       if(steerDistance > 0 && stepX * nx + stepZ * nz < 0){
         const tx = -nz / normalLength, tz = nx / normalLength;
         side ||= stepX * tx + stepZ * tz < 0 ? -1 : 1;

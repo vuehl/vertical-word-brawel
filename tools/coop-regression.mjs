@@ -163,7 +163,7 @@ export async function reviewCoop(browser, gamePort) {
         }finally{await secondDevice.close();}
       }
       await click(page,'多人联机');
-      if (i) await click(page,i === 1 ? '摹' : '风');
+      assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/选择字灵|房主把六位房间号/);
       console.log('Lobby ready', i+1);
     }
     const [host,...guests]=clients;
@@ -178,6 +178,7 @@ export async function reviewCoop(browser, gamePort) {
       await page.evaluate(code=>window.roomCode=code,code);
       await click(page,'加入房间');
       await page.waitForFunction(()=>app.coopRoom?.code);
+      await click(page,page===guests[0]?'摹':'风');
     }
     assert.deepEqual(await Promise.all(clients.map(page=>page.evaluate(()=>window.routes))),
       clients.map(()=>['login','exchange','cloud']));
@@ -234,6 +235,11 @@ export async function reviewCoop(browser, gamePort) {
     await Promise.all([host,guests[0]].map(page=>page.waitForFunction(()=>
       app.screen?.querySelector('.zx-loading-percent')?.textContent==='90%' &&
       app.screen.textContent.includes('等待小伙伴加载完成'),{timeout:90000})));
+    // Keep all three software rasterizers from stalling the relay heartbeat
+    // when the shared start signal releases the first combat frame.
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      window.renderDuringCoop=app.r.render;app.r.render=()=>{};
+    })));
     await guests[1].evaluate(()=>window.releaseLastScene());
     await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run?.state==='play' && !app.screen && [...app.run.coop.active()].length===2, {timeout:110000,polling:200})));
     const sample=await Promise.all(clients.map(p=>p.evaluate(()=>({seed:app.run.seed,species:app.run.startSpecies,received:app.coopRoom.traffic.snapReceived}))));
@@ -249,11 +255,22 @@ export async function reviewCoop(browser, gamePort) {
       app.run.queueLevelUp=()=>{};
       app.run.stageTime=120;
     })));
-    // Separate the network timing check from three competing software rasterizers.
-    // The HUD, its canvas ring, simulation, and relay still tick normally.
-    await Promise.all(clients.map(page=>page.evaluate(()=>{
-      window.renderDuringCoop=app.r.render;app.r.render=()=>{};
-    })));
+    // Follow a slow marching enemy across a seeded eraser on all three seats.
+    const crossing=await host.evaluate(()=>{
+      const r=app.run,e=r.enemies,p=r.terrain.zxProps.find(p=>p.kind==='eraser');
+      const b=r.terrain.colliders.find(b=>b.x===p.x && b.z===p.z);
+      const id=e.spawn(129,b.x-6*b.sin,b.z-6*b.cos,1,1,1024);
+      if(id<0)throw Error('Could not spawn the obstacle test enemy');
+      e.flags[id]=1024;e.dirX[id]=b.sin;e.dirZ[id]=b.cos;e.speed[id]=1.5;
+      e.hp[id]=e.maxHp[id]=1000000;
+      return {id,slot:r.coop.mySlot,gen:e.gen[id],top:b.standY};
+    });
+    await Promise.all(clients.map(page=>page.waitForFunction(({id,slot,gen,top})=>{
+      const {enemies:e,coop}=app.run,entry=coop.monsters.worldSlots.get(slot*4096+id);
+      return entry?.gen===gen && !e.air[entry.id] && Math.abs(e.y[entry.id]-top)<.001;
+    },{timeout:20000,polling:50},crossing)));
+    await host.evaluate(id=>app.run.enemies.kill(id),crossing.id);
+    console.log('Monster landed on the eraser on all three clients');
     // Rescue from proximity alone. The third player waits out of range.
     const downAt=await host.evaluate(()=>{
       const r=app.run;r.player.dead=true;r.player.hp=0;r.coop.onDowned();return {x:r.player.pos.x,z:r.player.pos.z};

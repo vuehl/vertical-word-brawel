@@ -38,12 +38,12 @@ export async function reviewOptimizations(page,dir){
         return {fullLayouts:full,localLayouts:local,fullUploads:auditUIUploads-before.uploads,uploadBytes:auditUploadBytes-before.bytes,
           fullFrameBytes:inspected.uiCanvas.width*inspected.uiCanvas.height*4*30,
           tiles:inspected.hudLayers.map(l=>l.canvas&&[l.canvas.width,l.canvas.height]),
-          labels:[...inspected.doc.querySelectorAll('.zx-hud-counters,.zx-hud-meta')].map(e=>e.textContent)};
+          labels:[...inspected.doc.querySelectorAll('.zx-hud-counters')].map(e=>e.textContent)};
       }finally{window.hudTestClock=now;layout.refresh=refresh;layout.refreshSubtree=sub;env.performance.now=realNow;}
     });
     await page.screenshot({path:path.join(dir,`hud-tiles-${width}.png`)});
     data.visual=await page.evaluate(()=>{
-      window.tileNodes=[...inspected.doc.querySelectorAll('[data-ui-layer]')].filter(e=>['counters','score','ultimate','skills','items'].includes(e.dataset.uiLayer)).map(e=>[e,e.dataset.uiLayer]);
+      window.tileNodes=[...inspected.doc.querySelectorAll('[data-ui-layer]')].filter(e=>['counters','ultimate','skills','items'].includes(e.dataset.uiLayer)).map(e=>[e,e.dataset.uiLayer]);
       for(const [el] of tileNodes)el.removeAttribute('data-ui-layer');
       app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
       return comparePixels(tileScreen,readScreen());
@@ -53,9 +53,9 @@ export async function reviewOptimizations(page,dir){
     report.hud.push({width,height,...data});
     console.log('HUD',width,JSON.stringify(data));
     fs.writeFileSync(path.join(dir,'optimization-regression.json'),JSON.stringify(report,null,2));
-    assert.equal(data.fullLayouts,0,'Counters/score/charge should not lay out the full screen');
-    assert.equal(data.fullUploads,0,'Counters/score/charge should not upload the full screen');
-    assert.ok(data.localLayouts>=80);
+    assert.equal(data.fullLayouts,0,'Counters/charge should not lay out the full screen');
+    assert.equal(data.fullUploads,0,'Counters/charge should not upload the full screen');
+    assert.ok(data.localLayouts>=60); // Two changing HUD regions over 30 frames.
     assert.ok(data.uploadBytes<data.fullFrameBytes*.2);
     assert.ok(data.visual.changedFraction<.01,'Local layout differs visibly from full layout');
   }
@@ -70,10 +70,14 @@ export async function reviewOptimizations(page,dir){
       await new Promise(resolve=>setTimeout(resolve,200));clock+=300;r.render(0);env.drawUI(r.renderer);
       return {fullUploads:auditUIUploads-uploads,reused:original===inspected.doc.querySelector('[data-skill-slot="0"] img'),
         level:inspected.doc.querySelector('[data-skill-slot="0"]').dataset.level,
-        items:[...inspected.doc.querySelectorAll('[data-item]')].map(e=>[e.dataset.item,e.dataset.count]),
-        imagesReady:[...inspected.doc.querySelectorAll('[data-ui-layer="skills"] img,[data-ui-layer="items"] img')].every(img=>img.complete)};
+        items:[...inspected.doc.querySelectorAll('[data-item]')].map(e=>[e.dataset.item,e.dataset.count])};
     }finally{window.hudTestClock=clock;env.performance.now=now;}
   });
+  // The paint above starts the native image decode. Wait for its completion
+  // independently of how quickly the software renderer submitted that frame.
+  report.skills.imagesReady=await (await page.waitForFunction(()=>
+    [...inspected.doc.querySelectorAll('[data-ui-layer="skills"] img,[data-ui-layer="items"] img')].every(img=>img.complete)
+  )).jsonValue();
   console.log('Skills',JSON.stringify(report.skills));
   assert.equal(report.skills.fullUploads,0);assert.ok(report.skills.reused&&report.skills.imagesReady);
   assert.equal(report.skills.level,'2');assert.ok(report.skills.items.some(([id,n])=>id==='leftovers'&&n==='2'));

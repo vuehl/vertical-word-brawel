@@ -225,24 +225,25 @@ export function createZixingUI(app,api) {
       if(room.room.state==='started')await room.ev.start(room.room);
     }
     function mountLobby(session) {
-      const choices=characters.map(c=>action(c.word,async()=>{
-        if(session)await session.setPick(c.id);
-        pick=c.id;
-      }));
-      const body=[card(el('b','','选择字灵'),row(...choices))];
+      const body=[];
+      let choices;
       const actions=[];
       let roster,readyButton,startButton;
       if(session){
-        body.unshift(card(small('房间号'),el('h2','',session.code),action('复制房间号',async()=>{
+        body.push(card(small('房间号'),el('h2','',session.code),action('复制房间号',async()=>{
           await window.copyRoomCode(session.code);status='已复制，可以发给朋友。';
         })));
-        roster=card();body.push(roster);
+        choices=characters.map(c=>action(c.word,async()=>{
+          await session.setPick(c.id);
+          pick=c.id;
+        }));
+        roster=card();
+        body.push(card(el('b','','选择字灵'),row(...choices)),roster);
         readyButton=action('准备',()=>session.setReady(!session.mine.ready),'primary');
         startButton=action('开始冒险',()=>session.start(),'primary');
         actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;}));
       }else{
         if(resume)actions.push(action('重连原房间',()=>connect(true,resume),'primary'));
-        body.push(small('房主把六位房间号发给朋友。至少两人准备后，即可一起出发。'));
         actions.push(action('创建房间',()=>connect(false),'primary'),action('加入房间',()=>connect(true)),action('返回首页',home));
       }
       const note=text('','zx-note');
@@ -250,15 +251,15 @@ export function createZixingUI(app,api) {
       const node=screen('coop',session?'队伍房间':'多人联机','桌上世界 · 2–3 人合作',body,actions);
       const subtitle=node.querySelector('.zx-header small');
       function update(){
-        const species=session?.mine?.species ?? pick;
+        updateText(note,status);
+        if(note.hidden!==!status)note.hidden=!status;
+        if(!session)return;
+        const species=session.mine?.species ?? pick;
         characters.forEach((c,i)=>{
           const active=c.id===species, choice=choices[i];
           updateText(choice,(active?'✓ ':'')+c.word);
           if(choice.classList.contains('primary')!==active)choice.classList.toggle('primary',active);
         });
-        updateText(note,status);
-        if(note.hidden!==!status)note.hidden=!status;
-        if(!session)return;
         const {members,host}=session.room;
         updateText(subtitle,members.length+' / 3 人 · 普通难度');
         members.forEach((member,i)=>{
@@ -420,7 +421,7 @@ export function createZixingUI(app,api) {
   }
   function labValue(item,level) {
     const value=(item.per??(item.id==='ult'?.04:0))*level;
-    return '+ '+(['maxHp','armor','luck','pickupRange','regen'].includes(item.stat)?Number(value.toFixed(2))+(item.stat==='regen'?' / 秒':item.stat==='pickupRange'?' 米':''):percent(value));
+    return '+ '+(['maxHp','armor','luck','pickupRange','regen'].includes(item.stat)?Number(value.toFixed(2))+(item.stat==='regen'?' / 秒':item.stat==='pickupRange'?' 厘米':''):percent(value));
   }
   function lab(message='') {
     const list=labGroups[labTab].map(id=>laboratory.find(item=>item.id===id));
@@ -560,7 +561,7 @@ export function createZixingUI(app,api) {
       row(item('全局伤害倍率',percent(s.damage),'查看加成来源',()=>damageSources(run,preview)),item('最大生命',number(s.maxHp),run?'当前生命 '+Math.ceil(run.player.hp)+' / '+Math.round(run.player.maxHp):'角色基础生命')),
       row(item('攻击速度',percent(s.attackSpeed),'含永久研究加成'),item('移动速度',percent(s.moveSpeed),'含永久研究加成')),
     ]),card(statRow('暴击率',percent(s.critChance)),statRow('攻击范围',percent(s.area)),statRow('护甲',Number(s.armor.toFixed(1))),statRow('生命回复',Number(s.regen.toFixed(2))+' / 秒')));
-    else body.push(card(statRow('经验获取',percent(s.xpGain)),statRow('金币获取',percent(s.gold)),statRow('幸运',number(s.luck)),statRow('拾取范围',Number(s.pickupRange.toFixed(1))+' 米')),small('金币获取影响局内金币，与研究所星尘收益独立。'));
+    else body.push(card(statRow('经验获取',percent(s.xpGain)),statRow('金币获取',percent(s.gold)),statRow('幸运',number(s.luck)),statRow('拾取范围',Number(s.pickupRange.toFixed(1))+' 厘米')),small('金币获取影响局内金币，与研究所星尘收益独立。'));
     body.push(small(run?'查看时保持暂停，返回不改变本局强化。':'研究加成用于下一次新对局。'));
     screen('stats',run?'当前属性':'文字属性',run?'查看时保持暂停 · 本局属性':'开局预览 · 不包含局内临时强化',body,[button('返回',()=>{app.setScreen(null);back();})],'blue');
   }
@@ -801,7 +802,7 @@ export function createZixingUI(app,api) {
     level.dataset.uiLayer='portrait-level';
     const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
     const skillSlots=el('div','zx-skill-slots',[],{'data-ui-layer':'skills'});inventory.append(skillSlots);
-    const stageLabel=el('small','zx-hud-stage',''),score=el('span','zx-hud-score',''),c=character(run.startSpecies);
+    const stageLabel=el('small','zx-hud-stage',''),c=character(run.startSpecies);
     const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化'});
     supplies.dataset.uiLayer='items';
     const health=el('canvas','zx-player-health',[],{width:176,height:40,'data-static':'true','data-ui-layer':'health',role:'progressbar','aria-label':'角色生命','aria-valuemin':0});
@@ -836,14 +837,13 @@ export function createZixingUI(app,api) {
           supplies,
         ]),level,
       ]),minimap,button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),
-    ],{'data-ui-region':'hud-stack'}),el('div','zx-hud-meta',[score]),inventory,health);
+    ],{'data-ui-region':'hud-stack'}),inventory,health);
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
     const updatePeers=run.coop?createPeerHud(run,node,el):null;
     hud.prepareEntryIcons=()=>Promise.all(Array.from(node.querySelectorAll('.zx-loadout-icon'),prepareHudImage));
     node.querySelector('.zx-hud-counters').dataset.uiLayer='counters';
-    node.querySelector('.zx-hud-meta').dataset.uiLayer='score';
     hud.touch.ult.dataset.uiLayer='ultimate';
     const toastLayer=el('div','zx-toast-layer',[],{'data-ui-layer':'toasts'});
     toastLayer.style.cssText='position:absolute;left:0;top:0;width:100%;height:0;overflow:visible;pointer-events:none';
@@ -964,7 +964,7 @@ export function createZixingUI(app,api) {
       const p=run.player;
       updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+(run.mode===SINGLE_STAGE?'/1区':'/3区')));updateText(stageLabel,difficultyName(run));
       stageLabel.dataset.tier=String(run.tier);
-      updateText(score,'积分 '+number(run.stats.kills));updateText(clock,time(run.time));updateText(gold,number(run.gold));
+      updateText(clock,time(run.time));updateText(gold,number(run.gold));
       updateSkillSlots(skillSlots,run);
       const supplyKey=JSON.stringify([[...p.vitamins].map(([id,v])=>[id,v.level]),[...p.items],profile().settings.showItems,innerWidth]);
       if(supplyKey!==lastSupplies){

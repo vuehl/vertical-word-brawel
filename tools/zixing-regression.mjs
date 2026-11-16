@@ -235,12 +235,12 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       const items=[...inspected.doc.querySelectorAll('[data-item]')].map(n=>[n.dataset.item,Number(n.dataset.count)]),skill=Number(inspected.doc.querySelector('[data-skill-slot="0"]').dataset.level),unlocked=!inspected.doc.querySelector('[data-skill-slot="3"]').classList.contains('locked');
       p.level=oldLevel;p.xp=oldXp;p.moveSlots=oldSlots;refresh();r.state='play';
       const minimap=inspected.doc.querySelector('.zx-minimap'),mapPixels=minimap.getContext('2d').getImageData(0,0,240,240).data;
-      return {samples,experience,resetExperience,weatherTags:inspected.doc.querySelectorAll('.zx-hud-weather').length,level,expectedLevel:'LV.'+oldLevel,topBars,items,skill,expectedSkill:oldSkill+1,unlocked,mapDrawn:mapPixels.some((v,i)=>i%4===3&&v>0),score:inspected.doc.querySelector('.zx-hud-score').textContent,expectedScore:'积分 '+Math.round(r.stats.kills).toLocaleString('en-US')};
+      return {samples,experience,resetExperience,weatherTags:inspected.doc.querySelectorAll('.zx-hud-weather').length,level,expectedLevel:'LV.'+oldLevel,topBars,items,skill,expectedSkill:oldSkill+1,unlocked,mapDrawn:mapPixels.some((v,i)=>i%4===3&&v>0),scoreNodes:inspected.doc.querySelectorAll('.zx-hud-score,.zx-hud-meta,[data-ui-layer="score"]').length};
     });
     assert.deepEqual(hudBindings.samples.map(s=>s.progress),[0,.25,.75,1]);assert.ok(hudBindings.samples.every(s=>s.value===s.expected),'Foot health must follow damage and healing');
     assert.deepEqual(hudBindings.experience.map(s=>s.progress),[0,.25,.75,.99]);assert.equal(hudBindings.resetExperience,0);assert.equal(hudBindings.weatherTags,0);
     assert.ok(hudBindings.experience.every((sample,i,all)=>!i||sample.blue>all[i-1].blue),'The blue portrait arc must visibly fill as experience increases');
-    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.topBars,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.mapDrawn);assert.equal(hudBindings.score,hudBindings.expectedScore);assert.ok(hudBindings.items.some(([id,n])=>id==='leftovers'&&n===2));
+    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.topBars,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.mapDrawn);assert.equal(hudBindings.scoreNodes,0);assert.ok(hudBindings.items.some(([id,n])=>id==='leftovers'&&n===2));
     fs.writeFileSync(path.join(dir,'hud-bindings.json'),JSON.stringify(hudBindings,null,2));await snapshot('07-hud-skills-items');
     await page.evaluate(()=>{const r=app.run;window.previewXp=r.player.xp;r.player.xp=r.player.xpNext*.65;r.state='paused';r.ui.hud(r);});
     await snapshot('07-experience-ring-65');
@@ -256,7 +256,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       const p=app.run.player,foot=app.run.ui.project(app.run,p.pos.x,p.pos.y-.15,p.pos.z);
       const screen=inspected.doc.getElementById('game').getBoundingClientRect();
       const header={offsetX:-screen.x,offsetY:-screen.y,safeTop:wx.getWindowInfo().safeArea.top,menu:wx.getMenuButtonBoundingClientRect(),badge:box('.zx-hud-level'),portrait:box('.zx-profile-art')};
-      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,header,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),name:box('.zx-hud-name-row'),supplies:box('.zx-inventory-items'),health:box('.zx-player-health'),foot,labels,skills:Array.from({length:p.moveSlots},(_,i)=>i).map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
+      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,header,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),pause:box('.zx-hud-pause'),name:box('.zx-hud-name-row'),supplies:box('.zx-inventory-items'),health:box('.zx-player-health'),foot,labels,skills:Array.from({length:p.moveSlots},(_,i)=>i).map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
     });}
     function swipeControls(c){
       assert.ok(c.ult&&c.ult.x>=0&&c.ult.y>=0&&c.ult.x+c.ult.w<=c.width+1&&c.ult.y+c.ult.h<c.height,'Ultimate must fit above the safe bottom edge');
@@ -267,7 +267,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       assert.ok(c.profile.y>=c.location.y+c.location.h+10&&c.profile.y<=c.location.y+c.location.h+26,'The portrait must sit close below the stage strip');
       assert.ok(c.header.badge.y>c.header.portrait.y+c.header.portrait.h*75.25/84+1,'The level badge must leave the entire experience ring visible');
       assert.ok(c.supplies.y>=c.name.y+c.name.h+4&&c.supplies.x+c.supplies.w<c.profile.x+c.profile.w,'Items must fit below the character name');
-      assert.ok(c.meta.y>=c.skills.at(-1).y+c.skills.at(-1).h&&c.pause.y>=c.minimap.y+c.minimap.h+8,'Score belongs along the bottom and pause below the minimap');
+      assert.ok(c.pause.y>=c.minimap.y+c.minimap.h+8,'Pause belongs below the minimap');
       assert.ok(Math.abs(c.health.cx-c.foot.x)<=2&&c.health.y>=c.foot.y+6&&c.health.y<=c.foot.y+14,'Health must follow the projected feet, including movement and resizing');
       for(let i=0;i<c.skills.length;i++){const s=c.skills[i];assert.equal(s.w,s.h);if(i)assert.ok(s.y>c.skills[i-1].y+c.skills[i-1].h);}
       assert.ok(c.labels[0].nowrap&&c.labels[0].width>=40,'The level badge must remain legible on one line');

@@ -92,7 +92,7 @@ export async function reviewBattleVisual(page,dir){
       env.invalidateUI();await new Promise(r=>setTimeout(r,100));draw();
       const before=auditUIUploads;
       for(let i=0;i<5;i++){
-        marker.style.left=(130+i*5)+'px';marker.children[2].textContent=(25+i)+' 米';
+        marker.style.left=(130+i*5)+'px';marker.children[2].textContent=(25+i)+' 厘米';
         popup.style.top=(300-i*3)+'px';popup.textContent='效果绝佳 '+i;
         await new Promise(r=>setTimeout(r,100));draw();
       }
@@ -115,5 +115,36 @@ export async function reviewBattleVisual(page,dir){
     report.overlays.push({width,height,...sample});
     await page.screenshot({path:path.join(dir,`overlay-${width}.png`)});
   }
+  await page.setViewport({width:390,height:844,deviceScaleFactor:2});
+  await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
+  report.captureGuide=await page.evaluate(async()=>{
+    const run=app.run,ui=run.ui,p=run.player.pos,doc=inspected.doc,env=inspected.env;
+    const i=run.enemies.spawn(4,p.x+26,p.z,1,1,128);
+    Object.assign(run.capture,{index:i,species:4,state:'weakened'});
+    run.enemies.x[i]=p.x+26;run.enemies.z[i]=p.z;
+    ui.toastsEl.replaceChildren();run.capture.recover();
+    await new Promise(r=>setTimeout(r,200));
+    ui.hud(run);run.renderWorld(0);app.r.render(0);env.invalidateUI();env.drawUI(app.r.renderer);
+    const dial=ui.arrow.children[0],text=ui.toastsEl.querySelector('.zx-note-text');
+    return {score:!!doc.querySelector('.zx-hud-meta,.zx-hud-score'),toast:text.textContent,
+      direction:dial.dataset.frame,surface:[dial.width,dial.height],distance:ui.arrow.children[2].textContent,
+      visible:ui.arrow.style.display!=='none'&&inspected.layout.box(text).w>0};
+  });
+  assert.equal(report.captureGuide.score,false);
+  assert.deepEqual(report.captureGuide.surface,[128,128]);
+  assert.ok(report.captureGuide.visible&&report.captureGuide.direction!==undefined,JSON.stringify(report.captureGuide));
+  assert.match(report.captureGuide.toast,/恢复/);assert.match(report.captureGuide.distance,/26/);
+  await page.screenshot({path:path.join(dir,'捕获目标提示.png')});
+  report.manualUltimate=await page.evaluate(()=>{
+    const run=app.run;
+    Object.assign(run.meta.profile.settings,{autoUlt:false,ultQuiet:false,ultPose:true});
+    run.ult.charge=1;run.hitstopT=0;
+    const start=run.time,uses=run.ult.uses;
+    run.input.hit=key=>key==='KeyR';run.update(1/60);
+    run.input.hit=()=>false;run.update(1/60);run.update(1/60);
+    return {uses:run.ult.uses-uses,hitstop:run.hitstopT,advanced:run.time-start,castPending:run.ult.castPending};
+  });
+  assert.equal(report.manualUltimate.uses,1);assert.equal(report.manualUltimate.hitstop,0);
+  assert.ok(Math.abs(report.manualUltimate.advanced-3/60)<1e-7);assert.equal(report.manualUltimate.castPending,false);
   fs.writeFileSync(path.join(dir,'battle-visual.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 }

@@ -21,7 +21,7 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
     run.state = 'paused';
     enemies.clear();
     const id = enemies.spawn(129, box.x, box.z, 1, 1);
-    const overlaps = ()=>terrain.hitProp(enemies.x[id], 0, enemies.z[id], enemies.radius[id]-.00005);
+    const overlaps = ()=>terrain.hitProp(enemies.x[id], enemies.y[id], enemies.z[id], enemies.radius[id]-.00005);
     const spawnClear = !overlaps();
     enemies.flags[id] = 0;
     run.player.pos.set(target.x, 0, target.z);
@@ -33,18 +33,48 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
     const signedDistance = ()=>(enemies.x[id]-box.x)*box.sin+(enemies.z[id]-box.z)*box.cos;
     const knockbackBlocked = signedDistance() < -box.halfZ && !overlaps();
     enemies.kx[id] = enemies.kz[id] = 0;
-    let enteredProp = false, reached = false;
+    let enteredProp = false, landedOnTop = false, reached = false;
     for(let frame=0; frame<600 && !reached; frame++){
       enemies.update(1/30);
       enteredProp ||= overlaps();
+      landedOnTop ||= !enemies.air[id] && Math.abs(enemies.y[id]-box.standY)<.001;
       reached = Math.hypot(enemies.x[id]-target.x,enemies.z[id]-target.z)<2;
     }
     enemies.clear();
     run.player.pos.copy(saved);
     run.state = 'play';
-    return {spawnClear,knockbackBlocked,enteredProp,reached};
+    return {spawnClear,knockbackBlocked,enteredProp,landedOnTop,reached};
   });
-  assert.deepEqual(report.enemyCollision,{spawnClear:true,knockbackBlocked:true,enteredProp:false,reached:true});
+  assert.deepEqual(report.enemyCollision,{spawnClear:true,knockbackBlocked:true,enteredProp:false,landedOnTop:true,reached:true});
+  report.springShoes=await page.evaluate(()=>{
+    const r=app.run,p=r.player,t=r.terrain,dt=1/30;
+    const saved=p.pos.clone(),prop=t.zxProps.find(prop=>prop.kind==='eraser');
+    const box=t.colliders.find(b=>b.x===prop.x && b.z===prop.z);
+    const x=box.x-box.sin*4,z=box.z-box.cos*4;
+    p.pos.set(x,t.height(x,z),z);p.vel.set(0,0,0);p.grounded=true;
+    const advance=()=>{r.realDt=dt;p.update(dt);r.input.endFrame();};
+    r.input.touchKey('Space',true);advance();r.input.touchKey('Space',false);
+    const spaceBlocked=p.grounded;
+    r.input.stickX=Math.cos(r.camYaw)*box.sin-Math.sin(r.camYaw)*box.cos;
+    r.input.stickY=-Math.sin(r.camYaw)*box.sin-Math.cos(r.camYaw)*box.cos;
+    for(let i=0;i<45;i++)advance();
+    const stopped=p.grounded && Math.hypot(p.pos.x-box.x,p.pos.z-box.z)>box.halfZ;
+    p.addItem('air-balloon');
+    const buttonHidden=!inspected.doc.querySelector('.tc-jump');
+    let jumped=false,onTop=false;
+    for(let i=0;i<120;i++){
+      advance();
+      jumped ||= !p.grounded;
+      onTop ||= p.grounded && Math.abs(p.pos.y-box.standY)<.001;
+      if(onTop)break;
+    }
+    r.input.stickX=r.input.stickY=0;
+    for(let i=0;i<45;i++)advance();
+    const stable=p.grounded && Math.abs(p.pos.y-box.standY)<.001;
+    p.removeItem('air-balloon');p.pos.copy(saved);p.vel.set(0,0,0);
+    return {spaceBlocked,stopped,buttonHidden,jumped,onTop,stable};
+  });
+  assert.deepEqual(report.springShoes,{spaceBlocked:true,stopped:true,buttonHidden:true,jumped:true,onTop:true,stable:true});
   const pickup=await page.evaluate(()=>{
     const run=app.run,p=run.player,pk=run.pickups;run.state='paused';pk.clear();
     const base=run.gold,pos=p.pos.clone();p.pos.set(0,0,0);
@@ -105,6 +135,12 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
     }
   }
   await tap('.zx-hud-pause');await shot('09-pause');
+  await tap('.zx-pause-attributes');
+  await tap('.zx-tab','成长属性');
+  const range=await page.evaluate(()=>[...app.screen.querySelectorAll('.zx-stat-row')]
+    .find(row=>row.firstElementChild.textContent==='拾取范围')?.lastElementChild.textContent);
+  assert.equal(range,'6 厘米');
+  await shot('10-growth-attributes');
   fs.writeFileSync(path.join(dir,'paper-validation.json'),JSON.stringify(report,null,2));
   console.log('Paper art, fixed camera, pickups and all chapters passed:',report.screenshots.length,'screenshots');
 }

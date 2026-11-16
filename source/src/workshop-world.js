@@ -147,7 +147,8 @@ export function* workshopWorldSteps(terrain){
   function group(x,z,angle=0){const g=new Group();g.position.set(x,0,z);g.rotation.y=angle;root.add(g);return g;}
   function prop(kind,x,z,w,d,h,angle=0){
     const g=group(x,z,angle),baseY=groundY(x,z);g.position.y=baseY;terrain.zxProps.push({kind,x,z,w,d,h,angle,baseY});
-    terrain.addCollider(paperBox(x,z,w,d,baseY+h+.2,angle));terrain.reserve(x,z,Math.hypot(w,d)/2+1);
+    const top=baseY+h;
+    terrain.addCollider(paperBox(x,z,w,d,top+.2,angle,kind.startsWith('boundary-')?undefined:top));terrain.reserve(x,z,Math.hypot(w,d)/2+1);
     terrain.landmarks.push({kind:'meadow',x,z,r:Math.hypot(w,d)/2});return g;
   }
   function glow(c,reactive=false){const key=(reactive?'sensor-glow-':'glow-')+c,m=mat(key,{color:c,emissive:c,emissiveIntensity:reactive?3.4:.12});if(reactive&&!m.userData.proximity)proximityBulb(m,assets);if(!terrain.workshopGlows.includes(m))terrain.workshopGlows.push(m);return m;}
@@ -375,7 +376,7 @@ export function* workshopWorldSteps(terrain){
     mesh(g,assets.roadInner,cloth('#d4bc8d'),0,0,0,s,s,s);mesh(g,assets.roadOuter,cloth('#c0a371'),0,0,0,s,s,s);
     raceCar(g,-7*s,4*s,s);
     // Only the car is solid; the track itself remains part of the playfield.
-    const carPoint=new Vector3(-7*s,0,4*s);g.localToWorld(carPoint);terrain.zxProps.push({kind:'mini-4wd',x:carPoint.x,z:carPoint.z,w:4.2*s,d:6.2*s,h:2.1*s,angle:angle-.2,baseY:g.position.y});terrain.addCollider(paperBox(carPoint.x,carPoint.z,4.2*s,6.2*s,g.position.y+2.2*s,angle-.2));terrain.reserve(carPoint.x,carPoint.z,4*s);
+    const carPoint=new Vector3(-7*s,0,4*s);g.localToWorld(carPoint);terrain.zxProps.push({kind:'mini-4wd',x:carPoint.x,z:carPoint.z,w:4.2*s,d:6.2*s,h:2.1*s,angle:angle-.2,baseY:g.position.y});terrain.addCollider(paperBox(carPoint.x,carPoint.z,4.2*s,6.2*s,g.position.y+2.2*s,angle-.2,g.position.y+2.1*s));terrain.reserve(carPoint.x,carPoint.z,4*s);
   }
   function pencilCup(x,z,s=1,angle=.16){
     const g=prop('pencil-cup',x,z,5.6*s,5.6*s,11.5*s,angle);

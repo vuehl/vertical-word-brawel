@@ -212,7 +212,7 @@ html.zixing .zx-hud{color:#25243c}
 .zx-hud-area{font-size:11px;line-height:1.2;font-weight:700;color:#3f5574;white-space:nowrap}
 .zx-hud-counters{position:absolute;left:4px;top:107px;height:28px;display:flex;align-items:center;gap:8px}
 .zx-hud-counter{height:28px;min-width:86px;display:flex;align-items:center;gap:6px;padding:0 9px;background:#fffdf6f5;border:1px solid #d5e2eb;border-radius:15px}
-.zx-hud-counter>.zx-icon,.zx-hud-location>.zx-icon,.zx-hud-meta>.zx-icon{flex:none}
+.zx-hud-counter>.zx-icon,.zx-hud-location>.zx-icon{flex:none}
 .zx-hud-clock,.zx-hud-gold{font-size:16px;line-height:1.2;font-weight:700;color:#3c4d6b;white-space:nowrap}.zx-hud-gold{color:#92703a}
 .zx-hud-profile{position:absolute;left:0;right:108px;top:5px;height:94px}
 .zx-hud-card-back{position:absolute;left:35px;right:0;top:5px;height:68px;border-radius:18px;background:#527ab2}
@@ -228,8 +228,7 @@ html.zixing .zx-hud{color:#25243c}
 .zx .zx-peer-health,.zx .zx-peer-tag{position:absolute;left:0;top:0;width:88px;height:20px;pointer-events:none}
 .zx .zx-peer-tag{width:100px;height:26px}
 .zx .zx-minimap{position:absolute;right:0;top:5px;width:96px;height:96px;border:0;border-radius:0;background:transparent;box-shadow:none;pointer-events:auto;zoom:1}
-.zx-hud-meta{position:absolute;bottom:3px;left:14px;right:14px;display:flex;align-items:center;gap:7px;height:19px;padding:0 8px;border-radius:9px;background:#fffdf5c9}
-.zx-hud-score{font-size:11px;line-height:1.2;color:#405270;white-space:nowrap}.zx small.zx-hud-stage{flex:none;padding:1px 6px;border-radius:8px;background:#e3edf8;font-size:10px;line-height:1.3;color:#4f76a4;white-space:nowrap}
+.zx small.zx-hud-stage{flex:none;padding:1px 6px;border-radius:8px;background:#e3edf8;font-size:10px;line-height:1.3;color:#4f76a4;white-space:nowrap}
 .zx-hud-clock,.zx-hud-gold{width:50px;min-width:50px;max-width:50px;white-space:nowrap;flex:none}
 .zx small.zx-hud-stage[data-tier="1"]{background:#d54e50;color:#fff}.zx small.zx-hud-stage[data-tier="2"]{background:#8263ae;color:#fff}
 html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-height:40px;height:40px;border:2px solid #fffdf7;border-radius:50%;background:#eef4ff;box-shadow:0 3px 0 #8da6ca;color:#6176a3}
@@ -242,6 +241,17 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 .zx-slot-count{position:absolute;right:-1px;bottom:-3px;min-width:10px;padding:0 2px;border-radius:5px;background:#fffdf3e6;font-size:9px;line-height:1.1;color:#28233c;text-align:center}
 .zx-skill-slots{position:absolute;left:18px;bottom:26px;display:flex;flex-direction:column;gap:14px}
 #hud.cinematic>.zx-toast-layer{opacity:1!important}
+.zx-toast-layer .toasts{width:calc(100% - 32px);gap:5px;pointer-events:none}
+.zx-toast-layer .toast{max-width:100%;min-height:26px;gap:8px;padding:4px 11px 4px 8px;border:1px solid #ad9b7d;border-radius:6px;background:#fff8e8;color:#433f3b;font-size:13px;line-height:1.35;font-weight:700;box-shadow:none}
+.zx-toast-layer .zx-note-tab{flex:none;width:5px;height:13px;background:#c98f4b;border-radius:2px}
+.zx-toast-layer .zx-note-text{min-width:0;flex-shrink:1}
+.zx-toast-layer .toast img,.zx-toast-layer .toast canvas{width:21px;height:21px;flex:none}
+.zx-compass .zx-compass-dial{position:absolute;left:-32px;top:-32px;width:64px;height:64px;pointer-events:none}
+.zx-compass .cp-ic{left:-16px;top:-16px;width:32px;height:32px;transform:none;animation:none;filter:none}
+.zx-compass .mapbadge{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;background:transparent;box-shadow:none}
+.zx-compass .mapbadge img,.zx-compass .mapbadge canvas{width:28px;height:28px;margin:0}
+.zx-combat-overlay .compass .cp-d{border:1px solid #e1cfad;border-radius:5px;background:#4d4a45;color:#fff7e5;font-size:11px;line-height:1.25;font-weight:700;padding:2px 6px;box-shadow:none}
+.zx-compass .cp-d{top:31px}
 .zx-skill-slot{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:42px;height:42px;background:#e8ede530;border:1px solid #fffdf580;border-radius:50%;overflow:visible}
 .zx-skill-slot.filled{background:#f8f4e9f2;border-color:#fffdf5}
 .zx-skill-slot.locked{background:#e8ede51f}.zx-skill-slot>.zx-loadout-icon{width:32px;height:32px;object-fit:contain}
@@ -264,5 +274,5 @@ html.zixing .tc.zx-touch .tc-ultb.ult{background:repeating-linear-gradient(135de
 html.zixing .tc.zx-touch .tc-ultb.ready{background:repeating-linear-gradient(135deg,#9561ed 0px,#9561ed 10px,#ae7ff6 10px,#ae7ff6 20px)!important}
 html.zixing .tc.zx-touch .tc-ultb.ult:not(.ready){background:repeating-linear-gradient(135deg,#9299a8 0px,#9299a8 10px,#a6adba 10px,#a6adba 20px)!important}
 html.zixing .tc.zx-touch .zx-ult-progress{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
-@media(max-width:350px){.zx-hud-top{left:10px;right:10px}.zx-hud-location{left:10px;padding:0 6px;gap:4px}.zx-hud-area{font-size:9px}.zx-hud-location>.zx-icon{width:10px;height:10px}.zx-hud-location .zx-hud-stage{font-size:8px;padding:1px 5px}.zx-hud-counter{min-width:78px;padding:0 6px;gap:4px}.zx-hud-counters{gap:6px}.zx-hud-clock,.zx-hud-gold{font-size:14px}.zx-hud-profile{right:94px}.zx .zx-minimap{width:84px;height:84px}.zx .zx-profile-art{width:68px;height:72px;top:0}.zx-hud-identity{left:73px;right:13px;top:8px}.zx-hud-name{font-size:14px}.zx-hud-level{left:12px;top:72px;width:44px;height:20px;font-size:11px}.zx-hud-meta{left:12px}html.zixing .zx-hud-pause{top:97px}.zx-hud-supplies .zx-loadout-more{min-height:24px}.zx-mini-slot{width:24px;height:24px}.zx-mini-slot>.zx-loadout-icon{width:18px;height:18px}.zx-home-top{padding:12px 20px}.zx-pause-body{padding:20px 18px 12px;gap:12px}.zx-pause-footer{padding:12px 18px 16px;gap:12px}}
+@media(max-width:350px){.zx-hud-top{left:10px;right:10px}.zx-hud-location{left:10px;padding:0 6px;gap:4px}.zx-hud-area{font-size:9px}.zx-hud-location>.zx-icon{width:10px;height:10px}.zx-hud-location .zx-hud-stage{font-size:8px;padding:1px 5px}.zx-hud-counter{min-width:78px;padding:0 6px;gap:4px}.zx-hud-counters{gap:6px}.zx-hud-clock,.zx-hud-gold{font-size:14px}.zx-hud-profile{right:94px}.zx .zx-minimap{width:84px;height:84px}.zx .zx-profile-art{width:68px;height:72px;top:0}.zx-hud-identity{left:73px;right:13px;top:8px}.zx-hud-name{font-size:14px}.zx-hud-level{left:12px;top:72px;width:44px;height:20px;font-size:11px}html.zixing .zx-hud-pause{top:97px}.zx-hud-supplies .zx-loadout-more{min-height:24px}.zx-mini-slot{width:24px;height:24px}.zx-mini-slot>.zx-loadout-icon{width:18px;height:18px}.zx-home-top{padding:12px 20px}.zx-pause-body{padding:20px 18px 12px;gap:12px}.zx-pause-footer{padding:12px 18px 16px;gap:12px}}
 `;
