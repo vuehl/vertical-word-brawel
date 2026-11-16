@@ -54,7 +54,7 @@ export async function reviewBattleFeedback(context){
   await tap('[data-action="journey"]');await tap('[data-species="132"]');await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.time>2&&app.run.state==='play',{timeout:90000});
   await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});
-  assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-element').textContent),'基');
+  assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-element').textContent),'基础');
   report.controls=await reviewFloatingControls(context);
   // Freeze simulation while independently inspecting actual HUD canvas pixels.
   await sleep(700);

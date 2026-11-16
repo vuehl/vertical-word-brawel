@@ -1,3 +1,4 @@
+import {formCopy} from './form-copy.js';
 import {enemyWords,eliteWords,minibossWords,heroWords} from './character-rules.js';
 
 // Main bosses have a shared pose. Objects and remote replicas cannot register as combat owners.
@@ -162,7 +163,7 @@ export class RoomMonsters{
         id=e.spawnProxy(species,0,0,0,flags,scale);
         if(id<0)continue;
         c.proxies.set(key,id);c.pSlot[id]=seat;c.pKey[id]=((gen&15)<<12)|index;
-        e.glyphWords[id]=wordsFor(flags)[word] ?? heroWords[species];e.maxHp[id]=maxHP;e.dmg[id]=dmg;
+        e.glyphWords[id]=formCopy[species]?.word ?? wordsFor(flags)[word] ?? heroWords[species];e.maxHp[id]=maxHP;e.dmg[id]=dmg;
         c.pHit[id]=-99;c.pN[id]=0;
       }else if(!e.isAlive(id)||e.gen[id]!==gen)continue;
       const mini=seat!==c.mySlot && (flags&12288)?r.minibosses.make(flags&8192?'summoner':'totem',species,id):null;

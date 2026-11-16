@@ -6,7 +6,7 @@ import itemCatalog from '../source/public/data/items.json' with {type:'json'};
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=24;
+export const assetPolicyVersion=25;
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
 

@@ -33,7 +33,7 @@ export function instrumentGame(code){
     replaceOnce(code,'await app.boot();return app;',`await app.boot();installDeveloperMode(app,{
       skills:{
         pool:run=>Vb(run.player.speciesId,run.player.roster,run.player.types,id=>run.meta.inLeague(id)),
-        move:id=>O_(id),
+        move:(id,species)=>formMove(id,species),
         upgrade:(run,slot)=>Gb(run,{kind:'upMove',slot,ups:P_(run.player.moves[slot],E[0])})
       },speciesName:id=>k.get(id).name
     });return app;`);

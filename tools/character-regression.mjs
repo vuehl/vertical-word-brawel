@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {enemyWords,eliteWords,minibossWords} from '../source/src/character-rules.js';
+import {enemyWords,eliteWords} from '../source/src/character-rules.js';
 
 export async function reviewCharacters(page,dir) {
   const report={heroes:[],branches:[],spawns:[],buffs:[]};
@@ -36,7 +36,7 @@ export async function reviewCharacters(page,dir) {
         return {preview,species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
       assert.equal(first.species,branch);report.branches.push(first);
-      assert.equal(first.ultimate,({5:'火圈绕身',17:'环形扩散',58:'卷着打转'})[branch]);
+      assert.equal(first.ultimate,({5:'火圈绕身',17:'卷着打转',58:'叫完就冲'})[branch]);
       const second=await page.evaluate(()=>{
         const r=app.run;r.state='play';r.player.level=r.nextEvo.level;r.tryEvolve();
         [...r.ui.modalEl.querySelectorAll('button')].find(n=>n.textContent.includes('确认进阶')).click();
@@ -49,7 +49,7 @@ export async function reviewCharacters(page,dir) {
           const r=app.run,p=r.player,key='moveSpeed';
           p.buffs.clear();p.recompute();const before=p.stats[key];r.ult.charge=1;r.ult.fire();
           for(let i=0;i<30&&!p.buffs.size;i++)r.update(1/30);
-          const during=p.stats[key],duration=[...p.buffs.values()].find(b=>b.label==='移速 ×10')?.max;
+          const during=p.stats[key],duration=[...p.buffs.values()].find(b=>b.label==='跑得没影')?.max;
           r.state='paused';for(let i=0;i<60;i++)r.update(1/30);const paused=p.stats[key];
           r.state='play';for(let i=0;i<240;i++)r.update(1/30);
           return {key,before,during,duration,paused,after:p.stats[key],buffs:[...p.buffs.keys()]};
@@ -79,9 +79,9 @@ export async function reviewCharacters(page,dir) {
       return {samples,pool:[...words],playerWord:r.sprites.get(p.speciesId).zxGlyph};
     });
     assert.deepEqual(new Set(spawns.pool),new Set([...enemyWords,...eliteWords]));assert.equal(spawns.playerWord,finalWord);
-    for(const {word,batchWord,flags} of spawns.samples){
+    for(const {word,batchWord} of spawns.samples){
       assert.equal(word,batchWord);
-      assert.ok((flags===128?['飙']:flags===0?enemyWords:flags===1?eliteWords:minibossWords).includes(word));
+      assert.equal(word,'飙');
     }
     report.spawns.push(spawns);await draw();
     assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-name').textContent),finalWord);
@@ -117,7 +117,7 @@ export async function reviewCharacters(page,dir) {
     return {name:r.boss.name,word,hudName:r.ui.els.bossName.textContent,portrait:r.ui.els.bossPt.querySelector('canvas')?.dataset.glyph,
       intro,species:en.species[index],used:altar.used,injured,healed:sample()};
   });
-  assert.deepEqual(report.boss,{name:'龘',word:'龘',hudName:'龘',portrait:'龘',intro:'龘',species:151,used:true,injured:[24,1],healed:[48]});
+  assert.deepEqual(report.boss,{name:'龘',word:'龘',hudName:'龘',portrait:'龘',intro:'龘',species:149,used:true,injured:[24,1],healed:[48]});
   fs.writeFileSync(path.join(dir,'characters.json'),JSON.stringify(report,null,2));
   console.log('Hero branches, tiered spawns, summon-point boss and independent health frames passed.');
 }

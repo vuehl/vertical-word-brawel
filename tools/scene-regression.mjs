@@ -106,9 +106,10 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     assert.match(area,stage===4?/星灯书庭.*圣地/:new RegExp(stage+'/2区'));
     if(stage===4){
       report.sanctuary=await page.evaluate(()=>{
-        const s=app.run.sanctuary;s.onPhase(2);s.onPhase(3);
-        return {roots:s.roots.length,brambles:s.brambles.length,columns:s.covers.filter(c=>c.kind==='column').length};
+        const {sanctuary:s,boss}=app.run;boss.kit.enterPhase(2);boss.kit.enterPhase(3);
+        return {species:boss.kit.species,phase:boss.kit.phase,ultimate:boss.kit.ultimateName,roots:s.roots.length,brambles:s.brambles.length,columns:s.covers.filter(c=>c.kind==='column').length};
       });
+      assert.equal(report.sanctuary.species,149);assert.equal(report.sanctuary.phase,3);assert.equal(report.sanctuary.ultimate,'满天乱砸');
       assert.ok(report.sanctuary.roots && report.sanctuary.brambles && report.sanctuary.columns);
     } else {
       await page.evaluate(()=>{

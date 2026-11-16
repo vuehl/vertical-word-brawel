@@ -23,7 +23,8 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
         return {text:app.screen.textContent,buttons,preview:{pixels:canvas.width,width:box.width}};
       });
       assert.ok(data.preview.width>0&&data.preview.pixels>=3*data.preview.width,'Large starter art must cover a 3x display');
-      assert.ok(data.text.includes(word)&&data.text.includes(ult));assert.ok(!data.text.includes('积蓄能量，释放专属大招'));
+      assert.ok(data.text.includes(word)&&data.text.includes(ult));
+      assert.ok(data.text.includes(({4:'火点拍',132:'照影打',16:'连扇'})[id]+'  ·  自动攻击'));assert.ok(!data.text.includes('积蓄能量，释放专属大招'));
       for(const b of data.buttons)assert.ok(b.x>=0&&b.x+b.w<=width+1);
       report.menus.push({width,id,word,ult,preview:data.preview});
     }
@@ -68,16 +69,16 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       starterTestAdvance(300);const r=app.run;
       return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types,kit:r.player.roster.kit};
     });assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:44});
-    assert.equal(middle.ult,choice===17?'环形扩散':'卷着打转');
+    assert.equal(middle.ult,choice===17?'卷着打转':'叫完就冲');
     await page.evaluate(()=>{const r=app.run;r.player.level=44;r.player.xpNext=r.player.xpFor(44);r.tryEvolve();});
     await draw();await tap('.zx-modal button','确认进阶');
     const final=await page.evaluate(()=>{
       starterTestAdvance(300);const r=app.run;return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types,kit:r.player.roster.kit,passive:r.player.ability};
     });assert.equal(final.id,end);assert.equal(final.next,null);assert.deepEqual(final.types,['flying']);
-    assert.equal(final.ult,end===18?'攻速 ×10':'移速 ×10');assert.equal(final.passive,'tailwind');
+    assert.equal(final.ult,end===18?'刮倒一片':'跑得没影');assert.equal(final.passive,'tailwind');
     assert.deepEqual(final.kit,middle.kit);
     await draw();
-    assert.deepEqual(await page.evaluate(()=>({name:inspected.doc.querySelector('.zx-hud-name').textContent,type:inspected.doc.querySelector('.zx-hud-element').textContent})),{name:end===18?'疯':'飙',type:'风'});
+    assert.deepEqual(await page.evaluate(()=>({name:inspected.doc.querySelector('.zx-hud-name').textContent,type:inspected.doc.querySelector('.zx-hud-element').textContent})),{name:end===18?'疯':'飙',type:end===18?'风':'火'});
     await snapshot('evolved-'+end);report.routes.push({choice,end,plan,middle,final});
   }
   // Exercise all nine actual ultimate definitions. Keep enemies alive so normal
@@ -92,12 +93,22 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
         const a=j/12*Math.PI*2,x=p.pos.x+Math.cos(a)*5,z=p.pos.z+Math.sin(a)*5;
         const i=r.enemies.spawn(19,x,z,1,1,0);r.enemies.hp[i]=r.enemies.maxHp[i]=1e7;
       }
+      const opening = ({4:52,5:52,6:52,132:144,16:98,17:98,18:98,58:98,59:98})[id];
+      p.addMove(opening);
+      const basic = p.moves[0].def.name;
+      r.ui.hud(r);
+      const label = inspected.doc.querySelector('[data-skill-slot]').getAttribute('aria-label');
+      p.moves.fill(null);
       window.starterHp=()=>Array.from({length:r.enemies.n},(_,i)=>r.enemies.alive[i]?r.enemies.hp[i]:0).reduce((a,b)=>a+b,0);
       const before=starterHp(),speed=p.stats[id===18?"attackSpeed":"moveSpeed"];
       r.ult.charge=1;r.ult.fire();starterTestAdvance(3);
       const active={name:r.ult.name,def:r.ult.def.names,duration:r.ult.def.dur[0],speed:p.stats[id===18?"attackSpeed":"moveSpeed"],buffs:[...p.buffs].map(([key,b])=>[key,b.t,b.label])};
-      return {id,before,speed,active};
+      return {id,before,speed,active,basic,label,passive:p.abilityName};
     },id);
+    const basic=({4:'火点拍',5:'三头烧',6:'四火烧',132:'照影打',16:'连扇',17:'侧风拍',18:'乱风拍',58:'连叫',59:'疾跑撞'})[id];
+    assert.equal(sample.basic,basic);
+    assert.ok(sample.label.includes(basic),sample.label);
+    if(id===6||id===132)assert.equal(sample.passive,id===6?'越打越旺':'照着学');
     await snapshot('ultimate-'+id);
     if(id===18||id===59){
       assert.ok(Math.abs(sample.active.speed/sample.speed-10)<1e-8,'Actual combat speed stat must be exactly tenfold');

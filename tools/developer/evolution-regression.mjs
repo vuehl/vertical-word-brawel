@@ -93,7 +93,7 @@ export async function reviewDeveloperEvolution(page,dir){
     await dev('close');assert.equal((await state()).id,choice);assert.deepEqual((await state()).choices,[]);
     await dev('open');await dev('evolve-next');assert.equal((await state()).level,44);
     const final=await finish();assert.equal(final.id,end);assert.equal(final.next,null);assert.equal(final.stage,2);
-    assert.equal(final.ult,end===18?'攻速 ×10':'移速 ×10');assert.equal(final.ability,'tailwind');
+    assert.equal(final.ult,end===18?'刮倒一片':'跑得没影');assert.equal(final.ability,'tailwind');
     await dev('open');assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-dev-action="evolve-next"]').disabled),true);
     await preview(end===18?'疯':'飙');
     await dev('stop-workload');

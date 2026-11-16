@@ -1,3 +1,4 @@
+import {formCopy, moveCopy, specialNames} from './form-copy.js';
 import {isActiveFacility} from './active-content.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
@@ -406,8 +407,6 @@ var Ni = {
       );
       Object.assign(Pi,this.types.names);
       configureStarterSpecies(this.all);
-      Pi.normal='基';Pi.flying='风';
-      if(this.types?.names){this.types.names.normal='基';this.types.names.flying='风';}
       configureGlyphNames(this.all);
       for (let e of this.all) {
         e.name=glyphWordForSpecies(e.id);
@@ -34988,6 +34987,9 @@ function Kh(e, t, n, r) {
   },
 }),
   Object.assign(Uh, Um, Km, rh, lh, hh));
+for (const def of Object.values(Uh)) {
+  def.names = def.names.map(name => specialNames.ultimate.get(name) ?? name);
+}
 function qh(e, t, n, r, i, a, o) {
   return { names: [t], descs: [n], type: e, cls: i, dur: [a], tint: r, cast: o };
 }
@@ -36610,7 +36612,7 @@ var Dg = {
             i,
             a + 2.8,
             o,
-            c(`¡Transformación! {types}`, { types: r.map((e) => Pi[e]).join(` / `) }),
+            t.abilityName + ' · ' + r.map((e) => Pi[e]).join(' / '),
             `#` + s.toString(16).padStart(6, `0`),
             0.9,
           ),
@@ -39213,6 +39215,12 @@ function O_(e) {
     u
   );
 }
+function formMove(id, species) {
+  const def = O_(id);
+  if (!def || def.fusion) return def;
+  const name = moveCopy(species, def.name, def.key);
+  return name === def.name ? def : {...def, name};
+}
 function k_(e) {
   let t = g_[e.arch].desc;
   return (
@@ -39509,7 +39517,7 @@ function J_(e, t, n, r) {
     let t = q_(),
       r = F.pick(t);
     if (i && t.length > 1) for (; r === i.def.id; ) r = F.pick(t);
-    ((i = n.sub = new M_(O_(r))),
+    ((i = n.sub = new M_(formMove(r, e.player.speciesId))),
       (i.mods = n.mods),
       (i.timer = 0.25),
       (n.swapT = Math.max(2.2, (g_.random.cd * n.mods.cd) / e.player.stats.attackSpeed)));
@@ -41159,6 +41167,10 @@ function lv(e) {
   return n[t % n.length];
 }
 Object.assign(cv, ag, fg, vg, Dg, Mg);
+for (const key of ['blaze', 'imposter']) {
+  const passive = cv[key];
+  passive.name = specialNames.passive.get(passive.name) ?? passive.name;
+}
 function uv(e) {
   return cv[e] ?? lv(e);
 }
@@ -41344,6 +41356,7 @@ var mv = 30,
     setSpecies(e) {
       let t = this.hp / this.maxHp;
       this.ability=this.roster?.passive??this.ability;
+      for (const move of this.moves) if (move) move.def = formMove(move.def.id, e);
       ((this.speciesId = e),
         (this.data = k.get(e)),
         (this.types = this.data.types),
@@ -41410,7 +41423,7 @@ var mv = 30,
         (this.radius = 0.5));
     }
     addMove(e) {
-      let t = O_(e);
+      let t = formMove(e, this.speciesId);
       if (!t) return !1;
       let n = this.moves.findIndex((e, t) => t < this.moveSlots && !e);
       return n < 0 ? !1 : ((this.moves[n] = new M_(t)), !0);
@@ -45338,6 +45351,7 @@ var Kv = [0.66, 0.33],
   ry = class extends Qv {
     float = !0;
     phaseNames = [c(`Juguetón`), c(`Metrónomo`), c(`Gen Ancestral`)];
+    ultimateName = c(`¡Gen Ancestral!`);
     phaseColor = `#ff8ad8`;
     band = [9, 15];
     speed = 5.4;
@@ -45702,7 +45716,7 @@ var Kv = [0.66, 0.33],
           3,
           0.45,
           16747224,
-          c(`¡Gen Ancestral!`),
+          this.ultimateName,
           c(`Ponte a cubierto detrás de algo`),
         ),
       );
@@ -47031,6 +47045,13 @@ function oy(e, t) {
       return new ty(e, t);
     case 383:
       return new ny(e, t);
+    case finalBossSpecies: {
+      // Keep the forest sanctuary's phase, cover and attack sequence.
+      const kit = new ry(e, t), form = formCopy[finalBossSpecies];
+      kit.ultimateName = form.ultimate[1];
+      kit.phaseNames = [form.moves['龙尾'], form.moves['魂舞烈音爆'], kit.ultimateName];
+      return kit;
+    }
     case 151:
       return new ry(e, t);
     case 146:
@@ -51525,7 +51546,7 @@ var Ay = 12,
       return this.t;
     }
     say(e) {
-      ((this.moveName = e), (this.moveT = 2.2));
+      ((this.moveName = moveCopy(this.run.enemies.species[this.bossIndex], e)), (this.moveT = 2.2));
     }
     get tk() {
       return T.tele[this.run.tier] ?? 1;
@@ -52968,7 +52989,7 @@ var Ay = 12,
           ((i.atkAnim[a] = 0.5), this.say(e, e.specName), this.ring(e, 0.6), (e.t = 3.6)));
     }
     say(e, t) {
-      ((e.moveName = t), (e.moveT = 2));
+      ((e.moveName = moveCopy(e.species, t)), (e.moveT = 2));
     }
     call(e, t, n, r) {
       let i = this.run,
@@ -54962,7 +54983,7 @@ function Wb(e, t) {
   let r = e.player;
   switch (t.kind) {
     case `newMove`: {
-      let e = O_(t.id);
+      let e = formMove(t.id, r.speciesId);
       return {
         title: e.name,
         sub: c(`Nuevo movimiento`),
@@ -65115,6 +65136,7 @@ var iS = {
   lS = [...jx, ...Nx, ...Ix, ...Wx, ...Xx, ...aS],
   uS = new Map();
 lS.forEach((e, t) => {
+  if (e.kind === 'signature') e.name = specialNames.fusion.get(e.name) ?? e.name;
   let n = Cx + t;
   if (((e.power = oS[e.key] ?? e.power), (e.cd *= sS), cS.has(e.key) && (e.repeats = !0), e.power > 4)) {
     let t = Math.max(2 / e.cd, Math.sqrt(4 / e.power));
@@ -65171,7 +65193,7 @@ function yS(e) {
     }
   let i = t.roster ? pS(t.roster.id) : void 0;
   if (i?.moves && !n.some((e) => e.r === i)) {
-    let r = i.moves.map((e) => O_(k.movesByKey.get(e)?.id ?? -1));
+    let r = i.moves.map((e) => formMove(k.movesByKey.get(e)?.id ?? -1, t.speciesId));
     if (r.every(Boolean)) {
       let a = r
         .map((n) => {
@@ -78750,7 +78772,7 @@ function XD(e, t = {}) {
   for (let i of YD(e, n, t, new Set(r))) for (let e of i.moves) r.add(e.id);
   for (let e of t.owned ?? []) r.add(e);
   for (let e of t.banned ?? []) t.owned?.has(e) || r.delete(e);
-  return [...r].map((e) => O_(e)).filter((e) => !!e);
+  return [...r].map((e) => formMove(e, n)).filter((e) => !!e);
 }
 function ZD(e, t = {}) {
   let n = t.inLeague ?? (() => !0),
@@ -78772,7 +78794,7 @@ function ZD(e, t = {}) {
     new Set([...e.kit, ...e.line, ...e.shared.filter((e) => e.open), ...(e.any ?? [])].map((e) => e.id)),
   ))
     for (let e of n.moves) m.add(e.id);
-  let h = [...m].map((e) => O_(e)).filter((e) => !!e),
+  let h = [...m].map((e) => formMove(e, s)).filter((e) => !!e),
     g = [...new Set(h.map((e) => e.type))].sort(),
     _ = new Map();
   for (let e of h) {
@@ -78938,7 +78960,7 @@ function ZD(e, t = {}) {
                 { class: `mp-grid` },
                 ...d.map((n) =>
                   KD(
-                    O_(n.id),
+                    formMove(n.id, s),
                     t.level == null
                       ? {
                           text: e.kit[0].id === n.id ? c(`Inicial`) : c(`Nv. {n}`, { n: n.level }),
@@ -78963,7 +78985,7 @@ function ZD(e, t = {}) {
         i(n.length);
         let r = new Map();
         for (let e of n) {
-          let t = O_(e.id);
+          let t = formMove(e.id, s);
           r.set(t.type, [...(r.get(t.type) ?? []), t]);
         }
         n.length &&
@@ -79011,7 +79033,7 @@ function ZD(e, t = {}) {
                     )
                   : c(`Lo que aprende subiendo de nivel él y sus formas anteriores.`),
                 n.length
-                  ? X(`div`, { class: `mp-grid` }, ...n.map((e) => KD(O_(e.id), ne(e), null, o(e), l, t)))
+                  ? X(`div`, { class: `mp-grid` }, ...n.map((e) => KD(formMove(e.id, s), ne(e), null, o(e), l, t)))
                   : X(`p`, { class: `mp-none` }, c(`No le queda ninguno por aprender.`)),
               ),
             ));
@@ -79053,7 +79075,7 @@ function ZD(e, t = {}) {
               { class: `mp-grid` },
               ...a.map((e) =>
                 KD(
-                  O_(e.id),
+                  formMove(e.id, r.form),
                   { text: c(`Evolución`) },
                   `from` in e && e.from?.length
                     ? X(
@@ -81242,6 +81264,7 @@ function mk(e, t, n, r) {
 }
 var hk = (e) => k.items[e]?.name ?? sn.get(e)?.name ?? e;
 function gk(e) {
+  const species = e.finalSpecies ?? e.species;
   let t = e.build,
     n = (e, t, ...n) =>
       X(
@@ -81273,9 +81296,9 @@ function gk(e) {
             { class: `mp-grid` },
             ...i.map((e) => {
               let n = k.movesByKey.get(e.k),
-                r = n ? O_(n.id) : AD(e.k),
+                r = n ? formMove(n.id, species) : AD(e.k),
                 i = n ? void 0 : dS(e.k),
-                o = r?.name ?? n?.name ?? e.k,
+                o = r?.name ?? (n ? moveCopy(species, n.name, n.key) : e.k),
                 s = a > 0 ? e.dmg / a : 0;
               return X(
                 `div`,
@@ -88739,7 +88762,7 @@ function kM(e, t) {
     }),
     d = n.moves.map((e) => {
       let t = k.movesByKey.get(e) ?? E_(e);
-      return X(`span`, { class: `cl-rd-move` }, t ? ZC(t.type, 22) : null, t?.name ?? e);
+      return X(`span`, { class: `cl-rd-move` }, t ? ZC(t.type, 22) : null, t ? moveCopy(n.finalSpecies ?? n.species, t.name, t.key) : e);
     }),
     f = n.items.map((e) => X(`span`, { class: `cl-rd-item`, title: k.items[e]?.name ?? e }, Q(e))),
     p = Xj(
@@ -93880,9 +93903,9 @@ function LP(e, t, n) {
   c(`Prob. de estado`),
   c(`Rebotes`));
 var RP = (e) => String(Math.round(e * 10) / 10);
-function zP(e, t, n) {
+function zP(e, t, n, species) {
   let r = k.movesByKey.get(e),
-    i = r ? O_(r.id) : null;
+    i = r ? formMove(r.id, species) : null;
   if (!r || !i) return null;
   let a = g_[i.arch],
     o = t === 0 ? c(`Inicial`) : c(`Nv. {n}`, { n: Ye[t] }),
@@ -94016,7 +94039,7 @@ function UP(e) {
       pw(X(`span`, { class: `ls-evo-mon` + (t ? ` on` : ``), tabindex: `0` }, rw(e)), () => {
         let t = k.get(e);
         return FP(
-          { title: t.name, sub: t.types.map((e) => Pi[e]).join(` · `), icon: tw(e, `pix tt-mon`) },
+          { title: t.name, sub: Pi[formCopy[t.id]?.type] ?? t.types.map((e) => Pi[e]).join(` · `), icon: tw(e, `pix tt-mon`) },
           WP(t),
         );
       }),
@@ -94751,7 +94774,7 @@ function KP(e, t = `standard`, n, r) {
                 X(
                   `div`,
                   { class: `ls-kit` },
-                  ...t.kit.map((e, r) => zP(e, r, zE(n, t.passive, i.labStats()))),
+                  ...t.kit.map((e, r) => zP(e, r, zE(n, t.passive, i.labStats()), n.id)),
                 ),
                 GP(i, t.id, t),
               ),
@@ -102095,7 +102118,7 @@ var JI = class {
         (n.fps.textContent = e.meta.profile.settings.showFps
           ? c(`{fps} fps · {n} enemigos`, { fps: Math.round(e.fps), n: Math.round(e.enemies.mass) })
           : ``));
-      let h =
+      let h = t.speciesId + ':' +
         t.moves.map((e) => (e ? `${e.def.id}:${e.level}` : `-`)).join(`,`) +
         t.moveSlots +
         `:` +
@@ -104271,11 +104294,12 @@ var JI = class {
           ),
         );
       }
+      const species = t.speciesId;
       let C = v.reduce((e, t) => e + t.n, 0),
         w = [...e.banished]
           .map((e) => {
             if (e[0] === `m`) {
-              let t = O_(+e.slice(1));
+              let t = formMove(+e.slice(1), species);
               return t ? X(`div`, { class: `pz-ban`, title: t.name }, ZC(t.type), X(`b`, {}, t.name)) : null;
             }
             let t = Ne.get(e.slice(1));

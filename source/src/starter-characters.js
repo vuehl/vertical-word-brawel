@@ -1,17 +1,21 @@
+import {formCopy, moveCopy} from './form-copy.js';
+
 // Keep species IDs stable for saved unlocks and glyph artwork.
 export const starterSpecies = Object.freeze([4,132,16]);
-export const starterWords = Object.freeze({4:'炎',5:'焱',6:'燚',132:'摹',16:'风',17:'讽',18:'疯',58:'飒',59:'飙'});
+export const starterWords = Object.freeze(Object.fromEntries(
+  [4,5,6,132,16,17,18,58,59].map(id=>[id,formCopy[id].word])
+));
 export const windRoutes = [
-  {middle:17, final:18, role:'A · 攻速', note:'讽的大招向四周环形扩散。疯的大招使攻速 ×10，持续 5 秒。'},
-  {middle:58, final:59, role:'B · 移速', note:'飒，本义为翔风。飙的大招使移速 ×10，持续 5 秒。'},
+  {middle:17, final:18, role:'A · 攻速', note:'「卷着打转」扩散风环。「刮倒一片」攻速十倍，持续5秒。'},
+  {middle:58, final:59, role:'B · 移速', note:'「叫完就冲」卷起旋风。「跑得没影」移速十倍，持续5秒。'},
 ];
 export const attackSpeedBuff = 'ziling-wind-attack-speed';
 export const speedBuff = 'ziling-wind-speed';
 export const speedDuration = 5;
 export const characters = [
-  {id:4,word:'炎',name:'炎',tone:'fire',color:'#bc3441',role:'火 · 爆发',motto:'二火成炎，三火成焱，四火成燚',move:'火花',ult:'一点火苗',evolution:'炎 → 焱 → 燚'},
-  {id:132,word:'摹',name:'摹',tone:'ink',color:'#77629e',role:'基础 · 复制',motto:'摹纸影写，照见谁便成为谁',move:'变身',ult:'照着变',evolution:'单字定形 · 无进化'},
-  {id:16,word:'风',name:'风',tone:'wind',color:'#387f87',role:'风 · 分支',motto:'风起分两路，择一而行',move:'电光一闪',ult:'一阵刮来',evolution:windRoutes.map(route=>['风',starterWords[route.middle],starterWords[route.final]].join(' → ')).join(' / ')},
+  {id:4,word:'炎',name:'炎',tone:'fire',color:'#bc3441',role:'火 · 爆发',motto:'二火成炎，三火成焱，四火成燚',move:moveCopy(4,'火花','ember'),ult:formCopy[4].ultimate[1],evolution:'炎 → 焱 → 燚'},
+  {id:132,word:'摹',name:'摹',tone:'ink',color:'#77629e',role:'基础 · 复制',motto:'摹纸影写，照见谁便成为谁',move:moveCopy(132,'变身','transform'),ult:formCopy[132].ultimate[1],evolution:'单字定形 · 无进化'},
+  {id:16,word:'风',name:'风',tone:'wind',color:'#387f87',role:'风 · 分支',motto:'风起分两路，择一而行',move:moveCopy(16,'电光一闪','quick-attack'),ult:formCopy[16].ultimate[1],evolution:windRoutes.map(route=>['风',starterWords[route.middle],starterWords[route.final]].join(' → ')).join(' / ')},
 ];
 export function starterForSpecies(id){
   id=Number(id);
@@ -21,8 +25,9 @@ export function starterForSpecies(id){
   return characters[0];
 }
 export function characterForSpecies(id){
-  const base=starterForSpecies(id),word=starterWords[id]||base.word;
-  return {...base,word,name:word};
+  const base=starterForSpecies(id),form=formCopy[id],word=form?.word??base.word;
+  const move=form?.starterAttack?form.moves[form.starterAttack[1]]:base.move;
+  return {...base,word,name:word,move,ult:form?.ultimate[1]??base.ult};
 }
 export function configureStarterRoster(roster){
   const byId=new Map(roster.map(actor=>[actor.id,actor]));
@@ -47,18 +52,19 @@ const ultCache=new Map();
 export function starterUltimate(id,original,castWindRing){
   if(ultCache.has(id))return ultCache.get(id);
   let def;
+  const name=formCopy[id]?.ultimate[1];
   if([4,5,6].includes(id)){
     const index=id-4;
-    def=renamed(original[4],['一点火苗','火圈绕身','满屏是火'][index],index);
-  }else if(id===132)def=renamed(original[132],'照着变');
+    def=renamed(original[4],name,index);
+  }else if(id===132)def=renamed(original[132],name);
   else if(id===16||id===58){
     const index=id===16?0:1;
-    def=renamed(original[16],['一阵刮来','卷着打转'][index],index,ctx=>original[16].cast({...ctx,tier:index,form:index}));
+    def=renamed(original[16],name,index,ctx=>original[16].cast({...ctx,tier:index,form:index}));
   }else if(id===17){
-    def={names:['环形扩散'],descs:['从自身向四周扩散一道风环，对触及的敌人造成风系伤害。'],
+    def={names:[name],descs:['从自身向四周扩散一道风环，对触及的敌人造成风系伤害。'],
       type:'flying',cls:'special',dur:[0.8],tint:0xb8e8e0,cast:castWindRing};
   }else if(id===18||id===59){
-    const attack=id===18,key=attack?attackSpeedBuff:speedBuff,name=attack?'攻速 ×10':'移速 ×10';
+    const attack=id===18,key=attack?attackSpeedBuff:speedBuff;
     def={names:[name],descs:['使当前'+(attack?'攻击':'移动')+'速度变为 10 倍，持续 '+speedDuration+' 秒。重复释放刷新持续时间。'],
       type:'flying',cls:'physical',dur:[speedDuration],tint:0xb8e8e0,
       cast({run}){run.player.addBuff(key,speedDuration,name);run.player.zilingSpeedFx=0;}};

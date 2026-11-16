@@ -23,8 +23,8 @@ export function workloadMoves(run,preset,skills){
   return [...pool.kit,...pool.line,...pool.shared.filter(m=>m.open),...(pool.any||[])]
     .filter(m=>{
       if(m.level>preset.level||seen.has(m.id)||run.banished.has('m'+m.id))return false;
-      seen.add(m.id);return !!skills.move(m.id);
-    }).slice(0,Math.min(preset.skills,p.moveSlots)).map(m=>({...m,...skills.move(m.id)}));
+      seen.add(m.id);return !!skills.move(m.id,p.speciesId);
+    }).slice(0,Math.min(preset.skills,p.moveSlots)).map(m=>({...m,...skills.move(m.id,p.speciesId)}));
 }
 
 export function createWorkload(run,skills){

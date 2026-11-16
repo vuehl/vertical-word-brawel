@@ -1,3 +1,4 @@
+import {displayedFormType} from './form-copy.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
 import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
@@ -662,8 +663,10 @@ export function createZixingUI(app,api) {
       if(!slot){
         slot=el('div','zx-skill-slot',[],{'data-skill-slot':index});slots.append(slot);
       }
-      if(slot.dataset.move===key&&slot.dataset.level===level)continue;
-      if(slot.dataset.move!==key){
+      const name=move?api.moveName(move.def):'';
+      if(slot.dataset.move===key&&slot.dataset.level===level&&slot.dataset.name===name)continue;
+      if(slot.dataset.move!==key||slot.dataset.name!==name){
+        slot.dataset.name=name;
         slot.dataset.move=key;slot.className='zx-skill-slot '+(locked?'locked':move?'filled':'empty');
         slot.replaceChildren(...(locked?[icon('lock',17)]:move?[
           loadoutIcon(api.moveIcon(move.def),api.moveName(move.def)),
@@ -876,7 +879,7 @@ export function createZixingUI(app,api) {
       portrait.setAttribute('aria-valuenow',Math.round(progress*100));
     };
     refreshPortrait();
-    const identityName=el('b','zx-hud-name',c.word),identityType=el('span','zx-hud-element',api.typeName(run.player.types[0]));
+    const identityName=el('b','zx-hud-name',c.word),identityType=el('span','zx-hud-element',api.typeName(displayedFormType(run.player)));
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
     minimap.dataset.uiLayer='minimap';
     minimap.setAttribute('aria-label','附近地图，点击查看更大范围');
@@ -996,8 +999,9 @@ export function createZixingUI(app,api) {
       updateText(levelValue,String(xpRing.level));
       const evolved=glyphWordForSpecies(run.player.speciesId??run.startSpecies);
       updateText(identityName,evolved);
-      updateText(identityType,api.typeName(run.player.types[0]));
-      if(identityType.dataset.element!==run.player.types[0])identityType.dataset.element=run.player.types[0];
+      const element=displayedFormType(run.player);
+      updateText(identityType,api.typeName(element));
+      if(identityType.dataset.element!==element)identityType.dataset.element=element;
       if(portrait.dataset.word!==evolved||Number(portrait.dataset.progress)!==experience())refreshPortrait();
       if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
       last=now;lastState=run.state;

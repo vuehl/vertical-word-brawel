@@ -37,7 +37,7 @@ test('legacy starter selection migrates without losing currency, research, setti
 test('borrowed ultimates keep the original cast, while wind forms use the correct source stage',()=>{
   const calls=[],original={};
   for(const id of [4,16,58,132])original[id]={names:['a','b','c'],descs:['d0','d1','d2'],dur:[1.2,1.8,3],cast:ctx=>calls.push([id,ctx])};
-  for(const [id,name,source,index] of [[4,'一点火苗',4,0],[5,'火圈绕身',4,1],[6,'满屏是火',4,2],[132,'照着变',132,0],[16,'一阵刮来',16,0],[58,'卷着打转',16,1]]){
+  for(const [id,name,source,index] of [[4,'一点火苗',4,0],[5,'火圈绕身',4,1],[6,'满屏是火',4,2],[132,'照着变',132,0],[16,'一阵刮来',16,0],[58,'叫完就冲',16,1]]){
     const def=starterUltimate(id,original);assert.deepEqual(def.names,[name]);assert.equal(def.dur[0],original[source].dur[index]);
     def.cast({tier:2,form:2});const [actual,ctx]=calls.at(-1);assert.equal(actual,source);
     assert.equal(ctx.tier,[16,58].includes(id)?index:2);
@@ -46,7 +46,7 @@ test('borrowed ultimates keep the original cast, while wind forms use the correc
 });
 
 test('wind ultimates multiply only their designated speed by ten, refresh without stacking, and clean up',()=>{
-  for(const [id,name,key,stat,other] of [[18,'攻速 ×10',attackSpeedBuff,'attackSpeed','moveSpeed'],[59,'移速 ×10',speedBuff,'moveSpeed','attackSpeed']]){
+  for(const [id,name,key,stat,other] of [[18,'刮倒一片',attackSpeedBuff,'attackSpeed','moveSpeed'],[59,'跑得没影',speedBuff,'moveSpeed','attackSpeed']]){
     const p={buffs:new Map(),stats:{moveSpeed:1.7,attackSpeed:1.7},recompute(){this.stats.moveSpeed=this.stats.attackSpeed=1.7;applyStarterSpeed(this.stats,this.buffs);},addBuff(key,t,label){this.buffs.set(key,{t,label});this.recompute();}};
     const def=starterUltimate(id,{});assert.deepEqual(def.names,[name]);assert.equal(def.dur[0],5);
     def.cast({run:{player:p}});assert.equal(p.stats[stat],17);assert.equal(p.buffs.get(key).t,5);assert.equal(p.stats[other],1.7);

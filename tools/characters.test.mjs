@@ -1,3 +1,5 @@
+import {formCopy, moveCopy, specialNames} from '../source/src/form-copy.js';
+import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,7 +15,7 @@ const pools=['一阶','二阶','三阶'].map(folder=>fs.readdirSync(path.join(ar
 test('spawn classes select only their folder, including modified elites and timed minibosses',()=>{
   for(const [flags,words] of [[0,pools[0]],[512,pools[0]],[1,pools[1]],[1025,pools[1]],
     ...[2,4096,8192,4097].map(flag=>[flag,pools[2].filter(word=>word!=='龘')])]){
-    const selected=words.map((_,i)=>enemyWord(59,flags,()=>(i+.5)/words.length));
+    const selected=words.map((_,i)=>enemyWord(19,flags,()=>(i+.5)/words.length));
     assert.deepEqual(selected.sort(),words);
   }
   assert.equal(enemyWord(finalBossSpecies,4,()=>{throw Error('Final boss rolled');}),'龘');
@@ -65,4 +67,39 @@ test('last visible stroke matches the last supplied layer at its original positi
     }
     assert.ok(opaque>0,word);
   }
+});
+
+test('all supplied form and skill names resolve in the original catalogs',()=>{
+  const rows=Object.entries(formCopy);
+  const moves=JSON.parse(fs.readFileSync(new URL('../source/public/data/moves.json',import.meta.url)));
+  const names=new Set(moves.map(move=>move.name));
+  const translated=new Set(Object.values(JSON.parse(fs.readFileSync(new URL('../source/public/text/ui.json',import.meta.url)))));
+  let count=0;
+  assert.equal(rows.length,36);
+  assert.equal(new Set(rows.map(([,form])=>form.word)).size,36);
+  for(const [id,form] of rows){
+    assert.equal(glyphWordForSpecies(id),form.word);
+    for(const flags of [0,1,2,4,128,4096,65536])assert.equal(enemyWord(id,flags),form.word);
+    for(const [original,label] of Object.entries(form.moves)){
+      assert.ok(names.has(original),original);
+      assert.equal(moveCopy(id,original),label);
+      count++;
+    }
+    for(const kind of ['ultimate','fusion','passive']){
+      if(!form[kind])continue;
+      const [original,label]=form[kind];
+      assert.ok(translated.has(original),original);
+      assert.equal(specialNames[kind].get(original),label);
+      count++;
+    }
+  }
+  assert.equal(count,417);
+  assert.equal(moveCopy(4,'火花','ember'),'火点拍');
+  assert.equal(moveCopy(16,'电光一闪','quick-attack'),'连扇');
+  assert.equal(moveCopy(132,'变身','transform'),'照影打');
+  assert.equal(moveCopy(132,'烟幕'),'越学越像');
+  assert.equal(moveCopy(6,'烟幕'),'烧成灰烬');
+  assert.equal(moveCopy(19,'烟幕'),'烟幕');
+  assert.equal(specialNames.ultimate.get('暴鲤龙之怒'),'巨浪压顶');
+  assert.equal(specialNames.fusion.get('暴鲤龙之怒'),'河底翻上');
 });
