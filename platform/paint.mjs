@@ -81,7 +81,12 @@ export function paint(layout,boxes,view,scale) {
         const dw=fit==='fill'?w:ratio*image.width,dh=fit==='fill'?h:ratio*image.height;
         rounded(ctx,x,y,w,h,parseFloat(s['border-radius'])||0);ctx.clip();
         ctx.imageSmoothingEnabled=s['image-rendering']!=='pixelated';
-        ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+        if(view.originalPixels&&el.hasAttribute('data-original-pixels')){
+          const left=Math.round((view.x+x+w/2)*scale-image.width/2);
+          const top=Math.round((view.y+y+h/2)*scale-image.height/2);
+          ctx.setTransform(1,0,0,1,0,0);
+          ctx.drawImage(image,left,top);
+        }else ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
       }
     } else if(tag==='input'||tag==='select'){
       ctx.font=layout.font(s);ctx.fillStyle=s.color;
@@ -107,7 +112,7 @@ export function compositor(gl,canvas) {
   }
   const prog=gl.createProgram();
   gl.attachShader(prog,shader(gl.VERTEX_SHADER,'#version 300 es\nout vec2 uv;void main(){vec2 v=vec2((gl_VertexID<<1)&2,gl_VertexID&2);uv=vec2(v.x,1.-v.y);gl_Position=vec4(v*2.-1.,0.,1.);}'));
-  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision mediump float;in vec2 uv;out vec4 color;uniform sampler2D ui;uniform float opacity;uniform bool flip;void main(){color=texture(ui,flip?vec2(uv.x,1.-uv.y):uv)*opacity;}'));
+  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision highp float;in vec2 uv;out vec4 color;uniform sampler2D ui;uniform float opacity;uniform bool flip;void main(){color=texture(ui,flip?vec2(uv.x,1.-uv.y):uv)*opacity;}'));
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
   const opacity=gl.getUniformLocation(prog,'opacity');
   const flip=gl.getUniformLocation(prog,'flip');

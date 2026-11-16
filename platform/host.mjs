@@ -299,6 +299,12 @@ export async function setup(host) {
       env.drawUI(renderer,false,key);return true;
     },
     drawUI(renderer,opaque=false,frozenFrame=null){
+      // The renderer floors fractional DPR sizes. Match the device-sized UI
+      // buffer while inspecting original pixels to avoid a final resample.
+      if(view.originalPixels&&(host.canvas.width!==uiCanvas.width||host.canvas.height!==uiCanvas.height)){
+        host.canvas.width=uiCanvas.width;host.canvas.height=uiCanvas.height;
+        uiFrames.invalidate(false,true);
+      }
       const now=perf.now();
       modalTransition.advance(now);
       mutations(observer.takeRecords());

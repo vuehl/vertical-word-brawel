@@ -15,7 +15,7 @@ const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
 const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
-if(installedAssets?.policyVersion!==assetPolicyVersion||(developer&&installedAssets?.developerFontKey!==developer.fontKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
+if(installedAssets?.policyVersion!==assetPolicyVersion||(developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
   execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{

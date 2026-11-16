@@ -72,7 +72,11 @@ const uiText=fs.readFileSync(path.join(pub,'text/ui.json'));
 add('text','text/ui.json',uiText);fontText.push(uiText.toString('utf8'));
 for (const name of ['version.json','creditos.txt','legal']) add('text',name,fs.readFileSync(path.join(pub,name)));
 const python = process.env.POKEBONK_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
-if(development)fontText.push(fs.readFileSync(path.join(import.meta.dirname,'developer','panel.mjs'),'utf8'));
+const developer=development?await import('./developer/build-support.mjs'):null;
+if(developer){
+  fontText.push(fs.readFileSync(path.join(import.meta.dirname,'developer','panel.mjs'),'utf8'));
+  for(const {key,bytes} of developer.itemPreviewImages())add('text',key,bytes);
+}
 const fontInput=path.join(temp,'font-input.txt');fs.writeFileSync(fontInput,fontText.join('\n'));
 execFileSync(python,[...(python === 'py'?['-3.13']:[]),path.join(import.meta.dirname,'fonts.py'),source,temp,fontInput],{stdio:'inherit'});
 for (const weight of ['regular','bold']) add('text','fonts/'+weight+'.ttf',fs.readFileSync(path.join(temp,weight+'.ttf')));
@@ -99,7 +103,7 @@ for (const [name, entries] of Object.entries(packs)) {
   rawSizes[name]=rawSize;
   console.log(name, Object.keys(entries).length, (bytes.length/1048576).toFixed(2)+' MiB');
 }
-const devMetadata=development?{developerFontKey:(await import('./developer/build-support.mjs')).fontKey()}:{};
+const devMetadata=developer?{developerAssetKey:developer.assetKey()}:{};
 fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,...devMetadata,packs:meta,rawSizes,files:index,sprites:generatedSprites})+';\n');
 const reportDir=path.join(root,'验收',...(development?['开发者工程']:[]));fs.mkdirSync(reportDir,{recursive:true});
 fs.writeFileSync(path.join(reportDir,'资源打包清单.json'),JSON.stringify({

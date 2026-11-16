@@ -41,6 +41,15 @@ const updateText=(node,value)=>{if(node.textContent!==value)node.textContent=val
 const small=s=>el('small','zx-note',s);
 const row=(...nodes)=>el('div','zx-row',nodes);
 const col=(...nodes)=>el('div','zx-col',nodes);
+export function itemCardContent(picture,rarity,heading,details){
+  return [el('div','zx-item-hero',[el('span','zx-item-rarity',rarity),picture]),
+    el('div','zx-item-copy',[el('h3','',heading),...details])];
+}
+export function itemDialog(title,body,actions,attrs={}){
+  return el('section','zx zx-modal zx-item-dialog',[
+    el('h2','',title),el('div','zx-item-body',body),el('footer','zx-item-actions',actions),
+  ],attrs);
+}
 const card=(...nodes)=>el('div','zx-card',nodes);
 function glyph(c,large=false){
   const word=c.word||c,node=el('div','zx-glyph '+(c.tone||'')+(large?' large':''),[],{'aria-label':word});
@@ -708,8 +717,7 @@ export function createZixingUI(app,api) {
       // reward callbacks, keyboard bindings and protection against double taps.
       node.removeAttribute('style');node.style.cssText='';node.className='zx-item-card'+(choice?' zx-item-option':'');
       node.dataset.itemChoice=keys[index];
-      node.replaceChildren(el('div','zx-item-hero',[el('span','zx-item-rarity',rarity?.textContent||'道具'),picture]),
-        el('div','zx-item-copy',[el('h3','',heading.textContent),...details]));
+      node.replaceChildren(...itemCardContent(picture,rarity?.textContent||'道具',heading.textContent,details));
     });
     const actions=[...wrap.querySelectorAll('.actions > button')];
     actions.forEach((node,index)=>{
@@ -720,9 +728,8 @@ export function createZixingUI(app,api) {
     });
     document.querySelectorAll('.run-hint').forEach(node=>node.remove());
     wrap.className='zx zx-modal-wrap';
-    wrap.replaceChildren(el('section','zx zx-modal zx-item-dialog',[
-      el('h2','',title),el('div','zx-item-body',choice?[...notes,...cards]:[...cards,...notes]),el('footer','zx-item-actions',actions),
-    ],{'data-choice':choice?'showItemChoice':'showItem'}));
+    wrap.replaceChildren(itemDialog(title,choice?[...notes,...cards]:[...cards,...notes],actions,
+      {'data-choice':choice?'showItemChoice':'showItem'}));
   }
   function summary(run,result,reward,error) {
     const win=result.victory,amount=reward?.stardust,leave=()=>{app.setScreen(null);app.toMenu();};
