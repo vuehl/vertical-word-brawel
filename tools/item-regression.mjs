@@ -101,14 +101,7 @@ export async function reviewItems({page,tap,resize,dir,sleep,snapshot}) {
   await page.evaluate(()=>qaRewardButton.dispatchEvent(new inspected.env.Event('click')));
   const result=await page.evaluate(key=>({count:app.run.player.items.get(key)||0,gold:app.run.gold,sold:app.run.econ.sold,state:app.run.state}),sale.key);
   assert.equal(result.count,sale.count);assert.equal(result.sold,sale.sold+1);assert.ok(result.gold>=sale.gold+sale.price);assert.equal(result.state,'play');
-  // This catalog item has no original PNG. Exercise its real dialog so the
-  // shared fallback remains visible without a failed native image request.
-  await page.evaluate(()=>{const r=app.run;r.state='modal';r.ui.showItem(r,'fairy-feather',()=>{r.ui.hideModal();r.state='play';});});
-  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-item-image')?.complete);
-  // Software-rendered regression frames are intentionally 250 ms apart; give
-  // the decoded image its next normal paint before taking the screenshot.
-  await sleep(300);
-  await checkDialog('16-item-feather');await tap('[data-item-action="sell"]');
+  assert.equal(await page.evaluate(()=>app.run.player.addItem('fairy-feather')),false,'Hidden items cannot be granted');
   fs.writeFileSync(path.join(dir,'item-rewards.json'),JSON.stringify({choice,single,sale,result},null,2));
   await page.evaluate(before=>{
     const s=app.meta.profile.settings;s.touchScale=before.touchScale;s.zxExtraControls=before.extra;app.applySettings();

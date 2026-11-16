@@ -1,3 +1,4 @@
+import {facilityNames} from './active-content.js';
 import {glyphCanvas} from './paper-glyph-art.js';
 
 export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
@@ -119,12 +120,9 @@ export function drawBattlePortrait(canvas,word,tone,experience=0) {
 }
 
 export function buildingMapName(marker){
-  if(marker.kind==='tower')return {stairs:'上层入口',altar:'祝福祭坛',trick:'试炼',portal:'传送门',leave:'出口'}[marker.data?.sub]||'试炼塔';
-  if(marker.kind==='altar'&&marker.data?.comet)return '彗星碎片';
-  if(marker.kind==='chest'&&marker.data?.gift)return '免费扭蛋';
-  return {chest:'扭蛋',freechest:'免费扭蛋',bill:'订书机',meowth:'商店',ditto:'拍立得',hypno:'技能遗忘',slots:'扭蛋机',
-    altar:'时尚小垃圾',challenge:'挑战祭坛',boss:'门?',shrine:'圣地',portal:'传送门',sanct_portal:'出口',
-    fossil:'化石遗迹',rhydon:'首领强化',nest:'鹌鹑蛋',magnet:'磁铁',berry:'QQ糖',shroom:'弹跳蘑菇'}[marker.kind]||'';
+  if(marker.data?.comet)return '';
+  if(marker.kind==='chest'&&marker.data?.gift)return facilityNames.freechest;
+  return facilityNames[marker.kind]||'';
 }
 function drawBuildingNames(ctx,labels,fontSize){
   ctx.font='700 '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';

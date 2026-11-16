@@ -8,12 +8,13 @@ function geometry(p,n,uv,indices){
 }
 // All six faces share the same analytic rounded surface, including top edges.
 // A single geometry is instanced at many scales; there are no overlapping boxes.
-export function beveledBoxGeometry(radius=.07){
+export function beveledBoxGeometry(radius=.07,small=false){
   const p=[],n=[],uv=[],indices=[],inner=.5-radius;
   // Concentrate vertices in the bevel itself. A uniform grid puts almost all
   // of its vertices on the flat face and leaves a single angular edge strip.
   // Between -inner and inner position, UV and normal interpolate linearly.
-  const c=[-.5,-inner-radius*.8660254,-inner-radius*.5,-inner,inner,inner+radius*.5,inner+radius*.8660254,.5],segments=c.length-1;
+  const mid=inner+radius*Math.SQRT1_2;
+  const c=small?[-.5,-inner,inner,.5]:[-.5,-mid,-inner,inner,mid,.5],segments=c.length-1;
   const faces=[[[1,0,0],[0,0,-1],[0,1,0]],[[-1,0,0],[0,0,1],[0,1,0]],[[0,1,0],[1,0,0],[0,0,-1]],[[0,-1,0],[1,0,0],[0,0,1]],[[0,0,1],[1,0,0],[0,1,0]],[[0,0,-1],[-1,0,0],[0,1,0]]];
   for(const [normal,u,v] of faces){
     const start=p.length/3;

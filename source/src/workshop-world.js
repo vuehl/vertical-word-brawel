@@ -63,8 +63,8 @@ function factoryPaths(){
 export function createWorkshopAssets(){
   const helixPoints=r=>Array.from({length:161},(_,i)=>{const t=i/160,a=t*TAU*2.6;return [Math.cos(a)*r,23-20.5*t+.45,Math.sin(a)*r];});
   const paths=factoryPaths(),switchback=marbleTrack(paths.switchback.points),twin=marbleTrack(paths.twin.points);
-  return {boxes:new BoxGeometry(1,1,1),bevels:beveledBoxGeometry(),planes:new PlaneGeometry(1,1),cylinders:new CylinderGeometry(1,1,1,48),
-    cones:new ConeGeometry(1,1,32),spheres:new SphereGeometry(1,32,20),rings:torusGeometry(1,.075,72,12),
+  return {boxes:new BoxGeometry(1,1,1),bevels:beveledBoxGeometry(),smallBevels:beveledBoxGeometry(.07,true),planes:new PlaneGeometry(1,1),
+    cylinders:new CylinderGeometry(1,1,1,28),cones:new ConeGeometry(1,1,24),spheres:new SphereGeometry(1,20,12),rings:torusGeometry(1,.075,36,8),
     spool:latheGeometry([[0,-.5],[.82,-.5],[.98,-.44],[1,-.34],[.94,-.24],[.56,-.16],[.47,-.1],[.47,.1],[.56,.16],[.94,.24],[1,.34],[.98,.44],[.82,.5],[0,.5]]),
     helix:helixTrackGeometry(),railInner:tubeGeometry(helixPoints(3.85),.1),railOuter:tubeGeometry(helixPoints(5.35),.1),
     marblePaths:paths,switchbackTrack:switchback.track,switchbackLeft:switchback.left,switchbackRight:switchback.right,
@@ -142,7 +142,8 @@ export function* workshopWorldSteps(terrain){
   const ring=(g,x,y,z,r,c,rx=0,rz=0)=>mesh(g,rings,c,x,y,z,r,r,r,rx,0,rz);
   const plane=(g,x,y,z,w,d,m,angle=0)=>mesh(g,planes,m,x,y,z,w,d,1,-Math.PI/2,0,angle);
   function roundedBox(g,x,y,z,w,h,d,c,r=.22){
-    mesh(g,bevels,c,x,y,z,w,h,d);
+    const geometry=Math.max(w,h,d)<=3?assets.smallBevels:bevels;
+    mesh(g,geometry,c,x,y,z,w,h,d);
   }
   function group(x,z,angle=0){const g=new Group();g.position.set(x,0,z);g.rotation.y=angle;root.add(g);return g;}
   function prop(kind,x,z,w,d,h,angle=0){

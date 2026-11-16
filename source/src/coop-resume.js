@@ -1,3 +1,4 @@
+import {jr as heldItemRules, Nr as vitaminRules} from './config.js';
 const seatKey='ziling.coop.seat.1', progressKey='ziling.coop.progress.1';
 function read(key) {
   try {return JSON.parse(localStorage.getItem(key));} catch {return null;}
@@ -36,7 +37,8 @@ export function restoreProgress(run,data,world) {
     Object.assign(run,data.run);
     if(data.player.speciesId!==p.speciesId)p.setSpecies(data.player.speciesId);
     Object.assign(p,data.player);
-    p.items=new Map(data.items);p.vitamins=new Map(data.vitamins);
+    p.items=new Map((data.items ?? []).filter(([key])=>heldItemRules.has(key)));
+    p.vitamins=new Map((data.vitamins ?? []).filter(([key])=>vitaminRules.has(key)));
     p.moves.fill(null);
     for(const [i,saved] of data.moves.entries()){
       if(!saved)continue;

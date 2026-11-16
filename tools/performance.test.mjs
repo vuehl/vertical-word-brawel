@@ -138,6 +138,12 @@ test('camera culling restores immutable instance transforms and leaves unchanged
   const frustum=(left,right)=>({planes:[{normal:{x:1,y:0,z:0},constant:-left},{normal:{x:-1,y:0,z:0},constant:right}]});
   updatePaperVisibility(terrain,frustum(-10,10));assert.equal(mesh.count,1);assert.equal(attribute.array[12],0);
   const before=uploads;updatePaperVisibility(terrain,frustum(-10,10));assert.equal(uploads,before);
+    terrain.workshopBoundary={};
+    // Small walking steps reuse the guard band, but their total displacement still counts.
+    for(const dx of [.4,.8])assert.equal(updatePaperVisibility(terrain,frustum(-10+dx,10+dx)),false);
+    assert.equal(updatePaperVisibility(terrain,frustum(-8.8,11.2)),true);
+    const rotated=frustum(-8.8,11.2);rotated.planes[0].normal={x:0,y:1,z:0};
+    assert.equal(updatePaperVisibility(terrain,rotated),true);
   updatePaperVisibility(terrain,frustum(40,110));assert.equal(mesh.count,2);assert.equal(attribute.array[12],50);assert.equal(attribute.array[28],100);
   updatePaperVisibility(terrain,frustum(-10,110));assert.equal(mesh.count,3);assert.deepEqual(attribute.array,matrices);
   mesh.userData.paperInstances.shadow=true;updatePaperVisibility(terrain,frustum(-10,110),false);assert.equal(mesh.visible,false);

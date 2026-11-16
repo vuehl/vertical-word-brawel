@@ -3,6 +3,14 @@
 // player or the camera. Broadening and fading therefore stay fixed to props.
 export const WORKSHOP_SHADOW={span:48,near:1,far:300};
 
+// Evenly cover the same penumbra disk with eight fixed bilinear samples.
+// Build literal offsets once so the fragment shader only performs depth comparisons.
+const shadowTaps=Array.from({length:8},(_,i)=>{
+  const angle=i*2.39996323+.31,radius=Math.sqrt((i+.5)/8);
+  const x=(Math.cos(angle)*radius).toFixed(6),y=(Math.sin(angle)*radius).toFixed(6);
+  return `coverage+=workshopShadowTap(shadowMap,p.xy+vec2(${x},${y})*filterRadius,p,slope,mapSize).x;`;
+}).join('\n');
+
 export function workshopShadowShader(shader){
   shader.uniforms.uWorkshopShadowWorld={value:WORKSHOP_SHADOW.span*2};
   shader.uniforms.uWorkshopShadowDepth={value:WORKSHOP_SHADOW.far-WORKSHOP_SHADOW.near};
@@ -16,10 +24,6 @@ export function workshopShadowShader(shader){
       #undef getShadow
       uniform float uWorkshopShadowWorld;
       uniform float uWorkshopShadowDepth;
-      vec2 workshopShadowDisk(int i){
-        float angle=float(i)*2.39996323+.31;
-        return vec2(cos(angle),sin(angle))*sqrt((float(i)+.5)/16.);
-      }
       // Filter depth COMPARISONS, never depth values. Interpolating foreground
       // and clear-map depth first creates a hard false edge at the caster.
       // x = bilinear occlusion; y = weighted blocker/receiver separation.
@@ -62,11 +66,8 @@ export function workshopShadowShader(shader){
         float pixel=max(length(dx.xy),length(dy.xy));
         vec2 filterRadius=max(vec2(spread/uWorkshopShadowWorld),max(texel*1.15,vec2(pixel*.9)));
         float coverage=0.;
-        for(int i=0;i<16;i++){
-          vec2 offset=workshopShadowDisk(i)*filterRadius;
-          coverage+=workshopShadowTap(shadowMap,p.xy+offset,p,slope,mapSize).x;
-        }
-        workshopProjectedShadow=max(workshopProjectedShadow,coverage/16.*opacity*intensity);
+        ${shadowTaps}
+        workshopProjectedShadow=max(workshopProjectedShadow,coverage*.125*opacity*intensity);
         // Pigment shading applies the continuous shadow tint separately from
         // the toon light bands; it must not collapse this gradient into steps.
         return 1.;

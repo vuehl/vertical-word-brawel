@@ -65,7 +65,7 @@ export async function reviewOptimizations(page,dir){
     try{
       run.ui.hud(run);r.render(0);env.drawUI(r.renderer);await new Promise(resolve=>setTimeout(resolve,100));env.drawUI(r.renderer);
       const original=inspected.doc.querySelector('[data-skill-slot="0"] img'),uploads=auditUIUploads;
-      run.player.moves[0].level=2;run.player.items.set('leftovers',2);clock+=120;
+      run.player.moves[0].level=2;run.player.items.set('razor-claw',2);clock+=120;
       run.ui.hud(run);env.drawUI(r.renderer);
       await new Promise(resolve=>setTimeout(resolve,200));clock+=300;r.render(0);env.drawUI(r.renderer);
       return {fullUploads:auditUIUploads-uploads,reused:original===inspected.doc.querySelector('[data-skill-slot="0"] img'),
@@ -80,7 +80,7 @@ export async function reviewOptimizations(page,dir){
   )).jsonValue();
   console.log('Skills',JSON.stringify(report.skills));
   assert.equal(report.skills.fullUploads,0);assert.ok(report.skills.reused&&report.skills.imagesReady);
-  assert.equal(report.skills.level,'2');assert.ok(report.skills.items.some(([id,n])=>id==='leftovers'&&n==='2'));
+  assert.equal(report.skills.level,'2');assert.ok(report.skills.items.some(([id,n])=>id==='razor-claw'&&n==='2'));
   await page.screenshot({path:path.join(dir,'hud-skills-items.png')});
   report.glyphs=await page.evaluate(async()=>{
     const run=app.run,e=run.enemies,s=run.sprites,r=app.r,p=run.player.pos;

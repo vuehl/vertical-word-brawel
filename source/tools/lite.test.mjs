@@ -4,10 +4,23 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {roster,biomes,events} from '../src/catalogs.js';
+import {roster,biomes,events,heldItems,vitamins} from '../src/catalogs.js';
+import {Jn as itemInPool} from '../src/config.js';
 import {createProfile} from '../src/progression.js';
 import {settleRun,applyAction} from '../local/progression.mjs';
 import {constrainLiteProfile} from '../src/lite-rules.js';
+
+test('a new profile can roll every configured official item without a research purchase',()=>{
+ const profile=createProfile('test');
+ assert.equal(heldItems.length,29);
+ assert.equal(vitamins.length,26);
+ for(const item of heldItems)assert.ok(itemInPool(profile,item.key),item.key);
+ for(const key of ['leftovers','fairy-feather','water-stone'])assert.equal(itemInPool(profile,key),false);
+ for(const key of ['star-piece','lucky-punch'])assert.ok(itemInPool(profile,key));
+ profile.itemsOff.push('star-piece');
+ assert.equal(itemInPool(profile,'star-piece'),false);
+ assert.ok(itemInPool(profile,'lucky-punch'));
+});
 
 test('all three forest summoning points and the sanctuary use the same final boss',()=>{
  assert.deepEqual(roster.map(p=>p.id),[4,132,16]);

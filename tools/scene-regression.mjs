@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const removed=['cursed','greed','porygon','snorlax','cage','rock'];
-const retained=['boss','altar','challenge','fossil','rhydon','bill','nest','meowth','ditto','hypno','magnet','slots','freechest','cursedchest','berry','chest'];
+const removed=['cursed','greed','porygon','snorlax','cage','rock','challenge','fossil','rhydon','meowth','hypno','slots','cursedchest','shroom','shrine','tower'];
+const retained=['boss','altar','bill','nest','ditto','magnet','freechest','berry','chest'];
 
 // Exercise the compiled game, including dynamic placement and real NPC callbacks.
 export async function reviewScenes({page,tap,resize,dir,sleep}) {
@@ -71,7 +71,7 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
         :app.run.state==='play'),{timeout:90000},stage);
       if(stage===4){
         const before=await page.evaluate(()=>({time:app.run.stageTime,text:app.run.ui.modalEl.textContent}));
-        assert.match(before.text,/触碰圣地，召唤最终 Boss/);
+        assert.match(before.text,/开启「门\?」，召唤最终 Boss/);
         assert.match(before.text,/地图中央/);
         for(const [width,height] of [[320,568],[390,844],[430,932]]){
           await resize(width,height);await shot('sanctuary-guide-'+width);
@@ -98,8 +98,8 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
     assert.equal(inventory.rejected,true,'Removed types must not be recreated through any placement API');
     assert.deepEqual(inventory.after,inventory.before,'Rejected objects must not reserve terrain or add invisible meshes');
     for(const kind of removed){assert.equal(inventory.counts[kind]||0,0,kind+' must not spawn');assert.ok(!inventory.markers.includes(kind));}
-    assert.deepEqual(Object.keys(inventory.counts).sort(),(stage<=3?retained:['shrine']).slice().sort());
-    if(stage<=3)for(const kind of ['meowth','ditto','hypno'])assert.equal(inventory.counts[kind],1);
+    assert.deepEqual(Object.keys(inventory.counts).sort(),(stage<=3?retained:['boss']).slice().sort());
+    if(stage<=3)assert.equal(inventory.counts.ditto,1);
     report.stages.push(inventory);
     console.log('Scene inventory',stage,JSON.stringify(inventory.counts));
     await shot('scene-zone-'+stage);
@@ -117,51 +117,16 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
       await shot('scene-full-map');
       await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});
 
-      const stock=await page.evaluate(()=>{
-        const r=app.run;r.gold=3000;
-        r.interactables.interact(r.interactables.list.find(o=>o.kind==='meowth'));
-        const item=r.shop.stock[0];
-        return {key:item.key,price:item.price,before:r.player.items.get(item.key)||0,gold:r.gold};
-      });
-      assert.ok(stock.key);
-      await shot('scene-meowth-shop');
-      await tap('.shop-modal .cards > button');
-      const purchase=await page.evaluate(key=>({count:app.run.player.items.get(key),gold:app.run.gold,sold:app.run.shop.stock[0].sold}),stock.key);
-      assert.equal(purchase.count,stock.before+1);assert.equal(purchase.gold,stock.gold-stock.price);assert.equal(purchase.sold,true);
-      await tap('.shop-exit');
-
       await page.evaluate(()=>{
-        const r=app.run;r.player.items.clear();r.player.addItem('muscle-band');
+        const r=app.run;r.player.items.clear();r.player.addItem('razor-claw');
         r.interactables.interact(r.interactables.list.find(o=>o.kind==='ditto'));
       });
       await shot('scene-ditto-copy');
       await tap('[data-choice="showDitto"] [data-offer="0"]');
-      const copied=await page.evaluate(()=>({count:app.run.player.items.get('muscle-band'),used:app.run.interactables.list.find(o=>o.kind==='ditto').used}));
+      const copied=await page.evaluate(()=>({count:app.run.player.items.get('razor-claw'),used:app.run.interactables.list.find(o=>o.kind==='ditto').used}));
       assert.deepEqual(copied,{count:2,used:true});
 
-      const forget=await page.evaluate(()=>{
-        const r=app.run,p=r.player;
-        // Runtime move APIs accept IDs; 33 / 55 / 52 are tackle / water-gun / ember.
-        for(const move of [33,55,52])if(!p.hasMove(move)&&p.addMove(move))break;
-        r.interactables.interact(r.interactables.list.find(o=>o.kind==='hypno'));
-        return {count:p.moves.filter(Boolean).length,gold:r.gold,refund:p.moves.find(Boolean).level*8*r.stage};
-      });
-      assert.ok(forget.count>=2,'Forget interaction requires at least two moves');
-      await shot('scene-hypno-forget');
-      await tap('.shop-modal .item-row button');
-      const forgotten=await page.evaluate(()=>({count:app.run.player.moves.filter(Boolean).length,gold:app.run.gold}));
-      assert.equal(forgotten.count,forget.count-1);assert.equal(forgotten.gold,forget.gold+forget.refund);
-      await tap('.shop-exit');
-      report.npcs={purchase:{...stock,...purchase},copied,forgotten};
-
-      await page.evaluate(()=>{
-        const r=app.run;window.sceneTestCursed=r.interactables.list.find(o=>o.kind==='cursedchest');
-        r.interactables.interact(sceneTestCursed);
-      });
-      await page.waitForFunction(()=>!!inspected.doc.querySelector('.zx-item-dialog'),{timeout:45000});
-      report.cursedChest=await page.evaluate(()=>({used:sceneTestCursed.used,hasDifficulty:app.run.tempMods.some(m=>m.stat==='difficulty'&&m.mul===1.05),rewardVisible:!!inspected.doc.querySelector('.zx-item-dialog')}));
-      assert.deepEqual(report.cursedChest,{used:true,hasDifficulty:true,rewardVisible:true});
-      await shot('scene-cursed-chest-retained');
+      report.copied=copied;
       await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});
     }
     if(stage===1||stage===3) {
@@ -179,22 +144,22 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
           const r=app.run;r.state='play';r.player.pos.set(0,r.terrain.surface(0,z),z);r.player.vel.set(0,0,0);
         },z);
         const handle=await page.waitForFunction(near=>{
-          const r=app.run,h=r.ui,shrine=r.interactables.list.find(o=>o.kind==='shrine');
+          const r=app.run,h=r.ui,shrine=r.interactables.list.find(o=>o.kind==='boss');
           const distance=Number(Math.hypot(r.player.pos.x-shrine.x,r.player.pos.z-shrine.z).toFixed(2));
-          const tag=[h.markTag,h.arrow].find(el=>el.style.display!=='none'&&el.textContent.includes('圣地 · '+distance+' 厘米'));
-          return tag&&(!near||h.touch.actText?.includes('触碰圣地'))?{distance,text:tag.textContent,visible:true,kind:h.arrow.dataset.k,prompt:h.touch.actText}:false;
+          const tag=[h.markTag,h.arrow].find(el=>el.style.display!=='none'&&el.textContent.includes('门? · '+distance+' 厘米'));
+          return tag&&(!near||h.touch.actText?.includes('开启门?'))?{distance,text:tag.textContent,visible:true,kind:h.arrow.dataset.k,prompt:h.touch.actText}:false;
         },{timeout:15000},z<5);
         const marker=await handle.jsonValue();await handle.dispose();
         report.sanctuaryNavigation.push(marker);
         await shot('sanctuary-distance-'+z);
       }
       assert.ok(report.sanctuaryNavigation[0].distance>report.sanctuaryNavigation[1].distance);
-      assert.match(report.sanctuaryNavigation.at(-1).prompt,/触碰圣地/);
-      await tap('.tc-act','触碰圣地');
+      assert.match(report.sanctuaryNavigation.at(-1).prompt,/开启门\?/);
+      await tap('.tc-act','开启门?');
       await page.waitForFunction(()=>app.run.bossSpawned&&app.run.boss.alive,{timeout:15000});
       await sleep(300);
       assert.equal(await page.evaluate(()=>{
-        const h=app.run.ui;return [h.arrow,h.markTag].some(el=>el.style.display!=='none'&&el.textContent.includes('圣地 ·'));
+        const h=app.run.ui;return [h.arrow,h.markTag].some(el=>el.style.display!=='none'&&el.textContent.includes('门? ·'));
       }),false,'Shrine navigation ends after summoning');
       assert.equal(await page.evaluate(()=>!!inspected.doc.querySelector('.zx-sanctuary-guide')),false);
       await shot('sanctuary-boss-summoned');
@@ -206,5 +171,5 @@ export async function reviewScenes({page,tap,resize,dir,sleep}) {
     }
   }
   fs.writeFileSync(path.join(dir,'scene-regression.json'),JSON.stringify(report,null,2));
-  console.log('Scene removal regression passed: four zones, three NPC transactions, cursed chest and portals.');
+  console.log('Scene removal regression passed: four zones, official facility pools, item copying and portals.');
 }

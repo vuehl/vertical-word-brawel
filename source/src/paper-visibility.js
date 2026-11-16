@@ -1,11 +1,11 @@
 // Keep shared material batches, but submit only instances in the camera view.
 // Authored matrices stay immutable so moving never loses distant scenery.
 export function preparePaperBatch(mesh,shadow=false,tightBounds=false){
-  mesh.geometry.computeBoundingSphere();
+  if(!mesh.geometry.boundingSphere)mesh.geometry.computeBoundingSphere();
   const sphere=mesh.geometry.boundingSphere,total=mesh.count;
   const matrices=mesh.instanceMatrix.array.slice(),bounds=new Float32Array(total*4);
   const halfExtents=tightBounds?new Float32Array(total*3):null;
-  if(tightBounds)mesh.geometry.computeBoundingBox();
+  if(tightBounds&&!mesh.geometry.boundingBox)mesh.geometry.computeBoundingBox();
   const box=mesh.geometry.boundingBox;
   for(let i=0;i<total;i++){
     const o=i*16,b=i*4,x=sphere.center.x,y=sphere.center.y,z=sphere.center.z;
@@ -33,14 +33,20 @@ export function updatePaperVisibility(terrain,frustum,shadows=true){
   let view=terrain.zxVisibilityView;
   if(!view||view.planes.length!==planes.length*4)view=terrain.zxVisibilityView={planes:new Float64Array(planes.length*4)};
   let same=view.meshes===meshes&&view.count===meshes.length&&view.shadows===shadows;
+  // Both rejection tests below keep a two-unit guard band. In the bounded
+  // desktop scene, a small camera translation stays inside that band.
+  // Compare against the last full selection so successive steps accumulate.
+  const tolerance=terrain.workshopBoundary?1:0;
+  for(let i=0;same&&i<planes.length;i++){
+    const p=planes[i],n=p.normal,j=i*4;
+    if(Math.abs(view.planes[j]-n.x)>1e-12||Math.abs(view.planes[j+1]-n.y)>1e-12||
+      Math.abs(view.planes[j+2]-n.z)>1e-12||Math.abs(view.planes[j+3]-p.constant)>tolerance)same=false;
+  }
+  if(same)return false;
   for(let i=0;i<planes.length;i++){
     const p=planes[i],n=p.normal,j=i*4;
-    if(view.planes[j]!==n.x||view.planes[j+1]!==n.y||view.planes[j+2]!==n.z||view.planes[j+3]!==p.constant)same=false;
     view.planes[j]=n.x;view.planes[j+1]=n.y;view.planes[j+2]=n.z;view.planes[j+3]=p.constant;
   }
-  // All stationery bounds are immutable for this area. An unchanged camera
-  // can reuse the selection, instead of retesting every prop every frame.
-  if(same)return false;
   view.meshes=meshes;view.count=meshes.length;view.shadows=shadows;
   let castersChanged=false;
   for(const mesh of meshes){

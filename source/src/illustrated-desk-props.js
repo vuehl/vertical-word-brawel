@@ -7,7 +7,15 @@ export function illustratedDeskProps(api){
   const {assets,group,prop,mesh,box,roundedBox:rb,cyl,ring,ball,plane,cable,texture,texMat,groundSurface,groundY}=api;
   const TAU=Math.PI*2,cream='#f2e8ce',paper='#f9efd6',ink='#41444c';
   function child(g,x,y,z,a=0){const c=new Group();c.position.set(x,y,z);c.rotation.y=a;g.add(c);return c;}
-  function stamp(key,w,h,draw){const m=texMat('illustration-'+key,texture('illustration-'+key,w,h,draw));m.alphaTest=.04;return m;}
+  function stamp(key,w,h,draw){
+    // Keep the artwork's original coordinates while rasterizing at desk-camera size.
+    const limit=key==='keyboard-legends'||key==='laptop-screen'?768:512;
+    const scale=Math.min(1,limit/Math.max(w,h)),name='illustration-'+key;
+    const map=texture(name,Math.round(w*scale),Math.round(h*scale),(ctx,width,height)=>{
+      ctx.scale(width/w,height/h);draw(ctx);
+    });
+    const material=texMat(name,map);material.alphaTest=.04;return material;
+  }
   function line(c,points,color,width=3){c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.stroke();}
   function label(c,text,x,y,size,color=ink){c.fillStyle=color;c.font=`600 ${size}px sans-serif`;c.fillText(text,x,y);}
   function rr(c,x,y,w,h,r,color,stroke){c.fillStyle=color;c.beginPath();c.roundRect(x,y,w,h,r);c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=3;c.stroke();}}

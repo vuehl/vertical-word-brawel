@@ -65,7 +65,7 @@ export function createWorkload(run,skills){
     run.projectiles.clear();run.zones.clear();run.vfx.clear();run.pickups.clear();
     mode=nextMode;preset=next;elapsed=refill=ultimate=serial=0;
     p.moves=[null,null,null,null];p.vitamins=new Map();
-    p.items=new Map(next.items?[['leftovers',Math.min(3,next.items)],['muscle-band',Math.min(3,next.items)]]:[]);
+    p.items=new Map(next.items?[['razor-claw',Math.min(3,next.items)],['assault-vest',Math.min(3,next.items)]]:[]);
     p.level=next.level;p.xpNext=p.xpFor(p.level);
     p.xp=Math.min(saved.player.xp,p.xpNext-1);
     p.growth=Math.max(0,p.growthStage()-p.evoStage);

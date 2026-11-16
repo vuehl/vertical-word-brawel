@@ -1,3 +1,4 @@
+import {isActiveFacility} from './active-content.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
@@ -12523,10 +12524,6 @@ function ff(e, t) {
       glow: 0.2,
     });
 }
-function pf(e) {
-  let t = [`magnet`, `repel`, ...nf];
-  return (e.time >= e.bombAt && t.push(`bomb`), F.pick(t));
-}
 var mf = (e) => 200 + 100 * (Math.min(3, e.stage) - 1);
 function hf(e) {
   let t = e.director.pool.map((e) => k.root(e.id).id).filter((e) => k.hasAnimated(e));
@@ -24484,6 +24481,7 @@ function am(e) {
 }
 var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
   sm = (e) => (e >= 40 ? 16734858 : e >= 12 ? 11823871 : e >= 4 ? 4901119 : 5959562),
+  activePickupKinds = new Set(['xp', 'coin', 'heal', 'magnet', 'repel', 'candy']),
   cm = 2500,
   lm = [
     `xp`,
@@ -24591,6 +24589,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
       this.spawn(e === 0 ? `xp` : `coin`, t, n, r, i);
     }
     spawn(e, t, n, r, i) {
+      if (!activePickupKinds.has(e)) return;
       let a;
       if (this.free.length) a = this.free.pop();
       else if (this.n < cm) a = this.n++;
@@ -38085,10 +38084,8 @@ var e_ = class {
         (F.chance(0.006 * o.powerup * i) && a.pickups.spawn(`heal`, e, t, n, 1),
         !a.director.finalSwarm && a.time >= a.powerUpAt && F.chance(0.0018 * o.luckMult * o.powerup * i))
       ) {
-        let r = pf(a);
-        (a.pickups.spawn(r, e, t, n, 1),
-          (a.powerUpAt = a.time + Math.max(18, 40 / o.powerup)),
-          r === `bomb` && (a.bombAt = a.time + 120));
+        a.pickups.spawn(F.pick([`magnet`, `repel`]), e, t, n, 1);
+        a.powerUpAt = a.time + Math.max(18, 40 / o.powerup);
       }
       r & R.Elite &&
         !a.director.eliteChest &&
@@ -41439,6 +41436,7 @@ var mv = 30,
       return e;
     }
     addVitamin(e, t) {
+      if (!Ne.has(e)) return;
       let n = this.vitamins.get(e);
       if (
         ((this.run.vitTaken = !0),
@@ -41475,7 +41473,7 @@ var mv = 30,
       return 10 + (this.items.has(`max-ether`) ? 2 : 0);
     }
     canHold(e) {
-      return (this.items.get(e) ?? 0) < (sn.get(e)?.max ?? 10);
+      return sn.has(e) && (this.items.get(e) ?? 0) < (sn.get(e).max ?? 10);
     }
     addItem(e) {
       return this.canHold(e)
@@ -55036,16 +55034,15 @@ var Kb = (e, t) => !!e.tower && t === `dowsing-machine`;
 function qb(e, t = 0) {
   let n = e.player,
     r = tt.filter(
-      (t) => e.meta.itemInPool(t.key) && !Kb(e, t.key) && (n.items.get(t.key) ?? 0) < (t.max ?? 10),
+      (t) => e.meta.itemInPool(t.key) && !e.banished.has(`i` + t.key) && !Kb(e, t.key) && (n.items.get(t.key) ?? 0) < (t.max ?? 10),
     ),
-    i = [0, 1, 2, 3, 4].map((t) => r.some((n) => n.rarity === t && !e.banished.has(`i` + n.key))),
+    i = [0, 1, 2, 3, 4].map((t) => r.some((n) => n.rarity === t)),
     a = Math.max(t, Hb(e, t, 10, i)),
-    o = r.filter((t) => t.rarity === a && !e.banished.has(`i` + t.key));
+    o = r.filter((t) => t.rarity === a);
   for (let t = a - 1; !o.length && t >= 0; t--)
-    o = r.filter((n) => n.rarity === t && !e.banished.has(`i` + n.key));
+    o = r.filter((n) => n.rarity === t);
   return (
-    o.length ||
-      (o = r.length ? r : tt.filter((t) => !Kb(e, t.key) && (n.items.get(t.key) ?? 0) < (t.max ?? 10))),
+    o.length || (o = r),
     o.length
       ? (F.weighted(o, (e) => (e.tags?.some((e) => n.types.includes(e.slice(5))) ? 4 : e.tags ? 0.35 : 1))
           ?.key ?? null)
@@ -65528,7 +65525,7 @@ function zS(e) {
     ][e] ?? c(`Altar Unown`)
   );
 }
-var BS = (e) => (e.data?.comet ? `comet` : e.kind === `tower` ? `tower-${e.data?.sub}` : e.kind),
+var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
   VS = { altar: 200, challenge: 240, ditto: 150, magnet: 150, berry: 120 };
 function HS(e, t, n) {
   let r = t >= 4 ? Math.max(1, Math.round(t * 0.15)) : 0,
@@ -65606,6 +65603,7 @@ var GS = class e {
       );
     }
     add(e, t, n, r = {}) {
+      if (!isActiveFacility(e) || r.data?.comet) return null;
       let i = this.run.terrain.height(t, n),
         a = { kind: e, x: t, y: i, z: n, r: 2.6, used: !1, cost: 0, ...r },
         o,
@@ -65684,7 +65682,7 @@ var GS = class e {
         ((a.charge = 0), (a.r = e.r), this.run.sprites.get(IS), e.wave && this.altarBeacon(a));
       }
       if (
-        (e === `boss` && (a.r = 4),
+        (e === `boss` && (a.r = this.run.sanctuary ? 5 : 4),
         e === `shrine` && ((a.r = 5), o.scale.setScalar(1.5)),
         (e === `chest` || e === `freechest`) && o.scale.setScalar(0.8),
         e === `portal` && (a.r = 3.4),
@@ -65731,13 +65729,10 @@ var GS = class e {
       let e = this.run,
         t = e.terrain;
       if (e.sanctuary) {
-        this.add(`shrine`, 0, 0);
+        this.add(`boss`, 0, 0);
         return;
       }
-      if (e.tower) {
-        e.tower.populate(this);
-        return;
-      }
+
       let n = new Ol(e.seed ^ 30634),
         r = (e, r, i) => {
           let a = wS[i],
@@ -65763,39 +65758,11 @@ var GS = class e {
         this.add(`boss`, e.x, e.z);
         yield;
       }
-      let s = o
-          ? [
-              [`altar`, i(3)],
-              [`challenge`, i(1)],
-              [`fossil`, 1],
-              [`bill`, 1],
-              [`nest`, 1],
-              [`ditto`, 2],
-              [`hypno`, 1],
-              [`magnet`, 1],
-              [`slots`, i(1)],
-              [`freechest`, i(2)],
-              [`cursedchest`, i(1)],
-              [`berry`, i(4)],
-              [`chest`, i(8)],
-            ]
-          : [
-              [`altar`, i(5)],
-              [`challenge`, i(2)],
-              [`fossil`, 1],
-              [`rhydon`, 1],
-              [`bill`, 1],
-              [`nest`, 1],
-              [`meowth`, 1],
-              [`ditto`, 1],
-              [`hypno`, 1],
-              [`magnet`, 2],
-              [`slots`, i(2)],
-              [`freechest`, i(3)],
-              [`cursedchest`, i(2)],
-              [`berry`, i(5)],
-              [`chest`, i(14)],
-            ],
+      let s = [
+          [`altar`, i(o ? 3 : 5)], [`bill`, 1], [`nest`, 1], [`ditto`, o ? 2 : 1],
+          [`magnet`, o ? 1 : 2], [`freechest`, i(o ? 2 : 3)],
+          [`berry`, i(o ? 4 : 5)], [`chest`, i(o ? 8 : 14)],
+        ],
         c = e.player.items.get(`dowsing-machine`) ?? 0;
       if (c) for (let e of s) e[0] === `altar` ? (e[1] += c) : e[0] === `chest` && (e[1] += 2 * c);
       let l = HS(n, s.find(([e]) => e === `altar`)?.[1] ?? 0, e.player.stats.luckMult);
@@ -65805,47 +65772,6 @@ var GS = class e {
           this.add(e, t.x, t.z, e === `altar` ? { data: { tier: l[n] ?? 0 } } : {});
           yield;
         }
-      // The paper world is flat; the legacy jump-mushroom search needs a
-      // 3.5–7 metre ledge and can never succeed here (up to 400 searches).
-      e.biome.relief && !t.zxPaper && this.placeShrooms(n, i(3));
-    }
-    placeShrooms(e, t) {
-      let n = this.run.terrain;
-      for (let r = 0, i = 0; r < t && i < 400; i++) {
-        let t = n.randomPoint(e, 0, 0, 25, n.play - 8);
-        if (
-          n.isReserved(t.x, t.z, 2) ||
-          this.list.some((e) => e.kind === `shroom` && Math.hypot(e.x - t.x, e.z - t.z) < 45)
-        )
-          continue;
-        let i = null,
-          a = 1e9;
-        for (let e = 0; e < 16; e++) {
-          let r = (e / 16) * Math.PI * 2,
-            o = Math.cos(r),
-            s = Math.sin(r);
-          if (!(n.height(t.x + o * 1.5, t.z + s * 1.5) > t.y + 0.6))
-            for (let e = 5; e <= 8; e += 1) {
-              let r = t.x + o * e,
-                c = t.z + s * e,
-                l = n.height(r, c) - t.y;
-              if (
-                !(
-                  l < 3.5 ||
-                  l > 7 ||
-                  !n.isFlatOpen(r, c) ||
-                  n.normal(r + o * 1.5, c + s * 1.5).y < 0.9 ||
-                  !n.inBounds(r, c, 6)
-                )
-              ) {
-                e < a &&
-                  ((a = e), (i = { x: r + o * 1.2, z: c + s * 1.2, y: n.height(r + o * 1.2, c + s * 1.2) }));
-                break;
-              }
-            }
-        }
-        i && (this.add(`shroom`, t.x, t.z, { data: { tx: i.x, tz: i.z, ty: i.y } }), r++);
-      }
     }
     spawnChest(e, t, n, r = !1, i = e, a = t) {
       let o = e,
@@ -65901,30 +65827,6 @@ var GS = class e {
           (t.kind === `freechest` || t.kind === `cursedchest` || (t.kind === `chest` && t.data?.gift)) &&
           Math.hypot(t.x - e.x, t.z - e.z) < 60,
       ).length;
-    }
-    spawnComet(e, t) {
-      let n = this.add(`altar`, e, t, { data: { tier: 4, comet: !0, life: 60 } }),
-        r = this.run,
-        i = n.group;
-      if (i) {
-        let e = i.position.y;
-        r.animate(
-          0.9,
-          (t) => {
-            ((i.position.y = e + 30 * (1 - t * t)),
-              Math.random() < 0.8 && r.vfx.trail(n.x, i.position.y + 1.5, n.z, 9099519, 0.9, I.Spark, 0.5));
-          },
-          () => {
-            ((i.position.y = e),
-              r.vfx.ring(n.x, e, n.z, 9, 9099519, 0.7),
-              r.vfx.flash(n.x, e + 1.5, n.z, 12577023, 6, 0.3),
-              r.vfx.dust(n.x, e, n.z, 15260864, 18, 6),
-              r.shake(0.3, n.x, n.z),
-              r.audio.boom(0.6));
-          },
-        );
-      }
-      return n;
     }
     spawnNpc(e, t, n) {
       return this.add(e, t, n);
@@ -66025,7 +65927,7 @@ var GS = class e {
         case `boss`:
           return this.run.bossSpawned
             ? c(`El guardián ya despertó`)
-            : '召唤'+finalBossWord;
+            : this.run.sanctuary ? '开启门?' : '召唤'+finalBossWord;
         case `shrine`:
           return this.run.bossSpawned ? c(`El santuario late con fuerza`) : c(`Tocar el santuario`);
         case `portal`:
@@ -70372,13 +70274,9 @@ var kw = class {
         n >= this.at && !t.boss.alive && !t.mewtwo.active && t.state === `play` && this.spawnMilestone(),
         this.updateSiege(e),
         (this.dropT -= e) <= 0 && ((this.dropT = F.range(70, 95)), this.supplyDrop()),
-        this.updateComet(e),
         this.updateMigration(e),
         this.hazards.schedule(e),
-        this.hazards.update(e),
-        this.meowth
-          ? (this.meowthLeft -= e) <= 0 && t.state === `play` && this.meowthLeaves()
-          : (this.meowthT -= e) <= 0 && ((this.meowthT = 300), this.meowthArrives()));
+        this.hazards.update(e));
       let i = this.k;
       ((this.k = this.night ? Math.min(1, this.k + e / 6) : 0), this.k !== i && t.pushLook());
     }
@@ -70548,28 +70446,13 @@ var kw = class {
           t ? `great-ball` : `poke-ball`,
         );
       } else {
-        let t = F.pick([`magnet`, `repel`, `heal`, `heal`, `bomb`]);
+        let t = F.pick([`magnet`, `repel`, `heal`, `heal`]);
         (e.pickups.spawn(t, r.x, a + 16, r.z, 1),
           e.ui.toast(
             c(`¡Suministro! Algo ha caído del cielo`),
             t === `heal` ? `oran-berry` : t === `bomb` ? `poke-ball` : t,
           ));
       }
-    }
-    updateComet(e) {
-      let t = this.run;
-      if (
-        (this.comet && !t.interactables.list.includes(this.comet) && (this.comet = null),
-        this.comet || (this.cometT -= e) > 0 || ((this.cometT = F.range(100, 140)), t.mewtwo.active))
-      )
-        return;
-      let n = t.player.pos,
-        r = t.terrain.randomPoint(F, n.x, n.z, 25, 40);
-      Math.hypot(r.x - n.x, r.z - n.z) < 18
-        ? (this.cometT = 10)
-        : ((this.comet = t.interactables.spawnComet(r.x, r.z)),
-          t.ui.toast(c(`¡Ha caído un fragmento de cometa! Cárgalo antes de que se apague`), `comet-shard`),
-          t.audio.alarm());
     }
     get cometHere() {
       let e = this.comet;
@@ -70608,30 +70491,6 @@ var kw = class {
         (this.cometT = Math.min(this.cometT, 45)));
       let e = this.run.player.pos;
       ((this.ax = e.x), (this.az = e.z), (this.camp = 0), (this.idle = 0));
-    }
-    meowthArrives() {
-      let e = this.run,
-        t = e.player.pos;
-      if (e.mewtwo.active) {
-        this.meowthT = 30;
-        return;
-      }
-      let n = e.terrain.randomPoint(F, t.x, t.z, 12, 18);
-      (this.shopVisit++,
-        (this.meowth = e.interactables.spawnNpc(`meowth`, n.x, n.z)),
-        (this.meowthLeft = 45),
-        e.cry(52, 0.7),
-        e.vfx.burst(n.x, n.y + 1, n.z, 16765498, 20, 5, I.Twinkle, 0.5, 0.6),
-        e.ui.toast(c(`¡Meowth ha venido con su tienda! Se irá en 45 s`), `amulet-coin`));
-    }
-    meowthLeaves() {
-      let e = this.run,
-        t = this.meowth;
-      ((this.meowth = null),
-        t &&
-          (e.vfx.burst(t.x, t.y + 1, t.z, 16777215, 16, 5, I.Twinkle, 0.5, 0.5),
-          e.interactables.remove(t),
-          e.ui.toast(c(`Meowth se ha marchado`), null)));
     }
     get meowthHere() {
       return this.meowth ? this.meowthLeft : null;
@@ -74380,7 +74239,6 @@ var GT = 15,
     streakPaid = new Set();
     powerUpAt = 0;
     egg = null;
-    bombAt = 0;
     evoHold = 0;
     godMode = !1;
     hideOwnFx = !1;
@@ -74508,7 +74366,7 @@ var GT = 15,
         (this.skips = 2 + i.lab(`skip`)),
         (this.banishes = 1 + i.lab(`banish`)));
       for (let e of i.profile.banished ?? []) this.banished.add(e);
-      ((this.boosts = new Set(a.boosts ?? [])),
+      ((this.boosts = new Set((a.boosts ?? []).filter(id => Pt.some(item => item.id === id)))),
         this.mode === `endless` && (this.endless = new Vw(this)),
         this.mode === `tower` && ((this.tower = new OT(this)), (this.stage = this.tower.curveStage)),
         (this.paperAssets=createPaperAssets()),
@@ -100021,40 +99879,16 @@ function sI() {
   return {
     chest: { src: aI(`ball`), ring: `#e8443a`, name: c(`Poké Ball (objeto, de pago)`) },
     freechest: { src: aI(`freeball`), ring: `#3a7aff`, name: c(`Poké Ball gratis`) },
-    cursedchest: { src: aI(`cursedball`), ring: `#8a4ad0`, name: c(`Poké Ball maldita (emboscada)`) },
     altar: { src: aI(`unown`), ring: `#2ec8e0`, name: c(`Altar Unown (bendición)`) },
-    comet: {
-      src: `items/comet-shard.png`,
-      ring: `#4aa8ff`,
-      name: c(`Fragmento de cometa (cárgalo antes de que se apague)`),
-    },
     boss: { src: aI(`boss`), ring: `#e8243a`, name: c(`Altar del guardián`) },
     portal: {
       src: aI(`portal`),
       ring: `#9a6aff`,
       name: c(`Portal (zona siguiente o, en Supervivencia, tierras nuevas)`),
     },
-    shrine: { src: aI(`shrine`), ring: `#3ac85a`, name: c(`Santuario legendario`) },
-    challenge: { src: aI(`challenge`), ring: `#ff6a3a`, name: c(`Altar de desafío`) },
-    shroom: { src: aI(`shroom`), ring: `#ff8a3a`, name: c(`Seta rebote`) },
-    slots: { src: `ui/icons/coin.png`, ring: `#c8306a`, name: c(`Tragaperras (apuesta por objetos)`) },
     magnet: { src: `items/magnet.png`, ring: `#8a8aa0`, name: buildingMapName({kind:'magnet'}) },
     berry: { src: `items/oran-berry.png`, ring: `#3a7aff`, name: c(`Bayas`) },
-    meowth: { src: oI(52), ring: `#ffc83a`, name: c(`Meowth (tienda)`), round: !0 },
     ditto: { src: oI(132), ring: `#c88aff`, name: c(`Ditto (clona un objeto)`), round: !0 },
-    hypno: { src: oI(97), ring: `#e8c040`, name: c(`Hypno (olvida ataques)`), round: !0 },
-    fossil: {
-      src: oI(142),
-      ring: `#ff9a2a`,
-      name: c(`Ruinas del Fósil (poder a cambio de PS máx.)`),
-      round: !0,
-    },
-    rhydon: {
-      src: oI(112),
-      ring: `#c8783a`,
-      name: c(`Grito de Rhydon (guardián más fuerte, más Super Balls)`),
-      round: !0,
-    },
     nest: {
       src: oI(113),
       ring: `#6ad05a`,
@@ -100065,23 +99899,6 @@ function sI() {
       src: aI(`bill`),
       ring: `#ffb43a`,
       name: c(`Máquina de Bill (fusiona dos movimientos al nivel máximo)`),
-    },
-    "tower-stairs": {
-      src: aI(`escalera`),
-      ring: `#b08aff`,
-      name: c(`Escalera al piso siguiente (se abre al superar el piso)`),
-    },
-    "tower-altar": {
-      src: `ui/icons/ofrenda.png`,
-      ring: `#c8a8ff`,
-      name: c(`Altar de ofrendas (una bendición al superar el piso)`),
-    },
-    "tower-trick": { src: oI(94), ring: `#8a4ad0`, name: c(`Lápida de Gengar (¿truco o trato?)`), round: !0 },
-    "tower-portal": { src: aI(`torre`), ring: `#5affd8`, name: c(`Puerta del Más Allá`) },
-    "tower-leave": {
-      src: aI(`escalera`),
-      ring: `#ffd23a`,
-      name: c(`Bajar de la Torre (terminar con la victoria)`),
     },
   };
 }
@@ -101765,7 +101582,6 @@ var JI = class {
           c(`Las Poké Balls del mapa guardan objetos: ábrelas con E.`),
           c(`Deslízate (Shift) para esquivar los ataques fuertes de los jefes.`),
           c(`Quédate dentro del círculo de un altar para cargar su bendición.`),
-          c(`Meowth vende objetos a cambio de ₽: búscalo por el mapa.`),
           c(`Cada zona termina con su guardián: derrótalo para abrir el portal.`),
         ],
         i = X(`i`, { style: { transform: `scaleX(0)` } }),
@@ -102377,13 +102193,13 @@ var JI = class {
           (this.reticle.style.top = r.y + `px`));
       } else this.reticle.style.display = `none`;
       this.crosshair.style.display = e.aimMode === `manual` && e.state === `play` ? `` : `none`;
-      const shrineTarget = e.sanctuary && !e.bossSpawned && !e.stageCleared
-        ? e.interactables.list.find((target) => target.kind === `shrine` && !target.used) : null;
+      const gateTarget = e.sanctuary && !e.bossSpawned && !e.stageCleared
+        ? e.interactables.list.find((target) => target.kind === `boss` && !target.used) : null;
       let y = e.stageCleared ? (e.interactables.list.find((e) => e.kind === `portal`) ?? null) : null,
         bossIndex = e.boss.bossIndex,
         bossTarget = e.boss.alive ? {i:bossIndex,x:e.enemies.x[bossIndex],z:e.enemies.z[bossIndex]} : null,
         b =
-          shrineTarget ??
+          gateTarget ??
           bossTarget ??
           e.capture.marker ??
           e.allies.marker ??
@@ -102393,10 +102209,10 @@ var JI = class {
       if (b) {
         const distance = Math.hypot(b.x - e.player.pos.x, b.z - e.player.pos.z),
           bossFlags = R.Boss | R.Alpha | R.Totem | R.Summoner,
-          markerText = shrineTarget ? '圣地 · '+bossDistanceText(distance)
+          markerText = gateTarget ? '门? · '+bossDistanceText(distance)
             : b===bossTarget || (b.i!=null && (e.enemies.flags[b.i]&bossFlags)) ? bossDistanceText(distance)
             : c(`{n} m`, { n: Math.round(distance) });
-        let t = this.project(e, b.x, e.terrain.height(b.x, b.z) + (shrineTarget ? (shrineTarget.group?.userData.h ?? 6.3) + 1 : 2), b.z),
+        let t = this.project(e, b.x, e.terrain.height(b.x, b.z) + (gateTarget ? (gateTarget.group?.userData.h ?? 6.3) + 1 : 2), b.z),
           n = innerWidth / 2,
           r = innerHeight / 2,
           i = t.x - n,
@@ -102408,8 +102224,8 @@ var JI = class {
           this.arrow.style.display = `none`;
           let r = markerText, i = this.markTag;
           ((i.style.display = ``),
-            (i.style.left = (shrineTarget ? Gs(t.x, 76, innerWidth - 76) : t.x) + `px`),
-            (i.style.top = (shrineTarget ? Gs(t.y, 238, innerHeight - 96) : t.y) + `px`));
+            (i.style.left = (gateTarget ? Gs(t.x, 76, innerWidth - 76) : t.x) + `px`),
+            (i.style.top = (gateTarget ? Gs(t.y, 238, innerHeight - 96) : t.y) + `px`));
           let a = i.children[0];
           a.textContent !== r && (a.textContent = r);
         } else {
@@ -102418,24 +102234,24 @@ var JI = class {
             s = e.enemies,
             l = b.i,
             u =
-              shrineTarget ? sI().shrine.ring : b===bossTarget ? sI().boss.ring : e.capture.marker || e.allies.marker
+              gateTarget ? sI().boss.ring : b===bossTarget ? sI().boss.ring : e.capture.marker || e.allies.marker
                 ? cI.capture
                 : e.events?.marker
                   ? cI.treasure
                   : l != null
                     ? cI.summoner
                     : sI().portal.ring,
-            d = shrineTarget ? `shrine` : l == null ? `portal` : `m${s.glyphWords[l]}${u}`,
+            d = gateTarget ? `boss` : l == null ? `portal` : `m${s.glyphWords[l]}${u}`,
             f = this.arrow;
           (f.dataset.k !== d &&
             ((f.dataset.k = d),
             f.style.setProperty(`--rc`, u),
             $(f.children[1]).append(
-              l == null ? pI(shrineTarget ? `shrine` : `portal`, 32) : fI(`portraits/${s.species[l]}.png`, u, 32, !0, s.glyphWords[l]),
+              l == null ? pI(gateTarget ? `boss` : `portal`, 32) : fI(`portraits/${s.species[l]}.png`, u, 32, !0, s.glyphWords[l]),
             )),
             (f.style.display = ``),
-            (f.style.left = (shrineTarget ? Gs(n + Math.cos(t) * o, 76, innerWidth - 76) : n + Math.cos(t) * o) + `px`),
-            (f.style.top = (shrineTarget ? Gs(r + Math.sin(t) * o, 238, innerHeight - 96) : r + Math.sin(t) * o) + `px`),
+            (f.style.left = (gateTarget ? Gs(n + Math.cos(t) * o, 76, innerWidth - 76) : n + Math.cos(t) * o) + `px`),
+            (f.style.top = (gateTarget ? Gs(r + Math.sin(t) * o, 238, innerHeight - 96) : r + Math.sin(t) * o) + `px`),
             drawCompassDial(f.children[0], t));
           let m = markerText;
           (f.children[2].textContent !== m && (f.children[2].textContent = m),
@@ -102472,8 +102288,8 @@ var JI = class {
           shroom: c(`Seta rebote`),
         };
       for (let a of e.interactables.list) {
-        // The sanctuary navigation marker already labels the unopened shrine.
-        if (a.kind === `shrine` && e.sanctuary && !e.bossSpawned) continue;
+        // The sanctuary navigation marker already labels the unopened boss gate.
+        if (a.kind === `boss` && e.sanctuary && !e.bossSpawned) continue;
         let o = Math.hypot(a.x - t.x, a.z - t.z),
           s =
             a.kind === `meowth` ||

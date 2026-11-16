@@ -231,7 +231,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       p.hp=oldHp;p.xp=0;refresh();
       const resetExperience=Number(inspected.doc.querySelector('.zx-profile-art').dataset.progress);
       const level=inspected.doc.querySelector('.zx-hud-level').textContent,topBars=inspected.doc.querySelectorAll('.zx-hud-hp,.zx-hud-track,.zx-hud-xp-track').length;
-      p.addItem('leftovers');p.addItem('leftovers');p.addItem('lucky-egg');p.addVitamin('protein',.12);p.moves[0].level=oldSkill+1;p.moveSlots=4;refresh();
+      p.addItem('razor-claw');p.addItem('razor-claw');p.addItem('honey');p.addVitamin('protein',.12);p.moves[0].level=oldSkill+1;p.moveSlots=4;refresh();
       const items=[...inspected.doc.querySelectorAll('[data-item]')].map(n=>[n.dataset.item,Number(n.dataset.count)]),skill=Number(inspected.doc.querySelector('[data-skill-slot="0"]').dataset.level),unlocked=!inspected.doc.querySelector('[data-skill-slot="3"]').classList.contains('locked');
       p.level=oldLevel;p.xp=oldXp;p.moveSlots=oldSlots;refresh();r.state='play';
       const minimap=inspected.doc.querySelector('.zx-minimap'),mapPixels=minimap.getContext('2d').getImageData(0,0,240,240).data;
@@ -240,7 +240,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     assert.deepEqual(hudBindings.samples.map(s=>s.progress),[0,.25,.75,1]);assert.ok(hudBindings.samples.every(s=>s.value===s.expected),'Foot health must follow damage and healing');
     assert.deepEqual(hudBindings.experience.map(s=>s.progress),[0,.25,.75,.99]);assert.equal(hudBindings.resetExperience,0);assert.equal(hudBindings.weatherTags,0);
     assert.ok(hudBindings.experience.every((sample,i,all)=>!i||sample.blue>all[i-1].blue),'The blue portrait arc must visibly fill as experience increases');
-    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.topBars,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.mapDrawn);assert.equal(hudBindings.scoreNodes,0);assert.ok(hudBindings.items.some(([id,n])=>id==='leftovers'&&n===2));
+    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.topBars,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.mapDrawn);assert.equal(hudBindings.scoreNodes,0);assert.ok(hudBindings.items.some(([id,n])=>id==='razor-claw'&&n===2));
     fs.writeFileSync(path.join(dir,'hud-bindings.json'),JSON.stringify(hudBindings,null,2));await snapshot('07-hud-skills-items');
     await page.evaluate(()=>{const r=app.run;window.previewXp=r.player.xp;r.player.xp=r.player.xpNext*.65;r.state='paused';r.ui.hud(r);});
     await snapshot('07-experience-ring-65');

@@ -4,7 +4,7 @@ import {constrainLiteProfile, validLiteRun, isLiteSpecies, SINGLE_STAGE, runReco
 // Implements the client's HTTP API against a local JSON store.
 import http from 'node:http';
 import { applyAction as applyProfileAction, refreshTasks, rerollTask, settleRun, claimEvent } from './local/progression.mjs';
-import { Zn as medalFor } from './src/config.js';
+import { Zn as medalFor, cn as bagItems } from './src/config.js';
 import { writeFileSync, mkdirSync, renameSync, copyFileSync } from 'node:fs';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
@@ -366,7 +366,7 @@ route('POST', '/runs', async (req, res) => {
   const id = `run-${store.nextRun++}`;
   // Co-op: the seed belongs to the party so every member builds the same world.
   const seed = b.party ? b.coopSeed : (b.seed ?? crypto.randomInt(1, 2 ** 31));
-  const boosts=[...new Set(Array.isArray(b.boosts)?b.boosts:[])].filter(k=>(acc.profile.bag[k]??0)>0);
+  const boosts=[...new Set(Array.isArray(b.boosts)?b.boosts:[])].filter(k=>bagItems.some(item=>item.id===k)&&(acc.profile.bag[k]??0)>0);
   for(const k of boosts){acc.profile.bag[k]--;if(!acc.profile.bag[k])delete acc.profile.bag[k];}
   store.runs[id] = { id, account: acc.id, cfg: b, seed, started: now() };
   persist();

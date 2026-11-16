@@ -1,4 +1,5 @@
 import {configureStarterRoster} from './starter-characters.js';
+import {isActiveItem} from './active-content.js';
 import {finalBossSpecies} from './character-rules.js';
 import {chineseText as t} from "./chinese-text.js";
 import {resolveItemIcon} from './item-icons.js';
@@ -1895,7 +1896,7 @@ var u = { season: 2, name: t(`Temporada 2`), maxDex: 151, biomes: [`forest`] },
       mods: [],
       max: 1,
     },
-  ],
+  ].filter(item => isActiveItem(item.key)),
   ce = new Map(f.map((e) => [e.key, e])),
   p = [
     {
@@ -2528,10 +2529,11 @@ var Ce = 0.85,
     _(`rainbow-wing`, 3500),
     _(`poke-flute`, 3e3),
     _(`tm-case`, 3200),
-  ],
+  ].filter(item => ce.has(item.key)),
   ke = new Map(Oe.map((e) => [e.key, e])),
   Ae = (e) => 5 * (e.archive ?? 0),
-  je = (e, t) => (!ke.has(t) || e.itemsOwned.includes(t)) && !e.itemsOff.includes(t),
+  // The portrait game draws from its official item list without a research purchase.
+  je = (e, t) => ce.has(t) && !e.itemsOff.includes(t),
   Me = [
     { id: `progress`, name: t(`Progreso`) },
     { id: `difficulty`, name: t(`Dificultad`) },
@@ -3427,9 +3429,9 @@ var Ue = (e) =>
       name: t(`Master Ball`),
       desc: t(`Tu primera captura de la partida (Alfa o Liga) es segura.`),
     },
-  ],
+  ].filter(item => isActiveItem(item.id)),
   Ge = (e) => 2 + (e.bag ?? 0),
-  b = [`rare-candy`, `lucky-egg`, `amulet-coin`, `honey`, `shiny-stone`],
+  b = We.filter(item => item.id !== `master-ball`).map(item => item.id),
   Ke = (e) => b[y(e * 61 + 7) % b.length],
   qe = (e) => [`master-ball`, b[y(e * 17 + 3) % b.length], b[y(e * 23 + 5) % b.length]],
   x = Ne.filter((e) => (e.regions ?? 1) <= u.biomes.length);
