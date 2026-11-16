@@ -53,6 +53,16 @@ async function launchEngine(host, play, showProgress) {
 
 async function start() {
   const began = Date.now();
+  // A card can be opened while the play subpackage is still downloading.
+  const roomInvites = {code: '', onInvite: null};
+  function receiveInvite(options) {
+    const code = options && options.query && options.query.roomCode;
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return;
+    roomInvites.code = code;
+    if (roomInvites.onInvite) roomInvites.onInvite();
+  }
+  if (wx.getLaunchOptionsSync) receiveInvite(wx.getLaunchOptionsSync());
+  wx.onShow(receiveInvite);
   let phase = '创建画面', splash, shown = 0;
   function stage(title) {
     phase = title;
@@ -91,7 +101,7 @@ async function start() {
       console.warn('[宝可梦启动] 启动画面不可用', error);
     }
     const files = require('./files');
-    const host = GameGlobal.pokebonk = {canvas, files};
+    const host = GameGlobal.pokebonk = {canvas, files, roomInvites};
     stage('准备游戏资源');
     const downloaded = {play:0, text:0};
     function packageProgress(name, percent) {

@@ -272,7 +272,11 @@ export async function setup(host) {
     alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
     createCoopSocket:events=>cloudSocket(wx,events),
-    copyRoomCode:code=>new Promise((resolve,reject)=>wx.setClipboardData({data:code,success:resolve,fail:reject})),
+    roomInvites:host.roomInvites,
+    shareRoomCode(code){
+      if(!wx.shareAppMessage)throw Error('请在微信小游戏内分享房间号');
+      wx.shareAppMessage({title:'来字行和我组队吧！房间号 '+code,query:'roomCode='+code});
+    },
     askRoomCode:()=>new Promise((resolve,reject)=>wx.showModal({title:'加入房间',editable:true,placeholderText:'请输入六位房间号',
       success:result=>resolve(result.confirm ? (result.content||'').trim() : null),fail:reject})),
     setUIPerformance(){

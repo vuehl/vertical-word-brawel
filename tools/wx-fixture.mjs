@@ -80,6 +80,8 @@ const fixtureCloud={init(){},async callContainer(options){
 }};
 globalThis.wx={
     cloud:fixtureCloud,
+  getLaunchOptionsSync:()=>window.fixtureLaunchOptions || {query:{}},
+  shareAppMessage:options=>{window.sharedCard=options;},
   env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>fs,
   getDeviceInfo:()=>({platform:window.fixturePlatform||'devtools'}),
   getWindowInfo:()=>({windowWidth:innerWidth,windowHeight:innerHeight,pixelRatio:devicePixelRatio,
@@ -122,7 +124,10 @@ globalThis.wx={
     return {onProgressUpdate(fn){notify=fn;}};
   }
 };
-for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide',Show:'pageshow'})){
+const showCallbacks=[];
+wx.onShow=fn=>showCallbacks.push(fn);
+window.fixtureShow=options=>showCallbacks.forEach(fn=>fn(options));
+for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide'})){
   wx['on'+key]=fn=>{events[key]=fn;if(event.startsWith('touch'))document.addEventListener(event,fn,{passive:false});};
 }
 const fingers=new Map();

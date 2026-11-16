@@ -66,11 +66,20 @@ export async function reviewCoop(browser, gamePort) {
   } finally { await Promise.all([first.leave(),second.leave(),third.leave()]); }
   try {
     const configure=[];
+    let cardQuery,code;
     for (let i = 0; i < 3; i++) {
       const ctx = await browser.createBrowserContext();
       const page = await ctx.newPage();
       clients.push(page);
       await page.evaluateOnNewDocument(platform=>{window.fixturePlatform=platform;},i===1?'ios':'android');
+      if(i===1)await page.evaluateOnNewDocument(query=>{
+        if(!sessionStorage.getItem('opened-invite')){
+          window.fixtureLaunchOptions={query};
+          const oldCode=query.roomCode==='000000'?'000001':'000000';
+          localStorage.setItem('pokebonk.web.ziling.coop.seat.1',JSON.stringify({code:oldCode,seat:'old-seat'}));
+          sessionStorage.setItem('opened-invite','1');
+        }
+      },cardQuery);
       if(i===0)await page.evaluateOnNewDocument(()=>{
         const gl=WebGL2RenderingContext.prototype;
         for(const name of ['texImage2D','texSubImage2D']){
@@ -100,8 +109,6 @@ export async function reviewCoop(browser, gamePort) {
           stardust:150,totalStardust:150,lab:{},stages:{forest:1}}})).statusCode,200);
       }
       await page.goto('http://127.0.0.1:'+gamePort);
-      await page.evaluate(() => { releaseTextDownload(); releaseOptionalDownloads(); });
-      await page.waitForFunction(() => window.app?.screen?.querySelector('[data-action="multiplayer"]'), {timeout:90000});
       configure[i]=()=>page.evaluate(({config,url,loginCode}) => {
         function openRelay(path) {
           const ws = new WebSocket(new URL(path,url));
@@ -132,9 +139,10 @@ export async function reviewCoop(browser, gamePort) {
           },
         };
         wx.showModal = opts => opts.success({confirm:true,content:window.roomCode});
-        if(window.app)app.frameGap=()=>80;
       }, {config:multiplayerConfig,url:endpoint.href,loginCode:userPrefix+'seat-'+i});
       await configure[i]();
+      await page.evaluate(() => { releaseTextDownload(); releaseOptionalDownloads(); });
+      if(i!==1)await page.waitForFunction(() => window.app?.screen?.querySelector('[data-action="multiplayer"]'), {timeout:90000});
       if(sqlTest && i===0){
         await page.evaluate(()=>app.screen.querySelector('[data-action="lab"]').click());
         await page.waitForFunction(()=>app.screen?.dataset.page==='lab' && app.meta.profile.stardust===150);
@@ -162,24 +170,43 @@ export async function reviewCoop(browser, gamePort) {
             !app.screen.querySelector('[data-tier="1"]').disabled && app.screen.querySelector('[data-tier="2"]').disabled);
         }finally{await secondDevice.close();}
       }
-      await click(page,'多人联机');
-      assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/选择字灵|房主把六位房间号/);
+      if(i===0){
+        await click(page,'多人联机');
+        await click(page,'创建房间');
+        await page.waitForFunction(()=>app.coopRoom?.code);
+        code=await page.evaluate(()=>app.coopRoom.code);
+        await click(page,'分享房间号');
+        const card=await page.evaluate(()=>window.sharedCard);
+        assert.ok(card.title.includes(code));
+        cardQuery=Object.fromEntries(new URLSearchParams(card.query));
+        assert.deepEqual(cardQuery,{roomCode:code});
+      }else{
+        if(i===2){
+          await page.evaluate(()=>fixtureShow({query:{roomCode:'invalid'}}));
+          assert.equal(await page.evaluate(()=>app.screen.dataset.page),'home');
+          await click(page,'多人联机');
+          await page.evaluate(code=>{window.roomCode=code==='000000'?'000001':'000000';},code);
+          await click(page,'加入房间');
+          await page.waitForFunction(()=>app.screen.textContent.includes('房间不存在'));
+          await click(page,'创建房间');
+          await page.waitForFunction(()=>app.coopRoom?.code);
+          await page.evaluate(query=>{
+            window.routes=[];
+            fixtureShow({query});fixtureShow({query});
+          },cardQuery);
+        }
+        await page.waitForFunction(code=>window.app?.coopRoom?.code===code,{timeout:90000},code);
+        await page.evaluate(query=>fixtureShow({query}),cardQuery);
+        await click(page,i===1?'摹':'风');
+      }
       console.log('Lobby ready', i+1);
     }
     const [host,...guests]=clients;
     await Promise.all(clients.map(page=>page.evaluate(()=>{
+      app.frameGap=()=>80;
       app.meta.profile.settings.quality='low';
       app.applySettings();
     })));
-    await click(host,'创建房间');
-    await host.waitForFunction(()=>app.coopRoom?.code);
-    const code=await host.evaluate(()=>app.coopRoom.code);
-    for(const page of guests) {
-      await page.evaluate(code=>window.roomCode=code,code);
-      await click(page,'加入房间');
-      await page.waitForFunction(()=>app.coopRoom?.code);
-      await click(page,page===guests[0]?'摹':'风');
-    }
     assert.deepEqual(await Promise.all(clients.map(page=>page.evaluate(()=>window.routes))),
       clients.map(()=>['login','exchange','cloud']));
     await assert.rejects(makeRoom(code,4),/最多三人/);
@@ -205,7 +232,7 @@ export async function reviewCoop(browser, gamePort) {
     await click(host,'准备');
     await host.waitForFunction(()=>typeof releaseReady==='function');
     assert.ok(await host.evaluate(()=>checkLobby() &&
-      [...app.screen.querySelectorAll('button')].find(b=>b.textContent==='复制房间号').disabled===false));
+      [...app.screen.querySelectorAll('button')].find(b=>b.textContent==='分享房间号').disabled===false));
     await host.evaluate(()=>releaseReady());
     async function checkHostReady(ready){
       await Promise.all(clients.map(page=>page.waitForFunction(ready=>
@@ -247,6 +274,20 @@ export async function reviewCoop(browser, gamePort) {
     assert.equal(new Set(sample.map(r=>r.seed)).size,1);
     assert.ok(sample.every(s=>s.received>0));
     assert.ok((await Promise.all(clients.map(p=>p.evaluate(()=>app.zixing.entryDiagnostics.percentages.at(-1))))).every(n=>n===100));
+    assert.deepEqual(errors,[]);
+    console.log('Room card passed: cold launch, warm lobby switch, repeated opens and three-player start');
+    if(process.env.COOP_TEST_INVITES_ONLY==='1'){
+      const next=await makeRoom(undefined,4);
+      try{
+        const guest=guests[0];
+        await guest.evaluate(roomCode=>fixtureShow({query:{roomCode}}),next.code);
+        assert.equal(await guest.evaluate(()=>app.run.coop.room.code),code);
+        await guest.evaluate(()=>{app.run.endHow='quit';return app.run.finish(false);});
+        await click(guest,'重新组队');
+        await guest.waitForFunction(code=>app.coopRoom?.code===code && app.screen?.dataset.page==='coop',{},next.code);
+      }finally{await next.leave();}
+      return;
+    }
     // Keep this networking scenario in live combat through all three casts
     // and the late-game crowd. Random defeats or upgrade menus end the sample.
     await Promise.all(clients.map(page=>page.evaluate(()=>{

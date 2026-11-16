@@ -153,8 +153,25 @@ export function createZixingUI(app,api) {
     if(!authPromise)authPromise=(async()=>{const account=await app.backend.guest();await app.meta.load(account);app.applySettings();})().finally(()=>{authPromise=null;});
     return authPromise;
   }
-  let checkedSeat=false;
+  const invites=window.roomInvites;
+  let checkedSeat=false,joinLobbyInvite=null;
+  function openInvite(){
+    if(!invites?.code)return false;
+    if(app.coopRoom?.open && app.coopRoom.code===invites.code){
+      invites.code='';
+    }else if(app.run || app.starting || activeEntry || (app.screen?.dataset.page==='coop' && app.coopRoom?.room.state==='started')){
+      app.notice('收到房间 '+invites.code+' 的邀请，返回首页后将自动加入。');
+    }else if(app.screen?.dataset.page==='coop' && joinLobbyInvite){
+      joinLobbyInvite();
+    }else{
+      document.querySelector('.zx-dialog')?.remove();
+      multiplayer();
+    }
+    return true;
+  }
   function home() {
+    if(invites)invites.onInvite=openInvite;
+    if(openInvite()){checkedSeat=true;return;}
     if(!checkedSeat){
       checkedSeat=true;
       const seat=savedSeat();
@@ -165,40 +182,62 @@ export function createZixingUI(app,api) {
     const root=screen('home','','',[
       el('div','zx-home-copy',[el('h2','','从一个字开始'),text('走位避险，自动出招。'),text('在五行之间，写下你的这一局。')]),
       el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
-      button([el('span','','开始旅程'),el('span','','→')],async()=>{await ready();choose();},'primary zx-home-start',{'data-action':'journey'}),
-      button('多人联机',async()=>{await ready();multiplayer();},'zx-home-coop',{'data-action':'multiplayer'}),
-      button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),async()=>{await ready();await app.meta.resync();lab();},'purple zx-home-lab',{'data-action':'lab'}),
+      button([el('span','','开始旅程'),el('span','','→')],async()=>{await ready();if(app.screen===root)choose();},'primary zx-home-start',{'data-action':'journey'}),
+      button('多人联机',async()=>{await ready();if(app.screen===root)multiplayer();},'zx-home-coop',{'data-action':'multiplayer'}),
+      button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),async()=>{await ready();await app.meta.resync();if(app.screen===root)lab();},'purple zx-home-lab',{'data-action':'lab'}),
       el('div','zx-home-foot',button([icon('book',16,'#61567b'),el('span','','玩法说明')],()=>help(),'zx-plain')),
     ]);
     const body=root.querySelector('.zx-body');body.classList.add('zx-home-body');
     const art=el('div','zx-home-art',homeArt());
-    root.replaceChildren(el('div','zx-home-top',row(button(icon('settings',21,'#382c4e'),async()=>{await ready();settings();},'zx-gear',{'aria-label':'设置'}))),el('div','zx-home-scroll',[art,body]));
+    root.replaceChildren(el('div','zx-home-top',row(button(icon('settings',21,'#382c4e'),async()=>{await ready();if(app.screen===root)settings();},'zx-gear',{'aria-label':'设置'}))),el('div','zx-home-scroll',[art,body]));
   }
   function multiplayer(resume=savedSeat()) {
-    let room=null, view=null, busy=false, starting=false, status='';
+    let room=null, view=null, busy=false, starting=false, status='', joiningCode='';
     let pick=characters.find(c=>c.id===selected)?.id || 4;
-    function action(label,fn,kind='') {
-      return button(label,async()=>{
-        if(busy || starting)return;
-        busy=true;
-        if(status){status='';render();}
-        try { await fn(); }
-        catch(error) { status=error.message || error.errMsg || String(error); }
-        finally { busy=false; if(!starting && app.screen?.dataset.page==='coop')render(); }
-      },kind);
+    async function perform(fn) {
+      if(busy || starting)return;
+      busy=true;
+      if(status){status='';render();}
+      try { await fn(); }
+      catch(error) { status=error.message || error.errMsg || String(error); }
+      finally {
+        joiningCode='';busy=false;
+        if(!starting && view.node===app.screen){render();joinInvite();}
+      }
     }
-    async function connect(join,restore=null) {
-      await ready();
-      const code=restore?.code ?? (join ? await window.askRoomCode() : undefined);
+    function action(label,fn,kind='') {
+      return button(label,()=>perform(fn),kind);
+    }
+    function joinInvite(){
+      const code=invites?.code;
+      if(!code)return false;
+      if(code===joiningCode || code===room?.code){invites.code='';return true;}
+      if(busy || starting)return true;
+      invites.code='';
+      const seat=savedSeat();
+      perform(()=>connect(true,seat?.code===code?seat:null,code));
+      return true;
+    }
+    async function connect(join,restore=null,inviteCode='') {
+      const code=inviteCode || restore?.code || (join ? await window.askRoomCode() : undefined);
       if(code===null)return;
       if(join && !/^\d{6}$/.test(code))throw Error('请输入完整的六位房间号');
+      joiningCode=code;
       status=restore?'正在重连原房间…':join?'正在加入房间…':'正在创建房间…';render();
+      await ready();
+      const options={code,species:pick,name:app.meta.account?.name || '伙伴',factory:window.createCoopSocket};
+      let next;
       try {
-        room=await RelayRoom.connect({code,resume:restore,species:pick,name:app.meta.account?.name || '伙伴',factory:window.createCoopSocket});
+        next=await RelayRoom.connect({...options,resume:restore});
       }catch(error){
         if(restore && /房间不存在|席位已失效|房间已开局/.test(error.message)){forgetSeat(restore.seat);resume=null;}
-        throw error;
+        if(inviteCode && restore && /席位已失效/.test(error.message))next=await RelayRoom.connect(options);
+        else throw error;
       }
+      // Keep the old lobby if the invited room is full, closed or already playing.
+      if(starting){await next.leave();return;}
+      if(room?.open){room.ev={};room.leave();}
+      room=next;
       rememberSeat(room);
       room.onInterrupted=()=>{
         const current=app.run;
@@ -206,7 +245,10 @@ export function createZixingUI(app,api) {
         saveProgress(current);
         current.coop.ended=true;
         app.toMenu();
-        const retry=()=>{window.removeEventListener('pageshow',retry);multiplayer(savedSeat());};
+        const retry=()=>{
+          window.removeEventListener('pageshow',retry);
+          if(app.screen?.dataset.page!=='coop')multiplayer(savedSeat());
+        };
         if(document.hidden)window.addEventListener('pageshow',retry);else retry();
       };
       app.coopRoom=room; status='';
@@ -239,9 +281,7 @@ export function createZixingUI(app,api) {
       const actions=[];
       let roster,readyButton,startButton;
       if(session){
-        body.push(card(small('房间号'),el('h2','',session.code),action('复制房间号',async()=>{
-          await window.copyRoomCode(session.code);status='已复制，可以发给朋友。';
-        })));
+        body.push(card(small('房间号'),el('h2','',session.code),action('分享房间号',()=>window.shareRoomCode(session.code))));
         choices=characters.map(c=>action(c.word,async()=>{
           await session.setPick(c.id);
           pick=c.id;
@@ -296,23 +336,19 @@ export function createZixingUI(app,api) {
         const canStart=session.isHost && online.length>=2 && online.every(m=>m.ready);
         if(startButton.disabled!==!canStart)startButton.disabled=!canStart;
       }
-      return {session,node,update};
+      return {session,resume,node,update};
     }
     function render() {
-      if(!view || view.session!==room || view.node!==app.screen)view=mountLobby(room);
+      if(!view || view.session!==room || (!room && view.resume!==resume) || view.node!==app.screen)view=mountLobby(room);
       view.update();
     }
     render();
-    if(resume){
-      busy=true;
-      connect(true,resume).catch(error=>{status=error.message;}).finally(()=>{
-        busy=false;if(!starting && app.screen?.dataset.page==='coop'){view=null;render();}
-      });
-    }
+    joinLobbyInvite=joinInvite;
+    if(!joinInvite() && resume)perform(()=>connect(true,resume));
   }
   function choose() {
     const c=current();
-    screen('choose','选择文字','01 / 03 · 选择你的起点',[
+    const page=screen('choose','选择文字','01 / 03 · 选择你的起点',[
       el('div','zx-hero',[small('字灵 · '+c.word),glyph(c,true),text(c.motto,'zx-note')]),
       el('div','zx-choices',characters.map(ch=>button([glyph(ch),small(ch.role)],()=>{selected=ch.id;choose();},'zx-choice '+ch.tone+(selected===ch.id?' on':''),{'data-species':ch.id,'aria-pressed':selected===ch.id,'aria-label':ch.word+'，'+ch.role}))),
       card(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id))))),
@@ -322,7 +358,7 @@ export function createZixingUI(app,api) {
         await app.meta.resync();
         if(app.screen===page)stats();
       }),
-    ],[button('选择关卡  →',async()=>{if(!profile().starter)await app.meta.chooseStarter(selected);profile().lastSpecies=selected;app.meta.save();await app.meta.resync();map();},'primary'),button('返回',home)]);
+    ],[button('选择关卡  →',async()=>{if(!profile().starter)await app.meta.chooseStarter(selected);profile().lastSpecies=selected;app.meta.save();await app.meta.resync();if(app.screen===page)map();},'primary'),button('返回',home)]);
   }
   function map() {
     const stages=profile().stageUnlocks??{forest:profile().biomes?.forest??0};
@@ -473,8 +509,8 @@ export function createZixingUI(app,api) {
       app.meta.flush();await app.meta.queue;
       try {
         app.meta.adopt(await app.backend.buyLab(app.meta.account,item.id,level+1));
-        close();lab('升级成功 · '+labNames[item.id][1]+' '+labValue(item,level+1));
-      } catch(error) {await app.meta.resync();close();lab(error.message||'研究未保存，请重试。');}
+        if(popup.parentNode){close();lab('升级成功 · '+labNames[item.id][1]+' '+labValue(item,level+1));}
+      } catch(error) {await app.meta.resync();if(popup.parentNode){close();lab(error.message||'研究未保存，请重试。');}}
     },'primary',{disabled:!can,'data-action':'confirm-research'});
     popup=overlay(can?'提升一级':'再积累一些星尘','永久研究 / '+labNames[item.id][1],[
       el('div','zx-center',glyph(labNames[item.id][0],true)),
@@ -547,7 +583,7 @@ export function createZixingUI(app,api) {
       sublabels.length?el('div','zx-subtabs',sublabels.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),label,{onclick:()=>{settingsSub=i;renderSettings();}}))):null,
       row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key]??({fpsLimit:60,batterySaver:false}[key]);save();renderSettings();},'zx-plain')),
       ...content,
-    ],[button('返回',async()=>{await app.meta.saveNow();const back=returnTo;app.setScreen(null);back();})]);
+    ],[button('返回',async()=>{const page=app.screen;await app.meta.saveNow();if(app.screen===page){const back=returnTo;app.setScreen(null);back();}})]);
   }
   function help(back=home) {
     const chart=el('canvas','zx-help-map',[],{width:680,height:470}),ctx=chart.getContext('2d');
@@ -733,7 +769,12 @@ export function createZixingUI(app,api) {
       {'data-choice':choice?'showItemChoice':'showItem'}));
   }
   function summary(run,result,reward,error) {
-    const win=result.victory,amount=reward?.stardust,leave=()=>{app.setScreen(null);app.toMenu();};
+    const win=result.victory,amount=reward?.stardust;
+    function leave(){
+      app.setScreen(null);
+      app.toMenu();
+      return app.screen?.dataset.page==='home';
+    }
     const single=result.mode===SINGLE_STAGE,guardians=single?1:FOREST_COMBAT_ZONES;
     run.ui.hideModal();
     screen('summary','','',[
@@ -741,9 +782,9 @@ export function createZixingUI(app,api) {
       el('div','zx-summary-grid',[[time(result.time),win?'通关时间':'生存时间'],[number(result.kills),'击败敌人'],[Math.min(guardians,result.bosses||0)+' / '+guardians,'区域镇守']].map(([v,k])=>col(el('b','',v),small(k)))),
       win&&single?card(el('b','','单关通关'),small('完整通关普通模式可解锁困难。')):
         card(el('b','',win?'新的挑战已开放':'避其锋芒'),small(win?(app.meta.biomeTier('forest')>result.tier?'桌上世界下一难度已开放。':'已完成当前桌面挑战。'):'调整走位与强化，寻找更好的出手机会。')),
-      button(row(col(el('b','',amount!==undefined?'星尘 +'+number(amount):'结算尚未保存'),small('当前 '+number(profile().stardust))),el('span','','去研究所 ›')),()=>{leave();lab();},'zx-banner'),
+      button(row(col(el('b','',amount!==undefined?'星尘 +'+number(amount):'结算尚未保存'),small('当前 '+number(profile().stardust))),el('span','','去研究所 ›')),()=>{if(leave())lab();},'zx-banner'),
       error?small(error):null,build(run),
-    ],[row(run.coop?button('重新组队',()=>{leave();multiplayer();},'primary'):button(win?'再来一局':'再试一次',()=>app.startRun(app.lastCfg),'primary'),button('调整文字与关卡',()=>{leave();choose();})),button('返回',leave)]);
+    ],[row(run.coop?button('重新组队',()=>{if(leave())multiplayer();},'primary'):button(win?'再来一局':'再试一次',()=>app.startRun(app.lastCfg),'primary'),button('调整文字与关卡',()=>{if(leave())choose();})),button('返回',leave)]);
   }
   function attachRun(run) {
     const hud=run.ui;selected=character(run.startSpecies).id;
