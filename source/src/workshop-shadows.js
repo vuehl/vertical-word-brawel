@@ -55,8 +55,8 @@ export function workshopShadowShader(shader){
         }
         if(count<.001)return 1.;
         float gap=max(0.,blocker/count*uWorkshopShadowDepth);
-        float spread=clamp(.035+gap*.055,.035,.85);
-        float opacity=mix(.56,.10,1.-exp(-gap/5.5));
+        float spread=clamp(.025+gap*.008,.025,.14);
+        float opacity=mix(.86,.64,1.-exp(-gap/9.));
         // Shadow texels and display pixels both have finite footprints. Keep
         // a continuous one-pixel transition even at contact or low resolution.
         float pixel=max(length(dx.xy),length(dy.xy));

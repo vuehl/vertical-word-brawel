@@ -16,19 +16,18 @@ export function stabiliseWorkshopBump(material){
       float direct=dot(reflectedLight.directDiffuse,vec3(.2126,.7152,.0722))/baseValue;
       // directDiffuse includes the sun's shadow visibility. Keep the warm band
       // reachable on upward faces, and keep the weak fill inside the cool band.
-      float lit=smoothstep(.10,.38,direct);
-      float sunlit=smoothstep(.38,.67,direct);
-      vec3 cool=vec3(.24,.34,.56),mid=vec3(.70,.76,.88),warm=vec3(1.32,1.06,.68);
+      float lit=smoothstep(.09,.14,direct);
+      float sunlit=smoothstep(.38,.44,direct);
+      vec3 cool=vec3(.48,.52,.61),mid=vec3(.80,.82,.85),warm=vec3(1.05,1.02,.95);
       vec3 painted=mix(mix(cool,mid,lit),warm,sunlit);
       // A little neutral pigment lets pale blue paper catch amber light while
       // saturated book covers and desk pads retain their material colours.
-      vec3 pigmentBase=mix(diffuseColor.rgb,vec3(baseValue),sunlit*.18);
-      pigmentBase=mix(pigmentBase,vec3(.28,.39,.64)*sqrt(baseValue),(1.-lit)*.26);
+      vec3 pigmentBase=diffuseColor.rgb;
       outgoingLight=pigmentBase*painted;
       // Cap the lit pigment before blending the shadow. Normalizing only after
       // the blend can make a pale surface brighter in a medium-strength shadow.
       outgoingLight*=min(1.,.94/max(max(max(outgoingLight.r,outgoingLight.g),outgoingLight.b),.001));
-      vec3 projectedPigment=pigmentBase*vec3(.34,.48,.76);
+      vec3 projectedPigment=pigmentBase*vec3(.54,.57,.66);
       outgoingLight=mix(outgoingLight,projectedPigment,workshopProjectedShadow);
       outgoingLight+=totalEmissiveRadiance*.24;
       // Preserve hue and texture detail instead of clipping pale pigment white.
@@ -36,7 +35,7 @@ export function stabiliseWorkshopBump(material){
       #include <opaque_fragment>
     `);
   };
-  material.customProgramCacheKey=()=> 'workshop-continuous-shadow-filter-v7';return material;
+  material.customProgramCacheKey=()=> 'illustrated-desktop-pigment-v1';return material;
 }
 
 // The playfield uses its own quiet, flat texture. Curved wood knots and
@@ -98,8 +97,12 @@ export function workshopSurface(assets,key,{color=0xffffff,photo='linen',roughne
 export function workshopInk(assets){
   if(assets.mats.has('ink-contour'))return assets.mats.get('ink-contour');
   const material=new ShaderMaterial({side:1,depthWrite:false,uniforms:{uInkViewport:{value:{x:780,y:1688}}},
-    vertexShader:`uniform vec2 uInkViewport;
+    vertexShader:`uniform vec2 uInkViewport;varying vec3 vPigmentInk;
       void main(){
+        vPigmentInk=vec3(.2);
+        #ifdef USE_INSTANCING_COLOR
+          vPigmentInk=instanceColor;
+        #endif
         vec4 local=vec4(position,1.);vec3 n=normal;
         #ifdef USE_INSTANCING
           local=instanceMatrix*local;
@@ -108,9 +111,10 @@ export function workshopInk(assets){
         #endif
         vec4 view=modelViewMatrix*local;vec3 vn=normalize(normalMatrix*n);
         vec4 clip=projectionMatrix*view;vec2 dir=(projectionMatrix*vec4(vn,0.)).xy;
-        clip.xy+=dir/max(length(dir),.00001)*(2.8/uInkViewport)*clip.w;
+        clip.xy+=dir/max(length(dir),.00001)*(5.2/uInkViewport)*clip.w;
         gl_Position=clip;
       }`,
-    fragmentShader:`void main(){gl_FragColor=vec4(.052,.068,.102,1.);}`});
-  material.name='hand-drawn-ink-contour';assets.mats.set('ink-contour',material);return material;
+    fragmentShader:`varying vec3 vPigmentInk;
+      void main(){gl_FragColor=vec4(vPigmentInk*vec3(.13,.115,.15)+vec3(.004,.005,.009),1.);}`});
+  material.name='own-colour-hand-drawn-contour';assets.mats.set('ink-contour',material);return material;
 }

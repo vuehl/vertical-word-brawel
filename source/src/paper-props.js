@@ -1,4 +1,4 @@
-import {I as Group,K as Mesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,WorkshopStandardMaterial as Material} from '../assets/three-DmSYIDKK.js';
+import {I as Group,K as Mesh,_ as BoxGeometry,E as CylinderGeometry,WorkshopStandardMaterial as Material} from '../assets/three-DmSYIDKK.js';
 import {stabiliseWorkshopBump} from './workshop-materials.js';
 import {paperPropNames} from './paper-prop-names.js';
 
@@ -16,14 +16,21 @@ export function paperProp(name){
   const cyl=(g,x,y,z,r,h,c,n)=>part(g,new CylinderGeometry(r,r,h,12),x,y,z,c,n);
   if(name.includes('pillar')){
     const column=new Group();column.name='Column';group.add(column);
-    cyl(column,0,2.4,0,.85,4.6,'#ddbb75');cyl(column,0,4.5,0,.91,.5,'#b9c6c1');cyl(column,0,4.9,0,.88,.4,'#e3a0aa');
+    cyl(column,0,2.4,0,.85,4.6,'#527c8c');cyl(column,0,4.5,0,.91,.5,'#b9c6c1');cyl(column,0,4.9,0,.65,.4,'#d4dfda');
+    box(column,.79,3.6,.35,.22,1.7,.32,'#d4dfda');
     const stub=cyl(group,0,.6,0,.87,1.2,'#d1bd8b','Stub');stub.visible=false;
   }else if(name.includes('gate')||name.includes('portal')){
     for(const x of [-2.45,2.45]){box(group,x,2.5,0,1,5,1.5,'#90aca5');box(group,x,5.05,0,1.15,.3,1.6,'#c3ad77');}
     box(group,0,5.4,0,6,.6,1.5,'#e4ce8c');box(group,0,.16,0,6.2,.3,2.4,'#b2c2b8');
   }else if(name.includes('pencils')){
     cyl(group,0,2,0,1.8,4,'#8da4ac');cyl(group,0,4.08,0,1.5,.05,'#526774');
-    for(let i=0;i<5;i++){const x=Math.cos(i*2.4),z=Math.sin(i*2.4);cyl(group,x,7,z,.22,9,['#e2b769','#b3ceaa','#c8a2c1'][i%3]);part(group,new ConeGeometry(.22,.8,8),x,11.9,z,'#d4c193');}
+    group.userData.stationery='gel-pens';
+    for(let i=0;i<5;i++){
+      const x=Math.cos(i*2.4),z=Math.sin(i*2.4);
+      cyl(group,x,7,z,.24,9,['#508c98','#d1dedb','#7b789a'][i%3]);
+      cyl(group,x,11.35,z,.26,.3,'#b8ccc9');cyl(group,x,11.7,z,.17,.4,'#d4dfda');
+      box(group,x+.23,10.6,z,.12,1.5,.15,'#d4dfda');
+    }
   }else if(name.includes('lamp')){cyl(group,0,.1,0,.65,.2,'#a3bfae');cyl(group,0,1.5,0,.14,2.8,'#7c8f91');cyl(group,0,2.9,0,.65,.4,'#efcf82');}
   else if(name.includes('root')||name.includes('bramble')){
     for(let i=0;i<4;i++){const m=box(group,(i-1.5)*.8,1.3,0,.6,2.5,.6,'#b6c49c','Pod'+i);m.rotation.z=(i-1.5)*.18;}

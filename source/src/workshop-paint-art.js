@@ -7,7 +7,16 @@ export function paintedPlankCanvas(){
   const canvas=document.createElement('canvas');canvas.width=canvas.height=1024;
   const c=canvas.getContext('2d');
   let seed=719;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  c.fillStyle='#b18b65';c.fillRect(0,0,1024,1024);
+  c.fillStyle='#c8a477';c.fillRect(0,0,1024,1024);
+  // Broad dry-brush grain, grouped into quiet horizontal wood fibres. Their
+  // uneven lengths avoid a regular stripe pattern across the battlefield.
+  for(let j=0;j<34;j++){
+    const y=random()*1024,x=random()*1024,w=120+random()*750;
+    c.fillStyle=j%4?'#ae865b24':'#eed2a52b';
+    for(const shift of [-1024,0,1024]){
+      c.beginPath();c.moveTo(x+shift,y);c.lineTo(x+w*.45+shift,y-1);c.lineTo(x+w+shift,y+3);c.lineTo(x+w*.36+shift,y+6+random()*7);c.closePath();c.fill();
+    }
+  }
   const wrap=draw=>{
     for(const x of [-1024,0,1024])for(const y of [-1024,0,1024]){
       c.save();c.translate(x,y);draw();c.restore();

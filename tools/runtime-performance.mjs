@@ -79,7 +79,8 @@ try{
   }
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
-  const initial=await page.evaluate(async({development,fiveMinute,upgradeResume})=>{
+  const repeatableMap=fiveMinute||upgradeResume||process.argv.includes('--hand-drawn-fireball');
+  const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
     const initial={quality:app.meta.profile.settings.quality,saver:app.saver,fpsCap:app.fpsCap(),frameGap:app.frameGap()};
@@ -88,7 +89,7 @@ try{
     window.realFrameGap=app.frameGap.bind(app);
     app.frameGap=()=>250;
     if(development)return initial;
-    if(fiveMinute||upgradeResume){
+    if(repeatableMap){
       const start=app.backend.startRun.bind(app.backend);
       app.backend.startRun=async(...args)=>({...await start(...args),seed:53090});
       let seed=53090;
@@ -101,9 +102,14 @@ try{
     // gameplay HUD once before freezing frames for deterministic measurements.
     app.run.update(1/60);
     return initial;
-  },{development,fiveMinute,upgradeResume});
+  },{development,repeatableMap,upgradeResume});
   assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
+  if(development&&process.argv.some(arg=>['--illustrated-desk','--hand-drawn-fire-spin','--fire-breath'].includes(arg))){
+    // Art reviews must show the actual desktop, not the default developer
+    // dialog or its scenery-hidden workload preset.
+    await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
+  }
   await new Promise(resolve=>setTimeout(resolve,2000));
   if(upgradeResume){
     const {reviewUpgradeResume}=await import('./upgrade-resume-regression.mjs');
@@ -116,6 +122,9 @@ try{
   }else if(process.argv.includes('--wind-animation')){
     const {reviewWindAnimation}=await import('./wind-animation-regression.mjs');
     await reviewWindAnimation(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--illustrated-desk')){
+    const {reviewIllustratedDesk}=await import('./illustrated-desk-regression.mjs');
+    await reviewIllustratedDesk(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--desktop-layout')){
     const {reviewDesktopLayout}=await import('./desktop-layout-regression.mjs');
     await reviewDesktopLayout(page,dir);assert.deepEqual(errors,[]);

@@ -6,10 +6,10 @@ import {workshopPhoto,workshopSurface,stabiliseWorkshopBump,workshopInk,workshop
 import {workshopLampHalo} from './workshop-paint-art.js';
 import {proximityBulb,updateToyProximity} from './workshop-proximity.js';
 import {WORKSHOP_SHADOW} from './workshop-shadows.js';
-import {arrangeWorkshopBoundary} from './workshop-boundary.js';
+import {buildIllustratedDesk} from './illustrated-desk-layout.js';
 import {drawDeskPaper,drawDeskWall} from './workshop-desk-art.js';
 import {buildAlarmClock,ALARM_CLOCK_BOUNDS} from './workshop-alarm-clock.js';
-import {createForegroundLights,updateForegroundLights} from './workshop-foreground-lights.js';
+import {addTabletopInlays} from './workshop-tabletop-inlays.js';
 
 const TAU=Math.PI*2;
 const sunDirection=new Vector3(-50,85,38).normalize(),sunRight=new Vector3(38,0,50).normalize();
@@ -92,7 +92,7 @@ export function* workshopWorldSteps(terrain){
   const batches=new Map(),transform=new Group(),groundSurfaces=[];
   const groundCells=new Map();
   terrain.workshopGroundSurfaces=groundSurfaces;
-  terrain.workshopLightStrands=[];terrain.workshopShadowStyle='distance-faded-soft-shadows';
+  terrain.workshopLightStrands=[];terrain.workshopShadowStyle='illustrated-contact-shadows';
   function groundY(x,z){
     const surfaces=groundCells.get(terrain.cellKey(x,z));
     if(!surfaces)return 0;
@@ -173,6 +173,7 @@ export function* workshopWorldSteps(terrain){
   const wood=workshopFloorTexture(assets);wood.repeat.set(terrain.world/62,terrain.world/48);
   const floorMat=mat('maple-desktop',{map:wood,color:0xffffff,roughness:1});
   plane(root,0,0,0,terrain.world+20,terrain.world+20,floorMat);
+  addTabletopInlays({terrain,root,plane,texture,texMat});
   box(root,0,-1.4,0,terrain.world+20,2.5,terrain.world+20,woodMaterial);
   // The continuous desktop uses seamless painted grain. Raised seam strips
   // produced dark, jagged lines across the playfield and cast tiny shadows.
@@ -236,10 +237,28 @@ export function* workshopWorldSteps(terrain){
     box(g,w*.32,height+.016,0,.55,.03,d+.6,cloth('#667b70'));
     groundSurface(x,z,w+.55,d+.55,a,height+.032,'sketchbook');
   }
-  function pencil(x,z,a,c='#eeaf3b',s=1){
-    const g=prop('colored-pencil',x,z,1.1*s,12*s,1.1*s,a);
-    mesh(g,cylinders,c,0,.55,0,.48*s,9*s,.48*s,Math.PI/2);mesh(g,cones,'#e9bc7d',0,.55,-5.3*s,.48*s,1.6*s,.48*s,-Math.PI/2);
-    mesh(g,cones,'#263544',0,.55,-6.15*s,.15*s,.4*s,.15*s,-Math.PI/2);roundedBox(g,0,.55,5*s,.9*s,.9*s,1.2*s,'#f58a97',.18);cyl(g,0,.55,4.25*s,.51*s,.5*s,metal,Math.PI/2);
+  function penBody(g,c,s=1,clear=false){
+    const barrel=clear?'#d4dedc':c,grip='#354e5b',silver='#c5d1cc';
+    mesh(g,cylinders,barrel,0,0,.1*s,.42*s,8.1*s,.42*s,Math.PI/2);
+    // A printed ink reservoir on the pale barrel suggests the reference's
+    // transparent gel pen without transparent 3D surfaces or specular glare.
+    if(clear)box(g,0,.418*s,.15*s,.15*s,.035*s,6.5*s,'#738d93');
+    mesh(g,cylinders,grip,0,0,-3.7*s,.45*s,1.7*s,.45*s,Math.PI/2);
+    for(const zz of [-3.1,-3.55,-4])mesh(g,cylinders,'#53717b',0,0,zz*s,.456*s,.06*s,.456*s,Math.PI/2);
+    mesh(g,cones,silver,0,0,-4.95*s,.40*s,.8*s,.40*s,-Math.PI/2);
+    mesh(g,cylinders,'#314551',0,0,-5.5*s,.09*s,.35*s,.09*s,Math.PI/2);
+    mesh(g,cylinders,silver,0,0,4.2*s,.44*s,.35*s,.44*s,Math.PI/2);
+    mesh(g,cylinders,clear?'#708e9a':c,0,0,4.65*s,.38*s,.55*s,.38*s,Math.PI/2);
+    mesh(g,cylinders,silver,0,0,5.15*s,.27*s,.45*s,.27*s,Math.PI/2);
+    // Raised pocket clip, its dark undercut and a broad painted highlight.
+    roundedBox(g,.27*s,.46*s,2.95*s,.28*s,.22*s,2.75*s,silver,.08*s);
+    box(g,.26*s,.35*s,2.7*s,.29*s,.08*s,2.2*s,grip);
+    box(g,-.12*s,.405*s,.3*s,.10*s,.025*s,5.2*s,clear?'#f0f1de':'#a7ceca');
+  }
+  function ballpoint(x,z,a,c='#3b8f9b',s=1){
+    const clear=c==='#d2aa64'||c==='#d2ac68';
+    const g=prop(clear?'gel-pen':'ballpoint-pen',x,z,1.1*s,12*s,1.1*s,a),body=new Group();
+    body.position.y=.48*s;g.add(body);penBody(body,c,s,clear);
   }
   function bookStack(x,z,s=1,a=0){
     const g=prop('giant-storybook-stack',x,z,17*s,23*s,13.2*s,a);
@@ -378,11 +397,14 @@ export function* workshopWorldSteps(terrain){
     // Only the car is solid; the track itself remains part of the playfield.
     const carPoint=new Vector3(-7*s,0,4*s);g.localToWorld(carPoint);terrain.zxProps.push({kind:'mini-4wd',x:carPoint.x,z:carPoint.z,w:4.2*s,d:6.2*s,h:2.1*s,angle:angle-.2,baseY:g.position.y});terrain.addCollider(paperBox(carPoint.x,carPoint.z,4.2*s,6.2*s,g.position.y+2.2*s,angle-.2,g.position.y+2.1*s));terrain.reserve(carPoint.x,carPoint.z,4*s);
   }
-  function pencilCup(x,z,s=1,angle=.16){
-    const g=prop('pencil-cup',x,z,5.6*s,5.6*s,11.5*s,angle);
+  function penCup(x,z,s=1,angle=.16){
+    const g=prop('pen-cup',x,z,5.6*s,5.6*s,11.5*s,angle);
     mesh(g,assets.cup,cloth('#ae6551'),0,2.5*s,0,2.4*s,5*s,2.4*s);ring(g,0,5*s,0,2.3*s,brass);
     for(let i=0;i<22;i++){const a=i/22*TAU;ball(g,Math.cos(a)*2.42*s,.4*s,Math.sin(a)*2.42*s,.04*s,.05*s,.04*s,'#d9bd8f');}
-    for(let i=0;i<6;i++){const a=i*2.4,xx=Math.cos(a)*1.3*s,zz=Math.sin(a)*1.3*s;cyl(g,xx,7*s,zz,.22*s,7*s,palette[i]);mesh(g,cones,'#edc88c',xx,10.9*s,zz,.23*s,.8*s,.23*s);}
+    for(let i=0;i<6;i++){
+      const a=i*2.4,holder=new Group();holder.position.set(Math.cos(a)*1.3*s,7*s,Math.sin(a)*1.3*s);holder.rotation.x=-Math.PI/2;holder.rotation.z=(i%3-1)*.06;g.add(holder);
+      penBody(holder,['#438b95','#4e6280','#b67888'][i%3],.72*s,i%2===0);
+    }
   }
   function handheld(x,z,s=1,angle=-.12){
     const g=prop('brick-game',x,z,3.5*s,6.3*s,1.1*s,angle);
@@ -412,8 +434,8 @@ export function* workshopWorldSteps(terrain){
     lamp(g,4*s,13.3*s,0,'#ffe0a8',.4*s,115);
     cyl(g,.8*s,.6*s,1.7*s,.28*s,.16*s,brass);
   }
-  function pencilTin(x,z,a=-.2){
-    const g=prop('pencil-tin',x,z,18,17,10.3,a),enamel=cloth('#577d84'),inside=cloth('#c6c7ae');
+  function penCase(x,z,a=-.2){
+    const g=prop('pen-case',x,z,18,17,10.3,a),enamel=cloth('#577d84'),inside=cloth('#c6c7ae');
     roundedBox(g,0,.45,1.5,17,.9,10.5,enamel);
     roundedBox(g,0,.96,1.5,15.9,.2,9.4,inside);
     for(const side of [-1,1])roundedBox(g,side*8.1,1.25,1.5,.65,1.5,10.5,enamel);
@@ -422,10 +444,8 @@ export function* workshopWorldSteps(terrain){
     roundedBox(lid,0,0,-4.9,17,.55,10,enamel);roundedBox(lid,0,.31,-4.9,15.6,.12,8.6,inside);
     roundedBox(lid,0,.39,-4.9,10,.03,4.5,cloth('#728c84'));
     for(let i=0;i<4;i++){
-      const zz=-1.6+i*1.85,c=['#b26d52','#d0aa63','#517d87','#7b8e72'][i];
-      mesh(g,cylinders,c,0,1.44,zz,.37,11.4,.37,0,0,Math.PI/2);
-      mesh(g,cones,'#d8b98b',-6.25,1.44,zz,.37,1.1,.37,0,0,Math.PI/2);
-      mesh(g,cones,'#3b4d53',-6.92,1.44,zz,.12,.27,.12,0,0,Math.PI/2);
+      const holder=new Group();holder.position.set(0,1.44,-1.6+i*1.85);holder.rotation.y=Math.PI/2;g.add(holder);
+      penBody(holder,['#4a808d','#b7798d','#517d87','#657b9b'][i],1.1,i%2===0);
     }
     roundedBox(g,6.8,1.52,4.1,1.35,.7,2.5,'#d8ad98');
     for(const xx of [-5.5,5.5])cyl(g,xx,1.24,-3.6,.3,1.4,metal,0,Math.PI/2);
@@ -462,166 +482,7 @@ export function* workshopWorldSteps(terrain){
       terrain.workshopLooseMarbles.push({x:xx,z:zz,r,vx:0,vz:0,rollX:0,rollZ:0,armed:false,color:palette[i%6],coreColor:color(palette[i%6])});
     }
   }
-  // Mixed small/medium stationery leaves an open playfield at the original camera.
-  // Monumental silhouettes are reserved for the boundary.
-  terrain.workshopLayout={style:'ink-painted-desk',anchors:[],giantScale:false,sceneText:false};
-  // A few different activities share one continuous wooden desk. Surfaces are
-  // authored as objects with pages, bindings and thickness, not terrain tiles.
-  island(-18,-20,30,28,-.24);notebook(-2,7,28,35,.115,.3);yield;
-  if(terrain.play>80){
-    paperPile(-terrain.play*.59,-terrain.play*.37,29,38,-.27,.27,'sketch');yield;
-    island(terrain.play*.49,-terrain.play*.61,39,28,.19);
-    notebook(terrain.play*.50,-terrain.play*.59,24,30,.05,.27);yield;
-    sketchbook(-terrain.play*.43,terrain.play*.59,27,35,.24,.4);
-    paperPile(-terrain.play*.22,terrain.play*.70,16,22,-.36,.15,'notes');yield;
-    paperPile(terrain.play*.66,terrain.play*.20,25,33,.29,.30,'blueprint');
-    paperPile(terrain.play*.30,terrain.play*.62,19,26,-.12,.18,'notes');yield;
-    notebook(-terrain.play*.20,-terrain.play*.78,21,29,-.14,.34);yield;
-  }
-  terrain.spawn.y=groundY(terrain.spawn.x,terrain.spawn.z);
-  bookStack(-5.8,-13,.31,-.29);marbleFactory(7.8,-11.5,.30);yield;
-  racePark(15,6,.52);pencilCup(-11,16,.44);yoYo(10,21,.50);yield;
-  // Keep the handheld beside the pencil rather than intersecting its shaft.
-  // The eraser and tape also leave clearance around the nearby racing car.
-  pencil(-8,8,.65,'#e5ac46',.48);handheld(-5,-1,.45);eraser(5,2,-.32);tapeRoll(5,14,.42,.55);deskLamp(1,-26,.48,-.12);looseMarbles(3,12,4);yield;
-  // Three compact machines flank the open notebook battle area.
-  // Placement checks their full base footprints against the existing toys.
-  placeMarble('switchback',-30,4,.38,-.13,24);yield;
-  placeMarble('funnel',-7,33,.48,.12,24);yield;
-  placeMarble('twin',30,-30,.4,-.08,24);yield;
-  if(terrain.play>80){
-    // A single clock replaces the north-west book stack and crowded crayon trays.
-    const p=terrain.play,first=terrain.zxProps.length;
-    const {width,depth,height}=ALARM_CLOCK_BOUNDS,clock=prop('boundary-alarm-clock',-p*.90,-p*.92,width,depth,height,.55);
-    const clockShape=buildAlarmClock({mesh,ball,cyl,ring,roundedBox,cable,texture,texMat,mat,assets},clock);
-    terrain.workshopLayout.alarmClock={x:clock.position.x,z:clock.position.z,angle:.55,...clockShape};
-    pencilCup(-p*.59,-p*.84,.72,.25);
-    pencil(-p*.62,-p*.70,1.18,'#4d8495',.68);tapeRoll(-p*.80,-p*.70,.65,-.22);
-    eraser(-p*.53,-p*.73,.35);
-    threadSpool(-p*.71,-p*.88);binderClips(-p*.82,-p*.77);
-    handheld(-p*.70,-p*.61,.75,.26);
-    terrain.workshopLayout.cornerCluster={x:-p*.81,z:-p*.84,r:28,props:terrain.zxProps.slice(first)};
-    const lowerFirst=terrain.zxProps.length;
-    pencilTin(-p*.72,p*.32,-.24);ruler(-p*.54,p*.32,-.66);
-    yoYo(-p*.59,p*.13,.72,.22);eraser(-p*.79,p*.52,-.35);looseMarbles(-p*.69,p*.50,4);
-    terrain.workshopLayout.lowerLeftCluster={x:-p*.69,z:p*.34,r:26,props:terrain.zxProps.slice(lowerFirst)};
-    yield;
-  }
-  // A seeded, irregular scatter leaves broad paths between differently sized
-  // clusters. Each cluster is offset and rotated; no repeated base tile exists.
-  let seed=(terrain.seed^0x51f15e)>>>0;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  const limit=terrain.play-25,anchors=[];
-  for(let attempt=0;attempt<240&&anchors.length<25&&limit>48;attempt++){
-    const r=51+Math.sqrt(random())*(limit-51),a=random()*TAU,x=Math.cos(a)*r,z=Math.sin(a)*r;
-    const authored=[terrain.workshopLayout.cornerCluster,terrain.workshopLayout.lowerLeftCluster].filter(Boolean);
-    if(Math.abs(x)>limit||Math.abs(z)>limit||authored.some(p=>Math.hypot(x-p.x,z-p.z)<p.r+15)||anchors.some(p=>Math.hypot(x-p.x,z-p.z)<44)||terrain.workshopMarbleSites.some(p=>Math.hypot(x-p.x,z-p.z)<Math.hypot(p.w,p.d)/2+28))continue;
-    anchors.push({x,z});const turn=(random()-.5)*1.25,size=.26+random()*.16,kind=anchors.length%6;
-    terrain.workshopLayout.anchors.push({x,z,turn,size,kind});
-    if(kind===0)bookStack(x,z,size,turn);
-    if(kind===1){const variant=['helix','switchback','funnel','twin'][Math.floor(anchors.length/6)%4];placeMarble(variant,x,z,size*.92,turn,9);}
-    if(kind===2){racePark(x,z,size,turn);handheld(x+12,z-11,size*.85,turn+.7);}
-    if(kind===3){pencilCup(x,z,size*1.25,turn);tapeRoll(x-10,z+8,size*.8,turn);}
-    if(kind===4){yoYo(x,z,size*1.3,turn);pencil(x+12,z-6,turn+1.2,'#4d8495',size*1.3);}
-    if(kind===5){bookStack(x,z,size,turn);handheld(x+7,z+9,size*.9,turn+.4);}
-    if(kind%2)looseMarbles(x-7,z+8,3);
-    yield;
-  }
-  // Indoor boundary: tall painted walls, oak skirting, book shelves and festoons.
-  // They sit beyond the gameplay limit, keeping the existing movement boundary.
-  const edge=terrain.play+5;
-  terrain.workshopBoundary={edge,height:65,sides:4,groups:[]};
-  for(let side=0;side<4;side++){
-    const g=group(0,0,side*Math.PI/2);
-    // The near wall is a dollhouse cutaway: a camera behind the player must
-    // never cross an opaque 65-unit wall at the southern gameplay boundary.
-    const cutaway=side===2;
-    box(g,0,cutaway?1.5:31,-edge,edge*2+12,cutaway?3:66,4,'#243e60');
-    roundedBox(g,0,cutaway?1.4:4,-edge+2.2,edge*2,cutaway?2.8:8,1,woodMaterial);roundedBox(g,0,cutaway?3:8,-edge+3,edge*2,.7,1.2,woodMaterial);
-    if(!cutaway){
-      const variant=(stage+side)%3,wallpaper=texture('desk-wall-mural-'+variant,1536,512,(c,w,h)=>drawDeskWall(c,w,h,variant));
-      mesh(g,planes,texMat('desk-wall-mural-'+variant,wallpaper,.95),0,34,-edge+2.05,edge*2,60,1);
-    }
-    const wall=g,arrangement=arrangeWorkshopBoundary(edge,stage,side,terrain.seed).map(cluster=>{
-      if(terrain.play<=80)return cluster;
-      const members=cluster.members.filter(p=>{
-        const v=new Vector3(p.x,0,p.z);wall.localToWorld(v);
-        const a=side*Math.PI/2+p.angle,c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
-        return !(v.x-(c*p.w+s*p.d)/2<-terrain.play*.6&&v.z-(s*p.w+c*p.d)/2<-terrain.play*.7);
-      });
-      if(!members.length)return null;
-      const start=Math.min(...members.map(p=>p.x-p.extent/2)),end=Math.max(...members.map(p=>p.x+p.extent/2));
-      return {...cluster,members,start,end,width:end-start,cluster:members.length>1};
-    }).filter(Boolean);
-    terrain.workshopBoundary.groups.push(...arrangement);
-    for(const cluster of arrangement){
-      for(let slot=0;slot<cluster.members.length;slot++){
-      const placement=cluster.members[slot],variant=placement.variant,g=new Group();
-      g.position.set(placement.x,0,placement.z);g.rotation.y=placement.angle;wall.add(g);
-      const x=0,z=0,angle=side*Math.PI/2+placement.angle;
-      if(variant){
-        // Different giant toy silhouettes share the same shallow boundary strip.
-        // South-facing props stay low so the camera can see the player.
-        const h=cutaway?3.2:variant===1?30:variant===2?19:variant===3?23:4;
-        let kind;
-        if(variant===1&&!cutaway){
-          kind='boundary-pencil-cup';
-          mesh(g,assets.cup,cloth('#508f9b'),x,6,z,3.2,12,3.2);ring(g,x,12,z,3.1,brass);
-          for(let i=0;i<5;i++){const xx=x-2+i,zz=z+(i%2-.5)*1.7,top=25+(i%3)*2;
-            cyl(g,xx,(top+6)/2,zz,.38,top-6,palette[i]);mesh(g,cones,'#edc88c',xx,top+.9,zz,.4,1.8,.4);}
-        }else if(variant===2&&!cutaway){
-          kind='boundary-thread-spool';
-          mesh(g,assets.spool,woodMaterial,x,h/2,z,3.3,h,3.3);
-          cyl(g,x,h/2,z,2.1,12,cloth('#bd7794'));
-          for(let i=0;i<12;i++)ring(g,x,4+i,z,2.12,cloth('#d698ad'));
-        }else if(variant===3&&!cutaway){
-          kind='boundary-toy-blocks';
-          for(let row=0;row<3;row++){
-            const xx=x+(row%2?2:-2),yy=3.7+row*7.3;
-            roundedBox(g,xx,yy,z,7.5,7.4,6.4,cloth(palette[(row+side)%6]));
-            roundedBox(g,xx,yy,z+3.25,5.5,5.5,.1,paperMaterial);
-            for(let dot=0;dot<=row;dot++)ball(g,xx+(dot-row/2)*1.45,yy,z+3.36,.5,.5,.14,cloth(palette[(row+side)%6]));
-          }
-        }else if(variant===4){
-          kind='boundary-crayon-box';
-          roundedBox(g,x,1.2,z,18,2.4,6.4,cloth('#437a9a'));
-          for(let i=0;i<6;i++){
-            mesh(g,cylinders,palette[i],x-6.5+i*2.6,2.9,z,.72,4.7,.72,Math.PI/2);
-            mesh(g,cones,palette[i],x-6.5+i*2.6,2.9,z+2.7,.72,.7,.72,Math.PI/2);
-          }
-        }else{
-          kind='boundary-tape-rolls';
-          for(let i=0;i<2;i++){
-            mesh(g,assets.tape,cloth(palette[(side+i+slot)%6]),x-4+i*8,1.4,z,3,2.8,3);
-            ring(g,x-4+i*8,2.83,z,2.95,paperMaterial);
-          }
-        }
-        const point=new Vector3(x,0,z);g.localToWorld(point);
-        const w=placement.w;
-        terrain.zxProps.push({kind,x:point.x,z:point.z,w,d:7,h,angle,boundaryGroup:cluster.id});
-        terrain.addCollider(paperBox(point.x,point.z,w,7,h+.2,angle));
-      }else{
-      for(let b=0;b<5;b++){
-        const h=cutaway?2.8+(b%3)*.45:24+(b%3)*6.1,xx=x-7+b*3.1,cover=cloth(palette[(b+side)%6]);
-        roundedBox(g,xx,h/2,z,2.6,h,6.4,cover);
-        for(const yy of [.14,.23,.78,.87])roundedBox(g,xx,h*yy,z+3.25,2.45,.07,.09,brass);
-        roundedBox(g,xx,h*.52,z+3.27,1.85,cutaway?.65:1.45,.08,paperMaterial);
-        const point=new Vector3(x-7+b*3.1,0,z);g.localToWorld(point);
-        terrain.zxProps.push({kind:'boundary-book',x:point.x,z:point.z,w:2.6,d:6.4,h,angle,boundaryGroup:cluster.id});terrain.addCollider(paperBox(point.x,point.z,2.6,6.4,h+.2,angle));
-      }
-      }
-      }
-      // Each light strand follows a whole group and leaves the broad gaps quiet.
-      fairyString(wall,cluster.start,-edge+4,cluster.end,-edge+4,cutaway?8:15,Math.max(6,Math.round(cluster.width/2.4)));
-    }
-    // A large warm window set into each wall makes the enclosure read as a room.
-    if(!cutaway){
-      roundedBox(g,0,32,-edge+2.5,28,28,1,woodMaterial);box(g,0,32,-edge+3.1,25,25,.2,glow('#dbe2cd'));
-      roundedBox(g,0,32,-edge+3.5,1,26,.6,woodMaterial);roundedBox(g,0,32,-edge+3.5,26,1,.6,woodMaterial);
-      const drape=cloth('#804e6b');drape.side=2;
-      mesh(g,assets.curtain,drape,-16,30,-edge+4.3,8,38,4);mesh(g,assets.curtain,drape,16,30,-edge+4.3,8,38,4);
-    }
-    yield;
-  }
+  yield* buildIllustratedDesk({terrain,stage,assets,group,prop,mesh,box,roundedBox,ball,cyl,ring,plane,cable,texture,texMat,groundSurface,groundY,bookStack,ballpoint,eraser,tapeRoll,penCup,placeMarble,looseMarbles,deskLamp,notebook,paperPile,handheld});
   root.clear();
   const inkBatches=new Map();
   for(const {geo,material,matrices,colors:instanceColors} of batches.values()){
@@ -632,14 +493,19 @@ export function* workshopWorldSteps(terrain){
     batch.matrixAutoUpdate=false;batch.computeBoundingSphere();preparePaperBatch(batch);root.add(batch);
     if(geo!==planes&&geo!==boxes&&geo!==rings){
       let instances=inkBatches.get(geo);
-      if(!instances)inkBatches.set(geo,instances=[]);
-      for(const matrix of matrices)instances.push(matrix);
+      if(!instances)inkBatches.set(geo,instances={matrices:[],colors:[]});
+      const baseColor=material.color||color('#9d9aa0');
+      for(let i=0;i<matrices.length;i++){
+        instances.matrices.push(matrices[i]);
+        instances.colors.push(instanceColors[i]||baseColor);
+      }
     }
     yield;
   }
-  for(const [geo,instances] of inkBatches){
-    const ink=new InstancedMesh(geo,workshopInk(assets),instances.length);
-    instances.forEach((matrix,i)=>ink.setMatrixAt(i,matrix));ink.instanceMatrix.needsUpdate=true;
+  for(const [geo,{matrices,colors:inkColors}] of inkBatches){
+    const ink=new InstancedMesh(geo,workshopInk(assets),matrices.length);
+    matrices.forEach((matrix,i)=>{ink.setMatrixAt(i,matrix);ink.setColorAt(i,inkColors[i]);});
+    ink.instanceMatrix.needsUpdate=true;ink.instanceColor.needsUpdate=true;
     ink.name='painted-prop-contour';ink.matrixAutoUpdate=false;ink.computeBoundingSphere();
     preparePaperBatch(ink,false,true);root.add(ink);
     yield;
@@ -661,7 +527,6 @@ export function* workshopWorldSteps(terrain){
   for(const mesh of [loose,cores]){mesh.frustumCulled=false;mesh.receiveShadow=true;root.add(mesh);}
   terrain.workshopLooseMesh=loose;terrain.workshopLooseCores=cores;
   terrain.mats=[...mats.values()];terrain.textures=[...textures.values()];
-  createForegroundLights(terrain);
   terrain.isFlatOpen=(x,z)=>{
     const y=groundY(x,z);
     return !terrain.hitProp(x,y+.3,z,.6)&&!terrain.inSolid(x,z)&&
@@ -673,10 +538,10 @@ export function applyWorkshopLight(run){
   const r=run.r;
   r.setSky(0x172c50,0x263b5b,0x36596c,220,400,1,0xffd79d,0x334753);
   r.sky.visible=false;if(!r.scene.background?.isColor)r.scene.background=new Color();r.scene.background.set(0x30465d);
-  r.setSun([-50,85,38],.8,0xffd49a,0,0);r.sun.color.set(0xffd49a);r.sun.intensity=3.3;
+  r.setSun([-50,85,38],.8,0xffedcf,0,0);r.sun.color.set(0xffedcf);r.sun.intensity=2.8;
   r.hemi.color.set(0xb4c9ed);r.hemi.groundColor.set(0x485c8e);r.hemi.intensity=.48;
   r.shared.uLight.value.setRGB(1,1,1);r.shared.uWind.value=0;
-  r.setAtmos(1,1,1,0,0,.02,1,1,1);r.grade.uniforms.get('uAmount').value=.08;
+  r.setAtmos(1,1,1,0,0,.02,1,1,1);r.grade.uniforms.get('uAmount').value=.025;
   r.renderer.toneMapping=0;r.renderer.toneMappingExposure=1;
   if(run.terrain)run.terrain.workshopLighting='daylight';
   for(const m of run.terrain?.workshopGlows||[])m.emissiveIntensity=m.userData.proximity?3.4:.12;
@@ -687,7 +552,6 @@ export function updateWorkshopScene(run,dt,view){
   const terrain=run.terrain;if(!terrain?.zxPaper)return;
   if(run.sprites)run.sprites.shadows.surface=terrain.workshopGroundY;
   const r=run.r,p=run.player?.pos||terrain.spawn;
-  updateForegroundLights(run,dt);
   updateToyProximity(run,dt);
   const impulse=terrain.workshopImpulse||0;
   terrain.workshopImpulse=Math.max(0,impulse-Math.max(0,dt||0)*2.5);
@@ -739,7 +603,7 @@ export function updateWorkshopScene(run,dt,view){
   if(looseChanged){loose.instanceMatrix.needsUpdate=true;cores.instanceMatrix.needsUpdate=true;}
   if(colorsChanged)cores.instanceColor.needsUpdate=true;
   const ink=terrain.paperAssets.mats.get('ink-contour');if(ink){ink.uniforms.uInkViewport.value.x=r.composer.inputBuffer.width;ink.uniforms.uInkViewport.value.y=r.composer.inputBuffer.height;}
-  r.outlinePass.enabled=true;r.outline.uniforms.get('uColor').value.set(0x30394c);r.outline.uniforms.get('uStrength').value=.78;
+  r.outlinePass.enabled=true;r.outline.uniforms.get('uColor').value.set(0x454755);r.outline.uniforms.get('uStrength').value=.16;
   updateWorkshopShadows(run);
   // Fixed authored light positions. No nearest-lamp swaps, proximity pulses,
   // skill light takeover or animated bloom: movement cannot make the room flash.

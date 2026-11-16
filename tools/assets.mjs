@@ -37,7 +37,7 @@ function sourceFor(key) {
   return fs.existsSync(override) ? override : path.join(pub, key);
 }
 const buckets = {pmd:'art', icons:'art', portraits:'art', items:'art', front:'art',
-  ui:'world', env:'world', models:'world', glyphs:'art', music:'sound'};
+  ui:'world', env:'world', models:'world', glyphs:'art', vfx:'art', music:'sound'};
 const selected = new Set();
 const excluded = new Map();
 for (const folder of ['assets', 'overrides/assets']) {

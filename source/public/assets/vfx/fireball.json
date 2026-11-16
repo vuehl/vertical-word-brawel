@@ -1,0 +1,32 @@
+{
+  "columns": 8,
+  "rows": 6,
+  "tile": 192,
+  "padding": 4,
+  "clips": {
+    "shot": {
+      "first": 0,
+      "count": 16,
+      "fps": 24,
+      "source": "醉拳-技能06-醉踢坛/酒碗子弹/火焰拖尾",
+      "width": 353,
+      "height": 130
+    },
+    "hit": {
+      "first": 16,
+      "count": 20,
+      "fps": 24,
+      "source": "醉拳-技能04-醉崩肘/火焰受击",
+      "width": 604,
+      "height": 566
+    },
+    "wake": {
+      "first": 36,
+      "count": 10,
+      "fps": 24,
+      "source": "醉拳-技能04-醉崩肘/火焰拖尾",
+      "width": 470,
+      "height": 471
+    }
+  }
+}

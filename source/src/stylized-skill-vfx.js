@@ -1,6 +1,8 @@
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,w as Color} from '../assets/three-DmSYIDKK.js';
 import {effectColors,effectShapes,PAINT_SHAPES} from './stylized-effect-atlas.js';
-import {ProceduralFireJet} from './procedural-fire-jet.js';
+import {HandDrawnFireJet} from './hand-drawn-fire-jet.js';
+import {HandDrawnFireSpin} from './hand-drawn-fire-spin.js';
+import {HandDrawnFireball} from './hand-drawn-fireball.js';
 
 const TAU=Math.PI*2,clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),mix=(a,b,t)=>a+(b-a)*t;
 const color=new Color();
@@ -152,7 +154,9 @@ export class StylizedSkillFX{
     this.attributes=['iOrigin','iForm','iTime','iColor'].map(name=>{const a=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);geometry.setAttribute(name,a);return a;});
     const material=new ShaderMaterial({vertexShader:vertex,fragmentShader:fragment,transparent:true,depthTest:true,depthWrite:false,side:2});
     this.mesh=new InstancedMesh(geometry,material,capacity);this.mesh.count=0;this.mesh.frustumCulled=false;this.mesh.renderOrder=7;this.mesh.name='handcrafted-skill-volumes';scene.add(this.mesh);
-    this.fireJet=new ProceduralFireJet(this,scene);this.fireEmitters=[];
+    this.fireJet=new HandDrawnFireJet(this,scene);this.fireEmitters=[];
+    this.fireSpin=new HandDrawnFireSpin(this,scene);this.spinEmitters=[];
+    this.fireball=new HandDrawnFireball(this,scene);
   }
   attach(run){
     this.run=run;
@@ -276,6 +280,10 @@ export class StylizedSkillFX{
   }
   projectile(pool,id,size,opacity,type,key){
     const r=pool.run,x=pool.x[id],y=pool.y[id],z=pool.z[id],c=effectColors[type]||effectColors.normal,shape=effectShapes[type]||2;
+    if(key==='ember'){this.fireball.draw(pool,id,size,opacity);return;}
+    if(key==='fire-spin'){
+      this.touch('projectile-'+id,{x,y:r.terrain.height(x,z)+.1,z,radius:Math.max(1,size*.8),height:Math.max(4,size*2.5),mode:3,type:'fire',handDrawn:true,own:!(pool.flags[id]&1)});return;
+    }
     if(pool.flags[id]&64||/spin|tornado|whirl|storm|twister/.test(key)){
       this.tornado('projectile-'+id,x,r.terrain.height(x,z)+.1,z,Math.max(1,size*.8),Math.max(4,size*2.5),type,!(pool.flags[id]&1));return;
     }
@@ -296,16 +304,17 @@ export class StylizedSkillFX{
   }
   update(dt){
     const r=this.run;if(!r)return;this.clock+=Math.max(0,dt);this.lightSources.length=0;
-    this.fireEmitters.length=0;
+    this.fireEmitters.length=0;this.spinEmitters.length=0;
     const [a,b,c,d]=this.attributes.map(a=>a.array);let count=0;
     for(let i=this.entries.length-1;i>=0;i--){
       const e=this.entries[i];e.life-=dt;e.age+=dt;
       if(e.life<=0||!this.allowed(e.own!==false)){this.keys.delete(e.key);this.entries.splice(i,1);continue;}
-      if(count+this.fireEmitters.length>=this.limit)continue;
+      if(count+this.fireEmitters.length+this.spinEmitters.length>=this.limit)continue;
       const fade=e.finite?clamp(e.life/.25,0,1):clamp(e.life/.1,0,1),envelope=clamp(e.age/.12,0,1)*fade;
       if(e.mode===8&&e.type==='fire'){
         this.fireEmitters.push(e);continue;
       }
+      if(e.handDrawn){this.spinEmitters.push(e);continue;}
       const offset=count*4;a.set([e.x,e.y,e.z,e.radius],offset);b.set([e.height||5,e.angle||0,e.length||0,e.mode],offset);
       c.set([e.age,envelope,e.seed,e.type==='fire'?1:e.type==='water'?2:e.type==='ice'?3:e.type==='flying'?4:0],offset);color.set(e.color);d.set([color.r,color.g,color.b,this.vfx.opacity*(e.own===false?1:this.vfx.ownOpacity)*(this.vfx.calm?.7:1)],offset);count++;
       if(e.type==='fire'||e.type==='electric'||e.type==='water'||e.type==='flying'&&e.mode===1)this.lightSources.push({x:e.x,y:e.y+1.7,z:e.z,color:e.color,power:(e.type==='fire'?40:e.type==='flying'?12:20)*envelope});
@@ -341,10 +350,12 @@ export class StylizedSkillFX{
     this.mesh.count=count;this.mesh.visible=count>0;
     for(const attribute of this.attributes){attribute.clearUpdateRanges();attribute.addUpdateRange(0,count*4);attribute.needsUpdate=true;}
     this.fireJet.update(dt,this.fireEmitters);
+    this.fireSpin.update(dt,this.spinEmitters);
+    this.fireball.update(dt);
   }
-  setPerformance(profile,view){this.limit=profile.name==='流畅'?10:profile.name==='均衡'?18:28;this.vfx.view=view;this.fireJet.setPerformance(profile);}
-  clear(){this.entries.length=0;this.keys.clear();this.lightSources.length=0;this.mesh.count=0;this.mesh.visible=false;this.paintClock=-1;this.paintCount=0;this.fireJet.clear();}
-  dispose(){this.clear();this.fireJet.dispose();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}
+  setPerformance(profile,view){this.limit=profile.name==='流畅'?10:profile.name==='均衡'?18:28;this.vfx.view=view;this.fireJet.setPerformance(profile);this.fireSpin.setPerformance(profile);this.fireball.setPerformance(profile);}
+  clear(){this.entries.length=0;this.keys.clear();this.lightSources.length=0;this.mesh.count=0;this.mesh.visible=false;this.paintClock=-1;this.paintCount=0;this.fireJet.clear();this.fireSpin.clear();this.fireball.clear();}
+  dispose(){this.clear();this.fireJet.dispose();this.fireSpin.dispose();this.fireball.dispose();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}
 }
 
 // Existing move hooks are visual-only. Replacing them here covers ordinary
@@ -371,6 +382,23 @@ export function installStylizedMoveVFX(registry,resolveType){
       warn(run,x,y,z,radius,col,time){run.vfx.telegraph(x,y,z,radius,effectColors[type()]||effectColors.normal,time||.4);},
       aura(run,x,y,z,radius=3,col,pulse){if(pulse)fx(run).nova(type(),x,y,z,radius);else if(Math.random()<.16)fx(run).particle(type(),{x:x+Math.cos(run.time*4)*radius,y:y+.4,z:z+Math.sin(run.time*4)*radius,vy:1,life:.45,size:.25});},
     };
+    if(key==='ember'){
+      style.trail=()=>{};
+      style.cast=(run,x,y,z,dx=1,dz=0)=>fx(run).fireball.play('wake',x,y,z,1.15,true,dx,0,dz);
+      style.hit=(run,x,y,z)=>fx(run).fireball.impact(x,y,z);
+    }
+    if(key==='fire-spin'){
+      // This skill uses its own art. Its projectile simulation, collisions,
+      // damage, pulling, cooldown and evolution data remain in the game code.
+      style.trail=()=>{};
+      style.cast=(run,x,y,z)=>fx(run).fireSpin.play('cast',x,run.terrain.height(x,z)+.2,z,3.6);
+      style.hit=(run,x,y,z,size=1)=>fx(run).fireSpin.impact(x,run.terrain.height(x,z)+.2,z,size);
+      style.boom=(run,x,y,z,radius=3)=>{
+        const v=fx(run),floor=run.terrain.height(x,z)+.2;
+        v.volume({x,y:floor,z,radius:Math.min(radius*.65,3.2),height:Math.min(radius*1.5,7),mode:3,type:'fire',handDrawn:true,duration:.65});
+        v.fireSpin.play('impact',x,floor,z,clamp(radius*2.2,3,8));
+      };
+    }
     shared.set(original,style);registry[key]=style;
   }
 }

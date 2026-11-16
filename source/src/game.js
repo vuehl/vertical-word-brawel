@@ -24115,7 +24115,9 @@ var Yp = 3e3,
     impact(e) {
       (this.flags[e] & 16
         ? this.explode(e)
-        : this.run.vfx.burst(this.x[e], this.y[e], this.z[e], this.color[e], 5, 3, I.Spark, 0.35, 0.25),
+        : Jp(this.fx[e]) === 'ember'
+          ? this.run.vfx.crafted.fireball.impact(this.x[e], this.y[e], this.z[e], !(this.flags[e] & 1))
+          : this.run.vfx.burst(this.x[e], this.y[e], this.z[e], this.color[e], 5, 3, I.Spark, 0.35, 0.25),
         this.remove(e));
     }
     explode(e) {
@@ -37434,9 +37436,12 @@ var e_ = class {
           o = i.z[e],
           d = Ni[n.type];
         const continuousFire=n.type==='fire'&&n.slot!=null&&r.player.moves[n.slot]?.def.arch==='cone'&&r.player.moves[n.slot]?.active>0&&!u&&!m;
-        r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
+        const authoredEmber=n.slot!=null&&r.player.moves[n.slot]?.def.key==='ember';
+        const authoredBreath=n.slot!=null&&r.player.moves[n.slot]?.def.key==='flamethrower';
+        if(authoredBreath)r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m));
+        else if(!authoredEmber)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
-          !continuousFire && Math.random() < 0.6 &&
+          !continuousFire && !authoredEmber && !authoredBreath && Math.random() < 0.6 &&
             (u || this.hitFxN++ < Yg) &&
             r.vfx.burst(t, a, o, d, u ? 9 : 4, u ? 7 : 4, am(n.type), u ? 0.55 : 0.4, 0.3),
           m
@@ -39807,7 +39812,7 @@ function Q_(e, t, n, r) {
         });
       }
       (C.cast?.(e, v, y, b, r.x, r.z, c, d),
-        e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
+        o.key !== 'ember' && e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
         Y_(e, o.key, `cast`, { k: f }, () => e.audio.shot(o.type, 0.6)));
       break;
     }

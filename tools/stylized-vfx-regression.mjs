@@ -47,6 +47,14 @@ export async function reviewStylizedVFX(page,dir){
     const {reviewMarbleFactories}=await import('./marble-factory-regression.mjs');
     return reviewMarbleFactories(page,dir,moves);
   }
+  if(process.argv.includes('--hand-drawn-fireball')){
+    const {reviewFireball}=await import('./fireball-regression.mjs');
+    return reviewFireball(page,dir,moves);
+  }
+  if(process.argv.includes('--hand-drawn-fire-spin')){
+    const {reviewFireSpin}=await import('./fire-spin-regression.mjs');
+    return reviewFireSpin(page,dir,moves);
+  }
   if(process.argv.includes('--fire-breath')){
     const {reviewFireBreath}=await import('./fire-breath-regression.mjs');
     return reviewFireBreath(page,dir,moves);
@@ -91,7 +99,7 @@ export async function reviewStylizedVFX(page,dir){
   assert.ok(report.moves.find(m=>m.key==='icy-wind').volumes.some(v=>v.mode===4));
   assert.ok(report.moves.find(m=>m.key==='hydro-pump').peaks.modes.includes(4),'Water beam must use a flowing fluid surface');
   assert.ok(report.moves.find(m=>m.key==='water-gun').peaks.modes.includes(6),'Water shots must have a moving liquid surface');
-  assert.ok(report.moves.find(m=>m.key==='fire-spin').peaks.modes.includes(3),'Fire spin must deform as a 3D flame vortex');
+  assert.ok(report.moves.find(m=>m.key==='fire-spin').peaks.modes.includes(3),'Fire spin must retain its vortex form');
   assert.ok(report.moves.filter(m=>m.damage>0).length>=8,'Actual skills must still damage their targets');
   for(const species of [4,5,6,16,17,18,58,59,132]){
     await page.evaluate(async species=>{if(!await app.startRun({species:[4,5,6].includes(species)?4:species===132?132:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Could not start form '+species);app.halted=true;app.run.player.setSpecies(species);vfxSetup();await Promise.all([...app.run.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));app.run.ult.charge=1;app.run.ult.fire();vfxAdvance(14);},species);
