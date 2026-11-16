@@ -7,7 +7,9 @@ export async function reviewMapPlay(page,dir){
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.evaluate(async()=>{
     window.dispatchEvent(new Event('resize'));app.halted=true;
-    const r=app.run;r.state='play';r.ui.hideModal();r.godMode=true;r.pendingLevels=0;r.performance.mapInterval=0;
+    const r=app.run;r.state='play';r.ui.hideModal();r.godMode=true;r.pendingLevels=0;
+    // The preset is frozen. Give this controlled run a fresh map sample on every draw.
+    r.performance={...r.performance,mapInterval:0};
     r.player.moves=Array(4).fill(null);r.ult.clear();r.director.update=()=>{};r.events.update=()=>{};r.minibosses.update=()=>{};
     r.enemies.clear();r.timers.length=0;r.anims.length=0;
     inspected.doc.querySelectorAll('.zx-intro,.run-hint,.banner').forEach(n=>n.remove());

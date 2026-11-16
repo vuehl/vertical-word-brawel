@@ -5,7 +5,7 @@ import {paperBox,hitsPaperBox,resolvePaperBox} from '../source/src/paper-collisi
 import {updatePaperVisibility} from '../source/src/paper-visibility.js';
 import {separateCrowd} from '../source/src/crowd-separation.js';
 import {FramePacer} from '../source/src/frame-pacing.js';
-import {warmCombatShaders} from '../source/src/combat-warmup.js';
+import {warmCombatShaders,warmCombatDraw} from '../source/src/combat-warmup.js';
 import {readRuntimeInfo} from '../platform/device.mjs';
 
 test('frame pacing retains 60 callbacks per second under alternating 5 ms delays',()=>{
@@ -40,6 +40,27 @@ test('combat warmup uses the scene target and restores it before async work and 
   const pending=warmCombatShaders(graphics);assert.equal(target,screen);finish();await pending;
   graphics.renderer.compileAsync=()=>{throw Error('compile');};
   await assert.rejects(warmCombatShaders(graphics),/compile/);assert.equal(target,screen);
+});
+
+test('entry draws each combat batch once and restores its live count even on failure',()=>{
+  const batch=()=>({mesh:{visible:false,count:0}});
+  const run={projectiles:{pool:batch(),glow:batch()},pickups:{pool:batch(),glow:batch()},
+    orbitals:batch(),orbitalsGlow:batch(),vfx:Object.fromEntries(
+      ['rings','beams','text','add','norm','ground','groundN'].map(key=>[key,batch()]))};
+  const batches=[...Object.values(run.projectiles),...Object.values(run.pickups),...Object.values(run.vfx),run.orbitals,run.orbitalsGlow];
+  run.pickups.pool.mesh={visible:true,count:3};
+  const state=batches.map(({mesh})=>({...mesh}));
+  let draws=0;
+  run.r={render(dt){
+    assert.equal(dt,0);draws++;
+    assert.ok(batches.every(({mesh})=>mesh.visible&&mesh.count>=1));
+    assert.equal(run.pickups.pool.mesh.count,3);
+    if(draws===2)throw Error('draw failed');
+  }};
+  warmCombatDraw(run);
+  assert.deepEqual(batches.map(b=>b.mesh),state);
+  assert.throws(()=>warmCombatDraw(run),/draw failed/);
+  assert.deepEqual(batches.map(b=>b.mesh),state);assert.equal(draws,2);
 });
 
 test('iOS diagnostics distinguish actual mode, unavailable flags and configured quality',()=>{

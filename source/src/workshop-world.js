@@ -459,7 +459,7 @@ export function* workshopWorldSteps(terrain){
     for(let i=0;i<count;i++){
       const xx=x+Math.sin(i*2.6)*3.7,zz=z+Math.cos(i*1.7)*2.5,r=.48+(i%3)*.09;
       if(terrain.hitProp(xx,r,zz,r+.2)||Math.abs(xx)>terrain.play-r||Math.abs(zz)>terrain.play-r)continue;
-      terrain.workshopLooseMarbles.push({x:xx,z:zz,r,vx:0,vz:0,rollX:0,rollZ:0,armed:false,color:palette[i%6]});
+      terrain.workshopLooseMarbles.push({x:xx,z:zz,r,vx:0,vz:0,rollX:0,rollZ:0,armed:false,color:palette[i%6],coreColor:color(palette[i%6])});
     }
   }
   // Mixed small/medium stationery leaves an open playfield at the original camera.
@@ -623,6 +623,7 @@ export function* workshopWorldSteps(terrain){
     yield;
   }
   root.clear();
+  const inkBatches=new Map();
   for(const {geo,material,matrices,colors:instanceColors} of batches.values()){
     const batch=new InstancedMesh(geo,material,matrices.length);matrices.forEach((m,i)=>batch.setMatrixAt(i,m));batch.instanceMatrix.needsUpdate=true;
     instanceColors.forEach((c,i)=>batch.setColorAt(i,c));if(batch.instanceColor)batch.instanceColor.needsUpdate=true;
@@ -630,11 +631,17 @@ export function* workshopWorldSteps(terrain){
     batch.receiveShadow=material.isMeshStandardMaterial;
     batch.matrixAutoUpdate=false;batch.computeBoundingSphere();preparePaperBatch(batch);root.add(batch);
     if(geo!==planes&&geo!==boxes&&geo!==rings){
-      const ink=new InstancedMesh(geo,workshopInk(assets),matrices.length);
-      matrices.forEach((m,i)=>ink.setMatrixAt(i,m));ink.instanceMatrix.needsUpdate=true;
-      ink.name='painted-prop-contour';ink.matrixAutoUpdate=false;ink.computeBoundingSphere();
-      preparePaperBatch(ink);root.add(ink);
+      let instances=inkBatches.get(geo);
+      if(!instances)inkBatches.set(geo,instances=[]);
+      for(const matrix of matrices)instances.push(matrix);
     }
+    yield;
+  }
+  for(const [geo,instances] of inkBatches){
+    const ink=new InstancedMesh(geo,workshopInk(assets),instances.length);
+    instances.forEach((matrix,i)=>ink.setMatrixAt(i,matrix));ink.instanceMatrix.needsUpdate=true;
+    ink.name='painted-prop-contour';ink.matrixAutoUpdate=false;ink.computeBoundingSphere();
+    preparePaperBatch(ink,false,true);root.add(ink);
     yield;
   }
   const haloMaterial=workshopLampHalo(assets),sensorLamps=terrain.workshopLamps.filter(l=>l.reactive),halos=new InstancedMesh(planes,haloMaterial,sensorLamps.length);
@@ -652,7 +659,6 @@ export function* workshopWorldSteps(terrain){
   const cores=new InstancedMesh(spheres,solid,looseCount);
   loose.name='pushable-floor-marbles';cores.name='floor-marble-cores';
   for(const mesh of [loose,cores]){mesh.frustumCulled=false;mesh.receiveShadow=true;root.add(mesh);}
-  terrain.workshopLooseMarbles.forEach((marble,i)=>cores.setColorAt(i,color(marble.color)));
   terrain.workshopLooseMesh=loose;terrain.workshopLooseCores=cores;
   terrain.mats=[...mats.values()];terrain.textures=[...textures.values()];
   createForegroundLights(terrain);
@@ -677,7 +683,7 @@ export function applyWorkshopLight(run){
   if(run.terrain?.workshopFillLight){run.terrain.workshopFillLight.color.set(0x91ade0);run.terrain.workshopFillLight.intensity=.22;}
   updateWorkshopScene(run,0);
 }
-export function updateWorkshopScene(run,dt){
+export function updateWorkshopScene(run,dt,view){
   const terrain=run.terrain;if(!terrain?.zxPaper)return;
   if(run.sprites)run.sprites.shadows.surface=terrain.workshopGroundY;
   const r=run.r,p=run.player?.pos||terrain.spawn;
@@ -689,7 +695,12 @@ export function updateWorkshopScene(run,dt){
   const rolling=terrain.workshopRollingMarbles,transform=terrain.workshopTransform;let marbleCount=0;
   transform.rotation.set(0,0,0);
   for(const track of terrain.workshopMarbleRuns){
+    track.renderSlot=-1;
     if(Math.abs(track.x-p.x)>46||Math.abs(track.z-p.z)>46)continue;
+    // All four tracks fit the same envelope: height 0–24 and radius < 10
+    // before scaling. Keep all three moving balls when any can enter view.
+    if(view&&!view.visible(track.x,(track.baseY||0)+12*track.s,track.z,16*track.s+1))continue;
+    track.renderSlot=marbleCount;
     for(let i=0;i<3;i++){
       const phase=(terrain.workshopAnimationTime*(track.speed||.095)+i/3)%1,bounce=Math.abs(Math.sin(terrain.workshopAnimationTime*23+i))*impulse*.1;
       if(track.path){
@@ -706,18 +717,27 @@ export function updateWorkshopScene(run,dt){
     }
   }
   rolling.count=marbleCount;if(marbleCount)rolling.instanceMatrix.needsUpdate=true;
-  let looseChanged=false;
-  for(let i=0;i<terrain.workshopLooseMarbles.length;i++){
-    const marble=terrain.workshopLooseMarbles[i];
-    if(marble.renderX===marble.x&&marble.renderZ===marble.z&&marble.renderRollX===marble.rollX&&marble.renderRollZ===marble.rollZ)continue;
+  const loose=terrain.workshopLooseMesh,cores=terrain.workshopLooseCores;
+  let looseCount=0,looseChanged=false,colorsChanged=false;
+  for(const marble of terrain.workshopLooseMarbles){
+    const moved=marble.renderX!==marble.x||marble.renderZ!==marble.z;
+    if(moved)marble.renderY=terrain.surface(marble.x,marble.z)+marble.r;
     marble.renderX=marble.x;marble.renderZ=marble.z;
+    if(view&&!view.visible(marble.x,marble.renderY,marble.z,marble.r)){marble.renderSlot=-1;continue;}
+    const slot=looseCount++,newSlot=marble.renderSlot!==slot;
+    if(newSlot){
+      cores.setColorAt(slot,marble.coreColor);
+      marble.renderSlot=slot;colorsChanged=true;
+    }
+    if(!newSlot&&!moved&&marble.renderRollX===marble.rollX&&marble.renderRollZ===marble.rollZ)continue;
     marble.renderRollX=marble.rollX;marble.renderRollZ=marble.rollZ;looseChanged=true;
-    const y=terrain.surface(marble.x,marble.z)+marble.r;
-    transform.position.set(marble.x,y,marble.z);transform.rotation.set(marble.rollX,0,marble.rollZ);
-    transform.scale.setScalar(marble.r);transform.updateMatrix();terrain.workshopLooseMesh.setMatrixAt(i,transform.matrix);
-    transform.scale.set(.11,marble.r*.73,.12);transform.updateMatrix();terrain.workshopLooseCores.setMatrixAt(i,transform.matrix);
+    transform.position.set(marble.x,marble.renderY,marble.z);transform.rotation.set(marble.rollX,0,marble.rollZ);
+    transform.scale.setScalar(marble.r);transform.updateMatrix();loose.setMatrixAt(slot,transform.matrix);
+    transform.scale.set(.11,marble.r*.73,.12);transform.updateMatrix();cores.setMatrixAt(slot,transform.matrix);
   }
-  if(looseChanged){terrain.workshopLooseMesh.instanceMatrix.needsUpdate=true;terrain.workshopLooseCores.instanceMatrix.needsUpdate=true;}
+  loose.count=cores.count=looseCount;
+  if(looseChanged){loose.instanceMatrix.needsUpdate=true;cores.instanceMatrix.needsUpdate=true;}
+  if(colorsChanged)cores.instanceColor.needsUpdate=true;
   const ink=terrain.paperAssets.mats.get('ink-contour');if(ink){ink.uniforms.uInkViewport.value.x=r.composer.inputBuffer.width;ink.uniforms.uInkViewport.value.y=r.composer.inputBuffer.height;}
   r.outlinePass.enabled=true;r.outline.uniforms.get('uColor').value.set(0x30394c);r.outline.uniforms.get('uStrength').value=.78;
   updateWorkshopShadows(run);

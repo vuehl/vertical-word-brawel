@@ -70,6 +70,7 @@ export async function setup(host) {
   const soloLayers=['counters','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
   const skillLayer=soloLayers[2];
   soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
+  soloLayers.push(createHUDLayer(makeCanvas,'stage-intro',20));
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
@@ -309,7 +310,7 @@ export async function setup(host) {
       const changed=uiFrames.draw(now,playing?'play':state,layout,boxes=>{
         controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
         if(env.__pb?.run?.coop)for(const tile of peerTiles)tile.capture(boxes);
-        for(const tile of hudLayers)tile.capture(boxes);
+        for(const tile of hudLayers)tile.capture(boxes,layout);
         paint(layout,boxes.filter(b=>!controls.owns(b.el)&&!(playing&&(minimap.owns(b.el)||healthLayer(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
       });
       if(opaque&&!changed)return;

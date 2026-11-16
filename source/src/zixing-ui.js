@@ -779,6 +779,14 @@ export function createZixingUI(app,api) {
         },'zx-branch-choice',{'data-branch-id':route.middle})),
       ],[],hud);
     };
+    const introLayer=el('div','zx-intro-layer',[],{'data-ui-layer':'stage-intro'});
+    introLayer.style.cssText='position:absolute;left:0;top:0;width:100%;height:0;overflow:visible;pointer-events:none;z-index:10';
+    hud.root.append(introLayer);
+    function intro(title,subtitle){
+      if(profile()?.settings.showBanners===false)return;
+      const node=el('div','zx zx-intro',[el('b','',title),small(subtitle)]);
+      introLayer.append(node);setTimeout(()=>node.remove(),1800);
+    }
     let sanctuaryGuidePending=false;
     hud.stageIntro=r=>{
       sanctuaryGuidePending=!!r.sanctuary&&!r.bossSpawned&&!r.stageCleared;
@@ -983,10 +991,6 @@ export function createZixingUI(app,api) {
         if(canvas.dataset.frame!==key){drawBattleCooldown(canvas,progress,{ready,active});canvas.dataset.frame=key;canvas.dataset.progress=String(progress);}
       }
     };
-  }
-  function intro(title,subtitle) {
-    if(profile()?.settings.showBanners===false)return;
-    const node=el('div','zx zx-intro',[el('b','',title),small(subtitle)]);app.ui.append(node);setTimeout(()=>node.remove(),1800);
   }
   async function loading(total,loaded,onProgress) {
     // Entry owns its loading screen until the first scene frame is ready.

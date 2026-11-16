@@ -50,7 +50,7 @@ export async function reviewMarbleFactories(page,dir){
       if(!point)throw Error('No walkable ground south of '+kind);
       r.player.pos.set(point.x,t.height(point.x,point.z),point.z);r.camTarget.copy(r.player.pos);vfxDraw(false);
       const tracks=t.workshopMarbleRuns,track=tracks.filter(run=>marbleFactoryKind(run.kind)===kind).sort((a,b)=>Math.hypot(a.x-site.x,a.z-site.z)-Math.hypot(b.x-site.x,b.z-site.z))[0];
-      const visible=tracks.filter(run=>Math.abs(run.x-point.x)<=46&&Math.abs(run.z-point.z)<=46),slot=visible.indexOf(track)*3;
+      const slot=track.renderSlot;
       if(slot<0)throw Error('Selected machinery is outside the active marble radius: '+kind);
       window.marbleFactorySelected={site,track,slot,point};
       const mesh=t.workshopRollingMarbles;

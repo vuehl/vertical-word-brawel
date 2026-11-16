@@ -6,14 +6,25 @@ export function createHUDLayer(makeCanvas,id,slot){
   let canvas,context,root,parts=[],bounds=null,dirty=true,layoutDirty=false;
   const element=b=>b.el.nodeType===1?b.el:b.el.parentElement;
   const owns=el=>!!el?.closest?.('[data-ui-layer="'+id+'"]');
+  function refreshParts(layout){
+    parts=layout.refreshSubtree(root.el,parts);
+    root=parts[0];bounds=null;layoutDirty=false;
+  }
   return {
     owns,
     invalidate(){dirty=layoutDirty=true;},
     invalidatePixels(){dirty=true;},
-    capture(boxes){root=boxes.find(b=>b.el.dataset?.uiLayer===id);parts=boxes.filter(b=>owns(element(b)));bounds=null;dirty=true;layoutDirty=false;},
+    capture(boxes,layout){
+      const anchor=boxes.find(b=>b.el.dataset?.uiLayer===id);
+      // A pixel-only HUD repaint can coincide with removal of a tile child.
+      // Replace its cached boxes before the shared canvas paints that frame.
+      if(anchor&&anchor===root&&layoutDirty)refreshParts(layout);
+      else {root=anchor;parts=boxes.filter(b=>owns(element(b)));bounds=null;layoutDirty=false;}
+      dirty=true;
+    },
     draw(layout,view,scale,enabled){
       if(!enabled||!root||!root.el.isConnected||root.opacity<=0)return null;
-      if(layoutDirty){parts=layout.refreshSubtree(root.el,parts);root=parts[0];bounds=null;layoutDirty=false;}
+      if(layoutDirty)refreshParts(layout);
       // Zero-sized overlay anchors must not enlarge their children's texture.
       // Layout/mutations invalidate bounds. Stable frames reuse the same
       // rectangle without allocating five arrays for each HUD tile.

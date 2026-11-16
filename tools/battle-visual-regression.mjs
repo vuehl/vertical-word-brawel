@@ -4,6 +4,41 @@ import path from 'node:path';
 
 export async function reviewBattleVisual(page,dir){
   const report={overlays:[]};
+  report.stageIntro=await page.evaluate(()=>{
+    const {env,doc,layout}=inspected,r=app.r,run=app.run;
+    const root=doc.querySelector('[data-ui-layer="stage-intro"]');
+    root.replaceChildren();env.invalidateUI();env.drawUI(r.renderer);
+    const draw=()=>{r.render(0);env.drawUI(r.renderer);};
+    const pixels=()=>{
+      const gl=r.renderer.getContext(),rgba=new Uint8Array(gl.drawingBufferWidth*gl.drawingBufferHeight*4);
+      gl.readPixels(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+      return rgba;
+    };
+    const before=auditUIUploads;
+    run.ui.stageIntro(run);draw();
+    const title=root.querySelector('.zx-intro'),box=layout.box(title),on=pixels();
+    title.remove();draw();
+    const off=pixels(),fullUploads=auditUIUploads-before;
+    // Compare with the original full-HUD placement, including the background and text.
+    app.ui.append(title);env.invalidateUI();draw();
+    const reference=pixels();title.remove();env.invalidateUI();draw();
+    const empty=pixels();
+    // A scheduled HUD repaint can land in the very frame the title expires.
+    root.append(title);draw();title.remove();env.invalidateUI();draw();
+    const afterRepaint=pixels();
+    const different=(a,b,i)=>Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>30;
+    let changed=0,mismatch=0,stalePixels=0;
+    for(let i=0;i<on.length;i+=4){
+      if(different(on,off,i))changed++;
+      if(different(on,reference,i))mismatch++;
+      if(different(afterRepaint,empty,i))stalePixels++;
+    }
+    return {width:box.w,height:box.h,changedPixels:changed,referenceMismatch:mismatch,stalePixels,fullUploads};
+  });
+  assert.ok(report.stageIntro.width>200&&report.stageIntro.height>20&&report.stageIntro.changedPixels>1000,'Title must be visible and disappear');
+  assert.equal(report.stageIntro.fullUploads,0,'Showing and removing the title must use its own layer');
+  assert.equal(report.stageIntro.stalePixels,0,'A simultaneous HUD repaint must not bring the title back');
+  assert.ok(report.stageIntro.referenceMismatch<report.stageIntro.changedPixels*.03,JSON.stringify(report.stageIntro));
   report.playerHealth=await page.evaluate(()=>{
     const run=app.run,p=run.player,renderer=app.r.renderer,env=inspected.env;
     const origin=p.pos.clone(),hp=p.hp;

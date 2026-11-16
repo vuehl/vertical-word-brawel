@@ -49,7 +49,9 @@ export async function reviewDesktopLayout(page,dir){
       for(let x=-t.play*.9;x<=t.play*.9;x+=t.play*.09)for(let z=-t.play*.9;z<=t.play*.9;z+=t.play*.09){sampled++;if(sample(x,z)<.001)wood++;}
       for(const s of surfaces)sample(s.x,s.z);
       r.renderWorld(0);
-      const marbles=t.workshopLooseMarbles.map((m,i)=>({x:m.x,z:m.z,ground:t.height(m.x,m.z),radius:m.r,renderY:t.workshopLooseMesh.instanceMatrix.array[i*16+13]}));
+      const marbles=t.workshopLooseMarbles.map(m=>({x:m.x,z:m.z,ground:t.height(m.x,m.z),radius:m.r,
+        visible:r.sprites.visible(m.x,t.height(m.x,m.z)+m.r,m.z,m.r),slot:m.renderSlot,
+        renderY:m.renderSlot<0?null:t.workshopLooseMesh.instanceMatrix.array[m.renderSlot*16+13]}));
       return {stage:r.stage,surfaces:surfaces.map(({x,z,w,d,a,y,kind})=>({x,z,w,d,a,y,kind})),woodFraction:wood/sampled,maxHeightError,
         play:t.play,boundaryEdge:t.workshopBoundary.edge,lightStrands:t.workshopLightStrands,foreground:desktopForegroundState(),
         sphere:{type:t.paperAssets.spheres.type,triangles:t.paperAssets.spheres.index.count/3},
@@ -91,7 +93,7 @@ export async function reviewDesktopLayout(page,dir){
     assert.ok(s.spawn.clear&&Math.abs(s.spawn.y-s.spawn.ground)<.002,'The area spawn must be clear and on its visible surface');
     assert.deepEqual(s.photoFailures,[]);
     assert.ok(s.buildings.every(b=>Math.abs(b.y-b.ground)<.002&&(b.modelY===undefined||Math.abs(b.modelY-b.ground)<.002)),'Functional buildings must sit on their terrain height');
-    assert.ok(s.marbles.length>0&&s.marbles.every(m=>Math.abs(m.renderY-m.ground-m.radius)<.002),'Loose marble meshes must rest on the visible desktop');
+    assert.ok(s.marbles.length>0&&s.marbles.every(m=>m.visible?m.slot>=0&&Math.abs(m.renderY-m.ground-m.radius)<.002:m.slot===-1),'Submit only visible marbles, resting on the desktop');
     assert.equal(s.sphere.type,'SphereGeometry','Small bulbs and marbles must use the intended sphere primitive');
     assert.ok(s.sphere.triangles<=1300,'Small round props must not accidentally use a costly subdivided polyhedron');
     assert.deepEqual(s.lightPosts,[],'Freestanding light posts must be removed in every area');
@@ -318,9 +320,9 @@ export async function reviewDesktopLayout(page,dir){
   // to start on bare wood. Its real renderWorld path supplies the matrix height.
   report.raisedMarble=await page.evaluate(()=>{
     const r=app.run,t=r.terrain,m=t.workshopLooseMarbles[0],saved={...m},lane=desktopLastLane;
-    m.x=lane.inner.x;m.z=lane.inner.z;m.vx=m.vz=0;r.renderWorld(0);
-    const result={ground:t.height(m.x,m.z),radius:m.r,renderY:t.workshopLooseMesh.instanceMatrix.array[13]};
-    Object.assign(m,saved);r.renderWorld(0);return result;
+    m.x=lane.inner.x;m.z=lane.inner.z;m.vx=m.vz=0;r.updateCamera(1);r.renderWorld(0);
+    const result={ground:t.height(m.x,m.z),radius:m.r,renderY:t.workshopLooseMesh.instanceMatrix.array[m.renderSlot*16+13]};
+    m.x=saved.x;m.z=saved.z;m.vx=saved.vx;m.vz=saved.vz;r.renderWorld(0);return result;
   });
   assert.ok(report.raisedMarble.ground>.1&&Math.abs(report.raisedMarble.renderY-report.raisedMarble.ground-report.raisedMarble.radius)<.002);
 

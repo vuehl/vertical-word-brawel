@@ -15,7 +15,7 @@ import {createPlayerFootRing} from './player-foot-ring.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
 import {FramePacer} from './frame-pacing.js';
-import {warmCombatShaders} from './combat-warmup.js';
+import {warmCombatShaders,warmCombatDraw} from './combat-warmup.js';
 import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
@@ -76948,9 +76948,9 @@ var GT = 15,
     }
     renderWorld(e) {
       let t = this.r.camera;
-      updateWorkshopScene(this,e);
-      (this.sprites.begin(t),
-        updatePaperVisibility(this.terrain,this.sprites.frustum,this.terrain.workshopBoundary?true:this.performance.worldShadows),
+      this.sprites.begin(t);
+      updateWorkshopScene(this,e,this.sprites);
+      (updatePaperVisibility(this.terrain,this.sprites.frustum,this.terrain.workshopBoundary?true:this.performance.worldShadows),
         this.enemies.render(),
         this.boss.kit && !this.boss.kit.dead && this.boss.kit.render(),
         this.boss.mech?.render(),
@@ -108163,7 +108163,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         // opaque loading page still covers the first frame. No play time elapses.
         this.run.update(0),
         await this.run.ui.prepareEntryIcons?.(),
-        this.r.render(0),
+        warmCombatDraw(this.run),
         window.drawUI?.(this.r.renderer),
         onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
         await waitForLoadingPaint(this.r.renderer),
