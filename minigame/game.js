@@ -23,8 +23,29 @@ function waitForPlayEntry() {
   });
 }
 
+function wechatShareCard(roomCode, source) {
+  const card = {
+    imageUrl: 'https://mmocgame.qpic.cn/wechatgame/Lnv5AWb3c38RlWjS8GK26kuqMRK1WBCibFAnuaX4Y9zrVUyWYSia6a8uZWDZmb7RQH/0',
+    imageUrlId: '7gHnnS4/SAOz6NkjSKZjYg==',
+  };
+  if (roomCode) card.query = 'roomCode=' + roomCode;
+  try {
+    const account = wx.getAccountInfoSync && wx.getAccountInfoSync().miniProgram;
+    if (account && (account.envVersion === 'develop' || account.envVersion === 'trial')) {
+      const info = wx.getAppBaseInfo ? wx.getAppBaseInfo() : wx.getSystemInfoSync();
+      console.info('[房间分享]', JSON.stringify({source, appId:account.appId, envVersion:account.envVersion,
+        wechat:info.version, sdk:info.SDKVersion, card}));
+    }
+  } catch (error) { console.warn('[房间分享] 无法读取版本信息', error); }
+  return card;
+}
+
 async function launchEngine(host, play, showProgress) {
   const env = await play.setup(host);
+  host.getLobbyRoomCode = () => {
+    const room = env.__zixingApp && env.__zixingApp.coopRoom;
+    return room && room.open && !room.leaving && room.room.state === 'lobby' ? room.code : undefined;
+  };
   showProgress(95);
   if (host.onApp) env.onApp = host.onApp;
   let booted = false;
@@ -55,6 +76,19 @@ async function start() {
   const began = Date.now();
   // A card can be opened while the play subpackage is still downloading.
   const roomInvites = {code: '', onInvite: null};
+  const host = {
+    roomInvites,
+    shareRoomCode(code) {
+      if (!wx.shareAppMessage) throw Error('请在微信小游戏内分享房间号');
+      wx.shareAppMessage(wechatShareCard(code, '房间按钮'));
+    },
+  };
+  if (wx.onShareAppMessage) {
+    wx.onShareAppMessage(() => wechatShareCard(host.getLobbyRoomCode && host.getLobbyRoomCode(), '微信菜单'));
+  }
+  if (wx.showShareMenu) {
+    wx.showShareMenu({menus:['shareAppMessage'], fail:e=>console.warn('[字行] 转发菜单未开启', e.errMsg)});
+  }
   function receiveInvite(options) {
     const code = options && options.query && options.query.roomCode;
     if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return;
@@ -101,7 +135,7 @@ async function start() {
       console.warn('[宝可梦启动] 启动画面不可用', error);
     }
     const files = require('./files');
-    const host = GameGlobal.pokebonk = {canvas, files, roomInvites};
+    GameGlobal.pokebonk = Object.assign(host, {canvas, files});
     stage('准备游戏资源');
     const downloaded = {play:0, text:0};
     function packageProgress(name, percent) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {RelayRoom} from '../source/src/multiplayer.js';
-import {multiplayerConfig,roomShareImage} from '../source/src/multiplayer-config.js';
+import {multiplayerConfig} from '../source/src/multiplayer-config.js';
 import {cloudSocket} from '../platform/cloud-coop.mjs';
 
 export async function reviewCoop(browser, gamePort) {
@@ -66,7 +66,7 @@ export async function reviewCoop(browser, gamePort) {
   } finally { await Promise.all([first.leave(),second.leave(),third.leave()]); }
   try {
     const configure=[];
-    let cardQuery,code;
+    let cardQuery,code,defaultCard;
     for (let i = 0; i < 3; i++) {
       const ctx = await browser.createBrowserContext();
       const page = await ctx.newPage();
@@ -141,6 +141,15 @@ export async function reviewCoop(browser, gamePort) {
         wx.showModal = opts => opts.success({confirm:true,content:window.roomCode});
       }, {config:multiplayerConfig,url:endpoint.href,loginCode:userPrefix+'seat-'+i});
       await configure[i]();
+      if(i===0){
+        // Forwarding must already use the approved cover while the game assets are held.
+        await page.waitForFunction(()=>typeof window.fixtureMenuCard==='function');
+        assert.deepEqual(await page.evaluate(()=>window.fixtureShareMenus),['shareAppMessage']);
+        defaultCard=await page.evaluate(()=>fixtureMenuCard());
+        assert.match(defaultCard.imageUrl,/^https:\/\/mmocgame\.qpic\.cn\/wechatgame\//);
+        assert.ok(defaultCard.imageUrlId);
+        assert.equal(defaultCard.query,undefined);
+      }
       await page.evaluate(() => { releaseTextDownload(); releaseOptionalDownloads(); });
       if(i!==1)await page.waitForFunction(() => window.app?.screen?.querySelector('[data-action="multiplayer"]'), {timeout:90000});
       if(sqlTest && i===0){
@@ -172,18 +181,14 @@ export async function reviewCoop(browser, gamePort) {
       }
       if(i===0){
         await click(page,'多人联机');
+        assert.deepEqual(await page.evaluate(()=>fixtureMenuCard()),defaultCard);
         await click(page,'创建房间');
         await page.waitForFunction(()=>app.coopRoom?.code);
         code=await page.evaluate(()=>app.coopRoom.code);
         await click(page,'分享房间号');
         const card=await page.evaluate(()=>window.sharedCard);
-        assert.ok(card.title.includes(code));
-        if(roomShareImage.imageUrlId && roomShareImage.imageUrl){
-          assert.equal(card.imageUrlId,roomShareImage.imageUrlId);
-          assert.equal(card.imageUrl,roomShareImage.imageUrl);
-        }else{
-          assert.ok(!('imageUrlId' in card) && !('imageUrl' in card));
-        }
+        assert.deepEqual(card,{...defaultCard,query:'roomCode='+code});
+        assert.deepEqual(await page.evaluate(()=>fixtureMenuCard()),card);
         cardQuery=Object.fromEntries(new URLSearchParams(card.query));
         assert.deepEqual(cardQuery,{roomCode:code});
       }else{

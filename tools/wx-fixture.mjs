@@ -82,6 +82,8 @@ globalThis.wx={
     cloud:fixtureCloud,
   getLaunchOptionsSync:()=>window.fixtureLaunchOptions || {query:{}},
   shareAppMessage:options=>{window.sharedCard=options;},
+  onShareAppMessage:listener=>{window.fixtureMenuCard=listener;},
+  showShareMenu:({menus})=>{window.fixtureShareMenus=menus;},
   env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>fs,
   getDeviceInfo:()=>({platform:window.fixturePlatform||'devtools'}),
   getWindowInfo:()=>({windowWidth:innerWidth,windowHeight:innerHeight,pixelRatio:devicePixelRatio,
