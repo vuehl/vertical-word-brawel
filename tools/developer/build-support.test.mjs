@@ -15,4 +15,5 @@ test('developer startup accepts the matching gameplay package and rejects stale/
   assert.ok(stamped.play.includes(JSON.stringify(stamped.id)));
   assert.deepEqual(stampRuntime(main,play),stamped,'Identical builds keep a reproducible identity');
   assert.notEqual(stampRuntime(main,play+'\n// changed').id,stamped.id);
+  assert.notEqual(stampRuntime(main,play,[['three.js','a']]).id,stampRuntime(main,play,[['three.js','b']]).id);
 });

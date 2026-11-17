@@ -516,6 +516,15 @@ export function* workshopWorldSteps(terrain){
   halos.instanceMatrix.needsUpdate=true;halos.name='steady-lamp-halos';halos.renderOrder=3;halos.computeBoundingSphere();preparePaperBatch(halos);root.add(halos);
   // Four fixed accent lights keep the mobile shader bounded.
   terrain.workshopPointLights=Array.from({length:4},()=>{const light=new PointLight(0xffd5a0,0,58,2);light.castShadow=false;root.add(light);return light;});
+  const lamps=[];
+  for(const lamp of terrain.workshopLamps){
+    if(lamps.some(other=>Math.hypot(other.x-lamp.x,other.z-lamp.z)<=10))continue;
+    const light=terrain.workshopPointLights[lamps.length];
+    light.position.set(lamp.x,lamp.y,lamp.z);light.color.set(lamp.color);
+    light.intensity=(lamp.power||42)*.035;light.distance=42;
+    lamps.push(lamp);
+    if(lamps.length===terrain.workshopPointLights.length)break;
+  }
   terrain.workshopFillLight=new DirectionalLight(0x8acfe8,.55);terrain.workshopFillLight.position.set(20,35,-40);root.add(terrain.workshopFillLight);
   const rolling=new InstancedMesh(spheres,mat('rolling-glass',{color:0x7db8ad,roughness:.16,metalness:.16}),terrain.workshopMarbleRuns.length*3);rolling.name='rolling-marbles';rolling.count=0;rolling.receiveShadow=true;rolling.frustumCulled=false;root.add(rolling);terrain.workshopRollingMarbles=rolling;terrain.workshopAnimationTime=0;terrain.workshopTransform=new Group();
   // Later clusters can occupy an earlier loose-marble candidate. Keep every
@@ -606,17 +615,6 @@ export function updateWorkshopScene(run,dt,view){
   const ink=terrain.paperAssets.mats.get('ink-contour');if(ink){ink.uniforms.uInkViewport.value.x=r.composer.inputBuffer.width;ink.uniforms.uInkViewport.value.y=r.composer.inputBuffer.height;}
   r.outlinePass.enabled=true;r.outline.uniforms.get('uColor').value.set(0x454755);r.outline.uniforms.get('uStrength').value=.16;
   updateWorkshopShadows(run);
-  // Fixed authored light positions. No nearest-lamp swaps, proximity pulses,
-  // skill light takeover or animated bloom: movement cannot make the room flash.
-  if(!terrain.workshopNearestLamps){
-    const chosen=[];
-    for(const l of terrain.workshopLamps){if(chosen.every(p=>Math.hypot(p.x-l.x,p.z-l.z)>10))chosen.push(l);if(chosen.length===4)break;}
-    terrain.workshopNearestLamps=chosen;
-  }
-  terrain.workshopPointLights.forEach((light,i)=>{
-    const lamp=terrain.workshopNearestLamps[i];
-    if(lamp){light.position.set(lamp.x,lamp.y,lamp.z);light.color.set(lamp.color);light.intensity=(lamp.power||42)*.035;light.distance=42;}else light.intensity=0;
-  });
   r.bloom.intensity=0;r.pickFinal();
 }
 
@@ -632,20 +630,26 @@ function updateWorkshopShadows(run){
   // The 96-unit map covers the camera with room to spare. Re-anchor on a
   // two-unit grid so walking or subpixel camera shake can reuse static shadows.
   const anchorX=Math.round(focus.x/2)*2,anchorZ=Math.round((focus.z-2.5)/2)*2;
+  if(terrain.workshopShadowX===anchorX&&terrain.workshopShadowZ===anchorZ&&shadow.mapSize.x===size){
+    // Weather/ultimate lighting can reset the sun between scene updates.
+    if(!sun.position.equals(terrain.workshopSunPosition)){
+      sun.position.copy(terrain.workshopSunPosition);sun.updateMatrixWorld();
+    }
+    return;
+  }
   const centre=shadowCentre.set(anchorX,0,anchorZ);
   // Snap in the light's horizontal AND vertical axes. Snapping world X/Z
   // leaves diagonal sub-texel motion and makes moving shadows shimmer.
   const x=centre.dot(sunRight),y=centre.dot(sunUp);
   centre.addScaledVector(sunRight,Math.round(x/texel)*texel-x);
   centre.addScaledVector(sunUp,Math.round(y/texel)*texel-y);
-  if(terrain.workshopShadowX!==anchorX||terrain.workshopShadowZ!==anchorZ||shadow.mapSize.x!==size){
-    terrain.workshopShadowX=anchorX;terrain.workshopShadowZ=anchorZ;
-    if(shadow.mapSize.x!==size){shadow.map?.dispose();shadow.map=null;shadow.mapSize.set(size,size);}
-    Object.assign(shadow.camera,{left:-span,right:span,top:span,bottom:-span,near,far});shadow.camera.updateProjectionMatrix();
-    shadow.bias=-.00008;shadow.normalBias=.035;shadow.radius=2;
-    shadow.needsUpdate=true;
-  }
+  terrain.workshopShadowX=anchorX;terrain.workshopShadowZ=anchorZ;
+  if(shadow.mapSize.x!==size){shadow.map?.dispose();shadow.map=null;shadow.mapSize.set(size,size);}
+  Object.assign(shadow.camera,{left:-span,right:span,top:span,bottom:-span,near,far});shadow.camera.updateProjectionMatrix();
+  shadow.bias=-.00008;shadow.normalBias=.035;shadow.radius=2;
+  shadow.needsUpdate=true;
   sun.target.position.copy(centre);sun.target.updateMatrixWorld();
   sun.position.copy(centre).addScaledVector(sunDirection,150);sun.updateMatrixWorld();
+  (terrain.workshopSunPosition??=new Vector3()).copy(sun.position);
   terrain.workshopShadowLight=sun;terrain.workshopShadowRenderer=r.renderer;
 }

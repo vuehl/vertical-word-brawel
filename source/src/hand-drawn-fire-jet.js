@@ -146,6 +146,10 @@ export class HandDrawnFireJet{
   update(dt,emitters){
     const owner=this.owner,run=owner.run;this.clock+=Math.max(0,dt);
     this.packetLimit=Math.max(0,this.limit-emitters.length);
+    if(!emitters.length&&!this.packets.length&&!this.mesh.count&&!this.legacy.mesh.count){
+      if(this.hits.length||this.hitTimes.size||this.hitMesh.count)this.updateHits(dt);
+      return;
+    }
     for(let i=this.packets.length-1;i>=0;i--){
       const p=this.packets[i];p.age+=Math.max(0,dt);
       if(p.age>=p.life||!owner.allowed(p.own)){this.packets.splice(i,1);this.expired++;}

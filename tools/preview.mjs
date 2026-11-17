@@ -25,8 +25,12 @@ function runCLI(args){
 
 execFileSync(process.execPath,[path.join(import.meta.dirname,'build.mjs'),...(development?['--dev']:[])],{cwd:root,stdio:'inherit',windowsHide:true});
 fs.mkdirSync(output,{recursive:true});
-const buildHashes=()=>Object.fromEntries(['game.js','game.json','play.js','assets.js','packs/text/assets.br'].map(name=>
-  [name,createHash('sha256').update(fs.readFileSync(path.join(projectRoot,'minigame',name))).digest('hex')]));
+const game=path.join(projectRoot,'minigame');
+const buildHashes=()=>{
+  const play=fs.readdirSync(path.join(game,'play')).filter(name=>name.endsWith('.js')).sort().map(name=>'play/'+name);
+  return Object.fromEntries(['game.js','game.json',...play,'assets.js','packs/text/assets.br'].map(name=>
+    [name,createHash('sha256').update(fs.readFileSync(path.join(game,name))).digest('hex')]));
+};
 const hashes=buildHashes();
 const developerBuild=development?verifyDeveloperPreview(projectRoot):null;
 if(development){

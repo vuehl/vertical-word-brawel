@@ -163,6 +163,15 @@ export class StylizedSkillFX{
     const surface=(x,z)=>(run.terrain?.height(x,z)||0)+.24;
     this.vfx.norm.surface=this.vfx.ground.surface=this.vfx.groundN.surface=this.vfx.rings.surface=surface;
   }
+  async prepareMoveTexture(key){
+    const effect=key==='ember'?this.fireball:key==='fire-spin'?this.fireSpin:key==='flamethrower'?this.fireJet:null;
+    if(!effect||effect.texturePrepared)return false;
+    if(!effect.loaded)await effect.ready;
+    if(!effect.loaded||effect.disposed||effect.texturePrepared)return false;
+    this.run.r.renderer.initTexture(effect.texture);
+    effect.texturePrepared=true;
+    return true;
+  }
   allowed(own=true){return !this.run?.disposed&&!(own&&this.run?.hideOwnFx);}
   touch(key,config){
     if(!this.allowed(config.own!==false)||this.vfx.view&&!this.vfx.view.visible(config.x,config.y,config.z,Math.max(config.height||4,config.length||0,config.radius*2)))return null;

@@ -109,6 +109,7 @@ export class HandDrawnFireSpin{
     this.lastHit=this.owner.clock;this.play('impact',x,y,z,Math.max(1.6,Math.min(3,size*2)),own);
   }
   update(dt,emitters){
+    if(!emitters.length&&!this.events.length&&!this.mesh.count)return;
     const [position,frame,style]=this.attributes.map(a=>a.array),v=this.owner.vfx;let count=0;
     const push=(e,clip,width,height,pivot,alpha)=>{
       if(count>=this.limit)return;

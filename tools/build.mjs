@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import esbuild from 'esbuild';
+import {buildPlay} from './play-bundle.mjs';
 import {parse} from '../source/tools/vendor/acorn.mjs';
 import {addBootAssets,bootAssets,writeBootHeroArt} from './boot-assets.mjs';
 import {lowerUnicodeRegexes} from './device-syntax.mjs';
@@ -106,7 +107,7 @@ const sources={
       code='import {decodeBase64String as atob} from "pokebonk:base64";\n'+code.replaceAll('typeof atob === "function"','true');
       return {contents:code,resolveDir:path.dirname(args.path)};
     });
-    build.onLoad({filter:/src[\\/]config\.js$/},args=>({
+    build.onLoad({filter:/src[\\/](config|move-effects|boss-encounters)\.js$/},args=>({
       contents:lowerUnicodeRegexes(fs.readFileSync(args.path,'utf8')),resolveDir:path.dirname(args.path)
     }));
     build.onLoad({filter:/src[\\/]game\.js$/},()=>{
@@ -134,22 +135,19 @@ const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es
 const hostBundle=await esbuild.build({...common,define:{document:'undefined'},entryPoints:[path.join(platform,'host.mjs')],write:false});
 await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
-// Native layout consumes the compiled rules in the text pack.
-const result=await esbuild.build({...common,metafile:true,define:{'globalThis.__ZILING_COMPILED_STYLES__':'true',innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'},write:false,stdin:{contents:
-  'import "../public/turnstile-stub.js";import {setChineseText} from "./chinese-text.js";'+
-  'export async function start(){setChineseText(window.readChineseText());return require("./game.js").launch();}',resolveDir:path.join(src,'src')}});
-const bindings=('globalThis window self document navigator location history localStorage sessionStorage innerWidth innerHeight devicePixelRatio screen '+
-  'getComputedStyle matchMedia performance addEventListener removeEventListener dispatchEvent requestAnimationFrame cancelAnimationFrame '+
-  'Image HTMLImageElement HTMLCanvasElement HTMLElement HTMLInputElement HTMLButtonElement HTMLTextAreaElement HTMLSelectElement HTMLAnchorElement HTMLVideoElement Node Element '+
-  'Event CustomEvent EventTarget PointerEvent MouseEvent KeyboardEvent ProgressEvent MutationObserver DOMParser OffscreenCanvas ImageBitmap createImageBitmap '+
-  'fetch Headers Request Response Blob URL URLSearchParams TextEncoder TextDecoder AbortController AbortSignal AudioContext structuredClone crypto Path2D alert').split(/\s+/);
-// A WeChat single-file subpackage executes this file as its entry. It needs
-// no sibling imports. Publish before or after the main entry subscribes.
-fs.writeFileSync(path.join(out,'play.js'),'(function(){\nconst root=typeof globalThis==="object"?globalThis:GameGlobal;\nfunction setup(host){const globalThis=root,module={exports:{}};\n'+
-  hostBundle.outputFiles[0].text+'\nreturn module.exports.setup(host);}\n'+
-  'async function run(environment){const {'+bindings.join(',')+'}=environment;const module={exports:{}};\n'+
-  result.outputFiles[0].text+'\nreturn module.exports.start();}\n'+
-  'const box=GameGlobal.pokebonkPlayEntry||(GameGlobal.pokebonkPlayEntry={});box.api={setup,run};if(box.receive){box.receive(box.api);delete box.receive;}\n})();\n');
+const result=await buildPlay(common,src,hostBundle.outputFiles[0].text);
+result.files.set('game.js',fs.readFileSync(path.join(platform,'play-entry.js'),'utf8'));
+function checkScriptSize(file,bytes){
+  if(bytes>1.8*1048576)throw Error(file+' exceeds the 1.8 MiB per-script budget: '+bytes+' bytes.');
+}
+for(const [name,code] of result.files)checkScriptSize('play/'+name,Buffer.byteLength(code));
+const playDir=path.join(out,'play');
+fs.mkdirSync(playDir,{recursive:true});
+for(const [name,code] of result.files)fs.writeFileSync(path.join(playDir,name),code);
+for(const name of fs.readdirSync(playDir)){
+  if(name.endsWith('.js')&&!result.files.has(name))fs.unlinkSync(path.join(playDir,name));
+}
+fs.rmSync(path.join(out,'play.js'),{force:true});
 for(const file of ['host.js','original.js'])fs.rmSync(path.join(out,file),{force:true});
 fs.copyFileSync(path.join(platform,'files.js'),path.join(out,'files.js'));
 fs.copyFileSync(path.join(platform,'boot-screen.js'),path.join(out,'boot-screen.js'));
@@ -176,11 +174,13 @@ const built=files(out),size=list=>list.reduce((n,f)=>n+fs.statSync(f).size,0);
 if(!development){
   if(Object.keys(result.metafile.inputs).some(file=>/tools[\\/]developer[\\/]|src[\\/]lite-qa\.js$/.test(file)))
     throw Error('Developer module included in release dependency graph.');
-  const release=fs.readFileSync(path.join(out,'play.js'),'utf8');
+  const release=[...result.files.values()].join('\n');
   for(const marker of ['__zixingDeveloper','zx-dev-panel','pokebonk-dev-save','mountLiteQA','隔离 QA'])
     if(release.includes(marker))throw Error('Developer code leaked into release: '+marker);
 }
 for(const file of built.filter(f=>f.endsWith('.js'))){
+  const bytes=fs.statSync(file).size;
+  checkScriptSize(path.relative(out,file),bytes);
   try{parse(fs.readFileSync(file,'utf8'),{ecmaVersion:previewESVersion});}
   catch(error){throw new Error(path.relative(out,file)+': '+error.message);}
 }
@@ -188,10 +188,17 @@ const {subpackages}=JSON.parse(fs.readFileSync(path.join(out,'game.json'),'utf8'
 const subRoots=subpackages.map(pkg=>path.resolve(out,pkg.root));
 const total=size(built),main=size(built.filter(file=>!subRoots.some(root=>file===root||file.startsWith(root+path.sep))));
 console.log('Native project:',(total/1048576).toFixed(2),'MiB, main:',(main/1048576).toFixed(2),'MiB.');
+const playFiles=[...result.files.keys()].map(name=>({name,bytes:fs.statSync(path.join(playDir,name)).size}))
+  .sort((a,b)=>b.bytes-a.bytes);
+console.log('Largest play script:',playFiles[0].name,playFiles[0].bytes,'bytes (limit 1.8 MiB).');
 // Keep a conservative 20 MiB preview budget, with room for compiler metadata.
 if(total>20*1048576-128*1024||main>4*1048576-64*1024)throw Error('WeChat preview package budget exceeded.');
 if(process.argv.includes('--analyze')){
-  const core=Object.values(result.metafile.outputs)[0],inputs=Object.entries(core.inputs).map(([file,{bytesInOutput}])=>({file,bytes:bytesInOutput}));
+  const attributed=new Map();
+  for(const key of result.shippedOutputs)for(const [file,{bytesInOutput}] of Object.entries(result.metafile.outputs[key].inputs)){
+    attributed.set(file,(attributed.get(file)||0)+bytesInOutput);
+  }
+  const inputs=[...attributed].map(([file,bytes])=>({file,bytes}));
   const engineInputs=inputs.filter(({file})=>/\/three-[^/]+\.js$/.test(file));
   const coreInputs=inputs.filter(input=>!engineInputs.includes(input));
   const sum=list=>list.reduce((n,input)=>n+input.bytes,0);
@@ -205,7 +212,7 @@ if(process.argv.includes('--analyze')){
   ];
   const report={basis:'Minified esbuild output attribution plus actual startup files; on-disk bytes, NOT runtime RAM.',totalBytes:codeBytes,
     groups:groups.map(group=>({...group,MiB:group.bytes/1048576})),
-    gameplayInputs:coreInputs.sort((a,b)=>b.bytes-a.bytes),engineInputs,
+    playFiles,gameplayInputs:coreInputs.sort((a,b)=>b.bytes-a.bytes),engineInputs,
     platformInputs:Object.entries(Object.values(hostBundle.metafile.outputs)[0].inputs).map(([file,{bytesInOutput}])=>({file,bytes:bytesInOutput})).sort((a,b)=>b.bytes-a.bytes)};
   const reportDir=process.env.POKEBONK_QA||path.join(root,'验收');fs.mkdirSync(reportDir,{recursive:true});
   fs.writeFileSync(path.join(reportDir,'代码组成.json'),JSON.stringify(report,null,2)+'\n');

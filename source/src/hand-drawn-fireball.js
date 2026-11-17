@@ -79,6 +79,7 @@ export class HandDrawnFireball{
   impact(x,y,z,own=true){this.play('hit',x,y,z,2.7,own);}
   update(dt){
     dt=Math.max(0,dt);this.clock+=dt;
+    if(!this.shots.size&&!this.events.length&&!this.mesh.count)return;
     const v=this.owner.vfx,[origin,frame,heading]=this.attributes.map(a=>a.array);let count=0;
     const push=(x,y,z,width,height,index,anchorX,dx,dy,dz,alpha,kind=0)=>{
       if(count>=this.limit)return;const offset=count++*4;

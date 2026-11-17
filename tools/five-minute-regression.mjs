@@ -16,6 +16,8 @@ export async function reviewFiveMinute(page,dir,baseline){
     const times=[],events=[],checkpoints=[],peaks=[];
     let costs={};
     for(const [object,key,label] of [[r,'simulate','simulation'],[e,'update','enemies'],[r,'renderWorld','scene'],[r.ui,'hud','hud'],[r.vfx,'update','effects'],
+      [e,'render','enemyDraw'],[r.player,'render','playerDraw'],[r.interactables,'render','interactableDraw'],
+      [r.sprites,'begin','spriteBegin'],[r.sprites,'end','spriteEnd'],[r.projectiles,'render','projectileDraw'],
       [r.minibosses,'update','miniboss'],[r,'castMove','weapon'],[r.projectiles,'update','projectiles'],[r.zones,'update','zones']]){
       const fn=object[key];
       object[key]=function(...args){const at=performance.now();try{return fn.apply(this,args);}finally{costs[label]=(costs[label]||0)+performance.now()-at;}};
@@ -56,18 +58,21 @@ export async function reviewFiveMinute(page,dir,baseline){
       }
       points++;if(t.height(x,z)!==y)mismatches++;
     }
-    const start=p.clone(),target=r.camTarget.clone();let shadowUpdates=0;
+    const start=p.clone(),target=r.camTarget.clone();let shadowUpdates=0,shadowTargetUpdates=0;
+    const lightTarget=r.r.sun.target,update=lightTarget.updateMatrixWorld;
+    lightTarget.updateMatrixWorld=function(...args){shadowTargetUpdates++;return update.apply(this,args);};
     for(let frame=0;frame<60;frame++){
       p.x=start.x+frame*.035;r.camTarget.copy(p);r.updateCamera(0);sh.needsUpdate=false;r.renderWorld(0);
       if(sh.needsUpdate)shadowUpdates++;
     }
+    lightTarget.updateMatrixWorld=update;
     p.copy(start);r.camTarget.copy(target);r.updateCamera(0);r.renderWorld(0);
     const x=t.play+8,z=8;
     t.resolve(x,z,.5,1000,{});
     const prop={x,z,h:1002,r:.5};t.addCollider(prop);
     const hit=t.hitProp(x,1000,z,.5),pushed=t.resolve(x,z,.5,1000,{}).x>x;
     prop.off=true;
-    return {points,mismatches,shadowUpdates,lateCollider:hit&&pushed&&!t.hitProp(x,1000,z,.5)};
+    return {points,mismatches,shadowUpdates,shadowTargetUpdates,lateCollider:hit&&pushed&&!t.hitProp(x,1000,z,.5)};
   });
   result.upgrade=await page.evaluate(()=>{
     const r=app.run,p=r.player,rt=app.r,transition=inspected.modalTransition;
@@ -109,6 +114,7 @@ export async function reviewFiveMinute(page,dir,baseline){
     assert.ok(result.upgrade.firstModalMs<=120&&result.upgrade.firstCardPixelsMs<=150);
     assert.equal(result.upgrade.draws,1);assert.equal(result.upgrade.combatAdvanced,0);
     assert.ok(result.geometry.shadowUpdates<40,'Sub-cell camera movement should reuse the shadow map while casters are unchanged');
+    assert.ok(result.geometry.shadowTargetUpdates<5,'Sub-cell movement should reuse the shadow light transform');
   }
 }
 

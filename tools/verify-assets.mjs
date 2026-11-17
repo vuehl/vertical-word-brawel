@@ -10,7 +10,7 @@ import {restoreSprite} from './sprite-png.mjs';
 import {unpackStream} from './resource-stream.mjs';
 import {measureActor} from './actor-metrics.mjs';
 import {actorMetrics} from '../source/src/actor-metrics.js';
-import {assetPolicyVersion,excludedAssetReason,musicTracks} from './asset-policy.mjs';
+import {assetPolicyVersion,compressedFireAtlases,excludedAssetReason,musicTracks} from './asset-policy.mjs';
 import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/catalogs.js';
 import {isActiveItem} from '../source/src/active-content.js';
 import {resolveItemIcon} from '../source/src/item-icons.js';
@@ -103,15 +103,35 @@ for(const id of [...Array.from({length:151},(_,i)=>i+1),201]){
 }
 for(const key of Object.keys(index.files))assert.equal(glyphSpeciesFromImage(key),null,'Legacy actor image must not ship: '+key);
 assert.match(index.files['assets/glyphs/atlas.png'],/^text\//,'Character selection needs the atlas in the startup package');
-// Compare every retained bitmap, including items, map/UI icons, hazards and
-// glyphs. Packing may change the encoding, never the visible pixels.
+// The three painted fire atlases use lossy RGB. Check alpha exactly and bound
+// visible colour error in every animation tile, including small impact poses.
+const fireColorError={};
 for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
   const category=key.split('/')[1];
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   const decode=b=>sharp(b).ensureAlpha().raw().toBuffer({resolveWithObject:true});
   const [a,b]=await Promise.all([decode(source),decode(bytes(key))]);
   assert.deepEqual(a.info,b.info,key);
-  for(let i=0;i<a.data.length;i+=4){
+  if(compressedFireAtlases.has(key)){
+    const {tile,rows,columns}=JSON.parse(fs.readFileSync(source.replace(/\.png$/,'.json'),'utf8'));
+    assert.equal(a.info.width,columns*tile);assert.equal(a.info.height,rows*tile);
+    let worst=0;
+    for(let frame=0;frame<rows*columns;frame++){
+      let error=0,weight=0;
+      for(let y=0;y<tile;y++){
+        let i=((Math.floor(frame/columns)*tile+y)*a.info.width+frame%columns*tile)*4;
+        for(let x=0;x<tile;x++,i+=4){
+          const alpha=a.data[i+3];
+          if(alpha!==b.data[i+3])throw Error('Changed alpha: '+key+' @ '+i/4);
+          for(let c=0;c<3;c++)error+=alpha*Math.abs(a.data[i+c]-b.data[i+c]);
+          weight+=3*alpha;
+        }
+      }
+      if(weight)worst=Math.max(worst,error/weight);
+    }
+    assert.ok(worst<=10,'Visible colour error in '+key+': '+worst);
+    fireColorError[key]=worst;
+  }else for(let i=0;i<a.data.length;i+=4){
     if(a.data[i+3]!==b.data[i+3]||(a.data[i+3]&&a.data.readUIntBE(i,3)!==b.data.readUIntBE(i,3)))throw Error('Changed visible pixel: '+key+' @ '+i/4);
   }
   count[category]=(count[category]||0)+1;
@@ -123,7 +143,7 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }
-const report={mappedResources:Object.keys(index.files).length,RGBA:count,originalModels:models.length,
+const report={mappedResources:Object.keys(index.files).length,RGBA:count,fireColorError,originalModels:models.length,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:[],
   removedSceneAssetsVerified:removedSceneAssets.length,
   actorBoundsVerified:152,itemIconsVerified:verifiedCatalogItems,excludedCatalogIcons,cries:0,locales:['zh'],legacyActorImages:0,

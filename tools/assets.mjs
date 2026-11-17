@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
 import {writeActorMetrics} from './actor-metrics.mjs';
-import {assetPolicyVersion,musicTracks,excludedAssetReason} from './asset-policy.mjs';
+import {assetPolicyVersion,compressedFireAtlases,musicTracks,excludedAssetReason} from './asset-policy.mjs';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -56,7 +56,10 @@ for (const folder of ['assets', 'overrides/assets']) {
       const input = sourceFor(key);
       const original = fs.readFileSync(input);
       if (name.endsWith('.png') && original.length > 3000) {
-        const webp = await sharp(original).webp({lossless:true, effort:category==='glyphs'?6:4}).toBuffer();
+        const options=compressedFireAtlases.has(key)
+          ? {quality:88,alphaQuality:100,effort:6,smartSubsample:true}
+          : {lossless:true,effort:category==='glyphs'?6:4};
+        const webp = await sharp(original).webp(options).toBuffer();
         if (webp.length < original.length) { add(targetPack, key, webp, '.webp'); continue; }
       }
       add(targetPack,key,original);
