@@ -27,7 +27,8 @@ import {fixtureSubpackage} from './fixture-subpackage.mjs';
 import {gameProject} from './project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
 const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development,process.argv.includes('--ios-power-mode')),'minigame');
-const dir=process.env.POKEBONK_QA||path.join(root,'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
+const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion'].some(arg=>process.argv.includes(arg));
+const dir=process.env.POKEBONK_QA||path.join(root,fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
 const {default:puppeteer}=await import(pathToFileURL(path.join(root,'tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js')));
 const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
@@ -83,7 +84,7 @@ try{
   }
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
-  const repeatableMap=fiveMinute||upgradeResume||['--profile','--battle-visual','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg));
+  const repeatableMap=fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
@@ -109,7 +110,7 @@ try{
   },{development,repeatableMap,upgradeResume});
   assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
-  if(development&&process.argv.some(arg=>['--illustrated-desk','--hand-drawn-fire-spin','--fire-breath'].includes(arg))){
+  if(development&&(fireReview||process.argv.some(arg=>['--illustrated-desk','--hand-drawn-fire-spin','--fire-breath'].includes(arg)))){
     // Art reviews must show the actual desktop, not the default developer
     // dialog or its scenery-hidden workload preset.
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});

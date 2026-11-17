@@ -35,6 +35,7 @@
     "test:vfx": "node tools/runtime-performance.mjs --vfx",
     "test:ink": "node tools/runtime-performance.mjs --vfx --ink-style",
     "test:lighting": "node tools/runtime-performance.mjs --vfx --lighting",
-    "test:fire": "node tools/runtime-performance.mjs --vfx --fire-breath"
+    "test:fire": "node tools/runtime-performance.mjs --vfx --fire-breath",
+    "test:fire-skills": "node tools/runtime-performance.mjs --vfx --fire-family && node tools/runtime-performance.mjs --vfx --fire-fusions && node tools/runtime-performance.mjs --vfx --fire-completion && node tools/runtime-performance.mjs --vfx --fire-family-media"
   }
 }

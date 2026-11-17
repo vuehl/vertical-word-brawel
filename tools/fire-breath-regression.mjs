@@ -113,15 +113,16 @@ export async function reviewFireBreath(page,dir,moves){
   report.otherMoves=[];
   for(const key of ['ember','fire-spin','heat-wave','hydro-pump']){
     const move=moves.find(m=>m.key===key);assert.ok(move);
-    const sample=await page.evaluate(({id,key})=>{
+    const sample=await page.evaluate(async({id,key})=>{
       app.meta.profile.settings.quality='high';app.applySettings();vfxSetup();const r=app.run;r.player.addMove(id);r.player.moves[0].timer=0;
-      vfxAdvance(key==='hydro-pump'?28:19);return {key,particles:r.vfx.norm.n+r.vfx.add.n,volumes:r.vfx.crafted.mesh.count,authored:r.vfx.crafted.fireSpin.mesh.count+r.vfx.crafted.fireball.mesh.count,fire:r.vfx.crafted.fireJet.mesh.count,legacyFire:r.vfx.crafted.fireJet.legacy?.mesh.count||0,projectiles:r.projectiles.used};
+      await r.vfx.crafted.prepareMoveTexture?.(key);
+      vfxAdvance(key==='hydro-pump'?28:key==='heat-wave'?9:19);return {key,particles:r.vfx.norm.n+r.vfx.add.n,volumes:r.vfx.crafted.mesh.count,authored:r.vfx.crafted.fireSpin.mesh.count+r.vfx.crafted.fireball.mesh.count,heat:r.vfx.crafted.fireFamily?.heatMesh.count||0,fire:r.vfx.crafted.fireJet.mesh.count,legacyFire:r.vfx.crafted.fireJet.legacy?.mesh.count||0,projectiles:r.projectiles.used};
     },{id:move.id,key});
-    assert.ok(sample.particles+sample.volumes+sample.authored+sample.fire+sample.legacyFire+sample.projectiles>0,key);
-    if(!baseline&&key==='heat-wave')assert.ok(sample.fire===0&&sample.legacyFire>0,'Other fire cones retain their original shader');
+    assert.ok(sample.particles+sample.volumes+sample.authored+sample.heat+sample.fire+sample.legacyFire+sample.projectiles>0,key);
+    if(!baseline&&key==='heat-wave')assert.ok(sample.heat>0&&sample.fire===0&&sample.legacyFire===0,'Heat Wave must render its dedicated travelling fan');
     report.otherMoves.push(sample);
   }
-  report.ultimate=await page.evaluate(()=>{vfxSetup();const r=app.run;r.ult.charge=1;r.ult.fire();vfxAdvance(14);const mode=r.vfx.crafted.entries.some(e=>e.mode===3&&e.type==='fire');r.vfx.clear();return {mode,fireCleared:r.vfx.crafted.fireJet.mesh.count===0};});
+  report.ultimate=await page.evaluate(()=>{vfxSetup();const r=app.run;r.ult.charge=1;r.ult.fire();vfxAdvance(14);const v=r.vfx.crafted,mode=v.fireFamily?v.fireFamily.mesh.count>0:v.entries.some(e=>e.mode===3&&e.type==='fire');r.vfx.clear();return {mode,fireCleared:r.vfx.crafted.fireJet.mesh.count===0};});
   assert.ok(report.ultimate.mode&&report.ultimate.fireCleared);
   if(!baseline){
     await setup();

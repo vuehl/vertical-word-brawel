@@ -14599,7 +14599,8 @@ var Yp = 3e3,
     statusChance = new Float32Array(Yp);
     trail = new Float32Array(Yp);
     rot = new Float32Array(Yp);
-    fx = new Uint8Array(Yp);
+    // The visual registry exceeds 255 entries; preserve the full effect ID.
+    fx = new Uint16Array(Yp);
     types = Array(Yp);
     cls = Array(Yp);
     status = Array(Yp);
@@ -21943,7 +21944,8 @@ function Mh(e, t, n, r, i) {
       if (!a.terrain.inBounds(m, h, 1)) return;
       let t = U(a, n, p),
         r = U(a, m, h);
-      (a.vfx.groundN.spawn({
+      if(i.authoredFire&&Math.round(_*c)%2===0)a.vfx.crafted.fireFamily.crack((n+m)/2,(t+r)/2,(p+h)/2,o*2);
+      (!i.authoredFire&&a.vfx.groundN.spawn({
         x: (n + m) / 2,
         y: (t + r) / 2 + 0.09,
         z: (p + h) / 2,
@@ -21954,7 +21956,7 @@ function Mh(e, t, n, r, i) {
         shape: I.PixCrack,
         rot: g + F.range(-0.3, 0.3),
       }),
-        i.glow != null &&
+        !i.authoredFire && i.glow != null &&
           a.vfx.beams.spawn(n, t + 0.16, p, m, r + 0.16, h, 0.2, i.glow, (i.life ?? 2.6) * 0.6, 0.85),
         i.erupt?.(m, r, h, _),
         Oh(e, l, m, h, (i.width ?? 1.9) * e.R, i.mul ?? 1, i.o));
@@ -22442,154 +22444,39 @@ var J = {
       dur: [1.2, 1.8, 3],
       tint: 16738858,
       cast(e) {
-        let t = e.run,
-          n = e.x,
-          r = e.y,
-          i = e.z;
-        for (let e = 0; e < 26; e++)
-          _h(
-            t,
-            n + F.range(-0.8, 0.8),
-            r + F.range(0, 1),
-            i + F.range(-0.8, 0.8),
-            F.range(-1, 1),
-            F.range(8, 14),
-            F.range(-1, 1),
-            0.7,
-            F.range(1, 1.6),
-            0.4,
-            1.2,
-          );
-        J.fire(t.audio, 1, 0.2);
-        let a = e.tier >= 1 ? 3 : 1;
-        for (let n = 0; n < a; n++)
-          t.later(0.18 + n * 0.22, () => {
-            let r = t.player.pos,
-              i = (8 + n * 3) * e.R;
-            t.vfx.ring(r.x, r.y, r.z, i, 13647898, 0.5, 0.12, L.Flames);
-            for (let e = 0; e < 30; e++) {
-              let n = (e / 30) * H;
-              _h(
-                t,
-                r.x + Math.cos(n) * 1.2,
-                r.y + 0.5,
-                r.z + Math.sin(n) * 1.2,
-                Math.cos(n) * i * 2.2,
-                F.range(1, 3),
-                Math.sin(n) * i * 2.2,
-                0.45,
-                1.3,
-                0.5,
-                3.5,
-              );
-            }
-            q(e, r.x, r.z, i, 1.3, { status: `burn`, statusChance: 0.9, knock: 4 });
-            for (let a = 0; a < 8; a++) {
-              let o = (a / 8) * H + n,
-                s = i * 0.6,
-                c = r.x + Math.cos(o) * s,
-                l = r.z + Math.sin(o) * s;
-              t.zones.add({
-                x: c,
-                z: l,
-                y: U(t, c, l),
-                r: 2.2,
-                life: 4,
-                tick: 0.2,
-                dmg: e.dmg * 0.18,
-                type: `fire`,
-                cls: `special`,
-                status: `burn`,
-                chance: 0.5,
-                slot: 8,
-                color: Y.fire,
-                fx: Kp(`flame-wheel`),
-              });
-            }
-            (t.shake(0.18), J.boom(t.audio, 0.6));
+        // Keep the original fire family's ring, crack, meteor and damage
+        // schedule. Only the presentation calls use the authored sequences.
+        const t=e.run, art=t.vfx.crafted.fireFamily, n=e.x, i=e.z;
+        J.fire(t.audio,1,.2);
+        const rings=e.tier>=1?3:1;
+        for(let index=0;index<rings;index++)t.later(.18+index*.22,()=>{
+          const p=t.player.pos, radius=(8+index*3)*e.R;
+          art.ultimateRing(p.x,p.y,p.z,radius,.6);
+          q(e,p.x,p.z,radius,1.3,{status:'burn',statusChance:.9,knock:4});
+          for(let j=0;j<8;j++){
+            const angle=j/8*H+index, x=p.x+Math.cos(angle)*radius*.6,z=p.z+Math.sin(angle)*radius*.6;
+            t.zones.add({x,z,y:U(t,x,z),r:2.2,life:4,tick:.2,dmg:e.dmg*.18,type:'fire',cls:'special',status:'burn',chance:.5,slot:8,color:Y.fire,authoredFire:true,fx:Kp('flame-wheel')});
+          }
+          t.shake(.18);J.boom(t.audio,.6);
+        });
+        if(e.tier>=1)Nh(e,n,i,6,{len:13*e.R,glow:Y.magma,mul:.9,o:{status:'burn',statusChance:.8},authoredFire:true});
+        if(e.tier>=2){
+          Ih(e,14,1.8,16,.55,(x,y,z,delay)=>{
+            art.meteor(x,y,z,delay);t.vfx.telegraph(x,y,z,3.4,Y.magma,delay);
+          },(x,y,z)=>{
+            art.meteorImpact(x,y,z);
+            q(e,x,z,3.6*e.R,1.2,{status:'burn',statusChance:.8});
+            t.shake(.12,x,z);J.boom(t.audio,.5);
           });
-        (e.tier >= 1 &&
-          Nh(e, n, i, 6, {
-            len: 13 * e.R,
-            glow: Y.magma,
-            mul: 0.9,
-            o: { status: `burn`, statusChance: 0.8 },
-            erupt: (e, n, r) => {
-              for (let i = 0; i < 2; i++)
-                _h(
-                  t,
-                  e + F.range(-0.3, 0.3),
-                  n + 0.4,
-                  r + F.range(-0.3, 0.3),
-                  0,
-                  F.range(6, 10),
-                  0,
-                  0.5,
-                  1.2,
-                  0.4,
-                  1.5,
-                );
-              Math.random() < 0.3 && vh(t, e, n + 1.2, r, 0.9);
-            },
-          }),
-          e.tier >= 2 &&
-            (Ih(
-              e,
-              14,
-              1.8,
-              16,
-              0.55,
-              (e, n, r, i) => {
-                (Eh(t, e, n, r, i, I.PixFlame, 2.4, 26, 7, 16734746),
-                  t.vfx.telegraph(e, n, r, 3.4, Y.magma, i));
-              },
-              (n, r, i) => {
-                t.vfx.ring(n, r, i, 3.6, 13647898, 0.4, 0.15, L.Flames);
-                for (let e = 0; e < 10; e++) {
-                  let a = (e / 10) * H;
-                  _h(t, n, r + 0.5, i, Math.cos(a) * 6, F.range(2, 5), Math.sin(a) * 6, 0.45, 1.1, 0.3, 3);
-                }
-                (yh(t, n, r + 0.5, i, 8, 6),
-                  G(t, n, i, 4, I.Soft, 2759188, 3),
-                  q(e, n, i, 3.6 * e.R, 1.2, { status: `burn`, statusChance: 0.8 }),
-                  t.shake(0.12, n, i),
-                  J.boom(t.audio, 0.5));
-              },
-            ),
-            t.later(2.55, () => {
-              let n = t.player.pos,
-                r = 13 * e.R;
-              (t.vfx.flash(n.x, n.y + 1, n.z, Y.fire, 4.5, 0.25),
-                K(t, n.x, n.y, n.z, r, [13647898, 16756794, 13647898], 3, 0.07, L.Flames));
-              for (let e = 0; e < 40; e++) {
-                let e = F.range(0, H),
-                  i = F.range(r, r * 2.4);
-                _h(
-                  t,
-                  n.x,
-                  n.y + 0.6,
-                  n.z,
-                  Math.cos(e) * i,
-                  F.range(2, 7),
-                  Math.sin(e) * i,
-                  0.6,
-                  1.5,
-                  0.4,
-                  2.5,
-                );
-              }
-              (Nh(e, n.x, n.z, 8, {
-                len: 15 * e.R,
-                glow: Y.magma,
-                mul: 0.6,
-                life: 3.5,
-                erupt: (e, n, r) => _h(t, e, n + 0.4, r, 0, F.range(5, 9), 0, 0.5, 1, 0.3, 1.5),
-              }),
-                q(e, n.x, n.z, r, 2, { status: `burn`, statusChance: 1, knock: 6 }),
-                t.shake(0.5),
-                J.boom(t.audio, 1.3),
-                J.fire(t.audio, 1.2, 0.2));
-            })));
+          t.later(2.55,()=>{
+            const p=t.player.pos,radius=13*e.R;
+            art.finale(p.x,p.y,p.z,radius);
+            for(let j=0;j<3;j++)t.later(j*.07,()=>art.ring(p.x,p.y,p.z,radius*(.55+j/2*.5),.5));
+            Nh(e,p.x,p.z,8,{len:15*e.R,glow:Y.magma,mul:.6,life:3.5,authoredFire:true});
+            q(e,p.x,p.z,radius,2,{status:'burn',statusChance:1,knock:6});
+            t.shake(.5);J.boom(t.audio,1.3);J.fire(t.audio,1.2,.2);
+          });
+        }
       },
     },
     7: {
@@ -28041,12 +27928,16 @@ var e_ = class {
           o = i.z[e],
           d = Ni[n.type];
         const continuousFire=n.type==='fire'&&n.slot!=null&&r.player.moves[n.slot]?.def.arch==='cone'&&r.player.moves[n.slot]?.active>0&&!u&&!m;
-        const authoredEmber=n.slot!=null&&r.player.moves[n.slot]?.def.key==='ember';
-        const authoredBreath=n.slot!=null&&r.player.moves[n.slot]?.def.key==='flamethrower';
-        if(authoredBreath)r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m));
+        const visualMove=n.slot!=null?r.player.moves[n.slot]?.def.key:null;
+        const authoredEmber=visualMove==='ember';
+        const authoredBreath=['flamethrower','dragon-breath','heat-wave'].includes(visualMove);
+        const authoredFamily=r.vfx.crafted.fireFamily.supports(visualMove)||n.slot===8&&[4,5,6].includes(r.player.speciesId);
+        if(visualMove==='heat-wave')r.vfx.crafted.fireFamily.impact('heat-wave',t,a,o);
+        else if(authoredBreath)r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),visualMove==='dragon-breath');
+        else if(authoredFamily)r.vfx.crafted.fireFamily.impact(visualMove||'ultimate',t,a,o);
         else if(!authoredEmber)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
-          !continuousFire && !authoredEmber && !authoredBreath && Math.random() < 0.6 &&
+          !continuousFire && !authoredEmber && !authoredBreath && !authoredFamily && Math.random() < 0.6 &&
             (u || this.hitFxN++ < Yg) &&
             r.vfx.burst(t, a, o, d, u ? 9 : 4, u ? 7 : 4, am(n.type), u ? 0.55 : 0.4, 0.3),
           m
@@ -30072,7 +29963,7 @@ var W_ = 0.45,
         ((r.life -= e), (r.tick -= e));
         t.vfx.crafted.field(r);
         let i = r.fx ? qp(r.fx) : null;
-        if (Math.random() < e * 6) {
+        if (Math.random() < e * 6 && !r.authoredFire) {
           let e = r.x + F.range(-r.r, r.r) * 0.6,
             n = r.z + F.range(-r.r, r.r) * 0.6;
           i?.zone
@@ -30592,6 +30483,7 @@ function Q_(e, t, n, r) {
         n.timer = 0.2; n.waitingForTarget = true;
         return;
       }
+      const drawGhost=o.key!=='flare-blitz';
       for (let n = 0; n < f; n++) {
         let r = (n - (f - 1) / 2) * 0.35,
           a = Math.cos(r),
@@ -30599,7 +30491,8 @@ function Q_(e, t, n, r) {
           s = t.x * a - t.z * o,
           l = t.x * o + t.z * a,
           p = m;
-        (e.ghostDash(v, i.pos.y, b, s, l, p, c), C.dash?.(e, v, i.pos.y, b, s, l, p, c));
+        if(drawGhost)e.ghostDash(v, i.pos.y, b, s, l, p, c);
+        C.dash?.(e, v, i.pos.y, b, s, l, p, c);
         for (let t of E.within(v + s * p * 0.5, b + l * p * 0.5, p * 0.55)) {
           let n = E.x[t] - v,
             r = E.z[t] - b,
@@ -36039,7 +35932,7 @@ function hx(e, t, n = 1) {
     dmg: e.dmg * n,
   });
 }
-function gx(e, t, n, r, i, a, o = null, s = 0, c, l = e.type) {
+function gx(e, t, n, r, i, a, o = null, s = 0, c, l = e.type, visuals) {
   e.run.zones.add({
     x: t,
     z: n,
@@ -36055,6 +35948,7 @@ function gx(e, t, n, r, i, a, o = null, s = 0, c, l = e.type) {
     slot: e.slot,
     color: e.col,
     fx: c ? Kp(c) : void 0,
+    ...visuals,
   });
 }
 var _x = (e, t = {}) => ({ type: e.type2, ...t });
@@ -36431,164 +36325,50 @@ var jx = [
       fs(e, 0.16, 0.5);
     },
     cast(e) {
-      let t = e.run,
-        n = t.player.pos,
-        r = Math.min(9, Math.hypot(e.tx - n.x, e.tz - n.z)),
-        i = n.x + e.ax * r,
-        a = n.z + e.az * r,
-        o = (n, r, i, a, o) => {
-          let s = 0,
-            c = 0,
-            l = F.range(0, H);
-          (t.vfx.groundN.spawn({
-            x: n,
-            y: U(t, n, r) + 0.1,
-            z: r,
-            life: a,
-            size: 3 * i,
-            endSize: 6 * i,
-            color: 6957594,
-            shape: I.Swirl,
-            spin: -7,
-          }),
-            W(
-              t,
-              a,
-              (u, d) => {
-                let f = u / a,
-                  p = (2.4 + (o ? f * 1.6 : 0)) * i * e.R,
-                  m = U(t, n, r);
-                for (let e = 0; e < 3; e++) {
-                  let i = u * 9 + e * 2.1 + l,
-                    a = p * (0.35 + e * 0.25);
-                  _h(
-                    t,
-                    n + Math.cos(i) * a,
-                    m + 0.3 + e * 0.7,
-                    r + Math.sin(i) * a,
-                    -Math.sin(i) * 4,
-                    F.range(2, 4),
-                    Math.cos(i) * 4,
-                    0.35,
-                    0.8 + e * 0.25,
-                    0.3,
-                    2,
-                  );
-                }
-                if (
-                  (Math.random() < 0.15 && vh(t, n, m + 2.5, r, 1.1, 8022628, 0.8),
-                  t.vfx.staticRing(n, m, r, p, 13647898, 0.5, L.Flames),
-                  kh(t, n, r, p + 3, 22 * d),
-                  (s -= d),
-                  s <= 0 &&
-                    ((s = 0.25),
-                    q(e, n, r, p, 0.22, {
-                      status: `burn`,
-                      statusChance: 0.25,
-                      knock: 0,
-                      silent: Math.random() < 0.6,
-                    })),
-                  o && u > 0.9 && ((c -= d), c <= 0))
-                ) {
-                  c = 0.2;
-                  for (let i = 0; i < 3; i++) {
-                    let a = u * 4 + (i / 3) * H,
-                      o = Math.cos(a),
-                      s = Math.sin(a);
-                    for (let e = 0; e < 4; e++)
-                      _h(
-                        t,
-                        n + o * p,
-                        m + 1,
-                        r + s * p,
-                        o * F.range(9, 13),
-                        F.range(0, 2),
-                        s * F.range(9, 13),
-                        0.4,
-                        0.9,
-                        0.3,
-                        2.5,
-                      );
-                    for (let i of t.enemies.within(n + o * (p + 3), r + s * (p + 3), 2.6 * e.R))
-                      Dh(e, i, 0.25, {
-                        status: `burn`,
-                        statusChance: 0.3,
-                        dirX: o,
-                        dirZ: s,
-                        knock: 1,
-                        silent: !0,
-                      });
-                  }
-                }
-              },
-              () => {
-                let a = U(t, n, r),
-                  s = (o ? 5 : 3) * i * e.R;
-                t.vfx.ring(n, a, r, s, 13647898, 0.5, 0.12, L.Flames);
-                for (let e = 0; e < 26; e++) {
-                  let i = (e / 26) * H;
-                  _h(
-                    t,
-                    n,
-                    a + 0.6,
-                    r,
-                    Math.cos(i) * s * 2.4,
-                    F.range(2, 6),
-                    Math.sin(i) * s * 2.4,
-                    0.5,
-                    1.3,
-                    0.4,
-                    3,
-                  );
-                }
-                (yh(t, n, a + 1, r, 12, 7),
-                  G(t, n, r, s * 1.2, I.Soft, 3807760, 2.5),
-                  q(e, n, r, s, o ? 1.8 : 0.9, { status: `burn`, statusChance: 0.8, knock: 4 }),
-                  o && gx(e, n, r, s * 0.7, 2.5, 0.12, `burn`, 0.5, `flame-wheel`),
-                  t.shake(o ? 0.25 : 0.1, n, r),
-                  M(t.audio, o ? 0.8 : 0.4),
-                  fs(t.audio, 0.18, 0.6));
-              },
-            ));
-        };
-      for (let r = 0; r < 8; r++)
-        _h(t, n.x + e.ax * r, n.y + 1, n.z + e.az * r, e.ax * 6, 1, e.az * 6, 0.25, 0.8);
-      t.later(0.3, () => o(i, a, 1, 2.6 * e.D, !0));
-      for (let r = 0; r < mx(e, 1, 2); r++) {
-        let i = Math.atan2(e.az, e.ax) + (r ? -1 : 1) * 0.9;
-        t.later(0.45 + r * 0.1, () => o(n.x + Math.cos(i) * 7, n.z + Math.sin(i) * 7, 0.65, 1.8 * e.D, !1));
+      const t=e.run,n=t.player.pos,art=t.vfx.crafted.fireFamily;
+      const r=Math.min(9,Math.hypot(e.tx-n.x,e.tz-n.z)),i=n.x+e.ax*r,a=n.z+e.az*r;
+      const vortex=(x,z,scale,duration,main)=>{
+        let damageTick=0,spokeTick=0;const key={};
+        art.play('seal',x,U(t,x,z)+.15,z,6*scale,{life:.28,mode:1,height:8*scale,priority:2});
+        W(t,duration,(age,dt)=>{
+          const phase=age/duration,radius=(2.4+(main?phase*1.6:0))*scale*e.R,y=U(t,x,z);
+          art.fusionVortex(key,x,y+.12,z,radius,main);
+          kh(t,x,z,radius+3,22*dt);
+          damageTick-=dt;
+          if(damageTick<=0){damageTick=.25;q(e,x,z,radius,.22,{status:'burn',statusChance:.25,knock:0,silent:Math.random()<.6});}
+          if(main&&age>.9&&(spokeTick-=dt)<=0){
+            spokeTick=.2;
+            for(let j=0;j<3;j++){
+              const angle=age*4+j/3*H,dx=Math.cos(angle),dz=Math.sin(angle);
+              art.fusionSpoke(x,y,z,dx,dz,radius);
+              for(const target of t.enemies.within(x+dx*(radius+3),z+dz*(radius+3),2.6*e.R))
+                Dh(e,target,.25,{status:'burn',statusChance:.3,dirX:dx,dirZ:dz,knock:1,silent:true});
+            }
+          }
+        },()=>{
+          const y=U(t,x,z),radius=(main?5:3)*scale*e.R;
+          art.fusionBurst(x,y,z,radius,main);
+          q(e,x,z,radius,main?1.8:.9,{status:'burn',statusChance:.8,knock:4});
+          if(main){
+            gx(e,x,z,radius*.7,2.5,.12,'burn',.5,'flame-wheel',e.type,{authoredFire:true});
+          }
+          t.shake(main?.25:.1,x,z);M(t.audio,main?.8:.4);fs(t.audio,.18,.6);
+        });
+      };
+      art.play('charge',n.x,n.y+1,n.z,4,{life:.25});
+      t.later(.3,()=>vortex(i,a,1,2.6*e.D,true));
+      for(let j=0;j<mx(e,1,2);j++){
+        const angle=Math.atan2(e.az,e.ax)+(j?-1:1)*.9;
+        t.later(.45+j*.1,()=>vortex(n.x+Math.cos(angle)*7,n.z+Math.sin(angle)*7,.65,1.8*e.D,false));
       }
-      let s = 0;
-      (W(t, 0.9, (n, r) => {
-        let o = t.player.pos,
-          c = o.y + 1,
-          l = i - o.x,
-          u = a - o.z,
-          d = Math.hypot(l, u) || 1,
-          f = l / d,
-          p = u / d;
-        for (let e = 0; e < 3; e++) {
-          let e = F.range(12, 18);
-          _h(
-            t,
-            o.x + f * 0.8,
-            c,
-            o.z + p * 0.8,
-            f * e + F.range(-1.5, 1.5),
-            F.range(-0.5, 1.5),
-            p * e + F.range(-1.5, 1.5),
-            d / e,
-            F.range(0.9, 1.4),
-            0.6,
-            0.5,
-          );
-        }
-        ((s -= r),
-          s <= 0 &&
-            ((s = 0.1), xx(e, o.x, o.z, i, a, 1.4 * e.R, 0.18, { status: `burn`, statusChance: 0.15 })));
-      }),
-        fs(t.audio, 0.14, 0.9, 0.3),
-        ds(t.audio, 8, 1.2, 0.05, 0.3));
+      let damageTick=0;const feedKey={};
+      W(t,.9,(_age,dt)=>{
+        const p=t.player.pos,dx=i-p.x,dz=a-p.z,d=Math.hypot(dx,dz)||1;
+        t.vfx.crafted.cone(feedKey,p.x,p.y+1,p.z,dx/d,dz/d,d,'fire',.75,true,true);
+        damageTick-=dt;
+        if(damageTick<=0){damageTick=.1;xx(e,p.x,p.z,i,a,1.4*e.R,.18,{status:'burn',statusChance:.15});}
+      });
+      fs(t.audio,.14,.9,.3);ds(t.audio,8,1.2,.05,.3);
     },
   },
   {
@@ -44155,11 +43935,9 @@ var eS = [
           i = U(t, n, r),
           a = 4.5 * e.R;
         (t.vfx.telegraph(n, i, r, a, 15259832, 0.55),
-          Eh(t, n, i, r, 0.55, I.PixStar, 3.2, 26, 6, 16773792),
+          t.vfx.crafted.fireFamily.completion.starFall(n, i, r, 0.55),
           t.later(0.55, () => {
-            (t.vfx.flash(n, i + 1, r, 16773792, 4.5, 0.2),
-              K(t, n, i, r, a, [15259832, 16773792, 14207144], 3, 0.07, L.Plain),
-              G(t, n, r, a * 0.8, I.PixCrack, 16777215, 2),
+            (t.vfx.crafted.fireFamily.completion.starImpact(n, i, r, a),
               q(e, n, r, a, 2.2, { knock: 5 }));
             let o = 8 + mx(e, 2, 6);
             for (let t = 0; t < o; t++) {
@@ -44179,7 +43957,7 @@ var eS = [
                   shape: I.PixStar,
                   size: 0.9,
                   color: 16773792,
-                  fx: Kp(`swift`),
+                  fx: Kp(`completion-star`),
                 },
                 0.6,
               );
@@ -44209,53 +43987,15 @@ var eS = [
           t,
           i,
           (i, s) => {
-            let c = U(t, n, r) + 5,
-              l = Math.min(1, i / 0.4);
-            if (
-              (t.vfx.add.spawn({
-                x: n,
-                y: c,
-                z: r,
-                life: 0.08,
-                size: 3.2 * l,
-                endSize: 2.6 * l,
-                color: px(16756794),
-                shape: I.Soft,
-                glow: 0,
-              }),
-              _h(
-                t,
-                n + F.range(-0.6, 0.6),
-                c + F.range(-0.6, 0.6),
-                r + F.range(-0.6, 0.6),
-                0,
-                F.range(1, 3),
-                0,
-                0.3,
-                1.6 * l,
-                0.6,
-                2,
-              ),
-              (o -= s),
-              o <= 0)
-            ) {
+            let c = U(t, n, r) + 5;
+            t.vfx.crafted.fireFamily.sun(e, n, c, r, i);
+            if (((o -= s), o <= 0)) {
               o = 0.12;
               let i = bx(n, r, a, 0.5),
                 s = U(t, i.x, i.z);
-              (t.vfx.norm.spawn({
-                x: i.x,
-                y: c - 0.5,
-                z: i.z,
-                vy: -(c - s) / 0.3,
-                life: 0.3,
-                size: 1,
-                endSize: 0.8,
-                color: 16777215,
-                shape: I.PixFlame,
-              }),
+              (t.vfx.crafted.fireFamily.sunRain(i.x, c - 0.5, i.z, s, n, r),
                 t.later(0.3, () => {
-                  for (let e = 0; e < 4; e++)
-                    _h(t, i.x, s + 0.3, i.z, F.range(-3, 3), F.range(2, 4), F.range(-3, 3), 0.35, 0.8);
+                  t.vfx.crafted.fireFamily.sunImpact(i.x, s, i.z, 1.8 * e.R);
                   q(e, i.x, i.z, 1.8 * e.R, 0.3, {
                     status: `burn`,
                     statusChance: 0.3,
@@ -44267,24 +44007,7 @@ var eS = [
           },
           () => {
             let i = U(t, n, r);
-            (t.vfx.flash(n, i + 3, r, 16756794, 4.5, 0.25),
-              t.vfx.ring(n, i, r, a, 13647898, 0.5, 0.12, L.Flames));
-            for (let e = 0; e < 30; e++) {
-              let o = (e / 30) * H;
-              _h(
-                t,
-                n,
-                i + 1,
-                r,
-                Math.cos(o) * a * 2.2,
-                F.range(1, 5),
-                Math.sin(o) * a * 2.2,
-                0.5,
-                1.3,
-                0.4,
-                3,
-              );
-            }
+            t.vfx.crafted.fireFamily.sunBurst(n, i, r, a);
             (q(e, n, r, a, 2, { status: `burn`, statusChance: 0.8, knock: 4 }),
               t.shake(0.25, n, r),
               M(t.audio, 0.8),
@@ -44873,7 +44596,8 @@ var eS = [
       4.4,
       (e) => {
         let t = e.run;
-        (ks(t.audio, 0.6, 70, 0.14),
+        (t.vfx.crafted.fireFamily.completion.dragonStart(t.player.pos.x + e.ax * 2.8, t.player.pos.y, t.player.pos.z + e.az * 2.8),
+          ks(t.audio, 0.6, 70, 0.14),
           $x(
             e,
             6 + mx(e, 2, 6),
@@ -44881,30 +44605,13 @@ var eS = [
             12,
             0.5,
             (e, n, r, i) => {
-              (Eh(t, e, n, r, i, I.PixDragonFire, 2.4, 24, 6, 9067263),
+              (t.vfx.crafted.fireFamily.completion.dragonFall(e, n, r, i),
                 t.vfx.telegraph(e, n, r, 3, 9067263, i));
             },
             (n, r, i) => {
-              for (let e = 0; e < 10; e++) {
-                let a = (e / 10) * H;
-                t.vfx.norm.spawn({
-                  x: n,
-                  y: r + 0.5,
-                  z: i,
-                  vx: Math.cos(a) * 5,
-                  vy: F.range(2, 5),
-                  vz: Math.sin(a) * 5,
-                  drag: 2,
-                  life: 0.5,
-                  size: 1,
-                  endSize: 0.4,
-                  color: 16777215,
-                  shape: I.PixDragonFire,
-                });
-              }
-              (t.vfx.ring(n, r, i, 3, 6961880, 0.35, 0.2, L.Runes),
+              (t.vfx.crafted.fireFamily.completion.dragonImpact(n, r, i),
                 q(e, n, i, 3 * e.R, 0.95, { knock: 2 }),
-                gx(e, n, i, 1.8 * e.R, 1.6, 0.12, null, 0, `dragon-breath`),
+                gx(e, n, i, 1.8 * e.R, 1.6, 0.12, null, 0, `completion-dragon-floor`),
                 M(t.audio, 0.4));
             },
           ));
@@ -45212,43 +44919,7 @@ var eS = [
           1 * e.D,
           (o, s) => {
             let c = t.player.pos;
-            for (let e = 0; e < 4; e++) {
-              let a = (Math.random() - 0.5) * 1.1,
-                o = Math.cos(a),
-                s = Math.sin(a),
-                l = n * o - r * s,
-                u = n * s + r * o,
-                d = F.range(12, 18);
-              e % 2
-                ? _h(
-                    t,
-                    c.x + n,
-                    c.y + 1,
-                    c.z + r,
-                    l * d,
-                    F.range(0, 2),
-                    u * d,
-                    i / d,
-                    F.range(1, 1.6),
-                    0.5,
-                    0.4,
-                  )
-                : t.vfx.norm.spawn({
-                    x: c.x + n,
-                    y: c.y + 1,
-                    z: c.z + r,
-                    vx: l * d,
-                    vy: F.range(0, 2),
-                    vz: u * d,
-                    drag: 0.4,
-                    life: i / d,
-                    size: 0.6,
-                    endSize: 0.5,
-                    color: 16777215,
-                    shape: I.PixLeaf,
-                    spin: 8,
-                  });
-            }
+            t.vfx.crafted.fireFamily.wildfire(e, c.x, c.y, c.z, n, r, i, o);
             if (((a -= s), a <= 0)) {
               a = 0.12;
               for (let a of t.enemies.within(c.x, c.z, i)) {
@@ -45269,18 +44940,22 @@ var eS = [
           },
           () => {
             let a = t.player.pos;
-            for (let t = 1; t <= 3; t++)
+            t.vfx.crafted.fireFamily.wildfireEnd(e);
+            for (let j = 1; j <= 3; j++) {
               gx(
                 e,
-                a.x + n * t * i * 0.28,
-                a.z + r * t * i * 0.28,
+                a.x + n * j * i * 0.28,
+                a.z + r * j * i * 0.28,
                 2.4 * e.R,
                 2,
                 0.14,
                 `burn`,
                 0.4,
                 `flame-wheel`,
+                e.type,
+                {authoredFire:true, hideGroundVisual:true},
               );
+            }
           },
         ),
           fs(t.audio, 0.16, 1),
@@ -45602,12 +45277,12 @@ var eS = [
           r = 11 * e.R,
           i = e.ax,
           a = e.az;
-        for (let e = 0; e < 16; e++) {
+        for (let j = 0; j < 16; j++) {
           let e = (Math.random() - 0.5) * 1.1,
             o = F.range(8, 12),
             s = i * Math.cos(e) - a * Math.sin(e),
             c = i * Math.sin(e) + a * Math.cos(e);
-          t.vfx.norm.spawn({
+          t.vfx.crafted.fireFamily.completion.charmHeart({
             x: n.x,
             y: n.y + 1.2,
             z: n.z,
@@ -45621,7 +45296,7 @@ var eS = [
             color: 16777215,
             shape: I.PixHeart,
             spin: 3,
-          });
+          }, j);
         }
         for (let o of t.enemies.within(n.x, n.z, r)) {
           let r = t.enemies.x[o] - n.x,
@@ -45634,26 +45309,7 @@ var eS = [
             let n = 0;
             (W(t, 0.8 * e.D, (o, s) => {
               let c = t.player.pos;
-              for (let e = 0; e < 3; e++) {
-                let e = (Math.random() - 0.5) * 1.5,
-                  n = F.range(12, 17),
-                  o = i * Math.cos(e) - a * Math.sin(e),
-                  s = i * Math.sin(e) + a * Math.cos(e);
-                t.vfx.norm.spawn({
-                  x: c.x + i,
-                  y: c.y + 1,
-                  z: c.z + a,
-                  vx: o * n,
-                  vy: F.range(-0.5, 1.5),
-                  vz: s * n,
-                  life: r / n,
-                  size: 1,
-                  endSize: 1.8,
-                  color: 16777215,
-                  shape: I.PixDragonFire,
-                  spin: 3,
-                });
-              }
+              t.vfx.crafted.fireFamily.completion.charmBreath(e, c.x, c.y + 1, c.z, i, a, r);
               if (((n -= s), n <= 0)) {
                 n = 0.1;
                 for (let n of t.enemies.within(c.x, c.z, r)) {
@@ -45671,24 +45327,7 @@ var eS = [
     ),
   ];
 function rS(e, t, n, r, i, a) {
-  let o = Object.values(Ni);
-  for (let s = 0; s < i; s++) {
-    let i = bx(t, r, a);
-    e.run.vfx.norm.spawn({
-      x: i.x,
-      y: n + F.range(0, 3),
-      z: i.z,
-      vx: F.pick([-1, 1]) * F.range(0, 4),
-      vy: 0,
-      vz: 0,
-      life: F.range(0.15, 0.4),
-      size: F.range(0.3, 1.2),
-      endSize: F.range(0.3, 1.2),
-      color: F.pick(o),
-      shape: I.Square,
-      rot: 0,
-    });
-  }
+  e.run.vfx.crafted.fireFamily.completion.glitch(t, n, r, a);
 }
 var iS = {
     key: `fu-missingno`,
@@ -53122,9 +52761,10 @@ var iT = Math.PI / 180,
           e.meta.profile.settings.ultPose !== !1 &&
           e.ui.ultCutIn(t.speciesId, Zh(n, r), Ni[n.type]),
         d || (e.ultLook(n.tint, a + 0.3), e.audio.duck(0.35, a + 0.6), J.start(e.audio)),
-        (n.sfx ?? (() => {}))(e.audio, u),
-        e.vfx.ring(u.x, u.y, u.z, 4.5, Ni[n.type], 0.5, 0.9));
-      for (let t = 0; t < 24; t++) {
+        (n.sfx ?? (() => {}))(e.audio, u));
+      const sparks = [4,5,6].includes(t.speciesId) ? 0 : 24;
+      if (sparks) e.vfx.ring(u.x, u.y, u.z, 4.5, Ni[n.type], 0.5, 0.9);
+      for (let t = 0; t < sparks; t++) {
         let r = (t / 24) * Math.PI * 2,
           i = 4.5,
           a = 0.35;
@@ -55160,6 +54800,7 @@ var GT = 15,
         // warm their starting kit and loadout, one texture per loading frame.
         const kit=this.player.roster?.kit??[];
         const keys=new Set(this.coop||kit.includes('mimic')?['ember','fire-spin','flamethrower']:kit);
+        if(this.coop||kit.includes('mimic')||[4,5,6].includes(this.player.speciesId))keys.add('fire-ultimate');
         for(const move of this.player.moves)if(move)keys.add(move.def.key);
         for(const key of keys){
           const uploaded=await this.vfx.crafted.prepareMoveTexture(key);

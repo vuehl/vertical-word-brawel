@@ -45,7 +45,7 @@ void main(){
   }
   gl_Position=projectionMatrix*viewMatrix*vec4(world,1.);
   float col=mod(frameIndex,8.),row=floor(frameIndex/8.);
-  vUv=(vec2(col,7.-row)+mix(vec2(.5/256.),vec2(1.-.5/256.),frameUv))/8.;
+  vUv=(vec2(col,7.-row)+mix(vec2(.5/${atlas.tile}.),vec2(1.-.5/${atlas.tile}.),frameUv))/8.;
   vFrameUv=frameUv;vAlpha=iStyle.x;
 }`;
 const fragment=`
@@ -127,19 +127,19 @@ export class HandDrawnFireSpin{
     const bodies=Math.min(emitters.length,this.limit),events=Math.min(this.events.length,this.limit-bodies);
     let groundBudget=this.limit-bodies-events;
     for(let i=0;i<bodies&&groundBudget>0;i++,groundBudget--){
-      const e=emitters[i],birth=clamp(e.age/.12),fade=clamp(e.life/.10),growth=.72+.28*birth;
+      const e=emitters[i],birth=clamp(e.age/.12),fade=clamp(e.life/(e.finite?(e.fadeOut||.10):.10)),growth=.72+.28*birth;
       const size=e.radius*2.4*growth;
       push(e,'dust',size,size,.18,birth*fade*.78);
     }
     for(let i=0;i<bodies&&groundBudget>0;i++,groundBudget--){
-      const e=emitters[i],birth=clamp(e.age/.12),fade=clamp(e.life/.10),size=e.radius*1.3*(.72+.28*birth);
+      const e=emitters[i],birth=clamp(e.age/.12),fade=clamp(e.life/(e.finite?(e.fadeOut||.10):.10)),size=e.radius*1.3*(.72+.28*birth);
       push(e,'contact',size,size,.5,birth*fade*.28);
     }
     for(let i=0;i<events;i++){
       const e=this.events[i];push(e,e.clip,e.size,e.size,e.clip==='cast'?.5:.22,1);
     }
     for(let i=0;i<bodies;i++){
-      const e=emitters[i],birth=clamp(e.age/.12),fade=clamp(e.life/.10),growth=.72+.28*birth;
+      const e=emitters[i],birth=clamp(e.age/.12),fade=clamp(e.life/(e.finite?(e.fadeOut||.10):.10)),growth=.72+.28*birth;
       // Frames already contain the source aspect ratio inside a square tile.
       // Uniform scale avoids the old flight-height / impact-height mismatch.
       const size=e.radius*2.4*growth;

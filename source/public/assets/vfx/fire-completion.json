@@ -1,0 +1,100 @@
+{
+  "tile": 384,
+  "columns": 8,
+  "rows": 6,
+  "padding": 5,
+  "clips": {
+    "dragon": {
+      "first": 0,
+      "count": 16,
+      "source": "形意拳_技能1_伏龙探爪/long",
+      "frames": [
+        "long_000.png",
+        "long_001.png",
+        "long_002.png",
+        "long_003.png",
+        "long_004.png",
+        "long_005.png",
+        "long_006.png",
+        "long_007.png",
+        "long_009.png",
+        "long_010.png",
+        "long_011.png",
+        "long_012.png",
+        "long_013.png",
+        "long_014.png",
+        "long_015.png",
+        "long_016.png"
+      ],
+      "crop": {
+        "left": 19,
+        "top": 0,
+        "width": 494,
+        "height": 460
+      }
+    },
+    "goldBurst": {
+      "first": 16,
+      "count": 11,
+      "source": "如来神掌-技能9-裂地震波/hit",
+      "frames": [
+        "1_00.png",
+        "1_01.png",
+        "1_02.png",
+        "1_03.png",
+        "1_04.png",
+        "1_05.png",
+        "1_06.png",
+        "1_07.png",
+        "1_08.png",
+        "1_09.png",
+        "1_10.png"
+      ],
+      "crop": {
+        "left": 84,
+        "top": 53,
+        "width": 473,
+        "height": 436
+      }
+    },
+    "gate": {
+      "first": 27,
+      "count": 12,
+      "source": "如来神掌-技能4-天光降世/施法",
+      "frames": [
+        "shifa_00012.png",
+        "shifa_00013.png",
+        "shifa_00015.png",
+        "shifa_00016.png",
+        "shifa_00018.png",
+        "shifa_00019.png",
+        "shifa_00021.png",
+        "shifa_00022.png",
+        "shifa_00024.png",
+        "shifa_00025.png",
+        "shifa_00027.png",
+        "shifa_00028.png"
+      ],
+      "crop": {
+        "left": 43,
+        "top": 48,
+        "width": 552,
+        "height": 523
+      }
+    },
+    "star": {
+      "first": 39,
+      "count": 1,
+      "source": "Existing game symbol, vector reconstruction",
+      "width": 512,
+      "height": 512
+    },
+    "heart": {
+      "first": 40,
+      "count": 1,
+      "source": "Existing game symbol, vector reconstruction",
+      "width": 512,
+      "height": 512
+    }
+  }
+}

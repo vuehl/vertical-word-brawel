@@ -31,6 +31,18 @@ export async function reviewStylizedVFX(page,dir){
   });
   assert.equal(report.base.camera.distance,42);assert.equal(report.base.camera.fov,37);assert.ok(Math.abs(report.base.camera.pitch-Math.PI*.3)<1e-9);
   assert.equal(report.base.atlas.width,1024);assert.ok(report.base.atlas.partial>100);assert.ok(report.base.maps.every(p=>p==='painted-toy'));assert.equal(report.base.pointLights,4);assert.ok(report.base.volumeVertices>800);
+  if(process.argv.includes('--fire-family')){
+    const {reviewFireFamily}=await import('./fire-family-regression.mjs');return reviewFireFamily(page,dir,moves);
+  }
+  if(process.argv.includes('--fire-family-media')){
+    const {reviewFireFamilyMedia}=await import('./fire-family-media.mjs');return reviewFireFamilyMedia(page,dir,moves);
+  }
+  if(process.argv.includes('--fire-fusions')){
+    const {reviewFireFusions}=await import('./fire-fusion-regression.mjs');return reviewFireFusions(page,dir);
+  }
+  if(process.argv.includes('--fire-completion')){
+    const {reviewFireCompletion}=await import('./fire-completion-regression.mjs');return reviewFireCompletion(page,dir);
+  }
   if(process.argv.includes('--lighting')){
     const {reviewLighting}=await import('./lighting-regression.mjs');return reviewLighting(page,dir);
   }
@@ -103,9 +115,9 @@ export async function reviewStylizedVFX(page,dir){
   assert.ok(report.moves.filter(m=>m.damage>0).length>=8,'Actual skills must still damage their targets');
   for(const species of [4,5,6,16,17,18,58,59,132]){
     await page.evaluate(async species=>{if(!await app.startRun({species:[4,5,6].includes(species)?4:species===132?132:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Could not start form '+species);app.halted=true;app.run.player.setSpecies(species);vfxSetup();await Promise.all([...app.run.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));app.run.ult.charge=1;app.run.ult.fire();vfxAdvance(14);},species);
-    const state=await page.evaluate(()=>{const r=app.run;return {species:r.player.speciesId,name:r.ult.name,active:r.ult.active,volumes:r.vfx.crafted.entries.map(e=>({mode:e.mode,type:e.type,age:e.age,x:e.x,z:e.z})),particles:r.vfx.add.n+r.vfx.norm.n,damage:r.stats.damage,vertices:r.vfx.crafted.mesh.count,camera:r.camDist,rings:r.vfx.rings.n};});
+    const state=await page.evaluate(()=>{const r=app.run;return {species:r.player.speciesId,name:r.ult.name,active:r.ult.active,authoredFire:r.vfx.crafted.fireFamily.mesh.count,volumes:r.vfx.crafted.entries.map(e=>({mode:e.mode,type:e.type,age:e.age,x:e.x,z:e.z})),particles:r.vfx.add.n+r.vfx.norm.n,damage:r.stats.damage,vertices:r.vfx.crafted.mesh.count,camera:r.camDist,rings:r.vfx.rings.n};});
     if(species===17){assert.equal(state.name,'卷着打转');assert.ok(state.rings>0);}
-    assert.equal(state.species,species);assert.equal(state.camera,42);assert.ok(state.particles+state.volumes.length>0);if([4,5,6].includes(species))assert.ok(state.volumes.some(v=>v.mode===3));if([16,58].includes(species))assert.ok(state.volumes.some(v=>v.mode===1));
+    assert.equal(state.species,species);assert.equal(state.camera,42);assert.ok(state.particles+state.volumes.length+state.authoredFire>0);if([4,5,6].includes(species))assert.ok(state.authoredFire>0);if([16,58].includes(species))assert.ok(state.volumes.some(v=>v.mode===1));
     report.ultimates.push(state);if([4,6,16,17,58].includes(species))await screenshot('ultimate-'+species);
   }
   // Replay the real moving wind ultimate: these frames are the actual game

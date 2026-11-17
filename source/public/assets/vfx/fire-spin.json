@@ -1,7 +1,7 @@
 {
   "columns": 8,
   "rows": 8,
-  "tile": 256,
+  "tile": 384,
   "padding": 4,
   "clips": {
     "vortex": {

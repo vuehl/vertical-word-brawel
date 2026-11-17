@@ -17,7 +17,7 @@ void main(){
   else p.xy+=heading*local.x+vec2(-heading.y,heading.x)*local.y;
   gl_Position=projectionMatrix*p;
   float col=mod(iFrame.y,8.),row=floor(iFrame.y/8.);
-  vUv=(vec2(col,5.-row)+mix(vec2(.5/192.),vec2(1.-.5/192.),uv))/vec2(8.,6.);
+  vUv=(vec2(col,5.-row)+mix(vec2(.5/${atlas.tile}.),vec2(1.-.5/${atlas.tile}.),uv))/vec2(8.,6.);
   vAlpha=iHeading.w;
 }`;
 const fragment=`
@@ -34,7 +34,7 @@ void main(){
     edge*=smoothstep(0.,.1,local.y)*(1.-smoothstep(.9,1.,local.y));
   }else if(vShot>.5){
     // Give the rounded painted head more room while shortening its tail.
-    float x=vUv.x*8.,pad=.5/192.;
+    float x=vUv.x*8.,pad=.5/${atlas.tile}.;
     sampleUv.x=(floor(x)+pad+sqrt(clamp((fract(x)-pad)/(1.-2.*pad),0.,1.))*(1.-2.*pad))/8.;
   }
   vec4 ink=texture2D(map,sampleUv);float alpha=ink.a*vAlpha*edge;if(alpha<.008)discard;

@@ -37,7 +37,12 @@ function paint(c,shape,color){
     case 143:c.fillStyle='#ffffff';path(c,c=>{c.moveTo(-3,-25);c.bezierCurveTo(-4,-9,-14,-2,-10,9);c.bezierCurveTo(-6,22,11,19,12,7);c.quadraticCurveTo(13,-1,-3,-25);});c.fillStyle='#bbc5d0';ellipse(c,2,10,5,3);break;
     case 140:c.strokeStyle=color+'b0';c.lineWidth=1.3;for(let j=0;j<5;j++){c.save();c.rotate(j*TAU/5);path(c,c=>{c.moveTo(-13,-24);c.bezierCurveTo(22,-18,-25,2,4,12);c.quadraticCurveTo(20,22,25,9);},false);c.restore();}break;
     case 139:{const g=c.createLinearGradient(-14,-28,7,29);g.addColorStop(0,color+'00');g.addColorStop(.45,color+'8a');g.addColorStop(.8,color);g.addColorStop(1,color+'bb');c.fillStyle=g;path(c,c=>{c.moveTo(-6,29);c.bezierCurveTo(-29,20,-22,-3,8,-29);c.bezierCurveTo(-1,-8,23,0,13,16);c.quadraticCurveTo(8,28,-6,29);});break;}
-    case 0:{c.fillStyle=color;path(c,c=>{for(let j=0;j<28;j++){const a=j/28*TAU,r=23+Math.sin(j*2.4)*3;c.lineTo(Math.cos(a)*r,Math.sin(a)*r);}c.closePath();});break;}
+    case 0:{
+      // Soft is illumination, not an opaque, outlined ground sticker.
+      const glow=c.createRadialGradient(0,0,1,0,0,29);
+      glow.addColorStop(0,color+'9c');glow.addColorStop(.25,color+'70');glow.addColorStop(.62,color+'24');glow.addColorStop(1,color+'00');
+      c.fillStyle=glow;ellipse(c,0,0,29,29);break;
+    }
     case 1:star(c,9,28,11);break;
     case 2:case 25:star(c,4,29,5);c.fillStyle='#fff9e6';star(c,4,16,3);break;
     case 3:c.lineWidth=3;path(c,c=>c.arc(0,0,24,0,TAU),false);break;
@@ -85,7 +90,7 @@ export async function createStylizedEffectAtlas(){
       c.clearRect(0,0,EFFECT_CELL,EFFECT_CELL);c.save();c.translate(EFFECT_CELL*.5,EFFECT_CELL*.5);c.scale(EFFECT_CELL/64,EFFECT_CELL/64);
       if(coin){c.fillStyle='#edc569';ellipse(c,0,0,i===54?7:24,26);c.strokeStyle='#fff0b4';c.lineWidth=3;path(c,c=>c.ellipse(0,0,i===54?3:18,20,0,0,TAU),false);}
       else paint(c,shape,color);c.restore();
-      if(!coin){
+      if(!coin&&shape!==0&&shape!==139){
         ic.clearRect(0,0,EFFECT_CELL,EFFECT_CELL);ic.globalCompositeOperation='source-over';
         for(const [x,y] of [[-2,0],[2,0],[0,-2],[0,2],[-1,-1],[1,1]])ic.drawImage(cell,x,y);
         ic.globalCompositeOperation='source-in';ic.fillStyle='#27334b';ic.fillRect(0,0,EFFECT_CELL,EFFECT_CELL);
@@ -94,7 +99,7 @@ export async function createStylizedEffectAtlas(){
         for(let y=70;y<122;y+=9)for(let x=7+(y%2)*4;x<122;x+=9){ic.beginPath();ic.arc(x,y,1.1,0,TAU);ic.fill();}
         ic.strokeStyle='#ffffff66';ic.lineWidth=.9;for(let j=0;j<9;j++){const x=13+j*11;ic.beginPath();ic.moveTo(x,19+j%3*9);ic.lineTo(x-4,30+j%3*9);ic.stroke();}
         out.drawImage(ink,i%8*EFFECT_CELL,Math.floor(i/8)*EFFECT_CELL);
-      }else out.drawImage(cell,i%8*EFFECT_CELL,Math.floor(i/8)*EFFECT_CELL);
+      }else {ic.clearRect(0,0,EFFECT_CELL,EFFECT_CELL);ic.globalCompositeOperation='source-over';ic.drawImage(cell,0,0);out.drawImage(cell,i%8*EFFECT_CELL,Math.floor(i/8)*EFFECT_CELL);}
       yield;
     }
   }

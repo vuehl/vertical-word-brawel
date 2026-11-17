@@ -3,6 +3,8 @@ import {effectColors,effectShapes,PAINT_SHAPES} from './stylized-effect-atlas.js
 import {HandDrawnFireJet} from './hand-drawn-fire-jet.js';
 import {HandDrawnFireSpin} from './hand-drawn-fire-spin.js';
 import {HandDrawnFireball} from './hand-drawn-fireball.js';
+import {HandDrawnFireFamily,installFireFamilyVFX} from './hand-drawn-fire-family.js';
+import {waitForLoadingPaint} from './loading-work.js';
 
 const TAU=Math.PI*2,clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),mix=(a,b,t)=>a+(b-a)*t;
 const color=new Color();
@@ -157,20 +159,42 @@ export class StylizedSkillFX{
     this.fireJet=new HandDrawnFireJet(this,scene);this.fireEmitters=[];
     this.fireSpin=new HandDrawnFireSpin(this,scene);this.spinEmitters=[];
     this.fireball=new HandDrawnFireball(this,scene);
+    this.fireFamily=new HandDrawnFireFamily(this,scene);
   }
   attach(run){
     this.run=run;
     const surface=(x,z)=>(run.terrain?.height(x,z)||0)+.24;
     this.vfx.norm.surface=this.vfx.ground.surface=this.vfx.groundN.surface=this.vfx.rings.surface=surface;
   }
+  moveTextures(key){
+    const family=this.fireFamily,base=family.texture,jet=this.fireJet.texture,spin=this.fireSpin.texture,ball=this.fireball.texture;
+    switch(key){
+      case 'ember':return [ball];
+      case 'fire-spin':case 'fu-r-wildfire':return [spin];
+      case 'flamethrower':case 'dragon-breath':return [jet];
+      case 'heat-wave':return [family.heatTexture,base];
+      case 'inferno':return [ball,base];
+      case 'fire-blast':return [ball,base,family.mushroomTexture];
+      case 'fire-ultimate':case 'fu-t-fire':return [base,family.mushroomTexture];
+      case 'fu-4':return [base,jet,spin];
+      case 'fu-t-normal':case 'fu-t-dragon':return [family.completionTexture,base];
+      case 'fu-r-charmbreath':return [family.completionTexture,jet];
+      case 'fu-missingno':return [family.completionTexture];
+      default:return family.supports(key)?[base]:[];
+    }
+  }
   async prepareMoveTexture(key){
-    const effect=key==='ember'?this.fireball:key==='fire-spin'?this.fireSpin:key==='flamethrower'?this.fireJet:null;
-    if(!effect||effect.texturePrepared)return false;
-    if(!effect.loaded)await effect.ready;
-    if(!effect.loaded||effect.disposed||effect.texturePrepared)return false;
-    this.run.r.renderer.initTexture(effect.texture);
-    effect.texturePrepared=true;
-    return true;
+    let uploaded=false;
+    for(const texture of this.moveTextures(key)){
+      if(texture.userData.prepared)continue;
+      if(uploaded)await waitForLoadingPaint();
+      if(this.fireFamily.disposed)break;
+      if(!await this.fireFamily.loadTexture(texture)||this.fireFamily.disposed||texture.userData.prepared)continue;
+      this.run.r.renderer.initTexture(texture);
+      texture.userData.prepared=true;
+      uploaded=true;
+    }
+    return uploaded;
   }
   allowed(own=true){return !this.run?.disposed&&!(own&&this.run?.hideOwnFx);}
   touch(key,config){
@@ -184,7 +208,7 @@ export class StylizedSkillFX{
   cone(key,x,y,z,dx,dz,length,type='fire',radius=.9,own=true,fan=true){
     const fire=type==='fire'||type==='dragon';
     const entry=this.touch(key,{x,y,z,radius:radius*1.25,height:fire?1.25:.4,length,angle:Math.atan2(dz,dx),mode:fire?(fan?8:2):4,type,color:effectColors[type]||effectColors.normal,own});
-    if(entry&&type==='fire'&&fan)entry.fireTouched=true;return entry;
+    if(entry&&fan&&(type==='fire'||key?.def?.key==='dragon-breath'||String(key).startsWith('enemy-cone-dragon-breath')))entry.fireTouched=true;return entry;
   }
   tornado(key,x,y,z,radius=2,height=7,type='flying',own=true){return this.touch(key,{x,y,z,radius,height,mode:type==='fire'?3:1,type,color:type==='flying'?0x36d99b:effectColors[type]||effectColors.flying,own});}
   cast(type,x,y,z,radius=1.4){
@@ -269,6 +293,7 @@ export class StylizedSkillFX{
   }
   field(zone){
     if(!this.allowed()||!['fire','water','flying','poison','ice','electric','grass'].includes(zone.type))return;
+    if(zone.type==='fire'&&zone.authoredFire){this.fireFamily.field(zone);return;}
     if(zone.type==='fire')this.touch(zone,{x:zone.x,y:zone.y+.24,z:zone.z,radius:zone.r*.7,height:Math.min(4,zone.r*1.55),mode:7,type:'fire',color:effectColors.fire});
     if(zone.type==='water')this.tornado(zone,zone.x,zone.y+.1,zone.z,zone.r*.7,zone.r*.7,'water');
     this.vfx.staticRing(zone.x,zone.y+.08,zone.z,zone.r,effectColors[zone.type],.25,2);
@@ -276,12 +301,9 @@ export class StylizedSkillFX{
   ultimate(ctx,duration){
     if(!this.allowed())return;
     const p=this.run.player,id=p.speciesId,type=ctx.type;
+    if([4,5,6].includes(id)){this.fireFamily.ultimate(ctx);return;}
     this.cast(type,ctx.x,ctx.y,ctx.z,2.4);
-    if([4,5,6].includes(id)){
-      const d=Math.min(duration,2.8),tier=id-4;
-      this.volume({x:ctx.x,y:ctx.y+.1,z:ctx.z,radius:2.3+tier*.5,height:7+tier*1.5,mode:3,type:'fire',color:effectColors.fire,duration:d});
-      this.nova('fire',ctx.x,ctx.y,ctx.z,3.2+tier);
-    }else if([18,59].includes(id)){
+    if([18,59].includes(id)){
       this.volume({x:ctx.x,y:ctx.y+.1,z:ctx.z,radius:1.7,height:4.5,mode:type==='fire'?3:1,type,color:effectColors[type]||effectColors.flying,duration:.6});
     }else if(id===132){
       this.volume({x:ctx.x,y:ctx.y+.1,z:ctx.z,radius:2.2,height:4.5,mode:1,type:'psychic',color:effectColors.psychic,duration:.85});
@@ -320,7 +342,8 @@ export class StylizedSkillFX{
       if(e.life<=0||!this.allowed(e.own!==false)){this.keys.delete(e.key);this.entries.splice(i,1);continue;}
       if(count+this.fireEmitters.length+this.spinEmitters.length>=this.limit)continue;
       const fade=e.finite?clamp(e.life/.25,0,1):clamp(e.life/.1,0,1),envelope=clamp(e.age/.12,0,1)*fade;
-      if(e.mode===8&&e.type==='fire'){
+      if(e.mode===8&&(e.type==='fire'||e.key?.def?.key==='dragon-breath'||String(e.key).startsWith('enemy-cone-dragon-breath'))){
+        if(e.key?.def?.key==='heat-wave'){this.fireFamily.heatWave(e);continue;}
         this.fireEmitters.push(e);continue;
       }
       if(e.handDrawn){this.spinEmitters.push(e);continue;}
@@ -361,10 +384,11 @@ export class StylizedSkillFX{
     this.fireJet.update(dt,this.fireEmitters);
     this.fireSpin.update(dt,this.spinEmitters);
     this.fireball.update(dt);
+    this.fireFamily.update(dt);
   }
-  setPerformance(profile,view){this.limit=profile.name==='流畅'?10:profile.name==='均衡'?18:28;this.vfx.view=view;this.fireJet.setPerformance(profile);this.fireSpin.setPerformance(profile);this.fireball.setPerformance(profile);}
-  clear(){this.entries.length=0;this.keys.clear();this.lightSources.length=0;this.mesh.count=0;this.mesh.visible=false;this.paintClock=-1;this.paintCount=0;this.fireJet.clear();this.fireSpin.clear();this.fireball.clear();}
-  dispose(){this.clear();this.fireJet.dispose();this.fireSpin.dispose();this.fireball.dispose();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}
+  setPerformance(profile,view){this.limit=profile.name==='流畅'?10:profile.name==='均衡'?18:28;this.vfx.view=view;this.fireJet.setPerformance(profile);this.fireSpin.setPerformance(profile);this.fireball.setPerformance(profile);this.fireFamily.setPerformance(profile);}
+  clear(){this.entries.length=0;this.keys.clear();this.lightSources.length=0;this.mesh.count=0;this.mesh.visible=false;this.paintClock=-1;this.paintCount=0;this.fireJet.clear();this.fireSpin.clear();this.fireball.clear();this.fireFamily.clear();}
+  dispose(){this.clear();this.fireJet.dispose();this.fireSpin.dispose();this.fireball.dispose();this.fireFamily.dispose();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}
 }
 
 // Existing move hooks are visual-only. Replacing them here covers ordinary
@@ -410,4 +434,6 @@ export function installStylizedMoveVFX(registry,resolveType){
     }
     shared.set(original,style);registry[key]=style;
   }
+  // Apply by move key after generic aliases have been resolved.
+  installFireFamilyVFX(registry);
 }

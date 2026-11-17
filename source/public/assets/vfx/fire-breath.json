@@ -1,8 +1,8 @@
 {
   "columns": 8,
   "rows": 5,
-  "tile": 192,
-  "padding": 3,
+  "tile": 384,
+  "padding": 4,
   "clips": {
     "stream": {
       "first": 0,

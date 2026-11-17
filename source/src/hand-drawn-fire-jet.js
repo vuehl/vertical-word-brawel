@@ -4,13 +4,13 @@ import {ProceduralFireJet} from './procedural-fire-jet.js';
 
 const vertex=`
 attribute vec4 iFlameOrigin;attribute vec4 iFlameMotion;attribute vec4 iFlameLife;
-varying vec2 vFrameUv;varying float vFrame;varying float vAlpha;varying float vKind;varying float vFuel;
+varying vec2 vFrameUv;varying float vFrame;varying float vAlpha;varying float vKind;varying float vFuel;varying float vPurple;
 void main(){
   vec4 p=viewMatrix*vec4(iFlameOrigin.xyz,1.);
-  vKind=iFlameMotion.w;vFrameUv=uv;vAlpha=iFlameLife.y;vFuel=iFlameLife.x;
+  vKind=mod(iFlameMotion.w,4.);vPurple=step(3.5,iFlameMotion.w);vFrameUv=uv;vAlpha=iFlameLife.y;vFuel=iFlameLife.x;
   if(vKind>1.5){
     p.xy+=(uv-.5)*iFlameOrigin.w;
-    vFrame=20.+min(19.,floor(iFlameLife.w*48.));
+    vFrame=${atlas.clips.hit.first}.+min(${atlas.clips.hit.count-1}.,floor(iFlameLife.w*48.));
   }else{
     vec3 forward=(viewMatrix*vec4(iFlameMotion.x,0.,iFlameMotion.y,0.)).xyz;
     vec2 heading=length(forward.xy)>.001?normalize(forward.xy):vec2(1.,0.);
@@ -21,13 +21,13 @@ void main(){
     // Longitudinal foreshortening follows the unchanged world trajectory.
     // The cross section faces the camera: no 3D skin, raymarch or mesh warp.
     p.xyz+=forward*local.x;p.xy+=vec2(-heading.y,heading.x)*local.y;
-    vFrame=core?5.+mod(floor(iFlameLife.w*24.+iFlameLife.z*4.),10.):3.+min(16.,floor(iFlameLife.x*17.));
+    vFrame=core?5.+mod(floor(iFlameLife.w*24.+iFlameLife.z*4.),10.):5.+min(7.,floor(iFlameLife.x*8.));
   }
   gl_Position=projectionMatrix*p;
 }`;
 const fragment=`
 uniform sampler2D map;
-varying vec2 vFrameUv;varying float vFrame;varying float vAlpha;varying float vKind;varying float vFuel;
+varying vec2 vFrameUv;varying float vFrame;varying float vAlpha;varying float vKind;varying float vFuel;varying float vPurple;
 void main(){
   vec2 uv=vFrameUv;float edge=1.;
   if(vKind<.5){
@@ -39,17 +39,43 @@ void main(){
     // Preserve the old core's fuel clearing from the nozzle towards the tip.
     edge=smoothstep(vFuel-.05,vFuel+.10,uv.x);
   }
-  vec2 tile=vec2(mod(vFrame,8.),4.-floor(vFrame/8.));
-  vec2 sampleUv=(tile+mix(vec2(.5/${atlas.tile}.),vec2(1.-.5/${atlas.tile}.),uv))/vec2(8.,5.);
+  vec2 tile=vec2(mod(vFrame,${atlas.columns}.),${atlas.rows-1}.-floor(vFrame/${atlas.columns}.));
+  vec2 sampleUv=(tile+mix(vec2(.5/${atlas.tile}.),vec2(1.-.5/${atlas.tile}.),uv))/vec2(${atlas.columns}.,${atlas.rows}.);
   vec4 ink=texture2D(map,sampleUv);
+  if(vKind<1.5){
+    // Simplify the pigment inside each original flame, keeping its outline
+    // and motion. Broad temperature fields replace thin white filigree.
+    vec2 d=vec2(10.5/${atlas.columns*atlas.tile}.,10.5/${atlas.rows*atlas.tile}.);
+    vec2 lo=(tile+vec2(.5/${atlas.tile}.))/vec2(${atlas.columns}.,${atlas.rows}.),hi=(tile+vec2(1.-.5/${atlas.tile}.))/vec2(${atlas.columns}.,${atlas.rows}.);
+    vec4 a=texture2D(map,clamp(sampleUv+vec2(d.x,0.),lo,hi)),b=texture2D(map,clamp(sampleUv-vec2(d.x,0.),lo,hi));
+    vec4 c=texture2D(map,clamp(sampleUv+vec2(0.,d.y),lo,hi)),f=texture2D(map,clamp(sampleUv-vec2(0.,d.y),lo,hi));
+    vec4 g=texture2D(map,clamp(sampleUv+d,lo,hi)),h=texture2D(map,clamp(sampleUv-d,lo,hi));
+    vec4 k=texture2D(map,clamp(sampleUv+vec2(d.x,-d.y),lo,hi)),l=texture2D(map,clamp(sampleUv+vec2(-d.x,d.y),lo,hi));
+    float coverage=(ink.a*2.+a.a+b.a+c.a+f.a+g.a+h.a+k.a+l.a)/10.;
+    vec3 broad=(ink.rgb*ink.a*2.+a.rgb*a.a+b.rgb*b.a+c.rgb*c.a+f.rgb*f.a+g.rgb*g.a+h.rgb*h.a+k.rgb*k.a+l.rgb*l.a)/max(.001,coverage*10.);
+    // Merge thin internal lines into three broad, saturated paint regions.
+    // Sharp colour thresholds keep the result flat instead of blurring it.
+    float heat=broad.g/max(.08,broad.r);
+    ink.rgb=mix(vec3(.95,.045,.006),vec3(1.,.26,.012),smoothstep(.18,.34,heat));
+    ink.rgb=mix(ink.rgb,vec3(1.,.78,.12),smoothstep(.68,.84,heat));
+    // Remove only isolated pinpricks; no blur is applied to the silhouette.
+    ink.a=smoothstep(.22,.46,coverage);
+  }
   if(vKind>1.5){
     // Sustained hits use the painted flame, keeping the large dusty blast
     // from turning each damage tick into a new explosion.
     float dust=(1.-smoothstep(.30,.46,ink.r))*smoothstep(.42,.68,ink.g/max(ink.r,.001));
     edge*=1.-dust*.85;
   }
-  float alpha=ink.a*vAlpha*edge;if(alpha<.008)discard;
-  gl_FragColor=vec4(ink.rgb,alpha);
+  float alpha=ink.a*smoothstep(.04,.42,ink.a)*vAlpha*edge;if(alpha<.008)discard;
+  vec3 pigment=ink.rgb;
+  if(vPurple>.5){
+    float heat=clamp(ink.g/max(ink.r,.001),0.,1.);
+    pigment=mix(vec3(.24,.025,.58),vec3(.66,.17,.96),smoothstep(.02,.40,heat));
+    pigment=mix(pigment,vec3(.94,.79,1.),smoothstep(.40,.95,heat));
+    pigment*=.35+.65*max(ink.r,max(ink.g,ink.b));
+  }
+  gl_FragColor=vec4(pigment,alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -64,7 +90,7 @@ const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
 const random=n=>{const x=Math.sin(n*127.1+43.7)*43758.5453;return x-Math.floor(x);};
 // Other fire cones share the original simulation and budget, but retain
 // their existing shader. Test/remote emitters without a move use the spray.
-const painted=emitter=>!emitter.key?.def||emitter.key.def.key==='flamethrower';
+const painted=emitter=>!emitter.key?.def||['flamethrower','dragon-breath','heat-wave'].includes(emitter.key.def.key);
 
 export class HandDrawnFireJet{
   constructor(owner,scene){
@@ -112,7 +138,7 @@ export class HandDrawnFireJet{
     const angle=emitter.angle+spread,scale=Math.sqrt(emitter.length/7);
     this.packets.push({id:n,age,life:.52+b*.19,seed:c*TAU,dx:Math.cos(angle),dz:Math.sin(angle),
       x:emitter.x,y:emitter.y,z:emitter.z,length:emitter.length*(.86+a*.14),
-      radius:(.38+b*.30)*scale,stretch:(.85+c*.35)*scale,lift:.45+c*.7,own:emitter.own!==false,painted:painted(emitter)});
+      radius:(.38+b*.30)*scale,stretch:(.85+c*.35)*scale,lift:.45+c*.7,own:emitter.own!==false,painted:painted(emitter),purple:emitter.type==='dragon'});
     this.spawned++;
   }
   sample(packet){
@@ -123,12 +149,12 @@ export class HandDrawnFireJet{
       z:packet.z+packet.dz*travel+packet.dx*sway,radius:packet.radius*(.10+grow*.90)*shrink,
       length:packet.stretch*(.45+grow*(1.20+Math.sin(p*Math.PI)*.60))*shrink,alpha:birth*fade};
   }
-  impact(x,y,z,own=true,critical=false){
+  impact(x,y,z,own=true,critical=false,purple=false){
     if(!this.owner.allowed(own)||this.hits.length>=this.hitLimit)return;
     if(this.owner.vfx.view&&!this.owner.vfx.view.visible(x,y,z,3))return;
-    const key=Math.round(x*1.5)+'/'+Math.round(z*1.5),last=this.hitTimes.get(key)??-100;
+    const key=Math.round(x*1.5)+'/'+Math.round(z*1.5)+'/'+purple,last=this.hitTimes.get(key)??-100;
     if(this.clock-last<.14)return;
-    this.hitTimes.set(key,this.clock);this.hits.push({x,y,z,own,age:0,size:critical?2.1:1.6});
+    this.hitTimes.set(key,this.clock);this.hits.push({x,y,z,own,purple,age:0,size:critical?1.65:1.2});
     this.owner.impacts++;
   }
   updateHits(dt){
@@ -137,8 +163,8 @@ export class HandDrawnFireJet{
     const [origin,motion,life]=this.hitAttributes.map(a=>a.array),v=this.owner.vfx;let count=0;
     for(const h of this.hits){
       if(count>=this.hitLimit)break;const o=count++*4;
-      origin.set([h.x,h.y,h.z,h.size],o);motion.set([1,0,h.size,2],o);
-      life.set([h.age*48/atlas.clips.hit.count,.76*v.opacity*(h.own?v.ownOpacity:1)*(v.calm?.78:1),0,h.age],o);
+      origin.set([h.x,h.y,h.z,h.size],o);motion.set([1,0,h.size,2+(h.purple?4:0)],o);
+      life.set([h.age*48/atlas.clips.hit.count,.66*v.opacity*(h.own?v.ownOpacity:1)*(v.calm?.78:1),0,h.age],o);
     }
     this.hitMesh.count=this.loaded?count:0;this.hitMesh.visible=this.hitMesh.count>0;
     for(const a of this.hitAttributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}
@@ -168,15 +194,24 @@ export class HandDrawnFireJet{
       emitter.fireTouched=false;
     }
     const camera=run.r.camera.position,instances=[];
-    for(const packet of this.packets){packet.sample=this.sample(packet);instances.push({...packet.sample,alpha:packet.sample.alpha*.88,dx:packet.dx,dz:packet.dz,seed:packet.seed,age:packet.age,own:packet.own,painted:packet.painted});}
+    for(const packet of this.packets){
+      packet.sample=this.sample(packet);if(packet.painted&&packet.id%2!==0)continue;
+      // Keep the old rolling fan, with fewer, larger overlapping tongues.
+      const far=packet.painted?smooth((packet.sample.p-.52)/.30):0;
+      const scale=packet.painted?1.5*(1-far*.32):1;
+      // Far tongues shrink and extinguish before leaving the visual fan.
+      // Their simulation and the move's damage cone are unchanged.
+      const alpha=packet.sample.alpha*.88*(1-far);if(packet.painted&&alpha<.012)continue;
+      instances.push({...packet.sample,radius:packet.sample.radius*scale,length:packet.sample.length*scale,alpha,dx:packet.dx,dz:packet.dz,seed:packet.seed,age:packet.age,own:packet.own,painted:packet.painted,purple:packet.purple});
+    }
     // The original connecting core retains its growth, length, timing and
     // stop envelope. Only its pixels now come from the authored spray frames.
     for(const emitter of emitters){
-      const growth=smooth(emitter.age/.24),length=emitter.length*.55*growth;
+      const authored=painted(emitter),growth=smooth(emitter.age/.24),length=emitter.length*(authored?.66:.55)*growth;
       if(length<.025)continue;
       const dx=Math.cos(emitter.angle),dz=Math.sin(emitter.angle),tail=clamp((this.clock-(emitter.fireLast??this.clock))/.10);
       instances.push({x:emitter.x+dx*length*.5,y:emitter.y+.20,z:emitter.z+dz*length*.5,radius:length*.36,
-        length,dx,dz,p:tail,alpha:.78*growth*(1.-smooth((tail-.6)/.4)),seed:emitter.seed,age:emitter.age,core:1,own:emitter.own!==false,painted:painted(emitter)});
+        length,dx,dz,p:tail,alpha:(authored?.86:.78)*growth*(1.-smooth((tail-.6)/.4)),seed:emitter.seed,age:emitter.age,core:1,own:emitter.own!==false,painted:authored,purple:emitter.type==='dragon'});
     }
     for(const p of instances)p.depth=(p.x-camera.x)**2+(p.y-camera.y)**2+(p.z-camera.z)**2;
     instances.sort((a,b)=>b.depth-a.depth);
@@ -185,7 +220,7 @@ export class HandDrawnFireJet{
       for(const p of instances){
         if(p.painted!==authored)continue;
         const o=count++*4,opacity=owner.vfx.opacity*(p.own?owner.vfx.ownOpacity:1)*(owner.vfx.calm?.78:1);
-        origin.set([p.x,p.y,p.z,p.radius],o);motion.set([p.dx,p.dz,p.length,p.core||0],o);
+        origin.set([p.x,p.y,p.z,p.radius],o);motion.set([p.dx,p.dz,p.length,(p.core||0)+(p.purple?4:0)],o);
         life.set([p.p,p.alpha*opacity,p.seed,p.age],o);
       }
       renderer.mesh.count=authored&&!this.loaded?0:count;renderer.mesh.visible=renderer.mesh.count>0;
