@@ -97,10 +97,17 @@ export async function reviewBattleFeedback(context){
     await sleep(700);
     const map=await page.evaluate(()=>{
       const panel=inspected.doc.querySelector('.zx-battle-map'),canvas=panel.querySelector('canvas'),b=panel.getBoundingClientRect(),scale=canvas.width/120;
-      return {text:panel.textContent,bottom:b.bottom,shadowPixel:Array.from(canvas.getContext('2d').getImageData(Math.floor(60*scale),Math.floor(116*scale),1,1).data)};
+      return {title:panel.querySelector('h2').textContent,back:panel.querySelector('[data-action="close-battle-map"]').textContent,
+        types:[...panel.querySelectorAll('[data-map-kind]')].map(el=>el.dataset.mapKind),bottom:b.bottom,
+        shadowPixel:Array.from(canvas.getContext('2d').getImageData(Math.floor(60*scale),Math.floor(116*scale),1,1).data)};
     });
-    assert.equal(map.text,'附近地图返回战斗');assert.equal(map.shadowPixel[3],0);assert.ok(map.bottom<=height);
+    assert.equal(map.title,'附近地图');assert.equal(map.back,'返回战斗');
+    assert.deepEqual(map.types,['chest','freechest','berry','altar','bill','magnet','ditto','nest','portal']);
+    assert.equal(map.shadowPixel[3],0);assert.ok(map.bottom<=height);
     await page.screenshot({path:path.join(dir,'clean-map-'+width+'.png')});report.maps.push({width,...map});
+    await tap('[data-map-kind="bill"]');
+    assert.equal(await page.evaluate(()=>app.run.ui.mapFacilityKind),'bill');
+    assert.match(await page.evaluate(()=>inspected.doc.querySelector('.zx-map-status').textContent),/^订书机 · 附近 \d+ 处$/);
     await tap('[data-action="close-battle-map"]');assert.equal(await page.evaluate(()=>app.run.state),'play');
   }
   await context.resize(390,844);

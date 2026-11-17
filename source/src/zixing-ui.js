@@ -1,11 +1,11 @@
 import {displayedFormType} from './form-copy.js';
-import {facilityDwellSeconds} from './active-content.js';
+import {facilityDwellSeconds,facilityNames} from './active-content.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
 import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
 import {drawMenuGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from './paper-glyph-art.js';
 import {drawPaperIllustration,drawCoopMap} from './paper-ui-art.js';
-import {drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
+import {buildingMapKinds,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
@@ -946,18 +946,38 @@ export function createZixingUI(app,api) {
     };
     hud.showSummary=summary;hud.showSlots=slots;
     let expandedMap=null;
+    hud.mapFacilityKind='chest';
     hud.showMap=(r,fromPause=false)=>{
       const close=fromPause?()=>pause(r):()=>r.resume();
-      const side=Math.max(160,Math.min(352,window.innerWidth-80,window.innerHeight-220));
+      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-420));
       const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图'});
       const frame=el('div','zx-battle-map-frame',canvas);
       frame.style.width=frame.style.height=side+'px';
       const hudSide=hud.minimap.getBoundingClientRect().width || (window.innerWidth<=350?84:96);
-      overlay('附近地图','',[frame],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
+      const status=el('b','zx-map-status');
+      const hint=el('small','zx-map-hint','点击类别查看位置 · ×数字表示相邻同类地点');
+      const filters=el('div','zx-map-filters',[],{'aria-label':'选择地图道具类型'});
+      const choices=buildingMapKinds.map(kind=>button(facilityNames[kind],()=>{
+        hud.mapFacilityKind=kind;
+        for(const choice of choices){
+          const selected=choice.dataset.mapKind===kind;
+          choice.classList.toggle('on',selected);
+          choice.setAttribute('aria-pressed',String(selected));
+        }
+        paint();
+        hud.drawMinimap(r,true);
+        window.invalidateUI?.();
+      },'zx-map-filter'+(kind===hud.mapFacilityKind?' on':''),{'data-map-kind':kind,'aria-pressed':kind===hud.mapFacilityKind}));
+      for(let i=0;i<choices.length;i+=3)filters.append(el('div','zx-map-filter-row',choices.slice(i,i+3)));
+      overlay('附近地图','',[frame,filters,el('div','zx-map-info',[status,hint])],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
       const contentZoom=1.5;
       const viewRatio=(canvas.getBoundingClientRect().width || side)/(hudSide*contentZoom);
-      drawBattleMinimap(canvas,r,{shadow:false,viewRatio});
-      if(r.coop)expandedMap={canvas,viewRatio,at:performance.now()};
+      function paint(){
+        const {count}=drawBattleMinimap(canvas,r,{shadow:false,viewRatio});
+        updateText(status,r.events?.blind?'视野受限':facilityNames[hud.mapFacilityKind]+' · 附近 '+count+' 处');
+      }
+      paint();
+      if(r.coop)expandedMap={canvas,paint,at:performance.now()};
       hud.pauseBack=close;
     };
     hud.mapOpen=()=>!!hud.root.querySelector('.zx-battle-map');
@@ -1075,8 +1095,8 @@ export function createZixingUI(app,api) {
     for(const element of hud.hudEl.querySelectorAll('.hud-tl,.under,.hud-party,.hud-top,.hud-tr,.hud-bl,.hud-br,.lock-hint'))element.dataset.uiHidden='true';
     hud.fitTop=()=>{};
     let mapAt=-Infinity,mapFrame=0;
-    hud.drawMinimap=r=>{
-      const now=performance.now();if(minimap.hidden||now-mapAt<(run.performance?.mapInterval??120))return;
+    hud.drawMinimap=(r,force=false)=>{
+      const now=performance.now();if(minimap.hidden||(!force&&now-mapAt<(run.performance?.mapInterval??120)))return;
       mapAt=now;drawBattleMinimap(minimap,r);minimap.dataset.frame=String(++mapFrame);
     };
     const ultimateRing=el('canvas','zx-ult-progress',[],{width:168,height:168,'data-static':'true'});
@@ -1119,7 +1139,7 @@ export function createZixingUI(app,api) {
       if(expandedMap){
         if(!expandedMap.canvas.isConnected)expandedMap=null;
         else if(now-expandedMap.at>=(run.performance?.mapInterval??120)){
-          drawBattleMinimap(expandedMap.canvas,run,{shadow:false,viewRatio:expandedMap.viewRatio});
+          expandedMap.paint();
           expandedMap.at=now;window.invalidateUI?.();
         }
       }

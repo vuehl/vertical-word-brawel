@@ -264,10 +264,18 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 .zx-skill-slot .zx-slot-level{right:-2px;bottom:-2px;min-width:16px;height:16px;padding:0 3px;border:1px solid #e5dfce;border-radius:6px;background:#fffaf0;font-size:11px;line-height:14px;color:#514b42;z-index:2}
 .zx-slot-level{position:absolute;right:-2px;bottom:-3px;min-width:15px;height:18px;padding:0 2px;background:#fffdf0e6;border-radius:8px;font-size:14px;line-height:1.2;text-align:center;color:#343b32}
 html.zixing .zx-choice.fire.on{border-color:#d84840;border-width:2px;background:#fff1ed;box-shadow:0 3px 0 #d9988f}
-.zx-battle-map{align-items:center;padding:18px 16px;gap:12px;animation:none;transition:none;transform:none}
+.zx-battle-map{align-items:center;padding:12px 16px;gap:8px;animation:none;transition:none;transform:none}
 .zx-battle-map-frame{position:relative;flex:none;align-self:center}
 html.zixing .zx-battle-map-art{position:absolute;inset:0;display:block;width:100%;height:100%}
 .zx-battle-map>.zx-button{width:100%}
+.zx-map-filters{display:flex;flex-direction:column;width:100%;gap:6px}
+.zx-map-filter-row{display:flex;width:100%;gap:6px}
+.zx-map-filter-row>.zx-map-filter{flex:1;min-width:0;height:32px;min-height:0;padding:4px 2px;border:1px solid #cbd6d5;border-radius:8px;background:#f3f6f3;box-shadow:none;font-size:12px;line-height:20px;color:#52676d}
+.zx-map-filter-row>.zx-map-filter.on{background:#3d647a;border-color:#3d647a;color:#fff;font-weight:700}
+.zx-map-info{display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;text-align:center}
+.zx-map-status{font-size:13px;color:#315a70;line-height:18px}
+.zx-map-info>.zx-map-hint{font-size:10px;line-height:16px;color:#78847d}
+@media(max-width:350px){.zx-map-filter-row>.zx-map-filter{height:30px;font-size:11px}.zx-battle-map>h2{font-size:20px}.zx-battle-map>.zx-button{padding:8px 12px}}
 .zx-modal-wrap.zx-pause-screen{padding:0;align-items:stretch;background:var(--paper)}
 .zx-modal.zx-pause{width:100%;max-width:none;height:100%;max-height:100%;border:0;border-radius:0;box-shadow:none;padding:0;gap:0;overflow:hidden;background:var(--paper)}
 .zx-pause-body{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;gap:16px;padding:26px 24px 18px}.zx-pause-body>*{flex-shrink:0}

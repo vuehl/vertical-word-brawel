@@ -30,8 +30,19 @@ export async function reviewMapPlay(page,dir){
   await page.evaluate(()=>{
     const r=app.run,b=r.interactables.list.find(b=>b.kind==='bill');if(!b)throw Error('Missing skill fusion building');
     r.player.pos.set(b.x,0,b.z+10);r.camTarget.copy(r.player.pos);
+    r.openMap();
+    inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
+    const filter=inspected.doc.querySelector('[data-map-kind="bill"]');
+    const box=filter.getBoundingClientRect(),screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    window.tap(box.x+box.width/2-screen.x,box.y+box.height/2-screen.y);
+    if(filter.getAttribute('aria-pressed')!=='true')throw Error('Stapler selection did not reach the map');
+    r.resume();
     const proto=CanvasRenderingContext2D.prototype,fill=proto.fillText;window.mapPlayLabels=[];
-    proto.fillText=function(text,...args){mapPlayLabels.push(text);return fill.call(this,text,...args);};
+    proto.fillText=function(text,x,y,...args){
+      // Facility labels are inside the dial. The category caption below it can also say 订书机.
+      if(this.canvas===r.ui.minimap._surface&&y<104)mapPlayLabels.push(text);
+      return fill.call(this,text,x,y,...args);
+    };
     // The WeChat DOM facade caches bound native methods on first use.
     delete r.ui.minimap._contexts['2d'];mapPlayFrame();
   });
@@ -45,6 +56,7 @@ export async function reviewMapPlay(page,dir){
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.run.openMap();mapPlayFrame();});
   assert.equal(await page.evaluate(()=>app.run.ui.mapOpen()),true);
+  assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-map-kind="bill"]').getAttribute('aria-pressed')),'true');
   await page.screenshot({path:path.join(dir,'building-label-expanded.png')});
   await page.evaluate(()=>app.run.resume());
   // Contact occurs through the actual player update and simulation path. The

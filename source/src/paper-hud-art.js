@@ -28,24 +28,30 @@ export function drawCompassDial(canvas,angle){
 
 // Place labels in the map frame after projecting the icons, so zooming or
 // pinning an icon to the rim never changes the distance shown.
-function drawBossDistances(ctx,labels,fontSize){
+function drawBossDistances(ctx,labels,fontSize,obstacles=[]){
   ctx.font='bold '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineJoin='round';ctx.lineWidth=2.5;ctx.strokeStyle='#fffdf5';ctx.fillStyle='#873d32';
   const placed=[];
   for(const label of labels){
     const half=ctx.measureText(label.text).width/2;
-    let x,y;
+    let x,y,best=null;
     const step=fontSize+2,side=label.y>58?-1:1;
     for(let row=0;row<9;row++){
       const offset=(1+Math.floor(row/2))*step*(row%2?-side:side);
       y=Math.max(25,Math.min(91,label.y+offset));
       const chord=Math.sqrt(47**2-(Math.abs(y-58)+fontSize/2)**2);
       const range=Math.max(0,chord-half);
-      x=Math.max(60-range,Math.min(60+range,label.x));
-      if(Math.abs(y-58)<fontSize/2+5&&Math.abs(x-60)<half+5)continue;
-      if(labels.some(icon=>Math.abs(y-icon.y)<fontSize/2+4&&Math.abs(x-icon.x)<half+4))continue;
-      if(!placed.some(p=>Math.abs(y-p.y)<step&&Math.abs(x-p.x)<half+p.half+1))break;
+      for(const candidate of [Math.max(60-range,Math.min(60+range,label.x)),60-range,60+range]){
+        x=candidate;
+        if(Math.abs(y-58)<fontSize/2+5&&Math.abs(x-60)<half+5)continue;
+        if(labels.some(icon=>Math.abs(y-icon.y)<fontSize/2+4&&Math.abs(x-icon.x)<half+4))continue;
+        if(obstacles.some(b=>x+half+1>b.x&&x-half-1<b.x+b.w&&y+fontSize/2+1>b.y&&y-fontSize/2-1<b.y+b.h))continue;
+        if(placed.some(p=>Math.abs(y-p.y)<step&&Math.abs(x-p.x)<half+p.half+1))continue;
+        const score=(x-label.x)**2+(y-label.y)**2;
+        if(!best||score<best.score)best={x,y,score};
+      }
     }
+    if(best){x=best.x;y=best.y;}
     ctx.strokeText(label.text,x,y);ctx.fillText(label.text,x,y);placed.push({x,y,half});
   }
 }
@@ -124,33 +130,86 @@ export function buildingMapName(marker){
   if(marker.kind==='chest'&&marker.data?.gift)return facilityNames.freechest;
   return facilityNames[marker.kind]||'';
 }
+export const buildingMapKinds=['chest','freechest','berry','altar','bill','magnet','ditto','nest','portal'];
+export const buildingMapKind=marker=>marker.kind==='chest'&&marker.data?.gift?'freechest':marker.kind==='sanct_portal'?'portal':marker.kind;
+
+export function nearestMapFacility(markers,position,kind){
+  if(!kind)return null;
+  let target=null,best=Infinity;
+  for(const marker of markers){
+    if(buildingMapKind(marker)!==kind||marker.data?.comet||(marker.used&&kind!=='portal'))continue;
+    const dx=marker.x-position.x,dz=marker.z-position.z,distance=dx*dx+dz*dz;
+    if(!Number.isFinite(distance)||distance>=best)continue;
+    best=distance;target={kind,x:marker.x,z:marker.z,distance:Math.sqrt(distance),angle:Math.atan2(dz,dx)};
+  }
+  return target;
+}
+
+function drawFacilityGuide(ctx,target){
+  // The map is north-up: +X is right and +Z is down. Keep the arrow in the
+  // player's existing reserved space, so it cannot cover a facility name.
+  ctx.save();ctx.translate(60,58);ctx.rotate(target.angle);
+  ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(-4,-4);ctx.lineTo(-1.5,0);ctx.lineTo(-4,4);ctx.closePath();
+  ctx.lineJoin='round';ctx.lineWidth=1.2;ctx.strokeStyle='#fff9e9';ctx.stroke();
+  ctx.fillStyle='#f3b540';ctx.fill();ctx.restore();
+}
+
+// Only neighbouring places of the same type share a label. Keep every real
+// location as a dot, and anchor each group at its nearest member, not a new point.
+export function layoutBuildingNames(labels,measure,fontSize){
+  const box=group=>{
+    const text=group.text+(group.count>1?' ×'+group.count:'');
+    const w=Math.min(80,measure(text)+6),h=fontSize+4;
+    const limit=Math.sqrt(47**2-(w/2)**2)-h/2;
+    let y=Math.max(58-limit,Math.min(58+limit,group.y));
+    const fitX=()=>{
+      const half=Math.sqrt(Math.max(0,47**2-(Math.abs(y-58)+h/2)**2))-w/2;
+      return Math.max(60-half,Math.min(60+half,group.x));
+    };
+    let x=fitX();
+    if(Math.abs(x-60)<w/2+6&&Math.abs(y-58)<h/2+7){
+      y=Math.max(58-limit,Math.min(58+limit,58+(y<58?-1:1)*(h/2+8)));x=fitX();
+    }
+    return {...group,label:text,box:{x:x-w/2,y:y-h/2,w,h}};
+  };
+  const groups=labels.map(label=>box({...label,count:1})).sort((a,b)=>
+    Math.hypot(a.x-60,a.y-58)-Math.hypot(b.x-60,b.y-58)||a.x-b.x||a.y-b.y);
+  for(let changed=true;changed;){
+    changed=false;
+    outer:for(let i=0;i<groups.length;i++)for(let j=i+1;j<groups.length;j++){
+      const a=groups[i],b=groups[j],u=a.box,v=b.box;
+      if(a.kind!==b.kind||u.x>v.x+v.w+2||v.x>u.x+u.w+2||u.y>v.y+v.h+2||v.y>u.y+u.h+2)continue;
+      groups[i]=box({...a,count:a.count+b.count});groups.splice(j,1);changed=true;break outer;
+    }
+  }
+  return groups;
+}
+function mapLabelPill(ctx,x,y,w,h){
+  const r=h/2;ctx.beginPath();ctx.arc(x+w-r,y+r,r,-Math.PI/2,Math.PI/2);
+  ctx.arc(x+r,y+r,r,Math.PI/2,Math.PI*1.5);ctx.closePath();
+}
 function drawBuildingNames(ctx,labels,fontSize){
   ctx.font='700 '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-  const boxes=[{x:53,y:51,w:14,h:14}];
-  labels.sort((a,b)=>Number(a.kind!=='bill')-Number(b.kind!=='bill')||a.distance-b.distance);
+  const groups=layoutBuildingNames(labels,text=>ctx.measureText(text).width,fontSize);
   for(const label of labels){
-    const w=ctx.measureText(label.text).width+4,h=fontSize+3;
-    let box;
-    for(const offset of [7,-7,18,-18,29,-29,40,-40]){
-      const y=Math.max(14,Math.min(102-h,label.y+offset-(offset<0?h:0)));
-      const half=Math.sqrt(Math.max(0,49**2-Math.max((y-58)**2,(y+h-58)**2)));
-      if(half*2<w)continue;
-      const x=Math.max(60-half,Math.min(60+half-w,label.x-w/2));
-      if(boxes.some(b=>x<b.x+b.w+1&&x+w+1>b.x&&y<b.y+b.h+1&&y+h+1>b.y))continue;
-      box={x,y,w,h};break;
-    }
-    if(!box)continue;
-    boxes.push(box);ctx.strokeStyle='#65767e';ctx.lineWidth=.6;
-    ctx.beginPath();ctx.moveTo(label.x,label.y);ctx.lineTo(box.x+box.w/2,box.y+box.h/2);ctx.stroke();
-    ctx.fillStyle='#fffdf5ee';ctx.fillRect(box.x,box.y,box.w,box.h);
-    ctx.fillStyle=label.kind==='bill'?'#895016':'#394f60';ctx.fillText(label.text,box.x+box.w/2,box.y+box.h/2);
+    ctx.beginPath();ctx.arc(label.x,label.y,fontSize*.2,0,Math.PI*2);ctx.fillStyle='#4d7891';ctx.fill();
   }
+  for(const group of groups){
+    const {x,y,w,h}=group.box;
+    mapLabelPill(ctx,x,y,w,h);ctx.fillStyle='#fffef9';ctx.fill();
+    ctx.lineWidth=.65;ctx.strokeStyle=group.kind==='boss'?'#b19878':'#a6bdc8';ctx.stroke();
+    ctx.fillStyle=group.kind==='boss'?'#85613a':'#315a70';ctx.fillText(group.label,x+w/2,y+h/2,w-6);
+  }
+  return groups;
 }
 
 // Both map sizes use a north-up projection. In co-op the open map follows peer snapshots.
-export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
+export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKind=run.ui?.mapFacilityKind??null}={}) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=.9;
   const distances=[],buildingNames=[];
+  const markers=run.events?.blind?[]:run.interactables.markers();
+  // Search the whole current area, including targets beyond the visible map.
+  const guidance=shadow?nearestMapFacility(markers,p,facilityKind):null;
   const radius=49*viewRatio,edgeRadius=radius-9;
   const point=(x,z)=>[60+(x-p.x)*scale,58+(z-p.z)*scale];
   const visible=(x,y)=>(x-60)**2+(y-58)**2<=radius**2;
@@ -160,34 +219,34 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
   };
   ctx.setTransform(canvas.width/120,0,0,canvas.height/120,0,0);ctx.clearRect(0,0,120,120);
   if(shadow)dot(60,62,56,'#527ab2',null);
-  dot(60,58,56,'#fffdf7',null);dot(60,58,52,'#c3daeb',null);dot(60,58,49,'#eff5f4',null);
+  dot(60,58,56,'#fffdf7',null);dot(60,58,52,'#c3daeb',null);dot(60,58,49,'#f4f6f2',null);
   ctx.save();ctx.beginPath();ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
   // Scale map contents around the player within the fixed circular frame.
   ctx.translate(60,58);ctx.scale(1/viewRatio,1/viewRatio);ctx.translate(-60,-58);
   if(!run.events?.blind){
-    ctx.strokeStyle='#cedee0';ctx.lineWidth=.6;ctx.beginPath();
-    const grid=12*scale,ox=60-p.x*scale,oy=58-p.z*scale;
     const left=60-radius,right=60+radius,top=58-radius,bottom=58+radius;
-    for(let v=ox+Math.ceil((left-ox)/grid)*grid;v<=right;v+=grid){ctx.moveTo(v,top);ctx.lineTo(v,bottom);}
-    for(let v=oy+Math.ceil((top-oy)/grid)*grid;v<=bottom;v+=grid){ctx.moveTo(left,v);ctx.lineTo(right,v);}
-    ctx.stroke();
     const half=run.terrain.world/2,[bx,by]=point(-half,-half);
-    ctx.strokeStyle='#859c7c';ctx.lineWidth=1.5;ctx.strokeRect(bx,by,half*2*scale,half*2*scale);
+    ctx.strokeStyle='#c3cec6';ctx.lineWidth=1;ctx.strokeRect(bx,by,half*2*scale,half*2*scale);
     for(const prop of run.terrain.zxProps||[]){
+      if(prop.w*prop.d<80)continue;
       const [x,y]=point(prop.x,prop.z),w=Math.max(2,prop.w*scale),h=Math.max(2,prop.d*scale);
       if(x+w/2<left||y+h/2<top||x-w/2>right||y-h/2>bottom)continue;
-      ctx.fillStyle=prop.kind==='books'?'#a7b59a':prop.kind==='pencil'||prop.kind==='ruler'?'#cab781':'#9bb7aa';
+      ctx.fillStyle='#e4eae3';
       ctx.fillRect(x-w/2,y-h/2,w,h);
     }
     for(const cover of run.sanctuary?.covers||[]){
       if(!cover.alive)continue;const [x,y]=point(cover.x,cover.z);
-      if(visible(x,y))dot(x,y,Math.max(2,cover.r*scale),'#889e78',null);
+      if(visible(x,y))dot(x,y,Math.max(2,cover.r*scale),'#d6dfd2',null);
     }
-    for(const marker of run.interactables.markers()){
+    for(const marker of markers){
       const [x,y]=point(marker.x,marker.z);if(!visible(x,y))continue;
       const portal=marker.kind==='portal'||marker.kind==='sanct_portal';
-      const name=buildingMapName(marker);
-      if(name)buildingNames.push({text:name,kind:marker.kind,x:60+(x-60)/viewRatio,y:58+(y-58)/viewRatio,distance:(x-60)**2+(y-58)**2});
+      const kind=buildingMapKind(marker),name=portal?facilityNames.portal:buildingMapName(marker);
+      if(facilityKind&&kind!==facilityKind&&kind!=='boss'&&!portal)continue;
+      if(name){
+        buildingNames.push({text:name,kind,x:60+(x-60)/viewRatio,y:58+(y-58)/viewRatio});
+        continue;
+      }
       dot(x,y,portal?4.4:3.7,portal?'#a480c8':'#dfb950');
       ctx.strokeStyle='#fff';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(x-1.8,y);ctx.lineTo(x+1.8,y);ctx.moveTo(x,y-1.8);ctx.lineTo(x,y+1.8);ctx.stroke();
     }
@@ -228,6 +287,13 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
     }
     for(const ally of run.allies.list){const [x,y]=point(ally.x,ally.z);if(visible(x,y))dot(x,y,2.8,'#559e78');}
   }
+  let groups=[];
+  if(buildingNames.length){
+    // Use fixed-size text at each projected location, inside the map rim.
+    // Player and co-op markers are painted afterwards so they stay visible.
+    ctx.save();ctx.translate(60,58);ctx.scale(viewRatio,viewRatio);ctx.translate(-60,-58);
+    groups=drawBuildingNames(ctx,buildingNames,shadow?10:Math.max(5.2,2880/canvas.width));ctx.restore();
+  }
   for(const peer of run.coop?.visiblePeers()||[]){
     const dx=(peer.x-p.x)*scale,dz=(peer.z-p.z)*scale;
     const k=Math.min(1,40*viewRatio/(Math.hypot(dx,dz)||1));
@@ -240,10 +306,19 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1}={}) {
     dot(0,0,5.3,color);ctx.font='bold 8px sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('友',0,0);ctx.restore();
   }
   dot(60,58,8.3,'#688dc633',null);dot(60,58,5.7,'#647fbb');
-  ctx.beginPath();ctx.moveTo(60,53.5);ctx.lineTo(63,60.7);ctx.lineTo(60,59);ctx.lineTo(57,60.7);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();
+  if(guidance&&guidance.distance>.5)drawFacilityGuide(ctx,guidance);
+  else{
+    ctx.beginPath();ctx.moveTo(60,53.5);ctx.lineTo(63,60.7);ctx.lineTo(60,59);ctx.lineTo(57,60.7);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();
+  }
   ctx.restore();
-  if(buildingNames.length)drawBuildingNames(ctx,buildingNames,shadow?10:5.5);
-  if(distances.length)drawBossDistances(ctx,distances,shadow?10:6);
+  if(distances.length)drawBossDistances(ctx,distances,shadow?8:4.5,groups.map(group=>group.box));
   // A quiet compass notch lives on the rim, outside the clipped map contents.
   ctx.beginPath();ctx.moveTo(60,3);ctx.lineTo(62.5,8);ctx.lineTo(57.5,8);ctx.closePath();ctx.fillStyle='#527ab2';ctx.fill();
+  if(shadow&&facilityKind){
+    const title=facilityNames[facilityKind]||'';ctx.font='700 10px sans-serif';
+    const w=ctx.measureText(title).width+12;
+    mapLabelPill(ctx,60-w/2,104,w,14);ctx.fillStyle='#fffdf7';ctx.fill();
+    ctx.fillStyle='#315a70';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(title,60,111);
+  }
+  return {count:buildingNames.filter(label=>!facilityKind||label.kind===facilityKind).length,groups,guidance};
 }

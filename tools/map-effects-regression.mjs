@@ -23,7 +23,7 @@ export async function reviewMapEffects(page,dir){
     }
     // Isolate the prop samples from random pickups and boss distance labels.
     r.interactables.markers=()=>[];
-    r.terrain.zxProps=[-20,-80].map(dx=>({kind:'ruler',x:p.x+dx,z:p.z+18,w:12,d:5}));
+    r.terrain.zxProps=[[-20,-24],[-60,-13]].map(([dx,dz])=>({kind:'ruler',x:p.x+dx,z:p.z+dz,w:16,d:8}));
     r.updateCamera(1);r.renderWorld(0);r.ui.hud(r);
     window.readMap=canvas=>{
       const c=canvas.getContext('2d'),side=canvas.getBoundingClientRect().width;
@@ -32,10 +32,10 @@ export async function reviewMapEffects(page,dir){
       const pixel=(x,y)=>Array.from(c.getImageData(Math.floor(canvas.width/2+(x-60)*scale),Math.floor(canvas.height*58/120+(y-58)*scale),1,1).data).slice(0,3);
       let propWidth=0;
       for(let dx=-10;dx<=10;dx+=.25){
-        if(pixel(42+dx,74.2).join(',')==='202,183,129')propWidth+=.25*screenScale;
+        if(pixel(42+dx,36.4).join(',')==='228,234,227')propWidth+=.25*screenScale;
       }
       return {normal:pixel(37.5,58),elite:pixel(31.2,49.9),eliteEdge:pixel(33.4,49.9),alpha:pixel(60,80.5),boss:pixel(82.5,58),propWidth,
-        far:pixel(-12,74.2)};
+        far:pixel(6,46.3)};
     };
   });
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
@@ -50,15 +50,17 @@ export async function reviewMapEffects(page,dir){
       if(!canvas)throw Error('Native minimap tap did not open the larger map');
       const b=canvas.getBoundingClientRect(),modal=map.getBoundingClientRect(),s=inspected.layout.box(map).s;
       return {state:app.run.state,open:app.run.ui.mapOpen(),oldMap:!!inspected.doc.querySelector('.bigmap'),
-        animation:s.animation,transform:s.transform,map:readMap(canvas),side:b.width,mapHeight:b.height,x:b.x,y:b.y,bottom:modal.bottom};
+        animation:s.animation,transform:s.transform,map:readMap(canvas),side:b.width,hudSide:app.run.ui.minimap.getBoundingClientRect().width,
+        mapHeight:b.height,x:b.x,y:b.y,bottom:modal.bottom};
     });
     console.log('Map layout '+JSON.stringify({width,height,...opened}));
     await page.screenshot({path:path.join(dir,`map-${width}.png`)});
     assert.equal(opened.state,'paused');assert.ok(opened.open&&!opened.oldMap);assert.equal(opened.animation,'none');assert.equal(opened.transform,'none');
-    assert.ok(opened.side>200&&Math.abs(opened.side-opened.mapHeight)<1);assert.ok(opened.x>=0&&opened.x+opened.side<=width&&opened.bottom<=height);
+    assert.ok(opened.side>opened.hudSide*1.5&&Math.abs(opened.side-opened.mapHeight)<1);assert.ok(opened.x>=0&&opened.x+opened.side<=width&&opened.bottom<=height);
     assert.deepEqual(opened.map.normal,mini.normal);assert.deepEqual(opened.map.elite,mini.elite);assert.deepEqual(opened.map.alpha,mini.alpha);
-    assert.ok(mini.propWidth>5 && Math.abs(mini.propWidth*1.5-opened.map.propWidth)<1);
-    assert.deepEqual(opened.map.far,[202,183,129]);assert.notDeepEqual(mini.far,opened.map.far);
+    assert.ok(mini.propWidth>5 && Math.abs(mini.propWidth*1.5-opened.map.propWidth)<1,
+      JSON.stringify({width,miniPropWidth:mini.propWidth,expandedPropWidth:opened.map.propWidth}));
+    assert.deepEqual(opened.map.far,[228,234,227]);assert.notDeepEqual(mini.far,opened.map.far);
     await page.screenshot({path:path.join(dir,`map-${width}.png`)});
     await tap('[data-action="close-battle-map"]');assert.equal(await page.evaluate(()=>app.run.state),'play');
     report.maps.push({width,height,mini,...opened});
