@@ -272,7 +272,7 @@ async function verifyStartup(){
   }
   if(await page.evaluate(()=>!!app.zixing)){
     if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
-    else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap});
+    else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});

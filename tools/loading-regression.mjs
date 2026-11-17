@@ -4,8 +4,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // Delay acknowledgements at the transport boundary while the actual room UI is active.
-export async function reviewNetworkActions({page,tap}) {
+export async function reviewNetworkActions({page,tap,resize,dir}) {
   await tap('[data-action="multiplayer"]');
+  for(const [width,height] of [[320,568],[430,932],[390,844]]){
+    await resize(width,height);
+    await page.waitForFunction(()=>{
+      const art=app.screen.querySelector('.zx-coop-map').getBoundingClientRect();
+      const footer=app.screen.querySelector('.zx-footer').getBoundingClientRect();
+      return art.height>100 && art.bottom<=footer.top+1;
+    });
+    await page.screenshot({path:path.join(dir,'coop-lobby-'+width+'.png')});
+  }
   await page.evaluate(()=>{
     inspected.env.createCoopSocket=callbacks=>{
       setTimeout(()=>callbacks.open(),0);
@@ -15,21 +24,25 @@ export async function reviewNetworkActions({page,tap}) {
         if(message.op==='ping'){callbacks.message(JSON.stringify({op:'pong'}));return true;}
         window.ackRoom=error=>{
           if(!error && message.op==='ready')room.members[0].ready=message.ready;
+          if(!error && message.op==='pick')room.members[0].species=message.species;
           callbacks.message(JSON.stringify({op:'reply',id:message.id,me:'me',room,error}));
         };
         return true;
       }};
     };
   });
-  async function roomAction(label,message){
-    await tap('.zx-footer button',label);
-    assert.equal(await page.evaluate(()=>app.screen.querySelector('[role="status"]')?.textContent),message);
-    await page.evaluate(()=>ackRoom());
-    await page.waitForFunction(()=>!app.screen.querySelector('[role="status"]'));
-  }
-  await roomAction('创建房间','正在创建房间');
+  await tap('.zx-footer button','创建房间');
+  assert.equal(await page.evaluate(()=>app.screen.querySelector('[role="status"]')?.textContent),'正在创建房间');
+  await page.evaluate(()=>ackRoom());
   const rosterTop=()=>app.screen.querySelector('.zx-stat-row').getBoundingClientRect().top;
   await page.waitForFunction(rosterTop);
+  const originalTop=await page.evaluate(rosterTop);
+  await tap('.zx-body .zx-row button','风');
+  assert.equal(await page.evaluate(()=>!!app.screen.querySelector('[role="status"]')),false);
+  assert.equal(await page.evaluate(rosterTop),originalTop);
+  await page.evaluate(()=>ackRoom());
+  await page.waitForFunction(()=>app.screen.querySelector('.zx-stat-row').textContent.includes('风'));
+  assert.equal(await page.evaluate(rosterTop),originalTop);
   for(const [label,next,error] of [['准备','取消准备'],['取消准备','准备'],['准备','准备','更新失败']]){
     const top=await page.evaluate(rosterTop);
     await tap('.zx-ready',label);
@@ -47,10 +60,31 @@ export async function reviewNetworkActions({page,tap}) {
     },{},next);
     if(error)assert.ok(await page.evaluate(error=>app.screen.textContent.includes(error),error));
   }
-  await roomAction('离开房间','正在离开房间');
+  await tap('.zx-footer button','离开房间');
+  assert.equal(await page.evaluate(()=>!!app.screen.querySelector('[role="status"]')),false);
+  assert.equal(await page.evaluate(rosterTop),originalTop);
+  await page.evaluate(()=>ackRoom());
   await tap('.zx-footer button','返回首页');
   await tap('[data-action="journey"]');
+  await page.evaluate(()=>{window.chooserBody=app.screen.querySelector('.zx-body');});
+  for(const id of [16,132,4]){
+    await tap('[data-species="'+id+'"]');
+    assert.ok(await page.evaluate(id=>chooserBody===app.screen.querySelector('.zx-body') &&
+      app.screen.querySelector('[aria-pressed="true"]').dataset.species===String(id) &&
+      !app.screen.querySelector('[role="status"]'),id));
+  }
+  await page.evaluate(()=>{
+    const resync=app.meta.resync.bind(app.meta);
+    app.meta.resync=async(...args)=>{
+      app.meta.resync=resync;
+      await new Promise(resolve=>window.releaseMapRead=resolve);
+      return resync(...args);
+    };
+  });
   await tap('.zx-footer button','选择关卡');
+  assert.ok(await page.evaluate(()=>chooserBody===app.screen.querySelector('.zx-body')));
+  await page.waitForFunction(()=>typeof releaseMapRead==='function');
+  await page.evaluate(()=>releaseMapRead());
   await tap('.zx-footer button','选择难度');
   await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.state==='play' && !app.screen,{timeout:90000});
@@ -64,7 +98,7 @@ export async function reviewNetworkActions({page,tap}) {
   await page.evaluate(()=>ackFinish());
   await page.waitForFunction(()=>app.screen?.dataset.page==='summary');
   assert.match(await page.evaluate(()=>app.screen.textContent),/星尘 \+/);
-  console.log('Ready toggles stayed in place; create, leave and settlement showed loading until acknowledged');
+  console.log('Lobby art fits all three widths; room actions and solo character selection stay in place');
 }
 
 // Run the real packaged game through entry, every forest area and a restart.

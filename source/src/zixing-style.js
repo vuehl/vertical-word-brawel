@@ -23,6 +23,8 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-header small{display:block;margin-top:2px;color:#fff}
 .zx-body{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;padding:14px 24px;gap:12px}
 .zx-body>*{flex-shrink:0}
+.zx-coop-art{display:flex;align-items:center;justify-content:center;flex:1;min-height:0}
+.zx-coop-art>.zx-coop-map{width:100%;height:100%;max-width:440px;max-height:440px;object-fit:contain}
 .zx-request-page>.zx-body{align-items:center;justify-content:center}
 .zx-request-status{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;color:#526d64}
 .zx-request-status>b{font-size:15px}

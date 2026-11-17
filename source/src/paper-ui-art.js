@@ -1,5 +1,72 @@
 import {glyphCanvas} from './paper-glyph-art.js';
 
+// A field notebook for the three starters. The lobby keeps this static canvas
+// between requests and scales the whole spread to the space above its buttons.
+export function drawCoopMap(canvas){
+  const c=canvas.getContext('2d');
+  c.save();c.scale(canvas.width/360,canvas.height/360);
+  c.lineJoin='round';c.lineCap='round';
+  function sheet(x,y,w,h,fill,edge){
+    c.fillStyle=fill;c.beginPath();c.roundRect(x,y,w,h,7);c.fill();
+    if(edge){c.strokeStyle=edge;c.lineWidth=1.3;c.stroke();}
+  }
+  function shape(points,fill,edge){
+    c.beginPath();c.moveTo(...points[0]);
+    for(const point of points.slice(1))c.lineTo(...point);
+    c.closePath();c.fillStyle=fill;c.fill();
+    if(edge){c.strokeStyle=edge;c.lineWidth=1.2;c.stroke();}
+  }
+  function hills(x,y,scale){
+    c.save();c.translate(x,y);c.scale(scale,scale);
+    shape([[-19,7],[-7,-10],[1,0],[8,-14],[25,7]],'#dbe5d3','#b1c4ac');
+    shape([[2,-4],[8,-14],[14,-5],[10,-7],[8,-4],[6,-7]],'#faf7e8');
+    c.restore();
+  }
+  c.save();c.translate(178,184);c.rotate(-.09);
+  sheet(-132,-124,264,257,'#d8d9c6');
+  sheet(-133,-129,265,257,'#adc4ae','#879d8b');
+  shape([[74,119],[89,119],[89,144],[82,138],[74,144]],'#ca8372','#ad7467');
+  c.restore();
+
+  c.translate(180,178);c.rotate(.045);
+  sheet(-136,-125,272,256,'#d7cfb7','#b6b5a0');
+  sheet(-136,-129,272,256,'#fffbee','#aaa996');
+  c.strokeStyle='#e6e9da';c.lineWidth=.7;c.beginPath();
+  for(let x=-112;x<=120;x+=16){c.moveTo(x,-119);c.lineTo(x,116);}
+  for(let y=-111;y<=116;y+=16){c.moveTo(-126,y);c.lineTo(126,y);}
+  c.stroke();
+  c.strokeStyle='#e7c6b9';c.beginPath();c.moveTo(-111,-127);c.lineTo(-111,125);c.stroke();
+  for(const y of [-81,0,81]){
+    c.beginPath();c.arc(-124,y,3.5,0,Math.PI*2);c.fillStyle='#b5b9a4';c.fill();
+  }
+  // Translucent washi tape, torn at both ends.
+  c.save();c.translate(-37,-127);c.rotate(-.13);
+  shape([[-33,-8],[33,-8],[30,-3],[33,1],[30,7],[-32,7],[-29,2],[-33,-2]],'#e9c975d9');
+  c.restore();
+  hills(-68,-86,.74);hills(59,70,.9);hills(-54,96,.53);
+
+  c.strokeStyle='#86a495';c.lineWidth=2.6;c.setLineDash([3,5]);c.beginPath();
+  c.moveTo(-99,81);c.bezierCurveTo(-58,96,-90,43,-55,48);
+  c.bezierCurveTo(-8,53,50,70,36,18);c.bezierCurveTo(27,-13,-37,9,-31,-32);
+  c.bezierCurveTo(-28,-65,33,-37,66,-69);c.stroke();c.setLineDash([]);
+  c.fillStyle='#c99460';c.beginPath();c.arc(-99,81,4,0,Math.PI*2);c.fill();
+  c.strokeStyle='#786e61';c.lineWidth=2.5;c.beginPath();c.moveTo(65,-69);c.lineTo(65,-103);c.stroke();
+  shape([[66,-103],[92,-100],[85,-93],[92,-85],[66,-89]],'#d78069','#a36555');
+  for(const [word,x,y,size] of [['风',-59,43,68],['炎',29,17,85],['摹',-26,-47,69]]){
+    c.fillStyle='#85917d38';c.beginPath();c.ellipse(x,y+3,size*.31,5,0,0,Math.PI*2);c.fill();
+    c.drawImage(glyphCanvas(word),x-size/2,y-size*.84,size,size);
+  }
+  // A yellow pencil rests across the lower corner of the map.
+  c.save();c.translate(85,110);c.rotate(-.42);
+  shape([[-45,0],[-31,-5],[43,-5],[43,5],[-31,5]],'#edce81','#907b59');
+  shape([[-45,0],[-31,-5],[-31,5]],'#eed6b4');
+  shape([[-45,0],[-39,-2],[-39,2]],'#525850');
+  c.fillStyle='#c59c58';c.fillRect(-30,2,57,2);
+  c.fillStyle='#9bb1a8';c.fillRect(28,-4.5,7,9);
+  c.fillStyle='#d99483';c.fillRect(35,-4.5,7.5,9);c.restore();
+  c.restore();canvas.dataset.static='true';return canvas;
+}
+
 export function drawPaperIllustration(canvas,hero=false,variant=0){
   const c=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
   function draw(){

@@ -3,7 +3,7 @@ import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './co
 import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
 import {drawMenuGlyph,glyphWordForSpecies} from './paper-glyph-art.js';
-import {drawPaperIllustration} from './paper-ui-art.js';
+import {drawPaperIllustration,drawCoopMap} from './paper-ui-art.js';
 import {buildingMapName,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
@@ -249,8 +249,12 @@ export function createZixingUI(app,api) {
     const root=screen('home','','',[
       el('div','zx-home-copy',[el('h2','','从一个字开始'),text('走位避险，自动出招。'),text('在五行之间，写下你的这一局。')]),
       el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
-      button([el('span','','开始旅程'),el('span','','→')],()=>openProfilePage('选择文字',choose),'primary zx-home-start',{'data-action':'journey'}),
-      button('多人联机',()=>openProfilePage('多人联机',multiplayer),'zx-home-coop',{'data-action':'multiplayer'}),
+      button([el('span','','开始旅程'),el('span','','→')],async()=>{
+        const origin=app.screen;
+        if(!profile())await ready();
+        if(app.screen===origin)choose();
+      },'primary zx-home-start',{'data-action':'journey'}),
+      button('多人联机',()=>multiplayer(),'zx-home-coop',{'data-action':'multiplayer'}),
       button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),openLab,'purple zx-home-lab',{'data-action':'lab'}),
       el('div','zx-home-foot',button([icon('book',16,'#61567b'),el('span','','玩法说明')],()=>help(),'zx-plain')),
     ]);
@@ -261,10 +265,10 @@ export function createZixingUI(app,api) {
   function multiplayer(resume=savedSeat()) {
     let room=null, view=null, busy=false, starting=false, status='', pending='', joiningCode='';
     let pick=characters.find(c=>c.id===selected)?.id || 4;
-    async function perform(fn,message='') {
+    async function perform(fn) {
       if(busy || starting)return;
       busy=true;
-      status='';pending=message;render();
+      status='';render();
       try { await fn(); }
       catch(error) { status=error.message || error.errMsg || String(error); }
       finally {
@@ -272,8 +276,8 @@ export function createZixingUI(app,api) {
         if(!starting && view.node===app.screen){render();joinInvite();}
       }
     }
-    function action(label,fn,kind='',message='') {
-      return button(label,()=>perform(fn,message),kind);
+    function action(label,fn,kind='') {
+      return button(label,()=>perform(fn),kind);
     }
     function joinInvite(){
       const code=invites?.code;
@@ -325,7 +329,6 @@ export function createZixingUI(app,api) {
         start:async state=>{
           if(starting)return;
           starting=true;
-          pending='正在同步队伍进度';render();
           const session=room;
           try {
             if(!profile().starter)await app.meta.chooseStarter(session.mine.species);
@@ -353,7 +356,7 @@ export function createZixingUI(app,api) {
         choices=characters.map(c=>action(c.word,async()=>{
           await session.setPick(c.id);
           pick=c.id;
-        },'','正在切换字灵'));
+        }));
         roster=card();
         body.push(card(el('b','','选择字灵'),row(...choices)),roster);
         readyButton=action('准备',async()=>{
@@ -361,23 +364,24 @@ export function createZixingUI(app,api) {
           try { await session.setReady(!session.mine.ready); }
           finally { readyButton.disabled=false; }
         },'primary zx-ready');
-        startButton=action('开始冒险',()=>session.start(),'primary','正在开启冒险');
-        actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;},'','正在离开房间'));
+        startButton=action('开始冒险',()=>session.start(),'primary');
+        actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;}));
       }else{
         if(resume)actions.push(action('重连原房间',()=>connect(true,resume),'primary'));
         actions.push(action('创建房间',()=>connect(false),'primary'),action('加入房间',()=>connect(true)),action('返回首页',home));
       }
-      const note=text('','zx-note'),activity=el('div');
-      body.unshift(activity,note);
+      const note=text('','zx-note');
+      const activity=session?null:el('div','zx-coop-art');
+      const illustration=activity && drawCoopMap(el('canvas','zx-coop-map',[],{width:720,height:720,'aria-hidden':true}));
+      if(activity)body.push(activity);
+      body.push(note);
       const node=screen('coop',session?'队伍房间':'多人联机','桌上世界 · 2–3 人合作',body,actions);
       const subtitle=node.querySelector('.zx-header small');
       let shownMessage;
       function update(){
-        if(shownMessage!==pending){
+        if(activity && shownMessage!==pending){
           shownMessage=pending;
-          activity.replaceChildren(...(pending?[requestIndicator(pending,!!session)]:[]));
-          activity.hidden=!pending;
-          node.classList.toggle('zx-request-page',!!pending&&!session);
+          activity.replaceChildren(pending?requestIndicator(pending):illustration);
         }
         updateText(note,status);
         if(note.hidden!==!status)note.hidden=!status;
@@ -404,7 +408,7 @@ export function createZixingUI(app,api) {
           if(session.isHost && m.offline){
             if(kick?.dataset.seat!==m.id){
               kick?.remove();
-              const remove=action('移出',()=>session.kick(m.id),'','正在移出队员');
+              const remove=action('移出',()=>session.kick(m.id));
               remove.dataset.seat=m.id;memberRow.append(remove);
             }
           }else if(kick)kick.remove();
@@ -426,18 +430,43 @@ export function createZixingUI(app,api) {
     if(!joinInvite() && resume)perform(()=>connect(true,resume));
   }
   function choose() {
-    const c=current();
-    screen('choose','选择文字','01 / 03 · 选择你的起点',[
-      el('div','zx-hero',[small('字灵 · '+c.word),glyph(c,true),text(c.motto,'zx-note')]),
-      el('div','zx-choices',characters.map(ch=>button([glyph(ch),small(ch.role)],()=>{selected=ch.id;choose();},'zx-choice '+ch.tone+(selected===ch.id?' on':''),{'data-species':ch.id,'aria-pressed':selected===ch.id,'aria-label':ch.word+'，'+ch.role}))),
-      card(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id))))),
-      small(c.evolution),
-      link('▥ 查看属性                         基础 + 研究加成 ›',()=>loadPage('文字属性','正在读取研究加成',()=>app.meta.resync(true),stats,choose)),
-    ],[button('选择关卡  →',()=>loadPage('选择关卡','正在读取关卡进度',async()=>{
-      if(!profile().starter)await app.meta.chooseStarter(c.id);
-      profile().lastSpecies=c.id;app.meta.save();
-      await app.meta.resync(true);
-    },map,choose),'primary'),button('返回',home)]);
+    let navigating=false;
+    const hero=el('div','zx-hero'),skills=card(),evolution=small('');
+    const choices=characters.map(ch=>button([glyph(ch),small(ch.role)],()=>{
+      if(navigating || selected===ch.id)return;
+      selected=ch.id;
+      updateCharacter();
+    },'zx-choice '+ch.tone,{'data-species':ch.id,'aria-label':ch.word+'，'+ch.role}));
+    function updateCharacter(){
+      const c=current();
+      hero.replaceChildren(small('字灵 · '+c.word),glyph(c,true),text(c.motto,'zx-note'));
+      skills.replaceChildren(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),
+        row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id)))));
+      updateText(evolution,c.evolution);
+      choices.forEach((choice,i)=>{
+        const active=characters[i].id===selected;
+        choice.classList.toggle('on',active);
+        choice.setAttribute('aria-pressed',String(active));
+      });
+    }
+    async function nextPage(show){
+      if(navigating)return;
+      navigating=true;
+      try{
+        if(show===map){
+          const id=current().id;
+          if(!profile().starter)await app.meta.chooseStarter(id);
+          profile().lastSpecies=id;app.meta.save();
+        }
+        await app.meta.resync(true);
+        if(app.screen===node)show();
+      }finally{navigating=false;}
+    }
+    updateCharacter();
+    const node=screen('choose','选择文字','01 / 03 · 选择你的起点',[
+      hero,el('div','zx-choices',choices),skills,evolution,
+      link('▥ 查看属性                         基础 + 研究加成 ›',()=>nextPage(stats)),
+    ],[button('选择关卡  →',()=>nextPage(map),'primary'),button('返回',home)]);
   }
   function map() {
     const stages=profile().stageUnlocks??{forest:profile().biomes?.forest??0};
