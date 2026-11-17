@@ -195,6 +195,7 @@ html.zixing .tc.zx-touch .tc-act:not(.zx-item-act) .zx-act-title{font-size:12px;
 .zx-header.blue,.zx-header.purple{background:#e9f0e7;color:#475f5e}.zx-header small{color:#63776e}
 .zx-button{border:1px solid #a7b5a7;border-radius:14px;box-shadow:0 3px 0 #bdc8b9;font-weight:700}
 .zx-button.primary{background:linear-gradient(180deg,#ffe7a1 0%,#efd082 100%);border:2px solid #a68a53;color:#423b2c;box-shadow:0 3px 0 #aa915d}
+.zx-button.zx-ready[disabled]{background:#dedede;border:2px solid #999;color:#555;box-shadow:0 3px 0 #aaa;opacity:1}
 .zx-button.purple{background:linear-gradient(180deg,#a4bac1 0%,#7f9b9c 100%);border:1px solid #697e86;box-shadow:0 3px 0 #5f777b}
 .zx-card{border:1px solid #c0cbbb;border-radius:12px;background:#fffdf6;box-shadow:0 3px 0 #d3dacb}
 .zx-choice,.zx-difficulty{border-color:#c1ccbc;border-radius:14px;background:#fffdf6;box-shadow:0 3px 0 #c9d1c2}

@@ -12,18 +12,42 @@ export async function reviewNetworkActions({page,tap}) {
       const room={code:'123456',host:'me',state:'lobby',members:[{id:'me',species:4,ready:false}]};
       return {close(){},send(json){
         const message=JSON.parse(json);
-        if(message.op==='ready')room.members[0].ready=message.ready;
-        window.ackRoom=()=>callbacks.message(JSON.stringify({op:'reply',id:message.id,me:'me',room}));
+        if(message.op==='ping'){callbacks.message(JSON.stringify({op:'pong'}));return true;}
+        window.ackRoom=error=>{
+          if(!error && message.op==='ready')room.members[0].ready=message.ready;
+          callbacks.message(JSON.stringify({op:'reply',id:message.id,me:'me',room,error}));
+        };
         return true;
       }};
     };
   });
-  for(const [label,message] of [['创建房间','正在创建房间'],['准备','正在更新准备状态'],['离开房间','正在离开房间']]){
+  async function roomAction(label,message){
     await tap('.zx-footer button',label);
     assert.equal(await page.evaluate(()=>app.screen.querySelector('[role="status"]')?.textContent),message);
     await page.evaluate(()=>ackRoom());
     await page.waitForFunction(()=>!app.screen.querySelector('[role="status"]'));
   }
+  await roomAction('创建房间','正在创建房间');
+  const rosterTop=()=>app.screen.querySelector('.zx-stat-row').getBoundingClientRect().top;
+  await page.waitForFunction(rosterTop);
+  for(const [label,next,error] of [['准备','取消准备'],['取消准备','准备'],['准备','准备','更新失败']]){
+    const top=await page.evaluate(rosterTop);
+    await tap('.zx-ready',label);
+    const busy=await page.evaluate(()=>{
+      const button=app.screen.querySelector('.zx-ready');
+      return {disabled:button.disabled,label:button.textContent,background:inspected.layout.box(button).s.background,
+        loading:!!app.screen.querySelector('[role="status"]')};
+    });
+    assert.deepEqual(busy,{disabled:true,label,background:'#dedede',loading:false});
+    assert.equal(await page.evaluate(rosterTop),top);
+    await page.evaluate(error=>ackRoom(error),error);
+    await page.waitForFunction(label=>{
+      const button=app.screen.querySelector('.zx-ready');
+      return !button.disabled && button.textContent===label;
+    },{},next);
+    if(error)assert.ok(await page.evaluate(error=>app.screen.textContent.includes(error),error));
+  }
+  await roomAction('离开房间','正在离开房间');
   await tap('.zx-footer button','返回首页');
   await tap('[data-action="journey"]');
   await tap('.zx-footer button','选择关卡');
@@ -40,7 +64,7 @@ export async function reviewNetworkActions({page,tap}) {
   await page.evaluate(()=>ackFinish());
   await page.waitForFunction(()=>app.screen?.dataset.page==='summary');
   assert.match(await page.evaluate(()=>app.screen.textContent),/星尘 \+/);
-  console.log('Room requests and settlement displayed loading until acknowledged');
+  console.log('Ready toggles stayed in place; create, leave and settlement showed loading until acknowledged');
 }
 
 // Run the real packaged game through entry, every forest area and a restart.

@@ -356,7 +356,11 @@ export function createZixingUI(app,api) {
         },'','正在切换字灵'));
         roster=card();
         body.push(card(el('b','','选择字灵'),row(...choices)),roster);
-        readyButton=action('准备',()=>session.setReady(!session.mine.ready),'primary','正在更新准备状态');
+        readyButton=action('准备',async()=>{
+          readyButton.disabled=true;
+          try { await session.setReady(!session.mine.ready); }
+          finally { readyButton.disabled=false; }
+        },'primary zx-ready');
         startButton=action('开始冒险',()=>session.start(),'primary','正在开启冒险');
         actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;},'','正在离开房间'));
       }else{
