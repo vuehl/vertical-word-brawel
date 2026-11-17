@@ -1,15 +1,16 @@
 import {displayedFormType} from './form-copy.js';
+import {facilityDwellSeconds} from './active-content.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
 import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
-import {drawMenuGlyph,glyphWordForSpecies} from './paper-glyph-art.js';
+import {drawMenuGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from './paper-glyph-art.js';
 import {drawPaperIllustration,drawCoopMap} from './paper-ui-art.js';
-import {buildingMapName,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
+import {drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
-import {batterySaverEnabled} from './performance-profile.js';
+import {selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
 import {characters,characterForSpecies,windRoutes} from './starter-characters.js';
 import {SINGLE_STAGE,FOREST_COMBAT_ZONES} from './lite-rules.js';
@@ -92,10 +93,6 @@ function icon(name,size=24,color='#766a88') {
     ctx.beginPath();ctx.moveTo(5,20);ctx.lineTo(5,13);ctx.moveTo(12,20);ctx.lineTo(12,7);ctx.moveTo(19,20);ctx.lineTo(19,3);ctx.stroke();
   }else if(name==='refresh'){
     ctx.beginPath();ctx.arc(12,12,7.5,Math.PI*.2,Math.PI*1.85);ctx.stroke();ctx.beginPath();ctx.moveTo(19,3.5);ctx.lineTo(19,8.5);ctx.lineTo(14,8.5);ctx.stroke();
-  }else if(name==='interact'){
-    ctx.beginPath();ctx.roundRect(3,6,18,15,3);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(3,12);ctx.lineTo(21,12);ctx.moveTo(9,6);ctx.lineTo(9,3);ctx.lineTo(15,3);ctx.lineTo(15,6);ctx.stroke();
-    ctx.fillRect(10,10,4,5);
   }else if(name==='clock'){
     ctx.beginPath();ctx.arc(12,13,8,0,Math.PI*2);ctx.moveTo(12,8);ctx.lineTo(12,13);ctx.lineTo(16,15);ctx.moveTo(9,2);ctx.lineTo(15,2);ctx.stroke();
   }else if(name==='coin'){
@@ -181,6 +178,7 @@ export function createZixingUI(app,api) {
   window.__zixingApp=app;
   let selected=4,selectedDifficulty=difficulties[1],labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null,activeEntry=null;
   const ui=app.zixing={home,choose,map,difficulty,lab,settings,help,stats,attachRun,loading,start};
+  if(window.nativeUI)window.addEventListener('memorywarning',releaseGlyphCanvasCache);
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
   const goBack=()=>returnTo?returnTo():home();
@@ -643,12 +641,41 @@ export function createZixingUI(app,api) {
   function settings(back=home) {
     returnTo=back;renderSettings();
   }
+  function powerModeSetting(control){
+    const label='iPhone 温控模式',note=small('正在读取微信温控设置…');
+    const button=el('button','zx-switch',el('i'),{type:'button',role:'switch','aria-label':label,disabled:true});
+    let current,local;
+    const name=mode=>mode===1?'温控':'普通';
+    function refresh(){
+      button.disabled=false;button.classList.toggle('on',local===1);
+      button.setAttribute('aria-checked',String(local===1));
+      note.textContent=current===local?'本次为'+name(current)+'模式。开启可降低功耗，也可能降低帧率。':
+        '本次为'+name(current)+'模式，下次启动将使用'+name(local)+'模式。';
+    }
+    control.read().then(state=>{
+      current=state.current;local=state.local;refresh();
+    }).catch(()=>{note.textContent='当前设备或微信环境暂无法读取温控设置。';});
+    button.addEventListener('click',async()=>{
+      if(button.disabled)return;
+      button.disabled=true;
+      const next=1-local;
+      try{await control.set(next);local=next;refresh();}
+      catch{refresh();note.textContent='温控设置保存失败，点击开关可重试。';}
+    });
+    return el('div','zx-setting',row(col(el('b','',label),note),button));
+  }
   function renderSettings() {
     const s=profile().settings,fields=[];
     const save=()=>{app.applySettings();app.meta.save();};
     const toggle=(label,key,note='')=>{
       fields.push(key);const b=el('button','zx-switch'+(s[key]?' on':''),el('i'),{type:'button',role:'switch','aria-label':label,'aria-checked':!!s[key]});
-      b.addEventListener('click',()=>{s[key]=!s[key];b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();});
+      b.addEventListener('click',()=>{
+        if(key==='batterySaver'){
+          setBatterySaver(s,!s.batterySaver);
+          save();renderSettings();return;
+        }
+        s[key]=!s[key];b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();
+      });
       return el('div','zx-setting',[row(col(el('b','',label),note?small(note):null),b)]);
     };
     const range=(label,key,min,max,step,format=percent,note='')=>{
@@ -661,13 +688,12 @@ export function createZixingUI(app,api) {
       fields.push(key);const group=el('div','zx-options');
       const explanation=note?small(typeof note==='function'?note():note):null;
       const fill=()=>group.replaceChildren(...values.map(([v,label])=>el('button','zx-option'+((s[key]??api.defaults[key])===v?' on':''),label,{type:'button',onclick:()=>{
+        if(key==='quality'){
+          selectGraphicsQuality(s,v);
+          save();renderSettings();return;
+        }
         s[key]=v;
-        // Choosing a higher quality explicitly takes precedence over the
-        // temporary low-quality override. Enabling saver later still works.
-        const leaveSaver=key==='quality'&&v!=='low'&&batterySaverEnabled(s.batterySaver);
-        if(leaveSaver)s.batterySaver=false;
         save();
-        if(leaveSaver){renderSettings();return;}
         fill();if(typeof note==='function')explanation.textContent=note();
       }})));fill();
       return el('div','zx-setting',[row(el('b','',label),group),explanation]);
@@ -677,7 +703,8 @@ export function createZixingUI(app,api) {
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音'))];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','上限 30 帧，场景临时使用流畅画质；选择精致会关闭省电'),options('帧率上限','fpsLimit',[[30,'30'],[60,'60']]))];
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','开启后切换为流畅画质，最高 30 帧。选择均衡或精致会关闭省电。'))];
+      if(window.iosPowerMode)content.push(card(powerModeSetting(window.iosPowerMode)));
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -696,7 +723,7 @@ export function createZixingUI(app,api) {
     screen('settings','设置','仅调整当前设备的体验',[
       tabs(['声音','画面','操作','界面'],settingsTab,i=>{settingsTab=i;settingsSub=0;renderSettings();},'main'),
       sublabels.length?el('div','zx-subtabs',sublabels.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),label,{onclick:()=>{settingsSub=i;renderSettings();}}))):null,
-      row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key]??({fpsLimit:60,batterySaver:false}[key]);save();renderSettings();},'zx-plain')),
+      row(small(title),button(settingsTab===1&&settingsSub===0&&window.iosPowerMode?'恢复画质与省电设置':'恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key];save();renderSettings();},'zx-plain')),
       ...content,
     ],[button('返回',()=>loadPage('设置','正在保存设置',()=>app.meta.saveNow(),()=>{
       const back=returnTo;app.setScreen(null);back();
@@ -711,7 +738,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取','靠近掉落的经验、金币与道具就会自动吸附拾取，进入吸附范围后无需停留。扭蛋等场景互动仍使用交互按钮。'],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等物件旁停留 ${facilityDwellSeconds} 秒，脚下的圆环填满时会自动触发。祝福祭坛按显示的百分比蓄能。`],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -756,9 +783,10 @@ export function createZixingUI(app,api) {
     })]:[]),button('结束本局',()=>confirmEnd(run),'danger'),button('返回',()=>run.resume())],run.ui,'zx-pause');
   }
   function confirmEnd(run) {
-    overlay('结束这次旅程？','确认结束',[
+    const wrap=overlay('结束这次旅程？','',[
       small('本局金币和临时强化将结束，未完成的关卡不会解锁下一难度。'),statRow('当前旅程',character(run.startSpecies).word+' · 桌上世界'),small(time(run.time)+' · Lv.'+run.player.level),
-    ],[button('确认结束本局',async()=>{run.endHow='quit';await run.finish(false);},'danger'),button('返回',()=>pause(run))],run.ui);
+    ],[button('确认结束本局',async()=>{run.endHow='quit';await run.finish(false);},'danger'),button('返回',()=>run.resume())],run.ui);
+    wrap.classList.add('zx-confirm-end');
   }
   function buildLabels(run) {
     return [...run.player.moves.filter(Boolean).map(move=>api.moveName(move.def)+' Lv.'+move.level),
@@ -1044,25 +1072,6 @@ export function createZixingUI(app,api) {
       node.style.opacity=String(s.hudOpacity??1);node.style.fontSize=(13*(s.hudScale??1))+'px';
     };
     hud.look(profile().settings);
-    const touchUpdate=hud.touch.update.bind(hud.touch);let lastInteraction='';
-    hud.touch.update=(r,prompt)=>{
-      touchUpdate(r,prompt);
-      const raw=hud.touch.actText,target=r.interactables.nearest,key=raw+'|'+(target?.kind||'');
-      if(!raw){lastInteraction='';return;}
-      if(key===lastInteraction)return;lastInteraction=key;
-      let title=raw.replace(/₽/g,'金币'),detail='',poor=false;
-      const itemTarget=['chest','freechest','cursedchest'].includes(target?.kind);
-      hud.touch.act.classList.toggle('zx-item-act',itemTarget);
-      if(itemTarget){
-        const free=target.kind!=='chest'||target.data?.gift,cost=r.interactables.chestCost();
-        poor=!free&&r.gold<cost;
-        title=poor?'金币不足':target.kind==='cursedchest'?'开启咒箱':'开启'+buildingMapName(target);
-        detail=free?(target.kind==='cursedchest'?'附带诅咒':'免费'):number(cost)+' 金币';
-      }
-      if(itemTarget)hud.touch.act.firstChild.replaceChildren(icon('interact',18,'#76684e'));
-      hud.touch.act.lastChild.replaceChildren(el('b','zx-act-title',title),...(detail?[el('small','zx-act-detail',detail)]:[]));
-      hud.touch.act.classList.toggle('zx-act-poor',poor);hud.touch.act.setAttribute('aria-label',raw.replace(/₽/g,'金币'));
-    };
     for(const element of hud.hudEl.querySelectorAll('.hud-tl,.under,.hud-party,.hud-top,.hud-tr,.hud-bl,.hud-br,.lock-hint'))element.dataset.uiHidden='true';
     hud.fitTop=()=>{};
     let mapAt=-Infinity,mapFrame=0;

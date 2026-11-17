@@ -148,10 +148,10 @@ async function reviewPortalProgression(page,dir,draw){
       const r=app.run,portal=r.interactables.list.find(i=>i.kind==='portal');
       const rewards=r.interactables.rewardsLeft();
       r.interactables.interact(portal);
-      return {rewards,stage:r.stage,state:r.state,warnAt:r.rewardWarnAt,time:r.realTime};
+      return {rewards,stage:r.stage,state:r.state,warned:r.interactables.warnedPortal===portal};
     });
     assert.ok(warning.rewards>0);assert.equal(warning.stage,zone);assert.equal(warning.state,'play');
-    assert.equal(warning.warnAt,warning.time,'The normal unclaimed-reward warning must still run');
+    assert.ok(warning.warned,'The normal unclaimed-reward warning must still run');
     await page.evaluate(()=>app.run.interactables.interact(app.run.interactables.list.find(i=>i.kind==='portal')));
     const nextStage=zone===1?2:4;
     await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},nextStage);

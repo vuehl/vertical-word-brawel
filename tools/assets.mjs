@@ -9,12 +9,14 @@ import {packModels,packStream} from './pack-resources.mjs';
 import {writeActorMetrics} from './actor-metrics.mjs';
 import {assetPolicyVersion,compressedFireAtlases,musicTracks,excludedAssetReason} from './asset-policy.mjs';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
+import {gameProject} from './project-target.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const source = path.join(root, 'source');
 const pub = path.join(source, 'public');
 const development=process.argv.includes('--dev');
-const out = path.join(root, ...(development?['验收','开发者工程']:[]), 'minigame');
+const projectRoot=gameProject(root,development,process.argv.includes('--ios-power-mode'));
+const out=path.join(projectRoot,'minigame');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pokebonk-art-'));
 const packs = {art: {}, world: {}, text: {}};
 const index = {};
@@ -110,7 +112,7 @@ for (const [name, entries] of Object.entries(packs)) {
 }
 const devMetadata=developer?{developerAssetKey:developer.assetKey()}:{};
 fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,...devMetadata,packs:meta,rawSizes,files:index,sprites:generatedSprites})+';\n');
-const reportDir=path.join(root,'验收',...(development?['开发者工程']:[]));fs.mkdirSync(reportDir,{recursive:true});
+const reportDir=projectRoot===root?path.join(root,'验收'):projectRoot;fs.mkdirSync(reportDir,{recursive:true});
 fs.writeFileSync(path.join(reportDir,'资源打包清单.json'),JSON.stringify({
   policyVersion:assetPolicyVersion,mappedResources:Object.keys(index).length,runtimeSpecies:runtimeSpecies.length,musicTracks,
   packs:Object.fromEntries(Object.keys(meta).map(name=>[name,{files:Object.keys(packs[name]).length,rawBytes:rawSizes[name],packedBytes:fs.statSync(path.join(out,'packs',name,'assets.br')).size}])),

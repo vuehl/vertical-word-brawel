@@ -2,6 +2,62 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 
+export function installPowerModeFixture(){
+  const state=window.fixturePower={current:0,local:0,loads:0,writes:[],deny:false};
+  window.requirePlugin=(name,options)=>{
+    if(name!=='MiniGameCommon'||!options.enableRequireHostModule||options.customEnv.wx!==wx)throw Error('Wrong plugin environment');
+    state.loads++;
+    return {default:()=>({getPowerModeManager:()=>({
+      getCurrentMode:({success})=>success({mode:state.current}),
+      getLocalMode:({success})=>success({mode:state.local}),
+      setLocalMode({mode,success,fail}){
+        if(state.deny)return fail({errMsg:'unavailable'});
+        state.writes.push(mode);state.local=mode;success({});
+      },
+    })})};
+  };
+}
+
+export async function reviewPowerMode(page,dir){
+  const report=await page.evaluate(async()=>{
+    const {env,doc}=inspected,r=app.r,renderer=r.renderer,gl=renderer.getContext();
+    const loadsAtBoot=fixturePower.loads,settings=app.meta.profile.settings;
+    const firstRequest=fixtureFrameRates.length;
+    const frame=()=>app.pacer.ready(performance.now(),realFrameGap());
+    app.pacer.reset();app.run.state='play';frame();frame();
+    app.run.state='paused';frame();app.run.state='play';
+    settings.batterySaver=true;app.applySettings();frame();
+    settings.batterySaver=false;app.applySettings();frame();
+    const requestedFrameRates=fixtureFrameRates.slice(firstRequest);
+    app.run.ui.hud(app.run);r.render(0);env.drawUI(renderer);
+    app.run.state='paused';app.zixing.settings(()=>{});
+    const graphics=[...doc.querySelectorAll('.zx-tabs.main button')].find(el=>el.textContent==='画面');
+    graphics.click();await new Promise(resolve=>setTimeout(resolve,0));
+    const toggle=doc.querySelector('[aria-label="iPhone 温控模式"]');
+    const status=()=>({checked:toggle.getAttribute('aria-checked'),note:toggle.closest('.zx-setting').querySelector('small').textContent});
+    const click=async()=>{toggle.click();await new Promise(resolve=>setTimeout(resolve,0));return status();};
+    const normal=status(),scheduled=await click();fixturePower.deny=true;
+    const failed=await click();fixturePower.deny=false;
+    const restored=await click();env.drawUI(renderer,true);
+    const remove=gl.deleteTexture,create=gl.createTexture;let released=0,recreated=0;
+    gl.deleteTexture=function(texture){released++;return remove(texture);};
+    gl.createTexture=function(){recreated++;return create();};
+    try{
+      fixtureMemoryWarning({level:10});fixtureMemoryWarning({level:10});
+      app.setScreen(null);app.run.state='play';app.run.ui.hud(app.run);r.render(0);env.drawUI(renderer);
+    }finally{gl.deleteTexture=remove;gl.createTexture=create;}
+    return {loadsAtBoot,loaded:fixturePower.loads,writes:fixturePower.writes,normal,scheduled,failed,restored,
+      requestedFrameRates,gc:fixtureGCs,released,recreated,glError:gl.getError()};
+  });
+  assert.equal(report.loadsAtBoot,0);assert.equal(report.loaded,1);assert.deepEqual(report.writes,[1,0]);
+  assert.equal(report.normal.checked,'false');assert.match(report.normal.note,/本次为普通/);
+  assert.equal(report.scheduled.checked,'true');assert.match(report.scheduled.note,/本次为普通.*下次启动将使用温控/);
+  assert.equal(report.failed.checked,'true');assert.match(report.failed.note,/保存失败/);
+  assert.deepEqual(report.restored,report.normal);assert.deepEqual(report.requestedFrameRates,[60,30,60]);
+  assert.equal(report.gc,1);assert.ok(report.released>0&&report.recreated>0);assert.equal(report.glError,0);
+  fs.writeFileSync(path.join(dir,'ios-power-mode.json'),JSON.stringify(report,null,2));console.log(report);
+}
+
 export async function reviewIOSBudget(page,dir){
   const report={environment:'Compiled WeChat developer build; iOS API fixture in Chrome SwiftShader. This does not measure iPhone FPS.',waves:[],combat:[]};
   report.device=await page.evaluate(()=>{
@@ -36,6 +92,15 @@ export async function reviewIOSBudget(page,dir){
   });
   for(const sample of report.qualityLock){assert.deepEqual(sample.after,sample.before);assert.equal(sample.after.dyn,1);}
   assert.deepEqual(report.qualityLock.slice(0,3).map(s=>s.before),report.qualityLock.slice(3).map(s=>s.before));
+  report.saverShadows=await page.evaluate(()=>{
+    const run=app.run,s=app.meta.profile.settings;
+    return ['high','saver','off','high'].map(action=>{
+      s.batterySaver=action==='saver';if(action==='high')s.quality='high';
+      app.applySettings();run.renderWorld(0);app.r.render(0);
+      return {quality:s.quality,size:app.r.sun.shadow.map.width};
+    });
+  });
+  assert.deepEqual(report.saverShadows,[{quality:'high',size:2048},{quality:'low',size:1024},{quality:'low',size:1024},{quality:'high',size:2048}]);
   report.panel=await page.evaluate(()=>{
     const api=inspected.env.__zixingDeveloper,doc=inspected.doc;
     api.open();
@@ -91,11 +156,13 @@ export async function reviewIOSBudget(page,dir){
         if(frame%20===0){await new Promise(r=>setTimeout(r,0));app.r.render(1/60);inspected.env.drawUI(renderer);draws.push(renderer.info.render.calls);}
       }
       return {seconds,count,ordinary:api.snapshot().ordinary,state:run.state,damage:run.stats.damage-damage,particles,texts,draws,
-        limits:[run.vfx.add.limit,run.vfx.norm.limit,run.vfx.text.limit],bloom:app.r.bloom.intensity,
+        limits:[run.vfx.add.limit,run.vfx.norm.limit,run.vfx.text.limit],presetBloom:run.performance.bloom,bloom:app.r.bloom.intensity,
         textures:renderer.info.memory.textures,geometry:renderer.info.memory.geometries};
     },{seconds,count});
     assert.equal(sample.ordinary,count);assert.equal(sample.state,'play');assert.ok(sample.damage>0);
-    assert.ok(sample.particles<=4800&&sample.texts<=160);assert.deepEqual(sample.limits,[3000,1800,160]);assert.ok(sample.bloom>0);report.combat.push(sample);
+    assert.ok(sample.particles<=4800&&sample.texts<=160);assert.deepEqual(sample.limits,[3000,1800,160]);
+    // The illustrated desk explicitly disables scene bloom in every preset.
+    assert.equal(sample.presetBloom,true);assert.equal(sample.bloom,0);report.combat.push(sample);
     await page.screenshot({path:path.join(dir,`ios-${seconds}.png`)});
   }
   report.longRun=await page.evaluate(async()=>{

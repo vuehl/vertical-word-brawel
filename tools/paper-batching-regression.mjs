@@ -15,6 +15,8 @@ export async function reviewPaperBatching(page,dir){
     try{
       renderer.autoClear=true;renderer.info.autoReset=false;
       for(const [child] of visibility)if(child!==terrain.group&&!child.isLight)child.visible=false;
+      // Sample the origin with its own frustum, even if the preceding test left the camera nearby.
+      delete terrain.zxVisibilityView;
       for(const [x,z] of [[0,0],[52,-45],[-46,40],[0,0]]){
         run.player.pos.set(x,0,z);run.camTarget.copy(run.player.pos);run.updateCamera(1);
         run.renderWorld(0);scene.updateMatrixWorld(true);

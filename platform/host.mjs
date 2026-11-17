@@ -29,6 +29,7 @@ import {gameViewport} from './viewport.mjs';
 import {createMutationTargets} from './mutation-targets.mjs';
 import {uiScale} from './ui-resolution.mjs';
 import {readRuntimeInfo} from './device.mjs';
+import {createIOSPowerMode} from './power-mode.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -55,7 +56,7 @@ export async function setup(host) {
   const uiFrames=createUIFrameCache();
   const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,element=>{
     if(modalTransition.owns(element)){modalTransition.invalidate();return;}
-    const tile=usingBattleHUD()&&activeHudLayers().find(layer=>layer.owns(element));
+    const tile=usingBattleHUD()&&fixedLayerFor(element);
     if(tile)tile.invalidate();else uiFrames.invalidate();
   });
   const controls=createControlLayer(makeCanvas);
@@ -74,6 +75,18 @@ export async function setup(host) {
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
+  const fixedLayers=new Map(coopLayers.map(layer=>[layer.id,layer]));
+  const soloTiles=new Map([...soloLayers,minimap,health,portrait].map(layer=>[layer.id,layer]));
+  soloTiles.set('portrait-level',portrait);soloTiles.set('stick',controls);
+  const coopTiles=new Map(soloTiles);
+  for(const layer of [teamLayer,...peerTiles])coopTiles.set(layer.id,layer);
+  const allTiles=[controls,minimap,health,portrait,...coopLayers,...peerTiles];
+  const emptyBoxes=[];
+  const layerId=el=>el?.closest?.('[data-ui-layer]')?.getAttribute('data-ui-layer');
+  function fixedLayerFor(element){
+    const tile=fixedLayers.get(layerId(element));
+    return tile===teamLayer&&!win.__pb?.run?.coop?null:tile;
+  }
   const modalTransition=createModalTransition(makeCanvas);
   const usingBattleHUD=()=>win.__pb?.run?.state==='play'||(win.__pb?.run?.state==='modal'&&!!modalTransition.element);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
@@ -129,7 +142,7 @@ export async function setup(host) {
         if(record.type==='childList'&&element?.dataset?.uiLayer==='skills'){
           uiFrames.invalidate(true,true);continue;
         }
-        const tile=activeHudLayers().find(layer=>layer.owns(element));
+        const tile=fixedLayerFor(element);
         if(tile){tile.invalidate();continue;}
       }
       // Text/HUD updates may happen every game tick; coalesce them. A newly
@@ -196,6 +209,16 @@ export async function setup(host) {
     if(hide){draw?.releaseFrozen();for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
   }
   wx.onHide(()=>show(true));wx.onShow(()=>show(false));
+  let lastGC=-Infinity;
+  wx.onMemoryWarning?.(()=>{
+    draw?.releaseUnused();
+    win.dispatchEvent(new D.Event('memorywarning'));
+    const now=Date.now();
+    if(device.platform==='ios'&&now-lastGC>=5000){
+      lastGC=now;
+      try{wx.triggerGC?.();}catch{}
+    }
+  });
   function keyboard(el){
     if(!wx.showKeyboard)return;
     wx.showKeyboard({defaultValue:el.value||'',maxLength:Number(el.maxLength)>0?Number(el.maxLength):140,multiple:el.localName==='textarea',confirmType:'done'});
@@ -261,6 +284,8 @@ export async function setup(host) {
     ProgressEvent:InputEvent,MouseEvent:InputEvent,KeyboardEvent:InputEvent,PointerEvent:InputEvent,Path2D:CanvasPath,MutationObserver:doc.defaultView.MutationObserver,
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
     nativeUI:true,nativeDevice:device,backgroundMusicEnabled:false,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    setNativeFrameRate:typeof wx.setPreferredFramesPerSecond==='function'?fps=>wx.setPreferredFramesPerSecond(fps):undefined,
+    iosPowerMode:__WX_IOS_POWER_MODE__&&device.platform==='ios'?createIOSPowerMode(wx,GameGlobal,typeof requirePlugin==='function'?requirePlugin:null):null,
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},
@@ -313,12 +338,22 @@ export async function setup(host) {
       const overlay=modalTransition.element;
       layout.setOverlay(overlay);
       const playing=usingBattleHUD()&&!opaque;
-      const hudLayers=activeHudLayers();
-      const changed=uiFrames.draw(now,playing?'play':state,layout,boxes=>{
-        controls.capture(boxes);minimap.capture(boxes);health.capture(boxes);portrait.capture(boxes);
-        if(env.__pb?.run?.coop)for(const tile of peerTiles)tile.capture(boxes);
-        for(const tile of hudLayers)tile.capture(boxes,layout);
-        paint(layout,boxes.filter(b=>!controls.owns(b.el)&&!(playing&&(minimap.owns(b.el)||healthLayer(b.el)||portrait.owns(b.el.nodeType===1?b.el:b.el.parentElement)||hudLayers.some(tile=>tile.owns(b.el.nodeType===1?b.el:b.el.parentElement))))),view,scale);
+      const changed=uiFrames.draw(now,opaque?'opaque':playing?'play':state,layout,boxes=>{
+        // Classify once in paint order. A full HUD refresh used to walk the
+        // ancestors of every box separately for every tile, then again for the base.
+        const groups=new Map(),base=[],tiles=run?.coop?coopTiles:soloTiles;
+        if(playing)for(const tile of activeHudLayers())tile.refreshIfDirty(layout);
+        for(const box of boxes){
+          const element=box.el.nodeType===1?box.el:box.el.parentElement;
+          const tile=playing?tiles.get(layerId(element)):null;
+          if(tile){
+            let parts=groups.get(tile);
+            if(!parts)groups.set(tile,parts=[]);
+            parts.push(box);
+          }else if(playing||!controls.owns(element))base.push(box);
+        }
+        for(const tile of allTiles)tile.capture(groups.get(tile)||emptyBoxes,layout);
+        paint(layout,base,view,scale);
       });
       if(opaque&&!changed)return;
       modalTransition.prepare(layout,view,scale);

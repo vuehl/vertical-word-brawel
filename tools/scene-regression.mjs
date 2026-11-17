@@ -33,11 +33,21 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     return {cleared:r.stageCleared,bosses:r.stats.bosses,legendaries:r.stats.legendaries,state:r.state,portals:r.interactables.list.filter(o=>o.kind==='portal').length};
   });
   assert.deepEqual(cleared,{cleared:true,bosses:1,legendaries:0,state:'play',portals:1});
-  await page.evaluate(()=>{
-    const r=app.run,portal=r.interactables.list.find(o=>o.kind==='portal');
-    r.interactables.interact(portal);
-    if(r.state==='play')r.interactables.interact(portal); // Confirm when boss loot remains.
+  report.portalWarning=await page.evaluate(()=>{
+    const r=app.run,objects=r.interactables,portal=objects.list.find(o=>o.kind==='portal'),p=r.player.pos;
+    p.set(portal.x,portal.y,portal.z);r.player.vel.set(0,0,0);
+    if(!objects.rewardsLeft())objects.spawnChest(p.x+8,p.z,false,true);
+    const stay=frames=>{for(let i=0;i<frames&&r.state==='play';i++)objects.update(0,1/30);};
+    stay(45);
+    const warned=r.state==='play'&&objects.warnedPortal===portal;
+    p.x+=20;stay(1);
+    const cleared=objects.warnedPortal===null;
+    p.x=portal.x;stay(45);
+    const warnedAgain=r.state==='play'&&objects.warnedPortal===portal;
+    stay(44);const waiting=r.state==='play';stay(1);
+    return {warned,cleared,warnedAgain,waiting};
   });
+  assert.deepEqual(report.portalWarning,{warned:true,cleared:true,warnedAgain:true,waiting:true});
   await page.waitForFunction(()=>!!inspected.doc.querySelector('.zx-summary'),{timeout:30000});
   report.singleStage=await page.evaluate(()=>{
     const p=app.meta.profile,record=p.runs[0];
@@ -133,8 +143,8 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     (report.defeats??=[]).push(defeated);
     await page.evaluate(()=>{
       const r=app.run,portal=r.interactables.list.find(o=>o.kind==='portal');
-      // Confirm any remaining rewards or capture opportunity using the normal portal interaction.
-      for(let i=0;i<4&&r.state==='play';i++)r.interactables.interact(portal);
+      r.player.pos.set(portal.x,portal.y,portal.z);r.player.vel.set(0,0,0);
+      for(let i=0;i<92&&r.state==='play';i++)r.interactables.update(0,1/30);
     });
   }
   await page.waitForFunction(()=>!!inspected.doc.querySelector('.zx-summary'),{timeout:30000});

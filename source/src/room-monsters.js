@@ -1,10 +1,8 @@
-import {formCopy} from './form-copy.js';
-import {enemyWords,eliteWords,minibossWords,heroWords} from './character-rules.js';
+import {enemyWordPool} from './character-rules.js';
 
 // Main bosses have a shared pose. Objects and remote replicas cannot register as combat owners.
 const specialActors=4|32768|65536;
 const CHARMED=4096,ROOTED=8192,CHILL_SHIFT=14;
-function wordsFor(flags){return flags&(2|4096|8192)?minibossWords:flags&1?eliteWords:enemyWords;}
 export function roomMonster(flags){return !(flags&specialActors);}
 
 function obstacles(terrain){
@@ -113,7 +111,7 @@ export class RoomMonsters{
       if(old && old.maxHP===e.maxHp[id] && old.hp===hp && old.status===status && !e.kx[id] && !e.kz[id])continue;
       const row=[id,gen,hp,status,e.kx[id],e.kz[id]];
       if(!old || old.maxHP!==e.maxHp[id]){
-        const words=wordsFor(e.flags[id]);
+        const words=enemyWordPool(e.flags[id]);
         row.push(e.maxHp[id],e.species[id],e.radius[id],e.dmg[id],e.scale[id],e.speed[id],e.flags[id],
           e.x[id],e.z[id],e.dirX[id],e.dirZ[id],words.indexOf(e.glyphWords[id]),e.atk[id]);
       }
@@ -160,10 +158,10 @@ export class RoomMonsters{
         }
         const prev=c.proxies.get(key);
         if(prev!==undefined && e.alive[prev]){e.kill(prev);c.unmap(prev);}
-        id=e.spawnProxy(species,0,0,0,flags,scale);
+        id=e.spawnProxy(species,0,0,0,flags,scale,enemyWordPool(flags)[word]);
         if(id<0)continue;
         c.proxies.set(key,id);c.pSlot[id]=seat;c.pKey[id]=((gen&15)<<12)|index;
-        e.glyphWords[id]=formCopy[species]?.word ?? wordsFor(flags)[word] ?? heroWords[species];e.maxHp[id]=maxHP;e.dmg[id]=dmg;
+        e.maxHp[id]=maxHP;e.dmg[id]=dmg;
         c.pHit[id]=-99;c.pN[id]=0;
       }else if(!e.isAlive(id)||e.gen[id]!==gen)continue;
       const mini=seat!==c.mySlot && (flags&12288)?r.minibosses.make(flags&8192?'summoner':'totem',species,id):null;

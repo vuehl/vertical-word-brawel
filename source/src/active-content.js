@@ -9,6 +9,7 @@ const itemIds = new Set([
 ]);
 export const isActiveItem = id => itemIds.has(id);
 
+export const facilityDwellSeconds = 1.5;
 export const facilityNames = Object.freeze({
   chest: '扭蛋', freechest: '免费扭蛋', altar: '时尚小垃圾', boss: '门?', portal: '传送门',
   magnet: '磁铁', berry: 'QQ糖', ditto: '拍立得', nest: '鹌鹑蛋', bill: '订书机',

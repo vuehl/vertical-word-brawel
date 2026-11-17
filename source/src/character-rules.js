@@ -10,9 +10,21 @@ export const enemyWords = Object.freeze(tierWords(1));
 export const eliteWords = Object.freeze(tierWords(2));
 export const minibossWords = Object.freeze(tierWords(3));
 
+export function enemyWordPool(flags) {
+  return flags & (2 | 4 | 4096 | 8192) ? minibossWords : flags & 1 ? eliteWords : enemyWords;
+}
+
+// Announcements and older co-op packets may only identify the species.
+export function enemySpeciesWord(id, flags = 0) {
+  const fixed = formCopy[id]?.word;
+  if (fixed && glyphCatalog.enemies[fixed]) return fixed;
+  const pool = enemyWordPool(flags);
+  return pool[id % pool.length];
+}
+
 export function enemyWord(id, flags = 0, random = Math.random) {
-  if (formCopy[id]) return formCopy[id].word;
-  const pool = flags & (2 | 4 | 4096 | 8192) ? minibossWords : flags & 1 ? eliteWords : enemyWords;
+  if (formCopy[id]) return enemySpeciesWord(id, flags);
+  const pool = enemyWordPool(flags);
   return pool[Math.floor(random() * pool.length)];
 }
 

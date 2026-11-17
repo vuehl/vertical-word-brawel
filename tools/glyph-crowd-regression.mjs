@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
+import {enemyWords} from '../source/src/character-rules.js';
 
 export async function reviewGlyphCrowd(page,dir){
   const report={};
@@ -31,7 +32,7 @@ export async function reviewGlyphCrowd(page,dir){
   assert.equal(report.ring.particleSpawns,0);assert.ok(report.ring.hiddenWhenDead&&report.ring.restored);assert.equal(report.ring.hasTimeUniform,false);
 
   report.encounters=[];
-  for(const [id,word] of [[4,'炎'],[16,'风'],[132,'摹']]){
+  for(const id of [4,16,132]){
     const data=await page.evaluate(async id=>{
       const run=app.run;run.enemies.clear();run.capture.state='done';run.capture.spawnEncounter(id);
       const index=run.capture.index;
@@ -39,10 +40,10 @@ export async function reviewGlyphCrowd(page,dir){
       run.ui.hud(run);run.renderWorld(0);run.vfx.update(0);
       inspected.env.invalidateUI();app.r.render(0);inspected.env.drawUI(app.r.renderer);
       await new Promise(resolve=>setTimeout(resolve,200));
-      const banner=inspected.doc.querySelector('.banner'),icon=banner?.querySelector('canvas');
-      return {text:banner?.textContent,word:icon?.dataset.glyph,static:icon?.dataset.static,species:run.enemies.species[index],imageSources:[...inspected.doc.querySelectorAll('img')].map(el=>el.getAttribute('src')).filter(s=>/(?:portraits|icons|front|pmd)\/\d+\.png/.test(s||''))};
+      const banner=[...inspected.doc.querySelectorAll('.banner')].at(-1),icon=banner?.querySelector('canvas');
+      return {text:banner?.textContent,word:icon?.dataset.glyph,monster:run.enemies.glyphWords[index],static:icon?.dataset.static,species:run.enemies.species[index],imageSources:[...inspected.doc.querySelectorAll('img')].map(el=>el.getAttribute('src')).filter(s=>/(?:portraits|icons|front|pmd)\/\d+\.png/.test(s||''))};
     },id);
-    assert.ok(data.text.includes('字灵「'+word+'」现身'));assert.equal(data.word,word);assert.equal(data.static,'true');assert.equal(data.species,id);assert.deepEqual(data.imageSources,[]);
+    assert.ok(enemyWords.includes(data.monster));assert.ok(data.text.includes('字灵「'+data.monster+'」现身'));assert.equal(data.word,data.monster);assert.equal(data.static,'true');assert.equal(data.species,id);assert.deepEqual(data.imageSources,[]);
     report.encounters.push(data);
     await page.screenshot({path:path.join(dir,'glyph-encounter-'+id+'.png')});
   }
@@ -56,7 +57,7 @@ export async function reviewGlyphCrowd(page,dir){
     const modal=run.ui.modalEl;
     return {text:modal.textContent,glyphs:[...modal.querySelectorAll('canvas[data-glyph]')].map(c=>c.dataset.glyph),legacyLoads:(window.nativeImageLoads||[]).filter(r=>/(?:portraits(?:-shiny)?|icons|front|pmd(?:-shiny)?)\/\d+\.png/.test(r.path)).map(r=>r.path)};
   });
-  for(const npc of [52,97])assert.ok(report.map.glyphs.includes(glyphWordForSpecies(npc)));
+  for(const species of [132,113])assert.ok(report.map.glyphs.includes(glyphWordForSpecies(species)),'The copier and egg nest must use their map artwork');
   assert.ok(!/妙蛙种子|小火龙|杰尼龟|喵喵|宝可梦|百变怪/.test(report.map.text));assert.deepEqual(report.map.legacyLoads,[]);
   await page.screenshot({path:path.join(dir,'glyph-map-legend.png')});
   await page.evaluate(()=>app.run.resume());
@@ -65,11 +66,14 @@ export async function reviewGlyphCrowd(page,dir){
     const run=app.run,enemies=run.enemies,grid=enemies.grid,p=run.player,position=p.pos.clone(),hp=p.hp,maxHp=p.maxHp;
     app.meta.profile.settings.quality='low';app.applySettings();enemies.clear();
     p.hp=p.maxHp=1e9;
+    // The cosmetic Classic flag permits this isolated setup above the production cap.
+    // Remove it before running normal monster steering, damage and rendering.
+    const classic=131072;
     for(let i=0;i<600;i++){
       const a=i*2.4,d=(i%19)/10;
-      // Ordinary spawns bypass the director's weighted horde budget, allowing
-      // a deterministic 600-actor stress scene without changing production caps.
-      enemies.spawn([16,19,21][i%3],p.pos.x+8+Math.cos(a)*d,p.pos.z+Math.sin(a)*d,1000,1,0);
+      const id=enemies.spawn([16,19,21][i%3],p.pos.x+8+Math.cos(a)*d,p.pos.z+Math.sin(a)*d,1000,1,classic);
+      if(id<0)throw Error('Could not seed the crowd benchmark');
+      enemies.flags[id]&=~classic;
     }
     grid.build(enemies.n,enemies.x,enemies.z,enemies.alive,enemies.radius,enemies.dying);
     const queried=grid.query(p.pos.x+8,p.pos.z,5);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {enemyWords,eliteWords} from '../source/src/character-rules.js';
+import {enemyWords,eliteWords,minibossWords} from '../source/src/character-rules.js';
 
 export async function reviewCharacters(page,dir) {
   const report={heroes:[],branches:[],spawns:[],buffs:[]};
@@ -79,9 +79,9 @@ export async function reviewCharacters(page,dir) {
       return {samples,pool:[...words],playerWord:r.sprites.get(p.speciesId).zxGlyph};
     });
     assert.deepEqual(new Set(spawns.pool),new Set([...enemyWords,...eliteWords]));assert.equal(spawns.playerWord,finalWord);
-    for(const {word,batchWord} of spawns.samples){
+    for(const {flags,word,batchWord} of spawns.samples){
       assert.equal(word,batchWord);
-      assert.equal(word,'飙');
+      assert.ok((flags&(2|4|4096|8192)?minibossWords:flags&1?eliteWords:enemyWords).includes(word));
     }
     report.spawns.push(spawns);await draw();
     assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-name').textContent),finalWord);

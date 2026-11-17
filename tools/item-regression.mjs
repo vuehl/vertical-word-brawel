@@ -2,51 +2,59 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export async function reviewItems({page,tap,resize,dir,sleep,snapshot}) {
+export async function reviewItems({page,tap,resize,dir,snapshot}) {
   const original=await page.evaluate(()=>{
-    const r=app.run,p=r.player.pos,s=app.meta.profile.settings;
-    const before={x:p.x,y:p.y,z:p.z,touchScale:s.touchScale,extra:s.zxExtraControls};
-    const chest=r.interactables.list.find(e=>e.kind==='chest'&&!e.used&&!e.data?.gift);
-    if(!chest)throw Error('No paid chest available for interaction test');
-    window.qaChest=chest;r.gold=1000;p.set(chest.x,chest.y,chest.z);r.player.vel.set(0,0,0);
+    const r=app.run,p=r.player.pos;
+    const before={x:p.x,y:p.y,z:p.z,halted:app.halted,spent:r.goldSpent,bought:r.chestsBought};
+    app.halted=true;
+    window.qaPlace=target=>{
+      p.set(target.x+1,target.y,target.z+1);r.player.vel.set(0,0,0);r.camTarget.copy(p);
+    };
+    window.qaItemFrames=(count,delta=1/30)=>{
+      for(let i=0;i<count;i++){r.update(delta);r.input.endFrame();}
+      r.updateCamera(1);r.renderWorld(0);app.r.render(0);r.ui.worldLabels(r);inspected.env.drawUI(app.r.renderer);
+      return r.playerFootRing.material.uniforms.dwell.value;
+    };
+    window.qaChest=r.interactables.list.find(e=>e.kind==='chest'&&!e.used&&!e.data?.gift);
+    r.gold=1000;qaPlace(qaChest);
     return before;
   });
-  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-title')?.textContent==='开启扭蛋');
-  const layouts=[];
+  const mid=await page.evaluate(()=>{
+    const r=app.run;r.input.touchKey('KeyE',true);qaItemFrames(1,1/60);r.input.touchKey('KeyE',false);
+    return {progress:qaItemFrames(22),used:qaChest.used,spent:r.goldSpent,button:r.ui.touch.actText};
+  });
+  assert.ok(Math.abs(mid.progress-.5)<.015);assert.ok(!mid.used&&!mid.button);assert.equal(mid.spent,original.spent);
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
-    await resize(width,height);
-    for(const scale of [.7,1,1.3]){
-      await page.evaluate(scale=>{const s=app.meta.profile.settings;s.touchScale=scale;s.zxExtraControls=true;app.applySettings();},scale);
-      await sleep(250);
-      const layout=await page.evaluate(()=>{
-        const box=sel=>{const b=inspected.layout.box(inspected.doc.querySelector(sel));return b&&{x:b.x,y:b.y,w:b.w,h:b.h};};
-        return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,act:box('.tc-act'),ult:box('.tc-ultb'),stick:box('.tc-stick'),extras:inspected.doc.querySelectorAll('.tc-jump,.tc-dash,.tc-lock,.tc-aim').length,label:inspected.doc.querySelector('.tc-act').textContent};
-      });
-      const {act,ult,stick}=layout,overlap=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
-      assert.ok(act&&act.w>=44&&act.h>=44&&act.y>=ult.y+ult.h+4,'Interaction must be below the ultimate with a usable touch area');
-      assert.ok(act.x>=0&&act.x+act.w<=width&&act.y+act.h<=layout.height,'Interaction must fit on screen');
-      assert.ok(!overlap(act,stick),'Interaction must stay clear of the joystick: '+JSON.stringify({scale,...layout}));
-      assert.equal(layout.extras,0,'Old saved extra-controls flags must not create removed buttons');
-      assert.match(layout.label,/开启扭蛋.*金币/);layouts.push({scale,...layout});
-    }
-    await page.evaluate(()=>{app.meta.profile.settings.touchScale=1;app.meta.profile.settings.zxExtraControls=false;app.applySettings();});
+    await resize(width,height);await page.evaluate(()=>qaItemFrames(0));
     await snapshot('14-interaction-'+width);
   }
-  fs.writeFileSync(path.join(dir,'item-interaction-layouts.json'),JSON.stringify(layouts,null,2));
   await resize(390,844);
-  await page.evaluate(()=>{app.run.gold=0;});
-  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-title')?.textContent==='金币不足');
-  await tap('.tc-act');
-  assert.equal(await page.evaluate(()=>app.run.state),'play','An unaffordable chest must stay closed');
-  assert.equal(await page.evaluate(()=>qaChest.used),false);
+  const visit=await page.evaluate(()=>{
+    const r=app.run,objects=r.interactables.list;
+    const costLabel=inspected.doc.querySelector('.wlabel.cost')?.textContent;
+    qaPlace(objects.find(o=>o.kind==='freechest'&&!o.used));const switched=qaItemFrames(1);
+    const altar=objects.find(o=>o.kind==='altar'&&!o.data.tier&&!o.used);
+    qaPlace(altar);const left=qaItemFrames(91);
+    return {costLabel,switched,left,charge:altar.charge,percent:inspected.doc.querySelector('.charge span')?.textContent};
+  });
+  assert.match(visit.costLabel,/金币/);assert.ok(visit.switched>0&&visit.switched<.025);
+  assert.equal(visit.left,-1);assert.ok(visit.charge>0&&visit.charge<1);assert.match(visit.percent,/^\d+%$/);
+  const poor=await page.evaluate(()=>{
+    const r=app.run;r.gold=0;qaPlace(qaChest);qaItemFrames(48);
+    return {state:r.state,used:qaChest.used,waiting:r.interactables.waitingForGold,text:inspected.doc.querySelector('.wlabel.nocost')?.textContent};
+  });
+  assert.equal(poor.state,'play');assert.ok(!poor.used&&poor.waiting);assert.match(poor.text,/金币 · 不足/);
   await snapshot('14-interaction-insufficient');
-  await page.evaluate(()=>{app.run.gold=1000;qaChest.data={...qaChest.data,gift:true};});
-  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-detail')?.textContent==='免费');
-  await page.evaluate(()=>{qaChest.used=true;});
-  await page.waitForFunction(()=>!app.run.ui.touch.actText);
-  await page.evaluate(()=>{qaChest.used=false;delete qaChest.data.gift;});
-  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-detail')?.textContent.includes('金币'));
-  await tap('.tc-act');
+  const opened=await page.evaluate(halted=>{
+    const r=app.run,cost=r.interactables.chestCost();r.gold=1000;
+    const almost=qaItemFrames(44),early=qaChest.used;
+    qaItemFrames(1);const used=qaChest.used;
+    qaItemFrames(15);app.halted=halted;
+    return {almost,early,used,spent:r.goldSpent,bought:r.chestsBought,cost};
+  },original.halted);
+  assert.ok(opened.almost>.97&&opened.almost<1&&!opened.early&&opened.used);
+  assert.equal(opened.spent,original.spent+opened.cost);assert.equal(opened.bought,original.bought+1);
+  fs.writeFileSync(path.join(dir,'item-dwell.json'),JSON.stringify({mid,visit,poor,opened},null,2));
   await page.waitForFunction(()=>inspected.doc.querySelector('[data-choice="showItemChoice"]'),{timeout:15000});
   async function checkDialog(name){
     await snapshot(name);
@@ -104,8 +112,7 @@ export async function reviewItems({page,tap,resize,dir,sleep,snapshot}) {
   assert.equal(await page.evaluate(()=>app.run.player.addItem('fairy-feather')),false,'Hidden items cannot be granted');
   fs.writeFileSync(path.join(dir,'item-rewards.json'),JSON.stringify({choice,single,sale,result},null,2));
   await page.evaluate(before=>{
-    const s=app.meta.profile.settings;s.touchScale=before.touchScale;s.zxExtraControls=before.extra;app.applySettings();
     app.run.player.pos.set(before.x,before.y,before.z);app.run.player.vel.set(0,0,0);
-    delete window.qaChest;delete window.qaRewardButton;
+    delete window.qaChest;delete window.qaPlace;delete window.qaItemFrames;delete window.qaRewardButton;
   },original);
 }

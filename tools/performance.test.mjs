@@ -1,12 +1,47 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {performanceProfile} from '../source/src/performance-profile.js';
+import {performanceProfile,selectGraphicsQuality,setBatterySaver} from '../source/src/performance-profile.js';
 import {paperBox,hitsPaperBox,resolvePaperBox} from '../source/src/paper-collision.js';
 import {updatePaperVisibility} from '../source/src/paper-visibility.js';
 import {separateCrowd} from '../source/src/crowd-separation.js';
 import {FramePacer} from '../source/src/frame-pacing.js';
 import {warmCombatShaders,warmCombatDraw} from '../source/src/combat-warmup.js';
 import {readRuntimeInfo} from '../platform/device.mjs';
+import {createIOSPowerMode} from '../platform/power-mode.mjs';
+
+test('WeChat gets one native rate request per transition and can jitter or ignore a request',()=>{
+  const requests=[],pacer=new FramePacer(fps=>requests.push(fps));
+  for(const fps of [30,60]){
+    for(let frame=0;frame<120;frame++)
+      assert.equal(pacer.ready(5000+frame*1000/fps+(frame%2?4:0),1000/fps),true);
+  }
+  assert.deepEqual(requests,[30,60]);
+  pacer.reset();
+  let frames=0;
+  for(let i=0;i<600;i++)frames+=Number(pacer.ready(i*1000/60,1000/30));
+  assert.equal(frames,300);assert.deepEqual(requests,[30,60,30]);
+  const unavailable=new FramePacer(()=>{throw Error('unsupported');});
+  assert.equal(unavailable.ready(0,1000/30),true);
+  assert.equal(unavailable.ready(25,1000/30),false);
+});
+
+test('iOS power mode is loaded on demand, queries the active and next modes and waits for writes',async()=>{
+  const runtime={},api={},writes=[];let loads=0,local=0,confirm;
+  const manager={getCurrentMode:({success})=>success({mode:0}),getLocalMode:({success})=>success({mode:local}),
+    setLocalMode({mode,success}){writes.push(mode);confirm=()=>{local=mode;success({});};}};
+  const power=createIOSPowerMode(api,runtime,(name,options)=>{
+    loads++;assert.equal(name,'MiniGameCommon');assert.equal(options.enableRequireHostModule,true);
+    assert.equal(options.customEnv.wx,api);return {default:()=>({getPowerModeManager:()=>manager})};
+  });
+  assert.equal(loads,0);assert.deepEqual(await power.read(),{current:0,local:0});assert.deepEqual(writes,[]);
+  const save=power.set(1),reopened=power.read();
+  await assert.rejects(power.set(0));confirm();await save;
+  assert.deepEqual(await reopened,{current:0,local:1});assert.equal(loads,1);
+  manager.setLocalMode=({fail})=>fail(Error('denied'));
+  await assert.rejects(power.set(0),/denied/);assert.deepEqual(await power.read(),{current:0,local:1});
+  manager.getLocalMode=({success})=>success({});await assert.rejects(power.read(),/状态未知/);
+  await assert.rejects(createIOSPowerMode(api,{},undefined).read(),/未提供/);
+});
 
 test('frame pacing retains 60 callbacks per second under alternating 5 ms delays',()=>{
   const pacer=new FramePacer();let drawn=0;
@@ -108,11 +143,13 @@ test('dense crowd steering bounds work and rotates through every candidate witho
   assert.ok(Math.abs(sx/phases-exact[0])<1e-10&&Math.abs(sz/phases-exact[1])<1e-10);
 });
 
-test('performance presets preserve the selected quality when leaving battery saver',()=>{
+test('battery saver selects smooth quality and selecting fine quality switches saver off',()=>{
   const settings={quality:'high',batterySaver:false,touchScale:.85};
-  const high=performanceProfile(settings);settings.batterySaver=true;
-  const saver=performanceProfile(settings);settings.batterySaver=false;
-  assert.equal(performanceProfile(settings),high);assert.equal(settings.touchScale,.85);
+  const high=performanceProfile(settings);setBatterySaver(settings,true);
+  const saver=performanceProfile(settings);assert.equal(settings.quality,'low');
+  setBatterySaver(settings,false);assert.equal(performanceProfile(settings),saver);
+  setBatterySaver(settings,true);selectGraphicsQuality(settings,'high');
+  assert.equal(settings.batterySaver,false);assert.equal(performanceProfile(settings),high);assert.equal(settings.touchScale,.85);
   assert.equal(saver.bloom,false);assert.equal(saver.outline,false);
   assert.ok(high.pixelBudget>saver.pixelBudget&&high.maxPixelRatio>saver.maxPixelRatio);
   assert.equal(performanceProfile(),high);

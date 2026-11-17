@@ -4,23 +4,23 @@ import {paint} from './paint.mjs';
 // state changes rebuild only this subtree and upload only this small texture.
 export function createHUDLayer(makeCanvas,id,slot){
   let canvas,context,root,parts=[],bounds=null,dirty=true,layoutDirty=false;
-  const element=b=>b.el.nodeType===1?b.el:b.el.parentElement;
   const owns=el=>!!el?.closest?.('[data-ui-layer="'+id+'"]');
   function refreshParts(layout){
     parts=layout.refreshSubtree(root.el,parts);
     root=parts[0];bounds=null;layoutDirty=false;
   }
   return {
-    owns,
+    id,owns,
     invalidate(){dirty=layoutDirty=true;},
     invalidatePixels(){dirty=true;},
-    capture(boxes,layout){
-      const anchor=boxes.find(b=>b.el.dataset?.uiLayer===id);
-      // A pixel-only HUD repaint can coincide with removal of a tile child.
-      // Replace its cached boxes before the shared canvas paints that frame.
-      if(anchor&&anchor===root&&layoutDirty)refreshParts(layout);
-      else {root=anchor;parts=boxes.filter(b=>owns(element(b)));bounds=null;layoutDirty=false;}
-      dirty=true;
+    refreshIfDirty(layout){
+      // refreshSubtree replaces entries in the shared list. Remove expired
+      // children before that list is partitioned for a pixel-only repaint.
+      if(layoutDirty&&root&&root.el.isConnected&&layout.box(root.el)===root)refreshParts(layout);
+    },
+    capture(boxes){
+      root=boxes.find(b=>b.el.dataset?.uiLayer===id);
+      parts=boxes;bounds=null;layoutDirty=false;dirty=true;
     },
     draw(layout,view,scale,enabled){
       if(!enabled||!root||!root.el.isConnected||root.opacity<=0)return null;
@@ -57,7 +57,7 @@ export function createCanvasLayer(makeCanvas,id,{slot=1,movable=false,foreground
   let canvas,context,box,parts=[],bounds,originX=0,originY=0,dirty=true,foregroundDirty=false;
   const owns=el=>el?.dataset?.uiLayer===id||!!(foreground&&el?.closest?.('[data-ui-layer="'+foreground+'"]'));
   return {
-    owns,
+    id,owns,
     invalidate(){dirty=true;},
     invalidateForeground(){foregroundDirty=dirty=true;},
     capture(boxes){

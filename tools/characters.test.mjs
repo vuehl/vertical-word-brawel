@@ -19,7 +19,13 @@ test('spawn classes select only their folder, including modified elites and time
     assert.deepEqual(selected.sort(),words);
   }
   assert.equal(enemyWord(finalBossSpecies,4,()=>{throw Error('Final boss rolled');}),'龘');
-  assert.equal(enemyWord(16,128),'风');
+  for(const id of Object.keys(glyphCatalog.heroes)){
+    for(const [flags,tier] of [[0,1],[128,1],[1,2],[2,3],[4,3],[4096,3],[8192,3],[65536,1]]){
+      const word=enemyWord(id,flags);
+      assert.equal(glyphCatalog.enemies[word]?.tier,tier);
+      assert.notEqual(word,'龘');
+    }
+  }
 });
 
 test('each word has one health interval per numbered source stroke',()=>{
@@ -79,7 +85,9 @@ test('all supplied form and skill names resolve in the original catalogs',()=>{
   assert.equal(new Set(rows.map(([,form])=>form.word)).size,36);
   for(const [id,form] of rows){
     assert.equal(glyphWordForSpecies(id),form.word);
-    for(const flags of [0,1,2,4,128,4096,65536])assert.equal(enemyWord(id,flags),form.word);
+    if(glyphCatalog.enemies[form.word]){
+      for(const flags of [0,1,2,4,128,4096,65536])assert.equal(enemyWord(id,flags),form.word);
+    }
     for(const [original,label] of Object.entries(form.moves)){
       assert.ok(names.has(original),original);
       assert.equal(moveCopy(id,original),label);

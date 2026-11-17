@@ -6,6 +6,7 @@ import heroRigs from './hero-rigs.json' with {type:'json'};
 const colors={fire:['#ff963e','#ed3438'],water:['#b9f2e7','#50bebd'],wood:['#c5e797','#72b778'],earth:['#e9b480','#b57649'],metal:['#ffe99a','#d5ac57'],ink:['#a5aac7','#6b719c'],dark:['#53695e','#1c302e']};
 let atlas,ready;
 const cache=new Map();
+export function releaseGlyphCanvasCache(){cache.clear();}
 // The atlas fits each authored cutout into the middle 80/96 of its tile.
 // Hero portraits already include 14 source-image pixels of dark ink.
 function bakedInkFraction(word){

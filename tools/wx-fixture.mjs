@@ -127,6 +127,9 @@ globalThis.wx={
   }
 };
 const showCallbacks=[];
+wx.setPreferredFramesPerSecond=fps=>{(window.fixtureFrameRates??=[]).push(fps);};
+wx.onMemoryWarning=listener=>{window.fixtureMemoryWarning=listener;};
+wx.triggerGC=()=>{window.fixtureGCs=(window.fixtureGCs||0)+1;};
 wx.onShow=fn=>showCallbacks.push(fn);
 window.fixtureShow=options=>showCallbacks.forEach(fn=>fn(options));
 for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide'})){

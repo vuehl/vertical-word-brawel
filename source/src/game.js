@@ -1,10 +1,10 @@
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
-import {isActiveFacility} from './active-content.js';
+import {facilityDwellSeconds,isActiveFacility} from './active-content.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey} from './lite-rules.js';
-import {enemyWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
+import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
@@ -32,7 +32,7 @@ import {createSceneAntialias} from './scene-antialias.js';
 import {paperProp} from './paper-props.js';
 import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
 import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
-import {performanceProfile,batterySaverEnabled} from './performance-profile.js';
+import {performanceProfile,batterySaverEnabled,selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
 import {UpgradeTiming} from './upgrade-timing.js';
 import {updatePaperVisibility} from './paper-visibility.js';
 import {hitsPaperBox,resolvePaperBox,moveEnemyPastProps,obstacleJumpSpeed} from './paper-collision.js';
@@ -1443,29 +1443,7 @@ function Lo(e, t = !1) {
       : c(`Pulsa {k}`, { k: ta(e === `E` ? `interact` : `ult`) });
   return t ? n[0].toLowerCase() + n.slice(1) : n;
 }
-var Ro = () => uo && Math.min(screen.width, screen.height) < 600,
-  zo = `pb-battery`,
-  Bo = () => {
-    try {
-      let e = localStorage.getItem(zo);
-      return e === `1` || (e !== `0` && void 0);
-    } catch {
-      return;
-    }
-  },
-  Vo = (e) => {
-    try {
-      e === void 0 ? localStorage.removeItem(zo) : localStorage.setItem(zo, e ? `1` : `0`);
-    } catch {}
-  },
-  Ho = (e) => {
-    let t = Number(e ?? (uo ? 60 : 0));
-    return t >= 20 && t <= 240 ? t : 0;
-  },
-  // The native settings page stores this preference in the profile. Do not
-  // silently force every small-screen phone to 30 FPS via the old web default.
-  Uo = (e) => window.nativeUI ? batterySaverEnabled(e) : Bo() ?? Ro(),
-  Wo = 1100,
+var Wo = 1100,
   Go = 2200,
   Ko = !1,
   qo = !1,
@@ -12922,13 +12900,14 @@ var Df = 0.4,
         this.flags[e] & 65536 ? this.remotes-- : (this.count--, (this.mass -= this.wt[e])),
         this.free.push(e));
     }
-    spawnProxy(e, t, n, r, i, a) {
+    spawnProxy(e, t, n, r, i, a, word = enemySpeciesWord(e,i)) {
       let o;
       if (this.free.length) o = this.free.pop();
       else if (this.n < 2200) o = this.n++;
       else return -1;
+      this.glyphWords[o] = word;
       let s = k.get(e),
-        c = this.run.sprites.get(e);
+        c = this.run.sprites.get(e,false,word);
       return (
         (this.alive[o] = 1),
         this.gen[o]++,
@@ -13077,7 +13056,7 @@ var Df = 0.4,
             (this.vx[i] = this.vz[i] = this.vy[i] = this.kx[i] = this.kz[i] = 0)),
           !this.sized[i])
         ) {
-          let e = t.sprites.get(this.species[i]);
+          let e = t.sprites.get(this.species[i], false, this.glyphWords[i]);
           e.ready &&
             ((this.sized[i] = 1),
             (this.radius[i] = Math.max(0.45, Math.min(4, e.bodyWidth(this.scale[i]) * 0.42))),
@@ -13353,7 +13332,7 @@ var Df = 0.4,
         (this.atkAnim[e] = Math.max(0, this.atkAnim[e] - t)),
         !this.sized[e])
       ) {
-        let t = a.sprites.get(this.species[e]);
+        let t = a.sprites.get(this.species[e], false, this.glyphWords[e]);
         t.ready &&
           ((this.sized[e] = 1),
           (this.radius[e] = Math.max(0.45, Math.min(4, t.bodyWidth(this.scale[e]) * 0.42))),
@@ -33811,6 +33790,7 @@ var mv = 30,
         e.playerFootRing ??= createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr}));
       e.playerFootRing.visible=!this.dead;
       e.playerFootRing.position.set(this.pos.x,p+.09,this.pos.z);
+      e.playerFootRing.material.uniforms.dwell.value = e.state === 'play' ? e.interactables.dwellProgress : -1;
     }
   },
   kv = 12,
@@ -34157,11 +34137,12 @@ var mv = 30,
               t.terrain.inBounds(s, c, 5) &&
                 t.enemies.spawn(e.id, s, c, this.hpMult() * 0.6, this.dmgMult(), R.Swarm);
             }
+            const word = enemySpeciesWord(e.id);
             (t.ui.banner(
               c(`¡Enjambre!`),
-              c(`Un enjambre de {name} te rodea...`, { name: k.get(e.id).name }),
+              c(`Un enjambre de {name} te rodea...`, { name: word }),
               `#ffb03a`,
-              { species: e.id },
+              { species: e.id, glyph: word },
             ),
               t.audio.alarm());
             break;
@@ -34190,11 +34171,12 @@ var mv = 30,
               let f = t.enemies.spawn(n, u, d, this.hpMult() * 0.8, this.dmgMult() * 1.3, R.Stampede);
               f >= 0 && ((t.enemies.dirX[f] = a), (t.enemies.dirZ[f] = o));
             }
+            const word = enemySpeciesWord(n);
             (t.ui.banner(
               c(`¡Estampida!`),
-              c(`¡Una manada de {name}! Apártate de su camino`, { name: k.get(n).name }),
+              c(`¡Una manada de {name}! Apártate de su camino`, { name: word }),
               `#ff8a3a`,
-              { species: n },
+              { species: n, glyph: word },
             ),
               t.audio.alarm(),
               t.shake(0.3));
@@ -34264,11 +34246,12 @@ var mv = 30,
             a >= 0 && ((e.enemies.dirX[a] = o), (e.enemies.dirZ[a] = s));
           }
         });
+      const word = enemySpeciesWord(i);
       (e.ui.banner(
         c(`¡Bandada!`),
-        c(`Una bandada de {name} cruza el cielo`, { name: k.get(i).name }),
+        c(`Una bandada de {name} cruza el cielo`, { name: word }),
         `#6ac8ff`,
-        { species: i },
+        { species: i, glyph: word },
       ),
         e.audio.alarm());
     }
@@ -34316,7 +34299,7 @@ var mv = 30,
               n % 4 == 0 && e.enemies.spawn(r, c, l, i, a, R.Swarm));
           }));
       }
-      (e.ui.banner(c(`¡Lluvia de rocas!`), c(`Sal de los círculos marcados`), `#c8a070`, { species: r }),
+      (e.ui.banner(c(`¡Lluvia de rocas!`), c(`Sal de los círculos marcados`), `#c8a070`, { species: r, glyph: enemySpeciesWord(r) }),
         e.audio.alarm());
     }
     startFinalSwarm() {
@@ -34542,6 +34525,11 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     state = `idle`;
     index = -1;
     species = -1;
+    get word() {
+      const enemies = this.run.enemies;
+      if (enemies.species[this.index] === this.species) return enemies.glyphWords[this.index];
+      return enemySpeciesWord(this.species);
+    }
     family = -1;
     weakT = 0;
     attempts = 0;
@@ -34641,14 +34629,14 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
             t.vfx.trail(n.x[this.index], n.y[this.index] + 1, n.z[this.index], 9109503, 0.6, I.Star, 0.7),
           this.escapeT <= 0 &&
             (t.ui.banner(
-              c(`{name} ha huido...`, { name: k.get(this.species).name }),
+              c(`{name} ha huido...`, { name: this.word }),
               this.classic
                 ? c(`El variocolor clásico se ha esfumado`)
                 : this.shiny
                   ? c(`El variocolor se ha esfumado`)
                   : c(`Volverá a aparecer en otra partida`),
               `#8a90a8`,
-              { species: this.species, shiny: this.shiny },
+              { species: this.species, glyph: this.word, shiny: this.shiny },
             ),
             t.vfx.burst(n.x[this.index], n.y[this.index] + 1, n.z[this.index], 16777215, 20, 6, I.Star, 0.6),
             n.kill(this.index),
@@ -34704,17 +34692,17 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
             t.audio.bossStart())
           : i === `legendary`
             ? (t.ui.banner(
-                c(`传说字灵「{name}」现身！`, { name: k.get(n).name }),
+                c(`传说字灵「{name}」现身！`, { name: this.word }),
                 c(`Es muy resistente y huirá si tardas: debilítalo y captúralo`),
                 `#ffb21a`,
-                { species: n },
+                { species: n, glyph: this.word },
               ),
               t.audio.bossStart())
             : t.ui.banner(
-                c(`字灵「{name}」现身！`, { name: k.get(n).name }),
+                c(`字灵「{name}」现身！`, { name: this.word }),
                 c(`击败并收服，加入字灵队伍`),
                 `#36c9ff`,
-                { species: n },
+                { species: n, glyph: this.word },
               ),
         t.cry(n),
         t.audio.encounter());
@@ -34754,10 +34742,10 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         (this.attempts = 0),
         t.coop?.captureFound(o),
         t.ui.banner(
-          c(`¡Un {name} variocolor!`, { name: k.get(o).name }),
+          c(`¡Un {name} variocolor!`, { name: this.word }),
           c(`Es rarísimo: debilítalo y captúralo antes de que huya`),
           `#ff9ae0`,
-          { species: o, shiny: !0 },
+          { species: o, glyph: this.word, shiny: !0 },
         ),
         this.shinyEntrance(o, s.x, t.enemies.y[l], s.z));
     }
@@ -34806,10 +34794,10 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         (this.escapeT = t.meta.shinyFlee()),
         (this.attempts = 0),
         t.ui.banner(
-          c(`¡{name} variocolor clásico!`, { name: k.get(r).name }),
+          c(`¡{name} variocolor clásico!`, { name: this.word }),
           c(`Un brillo de los de antes, rarísimo: debilítalo y captúralo antes de que huya`),
           `#ffc938`,
-          { species: r, classic: !0 },
+          { species: r, glyph: this.word, classic: !0 },
         ),
         t.meta.markSeen(r),
         t.ui.shinyFlash(!0),
@@ -34824,10 +34812,12 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     }
     shinyEntrance(e, t, n, r, i) {
       let a = this.run;
+      const word = this.species === e ? this.word : enemySpeciesWord(e);
       (a.meta.markSeen(e),
         i &&
-          a.ui.banner(c(`¡{name} legendario variocolor!`, { name: k.get(e).name }), i, `#ff9ae0`, {
+          a.ui.banner(c(`¡{name} legendario variocolor!`, { name: word }), i, `#ff9ae0`, {
             species: e,
+            glyph: word,
             shiny: !0,
           }),
         a.ui.shinyFlash(),
@@ -34884,10 +34874,10 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         (this.weakT = 10),
         (this.attempts = 0),
         r.ui.banner(
-          c(`¡{name} está debilitado!`, { name: k.get(t).name }),
+          c(`¡{name} está debilitado!`, { name: this.word }),
           c(`Acércate y {key} para lanzar la Poké Ball`, { key: Lo(`E`, !0) }),
           a ? `#ff9ae0` : `#c08aff`,
-          { species: t, shiny: a },
+          { species: t, glyph: this.word, shiny: a },
         ));
     }
     onDefeated(e) {
@@ -34899,10 +34889,10 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         (this.weakT = 10),
         (n.flash[e] = 1),
         t.ui.banner(
-          c(`¡{name} está debilitado!`, { name: k.get(this.species).name }),
+          c(`¡{name} está debilitado!`, { name: this.word }),
           c(`Acércate y {key} para lanzar la Poké Ball`, { key: Lo(`E`, !0) }),
           `#5af0ff`,
-          { species: this.species, shiny: this.shiny },
+          { species: this.species, glyph: this.word, shiny: this.shiny },
         ),
         t.audio.power(),
         t.coop?.captureWeak(this.species, this.family, this.mode, this.shiny, n.x[e], n.z[e]));
@@ -34943,10 +34933,10 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
           (this.attempts = 0),
           o.meta.markSeen(e),
           o.ui.banner(
-            c(`¡{name} está debilitado!`, { name: k.get(e).name }),
+            c(`¡{name} está debilitado!`, { name: this.word }),
             c(`Acércate y {key} para lanzar la Poké Ball`, { key: Lo(`E`, !0) }),
             r ? `#ff9ae0` : `#5af0ff`,
-            { species: e, shiny: r },
+            { species: e, glyph: this.word, shiny: r },
           ),
           o.audio.power(),
           !0);
@@ -34961,7 +34951,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
           t.species[n] === this.species &&
           t.flags[n] & R.Capture &&
           (e.vfx.burst(t.x[n], t.y[n] + 1, t.z[n], 16777215, 16, 6, I.Star, 0.5), t.kill(n)),
-        e.ui.toast(c(`{name} se ha escapado`, { name: k.get(this.species).name }), null));
+        e.ui.toast(c(`{name} se ha escapado`, { name: this.word }), null));
     }
     canWait() {
       return (
@@ -35004,10 +34994,10 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
             t.kill(this.index),
             (this.state = `done`),
             e.ui.banner(
-              c(`{name} ha huido...`, { name: k.get(this.species).name }),
+              c(`{name} ha huido...`, { name: this.word }),
               c(`Volverá a aparecer en otra partida`),
               `#8a90a8`,
-              { species: this.species, shiny: this.shiny },
+              { species: this.species, glyph: this.word, shiny: this.shiny },
             ))
           : (e.ui.toast(c(`¡Se ha escapado! Inténtalo otra vez: cada lanzamiento es más fácil`), `poke-ball`),
             (this.state = `weakened`),
@@ -35018,7 +35008,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         t = e.enemies;
       ((t.hp[this.index] = t.maxHp[this.index] * 0.4),
         (this.state = `roaming`),
-        e.ui.toast(c(`¡{name} se ha recuperado y huye!`, { name: k.get(this.species).name }), null));
+        e.ui.toast(c(`¡{name} se ha recuperado y huye!`, { name: this.word }), null));
     }
     caught() {
       let e = this.run,
@@ -46330,6 +46320,34 @@ var GS = class e {
     list = [];
     group = new Cr();
     nearest = null;
+    dwellTime = 0;
+    waitingForGold = false;
+    warnedPortal = null;
+    get dwellProgress() {
+      return this.nearest && this.dwellTime > 0 && this.dwellTime < facilityDwellSeconds
+        ? this.dwellTime / facilityDwellSeconds : -1;
+    }
+    updateDwell(target, seconds) {
+      const run = this.run;
+      if (target !== this.nearest) {
+        this.nearest = target;
+        this.dwellTime = 0;
+        this.waitingForGold = false;
+        this.warnedPortal = null;
+      }
+      if (!target || run.state !== 'play' || run.player.dead) return;
+      if (this.waitingForGold && (target.data?.gift || run.gold >= this.chestCost())) {
+        this.waitingForGold = false;
+        this.dwellTime = 0;
+      }
+      if (this.dwellTime >= facilityDwellSeconds) return;
+      if (run.coop?.lifting || run.capture.throwing || run.capture.canThrow()) {
+        this.dwellTime = 0;
+        return;
+      }
+      this.dwellTime = Math.min(facilityDwellSeconds, this.dwellTime + seconds);
+      if (this.dwellTime === facilityDwellSeconds) this.interact(target);
+    }
     constructor(e, deferred = false) {
       ((this.run = e),
         e.r.scene.add(this.group),
@@ -46792,6 +46810,7 @@ var GS = class e {
             }
             let n = this.chestCost();
             if (t.gold < n) {
+              this.waitingForGold = this.nearest === e;
               (t.ui.toast(c(`No tienes suficientes Pokédólares`), null), t.audio.deny());
               return;
             }
@@ -46871,7 +46890,7 @@ var GS = class e {
             t.bossSpawned || ((e.used = !0), t.spawnBoss(e.x, e.z));
             break;
           case `portal`:
-            t.endless ? t.migrate() : t.enterPortal();
+            t.endless ? t.migrate() : t.enterPortal(e);
             break;
         }
     }
@@ -46886,12 +46905,13 @@ var GS = class e {
         o = 8 + 3 * t.stage,
         s = 1 + Math.floor(t.stage / 2),
         l = [];
+      const word = enemySpeciesWord(a);
       ((e.data = { ...e.data, wave: l, left: o, pending: o, species: a }),
         t.ui.banner(
           c(`¡Desafío aceptado!`),
-          c(`Derrota a los {n} {name} que te rodean`, { n: o, name: k.get(a).name }),
+          c(`Derrota a los {n} {name} que te rodean`, { n: o, name: word }),
           `#ff6a4a`,
-          { species: a },
+          { species: a, glyph: word },
         ),
         t.audio.bossStart(),
         t.vfx.ring(e.x, e.y, e.z, 11, 16738890, 0.8),
@@ -47000,7 +47020,7 @@ var GS = class e {
       let a = !t && !n && !i.endless ? 3 : 1;
       i.later(0.35, () => i.rollChestItem(t, r, a));
     }
-    update(e) {
+    update(e, dwellSeconds = e) {
       let t = this.run,
         n = t.player.pos,
         r = null,
@@ -47155,7 +47175,9 @@ var GS = class e {
             u < i &&
             ((i = u), (r = a)));
       }
-      ((this.nearest = r), this.landmarkFx(e), this.stepLaunch(e));
+      this.landmarkFx(e);
+      this.stepLaunch(e);
+      this.updateDwell(r, dwellSeconds);
     }
     launch = null;
     static LAUNCH_T = 0.85;
@@ -50332,11 +50354,7 @@ var mw = 7500,
       letter: `b`,
       icon: () => Q(`poke-ball`),
       title: () => c(`Poké Ball del mapa`),
-      text: () =>
-        c(
-          `Guarda un objeto para tu equipo. {key} cerca para abrirla; cuesta ₽, que sueltan los Pokémon salvajes.`,
-          { key: Lo(`E`) },
-        ),
+      text: () => `在扭蛋旁停留 ${facilityDwellSeconds} 秒即可开启。付费扭蛋会扣除标出的金币。`,
     },
     altar: {
       letter: `a`,
@@ -50351,18 +50369,13 @@ var mw = 7500,
       letter: `s`,
       icon: () => Q(`amulet-coin`),
       title: () => c(`Tienda de Meowth`),
-      text: () =>
-        c(`Vende objetos por ₽. {key} cerca para hablar con él; se marcha pasado un rato.`, { key: Lo(`E`) }),
+      text: () => `在商店旁停留 ${facilityDwellSeconds} 秒即可选购道具。`,
     },
     guardian: {
       letter: `g`,
       icon: () => Z(`map-boss`, 28),
       title: () => c(`Altar del guardián`),
-      text: () =>
-        c(
-          `{key} aquí para despertar al guardián de la zona. Derrótalo para abrir el portal a la siguiente. Antes, sube de nivel y abre las Poké Balls.`,
-          { key: Lo(`E`) },
-        ),
+      text: () => `在召唤点旁停留 ${facilityDwellSeconds} 秒就会唤醒镇守。击败它即可开启传送门。`,
     },
     alpha: {
       letter: `f`,
@@ -50386,11 +50399,7 @@ var mw = 7500,
       letter: `e`,
       icon: () => Z(`egg`, 28),
       title: () => c(`Huevo Pokémon`),
-      text: () =>
-        c(
-          `{key} para cogerlo. Te sigue mientras luchas y, tras unas cuantas bajas, eclosiona: el Pokémon que sale lucha contigo.`,
-          { key: Lo(`E`) },
-        ),
+      text: () => `在蛋旁停留 ${facilityDwellSeconds} 秒即可带上它。击败足够多的敌人后，孵出的伙伴会与你并肩战斗。`,
     },
     level: {
       letter: `l`,
@@ -54569,7 +54578,7 @@ var GT = 15,
             r.ui.toast(
               c(`{name} ha encontrado a {pokemon}: ayúdale a debilitarlo y podréis capturarlo todos`, {
                 name: n.name,
-                pokemon: k.get(t.sp | 0).name,
+                pokemon: enemySpeciesWord(t.sp | 0),
               }),
               null,
             );
@@ -55538,7 +55547,7 @@ var GT = 15,
         (this.focusIdx = t),
         this.audio.duck(0.2, 4.4),
         this.ui.setPrompt(null),
-        this.ui.captureStart(n, r, i, s));
+        this.ui.captureStart(n, r, i, s, this.enemies.glyphWords[t]));
     }
     endCapture(e) {
       ((this.capBall = null),
@@ -56137,43 +56146,28 @@ var GT = 15,
         this.pickups.spawn(`coin`, r, t.y[e], i, Math.ceil(5 * this.stage * this.player.stats.gold));
       (this.pickups.spawn(`candy`, r, t.y[e], i, 1), this.endless.onMilestoneKilled());
     }
-    leaveWarnAt = -99;
-    rewardWarnAt = -99;
     cineDeadT = 0;
-    async enterPortal() {
+    async enterPortal(portal = null) {
       if (this.state !== `play` || this.player.dead || this.capture.throwing) return;
       if (this.mode === SINGLE_STAGE && !this.stageCleared) return;
-      let e = this.interactables.rewardsLeft();
-      if (e > 0 && this.realTime - this.rewardWarnAt > 6) {
-        ((this.rewardWarnAt = this.realTime),
-          this.ui.toast(
-            e === 1
-              ? c(`Te queda 1 Super Ball sin abrir cerca. Pulsa E otra vez para entrar igualmente`)
-              : c(`Te quedan {n} Super Balls sin abrir cerca. Pulsa E otra vez para entrar igualmente`, {
-                  n: e,
-                }),
-            `poke-ball`,
-          ),
-          this.audio.deny());
-        return;
+      const lastZone = this.stage >= 4 || (this.stage >= 3 && !this.biome.sanctuary);
+      if (portal && this.interactables.warnedPortal !== portal) {
+        const left = this.interactables.rewardsLeft();
+        const messages = [];
+        if (left) messages.push('附近还有 ' + left + ' 个奖励扭蛋');
+        if (lastZone && this.capture.canWait()) messages.push('还有字灵等待收服');
+        if (messages.length) {
+          this.ui.toast(messages.join('，') + `。继续停留 ${facilityDwellSeconds} 秒即可离开。`, 'poke-ball');
+          this.audio.deny();
+          this.interactables.warnedPortal = portal;
+          this.interactables.dwellTime = 0;
+          return;
+        }
       }
-      this.rewardWarnAt = -99;
       if (this.mode === SINGLE_STAGE) return this.finish(!0);
-      let t = this.stage >= 4 || (this.stage >= 3 && !this.biome.sanctuary);
-      t && this.capture.canWait() && this.realTime - this.leaveWarnAt > 5
-        ? ((this.leaveWarnAt = this.realTime),
-          this.ui.toast(
-            c(`¡{name} aún espera tu Poké Ball! Pulsa E otra vez para salir sin capturarlo`, {
-              name: k.get(this.capture.species).name,
-            }),
-            `poke-ball`,
-          ),
-          this.audio.deny())
-        : this.coop
-          ? this.coop.enterPortal()
-          : t
-            ? this.finish(!0)
-            : await this.changeZone();
+      if (this.coop) return this.coop.enterPortal();
+      if (lastZone) return this.finish(!0);
+      await this.changeZone();
     }
     async coopAdvance(e) {
       let t = (e) => new Promise((t) => setTimeout(t, e));
@@ -56967,7 +56961,7 @@ var GT = 15,
         );
       a(Qb(this, t, n, i), r);
     }
-    update(e) {
+    update(e, dwellSeconds = e) {
       let t = this.input;
       // Start after loading or restoring the room, so the boss intro owns its cinematic state.
       if (this.sanctuary && this.state === 'play' && !this.bossSpawned && !this.stageCleared && !this.coop?.pendingBoss) {
@@ -57069,7 +57063,7 @@ var GT = 15,
         a && this.stepAnims(e, !0),
         this.state === `capturing` &&
           (this.orbitals.begin(), this.orbitalsGlow.begin(), this.capBall?.update(e)),
-        i && r > 0 && this.simulate(r),
+        i && r > 0 && this.simulate(r, dwellSeconds),
         !frozenWorld&&this.updateCamera(e),
         this.state === `capturing` && this.clearCaptureView(),
         !frozenWorld&&this.renderWorld(i ? r : 0),
@@ -57096,7 +57090,7 @@ var GT = 15,
     governHorde() {
       updateCrowdBudget(this,performance.now(),document.hidden);
     }
-    simulate(e) {
+    simulate(e, dwellSeconds = e) {
       let t = this.input,
         n = this.player,
         r = !!this.coop && n.dead;
@@ -57150,10 +57144,7 @@ var GT = 15,
                       }),
                     ),
                     t.hit(`KeyE`) && this.allies.throwBall())
-                  : i
-                    ? (this.ui.setPrompt(`[E] ` + this.interactables.label(i)),
-                      t.hit(`KeyE`) && this.interactables.interact(i))
-                    : this.ui.setPrompt(null),
+                  : this.ui.setPrompt(null),
         this.hints.tick(this, e));
       for (let t = this.timers.length - 1; t >= 0; t--) {
         let n = this.timers[t];
@@ -57222,7 +57213,7 @@ var GT = 15,
         this.sanctuary?.update(e),
         this.tide.update(e),
         this.mapEvents.update(e),
-        this.interactables.update(e),
+        this.interactables.update(e, dwellSeconds),
         this.terrain.update(this.coop?.spec ? this.camTarget : n.pos));
       let u = this.enemies;
       for (let e = 0; e < u.n; e++) {
@@ -57966,6 +57957,7 @@ var ME = class {
       r !== this.actText &&
         ((this.actText = r),
         (this.act.style.display = r ? `` : `none`),
+        this.act.setAttribute('aria-label', r),
         (this.act.lastChild.textContent = r),
         $(this.act.firstChild).append(
           r.includes(c(`Poké Ball`)) || r.startsWith(c(`Capturar`)) ? Q(`poke-ball`) : X(`b`, {}, `E`),
@@ -60880,6 +60872,7 @@ var bO = [...LITE_SPECIES],
     sfx: 0.7,
     cries: 0.6,
     quality: `high`,
+    batterySaver: false,
     aimMode: `auto`,
     sensitivity: 1,
     invertY: !1,
@@ -73562,7 +73555,7 @@ function SP() {
 function ZX(app) {
   const itemIcon=id=>Zt(k.items[id]?.icon||`items/${id}.png`);
   return createZixingUI(app, {
-    defaults: {...SO, fpsLimit:60, batterySaver:false, zxBossHealth:'value'},
+    defaults: {...SO, zxBossHealth:'value'},
     moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
     ultDescription: id => Xh(id, k.get(id).types[0]).descs[0] || '积蓄能量，释放专属大招。',
     baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
@@ -79908,6 +79901,7 @@ function nI(e) {
                 {
                   class: `pill` + (t[n] === e ? ` on` : ``),
                   onclick: () => {
+                    if(n==='quality'){N.click();selectGraphicsQuality(t,e);r();b(tI);return;}
                     (N.click(), (t[n] = e), r(), c());
                   },
                 },
@@ -79980,36 +79974,6 @@ function nI(e) {
         )
       );
     },
-    f = () => {
-      let e = X(`div`, { class: `seg` }),
-        n = () =>
-          $(e).append(
-            ...[`0`, `30`, `60`, `90`, `120`, `144`].map((e) =>
-              X(
-                `button`,
-                {
-                  class: `pill` + (String(Ho(t.fpsLimit)) === e ? ` on` : ``),
-                  onclick: () => {
-                    (N.click(), (t.fpsLimit = e), r(), n());
-                  },
-                },
-                e === `0` ? c(`Sin límite`) : e,
-              ),
-            ),
-          );
-      return (
-        n(),
-        i(
-          c(`Límite de FPS`),
-          e,
-          null,
-          c(
-            `Menos FPS dan una imagen más estable y menos calor y ruido del ventilador. No puede pasar de lo que da tu pantalla. El ahorro de batería lo deja en 30`,
-          ),
-          `segrow wide`,
-        )
-      );
-    },
     p = [
       {
         id: `sound`,
@@ -80044,7 +80008,6 @@ function nI(e) {
         keys: [
           `quality`,
           `batterySaver`,
-          `fpsLimit`,
           `shakeOn`,
           `screenShake`,
           `fxOpacity`,
@@ -80069,13 +80032,12 @@ function nI(e) {
           ),
           s(
             c(`Ahorro de batería`),
-            () => Uo(),
+            () => t.batterySaver,
             () => {
-              (Vo(!Uo()), r());
+              setBatterySaver(t,!t.batterySaver);r();b(tI);
             },
             c(`Limita a 30 fps y baja la resolución: el móvil gasta menos batería`),
           ),
-          f(),
           l(c(`Temblor de pantalla`), `shakeOn`),
           a(c(`Intensidad del temblor`), `screenShake`, 0, 1.5, 0.1),
           a(
@@ -80485,7 +80447,7 @@ function nI(e) {
   _.onclick = () => {
     (N.click(), LN?.());
     for (let e of v().keys) t[e] = n[e];
-    (v().keys.includes(`batterySaver`) && Vo(void 0), r(), b(tI));
+    (r(), b(tI));
   };
   let b = (e) => {
     (e !== `keys` && LN?.(), (tI = e));
@@ -82225,7 +82187,7 @@ var JI = class {
       (r.style.setProperty(`--c`, YC(n)), this.hudEl.append(r), setTimeout(() => r.remove(), 1300));
     }
     capEl = null;
-    captureStart(e, t, n, r = !1) {
+    captureStart(e, t, n, r = !1, word = enemySpeciesWord(e)) {
       this.capEl?.remove();
       let i = k.get(e),
         a = t ? `#ff9ae0` : YC(Ni[i.types[0]]);
@@ -82240,7 +82202,7 @@ var JI = class {
           X(
             `div`,
             { class: `cap-plate` },
-            X(`div`, { class: `cap-pt` + (t ? ` shiny` : ``) }, ZI(e, t)),
+            X(`div`, { class: `cap-pt` + (t ? ` shiny` : ``) }, glyphPreview(e,.75,'pix',word)),
             X(
               `div`,
               { class: `cap-info` },
@@ -82252,7 +82214,7 @@ var JI = class {
               X(
                 `h2`,
                 {},
-                i.name,
+                word,
                 t ? X(`i`, { class: `shiny-mark` }) : null,
                 r ? X(`small`, { class: `cap-tag` }, c(`Alfa de apoyo · solo esta partida`)) : null,
               ),
@@ -83110,7 +83072,7 @@ var JI = class {
             p.dataset.k !== m &&
               ((p.dataset.k = m),
               (p.className = h),
-              $(p).append(...(t ? [c(`Poké Ball gratis`)] : [Q(`nugget`), `${n} ₽`]))));
+              $(p).append(...(t ? [buildingMapName(a)] : [Q(`nugget`), n + (r ? ' 金币' : ' 金币 · 不足')]))));
         } else if (a.kind === `challenge` && a.data?.wave)
           ((m = `w` + a.data.left),
             p.dataset.k !== m &&
@@ -83118,11 +83080,12 @@ var JI = class {
               (p.className = `wlabel nocost`),
               $(p).append(c(`Quedan {n}`, { n: a.data.left }))));
         else {
-          let e = a.kind === `tower` ? (r[a.data?.sub] ?? ``) : (i[a.kind] ?? ``);
-          if (((m = `n` + a.kind + (a.data?.sub ?? ``)), p.dataset.k !== m)) {
+          const label = a === e.interactables.nearest ? e.interactables.label(a)
+            : a.kind === `tower` ? (r[a.data?.sub] ?? ``) : (i[a.kind] ?? ``);
+          if (((m = `n` + a.kind + label), p.dataset.k !== m)) {
             ((p.dataset.k = m), (p.className = h + (a.kind === `meowth` ? ` shop` : ``)));
             let t = l ? pI(a.kind, a.kind === `meowth` ? 40 : 26) : null;
-            $(p).append(...(t ? [t] : []), e);
+            $(p).append(...(t ? [t] : []), label);
           }
           (!p.childNodes.length || (p.childNodes.length === 1 && !p.textContent)) &&
             (p.style.display = `none`);
@@ -85835,15 +85798,16 @@ var JI = class {
                 X(
                   `div`,
                   { class: `sm-kills` },
-                  ...w.map(([e, t]) =>
-                    X(
+                  ...w.map(([e, t]) => {
+                    const word = enemySpeciesWord(e);
+                    return X(
                       `div`,
-                      { class: `sm-kill` + (T.has(e) ? ` new` : ``), title: k.get(e).name },
-                      rw(e),
+                      { class: `sm-kill` + (T.has(e) ? ` new` : ``), title: word },
+                      glyphPreview(e,.75,'pix',word),
                       X(`b`, {}, `×${P(t)}`),
                       T.has(e) ? X(`i`, {}, c(`NUEVO`)) : null,
-                    ),
-                  ),
+                    );
+                  }),
                 ),
               )
             : null,
@@ -86052,11 +86016,12 @@ var JI = class {
           : c(`Sin récord en este mapa`)));
       let o = n.next,
         s = e.boss.alive || e.mewtwo.active;
+      const word = enemySpeciesWord(o.species, R.Boss);
       t.mile.style.display = ``;
       let l = `${o.n}|${s}`;
       t.mile.dataset.k !== l &&
         ((t.mile.dataset.k = l),
-        $(t.mile.firstChild).append(rw(o.species)),
+        $(t.mile.firstChild).append(glyphPreview(o.species,.75,'pix',word)),
         t.mile.style.setProperty(
           `--c`,
           o.kind === `guardian` ? `#ff4a8a` : o.kind === `mewtwo` ? `#c08aff` : `#ffd23a`,
@@ -86069,8 +86034,8 @@ var JI = class {
       let u = s
         ? c(`Derrótalo`)
         : o.at > r
-          ? c(`{name} en {time}`, { name: k.get(o.species).name, time: Ys(o.at - r) })
-          : c(`{name}: ¡ya llega!`, { name: k.get(o.species).name });
+          ? c(`{name} en {time}`, { name: word, time: Ys(o.at - r) })
+          : c(`{name}: ¡ya llega!`, { name: word });
       t.mile.lastChild.lastChild.textContent !== u && (t.mile.lastChild.lastChild.textContent = u);
       let d = Math.round((1 - n.siegeMult) * 100),
         f = String(d);
@@ -88329,7 +88294,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     run = null;
     hud = null;
     menuScene = null;
-    last = performance.now();
+    last = null;
     lastCfg = null;
     coopRoom = null;
     pendingRoom = null;
@@ -88489,7 +88454,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           N.setHiddenMute(document.hidden && (this.meta.profile?.settings.muteHidden ?? !0)),
         ),
         document.addEventListener(`visibilitychange`, () => {
-          this.dynAt=performance.now();this.dyn.t=this.dyn.frames=this.dyn.js=0;
+          this.last=null;this.dynAt=performance.now();this.dyn.t=this.dyn.frames=this.dyn.js=0;
           this.perf.active=false;
           this.pacer.reset();
           if(this.run)this.run.crowdSample=null;
@@ -88617,7 +88582,10 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     applySettings() {
       let e = this.meta.profile?.settings;
       if(e&&(window.nativeUI||this.zixing))e.aimMode='auto';
-      if (e && window.repairVolumeSettings?.(e)) this.meta.save();
+      if (e) {
+        const repaired = setBatterySaver(e,e.batterySaver);
+        if (window.repairVolumeSettings?.(e) || repaired) this.meta.save();
+      }
       const profile=performanceProfile(e,window.nativeDevice);
       if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio});
       window.setUIPerformance?.(profile);
@@ -88625,7 +88593,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         (N.setVolumes({ master: e.master, music: e.music, sfx: e.sfx, cries: e.cries }),
         N.setHiddenMute(document.hidden && e.muteHidden),
         N.setSilentPlay(!!e.silentPlay),
-        (this.saver = Uo(e.batterySaver)),
+        (this.saver = e.batterySaver),
         this.r &&
           (this.r.setQuality({
             pixelScale: window.nativeUI||this.zixing ? 0 : e.pixel ?? 0,
@@ -88956,15 +88924,14 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     frameGap() {
       let e = this.run?.state;
       if(window.nativeUI&&window.modalAnimating?.())return 1000/(this.fpsCap()||60);
-      if (window.nativeUI && (!e || e === `paused` || e === `modal` || e === `over`))
+      if (window.nativeUI && (!e || e === `paused` || e === `modal` || e === `over` || this.run?.buildingStage || this.screen?.classList.contains('zx-loading-screen')))
         return Math.max(1000 / (this.fpsCap() || 60), 1000 / 30);
-      if (this.saver) return e === `paused` || e === `modal` ? 50 : 33.3;
+      if (this.saver) return e === `paused` || e === `modal` ? 50 : 1000/30;
       let t = this.fpsCap();
       return t ? 1e3 / t : 0;
     }
     fpsCap() {
-      const fps = this.saver ? 30 : Ho(this.meta?.profile?.settings.fpsLimit);
-      return window.nativeUI ? Math.min(fps || 60, 60) : fps;
+      return this.saver ? 30 : 60;
     }
     dyn = { t: 0, frames: 0, js: 0, good: 0, wait: 8, lastUp: -1e9 };
     dynAt = 0;
@@ -88996,12 +88963,13 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           : (r.good = 0);
     }
     halted = !1;
-    pacer = new FramePacer();
+    pacer = new FramePacer(window.setNativeFrameRate);
     loop = (e) => {
       if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) {this.perf.active=false;this.pacer.reset();return;}
       let t = this.frameGap();
       if (!this.pacer.ready(e,t,this.r.needsDraw)) return;
-      let n = Math.min(0.1, (e - this.last) / 1e3);
+      const elapsed = this.last === null ? 0 : Math.max(0, (e - this.last) / 1e3);
+      let n = Math.min(0.1, elapsed);
       this.last = e;
       try {
         // Opaque menus only upload changed UI; hidden scenery stays idle.
@@ -89019,7 +88987,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         if(!this.r.needsDraw&&window.drawFrozenModal?.(this.r.renderer)){
           this.perf.active=false;this.run.crowdSample=null;this.adaptRes(0,0,e);this.failing=0;return;
         }
-        this.run ? this.run.update(n) : this.menuScene?.update(n);
+        this.run ? this.run.update(n, Math.min(elapsed, 0.5)) : this.menuScene?.update(n);
         // The XP ring still needs HUD updates while combat is paused. Reuse
         // that same scene when the choice first appears.
         if(this.run?.pendingLevels>0&&!this.r.needsDraw&&window.drawFrozenUpgrade?.(this.r.renderer)){

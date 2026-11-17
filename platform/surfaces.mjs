@@ -41,17 +41,16 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
     return new Proxy(facade,{
       get(_facade,k) {
         if(k==='canvas')return el;
+        if(cache[k])return cache[k];
         let v=native[k];
         if(type==='2d'&&typeof v!=='function'&&Object.hasOwn(pathFallbacks,k))v=pathFallbacks[k];
         if(typeof v!=='function')return v;
-        if(!cache[k]){
-          if(['drawImage','createPattern','texImage2D','texSubImage2D','texImage3D','texSubImage3D','copyImageSubData'].includes(k))
-            cache[k]=(...args)=>v.apply(native,args.map(a=>a?._surface||a));
-          else if(['fill','stroke','clip','isPointInPath'].includes(k))cache[k]=(...args)=>{
-            if(args[0] instanceof CanvasPath){args.shift().trace(native);}return v.apply(native,args);
-          };
-          else cache[k]=v.bind(native);
-        }
+        if(['drawImage','createPattern','texImage2D','texSubImage2D','texImage3D','texSubImage3D','copyImageSubData'].includes(k))
+          cache[k]=(...args)=>v.apply(native,args.map(a=>a?._surface||a));
+        else if(['fill','stroke','clip','isPointInPath'].includes(k))cache[k]=(...args)=>{
+          if(args[0] instanceof CanvasPath){args.shift().trace(native);}return v.apply(native,args);
+        };
+        else cache[k]=v.bind(native);
         return cache[k];
       },
       set(_facade,k,v){
@@ -60,7 +59,9 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
           const family=/bold|[6-9]00/i.test(v)?host.fonts.bold:host.fonts.regular;
           v=v.replace(/['"]?Ziling Swei['"]?/g,'"'+family+'"');
         }
-        return Reflect.set(native,k,v);
+        const written=Reflect.set(native,k,v);
+        if(written&&cache[k])delete cache[k];
+        return written;
       }
     });
   }

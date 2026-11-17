@@ -243,6 +243,11 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await page.waitForFunction(()=>app.run?.player,{timeout:90000});
     await page.waitForFunction(()=>app.run.time>2&&!inspected.doc.querySelector('.run-loading,.stageintro'),{timeout:90000});
     await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});
+    if(process.argv.includes('--item-dwell')){
+      await reviewItems({page,tap,resize,dir,snapshot});
+      console.log('Proximity timing, altar charge and item rewards passed.');
+      return;
+    }
     await snapshot('07-battle');
     const hudBindings=await page.evaluate(()=>{
       const r=app.run,p=r.player,oldHp=p.hp,oldXp=p.xp,oldLevel=p.level,oldSkill=p.moves[0].level,oldSlots=p.moveSlots;
@@ -308,7 +313,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       assert.ok(!overlaps(c.pause,c.ult),'Pause must stay clear of the ultimate and joystick on short screens');
       for(const extra of c.extras){assert.ok(!overlaps(extra,c.ult)&&!overlaps(extra,c.pause),'Optional controls must stay clear of the main controls');}
     }
-    await reviewFloatingControls({page,resize,dir,sleep});
     await tap('.zx-minimap');await snapshot('07-full-map');
     assert.equal(await page.evaluate(()=>app.run.state==='paused'&&app.run.ui.mapOpen()),true);
     await tap('[data-action="close-battle-map"]');
@@ -320,10 +324,19 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await tap('.zx-modal .zx-link','查看属性');await snapshot('26-current-stats');
     await tap('.zx-stat-grid .zx-card','全局伤害');await snapshot('28-damage-sources');await tap('.zx-footer button','返回');
     await tap('.zx-tabs button','成长');await snapshot('27-growth-stats');await tap('.zx-footer button','返回');
-    await tap('.zx-modal .zx-button','结束本局');await snapshot('24-quit-confirm');await tap('.zx-modal .zx-button','返回');
-    await tap('.zx-modal .zx-button','返回');
+    await tap('.zx-modal .zx-button','结束本局');await snapshot('24-quit-confirm');
+    assert.ok(await page.evaluate(()=>{
+      const wrap=inspected.doc.querySelector('.zx-confirm-end'),card=wrap.querySelector('section');
+      const panel=card.getBoundingClientRect(),bounds=wrap.getBoundingClientRect();
+      return card.firstElementChild.localName==='h2' && panel.top>=bounds.top &&
+        panel.top+panel.height/2<bounds.top+bounds.height/2-10;
+    }));
+    await tap('.zx-confirm-end .zx-button','返回');
     assert.equal(await page.evaluate(()=>app.run.state),'play');
+    await page.waitForFunction(time=>app.run.time>time&&!app.run.ui.modalEl&&
+      inspected.layout.box(app.run.ui.touch.ult)?.w>0,{timeout:10000},beforeTime);
     swipeControls(await controls());
+    await reviewFloatingControls({page,resize,dir,sleep});
     await tap('.zx-hud-pause');await tap('.zx-modal .zx-button','设置');await tap('.zx-tabs.main button','操作');
     assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/扩展操作按钮|手动跳跃/);
     await tap('.zx-tabs.main button','画面');
