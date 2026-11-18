@@ -183,7 +183,6 @@ export class StylizedSkillFX{
       case 'fire-ultimate':case 'fu-t-fire':return [base,family.mushroomTexture];
       case 'fu-4':return [base,jet,spin];
       case 'fu-t-normal':case 'fu-t-dragon':return [family.completionTexture,base];
-      case 'fu-r-charmbreath':return [family.completionTexture,jet];
       case 'fu-missingno':return [family.completionTexture];
       default:return family.supports(key)?[base]:[];
     }

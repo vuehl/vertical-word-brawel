@@ -163,7 +163,7 @@ export async function reviewStylizedVFX(page,dir){
   }
   if(process.argv.includes('--vfx-media')){await recordElements();console.log('Recorded actual fire fan and water flow; all actor art ready, 32 frames with explicit frame delays.');return report;}
   await screenshot('00-close-camera-painted-materials');
-  const keys=['ember','flamethrower','fire-spin','water-gun','hydro-pump','icy-wind','razor-leaf','ice-beam','thunderbolt','psychic','tackle','flame-wheel','rock-slide','poison-sting','shadow-ball','draining-kiss','swords-dance','sand-tomb'];
+  const keys=['ember','flamethrower','fire-spin','water-gun','hydro-pump','icy-wind','razor-leaf','ice-beam','thunderbolt','psychic','tackle','rock-slide','poison-sting','shadow-ball','draining-kiss','swords-dance','sand-tomb'];
   for(const key of keys){
     const id=moves.find(m=>m.key===key)?.id;assert.ok(id,key);
     const sample=await page.evaluate(({id,key})=>{
@@ -246,6 +246,6 @@ export async function reviewStylizedVFX(page,dir){
   const pixels=await sharp(path.join(dir,'daylight-fire-lights.png')).resize(160,320).removeAlpha().raw().toBuffer();let black=0;for(let i=0;i<pixels.length;i+=3)if(pixels[i]+pixels[i+1]+pixels[i+2]===0)black++;
   assert.ok(black/(pixels.length/3)<.02,'No NaN/bloom black regions');
   fs.writeFileSync(path.join(dir,'stylized-vfx-report.json'),JSON.stringify(report,null,2)+'\n');
-  console.log('Stylized VFX verified: 18 actual moves, nine actual ultimates, burning/fluid shaders, stable room lights, ink-painted maps, original camera, three quality budgets and cleanup.');
+  console.log('Stylized VFX verified: ' + report.moves.length + ' actual moves, ' + report.ultimates.length + ' actual ultimates, burning/fluid shaders, stable room lights, ink-painted maps, original camera, three quality budgets and cleanup.');
   return report;
 }

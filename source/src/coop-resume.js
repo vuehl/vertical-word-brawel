@@ -40,6 +40,7 @@ export function restoreProgress(run,data,world) {
     Object.assign(p,data.player);
     p.items=new Map((data.items ?? []).filter(([key])=>heldItemRules.has(key)));
     p.vitamins=new Map((data.vitamins ?? []).filter(([key])=>vitaminRules.has(key)));
+    const openingMoveId=p.moves[0]?.def.id;
     p.moves.fill(null);
     for(const [i,saved] of data.moves.entries()){
       if(!saved)continue;
@@ -50,6 +51,8 @@ export function restoreProgress(run,data,world) {
       p.moves[i]=move;
       const {id,...attributes}=saved;Object.assign(move,attributes);
     }
+    // Older loadouts can contain only retired moves.
+    if(openingMoveId!=null && !p.moves.some(Boolean))p.addMove(openingMoveId);
     p.recompute();p.hp=Math.min(data.player.hp,p.maxHp);p.xpNext=p.xpFor(p.level);
     if(!('nextEvo' in data.run))run.nextEvo=run.planEvolution(p.speciesId,1);
     else if((data.v ?? 1)<3 && run.nextEvo){

@@ -9,10 +9,10 @@ for(const [key,folder,count] of [['dragon','形意拳_技能1_伏龙探爪/long'
  for(const file of frames)images.push(await sharp(path.join(source,folder,file)).extract(crop).resize(tile-padding*2,tile-padding*2,{fit:'contain',background:'#00000000'}).extend({top:padding,bottom:padding,left:padding,right:padding,background:'#00000000'}).png().toBuffer());
  clips[key]={first,count:frames.length,source:folder,frames,crop};
 }
-// Preserve the existing skills' star/heart symbols as crisp, flat vector icons;
+// Preserve the existing star symbol as a crisp, flat vector icon;
 // the animated light and impact sequences above are unredrawn library artwork.
 const points=(outer,inner)=>Array.from({length:10},(_,i)=>{const a=-Math.PI/2+i*Math.PI/5,r=i%2?inner:outer;return `${256+Math.cos(a)*r},${256+Math.sin(a)*r}`;}).join(' ');
-const glyphs={star:`<polygon points="${points(224,101)}" fill="#c67619" stroke="#8d4216" stroke-width="9" stroke-linejoin="round"/><polygon points="${points(199,89)}" fill="#ffd554"/><polygon points="${points(137,65)}" fill="#fff2af"/>`,heart:'<path d="M256 435C218 399 69 298 61 191C51 54 217 55 256 153C295 55 461 54 451 191C443 298 294 399 256 435Z" fill="#ee4e91" stroke="#9b285d" stroke-width="10"/><path d="M111 173C120 112 193 105 218 159C181 138 146 145 137 187C130 217 146 243 167 269C122 246 100 211 111 173Z" fill="#ffd1e7"/>'};
+const glyphs={star:`<polygon points="${points(224,101)}" fill="#c67619" stroke="#8d4216" stroke-width="9" stroke-linejoin="round"/><polygon points="${points(199,89)}" fill="#ffd554"/><polygon points="${points(137,65)}" fill="#fff2af"/>`};
 for(const [key,body] of Object.entries(glyphs)){clips[key]={first:images.length,count:1,source:'Existing game symbol, vector reconstruction',width:512,height:512};images.push(await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">${body}</svg>`)).resize(tile-padding*2,tile-padding*2).extend({top:padding,bottom:padding,left:padding,right:padding,background:'#00000000'}).png().toBuffer());}
 const rows=Math.ceil(images.length/columns);await writeFireAtlas(sharp({create:{width:tile*columns,height:tile*rows,channels:4,background:'#00000000'}}).composite(images.map((input,i)=>({input,left:i%columns*tile,top:Math.floor(i/columns)*tile}))),path.join(out,'fire-completion.png'));
 fs.writeFileSync(path.join(out,'fire-completion.json'),JSON.stringify({tile,columns,rows,padding,clips},null,2)+'\n');console.log({frames:images.length,width:tile*columns,height:tile*rows,clips:Object.keys(clips)});

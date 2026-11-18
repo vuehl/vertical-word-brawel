@@ -2285,13 +2285,6 @@ var es = class {
         (j(e, 450, 0.12, 0.16), A(e, 85, 0.32, 0.13), cs(e, 1e3, 0.08, 0.13));
       },
     },
-    reversal: {
-      gap: 0.3,
-      cast: (e) => {
-        for (let t = 0; t < 4; t++) A(e, 120 + (t % 2) * 40, 0.14, t * 0.05, 0.08);
-        us(e, 0.3, 0.08, 0.05);
-      },
-    },
     "mega-punch": {
       warn: (e, t) => Fs(e, t.dur ?? 0.7, 0.09),
       impact: (e) => {
@@ -2970,7 +2963,6 @@ var Is = [262, 294, 330, 392, 440, 523, 587, 659],
         (j(e, 700, 0.14, 0.14, 0, 3), A(e, 150, 0.16, 0.1));
       },
     },
-    bite: { cast: (e) => js(e) },
     "last-resort": {
       warn: (e, t) => Fs(e, t.dur ?? 0.7, 0.09),
       impact: (e) => {
@@ -3274,11 +3266,6 @@ var Is = [262, 294, 330, 392, 440, 523, 587, 659],
         (us(e, 1, 0.3), M(e, 0.8), bs(e, 6, 0.07, 0.1, 0.5));
       },
     },
-    crunch: {
-      cast: (e) => {
-        (js(e, 1.2), A(e, 100, 0.16, 0.05));
-      },
-    },
     "stone-edge": {
       cast: (e) => {
         (bs(e, 6, 0.08, 0, 0.3), Es(e, 300, 0.1), A(e, 110, 0.18));
@@ -3353,17 +3340,6 @@ var Is = [262, 294, 330, 392, 440, 523, 587, 659],
     "fire-fang": {
       cast: (e) => {
         (js(e), fs(e, 0.08, 0.2, 0.03));
-      },
-    },
-    "flame-wheel": {
-      gap: 0.3,
-      cast: (e) => {
-        (e.kn(0.25, { ft: `lowpass`, f: 1200, v: 0.04, a: 0.05 }), ds(e, 2, 0.25, 0.025));
-      },
-    },
-    "extreme-speed": {
-      cast: (e) => {
-        (j(e, 900, 0.14, 0.1, 0, 4), A(e, 140, 0.2, 0.07), Cs(e, 0.3, 0.06, 0.08));
       },
     },
     "flare-blitz": {
@@ -3554,11 +3530,6 @@ var Is = [262, 294, 330, 392, 440, 523, 587, 659],
       cast: (e, t) => {
         let n = t.k ?? 0;
         (A(e, 70 + n * 10, 0.3), ks(e, 0.25, 70 + n * 8, 0.08), us(e, 0.25, 0.1));
-      },
-    },
-    "take-down": {
-      cast: (e) => {
-        (j(e, 500, 0.12, 0.15), A(e, 110, 0.26, 0.11), Ts(e, 220, 0.06, 0.11));
       },
     },
     "metal-claw": {
@@ -3896,13 +3867,6 @@ var Is = [262, 294, 330, 392, 440, 523, 587, 659],
     assurance: {
       cast: (e) => {
         (j(e, 500, 0.1, 0.15), ks(e, 0.15, 110, 0.05, 0.02), A(e, 120, 0.2, 0.13));
-      },
-    },
-    "play-rough": {
-      gap: 0.3,
-      cast: (e) => {
-        for (let t = 0; t < 4; t++) A(e, 130 + t * 20, 0.1, t * 0.05, 0.08);
-        As(e, [659, 784], 0.06, 0.03, 0.1);
       },
     },
     soak: {
@@ -22375,7 +22339,7 @@ var J = {
           q(e,p.x,p.z,radius,1.3,{status:'burn',statusChance:.9,knock:4});
           for(let j=0;j<8;j++){
             const angle=j/8*H+index, x=p.x+Math.cos(angle)*radius*.6,z=p.z+Math.sin(angle)*radius*.6;
-            t.zones.add({x,z,y:U(t,x,z),r:2.2,life:4,tick:.2,dmg:e.dmg*.18,type:'fire',cls:'special',status:'burn',chance:.5,slot:8,color:Y.fire,authoredFire:true,fx:Kp('flame-wheel')});
+            t.zones.add({x,z,y:U(t,x,z),r:2.2,life:4,tick:.2,dmg:e.dmg*.18,type:'fire',cls:'special',status:'burn',chance:.5,slot:8,color:Y.fire,authoredFire:true});
           }
           t.shake(.18);J.boom(t.audio,.6);
         });
@@ -24710,7 +24674,7 @@ function Gh(e, t, n, r, i) {
               chance: 0.4,
               slot: 8,
               color: Y.fire,
-              fx: Kp(`flame-wheel`),
+              fx: Kp(`will-o-wisp`),
             });
           }
           for (let e = 0; e < 6; e++)
@@ -28612,7 +28576,6 @@ var e_ = class {
     "solar-blade": `beam`,
     "dizzy-punch": `strike`,
     "mega-kick": `dash`,
-    reversal: `nova`,
     "mega-punch": `meteor`,
     octazooka: `orb`,
     "hydro-cannon": `beam`,
@@ -28628,7 +28591,6 @@ var e_ = class {
     "sweet-kiss": { statusChance: 0.45 },
     bind: { status: `root`, statusChance: 0.35 },
     "grass-knot": { status: `stun`, statusChance: 0.3 },
-    reversal: { dmgMul: 1.1 },
     octazooka: { status: `charm`, statusChance: 0.3 },
     "scale-shot": { count: 5, dmgMul: 0.85 },
     "confuse-ray": { statusChance: 0.45 },
@@ -29109,7 +29071,6 @@ var e_ = class {
     flamethrower: `cone`,
     "fire-blast": `orb`,
     ember: `bolt`,
-    "flame-wheel": `trail`,
     "fire-spin": `vortex`,
     "heat-wave": `cone`,
     eruption: `nova`,
@@ -29264,8 +29225,6 @@ var e_ = class {
     "clanging-scales": `nova`,
     "core-enforcer": `wave`,
     "dark-pulse": `nova`,
-    bite: `strike`,
-    crunch: `strike`,
     "night-slash": `strike`,
     "sucker-punch": `dash`,
     snarl: `cone`,
@@ -29417,7 +29376,6 @@ var e_ = class {
     "thunderous-kick": `strike`,
     moonblast: `orb`,
     "dazzling-gleam": `nova`,
-    "play-rough": `spin`,
     "fairy-wind": `cone`,
     "draining-kiss": `drain`,
     "disarming-voice": `nova`,
@@ -29430,7 +29388,6 @@ var e_ = class {
     "alluring-voice": `homing`,
     tackle: `dash`,
     "quick-attack": `dash`,
-    "extreme-speed": `dash`,
     "body-slam": `nova`,
     "hyper-beam": `beam`,
     "giga-impact": `meteor`,
@@ -29439,7 +29396,6 @@ var e_ = class {
     "hyper-voice": `nova`,
     boomburst: `nova`,
     "double-edge": `dash`,
-    "take-down": `dash`,
     slash: `strike`,
     scratch: `strike`,
     cut: `strike`,
@@ -29476,7 +29432,6 @@ var e_ = class {
     "hyper-fang": `strike`,
     "super-fang": `chain`,
     covet: `strike`,
-    retaliate: `strike`,
     "boomburst#": `nova`,
     "blood-moon": `beam`,
     "population-bomb": `barrage`,
@@ -36206,7 +36161,7 @@ var jx = [
           art.fusionBurst(x,y,z,artRadius,main);
           q(e,x,z,radius,main?1.8:.9,{status:'burn',statusChance:.8,knock:4});
           if(main){
-            gx(e,x,z,radius*.7,2.5,.12,'burn',.5,'flame-wheel',e.type,{authoredFire:true,artRadius:artRadius*.7});
+            gx(e,x,z,radius*.7,2.5,.12,'burn',.5,undefined,e.type,{authoredFire:true,artRadius:artRadius*.7});
           }
           t.shake(main?.25:.1,x,z);M(t.audio,main?.8:.4);fs(t.audio,.18,.6);
         });
@@ -38051,7 +38006,7 @@ var Nx = [
     {
       key: `fu-52`,
       member: 52,
-      moves: [`pay-day`, `play-rough`],
+      moves: [`pay-day`, `assurance`],
       kind: `signature`,
       name: c(`Lluvia Dorada`),
       desc: c(
@@ -38362,7 +38317,7 @@ var Nx = [
     {
       key: `fu-58`,
       member: 58,
-      moves: [`extreme-speed`, `flare-blitz`],
+      moves: [`fire-fang`, `flare-blitz`],
       kind: `signature`,
       name: c(`Estampida Ígnea`),
       desc: c(
@@ -38460,7 +38415,7 @@ var Nx = [
                 },
                 () => {
                   (xx(e, m, h, n.x, n.z, 1.3 * e.R, 0.75, { status: `burn`, statusChance: 0.35, knock: 2 }),
-                    gx(e, (m + n.x) / 2, (h + n.z) / 2, 1.4 * e.R, 1.6, 0.1, `burn`, 0.3, `flame-wheel`),
+                    gx(e, (m + n.x) / 2, (h + n.z) / 2, 1.4 * e.R, 1.6, 0.1, `burn`, 0.3, `will-o-wisp`),
                     ls(t.audio, 900, 0.08, 0.1),
                     (a = n.x),
                     (o = n.z),
@@ -40032,7 +39987,7 @@ var Nx = [
           () => {
             for (let t = 1; t <= 3; t++) {
               let s = (i * t) / 4;
-              gx(e, a + n * s, o + r * s, 2 * e.R, 1.8, 0.12, `burn`, 0.4, `flame-wheel`);
+              gx(e, a + n * s, o + r * s, 2 * e.R, 1.8, 0.12, `burn`, 0.4, `will-o-wisp`);
             }
           },
         );
@@ -44810,7 +44765,7 @@ var eS = [
                 0.14,
                 `burn`,
                 0.4,
-                `flame-wheel`,
+                undefined,
                 e.type,
                 {authoredFire:true, hideGroundVisual:true},
               );
@@ -45118,72 +45073,6 @@ var eS = [
           vs(t.audio, 420, r, 0.04));
       },
     ),
-    tS(
-      `charmbreath`,
-      [[`fairy`, `normal`], [`dragon`]],
-      `dragon`,
-      `fairy`,
-      c(`Aliento Encantado`),
-      c(
-        `Una lluvia de corazones hechiza a los enemigos de delante y un aliento de dragón arrasa a los hechizados: provoca Furia Dragón.`,
-      ),
-      `special`,
-      3.8,
-      4.6,
-      (e) => {
-        let t = e.run,
-          n = t.player.pos,
-          r = 11 * e.R,
-          i = e.ax,
-          a = e.az;
-        for (let j = 0; j < 16; j++) {
-          let e = (Math.random() - 0.5) * 1.1,
-            o = F.range(8, 12),
-            s = i * Math.cos(e) - a * Math.sin(e),
-            c = i * Math.sin(e) + a * Math.cos(e);
-          t.vfx.crafted.fireFamily.completion.charmHeart({
-            x: n.x,
-            y: n.y + 1.2,
-            z: n.z,
-            vx: s * o,
-            vy: F.range(0, 2),
-            vz: c * o,
-            drag: 1,
-            life: r / o,
-            size: 0.7,
-            endSize: 0.5,
-            color: 16777215,
-            shape: I.PixHeart,
-            spin: 3,
-          }, j);
-        }
-        for (let o of t.enemies.within(n.x, n.z, r)) {
-          let r = t.enemies.x[o] - n.x,
-            s = t.enemies.z[o] - n.z,
-            c = Math.hypot(r, s) || 1;
-          (r * i + s * a) / c > 0.3 && Dh(e, o, 0.9, _x(e, { status: `charm`, statusChance: 0.9, knock: 0 }));
-        }
-        (As(t.audio, [988, 1175, 1319], 0.05, 0.04),
-          t.later(0.45, () => {
-            let n = 0;
-            (W(t, 0.8 * e.D, (o, s) => {
-              let c = t.player.pos;
-              t.vfx.crafted.fireFamily.completion.charmBreath(e, c.x, c.y + 1, c.z, i, a, r, 11 * baseFusionScale);
-              if (((n -= s), n <= 0)) {
-                n = 0.1;
-                for (let n of t.enemies.within(c.x, c.z, r)) {
-                  let r = t.enemies.x[n] - c.x,
-                    o = t.enemies.z[n] - c.z,
-                    s = Math.hypot(r, o) || 1;
-                  (r * i + o * a) / s > 0.45 && Dh(e, n, 0.26, { knock: 0.5, silent: !0 });
-                }
-              }
-            }),
-              ks(t.audio, 0.8, 80, 0.12),
-              fs(t.audio, 0.12, 0.8));
-          }));
-      },
-    ),
   ];
 function rS(e, t, n, r, i, a) {
   e.run.vfx.crafted.fireFamily.completion.glitch(t, n, r, a);
@@ -45322,7 +45211,6 @@ var iS = {
     "fu-r-toxicfire": 2.2,
     "fu-r-nightmare": 8.32,
     "fu-r-psyspark": 1.85,
-    "fu-r-charmbreath": 2.82,
     "fu-missingno": 0.1,
   },
   sS = 0.85,
@@ -45354,7 +45242,9 @@ var iS = {
   uS = new Map();
 lS.forEach((e, t) => {
   if (e.kind === 'signature') e.name = specialNames.fusion.get(e.name) ?? e.name;
+  // Saved loadouts use numeric IDs. Keep the retired fusion slot vacant.
   let n = Cx + t;
+  if (n >= 50104) n++;
   if (((e.power = oS[e.key] ?? e.power), (e.cd *= sS), cS.has(e.key) && (e.repeats = !0), e.power > 4)) {
     let t = Math.max(2 / e.cd, Math.sqrt(4 / e.power));
     t < 1 && ((e.cd *= t), (e.power *= t));

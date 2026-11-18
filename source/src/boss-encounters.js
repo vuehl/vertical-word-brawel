@@ -1,9 +1,13 @@
 import {formCopy, moveCopy} from './form-copy.js';
 import {finalBossSpecies} from './character-rules.js';
+import {FOREST_COMBAT_ZONES, SINGLE_STAGE} from './lite-rules.js';
 import {ENEMY_HEALTH_SCALE} from './spawn-budget.js';
 import {chineseText as c} from './chinese-text.js';
 import {Dn as T, Rr as Je} from './config.js';
 import {E as yr, I as Cr, K as Tr, ct as Kr, w as Ei} from '../assets/three-DmSYIDKK.js';
+
+const ZONE_BOSS_HEALTH_MULTIPLIER = 5;
+const NORMAL_MULTI_GUARDIAN_HP = [45_000, 100_000];
 
 export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv, Ol}) {
   var Kv = [0.66, 0.33],
@@ -7422,13 +7426,21 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           l = a.enemies.spawn(e, t, n, s, c, R.Boss);
         }
         this.fightSecs = (i.secs ?? (r ? wy.legendary : wy.guardian[Math.min(2, a.stage - 1)])) * o;
-        // The meter samples peak damage to one enemy. Allow time for dodging
-        // and attacking the rest of the wave during the short guardian fight.
-        const damageBudget = Ey(a, this.fightSecs);
-        Oy(a, l, timedGuardian ? damageBudget * 0.6 : damageBudget, timedGuardian ? 2 : 4);
-        if (a.coop && l >= 0) {
-          let e = a.enemies;
-          ((e.maxHp[l] = Math.min(1e30 * ENEMY_HEALTH_SCALE, e.maxHp[l] * a.coop.bossHpMul)), (e.hp[l] = e.maxHp[l]));
+        const zoneBoss = a.stage >= 1 && a.stage <= FOREST_COMBAT_ZONES &&
+          (a.mode === SINGLE_STAGE || a.mode === 'standard' || a.mode === 'classic');
+        const fixedGuardianHp = zoneBoss && timedGuardian && a.mode !== SINGLE_STAGE && a.tier === 0
+          ? NORMAL_MULTI_GUARDIAN_HP[a.stage - 1] : undefined;
+        if (fixedGuardianHp === undefined) {
+          const damageBudget = Ey(a, this.fightSecs);
+          Oy(a, l, timedGuardian ? damageBudget * 0.6 : damageBudget, timedGuardian ? 2 : 4);
+        }
+        if (l >= 0 && (zoneBoss || a.coop)) {
+          const enemies = a.enemies;
+          const baseHealth = fixedGuardianHp === undefined
+            ? enemies.maxHp[l] * (zoneBoss ? ZONE_BOSS_HEALTH_MULTIPLIER : 1)
+            : fixedGuardianHp * (a.coop?.hpMul ?? 1);
+          const health = baseHealth * (a.coop?.bossHpMul ?? 1);
+          enemies.hp[l] = enemies.maxHp[l] = Math.min(1e30 * ENEMY_HEALTH_SCALE, health);
         }
         (i.kit || ky(a, l, (a.endless ? Dy.endlessGuardian : Dy.guardian[Math.min(2, a.stage - 1)]) * o),
           (this.fightT = 0),
@@ -8814,9 +8826,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       rock: [c(`Avalancha`), c(`Poder Pasado`)],
       ghost: [c(`Garra Umbría`), c(`Bola Sombra`)],
       dragon: [c(`Garra Dragón`), c(`Pulso Dragón`)],
-      dark: [c(`Triturar`), c(`Pulso Umbrío`)],
+      dark: [c(`Golpe Cuerpo`), c(`Pulso Umbrío`)],
       steel: [c(`Cabeza de Hierro`), c(`Foco Resplandor`)],
-      fairy: [c(`Carantoña`), c(`Fuerza Lunar`)],
+      fairy: [c(`Golpe Cuerpo`), c(`Fuerza Lunar`)],
     },
     sb = class {
       run;

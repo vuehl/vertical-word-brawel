@@ -12,7 +12,7 @@ export async function reviewInkStyle(page,dir,moves){
   for(const [name,x,z] of [['01-scene',0,0],['02-books',-7,-4],['03-toys',13,16]]){
     await page.evaluate(([x,z])=>{vfxSetup();app.run.enemies.clear();app.run.player.pos.set(x,0,z);app.run.camTarget.copy(app.run.player.pos);vfxDraw(false);},[x,z]);await shot(name);
   }
-  for(const key of ['flamethrower','hydro-pump','fire-spin','thunderbolt','razor-leaf','ice-beam','shadow-ball','psychic','tackle','water-gun','icy-wind','ember','flame-wheel','rock-slide','poison-sting','draining-kiss','swords-dance','sand-tomb']){
+  for(const key of ['flamethrower','hydro-pump','fire-spin','thunderbolt','razor-leaf','ice-beam','shadow-ball','psychic','tackle','water-gun','icy-wind','ember','rock-slide','poison-sting','draining-kiss','swords-dance','sand-tomb']){
     const id=moves.find(m=>m.key===key).id;
     const state=await page.evaluate(({id,key})=>{vfxSetup();const r=app.run;r.player.addMove(id);r.player.moves[0].timer=0;r.player.moves[0].mods.dur=2;vfxAdvance(key==='hydro-pump'?28:19);return {key,damage:r.player.moves[0].damageDone,peaks:r.vfxPeaks};},{id,key});
     assert.ok(state.peaks.particles+state.peaks.volumes+state.peaks.projectiles>0,key);report.moves.push(state);
@@ -50,5 +50,5 @@ export async function reviewInkStyle(page,dir,moves){
     assert.equal(state.stage,stage);assert.ok(state.spawnFree&&state.inkBatches>0&&state.finite);assert.equal(state.lights,4);report.stages.push(state);await shot('stage-'+stage);
   }
   fs.writeFileSync(path.join(dir,'ink-style-report.json'),JSON.stringify(report,null,2)+'\n');
-  console.log('Ink style: camera, all material finishes, interior/boundary scale, stable lighting, 18 moves, nine ultimates, pause/hide/cleanup and three quality budgets passed.');return report;
+  console.log('Ink style: camera, all material finishes, interior/boundary scale, stable lighting, ' + report.moves.length + ' moves, ' + report.ultimates.length + ' ultimates, pause/hide/cleanup and three quality budgets passed.');return report;
 }
