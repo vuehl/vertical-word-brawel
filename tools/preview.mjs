@@ -8,10 +8,9 @@ import {gameProject} from './project-target.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
 const development=process.argv.includes('--dev');
-const iosPowerMode=process.argv.includes('--ios-power-mode');
-const projectRoot=gameProject(root,development,iosPowerMode);
+const projectRoot=gameProject(root,development);
 const cli=process.env.WECHAT_DEVTOOLS_CLI||'D:/微信工具/微信web开发者工具/cli.bat';
-const output=path.join(root,'验收',(iosPowerMode?'温控':'')+(development?'开发者手机预览':'手机预览'));
+const output=path.join(root,'验收',development?'开发者手机预览':'手机预览');
 if(!fs.existsSync(cli))throw Error('找不到微信开发者工具，请用 WECHAT_DEVTOOLS_CLI 指定 cli.bat 的完整路径。');
 
 function runCLI(args){
@@ -25,7 +24,7 @@ function runCLI(args){
   }else execFileSync(cli,args,{cwd:root,stdio:'inherit'});
 }
 
-execFileSync(process.execPath,[path.join(import.meta.dirname,'build.mjs'),...(development?['--dev']:[]),...(iosPowerMode?['--ios-power-mode']:[])],{cwd:root,stdio:'inherit',windowsHide:true});
+execFileSync(process.execPath,[path.join(import.meta.dirname,'build.mjs'),...(development?['--dev']:[])],{cwd:root,stdio:'inherit',windowsHide:true});
 fs.mkdirSync(output,{recursive:true});
 const game=path.join(projectRoot,'minigame');
 const buildHashes=()=>{

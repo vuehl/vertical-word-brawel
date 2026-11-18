@@ -21,18 +21,20 @@ import {reviewOptimizations} from './optimization-regression.mjs';
 import {reviewCrowdRender} from './crowd-render-regression.mjs';
 import {reviewBattleLoad} from './battle-load-regression.mjs';
 import {reviewBattleVisual} from './battle-visual-regression.mjs';
-import {reviewIOSBudget,installPowerModeFixture,reviewPowerMode} from './ios-budget-regression.mjs';
+import {reviewIOSBudget,installNativePerformanceFixture,reviewNativePerformance} from './ios-budget-regression.mjs';
 import {reviewPhonePerformance} from './phone-performance-regression.mjs';
 import {fixtureSubpackage} from './fixture-subpackage.mjs';
 import {gameProject} from './project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
-const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development,process.argv.includes('--ios-power-mode')),'minigame');
+const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development),'minigame');
 const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion'].some(arg=>process.argv.includes(arg));
 const dir=process.env.POKEBONK_QA||path.join(root,fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
 const {default:puppeteer}=await import(pathToFileURL(path.join(root,'tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js')));
 const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
 const config=JSON.parse(fs.readFileSync(path.join(game,'game.json'),'utf8'));
+assert.equal(config.iOSHighPerformance,true);assert.equal(config['iOSHighPerformance+'],true);
+assert.equal(config.plugins?.MiniGameCommon,undefined,'Build must not declare the removed power-mode plugin');
 const modules=[],packageData={main:[]},packageEntries={};
 for(const pkg of config.subpackages){packageData[pkg.name]=[];packageEntries[pkg.name]=pkg.root.endsWith('.js')?pkg.root:pkg.root+'/game.js';}
 for(const entry of fs.readdirSync(game,{recursive:true})){
@@ -58,7 +60,7 @@ try{
   page.on('pageerror',e=>{errors.push(String(e));console.error('Runtime error:',String(e));});
   page.on('console',m=>{if(m.type()==='error'&&/WebGLProgram|Shader Error|VALIDATE_STATUS/.test(m.text())){errors.push(m.text());if(process.argv.includes('--debug-shaders'))console.error(m.text().slice(0,1800));}});
   await page.setViewport({width:390,height:844,deviceScaleFactor:3});
-  if(process.argv.includes('--ios-power-mode'))await page.evaluateOnNewDocument(installPowerModeFixture);
+  if(process.argv.includes('--native-performance'))await page.evaluateOnNewDocument(installNativePerformanceFixture);
   await page.evaluateOnNewDocument(platform=>{
     window.fixturePlatform=platform;
     window.phoneLayout=true;window.auditUIUploads=0;window.auditControlUploads=0;window.auditUploadBytes=0;window.auditHealthBytes=0;window.auditPortraitBytes=0;
@@ -71,7 +73,7 @@ try{
         return original.apply(this,args);
       };
     }
-  },process.argv.some(arg=>['--ios-budget','--battle-visual','--ios-power-mode'].includes(arg))?'ios':'devtools');
+  },process.argv.some(arg=>['--ios-budget','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
@@ -117,8 +119,8 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--ios-power-mode')){
-    await reviewPowerMode(page,dir);assert.deepEqual(errors,[]);
+  if(process.argv.includes('--native-performance')){
+    await reviewNativePerformance(page,dir);assert.deepEqual(errors,[]);
   }else if(upgradeResume){
     const {reviewUpgradeResume}=await import('./upgrade-resume-regression.mjs');
     await reviewUpgradeResume(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);

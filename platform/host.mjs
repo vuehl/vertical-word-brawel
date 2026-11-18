@@ -29,7 +29,6 @@ import {gameViewport} from './viewport.mjs';
 import {createMutationTargets} from './mutation-targets.mjs';
 import {uiScale} from './ui-resolution.mjs';
 import {readRuntimeInfo} from './device.mjs';
-import {createIOSPowerMode} from './power-mode.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -286,7 +285,6 @@ export async function setup(host) {
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
     nativeUI:true,nativeDevice:device,bootStage:host.bootStage,backgroundMusicEnabled:false,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
     setNativeFrameRate:typeof wx.setPreferredFramesPerSecond==='function'?fps=>wx.setPreferredFramesPerSecond(fps):undefined,
-    iosPowerMode:__WX_IOS_POWER_MODE__&&device.platform==='ios'?createIOSPowerMode(wx,GameGlobal,typeof requirePlugin==='function'?requirePlugin:null):null,
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},

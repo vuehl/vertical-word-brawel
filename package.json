@@ -8,7 +8,6 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "build:dev": "node tools/build.mjs --dev",
-    "build:ios-power-mode": "node tools/build.mjs --ios-power-mode",
     "preview": "node tools/preview.mjs",
     "preview:dev": "node tools/preview.mjs --dev",
     "test:dev": "node tools/runtime-performance.mjs --dev",

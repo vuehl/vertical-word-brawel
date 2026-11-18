@@ -643,29 +643,6 @@ export function createZixingUI(app,api) {
   function settings(back=home) {
     returnTo=back;renderSettings();
   }
-  function powerModeSetting(control){
-    const label='iPhone 温控模式',note=small('正在读取微信温控设置…');
-    const button=el('button','zx-switch',el('i'),{type:'button',role:'switch','aria-label':label,disabled:true});
-    let current,local;
-    const name=mode=>mode===1?'温控':'普通';
-    function refresh(){
-      button.disabled=false;button.classList.toggle('on',local===1);
-      button.setAttribute('aria-checked',String(local===1));
-      note.textContent=current===local?'本次为'+name(current)+'模式。开启可降低功耗，也可能降低帧率。':
-        '本次为'+name(current)+'模式，下次启动将使用'+name(local)+'模式。';
-    }
-    control.read().then(state=>{
-      current=state.current;local=state.local;refresh();
-    }).catch(()=>{note.textContent='当前设备或微信环境暂无法读取温控设置。';});
-    button.addEventListener('click',async()=>{
-      if(button.disabled)return;
-      button.disabled=true;
-      const next=1-local;
-      try{await control.set(next);local=next;refresh();}
-      catch{refresh();note.textContent='温控设置保存失败，点击开关可重试。';}
-    });
-    return el('div','zx-setting',row(col(el('b','',label),note),button));
-  }
   function renderSettings() {
     const s=profile().settings,fields=[];
     const save=()=>{app.applySettings();app.meta.save();};
@@ -705,8 +682,7 @@ export function createZixingUI(app,api) {
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音'))];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','开启后切换为流畅画质，最高 30 帧。选择均衡或精致会关闭省电。'))];
-      if(window.iosPowerMode)content.push(card(powerModeSetting(window.iosPowerMode)));
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','默认关闭。手动开启后切换为流畅画质，最高 30 帧。选择均衡或精致会关闭省电。'))];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -725,7 +701,7 @@ export function createZixingUI(app,api) {
     screen('settings','设置','仅调整当前设备的体验',[
       tabs(['声音','画面','操作','界面'],settingsTab,i=>{settingsTab=i;settingsSub=0;renderSettings();},'main'),
       sublabels.length?el('div','zx-subtabs',sublabels.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),label,{onclick:()=>{settingsSub=i;renderSettings();}}))):null,
-      row(small(title),button(settingsTab===1&&settingsSub===0&&window.iosPowerMode?'恢复画质与省电设置':'恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key];save();renderSettings();},'zx-plain')),
+      row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key];save();renderSettings();},'zx-plain')),
       ...content,
     ],[button('返回',()=>loadPage('设置','正在保存设置',()=>app.meta.saveNow(),()=>{
       const back=returnTo;app.setScreen(null);back();

@@ -14,15 +14,15 @@
 
 运行 `npm run build` 后执行 `npm run test:startup`。本次 Chrome 微信 API 模拟测试人为延迟云存档 3 秒，首页完成从 3,405 ms 降到 375 ms，同类不支持的 WebGL 调用从 193 次降到 0 次；测试覆盖等待存档时进入玩法、返回其他页面以及迟到回复。该计时从小游戏入口开始，不含微信扫码、下载主包等时间，不代表手机真机耗时。对照报告与截图位于 `验收/扫码启动优化/`。重新预览生成新二维码后，手机才会加载本次构建。
 
-## 微信帧率、战斗界面与 iPhone 温控（2026-11-17）
+## 微信帧率与温控移除（2026-11-18）
+
+已移除 iPhone 温控设置、官方温控插件接入以及专用构建、预览入口。正式包与开发包均保留 `iOSHighPerformance`、`iOSHighPerformance+` 配置，默认战斗目标为 60 帧，不主动请求温控降算力，也不按设备、低帧率或怪物数量自动降低玩家所选画质。旧版温控仅存在于单独构建，普通工程原本没有启用，因此不能仅凭温控功能推断卡顿原因。
 
 常规工程使用 `npm run build` 构建。菜单、暂停和游戏内省电模式向微信请求 30 帧，关闭省电后战斗以 60 帧为目标。升级选项的过渡动画沿用战斗帧率。基础库缺少原生限帧接口时，主循环仍按时间戳调度。战斗 HUD 按绘制顺序一次分配到各个图层，合成结束时统一恢复 Three.js 状态。收到内存告警会清理闲置图层纹理和可重建的字形画布。[微信运行性能指南](https://developers.weixin.qq.com/minigame/dev/guide/performance/perf-action-runtime-overview.html) · [原生帧率接口](https://developers.weixin.qq.com/minigame/dev/api/render/frame/wx.setPreferredFramesPerSecond.html)
 
-开启游戏内省电模式会同时选中流畅画质，桌面场景使用 1024 × 1024 阴影贴图。手动关闭省电后保留流畅画质，选择精致或均衡会自动关闭省电。
+省电模式默认关闭，新存档与画面页「恢复本页默认」均使用关闭状态，战斗目标为 60 帧。只有玩家手动开启省电模式时才切换为流畅画质、最高 30 帧，桌面场景使用 1024 × 1024 阴影贴图。手动关闭省电后保留流畅画质，选择精致或均衡会自动关闭省电。已保存的手动设置仍按玩家选择恢复。
 
-iPhone XR 及以上支持微信官方温控模式。先在微信公众平台为游戏 AppID 添加“小游戏官方插件”，再运行 `npm run build:ios-power-mode`，用开发者工具打开 `验收/iOS温控工程`。也可用 `npm run preview -- --ios-power-mode` 生成该工程的预览码。进入「设置 → 画面 → 性能视野 → iPhone 温控模式」切换。页面分别读取本次生效模式和下次启动设置，保存成功后由玩家下次启动游戏生效。温控会降低可用算力，适合有帧率余量且希望降低功耗的设备。[官方温控说明](https://developers.weixin.qq.com/minigame/dev/guide/performance/power-saving-mode.html) · [插件权限入口](https://mp.weixin.qq.com/wxopen/pluginbasicprofile?action=intro&appid=wxaed5ace05d92b218&lang=zh_CN)
-
-同种子、200 怪的桌面微信接口模拟测试中，一次完整 HUD 重画的图层查找由 1,342 次降至 91 次，每次 HUD 合成的渲染器状态重置由 2 次降至 1 次。运行 `node tools/runtime-performance.mjs --profile` 重测，`--battle-visual` 检查不同屏宽下的最终像素，`--ios-power-mode` 检查温控工程的设置保存、失败恢复和内存告警。iPhone 的长时间帧率、发热和耗电需在真机相同场景下对照观察。
+同种子、200 怪的桌面微信接口模拟测试中，一次完整 HUD 重画的图层查找由 1,342 次降至 91 次，每次 HUD 合成的渲染器状态重置由 2 次降至 1 次。运行 `node tools/runtime-performance.mjs --profile` 重测，`--battle-visual` 检查不同屏宽下的最终像素，`--native-performance` 检查无温控插件、设置入口移除、战斗恢复 60 帧请求以及内存告警。iPhone 的长时间帧率、发热和耗电需在真机相同场景下对照观察。
 
 ## 微信云存档
 

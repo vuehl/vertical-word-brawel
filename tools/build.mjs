@@ -11,8 +11,7 @@ import {gameProject} from './project-target.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
 const development=process.argv.includes('--dev');
-const iosPowerMode=process.argv.includes('--ios-power-mode');
-const projectRoot=gameProject(root,development,iosPowerMode);
+const projectRoot=gameProject(root,development);
 const developer=development?await import('./developer/build-support.mjs'):null;
 const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
@@ -20,7 +19,7 @@ const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
 if(installedAssets?.policyVersion!==assetPolicyVersion||itemIconSelectionChanged(installedAssets.files)||
   (developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
-  execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs'),...(development?['--dev']:[]),...(iosPowerMode?['--ios-power-mode']:[])],{stdio:'inherit',windowsHide:true});
+  execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{
   if(!s.includes(from)||s.indexOf(from)!==s.lastIndexOf(from))throw Error('Source anchor changed: '+from.slice(0,80));
@@ -134,9 +133,7 @@ const sources={
 const previewESVersion=2017;
 const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es'+previewESVersion,charset:'utf8',legalComments:'eof',metafile:process.argv.includes('--analyze'),
   nodePaths:[path.join(import.meta.dirname,'node_modules')],plugins:[...(developer?[developer.isolatedStoragePlugin(platform)]:[]),sources],logLevel:'warning'};
-const gameConfig=JSON.parse(fs.readFileSync(path.join(root,'game.json'),'utf8'));
-if(iosPowerMode)(gameConfig.plugins??={}).MiniGameCommon={version:'latest',provider:'wxaed5ace05d92b218',contexts:[{type:'isolatedContext'}]};
-const hostBundle=await esbuild.build({...common,define:{document:'undefined',__WX_IOS_POWER_MODE__:String(!!gameConfig.plugins?.MiniGameCommon)},entryPoints:[path.join(platform,'host.mjs')],write:false});
+const hostBundle=await esbuild.build({...common,define:{document:'undefined'},entryPoints:[path.join(platform,'host.mjs')],write:false});
 await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
 const result=await buildPlay(common,src,hostBundle.outputFiles[0].text);
@@ -160,10 +157,6 @@ fs.copyFileSync(path.join(platform,'resource-codec.js'),path.join(out,'resource-
 addBootAssets(out,bootAssets(root));
 for(const name of ['game.js','game.json'])fs.copyFileSync(path.join(root,name),path.join(out,name));
 if(developer)developer.writeProject(root,projectRoot);
-if(iosPowerMode){
-  fs.writeFileSync(path.join(out,'game.json'),JSON.stringify(gameConfig,null,2)+'\n');
-  if(!development)fs.copyFileSync(path.join(root,'project.config.json'),path.join(projectRoot,'project.config.json'));
-}
 const runtimePackages=new Set(['linkedom','typeflex','fflate','@noble/hashes','brotli','core-js','base64-js']);
 const notices=[];
 for(const name of runtimePackages){
