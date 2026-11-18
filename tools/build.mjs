@@ -118,7 +118,7 @@ const sources={
         'throw Error("游戏数据读取失败：" + (e.message || e));');
       code=replace(code,'await new Promise((e) => setTimeout(e, Math.min(5e3, 1e3 + t * 500))));',
         'await new Promise((e) => setTimeout(e, 500)));\n          if (t >= 2) throw Error("WebGL 2 初始化失败：" + (e.message || e));');
-      code=replace(code,'(ac(), wL(), await new AL().boot());','export async function launch(){ac();wL();const app=new AL();window.onApp?.(app);await app.boot();return app;}');
+      code=replace(code,'(ac(), installImageRetries(), await new AL().boot());','export async function launch(){ac();installImageRetries();const app=new AL();window.onApp?.(app);await app.boot();return app;}');
       // Browser-only legacy QA is never part of a native release.
       code=replace(code,"import {mountLiteQA} from './lite-qa.js';",'');
       code=replace(code,'  mountLiteQA(e);','');

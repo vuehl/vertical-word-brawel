@@ -12,7 +12,7 @@ import {measureActor} from './actor-metrics.mjs';
 import {actorMetrics} from '../source/src/actor-metrics.js';
 import {assetPolicyVersion,compressedFireAtlases,excludedAssetReason,musicTracks} from './asset-policy.mjs';
 import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/catalogs.js';
-import {isActiveItem} from '../source/src/active-content.js';
+import {facilityNames,facilityModelFile,isActiveItem} from '../source/src/active-content.js';
 import {resolveItemIcon} from '../source/src/item-icons.js';
 import {glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
@@ -50,13 +50,14 @@ assert.equal(musicTracks.length,0);
 assert.deepEqual([...declaredPacks].filter(name=>name==='sound'||name.startsWith('music_')),[]);
 assert.deepEqual(fs.readdirSync(path.join(root,'minigame/packs')).filter(name=>name==='sound'||name.startsWith('music_')),[],'Old generated music archives must be removed');
 assert.equal(Object.keys(index.files).filter(k=>k.startsWith('assets/music/')).length,musicTracks.length);
-assert.ok(index.files['assets/env/common/atlas.png']&&index.files['assets/env/common/hazards.png'],'Shared berries and combat hazards must remain');
+assert.ok(index.files['assets/env/common/hazards.png'],'Combat hazards must remain');
+for(const ext of ['png','json'])assert.ok(!index.files['assets/env/common/atlas.'+ext],'Retired facility billboard atlas');
 const itemCatalog=JSON.parse(fs.readFileSync(path.join(pub,'data/items.json'),'utf8'));
 const itemIconKey=id=>'assets/'+resolveItemIcon(itemCatalog[id]?.icon||'items/'+id+'.png');
+const supplyIconIds=[...Object.keys(itemCatalog).filter(isActiveItem),...vitamins.map(v=>v.icon)];
 const requiredItemIds=new Set([
-  ...Object.keys(itemCatalog).filter(isActiveItem),
+  ...supplyIconIds,
   ...heldItems.map(item=>item.key),...shop.map(item=>item.key),
-  ...vitamins.map(item=>item.icon),
   // The portrait lab draws glyphs. Its legacy "tm" slot uses Q's poke-ball fallback.
   ...laboratory.map(item=>item.icon==='tm'?'poke-ball':item.icon),
 ]);
@@ -64,6 +65,8 @@ for(const id of requiredItemIds){
   const key=itemIconKey(id);
   assert.ok(index.files[key]&&bytes(key)?.length,'Missing gameplay or shared icon: '+id);
 }
+assert.equal(new Set(supplyIconIds.map(id=>index.files[itemIconKey(id)])).size,supplyIconIds.length,
+  'Each active item and vitamin must use its own artwork, including the two four-leaf clovers');
 const excludedCatalogIcons={};
 let verifiedCatalogItems=0;
 for(const [id,item] of Object.entries(itemCatalog)){
@@ -140,13 +143,27 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
   count[category]=(count[category]||0)+1;
 }
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
-assert.deepEqual(models,['assets/models/ball.glb'],'The paper edition needs only the original capture-ball model');
+const deviceKeys=Object.keys(facilityNames).map(kind=>'assets/models/'+facilityModelFile(kind)+'.glb');
+assert.equal(deviceKeys.length,10);
+assert.deepEqual(models.sort(),['assets/models/ball.glb',...deviceKeys].sort());
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
+const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/DeviceScreenFx.mjs')));
+for(const kind of Object.keys(facilityNames)){
+  const key='assets/models/'+facilityModelFile(kind)+'.glb',glb=Buffer.from(bytes(key));
+  const gltf=JSON.parse(glb.toString('utf8',20,20+glb.readUInt32LE(12)));
+  const adapter=gltf.asset.extras.deviceScreenFxAdapter,scene=gltf.scenes[gltf.scene??0].extras;
+  assert.equal(adapter.sha256,adapterHash,key);
+  assert.equal(digest(adapter.source),adapterHash,key);
+  assert.equal(scene.deviceModel,kind==='bill'?'billpc':kind,key);
+  assert.equal(scene.deviceScreenFx.version,1,key);
+  assert.ok(scene.deviceScreenFx.supportXYZ.length>=12,key);
+}
 for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.startsWith('assets/env/'))) {
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }
-const report={mappedResources:Object.keys(index.files).length,RGBA:count,fireColorError,originalModels:models.length,
+const report={mappedResources:Object.keys(index.files).length,RGBA:count,fireColorError,originalModels:models.length-deviceKeys.length,
+  deviceModels:deviceKeys.length,deviceAdapterSha256:adapterHash,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:[],
   removedSceneAssetsVerified:removedSceneAssets.length,
   actorBoundsVerified:152,itemIconsVerified:verifiedCatalogItems,excludedCatalogIcons,cries:0,locales:['zh'],legacyActorImages:0,

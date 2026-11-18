@@ -17,7 +17,7 @@ import {reviewStarters} from './starter-regression.mjs';
 import {reviewUpgrade} from './upgrade-regression.mjs';
 import {reviewBattleFeedback} from './battle-feedback-regression.mjs';
 import {fixtureSubpackage} from './fixture-subpackage.mjs';
-import {reviewStartupLatency} from './startup-regression.mjs';
+import {reviewRunSettlement,reviewStartupLatency} from './startup-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -273,12 +273,17 @@ async function verifyStartup(){
   }
   if(await page.evaluate(()=>!!app.zixing)){
     if(process.argv.includes('--startup-latency'))await reviewStartupLatency({page,dir,baseline:process.argv.includes('--baseline')});
+    else if(process.argv.includes('--run-settlement'))await reviewRunSettlement({page,dir});
     else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
     else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--device-effects')){
+      const {reviewDeviceEffects}=await import('./device-effects-regression.mjs');
+      await reviewDeviceEffects(page,dir);
+    }
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--battle-feedback'))await reviewBattleFeedback({page,tap,resize,dir,sleep});
     else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});

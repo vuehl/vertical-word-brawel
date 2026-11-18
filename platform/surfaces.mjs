@@ -84,22 +84,23 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
     src=String(src);if(el._src===src)return;el._src=src;el._ready=false;
     if(el._surface)el._surface.onload=el._surface.onerror=null;
     el._surface=null;
+    // GLTFLoader creates detached HTML images for embedded textures and awaits their load.
+    const embedded=LocalURL.objectFiles?.get(src),eager=el._eagerImage||!!embedded;
     // DOM pictures are decoded only when painted. Hidden legacy HUDs and
     // cards replaced before their first frame must not allocate native images.
     el._loadImage=()=>{
-      if(!el._eagerImage&&!el.isConnected)return;
+      if(!eager&&!el.isConnected)return;
       el._loadImage=null;if(!src)return;
       const image=wx.createImage();el._surface=image;
       const finish=ok=>{if(image!==el._surface)return;el._ready=ok;if(el.isConnected)invalidate(el);el.dispatchEvent(new D.Event(ok?'load':'error'));};
       image.onload=()=>finish(true);image.onerror=()=>finish(false);
-      const embedded=LocalURL.objectFiles?.get(src);
       if(embedded)image.src=embedded;
       else host.files.resolvePath(src).then(path=>{
         if(image!==el._surface)return;
         if(path)image.src=path;else finish(false);
       }).catch(error=>{console.warn('[宝可梦] 图片读取失败',src,error);finish(false);});
     };
-    if(el._eagerImage)el._loadImage();
+    if(eager)el._loadImage();
     if(el.isConnected)invalidate(el);
   }
   ip.setAttribute=function(name,value){rawSet.call(this,name,value);if(name==='src')setImage(this,value);};

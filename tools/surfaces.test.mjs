@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as D from 'linkedom/worker';
 import {installSurfaces} from '../platform/surfaces.mjs';
+import {LocalURL} from '../platform/url.mjs';
 import {paint} from '../platform/paint.mjs';
 
 function fixture(t,resolvePath){
@@ -39,6 +40,20 @@ test('standalone Image loads eagerly for atlases and WebGL textures',async t=>{
   assert.deepEqual(f.requests,['atlas.png']);assert.equal(f.images.length,1);
   await Promise.resolve();f.images[0].onload();
   assert.ok(loaded&&img.complete);assert.equal(img.naturalHeight,32);
+});
+
+test('detached glTF images decode embedded textures before the loader revokes their URL',t=>{
+  const f=fixture(t),url='blob:pokebonk/1',previous=LocalURL.objectFiles;
+  LocalURL.objectFiles=new Map([[url,'/tmp/device.png']]);
+  t.after(()=>{LocalURL.objectFiles=previous;});
+  const img=f.doc.createElementNS('http://www.w3.org/1999/xhtml','img');
+  let loaded=false;
+  img.addEventListener('load',()=>{loaded=true;LocalURL.objectFiles.delete(url);});
+  img.src=url;
+  assert.equal(f.images[0].src,'/tmp/device.png');
+  assert.deepEqual(f.requests,[]);
+  f.images[0].onload();
+  assert.ok(loaded&&img.complete&&img.naturalWidth>0);
 });
 
 test('replaced image sources discard unused work and ignore stale async loads',async t=>{

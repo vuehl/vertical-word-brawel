@@ -111,8 +111,8 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-item-body>*{flex-shrink:0}
 .zx-item-card{display:flex;flex-direction:column;gap:16px;min-width:0}
 .zx-item-hero{position:relative;display:flex;align-items:center;justify-content:center;flex:none;min-height:132px;background:#ecf1e2;border:1px solid #cedbc2;border-radius:13px}
-.zx-item-rarity{position:absolute;left:10px;top:10px;padding:3px 9px;border:1px solid #c5d3b7;border-radius:10px;background:#fffdf4;color:#586b50;font-size:11px;line-height:1.3}
-.zx-item-image{width:64px;height:64px;object-fit:contain;image-rendering:pixelated}
+.zx-item-rarity{position:absolute;left:10px;top:10px;display:flex;align-items:center;justify-content:center;padding:3px 10px;border-radius:7px;background:#365548;color:#fff;font-size:15px;font-weight:700;line-height:20px;white-space:nowrap}
+.zx-item-image{width:64px;height:64px;object-fit:contain;image-rendering:auto}
 .zx-item-copy{display:flex;flex-direction:column;gap:7px;min-width:0;text-align:left}
 .zx-item-copy h3{font-size:20px;line-height:1.4;color:#303e35}
 .zx-item-effect{font-size:14px;line-height:1.5;color:#53684f;font-weight:700}
@@ -123,7 +123,7 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-item-actions>.zx-item-sell{background:#edf1e6;border-color:#b9c7b0;color:#52634d;box-shadow:none}
 .zx-item-option{flex-direction:row;align-items:center;gap:12px;width:100%;min-height:116px;padding:12px;border:1px solid #c2ceb7;border-radius:12px;background:#fffdf5;text-align:left}
 .zx-item-option .zx-item-hero{width:66px;min-height:88px;border:0;background:#edf2e4}
-.zx-item-option .zx-item-rarity{left:5px;top:5px;padding:2px 6px;font-size:10px}
+.zx-item-option .zx-item-rarity{left:5px;top:5px;padding:2px 6px;font-size:13px;line-height:18px}
 .zx-item-option .zx-item-image{width:42px;height:42px;margin-top:18px}
 .zx-item-option .zx-item-copy{flex:1;gap:5px}.zx-item-option h3{font-size:16px}.zx-item-option .zx-item-effect{font-size:12px}
 @media(max-width:350px){.zx-modal.zx-item-dialog{padding:16px;gap:12px}.zx-item-dialog>h2{font-size:19px}.zx-item-hero{min-height:108px}.zx-item-image{width:52px;height:52px}.zx-item-actions{gap:8px}.zx-item-actions>.zx-button{font-size:13px}}
@@ -131,6 +131,7 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-button.zx-upgrade-stats{align-self:flex-end;justify-content:flex-end;width:auto;min-height:32px;padding:0;gap:6px;margin-top:-4px;background:transparent;border:0;border-radius:0;box-shadow:none;color:#65577b;font-size:14px}
 .zx-upgrade .zx-offer{min-height:104px;padding:14px;border:1px solid #c6cfc3;border-radius:14px;background:#fff;box-shadow:none;text-align:left;color:var(--ink)}
 .zx-offer .zx-row{gap:12px}.zx-offer .zx-col{text-align:left;gap:4px;align-items:stretch}.zx-offer b{font-size:16px;line-height:1.4}.zx-offer small{font-size:13px;line-height:1.5;font-weight:500}.zx-offer .zx-glyph{width:44px;height:50px;font-size:39px;border-radius:10px}
+.zx-offer .zx-loadout-icon{width:44px;height:50px;flex:none;object-fit:contain}
 .zx-button.zx-reroll{min-height:40px;padding:7px 10px;gap:8px;border:1px solid #e0d8ef;border-radius:9px;background:#fff;box-shadow:none;color:#65577b;font-size:14px}
 .zx-pause{gap:16px;padding:24px 20px}.zx-pause>small:first-child{font-size:14px;font-weight:700}.zx-pause>h2{font-size:24px;margin-bottom:8px}
 .zx-pause-profile{gap:10px;min-height:44px}.zx-pause-profile .zx-glyph{width:30px;height:34px;font-size:28px;border-radius:8px}.zx-pause-profile .zx-col{gap:3px;text-align:left}.zx-pause-profile small{font-size:14px;font-weight:700}
@@ -153,6 +154,7 @@ html.zixing .tt-head canvas.zx-glyph-icon{width:32px;height:32px;flex:none}
 .zx-intro{position:absolute;left:24px;right:24px;top:130px;padding:14px;background:#ffffffee;border:1px solid #e5dfee;border-radius:14px;display:flex;flex-direction:column;gap:4px;align-items:center;pointer-events:none;z-index:10}
 html.zixing #hud .hud-tl,html.zixing #hud .under,html.zixing #hud .hud-party,html.zixing #hud .hud-top,html.zixing #hud .hud-tr,html.zixing #hud .hud-bl,html.zixing #hud .hud-br,html.zixing #hud .lock-hint{display:none!important}
 html.zixing .zx-hud{z-index:50}
+html.zixing .wlabel{padding:3px 10px}
 html.zixing .zx-hud-pause{flex:none;width:40px;min-height:40px;height:40px;padding:0;border:0;box-shadow:none}
 html.zixing .tc-aim{top:auto;right:18px;bottom:210px}
 html.zixing .tc-ultb.ult{right:18px;bottom:104px;width:76px;height:76px}
@@ -183,7 +185,7 @@ html.zixing .tc.zx-touch .tc-act.on{transform:none;background:#e5ecd8;border-col
 html.zixing .tc.zx-touch .tc-act>i{display:flex;align-items:center;justify-content:center;flex:none;width:18px;height:18px;background:transparent;border:0;box-shadow:none}
 html.zixing .tc.zx-touch .tc-act>span{flex:1;width:auto;text-align:left;white-space:normal;font-size:12px;line-height:1.4}
 @media(max-width:350px){.zx-body{padding:12px 16px;gap:10px}.zx-footer{padding:8px 16px 14px;gap:8px}.zx-header{padding:12px 16px}.zx-home-top{padding:10px 16px 0}.zx-home-copy h2{font-size:21px}.zx-home-copy p{font-size:14px}.zx-home-lab small{font-size:12px}.zx-glyph.large{width:100px;height:100px;font-size:74px}.zx-choice{min-height:83px}.zx-modal{padding:20px 16px;gap:12px}.zx-home-types{gap:10px}}
-@media(max-width:350px){.zx-upgrade .zx-offer{padding:12px;min-height:100px}.zx-offer .zx-row{gap:10px}.zx-offer .zx-glyph{width:36px;height:44px;font-size:34px}.zx-pause .zx-pause-attributes{padding:10px 8px;gap:6px}.zx-pause-attribute-note{font-size:11px}.zx-pause .zx-pause-actions>.zx-button{gap:5px;font-size:13px}}
+@media(max-width:350px){.zx-upgrade .zx-offer{padding:12px;min-height:100px}.zx-offer .zx-row{gap:10px}.zx-offer .zx-glyph,.zx-offer .zx-loadout-icon{width:36px;height:44px;font-size:34px}.zx-pause .zx-pause-attributes{padding:10px 8px;gap:6px}.zx-pause-attribute-note{font-size:11px}.zx-pause .zx-pause-actions>.zx-button{gap:5px;font-size:13px}}
 @media(min-width:600px){.zx-body,.zx-footer{padding-left:calc(50vw - 210px);padding-right:calc(50vw - 210px)}.zx-home-art{height:300px}.zx-home-top{padding-left:calc(50vw - 210px);padding-right:calc(50vw - 210px)}}
 
 /* Paper workshop: shared typography and surfaces for all screens. */

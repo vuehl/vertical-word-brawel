@@ -2,6 +2,60 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
+export async function reviewRunSettlement({page,dir}) {
+  const before=await page.evaluate(async()=>{
+    await app.zixing.prepareProfile();
+    const profile=app.meta.profile,initial={dust:profile.stardust,runs:profile.counters.runs||0,kills:profile.counters.kills||0};
+    await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    app.halted=true;
+    const run=app.run;run.time=30;run.stats.kills=4;
+    inspected.env.dispatchEvent(new inspected.env.Event('pagehide'));
+    const live=JSON.parse(inspected.env.localStorage.getItem('pb.live'));
+    const active=await app.backend.retryNow(app.meta.account);
+    return {...initial,id:app.meta.ticket.id,live:live.ticket.id,activeSaved:active.saved};
+  });
+  assert.equal(before.id,before.live);assert.equal(before.activeSaved,0);
+  const checkpoint=await page.evaluate(()=>JSON.parse(inspected.env.localStorage.getItem('pb.live')));
+  await page.evaluateOnNewDocument(()=>{window.holdHomeStatus=false;});
+
+  async function reopen() {
+    // The fixture keeps its filesystem and cloud in memory. Carry their real
+    // contents across reloads as WeChat does when starting a new process.
+    const save=await page.evaluate(async()=>({
+      file:wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8'),
+      progress:(await wx.cloud.callContainer({path:'/v1/progress',method:'GET'})).data.progress,
+    }));
+    await page.reload();
+    await page.waitForFunction(()=>window.releaseTextDownload&&window.wx);
+    await page.evaluate(async({file,progress})=>{
+      wx.getFileSystemManager().writeFileSync('/userdata/pokebonk-save.json',file);
+      await wx.cloud.callContainer({path:'/v1/progress',method:'POST',data:{progress}});
+      // Cover an immediate relaunch even when this test machine boots slowly.
+      const live=JSON.parse(wx.getStorageSync('pokebonk.web.pb.live')||'null');
+      if(live)wx.setStorageSync('pokebonk.web.pb.liveBeat.'+live.ticket.id,String(Date.now()));
+      releaseTextDownload();releaseOptionalDownloads();
+    },save);
+    await page.waitForFunction(()=>window.app?.screen?.dataset.page==='home'&&app.meta.profile&&bootPercentages.includes(100),{timeout:45000});
+    // The old confirmation was scheduled 1.5 seconds after saving.
+    await new Promise(resolve=>setTimeout(resolve,1800));
+    return page.evaluate(id=>{
+      const p=app.meta.profile,record=p.runs.find(entry=>entry.id===id);
+      return {dust:p.stardust,runs:p.counters.runs,kills:p.counters.kills,matching:p.runs.filter(entry=>entry.id===id).length,
+        time:record?.time,runKills:record?.kills,pending:app.meta.hasPending(),home:app.screen.dataset.page,
+        confirmation:!!inspected.doc.querySelector('.season-modal,.app-notice')};
+    },before.id);
+  }
+  const first=await reopen();
+  assert.deepEqual(first,{dust:before.dust+1,runs:before.runs+1,kills:before.kills+4,matching:1,time:30,runKills:4,pending:false,home:'home',confirmation:false});
+  await page.screenshot({path:path.join(dir,'自动结算后的首页.png')});
+  // Replay a queued result whose acknowledgement was lost after crediting.
+  await page.evaluate(entry=>inspected.env.localStorage.setItem('pb.pending',JSON.stringify([entry])),checkpoint);
+  const second=await reopen();
+  assert.deepEqual(second,first,'Reopening again must not credit the same run twice');
+  fs.writeFileSync(path.join(dir,'run-settlement.json'),JSON.stringify({before,first,second},null,2));
+  console.log('Interrupted run settled once, with no confirmation on either launch.');
+}
+
 // Exercise the returning-player path: a fresh guest never reads cloud progress
 // until the first tap, so a cold-only smoke test cannot catch this startup stall.
 export async function reviewStartupLatency({page,dir,baseline=false}) {

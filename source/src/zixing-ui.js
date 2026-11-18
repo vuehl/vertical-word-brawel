@@ -837,7 +837,11 @@ export function createZixingUI(app,api) {
       if(window.closeAnimatedModal)window.closeAnimatedModal(run.ui.modalEl,done,action==='reroll'||run.pendingLevels>1);
       else done();
     };
-    const cards=offers.map((offer,index)=>{const desc=api.offer(run,offer);return button(offerContent(art[index],desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});});
+    const cards=offers.map((offer,index)=>{
+      const desc=api.offer(run,offer);
+      const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):art[index];
+      return button(offerContent(picture,desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});
+    });
     overlay('择一而进','',cards,
       [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
   }
@@ -882,7 +886,7 @@ export function createZixingUI(app,api) {
     cards.forEach((node,index)=>{
       const body=node.querySelector('.bd'),heading=body.querySelector('h3'),rarity=node.querySelector('.rar');
       const details=[...body.children].filter(detail=>detail!==heading&&!detail.classList.contains('key')&&detail.textContent.trim()).map(detail=>
-        text(detail.textContent,detail.classList.contains('muted')||detail.classList.contains('cap')?'zx-item-description':'zx-item-effect'));
+        text(detail.textContent,detail.classList.contains('cap')?'zx-item-description':'zx-item-effect'));
       const picture=el('img','zx-item-image',[],{src:api.itemIcon(keys[index]),alt:heading.textContent,draggable:false});
       // Reuse the choice nodes and original action buttons to retain their
       // reward callbacks, keyboard bindings and protection against double taps.
@@ -899,7 +903,7 @@ export function createZixingUI(app,api) {
     });
     document.querySelectorAll('.run-hint').forEach(node=>node.remove());
     wrap.className='zx zx-modal-wrap';
-    wrap.replaceChildren(itemDialog(title,choice?[...notes,...cards]:[...cards,...notes],actions,
+    wrap.replaceChildren(itemDialog(title,[...notes,...cards],actions,
       {'data-choice':choice?'showItemChoice':'showItem'}));
   }
   function summary(run,result,reward,error) {
@@ -925,7 +929,7 @@ export function createZixingUI(app,api) {
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
     run.hints.show=key=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key);};
-    // Offers reuse these four glyph canvases throughout the run. Paint them on the loading screen.
+    // Move offers reuse these glyph canvases. Paint them on the loading screen.
     const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
     hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
     hud.saving=active=>{

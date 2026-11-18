@@ -25,6 +25,7 @@
     "test:startup": "node tools/smoke.mjs --phone-layout --software-render --startup-latency",
     "test:upgrade": "node tools/smoke.mjs --phone-layout --software-render --upgrade-perf",
     "test:scenes": "node tools/smoke.mjs --phone-layout --software-render --scene-regression",
+    "test:devices": "node tools/smoke.mjs --phone-layout --software-render --device-effects",
     "verify:assets": "node tools/verify-assets.mjs",
     "verify:source": "node tools/verify-source.mjs",
     "test:touch": "node tools/smoke.mjs --phone-layout --forest-regression",

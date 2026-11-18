@@ -1,5 +1,6 @@
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
-import {facilityDwellSeconds,isActiveFacility} from './active-content.js';
+import {facilityDwellSeconds,facilityModelFile,isActiveFacility} from './active-content.js';
+import {createFacilityEffects} from './facility-effects.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
@@ -4985,12 +4986,14 @@ var oc = (e, t) =>
         `PixelOutline`,
         `
       uniform vec3 uColor; uniform float uStrength;
+      uniform bool uHasDeviceMask; uniform sampler2D uDeviceMask;
       float vz(vec2 uv){ return -getViewZ(readDepth(uv)); }
       void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor){
         float c = -getViewZ(depth);
         vec2 t = texelSize * 1.35;
         float m = max(max(vz(uv + vec2(t.x, 0.)), vz(uv - vec2(t.x, 0.))), max(vz(uv + vec2(0., t.y)), vz(uv - vec2(0., t.y))));
         float edge = smoothstep(.22 + c * .003, .40 + c * .004, m - c) * step(c, 300.);
+        if (uHasDeviceMask && texture2D(uDeviceMask, uv).r > .5) edge = 0.;
         vec3 col = mix(inputColor.rgb, uColor, edge * uStrength);
         // First stop of the HDR chain: the scene lives in half floats (max 65504), so many additive glows piled up (a boss
         // fight) overflow to Inf and an Inf/NaN pixel spreads through the bloom's blur as black or white blocks, or the
@@ -5004,6 +5007,8 @@ var oc = (e, t) =>
           uniforms: new Map([
             [`uColor`, new hi(new Ei(1708072))],
             [`uStrength`, new hi(0.85)],
+            [`uHasDeviceMask`, new hi(false)],
+            [`uDeviceMask`, new hi(null)],
           ]),
         },
       );
@@ -5376,61 +5381,61 @@ function pc(e) {
   }
 }
 var mc = new Map(),
-  hc = new Set(),
-  gc = () => {
-    for (let e of hc) e();
-  },
   _c = (e) => Math.min(3e4, 1500 * 2 ** Math.min(e, 5));
 function vc(e, t) {
-  let n = mc.has(e);
-  (mc.set(e, t), n || gc());
+  mc.set(e, t);
 }
-function yc(e) {
-  mc.delete(e) && gc();
+function yc(key, retry) {
+  if (!retry || mc.get(key) === retry) mc.delete(key);
 }
 var bc = () => mc.size;
 function xc() {
   for (let e of [...mc.values()]) e();
 }
-function Sc(e) {
-  return (
-    hc.add(e),
-    () => {
-      hc.delete(e);
-    }
-  );
-}
 var Cc = (e, t) => (t ? `${e}${e.includes(`?`) ? `&` : `?`}r=${t}` : e);
-function wc() {
+function installImageRetries() {
   let e = document.createElement(`style`);
   ((e.textContent = `img[data-rt]{color:transparent;font-size:0;text-indent:-9999px;overflow:hidden}`),
     document.head.append(e),
     document.addEventListener(
       `error`,
       (e) => {
-        let t = e.target;
-        if (!(t instanceof HTMLImageElement)) return;
-        let n = t.dataset.rt ? `` : t.currentSrc || t.src;
-        if (!n || n.startsWith(`data:`)) return;
-        t.dataset.rt = n;
-        let r = 0,
-          i = 0,
-          a = () => {
-            if ((clearTimeout(i), r >= 5 || (r > 2 && !t.isConnected))) {
-              yc(`img:` + n);
+        const target = e.target;
+        if (!(target instanceof HTMLImageElement) || !target.isConnected) return;
+        const url = target.currentSrc || target.src;
+        if (!url || url.startsWith('data:') || target.dataset.rt === url) return;
+        const src = target.getAttribute('src'), key = 'img:' + url;
+        target.dataset.rt = url;
+        const current = () => target.isConnected && target.dataset.rt === url && target.getAttribute('src') === src;
+        let attempts = 0, timer, active;
+        const retry = () => {
+          clearTimeout(timer);
+          if (active) active.onload = active.onerror = null;
+          active = null;
+          if (!current() || attempts >= 5) { yc(key, retry); return; }
+          const image = active = new Image(), next = Cc(url, ++attempts);
+          const finish = loaded => {
+            if (active !== image) return;
+            clearTimeout(timer);
+            image.onload = image.onerror = null;
+            active = null;
+            if (!loaded && current() && attempts < 5) {
+              timer = window.setTimeout(retry, _c(attempts));
               return;
             }
-            let e = new Image(),
-              o = Cc(n, ++r);
-            ((e.onload = () => {
-              (yc(`img:` + n), t.dataset.rt === n && (delete t.dataset.rt, (t.src = o)));
-            }),
-              (e.onerror = () => {
-                i = window.setTimeout(a, _c(r));
-              }),
-              (e.src = o));
+            yc(key, retry);
+            if (loaded && current()) {
+              delete target.dataset.rt;
+              target.src = next;
+            }
           };
-        (vc(`img:` + n, a), (i = window.setTimeout(a, _c(0))));
+          image.onload = () => finish(true);
+          image.onerror = () => finish(false);
+          timer = window.setTimeout(() => finish(false), 12000);
+          image.src = next;
+        };
+        vc(key, retry);
+        timer = window.setTimeout(retry, _c(0));
       },
       !0,
     ));
@@ -6798,9 +6803,11 @@ function Pl(e, t, n) {
       if (f < 0) return;
       let m = f - u + 1,
         h = p - d + 1,
-        g = Math.max(1, Math.floor((n - 4) / Math.max(m, h))),
+        fit = (n - 4) / Math.max(m, h),
+        g = fit < 1 ? fit : Math.floor(fit),
         _ = (r % 8) * n,
         v = Math.floor(r / 8) * n;
+      e.clearRect(_, v, n, n);
       ((e.imageSmoothingEnabled = !0),
         e.drawImage(
           s,
@@ -8337,117 +8344,6 @@ async function uu(e) {
     return null;
   }
 }
-var du = class {
-    tex;
-    atlas;
-    cap;
-    mesh;
-    n = 0;
-    aPos;
-    aSize;
-    aUV;
-    aFx;
-    constructor(e, t, n, r = 256) {
-      ((this.tex = e), (this.atlas = t), (this.cap = r));
-      let i = new Yr(1, 1).translate(0, 0.5, 0),
-        a = (e) => new gr(new Float32Array(r * e), e).setUsage(ii);
-      ((this.aPos = a(3)),
-        (this.aSize = a(2)),
-        (this.aUV = a(4)),
-        (this.aFx = a(4)),
-        i.setAttribute(`iPos`, this.aPos),
-        i.setAttribute(`iSize`, this.aSize),
-        i.setAttribute(`iUV`, this.aUV),
-        i.setAttribute(`iFx`, this.aFx));
-      let o = new Kr({
-        uniforms: {
-          map: { value: e },
-          uTime: n.uTime,
-          uFogColor: n.uFogColor,
-          uFogNear: n.uFogNear,
-          uFogFar: n.uFogFar,
-        },
-        vertexShader: `
-        attribute vec3 iPos; attribute vec2 iSize; attribute vec4 iUV; attribute vec4 iFx;
-        varying vec2 vUv; varying float vD; varying vec4 vFx;
-        void main(){
-          vec3 right = normalize(vec3(viewMatrix[0][0], 0., viewMatrix[2][0]));
-          vec3 w = iPos + right * position.x * iSize.x + vec3(0., position.y * iSize.y, 0.);
-          vec4 mv = viewMatrix * vec4(w, 1.); mv.z += 0.3; vD = -mv.z; gl_Position = projectionMatrix * mv;
-          vUv = vec2(mix(iUV.x, iUV.z, uv.x), mix(iUV.y, iUV.w, uv.y)); vFx = iFx;
-        }`,
-        fragmentShader: `
-        uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; uniform float uTime;
-        varying vec2 vUv; varying float vD; varying vec4 vFx;
-        void main(){
-          vec4 t = texture2D(map, vUv); if (t.a < 0.5) discard;
-          vec3 c = t.rgb;
-          c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))) * 0.6, vFx.y);       // dim (used/empty)
-          c = mix(c, vec3(1.), vFx.x);                                       // flash
-          c += vec3(1., 0.95, 0.6) * vFx.z * (0.15 + 0.1 * sin(uTime * 5.));  // highlight when near
-          gl_FragColor = vec4(mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD)), 1.);
-        }`,
-      });
-      ((this.mesh = new Sr(i, o, r)),
-        (this.mesh.frustumCulled = !1),
-        (this.mesh.count = 0),
-        (this.mesh.renderOrder = 1));
-    }
-    begin() {
-      this.n = 0;
-    }
-    push(e, t, n, r, i, a = 0, o = 0, s = 0) {
-      let c = this.atlas.sprites[e];
-      if (!c || this.n >= this.cap) return;
-      let l = this.n++;
-      (this.aPos.array.set([t, n, r], l * 3),
-        this.aSize.array.set([(i * c.w) / c.h, i], l * 2),
-        this.aUV.array.set(
-          [
-            c.x / this.atlas.w,
-            1 - (c.y + c.h) / this.atlas.h,
-            (c.x + c.w) / this.atlas.w,
-            1 - c.y / this.atlas.h,
-          ],
-          l * 4,
-        ),
-        this.aFx.array.set([a, o, s, 0], l * 4));
-    }
-    end() {
-      this.mesh.count = this.n;
-      for (let e of [this.aPos, this.aSize, this.aUV, this.aFx])
-        (e.clearUpdateRanges(), e.addUpdateRange(0, this.n * e.itemSize), (e.needsUpdate = !0));
-    }
-    dispose() {
-      (this.mesh.geometry.dispose(), this.mesh.material.dispose());
-    }
-  },
-  fu = null;
-function pu() {
-  return (
-    (fu ||= (async () => {
-      let e = (e) => Zt(`env/common/${e}`);
-      try {
-        let t = await Dc(e(`atlas.json`), 12, async (t) => {
-            let n = await fetch(Cc(e(`atlas.json`), t));
-            if (!n.ok) throw Error(`atlas`);
-            return await n.json();
-          }),
-          n = await Dc(e(`atlas.png`), 12, (t) => new Zr().loadAsync(Cc(e(`atlas.png`), t)));
-        return (
-          (n.colorSpace = pi),
-          (n.magFilter = zr),
-          (n.minFilter = zr),
-          (n.generateMipmaps = !1),
-          { atlas: t, tex: n }
-        );
-      } catch {
-        return ((fu = null), null);
-      }
-    })()),
-    fu
-  );
-}
 var mu = new Map(),
   hu = (() => {
     let e = new vr(new Uint8Array([120, 190, 255]), 3, 1, ri);
@@ -8542,13 +8438,24 @@ function yu(e) {
 }
 function bu(e) {
   const paper=paperProp(e);if(paper)return Promise.resolve(paper);
+  return loadModelTemplate(e).then(model => model?.clone(true) ?? null);
+}
+function loadModelTemplate(e) {
   let t = mu.get(e);
   if (!t) {
     let n = Zt(`models/${e}.glb`),
       r = async (t) => {
         try {
           let e = await new xi().loadAsync(t ? `${n}&r=${t}` : n);
-          return (vu(e.scene), yu(e.scene), yc(n), e.scene);
+          if (e.scene.userData.deviceScreenFx) {
+            // Retain the authored unlit textures, glass and root metadata. yu adds the legacy hull.
+            e.scene.userData.displayHeight = new Qr().setFromObject(e.scene).getSize(new ti()).y;
+          } else {
+            vu(e.scene);
+            yu(e.scene);
+          }
+          yc(n);
+          return e.scene;
         } catch {
           return t >= 11
             ? (yc(n), mu.delete(e), null)
@@ -8563,7 +8470,7 @@ function bu(e) {
       };
     ((t = r(0)), mu.set(e, t));
   }
-  return t.then((e) => (e ? e.clone(!0) : null));
+  return t;
 }
 async function xu(e) {
   try {
@@ -34308,38 +34215,6 @@ function Hv(e, t) {
 }
 var {wy, ay, gy, Iy, sb, ub, Gy, ab} =
   createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv, Ol});
-function db(e) {
-  return new Kr({
-    side: 2,
-    uniforms: { uTime: { value: 0 }, uOpen: { value: 1 }, uColor: { value: new Ei(e) } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
-    fragmentShader: `uniform float uTime; uniform float uOpen; uniform vec3 uColor; varying vec2 vUv;
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      void main(){
-        const float PX = 34.;                                   // pixels per radius
-        vec2 cell = floor((vUv * 2. - 1.) * PX);
-        vec2 p = (cell + .5) / PX;
-        float r = length(p);
-        float R = uOpen;
-        if (r > R) discard;
-        float rr = r / max(R, 1e-3);
-        float a = atan(p.y, p.x);
-        float tw = a * 3. + (1. - rr) * 7. + uTime * 2.2;        // three arms, twisting harder toward the centre
-        float arms = sin(tw) * .5 + .5;
-        float flow = fract(rr * 3.5 + uTime * .9);               // bands sliding inward
-        float v = arms * .55 + (1. - rr) * .55 + (flow < .18 ? .22 : 0.) - .12;
-        v += step(.985, hash(cell + floor(uTime * 7.))) * .7;   // twinkling pixels
-        float q = floor(clamp(v, 0., .999) * 4.) / 3.;           // posterize: 4 tones
-        vec3 dark = uColor * .22, light = mix(uColor, vec3(1.), .6);
-        vec3 col = q < .34 ? mix(dark, uColor, q * 1.5) : q < .67 ? uColor : light;
-        if (rr < .16 + .03 * sin(uTime * 6.)) col = vec3(1.);   // core
-        else if (rr < .24) col = light;
-        if (rr > .9) col = light;                                // rim
-        if (rr > .97) col = vec3(1.);
-        gl_FragColor = vec4(col, 1.);
-      }`,
-  });
-}
 function fb(e, t = 1.4, n = 5, r = 70, i = {}) {
   let [a, o] = i.near ?? [14, 40],
     s = new yr(t, t * 1.3, r, 18, 1, !0).translate(0, n + r / 2, 0),
@@ -34367,32 +34242,6 @@ function fb(e, t = 1.4, n = 5, r = 70, i = {}) {
     }),
     l = new Tr(s, c);
   return ((l.frustumCulled = !1), (l.renderOrder = 40), l);
-}
-function pb(e, t) {
-  let n = e.getObjectByName(`Disc`);
-  if (!n?.geometry) return null;
-  n.geometry.computeBoundingBox();
-  let r = n.geometry.boundingBox,
-    i = r.getSize(new ti()),
-    a = r.getCenter(new ti()),
-    o = i.x < i.y && i.x < i.z,
-    s = i.y < i.x && i.y < i.z,
-    c = Math.max(i.x, i.y, i.z) / 2,
-    l = db(t),
-    u = new Tr(new Yr(2 * c, 2 * c), l);
-  return (
-    u.position.copy(a),
-    o ? (u.rotation.y = Math.PI / 2) : s && (u.rotation.x = -Math.PI / 2),
-    n.add(u),
-    (n.material = new gi({ visible: !1 })),
-    (n.material.userData.owned = !0),
-    n.children
-      .filter((e) => e !== u)
-      .forEach((e) => {
-        e.visible = !1;
-      }),
-    l
-  );
 }
 var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
   hb = (e) => (typeof e == `string` ? e.trim().toUpperCase() : ``),
@@ -45785,8 +45634,7 @@ var wS = {
     slots: 2,
     nest: 2,
   },
-  TS = [92, 92, 93, 93, 94],
-  ES = 48;
+  TS = [92, 92, 93, 93, 94];
 function DS(e) {
   let t = 35 * e;
   return (
@@ -45815,8 +45663,7 @@ function PS(e, t) {
   let n = NS * ex[t] * jS(e);
   return Math.round(Math.max([10, 18, 30, 50, 90][t] * e.stage, Math.min(n, MS[t] * OS(e))));
 }
-var FS = { meowth: 52, ditto: 132, hypno: 97, magnet: 81 },
-  IS = 201,
+var IS = 201,
   RS = [
     {
       color: 5959935,
@@ -45918,42 +45765,6 @@ function HS(e, t, n) {
   }
   return a;
 }
-function US(e, t) {
-  if (t === 3) {
-    WS(e);
-    return;
-  }
-  if (!t) return;
-  let n = new Ei(RS[t].color),
-    r = new Ei(16777215).lerp(n, 0.3);
-  e.traverse((e) => {
-    let t = e;
-    if (!t.isMesh || !t.material.isMeshToonMaterial) return;
-    let i = t.material.clone();
-    ((i.userData.owned = !0),
-      i.emissiveIntensity
-        ? (i.color.copy(n).lerp(new Ei(16777215), 0.35), i.emissive.copy(n))
-        : (i.color.multiply(r), i.emissive.copy(n).multiplyScalar(0.12), (i.emissiveIntensity = 1)),
-      (t.material = i));
-  });
-}
-function WS(e) {
-  let t = new Map();
-  e.traverse((e) => {
-    let n = e;
-    if (!n.isMesh || !n.material.isMeshToonMaterial) return;
-    let r = n.material,
-      i = t.get(r);
-    (i ||
-      ((i = r.clone()),
-      (i.userData.owned = !0),
-      i.emissiveIntensity
-        ? (i.color.set(16773280), i.emissive.set(16761402))
-        : (i.color.multiply(new Ei(16769162)), i.emissive.set(5913600), (i.emissiveIntensity = 1)),
-      t.set(r, i)),
-      (n.material = i));
-  });
-}
 var GS = class e {
     run;
     list = [];
@@ -45975,9 +45786,10 @@ var GS = class e {
         this.warnedPortal = null;
       }
       if (!target || run.state !== 'play' || run.player.dead) return;
-      if (this.waitingForGold && (target.data?.gift || run.gold >= this.chestCost())) {
-        this.waitingForGold = false;
+      this.waitingForGold = run.gold < this.interactionCost(target);
+      if (this.waitingForGold) {
         this.dwellTime = 0;
+        return;
       }
       if (this.dwellTime >= facilityDwellSeconds) return;
       if (run.coop?.lifting || run.capture.throwing || run.capture.canThrow()) {
@@ -45987,15 +45799,10 @@ var GS = class e {
       this.dwellTime = Math.min(facilityDwellSeconds, this.dwellTime + seconds);
       if (this.dwellTime === facilityDwellSeconds) this.interact(target);
     }
-    constructor(e, deferred = false) {
-      ((this.run = e),
-        e.r.scene.add(this.group),
-        !deferred && this.populate(),
-        pu().then((t) => {
-          t &&
-            !this.disposed &&
-            ((this.sprites = new du(t.tex, t.atlas, e.r.shared)), this.group.add(this.sprites.mesh));
-        }));
+    constructor(run, deferred = false) {
+      this.run = run;
+      run.r.scene.add(this.group);
+      if (!deferred) this.populate();
     }
     disposed = !1;
     static CHEST_BASE = 18;
@@ -46010,112 +45817,72 @@ var GS = class e {
           n,
       );
     }
-    add(e, t, n, r = {}) {
-      if (!isActiveFacility(e) || r.data?.comet) return null;
-      let i = this.run.terrain.height(t, n),
-        a = { kind: e, x: t, y: i, z: n, r: 2.6, used: !1, cost: 0, ...r },
-        o,
-        s = {
-          chest: [`chest`, 1.6],
-          freechest: [`freechest`, 1.6],
-          altar: [`altar`, 3.8],
-          boss: [`boss`, 6.2],
-          portal: [`portal`, 6],
-          shrine: [`shrine`, 6.3],
-          challenge: [`challenge`, 3.8],
-          cursedchest: [`cursedchest`, 1.6],
-          shroom: [`bounceshroom`, 2.3],
-          slots: [`slots`, 3.4],
-          fossil: [`fossil`, 3.2],
-          rhydon: [`totem`, 4.3],
-          bill: [`billpc`, 3.4],
-          nest: [`nest`, 1.8],
-        },
-        c = this.run.biome.sanctuary,
-        l =
-          e === `portal` && r.data?.sanct
-            ? [c?.portal ?? `sanct_portal`, 6.4]
-            : e === `shrine` && c
-              ? [c.shrine, 6.3]
-              : e === `altar` && r.data?.comet
-                ? [`ruins_crystals`, 3.2]
-                : e === `tower`
-                  ? r.data?.model
-                    ? [r.data.model, r.data.h ?? 2]
-                    : void 0
-                  : s[e];
-      // Only registered props, NPCs and custom sprite/tower objects may be placed.
-      // This also blocks stale calls from recreating removed interactions.
-      if (!l && !FS[e] && e !== `berry` && e !== `tower`) return null;
-      if (e === `berry`) ((o = new Br()), (o.userData.sprite = `berry`), (o.userData.h = 3.6));
-      else if (l) {
-        let i = new Cr();
-        ((i.userData.h = l[1]), (o = i));
-        let s = () =>
-          bu(l[0]).then((o) => {
-            this.disposed ||
-              (o
-                ? (i.add(o),
-                  (i.userData.lid = o.getObjectByName(`Lid`)),
-                  (i.userData.cap = o.getObjectByName(`Cap`)),
-                  (i.userData.lever = o.getObjectByName(`Lever`)),
-                  (i.userData.lamp = o.getObjectByName(`Lamp`)),
-                  e === `portal`
-                    ? (i.userData.vortex = pb(o, this.portalColor(a)))
-                    : (i.userData.gem =
-                        o.getObjectByName(`Crystal`) ??
-                        o.getObjectByName(`Orb`) ??
-                        o.getObjectByName(`Flame`) ??
-                        void 0),
-                  i.userData.gem && (i.userData.gemY = i.userData.gem.position.y),
-                  e === `altar` && US(o, a.data?.tier ?? 0),
-                  (i.rotation.y =
-                    e === `tower`
-                      ? (r.data?.rot ?? Math.atan2(-t, -n))
-                      : e === `shrine`
-                        ? 0
-                        : e === `slots` || e === `fossil` || e === `rhydon` || e === `bill`
-                          ? Math.atan2(-t, -n)
-                          : e === `shroom`
-                            ? Math.atan2(r.data?.tx - t, r.data?.tz - n)
-                            : e === `portal`
-                              ? Math.atan2(this.run.player.pos.x - t, this.run.player.pos.z - n)
-                              : Math.random() * Math.PI * 2))
-                : setTimeout(s, 1e4));
-          });
-        s();
+    interactionCost(facility) {
+      if (facility.kind === 'chest' && !facility.data?.gift) return this.chestCost();
+      return facility.kind === 'slots' ? ox(this.run) : 0;
+    }
+    hasVisual(facility) {
+      return !this.disposed && this.group.visible && !!this.group.parent &&
+        facility.group?.parent === this.group && facility.group.visible &&
+        !!facility.model?.visible && facility.model.parent === facility.group;
+    }
+    async loadDevice(facility) {
+      const group = facility.group;
+      if (this.disposed || group.parent !== this.group) return;
+      const model = await bu(facilityModelFile(BS(facility)));
+      if (this.disposed || group.parent !== this.group) return;
+      if (!model) {
+        facility.retry = setTimeout(() => this.loadDevice(facility), 10000);
+        return;
       }
-      if (e === `altar`) {
-        let e = RS[a.data?.tier ?? 0];
-        ((a.charge = 0), (a.r = e.r), this.run.sprites.get(IS), e.wave && this.altarBeacon(a));
+      group.add(model);
+      group.userData.h = model.userData.displayHeight;
+      facility.model = model;
+      this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
+      this.deviceFx.add(model);
+      if (facility.used) this.dim(facility);
+    }
+    releaseDevice(facility) {
+      clearTimeout(facility.retry);
+      if (!facility.model) return;
+      this.deviceFx.remove(facility.model);
+      this.restoreDeviceColour(facility);
+      // GLTF clones share the template's geometry, textures and original materials.
+      facility.model.removeFromParent();
+      facility.model = null;
+    }
+    add(kind, x, z, options = {}) {
+      if (!isActiveFacility(kind) || options.data?.comet) return null;
+      const y = this.run.terrain.height(x, z);
+      const facility = {kind, x, y, z, r: 2.6, used: false, cost: 0, ...options};
+      const group = facility.group = new Cr();
+      group.position.set(x, y, z);
+      if (kind === 'altar') {
+        const tier = RS[facility.data?.tier ?? 0];
+        facility.charge = 0;
+        facility.r = tier.r;
+        this.run.sprites.get(IS);
+        if (tier.wave) this.altarBeacon(facility);
+      } else if (kind === 'boss') {
+        facility.r = this.run.sanctuary ? 5 : 4;
+      } else if (kind === 'portal') {
+        facility.r = 3.4;
+        const player = this.run.player.pos;
+        group.rotation.y = Math.atan2(player.x - x, player.z - z);
+        const beacon = facility.beacon = fb(this.portalColor(facility), 1.7, 6.6);
+        beacon.position.set(x, y, z);
+        this.group.add(beacon);
+      } else if (kind === 'bill') {
+        facility.r = 3.4;
+        group.rotation.y = Math.atan2(-x, -z);
+      } else if (kind === 'nest') {
+        facility.r = 2.8;
       }
-      if (
-        (e === `boss` && (a.r = this.run.sanctuary ? 5 : 4),
-        e === `shrine` && ((a.r = 5), o.scale.setScalar(1.5)),
-        (e === `chest` || e === `freechest`) && o.scale.setScalar(0.8),
-        e === `portal` && (a.r = 3.4),
-        e === `challenge` && (a.r = 3.2),
-        e === `fossil` && (a.r = 2.8),
-        e === `rhydon` && (a.r = 3.2),
-        e === `bill` && ((a.r = 3.4), o.scale.setScalar(mS)),
-        e === `nest` && ((a.r = 2.8), o.scale.setScalar(1.35)),
-        e === `slots` && ((a.r = 2.4), o.scale.setScalar(1.25)),
-        r.data?.comet && o.scale.setScalar(1.8),
-        e === `cursedchest` && o.scale.setScalar(0.8),
-        e === `shroom` && ((a.r = 1.4), (a.data.cd = 0)),
-        o && e === `portal`)
-      ) {
-        let e = fb(this.portalColor(a), 1.7, 6.6);
-        (e.position.set(t, i, n), this.group.add(e), (a.beacon = e));
-      }
-      return (
-        e === `tower` && r.r && (a.r = r.r),
-        FS[e] && ((a.npc = FS[e]), this.run.sprites.get(a.npc)),
-        o && (o.position.set(t, i, n), this.group.add(o), (a.group = o)),
-        this.run.terrain.reserve(t, n, a.r + 0.6),
-        this.list.push(a),
-        a
-      );
+      this.group.add(group);
+      this.run.terrain.reserve(x, z, facility.r + 0.6);
+      this.list.push(facility);
+      facility.modelReady = this.loadDevice(facility);
+      return facility;
     }
     altarBeacon(e) {
       let t = e.data?.tier ?? 0,
@@ -46127,11 +45894,17 @@ var GS = class e {
       return this.add(e, t, n, r);
     }
     populate() {for(const _ of this.populationSteps()){} }
-    populateAsync() {
-      return runLoadingSteps(this.populationSteps(),{
-        check:()=>{if(this.disposed||this.run.disposed)throw Error('本局已结束');},
+    async populateAsync() {
+      // The first summoned portal must open immediately when the boss falls.
+      const portal = !this.run.sanctuary && loadModelTemplate(facilityModelFile('portal'));
+      const check = () => { if (this.disposed || this.run.disposed) throw Error('本局已结束'); };
+      const stats = await runLoadingSteps(this.populationSteps(),{
+        check,
         onProgress:()=>this.run.onLoadProgress?.({phase:'摆放场景物件',detail:'已摆放 '+this.list.length+' 个'})
       });
+      await Promise.all([portal, ...this.list.map(facility => facility.modelReady)]);
+      check();
+      return stats;
     }
     *populationSteps() {
       let e = this.run,
@@ -46237,6 +46010,8 @@ var GS = class e {
       return this.add(e, t, n);
     }
     remove(e) {
+      this.run.ui.removeWorldLabel(e);
+      this.releaseDevice(e);
       ((this.list = this.list.filter((t) => t !== e)),
         e.group && this.group.remove(e.group),
         e.beacon && this.group.remove(e.beacon),
@@ -46297,14 +46072,13 @@ var GS = class e {
       return e.data?.sanct ? (this.run.biome.sanctuary?.color ?? 9109354) : 10119935;
     }
     label(e) {
-      let t = this.run.gold;
+      const cost = this.interactionCost(e);
+      if (this.run.gold < cost) return '';
       switch (e.kind) {
         case `chest`:
           return e.data?.gift
             ? c(`Abrir Poké Ball (gratis)`)
-            : t < this.chestCost()
-              ? c(`Abrir Poké Ball · {cost} ₽ (sin dinero)`, { cost: this.chestCost() })
-              : c(`Abrir Poké Ball · {cost} ₽`, { cost: this.chestCost() });
+            : c(`Abrir Poké Ball · {cost} ₽`, { cost });
         case `freechest`:
           return c(`Abrir Super Ball (gratis)`);
         case `altar`:
@@ -46345,12 +46119,8 @@ var GS = class e {
               : c(`Entrar al portal`);
         case `shroom`:
           return c(`Seta rebote`);
-        case `slots`: {
-          let e = ox(this.run);
-          return c(t < e ? `Tragaperras · {cost} ₽ (sin dinero)` : `Tragaperras · {cost} ₽ por tirada`, {
-            cost: e,
-          });
-        }
+        case `slots`:
+          return c(`Tragaperras · {cost} ₽ por tirada`, { cost });
         case `fossil`:
           return e.used
             ? c(`Las ruinas callan`)
@@ -46437,6 +46207,8 @@ var GS = class e {
     }
     interact(e) {
       let t = this.run;
+      const cost = this.interactionCost(e);
+      if (t.gold < cost) return;
       if (!(e.used && e.kind !== `meowth` && e.kind !== `hypno` && e.kind !== `portal` && e.kind !== `tower`))
         switch (e.kind) {
           case `tower`:
@@ -46447,13 +46219,7 @@ var GS = class e {
               this.openChest(e, !1, !0);
               break;
             }
-            let n = this.chestCost();
-            if (t.gold < n) {
-              this.waitingForGold = this.nearest === e;
-              (t.ui.toast(c(`No tienes suficientes Pokédólares`), null), t.audio.deny());
-              return;
-            }
-            ((t.gold -= n), (t.goldSpent += n), this.openChest(e, !1));
+            ((t.gold -= cost), (t.goldSpent += cost), this.openChest(e, !1));
             break;
           }
           case `freechest`:
@@ -46478,6 +46244,7 @@ var GS = class e {
             }
             t.openDitto(() => {
               e.used = !0;
+              this.dim(e);
             });
             break;
           case `hypno`:
@@ -46496,14 +46263,11 @@ var GS = class e {
             xS(t, e);
             break;
           case `slots`:
-            if (t.gold < ox(t)) {
-              (t.ui.toast(c(`No tienes suficientes Pokédólares`), null), t.audio.deny());
-              return;
-            }
             t.openSlots(e);
             break;
           case `magnet`:
             ((e.used = !0),
+              this.dim(e),
               (t.pickups.magnetAll = 5),
               t.ui.toast(c(`¡Magnemite atrae toda la experiencia!`), `magnet`),
               t.cry(81),
@@ -46516,7 +46280,7 @@ var GS = class e {
               t.vfx.burst(e.x, e.y + 3, e.z, 5933823, 16, 4, I.Heart, 0.5),
               t.ui.toast(c(`Recuperas PS con unas Bayas Aranja`), `oran-berry`),
               t.audio.heal(),
-              e.group && (e.group.userData.dim = 0.6));
+              this.dim(e));
             break;
           case `boss`:
             if (t.mewtwo.active) {
@@ -46614,13 +46378,23 @@ var GS = class e {
           t.rotation.x = 1.1 * Math.sin(Math.min(1, e * 1.4) * Math.PI);
         });
     }
-    dim(e) {
-      e.group && (e.group.userData.dim = 1);
-      let t = e.group?.userData.gem;
-      if (t) {
-        let n = t.material;
-        ((e.group.userData.gemE ??= n.emissiveIntensity), (n.emissiveIntensity = 0.1));
+    dim(facility) {
+      if (!facility.model || facility.originalMaterials) return;
+      const originals = facility.originalMaterials = new Map();
+      facility.model.traverse(mesh => {
+        if (!mesh.isMesh) return;
+        originals.set(mesh, mesh.material);
+        mesh.material = mesh.material.clone();
+        mesh.material.color.multiplyScalar(0.55);
+      });
+    }
+    restoreDeviceColour(facility) {
+      if (!facility.originalMaterials) return;
+      for (const [mesh, original] of facility.originalMaterials) {
+        mesh.material.dispose();
+        mesh.material = original;
       }
+      facility.originalMaterials = null;
     }
     openChest(e, t, n = !1, r) {
       let i = this.run;
@@ -46648,6 +46422,7 @@ var GS = class e {
                 (e) => t.scale.setScalar(r * (1 - e)),
                 () => {
                   t.visible = !1;
+                  this.releaseDevice(e);
                 },
               ),
             ),
@@ -46665,6 +46440,9 @@ var GS = class e {
         r = null,
         i = 1e9;
       for (let a of this.list) {
+        const ready = this.hasVisual(a);
+        if (a.beacon) a.beacon.visible = ready;
+        if (!a.used && !ready) continue;
         let o = a.group;
         const near=(a.x-n.x)**2+(a.z-n.z)**2<2500;
         if (near&&o?.userData.gem) {
@@ -46812,6 +46590,7 @@ var GS = class e {
             a.kind !== `shroom` &&
             u < a.r + 0.8 &&
             u < i &&
+            ready &&
             ((i = u), (r = a)));
       }
       this.landmarkFx(e);
@@ -46958,78 +46737,16 @@ var GS = class e {
             }));
       }
     }
-    hullLod(e, t) {
-      let n = t < ES,
-        r = +!!n + e.children.length * 2;
-      e.userData.hullKey !== r &&
-        ((e.userData.hullKey = r),
-        e.traverse((e) => {
-          e.material === gu && (e.visible = n);
-        }));
-    }
-    sprites = null;
     render() {
-      let e = this.run,
-        t = e.player.pos,
-        n = this.sprites;
-      n?.begin();
-      for (let r of this.list) {
-        if(!e.sprites.visible(r.x,r.y+3,r.z,18))continue;
-        let i = r.x - t.x,
-          a = r.z - t.z,
-          o = Math.hypot(i, a),
-          s = r.group;
-        if ((s && !s.userData.sprite && this.hullLod(s, o), n && s?.userData.sprite && s.visible)) {
-          let t = +(this.nearest === r),
-            i = s.scale.x,
-            a =
-              (r.kind === `chest` || r.kind === `freechest`) && !r.used
-                ? Math.sin(e.time * 2.2 + r.x) * 0.12 + 0.1
-                : 0;
-          (n.push(
-            s.userData.sprite,
-            r.x,
-            r.y + a,
-            r.z,
-            s.userData.h * i,
-            s.userData.flash ?? 0,
-            s.userData.dim ?? 0,
-            t,
-          ),
-            e.sprites.shadows.push(r.x, r.y, r.z, s.userData.h * 0.7));
-        }
-        if (r.npc) {
-          let n = e.sprites.get(r.npc),
-            i = t.x - r.x,
-            a = t.z - r.z,
-            s = Math.hypot(i, a) || 1,
-            c = r.used && r.kind !== `meowth` && r.kind !== `hypno`,
-            l = o < r.r + 1.5 && !c ? Math.abs(Math.sin(e.time * 5 + r.x)) * 0.25 : 0;
-          (n.push(
-            r.x,
-            r.y + l + (r.kind === `magnet` ? 1.2 + Math.sin(e.time * 3) * 0.2 : 0),
-            r.z,
-            `idle`,
-            e.time + r.x,
-            e.sprites.dirRow(i / s, a / s),
-            1.25,
-            0,
-            0,
-            o < r.r + 1.5 && !c ? 3 : 0,
-            0,
-            c ? 0.6 : 1,
-            c ? 0.6 : 1,
-            c ? 0.6 : 1,
-            c ? 0.6 : 0,
-            !1,
-          ),
-            e.sprites.shadows.push(r.x, r.y, r.z, 1.6));
-        }
-        if (r.kind === `altar` && !r.used) {
+      const e = this.run, t = e.player.pos;
+      for (const r of this.list) {
+        if (!e.sprites.visible(r.x, r.y + 3, r.z, 18)) continue;
+        if (r.kind === `altar` && !r.used && this.hasVisual(r)) {
           let n = e.sprites.get(IS),
             i = r.data?.tier ?? 0,
             a = RS[i],
             [o, s, c, l] = r.data?.sealed ? [0.55, 0.55, 0.6, 0.6] : a.tint;
+          if (!n.ready) continue;
           for (let u = 0; u < a.unown; u++) {
             let d = this.unownPos(r, u, a.unown);
             (n.push(
@@ -47055,30 +46772,11 @@ var GS = class e {
           }
         }
       }
-      n?.end();
     }
     portalFx(e, t) {
-      let n = this.run,
-        r = e.group,
-        i = this.portalColor(e),
-        a = r.userData.vortex;
+      const n = this.run, r = e.group, i = this.portalColor(e);
       e.data.openT = Math.min(1.2, (e.data.openT ?? 1.2) + t);
-      let o = e.data.openT / 1.2;
-      if (
-        (a && ((a.uniforms.uTime.value = n.time), (a.uniforms.uOpen.value = 1 - (1 - o) ** 3)),
-        o >= 1 && (r.scale.x < 0.99 && r.scale.setScalar(1), !r.children.length && !e.data.retried))
-      ) {
-        e.data.retried = !0;
-        let t = n.biome.sanctuary;
-        bu(e.data.sanct ? (t?.portal ?? `sanct_portal`) : `portal`).then((t) => {
-          !t ||
-            this.disposed ||
-            r.children.length ||
-            (r.add(t),
-            (r.userData.vortex = pb(t, this.portalColor(e))),
-            (r.rotation.y = Math.atan2(n.player.pos.x - e.x, n.player.pos.z - e.z)));
-        });
-      }
+      const o = e.data.openT / 1.2;
       let s = r.rotation.y,
         c = Math.cos(s),
         l = -Math.sin(s),
@@ -47407,12 +47105,8 @@ var GS = class e {
       )
         return;
       ((e.used = !1), delete e.data.regenAt);
-      let n = e.group;
-      if (n) {
-        ((n.visible = !0), (n.userData.dim = 0));
-        let e = n.userData.gem;
-        e && (e.material.emissiveIntensity = n.userData.gemE ?? 1);
-      }
+      if (e.group) e.group.visible = true;
+      this.restoreDeviceColour(e);
       if (e.kind === `altar`) {
         let n = e.data.tier ?? 0,
           r = RS[n].color;
@@ -47441,8 +47135,11 @@ var GS = class e {
       );
     }
     dispose() {
-      ((this.disposed = !0),
-        this.sprites?.dispose(),
+      this.disposed = true;
+      for (const facility of this.list) this.releaseDevice(facility);
+      this.deviceFx?.dispose();
+      this.deviceFx = null;
+      (this.run.ui.clearWorldNotices(),
         this.group.traverse((e) => {
           let t = e;
           t.geometry?.dispose();
@@ -81655,27 +81352,30 @@ var JI = class {
         {
           x: canvas.left + (this.v.x * 0.5 + 0.5) * canvas.width,
           y: canvas.top + (-this.v.y * 0.5 + 0.5) * canvas.height,
-          vis: this.v.z < 1,
+          vis: this.v.z >= -1 && this.v.z < 1,
         }
       );
     }
     runRef = null;
     floatText = !0;
-    popups = 0;
+    popups = new Set();
     popup(e, t, n, r, i, a = 1) {
-      if (!this.runRef || !this.floatText || this.popups >= BI) return;
-      let o = this.project(this.runRef, e, t, n);
-      if (!o.vis) return;
+      if (!this.runRef || !this.floatText || !r || this.popups.size >= BI) return;
+      const o = this.project(this.runRef, e, t, n), size = 22 * a;
+      const halfWidth = String(r).length * size / 2 + 3, halfHeight = size * .7 + 3;
+      if (!(o.vis && o.x >= halfWidth && o.x <= innerWidth - halfWidth &&
+            o.y >= halfHeight && o.y <= innerHeight - halfHeight)) return;
       let s = X(
         `div`,
-        { class: `popup`, style: { left: o.x + `px`, top: o.y + `px`, "--c": i, fontSize: 22 * a + `px` } },
+        { class: `popup`, style: { left: o.x + `px`, top: o.y + `px`, "--c": i, fontSize: size + `px` } },
         r,
       );
       (s.style.setProperty(`--c`, i),
         (this.popupRoot||this.hudEl).append(s),
-        this.popups++,
+        this.popups.add(s),
         setTimeout(() => {
-          (s.remove(), this.popups--);
+          s.remove();
+          this.popups.delete(s);
         }, 900));
     }
     streakHud(e, t) {
@@ -81752,11 +81452,32 @@ var JI = class {
       }
       e.style.top = r > 0 ? `${Math.round(r + 8)}px` : ``;
     }
-    toast(e, t) {
-      let n = X(`div`, { class: `toast` }, t ? Q(t) : X(`i`, { class: `zx-note-tab`, 'aria-hidden': 'true' }), X(`span`, { class: `zx-note-text` }, e));
-      for (this.toastsEl.append(n); this.toastsEl.children.length > 4; ) this.toastsEl.firstChild.remove();
+    toast(message, item) {
+      if (!message) return;
+      const tab = X('i', {class: 'zx-note-tab', 'aria-hidden': 'true'});
+      const notice = X('div', {class: 'toast'}, tab, X('span', {class: 'zx-note-text'}, message));
+      this.toastsEl.append(notice);
+      while (this.toastsEl.children.length > 4) this.toastsEl.firstChild.remove();
+      if (item) {
+        const icon = Q(item);
+        icon.hidden = true;
+        icon.onerror = () => icon.remove();
+        const reveal = () => {
+          if (notice.isConnected && icon.naturalWidth > 0) {
+            icon.hidden = false;
+            tab.remove();
+          }
+        };
+        icon.onload = reveal;
+        notice.prepend(icon);
+        if (icon.complete) reveal();
+        else icon._loadImage?.();
+      }
       setTimeout(() => {
-        ((n.style.transition = `opacity .4s`), (n.style.opacity = `0`), setTimeout(() => n.remove(), 400));
+        if (!notice.isConnected) return;
+        notice.style.transition = 'opacity .4s';
+        notice.style.opacity = '0';
+        setTimeout(() => notice.remove(), 400);
       }, 2800);
     }
     bigBanners = !0;
@@ -82636,18 +82357,36 @@ var JI = class {
       } else ((this.arrow.style.display = `none`), (this.markTag.style.display = `none`));
       (this.trackSeen(e), this.tickMarks(e), this.leftoverHud(e), this.drawMinimap(e), this.worldLabels(e));
     }
-    labelPool = [];
-    worldLabels(e) {
-      let t = e.player.pos,
-        n = 0,
-        r = {
+    worldLabelNodes = new Map();
+    removeWorldLabel(facility) {
+      this.worldLabelNodes.get(facility)?.remove();
+      this.worldLabelNodes.delete(facility);
+    }
+    clearWorldLabels() {
+      for (const node of this.worldLabelNodes.values()) node.remove();
+      this.worldLabelNodes.clear();
+    }
+    clearWorldNotices() {
+      this.clearWorldLabels();
+      for (const popup of this.popups) popup.remove();
+      this.popups.clear();
+      this.toastsEl.replaceChildren();
+    }
+    worldLabels(run) {
+      const facilities = run.interactables;
+      if (run.state !== 'play' || run.player.dead || facilities.disposed) {
+        this.clearWorldLabels();
+        return;
+      }
+      const player = run.player.pos, visible = new Set();
+      const towerLabels = {
           stairs: c(`Escalera`),
           altar: c(`Ofrenda`),
           trick: c(`¿Truco o trato?`),
           portal: c(`Más Allá`),
           leave: c(`Bajar`),
         },
-        i = {
+        landmarkLabels = {
           freechest: c(`Poké Ball gratis`),
           meowth: c(`Tienda`),
           ditto: c(`Ditto (clona un objeto)`),
@@ -82663,80 +82402,73 @@ var JI = class {
           cursedchest: c(`Maldita`),
           shroom: c(`Seta rebote`),
         };
-      for (let a of e.interactables.list) {
-        let o = Math.hypot(a.x - t.x, a.z - t.z),
-          s =
-            a.kind === `meowth` ||
-            a.kind === `hypno` ||
-            a.kind === `slots` ||
-            a.kind === `portal` ||
-            (a.kind === `challenge` && !!a.data?.wave),
-          l = RI.has(a.kind) || (a.kind === `challenge` && !!a.data?.wave),
-          u = l ? 18 : 6;
-        if (
-          o > u ||
-          (a.used && !s) ||
-          (a.kind === `altar` && !((a.charge ?? 0) > 0) && !(a.data?.sealed && o < a.r + 1))
-        )
-          continue;
-        let d = a.group?.userData.h ?? 2.5,
-          f = this.project(e, a.x, a.y + d + 0.5, a.z);
-        if (!f.vis) continue;
-        let p = this.labelPool[n];
-        (p || ((p = X(`div`, { class: `wlabel` })), (this.popupRoot||this.hudEl).append(p), this.labelPool.push(p)),
-          n++,
-          (p.style.display = ``),
-          (p.style.left = f.x + `px`),
-          (p.style.top = f.y + `px`),
-          (p.style.opacity = String(Math.min(1, (u - o) / (l ? 5 : 2)))));
-        let m = ``,
-          h = `wlabel`;
-        if (a.kind === `altar` && a.data?.sealed) {
-          let t = Math.ceil(RS[a.data.tier].seal - e.stageTime);
-          ((m = `s` + t),
-            p.dataset.k !== m &&
-              ((p.dataset.k = m),
-              (p.className = `wlabel nocost`),
-              $(p).append(c(`Sellado · despierta en {s} s`, { s: t }))));
-        } else if (a.kind === `altar`) {
-          let e = Math.round((a.charge ?? 0) * 100);
-          ((h = `charge`),
-            (m = `c` + (a.data?.tier ?? 0) + `-` + e),
-            p.dataset.k !== m &&
-              ((p.dataset.k = m),
-              (p.className = h),
-              p.style.setProperty(`--p`, String(e)),
-              p.style.setProperty(`--ac`, RS[a.data?.tier ?? 0].css),
-              $(p).append(X(`span`, {}, e + `%`))));
-        } else if (a.kind === `chest` || a.kind === `slots`) {
-          let t = a.kind === `chest` && !!a.data?.gift,
-            n = a.kind === `chest` ? e.interactables.chestCost() : ox(e),
-            r = t || e.gold >= n;
-          ((h = `wlabel ` + (r ? `cost` : `nocost`)),
-            (m = `p` + (t ? `g` : n) + r),
-            p.dataset.k !== m &&
-              ((p.dataset.k = m),
-              (p.className = h),
-              $(p).append(...(t ? [buildingMapName(a)] : [Q(`nugget`), n + (r ? ' 金币' : ' 金币 · 不足')]))));
-        } else if (a.kind === `challenge` && a.data?.wave)
-          ((m = `w` + a.data.left),
-            p.dataset.k !== m &&
-              ((p.dataset.k = m),
-              (p.className = `wlabel nocost`),
-              $(p).append(c(`Quedan {n}`, { n: a.data.left }))));
-        else {
-          const label = a === e.interactables.nearest ? e.interactables.label(a)
-            : a.kind === `tower` ? (r[a.data?.sub] ?? ``) : (i[a.kind] ?? ``);
-          if (((m = `n` + a.kind + label), p.dataset.k !== m)) {
-            ((p.dataset.k = m), (p.className = h + (a.kind === `meowth` ? ` shop` : ``)));
-            let t = l ? pI(a.kind, a.kind === `meowth` ? 40 : 26) : null;
-            $(p).append(...(t ? [t] : []), label);
+      for (const facility of facilities.list) {
+        const {kind, data} = facility;
+        const wave = kind === 'challenge' && data?.wave;
+        const landmark = RI.has(kind) || wave;
+        const range = landmark ? 18 : 6;
+        const distance = Math.hypot(facility.x - player.x, facility.z - player.z);
+        if (distance >= range || !facilities.hasVisual(facility)) continue;
+        if (facility.used && !wave && kind !== 'meowth' && kind !== 'hypno' && kind !== 'slots' && kind !== 'portal') continue;
+
+        let label, className = 'wlabel', percent = null;
+        if (kind === 'chest' || kind === 'slots') {
+          const cost = facilities.interactionCost(facility);
+          if (run.gold < cost) continue;
+          className += ' cost';
+          label = cost ? cost + ' 金币' : buildingMapName(facility);
+        } else if (kind === 'altar') {
+          if (data?.sealed) {
+            if (distance >= facility.r + 1) continue;
+            className += ' nocost';
+            label = c(`Sellado · despierta en {s} s`, {s: Math.ceil(RS[data.tier].seal - run.stageTime)});
+          } else {
+            if (!(facility.charge > 0)) continue;
+            className = 'charge';
+            percent = Math.round(facility.charge * 100);
+            label = percent + '%';
           }
-          (!p.childNodes.length || (p.childNodes.length === 1 && !p.textContent)) &&
-            (p.style.display = `none`);
+        } else if (wave) {
+          className += ' nocost';
+          label = c(`Quedan {n}`, {n: data.left});
+        } else {
+          if (kind === 'meowth') className += ' shop';
+          label = facility === facilities.nearest ? facilities.label(facility)
+            : kind === 'tower' ? towerLabels[data?.sub] : landmarkLabels[kind];
         }
+        if (!label) continue;
+        const height = facility.group?.userData.h ?? 2.5;
+        const point = this.project(run, facility.x, facility.y + height + 0.5, facility.z);
+        // Reserve a full Chinese glyph per character plus padding and the shadow.
+        const halfWidth = percent !== null ? 37 : 17 + label.length * (kind === 'meowth' ? 7 : 6);
+        const above = percent !== null ? 37 : 30, below = percent !== null ? 37 : 4;
+        if (!(point.vis && point.x >= halfWidth && point.x <= innerWidth - halfWidth &&
+              point.y >= above && point.y <= innerHeight - below)) continue;
+
+        let node = this.worldLabelNodes.get(facility);
+        if (!node) {
+          node = X('div');
+          (this.popupRoot || this.hudEl).append(node);
+          this.worldLabelNodes.set(facility, node);
+        }
+        visible.add(facility);
+        if (node.className !== className) {
+          node.className = className;
+          node.replaceChildren(...(percent !== null ? [X('span')] : []));
+        }
+        const content = percent !== null ? node.firstChild : node;
+        if (content.textContent !== label) content.textContent = label;
+        if (percent !== null) {
+          node.style.setProperty('--p', String(percent));
+          node.style.setProperty('--ac', RS[data?.tier ?? 0].css);
+        }
+        node.style.left = Math.round(point.x) + 'px';
+        node.style.top = Math.round(point.y) + 'px';
+        node.style.opacity = String(Math.min(1, (range - distance) / (landmark ? 5 : 2)));
       }
-      for (let e = n; e < this.labelPool.length; e++) this.labelPool[e].style.display = `none`;
+      for (const facility of this.worldLabelNodes.keys()) {
+        if (!visible.has(facility)) this.removeWorldLabel(facility);
+      }
     }
     buildSlots(e) {
       let t = e.player,
@@ -83224,6 +82956,7 @@ var JI = class {
     }
     modal(...e) {
       this.touch.letGo();
+      this.clearWorldLabels();
       let t = !!this.modalEl?.isConnected;
       if (
         (this.hideModal(),
@@ -83547,13 +83280,10 @@ var JI = class {
               e,
               (sn.get(t)?.mods ?? []).map((e) => e.stat),
             ),
-            X(`p`, { class: `muted`, style: { fontSize: `12px` } }, k.items[t]?.desc ?? ``),
           ),
         );
       (a.style.setProperty(`--rc`, i), r.rarity >= 2 && a.firstChild.style.setProperty(`--shine`, `1`));
       let o = PS(e, r.rarity),
-        s = e.player.items.get(t) ?? 0,
-        l = sn.get(t)?.max ?? 10,
         u = !1,
         d = (e) => {
           u || ((u = !0), removeEventListener(`keydown`, m), n(e));
@@ -83562,13 +83292,6 @@ var JI = class {
         p = this.modal(
           X(`h1`, { class: `small` }, c(`¡Has encontrado un objeto!`)),
           a,
-          X(
-            `div`,
-            { class: `help` },
-            s
-              ? c(`Tienes {n} de {max} como máximo. Se acumulan.`, { n: s, max: l })
-              : c(`Se acumula hasta {max}.`, { max: l }),
-          ),
           X(
             `div`,
             { class: `actions` },
@@ -86865,7 +86588,8 @@ var aL = `pb.bypass`,
     set(e, t) {
       try {
         localStorage.setItem(e, JSON.stringify(t));
-      } catch {}
+        return true;
+      } catch { return false; }
     },
     del(e) {
       try {
@@ -86879,6 +86603,9 @@ var aL = `pb.bypass`,
   dL = 8e3,
   fL = 18e4;
 async function pL(e) {
+  // WeChat has one live game instance. Its owner is checked in memory by the
+  // caller. A heartbeat left by the previous launch can still be very recent.
+  if (window.nativeUI) return false;
   let t = Date.now() - (sL.get(uL(e)) ?? sL.get(`pb.liveBeat`) ?? 0);
   try {
     if (navigator.locks?.query)
@@ -87282,13 +87009,19 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
       this.lastFlush = { saved: 0, refused: void 0 };
       let t = sL.get(`pb.live`);
       const returning=t?.ticket.party && t.ticket.party===savedSeat()?.party;
-      if (t && !returning && t.acc === e.id && t.ticket.id !== this.live?.id && !(await pL(t.ticket.id))) {
-        (sL.del(`pb.live`), sL.del(uL(t.ticket.id)));
-        let e = (sL.get(`pb.pending`) ?? []).filter((e) => e.ticket.id !== t.ticket.id);
-        (e.push({ ticket: t.ticket, result: t.result, acc: t.acc, cps: t.cps, rescued: !0 }),
-          sL.set(`pb.pending`, e.slice(-5)));
-      }
       let n = 0;
+      if (t && !returning && t.acc === e.id && t.ticket.id !== this.live?.id) {
+        if (await pL(t.ticket.id)) n++;
+        else {
+          const pending = sL.get('pb.pending') ?? [];
+          const queued = pending.some(entry => entry.ticket.id === t.ticket.id) ||
+            sL.set('pb.pending', [...pending, {...t, rescued: true}]);
+          if (queued) {
+            if (sL.get('pb.live')?.ticket.id === t.ticket.id) sL.del('pb.live');
+            sL.del(uL(t.ticket.id));
+          } else n++;
+        }
+      }
       for (let t of sL.get(`pb.pending`) ?? [])
         if (t.acc === e.id)
           try {
@@ -87664,33 +87397,6 @@ function CL(e, t) {
     };
   return (n[1].finished.then(i, () => {}), i);
 }
-function wL() {
-  wc();
-  let e = null,
-    t = 0,
-    n = document.createElement(`span`);
-  Sc(() => {
-    let r = bc();
-    r
-      ? ((n.textContent =
-          r === 1 ? c(`Falta un gráfico por cargar`) : c(`Faltan {n} gráficos por cargar`, { n: r })),
-        !(e || t) &&
-          (t = window.setTimeout(() => {
-            if (((t = 0), !bc() || e)) return;
-            let r = document.createElement(`button`);
-            ((r.textContent = c(`Reintentar`)),
-              (r.style.cssText = `margin-left:8px;padding:2px 10px;border-radius:999px;border:0;background:#fff;color:#2a2350;font:inherit;font-weight:700;cursor:pointer`),
-              (r.onclick = () => {
-                (N.click(), xc());
-              }),
-              (e = document.createElement(`div`)),
-              (e.style.cssText = `position:fixed;left:8px;bottom:8px;z-index:60;padding:5px 10px;border-radius:999px;background:rgba(29,18,54,.82);color:#fff;font:600 12px/1.3 system-ui,sans-serif;pointer-events:auto;opacity:.9`),
-              e.append(n, r),
-              document.body.append(e));
-          }, 8e3)))
-      : (clearTimeout(t), (t = 0), e?.remove(), (e = null));
-  });
-}
 typeof globalThis.structuredClone != `function` &&
   (globalThis.structuredClone = (e) => JSON.parse(JSON.stringify(e)));
 var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
@@ -88052,17 +87758,9 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           let e = this.run?.state;
           e && e !== `over` && e !== `dead` && (this.trapBack(), e === `play` && this.run.pause());
         }),
-        (this.backend.onSaved = ({ result: e, rescued: t }) => {
-          (document.dispatchEvent(new CustomEvent(`pb-saved`)),
-            (t || !this.run) && setTimeout(() => this.savedCard(e, t), t ? 1500 : 0));
-          let n = c(
-            t
-              ? `Hemos recuperado tu última partida ({time}, {kills} bajas): lo conseguido ya está guardado.`
-              : `Tu partida anterior ({time}, {kills} bajas) se ha guardado.`,
-            { time: Ys(e.time), kills: P(e.kills) },
-          );
-          (this.run && !t && this.notice(n),
-            (!this.run || this.run.state === `over`) && this.meta.account && this.meta.resync());
+        (this.backend.onSaved = () => {
+          document.dispatchEvent(new CustomEvent('pb-saved'));
+          if ((!this.run || this.run.state === 'over') && this.meta.account) this.meta.resync();
         }),
         addEventListener(`beforeunload`, (e) => {
           let t = this.run?.state;
@@ -88501,67 +88199,6 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         }, 5e3)));
     }
     lostTimer = 0;
-    savedCard(e, t) {
-      let n = e.progress?.league?.length ?? 0,
-        r = e.progress?.shinies?.length ?? 0,
-        i = [
-          X(
-            `p`,
-            {},
-            X(
-              `b`,
-              {},
-              `${Ys(e.time)} · ${c(`{kills} bajas`, { kills: P(e.kills) })} · ${c(`Nv. {lvl}`, { lvl: e.level })}`,
-            ),
-          ),
-        ];
-      (n && i.push(X(`p`, {}, c(`{n} Pokémon nuevos en tu Liga`, { n }))),
-        r && i.push(X(`p`, {}, c(`{n} variocolores capturados`, { n: r }))),
-        i.push(
-          X(
-            `p`,
-            { class: `muted` },
-            c(`Lo conseguido (progreso, capturas, variocolores y Polvo Estelar) ya está en tu cuenta.`),
-          ),
-        ),
-        t &&
-          i.push(
-            X(
-              `p`,
-              { class: `muted` },
-              c(`Una partida a medias no se puede reanudar: se cierra con lo que llevabas.`),
-            ),
-          ));
-      let a = X(
-        `div`,
-        { class: `season-modal` },
-        X(
-          `div`,
-          { class: `panel season-card cl-modal` },
-          X(
-            `h2`,
-            { class: `cl-mh` },
-            c(t ? `Hemos recuperado tu última partida` : `Tu partida anterior se ha guardado`),
-          ),
-          ...i,
-          X(
-            `div`,
-            { class: `row cl-mbtns` },
-            X(
-              `button`,
-              {
-                class: `btn green`,
-                onclick: () => {
-                  (N.click(), a.remove());
-                },
-              },
-              c(`Entendido`),
-            ),
-          ),
-        ),
-      );
-      document.body.append(a);
-    }
     notice(e) {
       let n = X(`div`, { class: `app-notice` }, t(e));
       (document.body.append(n),
@@ -88682,5 +88319,5 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       }
     };
   };
-(ac(), wL(), await new AL().boot());
+(ac(), installImageRetries(), await new AL().boot());
 export { AL as App };
