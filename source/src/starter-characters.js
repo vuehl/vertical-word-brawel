@@ -1,7 +1,7 @@
 import {formCopy, moveCopy} from './form-copy.js';
 
 // Keep species IDs stable for saved unlocks and glyph artwork.
-export const starterSpecies = Object.freeze([4,132,16]);
+export const starterSpecies = Object.freeze([4,16]);
 export const starterWords = Object.freeze(Object.fromEntries(
   [4,5,6,132,16,17,18,58,59].map(id=>[id,formCopy[id].word])
 ));
@@ -12,17 +12,20 @@ export const windRoutes = [
 export const attackSpeedBuff = 'ziling-wind-attack-speed';
 export const speedBuff = 'ziling-wind-speed';
 export const speedDuration = 5;
-export const characters = [
+const characterDefinitions = [
   {id:4,word:'炎',name:'炎',tone:'fire',color:'#bc3441',role:'火 · 爆发',motto:'二火成炎，三火成焱，四火成燚',move:moveCopy(4,'火花','ember'),ult:formCopy[4].ultimate[1],evolution:'炎 → 焱 → 燚'},
   {id:132,word:'摹',name:'摹',tone:'ink',color:'#77629e',role:'基础 · 复制',motto:'摹纸影写，照见谁便成为谁',move:moveCopy(132,'变身','transform'),ult:formCopy[132].ultimate[1],evolution:'单字定形 · 无进化'},
   {id:16,word:'风',name:'风',tone:'wind',color:'#387f87',role:'风 · 分支',motto:'风起分两路，择一而行',move:moveCopy(16,'电光一闪','quick-attack'),ult:formCopy[16].ultimate[1],evolution:windRoutes.map(route=>['风',starterWords[route.middle],starterWords[route.final]].join(' → ')).join(' / ')},
 ];
+const starterById = new Map(characterDefinitions.map(character=>[character.id,character]));
+export const characters = starterSpecies.map(id=>starterById.get(id));
 export function starterForSpecies(id){
   id=Number(id);
-  if([4,5,6].includes(id))return characters[0];
-  if(id===132)return characters[1];
-  if([16,17,18,58,59].includes(id))return characters[2];
-  return characters[0];
+  if([17,18,58,59].includes(id))return starterById.get(16);
+  return starterById.get(id)??starterById.get(4);
+}
+export function isPlayableHeroForm(id){
+  return Object.hasOwn(starterWords,id)&&starterSpecies.includes(starterForSpecies(id).id);
 }
 export function characterForSpecies(id){
   const base=starterForSpecies(id),form=formCopy[id],word=form?.word??base.word;

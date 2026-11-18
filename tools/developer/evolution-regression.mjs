@@ -105,13 +105,12 @@ export async function reviewDeveloperEvolution(page,dir){
   await dev('evolve-next');assert.equal((await state()).level,24);
   report.fire=[await finish()];assert.equal(report.fire[0].id,5);
   await dev('open');await dev('evolve-next');report.fire.push(await finish());assert.equal(report.fire[1].id,6);assert.equal(report.fire[1].next,null);
-  await start(132);report.copy=await state();assert.equal(report.copy.next,null);
-  await preview('摹');
+  await dev('open');
   assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-dev-action="evolve-next"]').disabled),true);
   assert.equal(await page.evaluate(()=>inspected.env.__zixingDeveloper.advanceEvolution()),false);
   await start(16);await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({mode:'stress',time:0,count:0,boss:'none'}));await dev('close');
   report.stress=await state();assert.deepEqual(report.stress.choices,[17,58]);assert.equal(report.stress.id,16);
   await page.evaluate(()=>app.toMenu());assert.equal(await page.evaluate(()=>!!inspected.doc.querySelector('[data-branch-id]')),false);
   fs.writeFileSync(path.join(dir,'developer-evolution.json'),JSON.stringify(report,null,2));
-  console.log('Developer evolution passed: player-selected wind paths, both final forms, fire path, no-evolution hero, restore, stress and 3 screen widths.');
+  console.log('Developer evolution passed: player-selected wind paths, both final forms, fire path, restore, stress and 3 screen widths.');
 }

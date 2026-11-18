@@ -36,6 +36,7 @@ export async function reviewNetworkActions({page,tap,resize,dir}) {
   await page.evaluate(()=>ackRoom());
   const rosterTop=()=>app.screen.querySelector('.zx-stat-row').getBoundingClientRect().top;
   await page.waitForFunction(rosterTop);
+  assert.deepEqual(await page.evaluate(()=>[...app.screen.querySelectorAll('.zx-body .zx-row button')].map(b=>b.textContent.replace(/^✓ /,''))),['炎','风']);
   const originalTop=await page.evaluate(rosterTop);
   await tap('.zx-body .zx-row button','风');
   assert.equal(await page.evaluate(()=>!!app.screen.querySelector('[role="status"]')),false);
@@ -67,7 +68,7 @@ export async function reviewNetworkActions({page,tap,resize,dir}) {
   await tap('.zx-footer button','返回首页');
   await tap('[data-action="journey"]');
   await page.evaluate(()=>{window.chooserBody=app.screen.querySelector('.zx-body');});
-  for(const id of [16,132,4]){
+  for(const id of [16,4]){
     await tap('[data-species="'+id+'"]');
     assert.ok(await page.evaluate(id=>chooserBody===app.screen.querySelector('.zx-body') &&
       app.screen.querySelector('[aria-pressed="true"]').dataset.species===String(id) &&

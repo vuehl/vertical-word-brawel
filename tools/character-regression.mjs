@@ -10,7 +10,7 @@ export async function reviewCharacters(page,dir) {
   const draw=async()=>{
     await page.evaluate(()=>{inspected.doc.querySelectorAll('.zx-intro,.evo-reveal,.ultcut').forEach(n=>n.remove());const r=app.run;r.updateCamera(1);r.renderWorld(0);r.ui.hud(r);inspected.env.invalidateUI();app.r.render(0);inspected.env.drawUI(app.r.renderer);});
   };
-  for(const [species,branch,finalWord] of [[4,5,'燚'],[16,17,'疯'],[16,58,'飙'],[132,0,'摹']]) {
+  for(const [species,branch,finalWord] of [[4,5,'燚'],[16,17,'疯'],[16,58,'飙']]) {
     const start=await page.evaluate(async species=>{
       app.toMenu();
       if(!await app.startRun({species,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Cannot start '+species);
@@ -20,8 +20,8 @@ export async function reviewCharacters(page,dir) {
       return {species:r.player.speciesId,word:r.sprites.get(species).zxGlyph,ultimate:r.ult.name,next:r.nextEvo};
     },species);
     report.heroes.push(start);
-    assert.equal(start.word,({4:'炎',16:'风',132:'摹'})[species]);
-    assert.equal(start.ultimate,({4:'一点火苗',16:'一阵刮来',132:'照着变'})[species]);
+    assert.equal(start.word,({4:'炎',16:'风'})[species]);
+    assert.equal(start.ultimate,({4:'一点火苗',16:'一阵刮来'})[species]);
     if(branch){
       if(species===16){
         const choices=await page.evaluate(()=>{const r=app.run;r.player.level=26;r.tryEvolve();return r.ui.modalEl.textContent;});

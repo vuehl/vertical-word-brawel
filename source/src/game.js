@@ -3,14 +3,15 @@ import {facilityDwellSeconds,isActiveFacility} from './active-content.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
-import {LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey} from './lite-rules.js';
+import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey} from './lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI} from './zixing-ui.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
-import {startWindFaint,windFaintTile,windHeroFrame} from './hero-poses.js';
+import {heroActionCatalog} from './hero-action-catalog.js';
+import {playerHeroAction} from './hero-actions.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
 import {createPlayerFootRing} from './player-foot-ring.js';
@@ -31755,9 +31756,7 @@ var mv = 30,
     sashUsed = !1;
     revives = 0;
     dead = !1;
-    windFaint;
-    windIdle;
-    windWalk;
+    heroPlayback;
     lastHit = null;
     sturdyUsed = !1;
     speedBoostT = 0;
@@ -32248,7 +32247,7 @@ var mv = 30,
         (this.squash = 0.5),
         (u.stats.damageTaken += f),
         u.stats.hits++,
-        u.vfx.number(this.pos.x, this.pos.y + (this.hp<=0 && windFaintTile(this.speciesId,0) ? 4 : 2), this.pos.z, f, 16730714),
+        u.vfx.number(this.pos.x, this.pos.y + (this.hp<=0 && heroActionCatalog[this.speciesId] ? 4 : 2), this.pos.z, f, 16730714),
         u.r.kick(0.006),
         u.shake(0.12),
         Na(0.25 + 0.6 * Math.min(1, (f / this.maxHp) * 4), 110),
@@ -33591,7 +33590,7 @@ var mv = 30,
     }
     render() {
       let e = this.run,
-        heroFrame = windHeroFrame(this),
+        heroFrame = e.sprites.heroFrame(this,this.speciesId,playerHeroAction(this),(this.dead?e.realTime:e.time)*1000),
         t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.heroPose??this.firePose,heroFrame),
         n = this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
         r = this.animT,
@@ -33625,7 +33624,7 @@ var mv = 30,
         n,
         r,
         l,
-        this.renderScale * (heroFrame ? heroFrame.layout.renderScale : 1),
+        this.renderScale * (heroFrame?.renderScale ?? 1),
         this.dead && heroFrame ? 0 : Math.max(this.flash, u ? 0.5 : 0),
         d,
         e.shinySkin ? Zc(this.speciesId) : 0,
@@ -33633,6 +33632,7 @@ var mv = 30,
         ...f,
         i,
         e.skinGl,
+        heroFrame?.rect,
       );
       let p = Math.max(e.terrain.surface(this.pos.x, this.pos.z),
         e.terrain.propTop(this.pos.x,this.pos.z,this.radius,this.pos.y+.0001));
@@ -34701,7 +34701,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         t.cry(r));
     }
     rollLegendShiny() {
-      return false; // Forest bosses stay enemies; only the three partners are capturable.
+      return false; // Forest bosses stay enemies.
     }
     shinyEntrance(e, t, n, r, i) {
       let a = this.run;
@@ -54406,10 +54406,11 @@ var GT = 15,
         let n = t.last;
         if (n.flags & FT.out) continue;
         let r = t.skin === `classic` || t.skin === `m1` || t.skin === `m2` ? t.skin : null,
-          i = e.sprites.get(Xl(t.species, r)),
           a = !!(n.flags & FT.downed),
           o = n.anim === 1,
           s = a || n.anim === 3 ? `hurt` : n.flags & FT.attack ? `attack` : o ? `walk` : `idle`;
+        const frame=e.sprites.heroFrame(t,t.species,a?'faint':n.anim===3?undefined:o?'walk':'idle',e.realTime*1000);
+        const id=Xl(t.species,r),i=frame?e.sprites.getAnimatedHeroGlyph(id,frame):e.sprites.get(id);
         t.animT += e.realDt * (o ? 1.4 : 0.8);
         let c = e.sprites.dirRow(t.fx, t.fz),
           l = n.flags & FT.blink && Math.floor(e.realTime * 20) % 2 == 0,
@@ -54422,7 +54423,7 @@ var GT = 15,
           s,
           a ? 1 : s === `attack` ? 0.5 : t.animT,
           c,
-          1,
+          frame?.renderScale ?? 1,
           l ? 0.5 : 0,
           0,
           u,
@@ -54433,6 +54434,7 @@ var GT = 15,
           d ? 0.68 : 0,
           a || s === `attack`,
           r ? Yl(t.member, r) : 0,
+          frame?.rect,
         ),
           r && !a && eu(e.vfx.add, t.member, r, t.x, t.y, t.z, e.realDt, i.bodyHeight()));
         let f = e.terrain.surface(t.x, t.z);
@@ -54792,7 +54794,8 @@ var GT = 15,
           await this.ui.loading(e.length, () => {check();return this.sprites.readyCount(e);},onProgress),
           this.state === `transition` && (this.state = t));
       }
-      await this.sprites.prepareGlyphTextures?.(this.r.renderer,this.player.speciesId);check();
+      const peers=this.coop?[...this.coop.peers.values()].filter(peer=>!peer.gone).map(peer=>peer.species):[];
+      await this.sprites.prepareGlyphTextures(this.r.renderer,this.player.speciesId,peers);check();
       this.onLoadProgress?.({phase:'准备战斗特效',detail:'',progress:.96});
       await waitForLoadingPaint(this.r.renderer);check();
       if(!this.fireTexturesPrepared){
@@ -55979,7 +55982,7 @@ var GT = 15,
       }
     }
     onPlayerDeath() {
-      this.player.windFaint = startWindFaint(this.player.speciesId);
+      this.player.heroPlayback = undefined;
       if (this.coop) this.coop.onDowned();
       else if (this.regionCleared) {
         if (this.capture.canWait()) {
@@ -56265,6 +56268,7 @@ var GT = 15,
         this.audio.duck(0.2, 4.8),
         this.cry(e),
         this.ui.showEvolution(e, t, r));
+      this.sprites.prepareHeroForm(t);
       let s = this.camYaw;
       this.setCine({ follow: -2, dist: 3.6, pitch: 0.22, orbit: 0.35 });
       let c = 0,
@@ -60609,7 +60613,7 @@ function wO(e) {
     Array.isArray(t.league) || (t.league = []),
     typeof e.starter != `number`)
   ) {
-    t.starter = t.league.find((e) => bO.includes(e)) ?? 1;
+    t.starter = t.league.find((e) => bO.includes(e)) ?? defaultStarter;
     for (let e of bO)
       (t.unlocked.includes(e) || t.unlocked.push(e), t.league.includes(e) || t.league.push(e));
   }
@@ -61153,7 +61157,7 @@ var KO = 300,
       };
     }
     leagueReady() {
-      return [...LITE_SPECIES]; // Repeatable encounters, restricted to the three partners.
+      return [...LITE_SPECIES]; // Repeatable encounters use the currently playable partners.
     }
     joinLeague(e) {
       if(!isLiteSpecies(e))return;
@@ -88289,6 +88293,10 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     starting = !1;
     async startRun(e, onLoadProgress) {
       if (this.starting) return !1;
+      if(e&&!isLiteSpecies(e.species)){
+        this.lastStartError=Error('当前可使用炎或风开启对局');
+        return false;
+      }
       if(!onLoadProgress&&this.zixing)return this.zixing.start(e);
       this.lastStartError=null;
       (Oo(!0), (this.starting = !0));

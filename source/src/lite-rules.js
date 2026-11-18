@@ -1,5 +1,5 @@
 // Shared boundaries for the standalone forest edition.
-import {starterSpecies,starterWords as heroWords} from './starter-characters.js';
+import {starterForSpecies,starterSpecies,starterWords as heroWords} from './starter-characters.js';
 export const LITE_SPECIES = starterSpecies;
 export const LITE_BIOME = 'forest';
 // Stage 4 identifies the sanctuary in scenery, saved runs and co-op messages.
@@ -8,6 +8,11 @@ export const FOREST_COMBAT_ZONES = FOREST_ROUTE.length - 1;
 export const SINGLE_STAGE = 'single-stage';
 export const runRecordKey = run => run.biome + '-' + (run.mode === SINGLE_STAGE ? SINGLE_STAGE : (run.tier ?? 0));
 export const isLiteSpecies = id => LITE_SPECIES.includes(Number(id));
+export const defaultStarter = LITE_SPECIES[0];
+export function playableStarter(id) {
+  const migrated = Number(id) === 7 ? 16 : starterForSpecies(id).id;
+  return isLiteSpecies(migrated) ? migrated : defaultStarter;
+}
 export const isLiteFamily = id => Object.hasOwn(heroWords, Number(id));
 export function validLiteRun(run) {
   return !!run && isLiteSpecies(run.species) && run.biome === LITE_BIOME &&
@@ -17,14 +22,10 @@ export function validLiteRun(run) {
     Number.isInteger(run.tier ?? 0) && (run.tier ?? 0) >= 0 && (run.tier ?? 0) <= 2;
 }
 export function constrainLiteProfile(p) {
-  // Migrate the two replaced starter selections without resetting progress.
-  const migrate = id => ({1:132,7:16})[id] ?? id;
-  p.starter = migrate(p.starter);
-  p.lastSpecies = migrate(p.lastSpecies);
-  p.team = (p.team ?? []).map(migrate);
+  if (p.starter) p.starter = playableStarter(p.starter);
+  p.lastSpecies = playableStarter(p.lastSpecies || p.starter);
   p.league = [...LITE_SPECIES];
   p.unlocked = [...LITE_SPECIES];
-  p.lastSpecies = isLiteSpecies(p.lastSpecies) ? p.lastSpecies : 4;
   p.lastBiome = LITE_BIOME;
   p.biomes = {forest: p.biomes?.forest ?? 0};
   p.times ??= {};
@@ -33,8 +34,8 @@ export function constrainLiteProfile(p) {
     if(typeof value==='number')p.times[key]={time:value,splits:[]};
     else if(value && !Array.isArray(value.splits))value.splits=[];
   }
-  p.team = (p.team ?? []).filter(isLiteSpecies);
+  p.team = (p.team ?? []).map(id => Number(id) === 7 ? 16 : Number(id)).filter(isLiteSpecies);
   for (const key of ['shinies', 'classics', 'forms']) p[key] = (p[key] ?? []).filter(isLiteFamily);
-  p.captured = Object.fromEntries(Object.entries(p.captured ?? {}).filter(([id]) => isLiteSpecies(id)));
+  p.captured = Object.fromEntries(Object.entries(p.captured ?? {}).filter(([id]) => isLiteFamily(id)));
   return p;
 }

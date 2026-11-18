@@ -32,7 +32,7 @@ export async function reviewGlyphCrowd(page,dir){
   assert.equal(report.ring.particleSpawns,0);assert.ok(report.ring.hiddenWhenDead&&report.ring.restored);assert.equal(report.ring.hasTimeUniform,false);
 
   report.encounters=[];
-  for(const id of [4,16,132]){
+  for(const id of [4,16]){
     const data=await page.evaluate(async id=>{
       const run=app.run;run.enemies.clear();run.capture.state='done';run.capture.spawnEncounter(id);
       const index=run.capture.index;

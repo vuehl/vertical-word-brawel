@@ -3,10 +3,11 @@ import {isActiveItem} from '../source/src/active-content.js';
 import {heldItems, laboratory, shop, vitamins} from '../source/src/catalogs.js';
 import {resolveItemIcon} from '../source/src/item-icons.js';
 import itemCatalog from '../source/public/data/items.json' with {type:'json'};
+import {isPlayableHeroForm} from '../source/src/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=40;
+export const assetPolicyVersion=41;
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
@@ -44,6 +45,10 @@ export function itemIconSelectionChanged(files) {
 // not merely on absence from a short playthrough. Keep the source art intact.
 export function excludedAssetReason(key){
   if(excludedItemIcons.has(key))return '已隐藏道具的专用图标，当前玩法及界面无引用';
+  if(/^assets\/glyphs\/(?:faint_01_atlas|wind-(?:idle|walk|death)-atlas)\.png$/.test(key))return '旧版动作图集';
+  if(key==='assets/glyphs/copy-strokes.png'&&!isPlayableHeroForm(132))return '隐藏字灵的笔画图集';
+  const heroAction=/^assets\/glyphs\/hero-actions\/(\d+)\.png$/.exec(key);
+  if(heroAction&&!isPlayableHeroForm(heroAction[1]))return '隐藏字灵的动作图集';
   if(key.startsWith('assets/music/'))return '当前手机版关闭背景音乐，不打包或下载录音';
   // UI creation, map icons and combat textures all resolve these numeric
   // identities to the glyph atlas. The old bitmaps have no runtime consumer.

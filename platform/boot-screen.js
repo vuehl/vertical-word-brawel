@@ -59,7 +59,7 @@ module.exports = async function presentBootFrame(gl) {
     c.fillStyle=ink;c.beginPath();c.moveTo(-1.5,83);c.lineTo(2.5,83);c.lineTo(.5,90);c.closePath();c.fill();c.restore();
     c.save();c.translate(78,hero+108);c.rotate(-.12);rect(-35,0,252,25,'#ecd396','#bb9c5c');
     for(let x=-28;x<214;x+=9)line(x,1,x,(x+28)%27===0?13:8,'#a88c57');c.restore();
-    for(const [word,x,y] of [['风',107,hero+5],['炎',192,hero-9],['摹',277,hero+23]]){
+    for(const [word,x,y] of [['风',145,hero+5],['炎',245,hero-9]]){
       if(heroes[word])c.drawImage(heroes[word],x-36,y-36,72,72);
     }
     const titleY=Math.max(100,hero-169);

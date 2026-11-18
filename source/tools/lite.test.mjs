@@ -23,7 +23,7 @@ test('a new profile can roll every configured official item without a research p
 });
 
 test('both forest summoning points and the sanctuary use the same final boss',()=>{
- assert.deepEqual(roster.map(p=>p.id),[4,132,16]);
+ assert.deepEqual(roster.map(p=>p.id),[4,16]);
  assert.deepEqual(biomes.map(b=>b.id),['forest']);
  assert.equal(events.length,0);
  assert.deepEqual(biomes[0].guardians,[[149],[149]]);
@@ -33,10 +33,10 @@ test('both forest summoning points and the sanctuary use the same final boss',()
 });
 test('settlement preserves enemy research and evolution, excludes removed captures and maps',()=>{
  const p=constrainLiteProfile(createProfile('test'));
- const result={species:16,biome:'forest',mode:'standard',tier:0,stage:4,victory:true,kills:100,time:600,level:45,progress:{league:[10,25,16],shinies:[25,4],classics:[10,132],forms:[59,150],seen:[25,151],research:{25:10}}};
+ const result={species:16,biome:'forest',mode:'standard',tier:0,stage:4,victory:true,kills:100,time:600,level:45,progress:{league:[10,25,132,16],shinies:[25,4],classics:[10,132,16],forms:[59,150],seen:[25,151],research:{25:10}}};
  const dust=settleRun(p,result);
- assert.ok(dust>0);assert.deepEqual(p.league,[4,132,16]);assert.deepEqual(p.unlocked,[4,132,16]);
- assert.deepEqual(p.shinies,[4]);assert.deepEqual(p.classics,[132]);assert.deepEqual(p.forms,[59]);
+ assert.ok(dust>0);assert.deepEqual(p.league,[4,16]);assert.deepEqual(p.unlocked,[4,16]);
+ assert.deepEqual(p.shinies,[4]);assert.deepEqual(p.classics,[16]);assert.deepEqual(p.forms,[59]);
  assert.equal(p.research[25],10);assert.ok(p.seen.includes(151));assert.deepEqual(p.biomes,{forest:1});
  const before=p.stardust;assert.equal(applyAction(p,{k:'lab',id:'reroll',lv:99}),false);assert.equal(p.stardust,before);
 });
@@ -48,16 +48,16 @@ test('HTTP blocks removed content, saves valid play once, and restores progressi
  const call=async(route,data,status=200)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method:data===undefined?'GET':'POST',headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});assert.equal(r.status,status,route);return r.json();};
  try{
   await start();token=(await call('/auth/guest',{})).token;
-  assert.deepEqual((await call('/profile')).profile.league,[4,132,16]);await call('/profile/starter',{id:16});
+  assert.deepEqual((await call('/profile')).profile.league,[4,16]);await call('/profile/starter',{id:132},400);await call('/profile/starter',{id:16});
   assert.deepEqual(await call('/coop/access'),{show:false,play:false});
   for(const route of ['/coop/rooms','/clans/board','/events/halloween26','/seasons/awards'])await call(route,undefined,404);
   const base={species:16,biome:'forest',tier:0,mode:'standard'};
-  for(const overrides of [{species:25},{biome:'desert'},{mode:'endless'},{mode:'tower'},{mode:'single-stage',tier:1},{party:'abc'}])await call('/runs',{...base,...overrides},400);
+  for(const overrides of [{species:25},{species:132},{biome:'desert'},{mode:'endless'},{mode:'tower'},{mode:'single-stage',tier:1},{party:'abc'}])await call('/runs',{...base,...overrides},400);
   const run=await call('/runs',base);
   const result={...base,stage:4,kills:100,time:600,level:30,victory:true,progress:{league:[25],research:{25:5},seen:[25]}};
   await call('/runs/'+run.id+'/finish',{result:{...result,species:4}},400);
   const one=await call('/runs/'+run.id+'/finish',{result});const two=await call('/runs/'+run.id+'/finish',{result});
-  assert.equal(two.profile.counters.runs,1);assert.equal(two.profile.stardust,one.profile.stardust);assert.deepEqual(two.profile.league,[4,132,16]);assert.deepEqual(two.profile.biomes,{forest:1});
+  assert.equal(two.profile.counters.runs,1);assert.equal(two.profile.stardust,one.profile.stardust);assert.deepEqual(two.profile.league,[4,16]);assert.deepEqual(two.profile.biomes,{forest:1});
   const short=await call('/runs',{...base,mode:'single-stage'});
   const finishShort='/runs/'+short.id+'/finish';
   await call(finishShort,{result},400);

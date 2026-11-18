@@ -113,8 +113,8 @@ export async function reviewStylizedVFX(page,dir){
   assert.ok(report.moves.find(m=>m.key==='water-gun').peaks.modes.includes(6),'Water shots must have a moving liquid surface');
   assert.ok(report.moves.find(m=>m.key==='fire-spin').peaks.modes.includes(3),'Fire spin must retain its vortex form');
   assert.ok(report.moves.filter(m=>m.damage>0).length>=8,'Actual skills must still damage their targets');
-  for(const species of [4,5,6,16,17,18,58,59,132]){
-    await page.evaluate(async species=>{if(!await app.startRun({species:[4,5,6].includes(species)?4:species===132?132:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Could not start form '+species);app.halted=true;app.run.player.setSpecies(species);vfxSetup();await Promise.all([...app.run.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));app.run.ult.charge=1;app.run.ult.fire();vfxAdvance(14);},species);
+  for(const species of [4,5,6,16,17,18,58,59]){
+    await page.evaluate(async species=>{if(!await app.startRun({species:[4,5,6].includes(species)?4:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Could not start form '+species);app.halted=true;app.run.player.setSpecies(species);vfxSetup();await Promise.all([...app.run.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));app.run.ult.charge=1;app.run.ult.fire();vfxAdvance(14);},species);
     const state=await page.evaluate(()=>{const r=app.run;return {species:r.player.speciesId,name:r.ult.name,active:r.ult.active,authoredFire:r.vfx.crafted.fireFamily.mesh.count,volumes:r.vfx.crafted.entries.map(e=>({mode:e.mode,type:e.type,age:e.age,x:e.x,z:e.z})),particles:r.vfx.add.n+r.vfx.norm.n,damage:r.stats.damage,vertices:r.vfx.crafted.mesh.count,camera:r.camDist,rings:r.vfx.rings.n};});
     if(species===17){assert.equal(state.name,'卷着打转');assert.ok(state.rings>0);}
     assert.equal(state.species,species);assert.equal(state.camera,42);assert.ok(state.particles+state.volumes.length+state.authoredFire>0);if([4,5,6].includes(species))assert.ok(state.authoredFire>0);if([16,58].includes(species))assert.ok(state.volumes.some(v=>v.mode===1));

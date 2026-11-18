@@ -140,7 +140,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   if(!process.argv.includes('--battle-only')){
   await tap('[data-action="journey"]');
   await snapshot('02-fire-390');
-  for(const id of [16,132,4]){await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-390');}
+  for(const id of [16,4]){await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-390');}
   await tap('.zx-link','查看属性');await snapshot('29-preview-390');
   const previewDamage=()=>page.evaluate(()=>inspected.doc.querySelector('.zx-stat-grid strong').textContent);
   const baseDamage=await previewDamage();
@@ -373,7 +373,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await resize(390,844);
     if(process.argv.includes('--forest-regression')){
       const report=[];
-      for(const species of [4,16,132]){
+      for(const species of [4,16]){
         await page.evaluate(async species=>{
           if(!await app.startRun({species,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Cannot start '+species);
           app.run.godMode=true;app.run.queueLevelUp=()=>{};
@@ -398,6 +398,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
     }
   }
-  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and floating joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide touch origins, direction, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
+  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','two characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and floating joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide touch origins, direction, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
   console.log('Zixing regression passed:',reports.length,'screenshots');
 }

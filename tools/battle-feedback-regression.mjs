@@ -51,7 +51,7 @@ export async function reviewFloatingControls({page,resize,dir,sleep}){
 
 export async function reviewBattleFeedback(context){
   const {page,tap,dir,sleep}=context,report={environment:'Compiled WeChat package in Chrome fixture; not iOS/Android hardware.'};
-  await tap('[data-action="journey"]');await tap('[data-species="132"]');await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
+  await tap('[data-action="journey"]');await tap('[data-species="16"]');await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.time>2&&app.run.state==='play',{timeout:90000});
   await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});
   assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-element').textContent),'基础');

@@ -34,8 +34,8 @@ export async function reviewInkStyle(page,dir,moves){
   await page.evaluate(()=>{vfxSetup();app.run.pushLook();vfxDraw(false);});await shot('04-daylight');
   await page.evaluate(()=>{app.run.pushLook();vfxSetup();const r=app.run;r.player.pos.set(0,0,-r.terrain.play+16);r.camTarget.copy(r.player.pos);vfxDraw(false);});await shot('05-boundary');
   report.ultimates=[];
-  for(const species of [4,5,6,16,17,18,58,59,132]){
-    const state=await page.evaluate(async species=>{await app.startRun({species,biome:'forest',tier:0,boosts:[],mode:'standard'});app.halted=true;app.run.player.setSpecies(species);vfxSetup();await Promise.all([...app.run.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));app.run.ult.charge=1;app.run.ult.fire();vfxAdvance(14);return {species,particles:app.run.vfx.add.n+app.run.vfx.norm.n,volumes:app.run.vfx.crafted.entries.length,camera:app.run.camDist};},species);
+  for(const species of [4,5,6,16,17,18,58,59]){
+    const state=await page.evaluate(async species=>{await app.startRun({species:[4,5,6].includes(species)?4:16,biome:'forest',tier:0,boosts:[],mode:'standard'});app.halted=true;app.run.player.setSpecies(species);vfxSetup();await Promise.all([...app.run.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));app.run.ult.charge=1;app.run.ult.fire();vfxAdvance(14);return {species,particles:app.run.vfx.add.n+app.run.vfx.norm.n,volumes:app.run.vfx.crafted.entries.length,camera:app.run.camDist};},species);
     assert.ok(state.particles+state.volumes>0);assert.equal(state.camera,42);report.ultimates.push(state);if([6,16].includes(species))await shot('ultimate-'+species);
   }
   report.budgets=[];

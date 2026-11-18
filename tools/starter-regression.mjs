@@ -10,10 +10,12 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
   const snapshot=async name=>{await draw();await sleep(300);await page.screenshot({path:path.join(dir,name+'.png')});};
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await resize(width,height);await page.evaluate(()=>app.zixing.home());
+    assert.deepEqual(await page.evaluate(()=>[...app.screen.querySelectorAll('.zx-home-types .zx-glyph')].map(e=>e.getAttribute('aria-label'))),['炎','风']);
+    await snapshot('home-'+width);
     await tap('[data-action="journey"]');
-    assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-species]')].map(e=>Number(e.dataset.species))),[4,132,16]);
+    assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-species]')].map(e=>Number(e.dataset.species))),[4,16]);
     await snapshot('choose-before-'+width);
-    for(const [id,word,ult] of [[4,'炎','一点火苗'],[132,'摹','照着变'],[16,'风','一阵刮来']]){
+    for(const [id,word,ult] of [[4,'炎','一点火苗'],[16,'风','一阵刮来']]){
       await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-'+width);
       const data=await page.evaluate(()=>{
         const canvas=app.screen.querySelector('.zx-glyph.large canvas'),box=canvas.getBoundingClientRect();
@@ -24,7 +26,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       });
       assert.ok(data.preview.width>0&&data.preview.pixels>=3*data.preview.width,'Large starter art must cover a 3x display');
       assert.ok(data.text.includes(word)&&data.text.includes(ult));
-      assert.ok(data.text.includes(({4:'火点拍',132:'照影打',16:'连扇'})[id]+'  ·  自动攻击'));assert.ok(!data.text.includes('积蓄能量，释放专属大招'));
+      assert.ok(data.text.includes(({4:'火点拍',16:'连扇'})[id]+'  ·  自动攻击'));assert.ok(!data.text.includes('积蓄能量，释放专属大招'));
       for(const b of data.buttons)assert.ok(b.x>=0&&b.x+b.w<=width+1);
       report.menus.push({width,id,word,ult,preview:data.preview});
     }
@@ -81,10 +83,10 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     assert.deepEqual(await page.evaluate(()=>({name:inspected.doc.querySelector('.zx-hud-name').textContent,type:inspected.doc.querySelector('.zx-hud-element').textContent})),{name:end===18?'疯':'飙',type:end===18?'风':'火'});
     await snapshot('evolved-'+end);report.routes.push({choice,end,plan,middle,final});
   }
-  // Exercise all nine actual ultimate definitions. Keep enemies alive so normal
+  // Exercise all playable ultimate definitions. Keep enemies alive so normal
   // XP and level-up selection cannot alter these controlled observations.
-  for(const id of [4,5,6,132,16,17,18,58,59]){
-    await start([4,5,6].includes(id)?4:id===132?132:16);
+  for(const id of [4,5,6,16,17,18,58,59]){
+    await start([4,5,6].includes(id)?4:16);
     const sample=await page.evaluate(id=>{
       const r=app.run,p=r.player;
       if(p.speciesId!==id){p.setSpecies(id);p.evoStage=[6,18,59].includes(id)?2:1;p.recompute();r.nextEvo=r.planEvolution(id,1);}
@@ -93,7 +95,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
         const a=j/12*Math.PI*2,x=p.pos.x+Math.cos(a)*5,z=p.pos.z+Math.sin(a)*5;
         const i=r.enemies.spawn(19,x,z,1,1,0);r.enemies.hp[i]=r.enemies.maxHp[i]=1e7;
       }
-      const opening = ({4:52,5:52,6:52,132:144,16:98,17:98,18:98,58:98,59:98})[id];
+      const opening = [4,5,6].includes(id)?52:98;
       p.addMove(opening);
       const basic = p.moves[0].def.name;
       r.ui.hud(r);
@@ -105,10 +107,10 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       const active={name:r.ult.name,def:r.ult.def.names,duration:r.ult.def.dur[0],speed:p.stats[id===18?"attackSpeed":"moveSpeed"],buffs:[...p.buffs].map(([key,b])=>[key,b.t,b.label])};
       return {id,before,speed,active,basic,label,passive:p.abilityName};
     },id);
-    const basic=({4:'火点拍',5:'三头烧',6:'四火烧',132:'照影打',16:'连扇',17:'侧风拍',18:'乱风拍',58:'连叫',59:'疾跑撞'})[id];
+    const basic=({4:'火点拍',5:'三头烧',6:'四火烧',16:'连扇',17:'侧风拍',18:'乱风拍',58:'连叫',59:'疾跑撞'})[id];
     assert.equal(sample.basic,basic);
     assert.ok(sample.label.includes(basic),sample.label);
-    if(id===6||id===132)assert.equal(sample.passive,id===6?'越打越旺':'照着学');
+    if(id===6)assert.equal(sample.passive,'越打越旺');
     await snapshot('ultimate-'+id);
     if(id===18||id===59){
       assert.ok(Math.abs(sample.active.speed/sample.speed-10)<1e-8,'Actual combat speed stat must be exactly tenfold');
@@ -126,7 +128,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     report.ultimates.push(sample);
   }
   await page.evaluate(()=>{app.meta.profile.lab['slot-move']=1;});
-  await start(132);assert.equal(await page.evaluate(()=>app.run.nextEvo),null);
+  await start(4);
   report.slots=await page.evaluate(async()=>{
     const r=app.run;
     const count=()=>{r.ui.hud(r);return [r.stage,r.player.moveSlots,inspected.doc.querySelectorAll('[data-skill-slot]').length];};
@@ -134,5 +136,5 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
   });
   assert.deepEqual(report.slots,[[1,3,3],[2,4,4]]);
   fs.writeFileSync(path.join(dir,'starter-regression.json'),JSON.stringify(report,null,2));
-  console.log('Starter regression passed:',report.menus.length,'menu variants, two complete routes, nine ultimates, 10x speed, pause and expiry');
+  console.log('Starter regression passed:',report.menus.length,'menu variants, two complete routes, eight ultimates, 10x speed, pause and expiry');
 }

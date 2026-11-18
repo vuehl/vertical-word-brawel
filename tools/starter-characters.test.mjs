@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {roster} from '../source/src/catalogs.js';
 import {constrainLiteProfile,isLiteFamily,validLiteRun} from '../source/src/lite-rules.js';
-import {configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff} from '../source/src/starter-characters.js';
+import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff} from '../source/src/starter-characters.js';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
 import {glyphCatalog} from '../source/src/glyph-catalog.js';
 
@@ -20,18 +20,22 @@ test('both wind paths follow the supplied design, and all nine supplied cutouts 
     assert.equal(glyphWordForSpecies(id),word);assert.ok(isLiteFamily(id));
     assert.equal(glyphCatalog.words[word].index,glyphCatalog.heroes[id].index);
   }
+  assert.deepEqual(characters.map(c=>c.word),['炎','风']);
+  assert.equal(glyphCatalog.heroes[132].preview,undefined);
   assert.deepEqual(roster.find(p=>p.id===16).branch,[17,58]);
 });
 
 test('legacy starter selection migrates without losing currency, research, settings or records',()=>{
-  for(const [old,id] of [[1,132],[7,16],[4,4]]){
-    const profile={starter:old,lastSpecies:old,team:[old,4],stardust:987,lab:{dmg:3},research:{59:20},settings:{quality:'high'},times:{'forest-0':321},forms:[4,5,6,9,18,59]};
+  for(const [old,id] of [[1,4],[132,4],[7,16],[4,4]]){
+    const profile={starter:old,lastSpecies:old,team:[old],stardust:987,lab:{dmg:3},research:{59:20},settings:{quality:'high'},times:{'forest-0':321},forms:[4,5,6,9,18,59],classics:[132],captured:{132:123}};
     constrainLiteProfile(profile);assert.equal(profile.starter,id);assert.equal(profile.lastSpecies,id);
-    assert.deepEqual(profile.league,[4,132,16]);assert.equal(profile.stardust,987);assert.deepEqual(profile.lab,{dmg:3});
+    assert.deepEqual(profile.league,[4,16]);assert.equal(profile.stardust,987);assert.deepEqual(profile.lab,{dmg:3});
     assert.deepEqual(profile.research,{59:20});assert.deepEqual(profile.settings,{quality:'high'});assert.equal(profile.times['forest-0'].time,321);
     assert.deepEqual(profile.forms,[4,5,6,18,59]);assert.ok(validLiteRun({species:id,biome:'forest'}));
+    assert.deepEqual(profile.classics,[132]);assert.equal(profile.captured[132],123);
+    assert.deepEqual(profile.team,[1,132].includes(old)?[]:[id]);
   }
-  for(const species of [1,7,17,18,58,59])assert.equal(validLiteRun({species,biome:'forest'}),false);
+  for(const species of [1,7,17,18,58,59,132])assert.equal(validLiteRun({species,biome:'forest'}),false);
 });
 
 test('borrowed ultimates keep the original cast, while wind forms use the correct source stage',()=>{

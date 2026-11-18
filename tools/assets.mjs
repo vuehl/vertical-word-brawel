@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
 import {writeActorMetrics} from './actor-metrics.mjs';
+import {writeHeroActions} from './hero-actions.mjs';
 import {assetPolicyVersion,compressedFireAtlases,musicTracks,excludedAssetReason} from './asset-policy.mjs';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
 import {gameProject} from './project-target.mjs';
@@ -23,6 +24,7 @@ const index = {};
 const generatedSprites={};
 const fontText=[];
 await writeActorMetrics(source);
+await writeHeroActions(source);
 const hash = data => createHash('sha256').update(data).digest('hex').slice(0, 16);
 function add(pack, key, data, extension = path.extname(key)) {
   // Content-address files so repeated UI assets only occupy space once.

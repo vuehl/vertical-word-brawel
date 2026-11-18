@@ -4,9 +4,9 @@ import path from 'node:path';
 
 export async function reviewDeveloperSkills(page,dir){
   const report=[];
-  for(const id of [4,5,6,132,16,17,18,58,59]){
+  for(const id of [4,5,6,16,17,18,58,59]){
     const sample=await page.evaluate(async id=>{
-      const base=[4,5,6].includes(id)?4:id===132?132:16;
+      const base=[4,5,6].includes(id)?4:16;
       await app.startRun({species:base,biome:'forest',tier:0,boosts:[],mode:'standard'});
       app.halted=true;
       const api=inspected.env.__zixingDeveloper,r=app.run,p=r.player;

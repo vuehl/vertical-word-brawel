@@ -21,7 +21,10 @@ const packs={};
 const digest=b=>createHash('sha256').update(b).digest('hex');
 assert.equal(index.policyVersion,assetPolicyVersion,'Rebuild the changed asset policy');
 assert.deepEqual(biomes.map(b=>b.id),['forest'],'Review asset exclusions if a map opens');
-assert.deepEqual(roster.map(p=>p.id),[4,132,16]);
+assert.deepEqual(roster.map(p=>p.id),[4,16]);
+assert.deepEqual(Object.keys(index.files).filter(key=>key.startsWith('assets/glyphs/hero-actions/')).sort(),
+  [16,17,18,4,58,59].map(id=>'assets/glyphs/hero-actions/'+id+'.png'));
+assert.ok(!index.files['assets/glyphs/copy-strokes.png']);
 assert.equal(events.length,0,'Review excluded event assets if events are enabled');
 const declaredPacks=new Set(JSON.parse(fs.readFileSync(path.join(root,'game.json'))).subpackages.map(p=>p.name));
 for(const pack of Object.keys(index.packs))assert.ok(declaredPacks.has(pack),'Missing subpackage '+pack);

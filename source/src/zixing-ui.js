@@ -13,7 +13,7 @@ import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
 import {characters,characterForSpecies,windRoutes} from './starter-characters.js';
-import {SINGLE_STAGE,FOREST_COMBAT_ZONES} from './lite-rules.js';
+import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES} from './lite-rules.js';
 
 export {characters};
 const character=characterForSpecies;
@@ -176,7 +176,7 @@ export function createZixingUI(app,api) {
   document.documentElement.classList.add('zixing');
   if(!globalThis.__ZILING_COMPILED_STYLES__)document.head.append(el('style','',zixingStyle));
   window.__zixingApp=app;
-  let selected=4,selectedDifficulty=difficulties[1],labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null,activeEntry=null;
+  let selected=defaultStarter,selectedDifficulty=difficulties[1],labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null,activeEntry=null;
   const ui=app.zixing={home,choose,map,difficulty,lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready};
   if(window.nativeUI)window.addEventListener('memorywarning',releaseGlyphCanvasCache);
   const current=()=>character(selected);
@@ -195,7 +195,7 @@ export function createZixingUI(app,api) {
     authPromise=(async()=>{
       await app.meta.load(account||await app.backend.guest());
       app.applySettings();
-      selected=character(profile().lastSpecies||profile().starter||4).id;
+      selected=playableStarter(profile().lastSpecies||profile().starter);
     })().finally(()=>{authPromise=null;});
     return authPromise;
   }
@@ -248,7 +248,7 @@ export function createZixingUI(app,api) {
       if(seat)return multiplayer(seat);
     }
     returnTo=null;
-    if(profile())selected=character(profile().lastSpecies||profile().starter||4).id;
+    if(profile())selected=playableStarter(profile().lastSpecies||profile().starter);
     const root=screen('home','','',[
       el('div','zx-home-copy',[el('h2','','从一个字开始'),text('走位避险，自动出招。'),text('在五行之间，写下你的这一局。')]),
       el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
@@ -264,7 +264,7 @@ export function createZixingUI(app,api) {
   }
   function multiplayer(resume=savedSeat()) {
     let room=null, view=null, busy=false, starting=false, status='', pending='', joiningCode='';
-    let pick=characters.find(c=>c.id===selected)?.id || 4;
+    let pick=selected;
     async function perform(fn) {
       if(busy || starting)return;
       busy=true;
@@ -304,6 +304,15 @@ export function createZixingUI(app,api) {
         if(restore && /房间不存在|席位已失效|房间已开局/.test(error.message)){forgetSeat(restore.seat);resume=null;}
         if(inviteCode && restore && /席位已失效/.test(error.message))next=await RelayRoom.connect(options);
         else throw error;
+      }
+      if(!isLiteSpecies(next.mine?.species)){
+        if(next.room.state!=='lobby'){
+          next.end('原对局使用已隐藏的字灵',false);
+          forgetSeat(next.me);resume=null;
+          throw Error('原对局使用已隐藏的字灵，请重新组队');
+        }
+        try { await next.setPick(pick); }
+        catch(error) { await next.leave();throw error; }
       }
       // Keep the old lobby if the invited room is full, closed or already playing.
       if(starting){await next.leave();return;}

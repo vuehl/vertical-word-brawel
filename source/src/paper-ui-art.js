@@ -1,6 +1,6 @@
 import {glyphCanvas} from './paper-glyph-art.js';
 
-// A field notebook for the three starters. The lobby keeps this static canvas
+// A field notebook for the starters. The lobby keeps this static canvas
 // between requests and scales the whole spread to the space above its buttons.
 export function drawCoopMap(canvas){
   const c=canvas.getContext('2d');
@@ -52,7 +52,7 @@ export function drawCoopMap(canvas){
   c.fillStyle='#c99460';c.beginPath();c.arc(-99,81,4,0,Math.PI*2);c.fill();
   c.strokeStyle='#786e61';c.lineWidth=2.5;c.beginPath();c.moveTo(65,-69);c.lineTo(65,-103);c.stroke();
   shape([[66,-103],[92,-100],[85,-93],[92,-85],[66,-89]],'#d78069','#a36555');
-  for(const [word,x,y,size] of [['风',-59,43,68],['炎',29,17,85],['摹',-26,-47,69]]){
+  for(const [word,x,y,size] of [['风',-48,40,68],['炎',38,13,85]]){
     c.fillStyle='#85917d38';c.beginPath();c.ellipse(x,y+3,size*.31,5,0,0,Math.PI*2);c.fill();
     c.drawImage(glyphCanvas(word),x-size/2,y-size*.84,size,size);
   }
@@ -96,7 +96,7 @@ export function drawPaperIllustration(canvas,hero=false,variant=0){
       const shade=c.createLinearGradient(0,0,0,310);shade.addColorStop(0,'#f8f5eaff');shade.addColorStop(.7,'#f8f5eaf0');shade.addColorStop(1,'#f8f5ea00');c.fillStyle=shade;c.fillRect(0,0,780,310);
       c.save();c.translate(390,126);c.rotate(-.055);c.font='bold 145px "Ziling Swei",sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';c.lineWidth=10;c.strokeStyle='#343044';c.strokeText('字 行',0,8);c.strokeText('字 行',0,0);const gold=c.createLinearGradient(0,-80,0,80);gold.addColorStop(0,'#ffed9d');gold.addColorStop(1,'#e8bc60');c.fillStyle=gold;c.fillText('字 行',0,0);c.restore();
       c.font='bold 23px "Ziling Swei",sans-serif';c.textAlign='center';c.fillStyle='#526f72';c.fillText('桌 上 有 天 地 · 落 字 即 成 灵',390,245);
-      for(const [word,x,y,size] of [['风',195,430,130],['炎',390,425,175],['摹',575,454,130]]){
+      for(const [word,x,y,size] of [['风',280,430,146],['炎',500,421,175]]){
         c.drawImage(glyphCanvas(word),x-size/2,y-size/2,size,size);
       }
       const fade=c.createLinearGradient(0,540,0,600);fade.addColorStop(0,'#f8f5ea00');fade.addColorStop(1,'#f8f5ea');c.fillStyle=fade;c.fillRect(0,540,780,60);

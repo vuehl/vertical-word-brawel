@@ -49,7 +49,7 @@ export async function reviewCoop(browser, gamePort) {
   };
   const makeRoom=(code,species)=>RelayRoom.connect({factory:e=>cloudSocket(testWx,e),code,species});
   const first=await makeRoom(undefined,4);
-  const second=await makeRoom(first.code,132);
+  const second=await makeRoom(first.code,4);
   const third=await makeRoom(first.code,16);
   try {
     await assert.rejects(first.start(),/准备/);
@@ -208,7 +208,7 @@ export async function reviewCoop(browser, gamePort) {
         }
         await page.waitForFunction(code=>window.app?.coopRoom?.code===code,{timeout:90000},code);
         await page.evaluate(query=>fixtureShow({query}),cardQuery);
-        await click(page,i===1?'摹':'风');
+        if(i===2)await click(page,'风');
       }
       console.log('Lobby ready', i+1);
     }
@@ -281,7 +281,7 @@ export async function reviewCoop(browser, gamePort) {
     await guests[1].evaluate(()=>window.releaseLastScene());
     await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run?.state==='play' && !app.screen && [...app.run.coop.active()].length===2, {timeout:110000,polling:200})));
     const sample=await Promise.all(clients.map(p=>p.evaluate(()=>({seed:app.run.seed,species:app.run.startSpecies,received:app.coopRoom.traffic.snapReceived}))));
-    assert.deepEqual(sample.map(r=>r.species),[4,132,16]);
+    assert.deepEqual(sample.map(r=>r.species),[4,4,16]);
     assert.equal(new Set(sample.map(r=>r.seed)).size,1);
     assert.ok(sample.every(s=>s.received>0));
     assert.ok((await Promise.all(clients.map(p=>p.evaluate(()=>app.zixing.entryDiagnostics.percentages.at(-1))))).every(n=>n===100));

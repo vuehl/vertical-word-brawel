@@ -107,7 +107,7 @@ export async function reviewEncounters(page,dir,tap,draw){
 
 async function reviewPortalProgression(page,dir,draw){
   await page.evaluate(async()=>{
-    await app.startRun({species:132,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;
     const api=inspected.env.__zixingDeveloper;
     api.options.invincible=true;api.options.lockCount=true;

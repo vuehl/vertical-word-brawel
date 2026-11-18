@@ -13,7 +13,8 @@ fs.mkdirSync(dir,{recursive:true});
 const source=fs.readFileSync(path.join(root,'platform/boot-screen.js'),'utf8');
 const artFile=path.join(root,'minigame/boot-hero-art.js'),art=require(artFile);
 const report={art:[],scriptBytes:fs.statSync(artFile).size,samples:[]};
-for(const [id,word] of [[4,'炎'],[16,'风'],[132,'摹']]){
+assert.deepEqual(Object.keys(art),['炎','风']);
+for(const [id,word] of [[4,'炎'],[16,'风']]){
   const file=path.join(root,'source/art/glyphs',`hero_${id}_${word}.png`),original=fs.readFileSync(file);
   const output=Buffer.from(art[word].split(',')[1],'base64'),m=await sharp(output).metadata();
   assert.equal(m.width,256);assert.equal(m.height,256);assert.equal(m.hasAlpha,true);
@@ -47,7 +48,7 @@ try{
         const wx={createCanvas(){const c=document.createElement('canvas');canvases.push(c);return c;},createImage(){
           const image=new Image();images.push(image);
           loads.push(new Promise((resolve,reject)=>{image.addEventListener('load',()=>setTimeout(resolve,0),{once:true});image.addEventListener('error',reject,{once:true});}));
-          if(holdLast&&images.length===3){const set=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
+          if(holdLast&&images.length===Object.keys(art).length){const set=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
             Object.defineProperty(image,'src',{set(value){pending.push(()=>set.call(image,value));}});}
           return image;
         }};
