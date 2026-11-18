@@ -9,12 +9,14 @@ export const SINGLE_STAGE = 'single-stage';
 // Encounter tables are authored on a ten-minute clock. Only wave progression
 // uses that clock. Movement, cooldowns, drops and run records use game seconds.
 export const WAVE_SECONDS = 600;
+export const COMBAT_ZONE_SECONDS = 6 * 60;
 export function zoneDuration(mode = 'standard') {
-  if (mode === SINGLE_STAGE) return 360;
-  if (mode === 'standard' || mode === 'classic') return 300;
+  if (mode === SINGLE_STAGE || mode === 'standard' || mode === 'classic') return COMBAT_ZONE_SECONDS;
   return WAVE_SECONDS;
 }
-export const wavePace = mode => WAVE_SECONDS / zoneDuration(mode);
+// Multi-zone waves keep their five-minute ramp independently of the guardian deadline.
+export const wavePace = (mode = 'standard') => WAVE_SECONDS /
+  (mode === 'standard' || mode === 'classic' ? 300 : zoneDuration(mode));
 export function isSoloNormalOpening(run) {
   return run.stage === 1 && run.tier === 0 && !run.coop &&
     (run.mode === SINGLE_STAGE || run.mode === 'standard');

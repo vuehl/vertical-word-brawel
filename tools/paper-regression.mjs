@@ -60,7 +60,7 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
     r.input.stickY=-Math.sin(r.camYaw)*box.sin-Math.cos(r.camYaw)*box.cos;
     for(let i=0;i<45;i++)advance();
     const stopped=p.grounded && Math.hypot(p.pos.x-box.x,p.pos.z-box.z)>box.halfZ;
-    p.addItem('air-balloon');
+    const singlePair=p.addItem('air-balloon') && !p.addItem('air-balloon') && p.items.get('air-balloon')===1;
     const buttonHidden=!inspected.doc.querySelector('.tc-jump');
     let jumped=false,onTop=false;
     for(let i=0;i<120;i++){
@@ -73,9 +73,9 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
     for(let i=0;i<45;i++)advance();
     const stable=p.grounded && Math.abs(p.pos.y-box.standY)<.001;
     p.removeItem('air-balloon');p.pos.copy(saved);p.vel.set(0,0,0);
-    return {spaceBlocked,stopped,buttonHidden,jumped,onTop,stable};
+    return {spaceBlocked,stopped,singlePair,buttonHidden,jumped,onTop,stable};
   });
-  assert.deepEqual(report.springShoes,{spaceBlocked:true,stopped:true,buttonHidden:true,jumped:true,onTop:true,stable:true});
+  assert.deepEqual(report.springShoes,{spaceBlocked:true,stopped:true,singlePair:true,buttonHidden:true,jumped:true,onTop:true,stable:true});
   const pickup=await page.evaluate(()=>{
     const run=app.run,p=run.player,pk=run.pickups;run.state='paused';pk.clear();
     const base=run.gold,pos=p.pos.clone();p.pos.set(0,0,0);

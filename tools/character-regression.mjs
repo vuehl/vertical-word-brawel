@@ -89,7 +89,7 @@ export async function reviewCharacters(page,dir) {
   }
   report.boss=await page.evaluate(async({finalBossSpecies,finalBossWord})=>{
     const r=app.run,en=r.enemies,p=r.player.pos;
-    en.clear();r.stageTime=240;r.time=Math.max(r.time,240);
+    en.clear();r.stageTime=300;r.time=Math.max(r.time,300);
     const door=r.interactables.list.find(item=>item.kind==='boss');
     await door.modelReady;
     p.set(door.x,door.y,door.z);

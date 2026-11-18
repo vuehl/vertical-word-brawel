@@ -7,7 +7,7 @@ import {isPlayableHeroForm} from '../source/src/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=49;
+export const assetPolicyVersion=50;
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
@@ -44,6 +44,7 @@ export function itemIconSelectionChanged(files) {
 // Exclusions are based on the enabled forest-only rules and procedural world,
 // not merely on absence from a short playthrough. Keep the source art intact.
 export function excludedAssetReason(key){
+  if(key==='assets/models/devices/拍立得.glb'||key==='assets/ui/devices/ditto.png')return '道具复制装置已移除';
   if(excludedItemIcons.has(key))return '已隐藏道具的专用图标，当前玩法及界面无引用';
   if(/^assets\/glyphs\/(?:faint_01_atlas|wind-(?:idle|walk|death)-atlas)\.png$/.test(key))return '旧版动作图集';
   if(key==='assets/glyphs/copy-strokes.png'&&!isPlayableHeroForm(132))return '隐藏字灵的笔画图集';

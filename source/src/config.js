@@ -1259,6 +1259,7 @@ var u = { season: 2, name: t(`Temporada 2`), maxDex: 151, biomes: [`forest`] },
     {
       key: `air-balloon`,
       rarity: 1,
+      max: 1,
       desc: t(`+1 salto extra y +15% altura de salto.`),
       mods: [
         { stat: `extraJumps`, add: 1 },

@@ -145,7 +145,7 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
 }
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
 const deviceKeys=Object.keys(facilityNames).map(kind=>'assets/models/'+facilityModelFile(kind)+'.glb');
-assert.equal(deviceKeys.length,10);
+assert.equal(deviceKeys.length,9);
 assert.deepEqual(models.sort(),['assets/models/ball.glb',...deviceKeys].sort());
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
 const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/DeviceScreenFx.mjs')));

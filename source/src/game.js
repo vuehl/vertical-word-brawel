@@ -16312,7 +16312,7 @@ var Pm = class {
           i ? `walk` : `idle`,
           n.anim,
           t.dirRow(n.fx, n.fz),
-          1.15,
+          0.65,
           n.flash,
           0,
           a,
@@ -29504,6 +29504,8 @@ var S_ = [
   },
   w_ = new Map(),
   T_ = new Map();
+// Old resource packs and loadouts may still contain these move IDs.
+const retiredMoveIds = new Set([36, 44, 172, 179, 242, 245, 514, 583, 50104]);
 function E_(e) {
   let t = k.movesByKey.get(e)?.id;
   if (t != null) return O_(t);
@@ -29533,6 +29535,7 @@ function D_(e) {
   return e.cls === `physical` ? t[0] : t[1];
 }
 function O_(e) {
+  if (retiredMoveIds.has(e)) return null;
   let t = w_.get(e);
   if (t) return t;
   if (T_.has(e)) return T_.get(e);
@@ -31882,6 +31885,7 @@ var mv = 30,
     addItem(e) {
       return this.canHold(e)
         ? (this.items.set(e, (this.items.get(e) ?? 0) + 1),
+          e === 'air-balloon' && (this.run.springShoesSeen = true),
           (this.run.peakItems = Math.max(
             this.run.peakItems,
             [...this.items.values()].reduce((e, t) => e + t, 0),
@@ -33647,9 +33651,7 @@ var mv = 30,
         for (const event of n) event.t /= this.pace;
       }
       if (this.pace > 1 && e.stage <= FOREST_COMBAT_ZONES) {
-        // Leave the guardian's normal fight time and a short walk to the exit.
-        const scheduled = zoneDuration(e.mode) - wy.guardian[e.stage - 1] - 10;
-        n.push({ t: Math.max(scheduled, bossSummonUnlockSeconds + bossSummonSeconds), kind: 'guardian' });
+        n.push({ t: zoneDuration(e.mode), kind: 'guardian' });
       }
       this.timeline = n.sort((a, b) => a.t - b.t);
     }
@@ -33892,16 +33894,10 @@ var mv = 30,
       if (t.dragonDuel) return;
       if (e === 'guardian') {
         if (t.bossSpawned || t.stageCleared) return;
-        if (t.stageTime < bossSummonUnlockSeconds + bossSummonSeconds || t.state !== 'play' ||
+        if (t.stageTime < zoneDuration(t.mode) || t.state !== 'play' ||
             t.boss.alive || t.mewtwo.active || (t.coop && (!t.coop.isHost || t.coop.pendingBoss))) return false;
-        // Let an ongoing hold finish before the scheduled guardian encounter takes over.
-        if (t.interactables.nearest?.kind === 'boss' && t.interactables.dwellProgress > 0) return false;
-        t.spawnBoss(t.player.pos.x, t.player.pos.z);
         const vortex = t.interactables.list.find(facility => facility.kind === 'boss');
-        if (vortex) {
-          vortex.used = true;
-          t.interactables.dim(vortex);
-        }
+        t.interactables.summonGuardian(vortex, t.player.pos);
         return;
       }
       if (e === `card` || this.cards.length)
@@ -34127,7 +34123,7 @@ var mv = 30,
         e.audio.alarm());
     }
     startFinalSwarm() {
-      if (this.run.dragonDuel) return;
+      if (this.run.dragonDuel || (this.pace > 1 && this.run.stage <= FOREST_COMBAT_ZONES)) return;
       this.finalSwarm ||
         ((this.finalSwarm = !0),
         (this.finalSwarmAt = zoneDuration(this.run.mode)),
@@ -35348,6 +35344,10 @@ function Hb(e, t = 0, n = 0, r) {
 function isNewAttackOffer(offer) {
   return offer.kind === 'newMove' && O_(offer.id)?.dmg > 0;
 }
+function canUpgradeMove(player, slot) {
+  const move = player.moves[slot];
+  return slot < player.moveSlots && move && O_(move.def.id) && move.level < player.capOf(move);
+}
 function Ub(run, count) {
   const player = run.player, pool = [];
   if (player.freeMoveSlot() >= 0) {
@@ -35364,7 +35364,7 @@ function Ub(run, count) {
     }
   }
   player.moves.forEach((move,slot) => {
-    if (slot >= player.moveSlots || !move || move.level >= player.capOf(move)) return;
+    if (!canUpgradeMove(player, slot)) return;
     const key = 'm'+move.def.id;
     if (!run.banished.has(key)) pool.push({kind:'upMove', slot, key});
   });
@@ -35460,7 +35460,7 @@ function Gb(e, t) {
       break;
     case `upMove`: {
       let e = n.moves[t.slot];
-      if (t.slot >= n.moveSlots || !e || (t.key && t.key !== 'm'+e.def.id) || e.level >= n.capOf(e)) return false;
+      if (!canUpgradeMove(n, t.slot) || (t.key && t.key !== 'm'+e.def.id)) return false;
       F_(e, t.ups);
       break;
     }
@@ -35472,12 +35472,13 @@ function Gb(e, t) {
   n.recompute();
   return true;
 }
-var Kb = (e, t) => !!e.tower && t === `dowsing-machine`;
+function canOfferItem(run, key) {
+  return run.player.canHold(key) && run.meta.itemInPool(key) && !run.banished.has('i' + key) &&
+    !(run.tower && key === 'dowsing-machine') && !(run.springShoesSeen && key === 'air-balloon');
+}
 function qb(e, t = 0) {
   let n = e.player,
-    r = tt.filter(
-      (t) => e.meta.itemInPool(t.key) && !e.banished.has(`i` + t.key) && !Kb(e, t.key) && (n.items.get(t.key) ?? 0) < (t.max ?? 10),
-    ),
+    r = tt.filter(item => canOfferItem(e, item.key)),
     i = [0, 1, 2, 3, 4].map((t) => r.some((n) => n.rarity === t)),
     a = Math.max(t, Hb(e, t, 10, i)),
     o = r.filter((t) => t.rarity === a);
@@ -35492,15 +35493,7 @@ function qb(e, t = 0) {
   );
 }
 function Jb(e, t, n) {
-  let r = e.player,
-    i = tt.filter(
-      (t) =>
-        !n.includes(t.key) &&
-        !Kb(e, t.key) &&
-        e.meta.itemInPool(t.key) &&
-        (r.items.get(t.key) ?? 0) < (t.max ?? 10) &&
-        !e.banished.has(`i` + t.key),
-    );
+  let i = tt.filter(item => !n.includes(item.key) && canOfferItem(e, item.key));
   return [...i.filter((e) => e.rarity >= t), ...i.filter((e) => e.rarity < t)].map((e) => e.key);
 }
 var Yb = {
@@ -35597,7 +35590,10 @@ function $b(e) {
   let t = [];
   for (let n = 0; n < 16 && t.length < 4; n++) {
     let n = qb(e);
-    n && !t.some((e) => e.key === n) && t.push({ key: n, price: nx(e, n) });
+    if (n && !t.some(item => item.key === n)) {
+      t.push({key: n, price: nx(e, n)});
+      if (n === 'air-balloon') e.springShoesSeen = true;
+    }
   }
   return t;
 }
@@ -45275,7 +45271,8 @@ function _S(e, t) {
   }
   return lS.find((e) => e.kind === `glitch`);
 }
-var vS = (e, t) => c(`{name} Nv. {lv}/{max}`, { name: e, lv: t, max: 8 });
+const fusionRequiredLevel = 4;
+var vS = (e, t) => c(`{name} Nv. {lv}/{max}`, { name: e, lv: t, max: fusionRequiredLevel });
 function yS(e) {
   let t = e.player,
     n = [],
@@ -45286,8 +45283,8 @@ function yS(e) {
         a = r[t],
         o = _S(i.m.def, a.m.def),
         s = [];
-      (i.m.level < 8 && s.push(vS(i.m.def.name, i.m.level)),
-        a.m.level < 8 && s.push(vS(a.m.def.name, a.m.level)),
+      (i.m.level < fusionRequiredLevel && s.push(vS(i.m.def.name, i.m.level)),
+        a.m.level < fusionRequiredLevel && s.push(vS(a.m.def.name, a.m.level)),
         n.push({
           r: o,
           a: i.i,
@@ -45306,7 +45303,7 @@ function yS(e) {
         .map((n) => {
           let r = t.moves.find((e) => e?.def.id === n.id);
           return r
-            ? r.level < 8
+            ? r.level < fusionRequiredLevel
               ? vS(n.name, r.level)
               : ``
             : t.moves.some((e) => e?.parents.includes(n.id))
@@ -45556,7 +45553,7 @@ var RS = [
   {color: 16765498, css: '#ffd23a', charge: 35, r: 4.5, drain: 3, min: 3, offers: 4, picks: 2},
 ];
 var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
-  VS = { altar: 200, challenge: 240, ditto: 150, magnet: 150, berry: 120 };
+  VS = { altar: 200, challenge: 240, magnet: 150, berry: 120 };
 function rollAltarTier(rng, poolSize, luckMult) {
   // Draw one blessing from the area's original tier distribution.
   const slot = rng.int(0, poolSize - 1);
@@ -45778,7 +45775,7 @@ var GS = class e {
       const altarTier = rollAltarTier(rng, count(endless ? 3 : 5) + bonus, player.stats.luckMult);
       const kinds = [];
       for (const [kind, amount] of [
-        ['altar', 1], ['bill', 1], ['nest', 1], ['ditto', endless ? 2 : 1],
+        ['altar', 1], ['bill', 1], ['nest', 1],
         ['magnet', endless ? 1 : 2], ['freechest', GS.CHESTS_PER_KIND],
         ['berry', count(endless ? 4 : 5)], ['chest', GS.CHESTS_PER_KIND],
       ]) {
@@ -45979,8 +45976,6 @@ var GS = class e {
           return c(`Abrir Poké Ball maldita (gratis... ¿seguro?)`);
         case `meowth`:
           return c(`Hablar con Meowth (tienda)`);
-        case `ditto`:
-          return e.used ? c(`Ditto descansa`) : c(`Ditto: clona uno de tus objetos`);
         case `hypno`:
           return c(`Hypno: olvida un movimiento o vitamina`);
         case `magnet`:
@@ -46041,7 +46036,8 @@ var GS = class e {
             : c(
                 t
                   ? `Máquina de Bill · una fusión lista`
-                  : `Máquina de Bill · fusiona dos movimientos al nivel máximo`,
+                  : `Máquina de Bill · fusiona dos movimientos de nivel {level} o superior`,
+                { level: fusionRequiredLevel },
               );
         }
         default:
@@ -46123,16 +46119,6 @@ var GS = class e {
           case `meowth`:
             t.openShop();
             break;
-          case `ditto`:
-            if (!t.player.items.size) {
-              t.ui.toast(c(`Ditto no tiene nada que copiar...`), null);
-              return;
-            }
-            t.openDitto(() => {
-              e.used = !0;
-              this.dim(e);
-            });
-            break;
           case `hypno`:
             t.openForget();
             break;
@@ -46174,7 +46160,7 @@ var GS = class e {
               t.ui.toast(c(`Una barrera psíquica te lo impide`), null);
               break;
             }
-            t.bossSpawned || ((e.used = !0), t.spawnBoss(e.x, e.z), this.dim(e));
+            this.summonGuardian(e, e);
             break;
           case `shrine`:
             t.bossSpawned || ((e.used = !0), t.spawnBoss(e.x, e.z));
@@ -46183,6 +46169,15 @@ var GS = class e {
             t.endless ? t.migrate() : t.enterPortal(e);
             break;
         }
+    }
+    summonGuardian(vortex, origin) {
+      const run = this.run;
+      if (run.bossSpawned || run.stageCleared) return;
+      run.spawnBoss(origin.x, origin.z);
+      if (vortex) {
+        vortex.used = true;
+        this.dim(vortex);
+      }
     }
     startChallenge(e) {
       let t = this.run,
@@ -49514,7 +49509,7 @@ var mw = 7500,
     guardian: {
       letter: `g`,
       kind: 'boss',
-      text: () => `每区封印 ${bossSummonUnlockSeconds / 60} 分钟，站满 ${bossSummonSeconds} 秒唤醒镇守。`,
+      text: () => `满 ${bossSummonUnlockSeconds / 60} 分钟后，站进漩涡 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
     },
     alpha: {
       letter: `f`,
@@ -54039,6 +54034,7 @@ var GT = 15,
     }
     econ = { shop: 0, sold: 0 };
     goldSpent = 0;
+    springShoesSeen = false;
     peakItems = 0;
     vitTaken = !1;
     slotSpins = 0;
@@ -56030,6 +56026,7 @@ var GT = 15,
             n && !i.includes(n) && i.push(n);
           }
           if ((i.length < n && i.push(...Jb(this, t ?? +!!e, i).slice(0, n - i.length)), i.length > 1)) {
+            if (i.includes('air-balloon')) this.springShoesSeen = true;
             ((this.state = `modal`),
               this.ui.showItemChoice(this, i, (e) => {
                 (e
@@ -56041,6 +56038,7 @@ var GT = 15,
             return;
           }
         }
+        if (r === 'air-balloon') this.springShoesSeen = true;
         ((this.state = `modal`),
           this.ui.showItem(this, r, (e) => {
             (e
@@ -56058,8 +56056,9 @@ var GT = 15,
     openShop() {
       this.state = `modal`;
       let e = this.endless ? 100 + this.endless.shopVisit : this.tower ? 200 + this.tower.floor : this.stage;
-      ((!this.shop || this.shop.stage !== e) && (this.shop = { stage: e, stock: $b(this), rerolls: 0 }),
-        this.ui.showShop(this, () => this.resume()));
+      if (!this.shop || this.shop.stage !== e) this.shop = {stage: e, stock: $b(this), rerolls: 0};
+      else this.shop.stock = this.shop.stock.filter(item => item.key !== 'air-balloon');
+      this.ui.showShop(this, () => this.resume());
     }
     rerollCost() {
       let e = 0.5 * ex[0] * jS(this);
@@ -56089,17 +56088,6 @@ var GT = 15,
           this.player.addItem(e.key),
           this.shopBuys.push(sn.get(e.key)?.rarity ?? 0),
           !0);
-    }
-    openDitto(e) {
-      ((this.state = `modal`),
-        this.ui.showDitto(this, (t) => {
-          (t &&
-            (this.player.addItem(t),
-            e(),
-            this.ui.toast(c(`¡Ditto se transforma en {item}!`, { item: k.items[t]?.name ?? t }), t),
-            this.cry(132)),
-            this.resume());
-        }));
     }
     openFossil(e) {
       ((this.state = `modal`),
@@ -58548,8 +58536,8 @@ function HD(e, t, n) {
       { class: `mp-hint` },
       n ??
         c(
-          `Dos movimientos al nivel máximo ({max}) se funden en la Máquina de Bill. La pareja decide la fusión: la de firma del Pokémon, la reacción de sus dos tipos, la de su tipo común o MissingNo. Pasa el ratón por una para ver su ficha.`,
-          { max: 8 },
+          `Dos movimientos al nivel {level} o superior se funden en la Máquina de Bill. La pareja decide la fusión: la de firma del Pokémon, la reacción de sus dos tipos, la de su tipo común o MissingNo. Pasa el ratón por una para ver su ficha.`,
+          { level: fusionRequiredLevel },
         ),
     ),
     e.length
@@ -59876,8 +59864,8 @@ function _O(e) {
             `p`,
             { class: `gl-intro` },
             c(
-              `En la Máquina de Bill, dos movimientos al nivel máximo ({max}) se funden en uno nuevo que ocupa el hueco del primero y deja el otro libre. La fusión tiene su propio tipo y es Físico o Especial por sí misma: no hereda la categoría de los dos movimientos, así que mira su ficha antes de fundir. Se lanza sola en su recarga, sube de ★1 a ★5 con las mejoras y nunca se funde con climas, potenciadores ni otra fusión.`,
-              { max: 8 },
+              `En la Máquina de Bill, dos movimientos al nivel {level} o superior se funden en uno nuevo que ocupa el hueco del primero y deja el otro libre. La fusión tiene su propio tipo y es Físico o Especial por sí misma: no hereda la categoría de los dos movimientos, así que mira su ficha antes de fundir. Se lanza sola en su recarga, sube de ★1 a ★5 con las mejoras y nunca se funde con climas, potenciadores ni otra fusión.`,
+              { level: fusionRequiredLevel },
             ),
           ),
         ),
@@ -79787,7 +79775,7 @@ function iI(e, t) {
 }
 const facilityMapArt = Object.fromEntries(Object.entries({
   chest:'#e8443a', freechest:'#3a7aff', altar:'#2ec8e0', portal:'#9a6aff', boss:'#e8243a',
-  magnet:'#8a8aa0', berry:'#3a7aff', ditto:'#c88aff', nest:'#6ad05a', bill:'#ffb43a',
+  magnet:'#8a8aa0', berry:'#3a7aff', nest:'#6ad05a', bill:'#ffb43a',
 }).map(([kind, ring]) => [kind, {src: facilityIconFile(kind), ring, name: facilityNames[kind]}]));
 var cI = {
     boss: `#ff2a4a`,
@@ -79907,7 +79895,6 @@ var yI = new Set([
   `challenge`,
   `meowth`,
   `hypno`,
-  `ditto`,
   `slots`,
   `fossil`,
   `nest`,
@@ -80736,7 +80723,7 @@ var OI = [
       c(`Letal`),
       c(`Imposible`),
     ][e],
-  RI = new Set([`meowth`, `ditto`, `hypno`]);
+  RI = new Set([`meowth`, `hypno`]);
 function zI(e, t, n) {
   let r = e.textContent ?? ``,
     i = 0;
@@ -82203,7 +82190,6 @@ var JI = class {
         landmarkLabels = {
           freechest: c(`Poké Ball gratis`),
           meowth: c(`Tienda`),
-          ditto: c(`Ditto (clona un objeto)`),
           bill: c(`Máquina de Bill`),
           nest: c(`Huevo Pokémon`),
           hypno: c(`Hypno`),
@@ -83294,45 +83280,6 @@ var JI = class {
             (e.preventDefault(), N.click(), removeEventListener(`keydown`, r), t());
       };
       (setTimeout(() => addEventListener(`keydown`, r), 250), e.cry(52));
-    }
-    showDitto(e, t) {
-      let n = X(`div`, { class: `cards scroll` });
-      for (let [r, i] of e.player.items) {
-        let a = Zb(r),
-          o = !e.player.canHold(r),
-          s = X(
-            `button`,
-            {
-              class: `card mini`,
-              onclick: () => {
-                o ? N.deny() : t(r);
-              },
-            },
-            X(
-              `div`,
-              { class: `top` },
-              o
-                ? X(`span`, { class: `kind` }, c(`Máx.`))
-                : i > 1
-                  ? X(`span`, { class: `kind` }, `×${i}`)
-                  : null,
-              Q(r),
-            ),
-            X(`div`, { class: `bd` }, X(`h3`, {}, a.name), X(`p`, {}, a.desc)),
-          );
-        (s.style.setProperty(`--rc`, aw[a.rarity]), o && (s.style.opacity = `0.45`), n.append(s));
-      }
-      let r = this.modal(
-        X(`h1`, { class: `small` }, c(`Ditto: ¿qué objeto copio?`)),
-        n,
-        X(
-          `div`,
-          { class: `actions` },
-          X(`button`, { class: `btn ghost`, onclick: () => t(null) }, c(`Ahora no`)),
-        ),
-        sO(e),
-      );
-      (lO(e, () => r.isConnected), e.cry(132));
     }
     showSlots(e, t, n) {
       let r = (e) =>
@@ -84533,8 +84480,8 @@ var JI = class {
             `p`,
             { class: `mp-hint` },
             c(
-              `Cada pareja de movimientos que llevas y la fusión que da en la Máquina de Bill. Hacen falta los dos al nivel máximo ({max}). Tu fusión de firma sale siempre.`,
-              { max: 8 },
+              `Cada pareja de movimientos que llevas y la fusión que da en la Máquina de Bill. Hacen falta los dos al nivel {level} o superior. Tu fusión de firma sale siempre.`,
+              { level: fusionRequiredLevel },
             ),
           ),
           o.length
@@ -86265,8 +86212,8 @@ var JI = class {
       });
       let u = t.length
           ? c(
-              `Funde dos movimientos al nivel máximo ({max}) en uno nuevo: ocupa el hueco del primero y deja el otro libre para aprender otro ataque. La máquina solo funde una vez.`,
-              { max: 8 },
+              `Funde dos movimientos al nivel {level} o superior en uno nuevo: ocupa el hueco del primero y deja el otro libre para aprender otro ataque. La máquina solo funde una vez.`,
+              { level: fusionRequiredLevel },
             )
           : c(`Necesitas al menos dos movimientos para fusionarlos.`),
         d = this.modal(

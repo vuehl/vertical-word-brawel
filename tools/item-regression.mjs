@@ -132,7 +132,7 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
     const resumed=!!label()?.isConnected;
     const removed=facilities.add('chest',qaChest.x,qaChest.z);
     facilities.remove(removed);await removed.modelReady;
-    const npc=facilities.list.find(o=>o.kind==='ditto');
+    const npc=facilities.list.find(o=>o.kind==='bill');
     qaPlace(npc);qaItemFrames(1);
     const npcLabel=ui.worldLabelNodes.get(npc);
     npc.model.visible=false;qaItemFrames(1);

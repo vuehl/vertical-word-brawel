@@ -52,11 +52,11 @@ test('both map sizes draw model thumbnails for functional buildings',()=>{
   const icons=[],ctx=new Proxy({drawImage:image=>icons.push(image.kind)},{get:(t,k)=>t[k]??(()=>{})});
   const canvas={width:240,height:240,getContext:()=>ctx};
   const run={player:{pos:{x:0,z:0}},terrain:{world:240},boss:{alive:false},enemies:{n:0},allies:{list:[]},
-    interactables:{markers:()=>[{kind:'bill',x:10,z:0},{kind:'ditto',x:-25,z:-20}]}};
+    interactables:{markers:()=>[{kind:'bill',x:10,z:0},{kind:'nest',x:-25,z:-20}]}};
   const iconFor=kind=>({kind,naturalWidth:16,naturalHeight:20});
   for(const viewRatio of [1,2]){
     icons.length=0;drawBattleMinimap(canvas,run,{viewRatio,shadow:viewRatio===1,iconFor});
-    assert.deepEqual(icons.sort(),['bill','ditto']);
+    assert.deepEqual(icons.sort(),['bill','nest']);
   }
   icons.length=0;run.interactables.markers=()=>[];drawBattleMinimap(canvas,run,{iconFor});assert.deepEqual(icons,[]);
 });

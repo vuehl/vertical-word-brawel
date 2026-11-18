@@ -15,7 +15,8 @@ import {performanceProfile} from '../source/src/performance-profile.js';
 import {readDevice} from '../platform/device.mjs';
 
 test('ordinary waves grow to 200, include event and elite spawns, and leave boss slots available',()=>{
-  for(const [mode,seconds] of [[SINGLE_STAGE,360],['standard',300]]){
+  for(const [mode,peak] of [[SINGLE_STAGE,360],['standard',300],['classic',300]]){
+    const seconds=360;
     assert.equal(zoneDuration(mode),seconds);
     assert.equal(remainingZoneSeconds({mode,stageTime:.05}),seconds);
     assert.equal(remainingZoneSeconds({mode,stageTime:seconds+1}),-1);
@@ -23,8 +24,8 @@ test('ordinary waves grow to 200, include event and elite spawns, and leave boss
     for(let second=0;second<=seconds+60;second++){
       const limit=ordinaryLimit(second,1,mode);assert.ok(limit>=previous&&limit<=200);previous=limit;
     }
-    assert.ok(ordinaryLimit(seconds-1,1,mode)<200);
-    assert.equal(ordinaryLimit(seconds,1,mode),200);
+    assert.ok(ordinaryLimit(peak-1,1,mode)<200);
+    assert.equal(ordinaryLimit(peak,1,mode),200);
   }
   const enemies={n:201,count:201,alive:new Uint8Array(201).fill(1),flags:new Uint32Array(201)};
   enemies.flags[200]=4;
@@ -72,7 +73,7 @@ test('normal solo first zones space strong encounters and ease the multi-zone re
     for(const honey of [false,true]){
       const waves=normalOpeningWaves(mode,'stampede',honey);
       assert.equal(waves.filter(w=>w.kind==='stampede').length,1);
-      const times=[...waves.map(w=>w.t),zoneDuration(mode)-50];
+      const times=[...waves.map(w=>w.t),zoneDuration(mode)];
       assert.ok(times.slice(1).every((t,i)=>t-times[i]>=25));
     }
   }

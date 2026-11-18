@@ -25,7 +25,7 @@ export function saveProgress(run) {
   if(!p || !coop || coop.ended || run.state==='over' || run.buildingStage)return;
   const fields=(object,keys)=>Object.fromEntries(keys.map(key=>[key,object[key]]));
   const data={v:3,seat:coop.room.me,party:coop.party,stage:run.stage,
-    run:fields(run,['stats','gold','keys','goldSpent','splits','pendingLevels','rerolls','skips','tempMods','curses','nextEvo']),
+    run:fields(run,['stats','gold','keys','goldSpent','springShoesSeen','splits','pendingLevels','rerolls','skips','tempMods','curses','nextEvo']),
     player:fields(p,['speciesId','evoStage','level','xp','growth','hp','shield','overheal','revives','dead']),
     bleed:coop.bleed,out:coop.out,pos:[p.pos.x,p.pos.y,p.pos.z],
     items:[...p.items],vitamins:[...p.vitamins],
@@ -39,6 +39,10 @@ export function restoreProgress(run,data,world) {
     if(data.player.speciesId!==p.speciesId)p.setSpecies(data.player.speciesId);
     Object.assign(p,data.player);
     p.items=new Map((data.items ?? []).filter(([key])=>heldItemRules.has(key)));
+    if (p.items.has('air-balloon')) {
+      p.items.set('air-balloon', 1);
+      run.springShoesSeen = true;
+    }
     p.vitamins=new Map((data.vitamins ?? []).filter(([key])=>vitaminRules.has(key)));
     const openingMoveId=p.moves[0]?.def.id;
     p.moves.fill(null);

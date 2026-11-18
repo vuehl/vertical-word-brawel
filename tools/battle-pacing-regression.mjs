@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 // Fire kites normally for the opening minute. Use invulnerability for the
 // rest of the timing comparison and automate menus without drawing frames.
 export async function reviewBattlePacing(page) {
-  const zones = [['single-stage', 4, 1, 360], ['standard', 16, 1, 300], ['standard', 16, 2, 300]];
+  const zones = [['single-stage', 4, 1, 360], ['standard', 16, 1, 360], ['standard', 16, 2, 360]];
   for (const [mode, species, stage, duration] of zones) {
     const sample = await page.evaluate(async ({mode, species, stage, duration}) => {
       if (stage === 1) await app.startRun({mode, species, tier:0, biome:'forest', boosts:[]});
@@ -31,10 +31,16 @@ export async function reviewBattlePacing(page) {
       if (species === 16 && stage === 1) p.addXp = amount => { if (r.time > 85) addXp(amount); };
       let openingCount = 0, movesAtMinute, openingHp, oldForm = p.speciesId, bossAt, bossHp;
       let requiredLevel = r.nextEvo?.level;
-      for (let frame = 0; frame < (duration + 90) * 25 && r.stageTime < duration + 30; frame++) {
+      const vortex = r.interactables.list.find(o => o.kind === 'boss');
+      let holdingAtDeadline = false;
+      for (let frame = 0; frame < (duration + 180) * 25 && r.stageTime < duration + 120; frame++) {
         if (kiteOpening && !movesAtMinute) {
           r.input.stickX = Math.cos(r.stageTime * 0.3);
           r.input.stickY = Math.sin(r.stageTime * 0.3);
+        }
+        if (stage === 2 && !r.bossSpawned && r.stageTime >= duration - 1) {
+          p.pos.set(vortex.x, vortex.y, vortex.z);
+          holdingAtDeadline = r.interactables.nearest === vortex && r.interactables.dwellProgress > 0;
         }
         r.update(1/20);
         if (r.state === 'modal') {
@@ -59,6 +65,8 @@ export async function reviewBattlePacing(page) {
         }
         if (r.bossSpawned && bossAt == null) {
           bossAt = r.stageTime;
+          if (!r.dragonDuel || !r.ui.dragonChant || r.boss.name !== '龘' || r.director.finalSwarm)
+            throw Error('Expected the summoned dragon cinematic at the zone deadline');
           bossHp = r.enemies.maxHp[r.boss.bossIndex];
         }
         if (r.stageTime >= (minutes.length + 1) * 60) minutes.push({level:p.level, kills:r.stats.kills,
@@ -70,15 +78,14 @@ export async function reviewBattlePacing(page) {
       r.renderWorld = renderWorld;
       r.ui.hud = hud;
       p.addXp = addXp;
-      const vortex = r.interactables.list.find(o => o.kind === 'boss');
       const portal = r.interactables.list.find(o => o.kind === 'portal');
       return {mode,stage:r.stage,firstClock,timeline,drafts,movesAtMinute,openingHp,openingCount,forms,minutes,bossAt,bossHp,
-        cleared:r.stageCleared,at:r.stageTime,level:p.level,kills:r.stats.kills,vortexUsed:vortex?.used,portal:!!portal};
+        holdingAtDeadline,cleared:r.stageCleared,at:r.stageTime,level:p.level,kills:r.stats.kills,vortexUsed:vortex?.used,portal:!!portal};
     }, {mode,species,stage,duration});
     const {timeline, ...summary} = sample;
     console.log('Battle pacing', JSON.stringify(summary));
     assert.equal(sample.stage, stage);
-    assert.equal(sample.firstClock, duration === 360 ? '06:00' : '05:00');
+    assert.equal(sample.firstClock, '06:00');
     assert.ok(sample.openingCount > 0 && sample.openingCount <= 10);
     if (stage === 1) {
       assert.equal(sample.drafts[0].offers.length,3);
@@ -88,11 +95,12 @@ export async function reviewBattlePacing(page) {
       assert.deepEqual(sample.forms.map(f => f.requiredLevel), [10,20]);
       assert.ok(sample.forms.every(f => f.level >= f.requiredLevel));
     }
-    assert.ok(timeline.every(event => event.t < duration));
-    const guardianAt = stage === 2 ? 243 : duration - 50;
-    assert.ok(Math.abs(sample.bossAt - guardianAt) < .1);
+    assert.ok(timeline.filter(event => event.kind !== 'guardian').every(event => event.t < duration));
+    assert.deepEqual(timeline.filter(event => event.kind === 'guardian'), [{kind:'guardian',t:duration}]);
+    assert.ok(sample.bossAt >= duration && sample.bossAt < duration + .1);
+    if (stage === 2) assert.ok(sample.holdingAtDeadline);
     assert.ok(sample.cleared && sample.portal && sample.vortexUsed);
-    assert.ok(sample.at <= duration + 30);
+    assert.ok(sample.at <= duration + 120);
   }
   assert.deepEqual(await page.evaluate(async () => {
     const r = app.run;

@@ -3,6 +3,48 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {reviewUltimateUpgrade} from './ultimate-upgrade-regression.mjs';
 
+async function reviewRetiredOffers(page){
+  const count=await page.evaluate(async()=>{
+    const retired=[36,44,172,179,242,245,514,583,50104];
+    const settings=app.meta.profile.settings,skip=settings.skipEmptyLevelUp;
+    let scenario=0,pages=0;
+    try{
+      settings.skipEmptyLevelUp=false;
+      for(const forms of [[4,5,6],[16,17,18,58,59,59]]){
+        await app.startRun({species:forms[0],biome:'forest',tier:0,boosts:[],mode:'standard'});
+        const r=app.run,p=r.player;
+        r.nextEvo=null;p.level=100;p.vitaminSlots=0;
+        r.ui.experienceReady=()=>true;
+        let card,choose;
+        r.ui.showLevelUp=(_run,items,pick)=>{[card]=items;choose=pick;};
+        for(const form of forms){
+          p.setSpecies(form);
+          // Keep a free slot so the same draw covers both new and equipped moves.
+          const starter=p.moves[0],id=retired[scenario++];
+          p.moves[1]={...starter,def:{...starter.def,id}};
+          r.banished.clear();r.rerolls=1;r.pendingLevels=1;r.state='play';card=null;
+          r.doLevelUp();
+          const seen=new Set();
+          while(card){
+            const offered=card.kind==='upMove'?p.moves[card.slot].def.id:card.id;
+            if(!Number.isInteger(offered)||retired.includes(offered))throw Error('Invalid skill offer '+offered+' for form '+form);
+            pages++;
+            const previous=card;card=null;
+            if(r.rerolls){choose(null,'reroll');continue;}
+            if(seen.has(offered))throw Error('Banished skill offered twice');
+            seen.add(offered);
+            choose(previous,'banish');
+          }
+          if(!seen.has(starter.def.id)||seen.size<2)throw Error('Expected both equipped and new skills for form '+form);
+          p.moves[1]=null;
+        }
+      }
+    }finally{settings.skipEmptyLevelUp=skip;}
+    return pages;
+  });
+  console.log('Retired move IDs absent from all playable forms across',count,'upgrade draws.');
+}
+
 async function reviewRandomOffers(page){
   const moves=JSON.parse(fs.readFileSync(new URL('../source/public/data/moves.json',import.meta.url)));
   const ids=Object.fromEntries(moves.filter(m=>['fire-spin','fire-blast'].includes(m.key)).map(m=>[m.key,m.id]));
@@ -67,7 +109,8 @@ async function reviewMoveCapacity(page){
       for(let draw=0;draw<100;draw++){
         for(const offer of offers){
           if(offer.vit)continue;
-          if(offer.kind!=='upMove'||offer.slot>=p.moveSlots||offer.key!=='m'+p.moves[offer.slot]?.def.id)
+          const move=p.moves[offer.slot];
+          if(offer.kind!=='upMove'||offer.slot>=p.moveSlots||!move||offer.key!=='m'+move.def.id||move.level>=p.capOf(move))
             throw Error('Unexpected skill offered at capacity: '+JSON.stringify(offer));
           upgrades++;
         }
@@ -90,10 +133,20 @@ async function reviewMoveCapacity(page){
       const rejected=r.pendingLevels===2&&r.stats.movesLearned===learned&&r.rerolls===rerolls&&!p.hasMove(stale.id);
       checkFull();
 
-      p.moves[0].level=p.moves[1].level=8;
-      ui.showFusion=(_run,recipes,pick)=>pick(recipes.findIndex(recipe=>recipe.ready));
+      p.moves[0].level=3;
+      p.moves[1].level=4;
+      const machine={kind:'bill',x:0,y:0,z:0};
+      ui.showFusion=(_run,recipes,pick)=>{
+        const pair=recipes.find(recipe=>recipe.a===0&&recipe.b===1);
+        if(pair.ready||!pair.need.some(text=>text.includes('3/4')))throw Error('Expected one more level for fusion');
+        pick(null);
+      };
       r.pendingLevels=0;r.state='play';
-      r.interactables.interact({kind:'bill',x:0,y:0,z:0});
+      r.interactables.interact(machine);
+      if(machine.used)throw Error('Viewing a locked fusion consumed the machine');
+      p.moves[0].level=4;
+      ui.showFusion=(_run,recipes,pick)=>pick(recipes.findIndex(recipe=>recipe.a===0&&recipe.b===1&&recipe.ready));
+      r.interactables.interact(machine);
       r.stepAnims(3,true);
       const fused=p.moves.find(move=>move?.def.fusion);
       if(!fused||p.moves.filter(Boolean).length!==2)throw Error('Fusion did not free a slot');
@@ -107,6 +160,27 @@ async function reviewMoveCapacity(page){
       const fourth=newOffer();
       choose(fourth);
       open();checkFull();
+      // Draw and apply real upgrade cards past the fusion threshold.
+      const trainToCap=(move,cap)=>{
+        if(p.capOf(move)!==cap)throw Error('Unexpected cap for '+move.def.name);
+        for(let level=move.level;level<cap;level++){
+          open();
+          const match=offer=>offer.kind==='upMove'&&p.moves[offer.slot]===move;
+          for(let draw=0;draw<150&&!offers.some(match);draw++)choose(null,'reroll');
+          const card=offers.find(match);
+          if(!card)throw Error('Missing upgrade at level '+level+' for '+move.def.name);
+          choose(card);
+          if(move.level!==level+1)throw Error('Upgrade did not increase the move level');
+        }
+      };
+      const ordinary=p.moves[2];
+      ordinary.level=4;
+      trainToCap(ordinary,8);
+      trainToCap(fused,5);
+      open();checkFull();
+      p.addItem('tm-case');
+      trainToCap(ordinary,10);
+      trainToCap(fused,6);
       return {rejected,learned:r.stats.movesLearned-learned,slots:p.moves.filter(Boolean).length};
     }finally{Object.assign(ui,{showLevelUp,showFusion,experienceReady});Math.random=random;}
   });
@@ -124,6 +198,7 @@ export async function reviewUpgrade({page,resize,dir}){
   });
   if(!baseline){
     await reviewRandomOffers(page);
+    await reviewRetiredOffers(page);
     await reviewMoveCapacity(page);
   }
   const ultimate=baseline?null:await reviewUltimateUpgrade(page,dir);

@@ -56,6 +56,21 @@ test('rejoining restores wave time, keeps a wind branch and migrates only old ev
   }
 });
 
+test('rejoining remembers skipped spring shoes and caps pairs from older saves',()=>{
+  for(const [items,savedRun,expected] of [
+    [[], {springShoesSeen:true}, 0],
+    [[['air-balloon',3]], {}, 1],
+    [[], {}, 0],
+  ]){
+    const player={speciesId:4,moves:[],pos:{set(){}},xpFor:()=>30,recompute(){}};
+    const run={player,coop:{},camTarget:{copy(){}},director:{timeline:[]},springShoesSeen:false};
+    const data={stage:1,player:{speciesId:4},items,pos:[0,0,0],moves:[],run:{nextEvo:null,...savedRun}};
+    restoreProgress(run,data,{stage:1,time:60,stageTime:60});
+    assert.equal(player.items.get('air-balloon')??0,expected);
+    assert.equal(run.springShoesSeen,Boolean(expected||savedRun.springShoesSeen));
+  }
+});
+
 test('borrowed ultimates keep the original cast, while wind forms use the correct source stage',()=>{
   const calls=[],original={};
   for(const id of [4,16,58,132])original[id]={names:['a','b','c'],descs:['d0','d1','d2'],dur:[1.2,1.8,3],cast:ctx=>calls.push([id,ctx])};

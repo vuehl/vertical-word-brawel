@@ -3,13 +3,31 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 
-const removed=['cursed','greed','porygon','snorlax','cage','rock','challenge','fossil','rhydon','meowth','hypno','slots','cursedchest','shroom','shrine','tower'];
-const retained=['boss','altar','bill','nest','ditto','magnet','freechest','berry','chest'];
+const removed=['ditto','cursed','greed','porygon','snorlax','cage','rock','challenge','fossil','rhydon','meowth','hypno','slots','cursedchest','shroom','shrine','tower'];
+const retained=['boss','altar','bill','nest','magnet','freechest','berry','chest'];
 
 // Exercise the compiled game, including dynamic placement and real NPC callbacks.
 export async function reviewScenes({page,tap,dir,sleep}) {
   const report={mode:'Compiled WeChat bundle in Chrome fixture. Controlled zone traversal and isolated NPC transactions, not a natural playthrough or phone test.',removed,stages:[],summons:[]};
   const shot=async name=>{await sleep(400);await page.screenshot({path:path.join(dir,name+'.png')});};
+  async function checkSpringShoes(choice) {
+    const result=await page.evaluate(choice=>{
+      const run=app.run, shoes='air-balloon', other='razor-claw';
+      const pool=run.meta.itemInPool;
+      try {
+        run.meta.itemInPool=key=>key===shoes || (choice && key===other);
+        run.rollChestItem(false,1,choice?2:1);
+        const cards=[...run.ui.root.querySelectorAll('[data-item-choice]')].map(card=>card.dataset.itemChoice);
+        const action=choice?'[data-item-choice="razor-claw"]':'[data-item-action="sell"]';
+        run.ui.root.querySelector(action).dispatchEvent(new inspected.env.Event('click'));
+        run.meta.itemInPool=key=>key===shoes;
+        const gold=run.gold;
+        run.rollChestItem(false,1,2);
+        return {cards:cards.sort(),goldFallback:run.state==='play' && run.gold>gold,owned:run.player.items.has(shoes)};
+      } finally {run.meta.itemInPool=pool;}
+    },choice);
+    assert.deepEqual(result,{cards:choice?['air-balloon','razor-claw']:['air-balloon'],goldFallback:true,owned:false});
+  }
   async function summonAtBuilding(captureIntro=false) {
     const timing=await page.evaluate(async()=>{
       const run=app.run,facilities=run.interactables;
@@ -22,17 +40,17 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       run.player.vel.set(0,0,0);
       facilities.update(0,0);
       pos.x=beside;
-      run.time=run.stage===2?650:239.875;
-      run.stageTime=239.875;
+      run.time=run.stage===2?650:299.875;
+      run.stageTime=299.875;
       stay(240);
       facilities.interact(building);
       const earlyEvent=run.director.fire('guardian');
       facilities.render();
       const sealed=!building.used&&!run.bossSpawned&&!facilities.dwellRing.visible&&facilities.dwellTime===0;
       const sealedLabel=facilities.label(building);
-      run.stageTime=240;facilities.update(.125,.125);
+      run.stageTime=300;facilities.update(.125,.125);
       const atUnlock=facilities.dwellTime;
-      run.time+=.25;run.stageTime=240.125;facilities.update(.25,.25);
+      run.time+=.25;run.stageTime=300.125;facilities.update(.25,.25);
       const crossed=facilities.dwellTime;
       facilities.interact(building);
       const stillWaiting=!building.used&&!run.bossSpawned;
@@ -40,7 +58,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       pos.x=outside;stay(1);pos.x=beside;
       stay(90);
       const halfway=facilities.dwellProgress,target=facilities.nearest?.kind,visible=facilities.hasVisual(building);
-      run.stageTime=244;
+      run.stageTime=304;
       const eventWhileHolding=run.director.fire('guardian');
       facilities.render();
       const ring=facilities.dwellRing;
@@ -147,6 +165,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
   await tap('[data-action="enter"]');
   const playing=()=>page.waitForFunction(()=>app.run?.time>1&&app.run.state==='play',{timeout:90000});
   await playing();
+  await checkSpringShoes(false);
   const singleDiff=await page.evaluate(async()=>{
     const r=app.run;
     if(r.interactables.list.filter(o=>o.kind==='altar').length!==1)throw Error('Expected one guardian altar in single-stage mode');
@@ -160,7 +179,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     const r=app.run,f=r.interactables,door=f.list.find(o=>o.kind==='boss');
     await door.modelReady;
     const previous=app.halted;app.halted=true;
-    r.time=r.stageTime=228;
+    r.time=r.stageTime=288;
     r.player.pos.set(door.x,door.y,door.z+2.5);r.player.vel.set(0,0,0);r.camTarget.copy(r.player.pos);
     f.update(0,0);r.hints.tick(r,1);r.updateCamera(1);r.renderWorld(0);r.ui.hud(r);r.ui.worldLabels(r);
     app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
@@ -225,6 +244,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
   await tap('[data-action="enter"]');
   await playing();
   assert.deepEqual(await page.evaluate(()=>app.run.diff),singleDiff);
+  await checkSpringShoes(true);
   await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;app.run.hints.show=()=>{};});
 
   for(const stage of [1,2,4]) {
@@ -232,6 +252,16 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       const r=app.run;
       return r?.stage===stage && r.state==='play' && (stage!==4 || r.boss.alive);
     },{timeout:90000},stage);
+    if(stage===2){
+      assert.ok(await page.evaluate(()=>{
+        const run=app.run, pool=run.meta.itemInPool, gold=run.gold;
+        try {
+          run.meta.itemInPool=key=>key==='air-balloon';
+          run.rollChestItem(false);
+          return run.state==='play' && run.gold>gold;
+        } finally {run.meta.itemInPool=pool;}
+      }),'Changing zones must not offer skipped shoes again');
+    }
     const inventory=await page.evaluate(removed=>{
       const r=app.run,interactions=r.interactables;r.state='paused';
       const counts={};for(const o of interactions.list)counts[o.kind]=(counts[o.kind]||0)+1;
@@ -260,7 +290,6 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     assert.deepEqual(Object.keys(inventory.counts).sort(),(stage===4?[]:retained).slice().sort());
     if(stage!==4){
       assert.equal(inventory.counts.altar,1);
-      assert.equal(inventory.counts.ditto,1);
       const s=inventory.spacing;
       assert.ok(s.accessible&&s.quadrants===4&&s.minGap>10&&s.outsideOldCircle>0,JSON.stringify(s));
     }
@@ -278,22 +307,11 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       await page.waitForFunction(()=>app.run.ui.mapOpen());
       const mapText=await page.evaluate(()=>app.run.ui.modalEl.textContent);
       assert.match(mapText,/附近地图/);
-      assert.doesNotMatch(mapText,/点击类别|附近 \d+ 处|守护者祭坛/);
+      assert.doesNotMatch(mapText,/点击类别|附近 \d+ 处|守护者祭坛|拍立得/);
       assert.doesNotMatch(mapText,/Snorlax|Porygon|卡比兽|多边兽|诅咒雕像|诅咒祭坛|贪婪|笼子|金矿石|Altar maldito|Jaula|Roca de oro|Altar de Gengar/i);
       await shot('scene-full-map');
       await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});
 
-      await page.evaluate(()=>{
-        const r=app.run;r.player.items.clear();r.player.addItem('razor-claw');
-        r.interactables.interact(r.interactables.list.find(o=>o.kind==='ditto'));
-      });
-      await shot('scene-ditto-copy');
-      await tap('[data-choice="showDitto"] [data-offer="0"]');
-      const copied=await page.evaluate(()=>({count:app.run.player.items.get('razor-claw'),used:app.run.interactables.list.find(o=>o.kind==='ditto').used}));
-      assert.deepEqual(copied,{count:2,used:true});
-
-      report.copied=copied;
-      await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});
       report.blessing=await page.evaluate(()=>{
         const r=app.run,f=r.interactables;
         const altar=f.list.find(o=>o.kind==='altar');
@@ -364,5 +382,5 @@ export async function reviewScenes({page,tap,dir,sleep}) {
   assert.ok(result.run.victory);assert.equal(result.run.splits.length,3);
   assert.match(result.text,/2 \/ 2/);
   fs.writeFileSync(path.join(dir,'scene-regression.json'),JSON.stringify(report,null,2));
-  console.log('Scene removal regression passed: two combat zones, automatic final boss, victory, official facility pools, item copying and portals.');
+  console.log('Scene regression passed for combat zones, final boss, victory, facility pools, unique spring shoe offers and portals.');
 }
