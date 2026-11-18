@@ -4,6 +4,70 @@ import path from 'node:path';
 
 export async function reviewBattleVisual(page,dir){
   const report={overlays:[]};
+  report.stageIntro=await page.evaluate(()=>{
+    const {env,doc,layout}=inspected,r=app.r,run=app.run;
+    const root=doc.querySelector('[data-ui-layer="stage-intro"]');
+    root.replaceChildren();env.invalidateUI();env.drawUI(r.renderer);
+    const draw=()=>{r.render(0);env.drawUI(r.renderer);};
+    const pixels=()=>{
+      const gl=r.renderer.getContext(),rgba=new Uint8Array(gl.drawingBufferWidth*gl.drawingBufferHeight*4);
+      gl.readPixels(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+      return rgba;
+    };
+    const before=auditUIUploads;
+    run.ui.stageIntro(run);draw();
+    const title=root.querySelector('.zx-intro'),box=layout.box(title),on=pixels();
+    title.remove();draw();
+    const off=pixels(),fullUploads=auditUIUploads-before;
+    // Compare with the original full-HUD placement, including the background and text.
+    app.ui.append(title);env.invalidateUI();draw();
+    const reference=pixels();title.remove();env.invalidateUI();draw();
+    const empty=pixels();
+    // A scheduled HUD repaint can land in the very frame the title expires.
+    root.append(title);draw();title.remove();env.invalidateUI();draw();
+    const afterRepaint=pixels();
+    const different=(a,b,i)=>Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>30;
+    let changed=0,mismatch=0,stalePixels=0;
+    for(let i=0;i<on.length;i+=4){
+      if(different(on,off,i))changed++;
+      if(different(on,reference,i))mismatch++;
+      if(different(afterRepaint,empty,i))stalePixels++;
+    }
+    return {width:box.w,height:box.h,changedPixels:changed,referenceMismatch:mismatch,stalePixels,fullUploads};
+  });
+  assert.ok(report.stageIntro.width>200&&report.stageIntro.height>20&&report.stageIntro.changedPixels>1000,'Title must be visible and disappear');
+  assert.equal(report.stageIntro.fullUploads,0,'Showing and removing the title must use its own layer');
+  assert.equal(report.stageIntro.stalePixels,0,'A simultaneous HUD repaint must not bring the title back');
+  assert.ok(report.stageIntro.referenceMismatch<report.stageIntro.changedPixels*.03,JSON.stringify(report.stageIntro));
+  report.playerHealth=await page.evaluate(()=>{
+    const run=app.run,p=run.player,renderer=app.r.renderer,env=inspected.env;
+    const origin=p.pos.clone(),hp=p.hp;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const draw=()=>{run.ui.hud(run);run.renderWorld(0);app.r.render(0);env.drawUI(renderer);};
+    const greenPixels=()=>{
+      const foot=run.ui.project(run,p.pos.x,p.pos.y-.15,p.pos.z),gl=renderer.getContext();
+      const sx=gl.drawingBufferWidth/screen.width,sy=gl.drawingBufferHeight/screen.height;
+      const w=Math.round(82*sx),h=Math.round(12*sy),rgba=new Uint8Array(w*h*4);
+      gl.readPixels(Math.round((foot.x-screen.left-41)*sx),gl.drawingBufferHeight-Math.round((foot.y-screen.top+25)*sy),
+        w,h,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+      let count=0;
+      for(let i=0;i<rgba.length;i+=4)if(rgba[i+1]>150&&rgba[i+1]-rgba[i]>60&&rgba[i+1]-rgba[i+2]>60)count++;
+      return count;
+    };
+    // Repaint HP outside the current camera, then return without another HP change.
+    p.hp=p.maxHp;draw();const full=greenPixels();
+    const m=app.r.camera.matrixWorld.elements;
+    p.pos.x+=200*m[0];p.pos.z+=200*m[2];p.hp=p.maxHp/2;draw();
+    p.pos.copy(origin);draw();const half=greenPixels();
+    p.hp=hp;draw();
+    const foot=run.ui.project(run,p.pos.x,p.pos.y-.15,p.pos.z);
+    return {platform:env.nativeDevice.platform,full,half,recovered:greenPixels(),clip:{x:Math.round(foot.x-screen.left-76),
+      y:Math.round(foot.y-screen.top-100),width:152,height:144}};
+  });
+  const {full,half,recovered}=report.playerHealth;
+  assert.equal(report.playerHealth.platform,'ios');
+  assert.ok(full>50&&half>full*.3&&half<full*.7&&recovered>half,JSON.stringify(report.playerHealth));
+  await page.screenshot({path:path.join(dir,'主角脚下血条.png'),clip:report.playerHealth.clip});
   report.effects=await page.evaluate(()=>{
     const run=app.run,r=app.r;app.meta.profile.settings.quality='high';app.applySettings();
     const dimensions=()=>[r.composer.inputBuffer.width,r.composer.inputBuffer.height];
@@ -63,7 +127,7 @@ export async function reviewBattleVisual(page,dir){
       env.invalidateUI();await new Promise(r=>setTimeout(r,100));draw();
       const before=auditUIUploads;
       for(let i=0;i<5;i++){
-        marker.style.left=(130+i*5)+'px';marker.children[2].textContent=(25+i)+' 米';
+        marker.style.left=(130+i*5)+'px';marker.children[2].textContent=(25+i)+' 厘米';
         popup.style.top=(300-i*3)+'px';popup.textContent='效果绝佳 '+i;
         await new Promise(r=>setTimeout(r,100));draw();
       }
@@ -86,5 +150,36 @@ export async function reviewBattleVisual(page,dir){
     report.overlays.push({width,height,...sample});
     await page.screenshot({path:path.join(dir,`overlay-${width}.png`)});
   }
+  await page.setViewport({width:390,height:844,deviceScaleFactor:2});
+  await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
+  report.captureGuide=await page.evaluate(async()=>{
+    const run=app.run,ui=run.ui,p=run.player.pos,doc=inspected.doc,env=inspected.env;
+    const i=run.enemies.spawn(4,p.x+26,p.z,1,1,128);
+    Object.assign(run.capture,{index:i,species:4,state:'weakened'});
+    run.enemies.x[i]=p.x+26;run.enemies.z[i]=p.z;
+    ui.toastsEl.replaceChildren();run.capture.recover();
+    await new Promise(r=>setTimeout(r,200));
+    ui.hud(run);run.renderWorld(0);app.r.render(0);env.invalidateUI();env.drawUI(app.r.renderer);
+    const dial=ui.arrow.children[0],text=ui.toastsEl.querySelector('.zx-note-text');
+    return {score:!!doc.querySelector('.zx-hud-meta,.zx-hud-score'),toast:text.textContent,
+      direction:dial.dataset.frame,surface:[dial.width,dial.height],distance:ui.arrow.children[2].textContent,
+      visible:ui.arrow.style.display!=='none'&&inspected.layout.box(text).w>0};
+  });
+  assert.equal(report.captureGuide.score,false);
+  assert.deepEqual(report.captureGuide.surface,[128,128]);
+  assert.ok(report.captureGuide.visible&&report.captureGuide.direction!==undefined,JSON.stringify(report.captureGuide));
+  assert.match(report.captureGuide.toast,/恢复/);assert.match(report.captureGuide.distance,/26/);
+  await page.screenshot({path:path.join(dir,'捕获目标提示.png')});
+  report.manualUltimate=await page.evaluate(()=>{
+    const run=app.run;
+    Object.assign(run.meta.profile.settings,{autoUlt:false,ultQuiet:false,ultPose:true});
+    run.ult.charge=1;run.hitstopT=0;
+    const start=run.time,uses=run.ult.uses;
+    run.input.hit=key=>key==='KeyR';run.update(1/60);
+    run.input.hit=()=>false;run.update(1/60);run.update(1/60);
+    return {uses:run.ult.uses-uses,hitstop:run.hitstopT,advanced:run.time-start,castPending:run.ult.castPending};
+  });
+  assert.equal(report.manualUltimate.uses,1);assert.equal(report.manualUltimate.hitstop,0);
+  assert.ok(Math.abs(report.manualUltimate.advanced-3/60)<1e-7);assert.equal(report.manualUltimate.castPending,false);
   fs.writeFileSync(path.join(dir,'battle-visual.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 }

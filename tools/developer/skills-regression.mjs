@@ -4,15 +4,15 @@ import path from 'node:path';
 
 export async function reviewDeveloperSkills(page,dir){
   const report=[];
-  for(const id of [4,5,6,132,16,17,18,58,59]){
+  for(const id of [4,5,6,16,17,18,58,59]){
     const sample=await page.evaluate(async id=>{
-      const base=[4,5,6].includes(id)?4:id===132?132:16;
+      const base=[4,5,6].includes(id)?4:16;
       await app.startRun({species:base,biome:'forest',tier:0,boosts:[],mode:'standard'});
       app.halted=true;
       const api=inspected.env.__zixingDeveloper,r=app.run,p=r.player;
       api.close();api.options.spawn=false;api.options.lockCount=false;
       const starting=p.moves.filter(Boolean).map(m=>({key:m.def.key,level:m.level,mods:{...m.mods}}));
-      if(id!==base){p.setSpecies(id);p.evoStage=[6,58,59].includes(id)?2:1;p.recompute();r.nextEvo=r.planEvolution(id,1);}
+      if(id!==base){p.setSpecies(id);p.evoStage=[6,18,59].includes(id)?2:1;p.recompute();r.nextEvo=r.planEvolution(id,1);}
       const original={moves:p.moves,level:p.level,slots:p.moveSlots,kit:p.roster.kit,ability:p.ability};
       const samples=[];
       for(const [mode,time] of [['timed',0],['timed',120],['timed',300],['timed',600],['stress',0]]){

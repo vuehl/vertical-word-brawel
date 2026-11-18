@@ -11,17 +11,31 @@ export async function profileRuntime(page,dir){
       const run=app.run,p=run.player;
       app.meta.profile.settings.quality=quality;app.applySettings();app.r.setDynRes(1);
       run.director.update=run.director.startFinalSwarm=()=>{};run.queueLevelUp=()=>{};run.pendingLevels=0;
-      run.events.update=run.minibosses.update=()=>{};
+      // At minute ten even a completed capture event can schedule a shiny.
+      // Keep the measured population fixed across both builds.
+      run.events.update=run.minibosses.update=run.capture.update=()=>{};
       run.time=run.stageTime=600;run.nextCp=1e9;
       run.capture.state='done';run.enemies.clear();p.hp=p.maxHp=1e9;
       for(let i=0;i<count;i++){
         const angle=i*2.39996,distance=4+(i%60)*.24;
-        run.enemies.spawn([16,19,21][i%3],p.pos.x+Math.cos(angle)*distance,p.pos.z+Math.sin(angle)*distance,1000,1,0);
+        run.enemies.spawn([16,19,21][i%3],p.pos.x+Math.cos(angle)*distance,p.pos.z+Math.sin(angle)*distance,1e7,1,0);
       }
       for(let i=0;i<15;i++)run.update(1/60);
       app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
     },{count,quality});
     await new Promise(resolve=>setTimeout(resolve,300));
+    // Count native state resets and HUD layer lookups separately from timings.
+    const hudWork=await page.evaluate(()=>{
+      const {env,doc}=inspected,renderer=app.r.renderer,proto=env.Element.prototype;
+      const closest=proto.closest,reset=renderer.resetState;
+      let lookups=0,resets=0;
+      proto.closest=function(selector){if(selector.includes('data-ui-layer'))lookups++;return closest.call(this,selector);};
+      renderer.resetState=function(){resets++;return reset.call(this);};
+      try{
+        env.invalidateUI();env.drawUI(renderer);
+        return {layerLookups:lookups,rendererResets:resets,hudPresent:!!doc.querySelector('[data-ui-layer="counters"]')};
+      }finally{proto.closest=closest;renderer.resetState=reset;}
+    });
     const client=await page.createCDPSession();
     await client.send('Profiler.enable');await client.send('Profiler.setSamplingInterval',{interval:500});await client.send('Profiler.start');
     const sample=await page.evaluate(async ({count,quality})=>{
@@ -64,7 +78,7 @@ export async function profileRuntime(page,dir){
     },{count,quality});
     const {profile}=await client.send('Profiler.stop');await client.detach();
     fs.writeFileSync(path.join(dir,'cpu-'+quality+'-'+count+'.cpuprofile'),JSON.stringify(profile));
-    report.samples.push(sample);
+    sample.hudWork=hudWork;report.samples.push(sample);
     fs.writeFileSync(path.join(dir,'runtime-profile.json'),JSON.stringify(report,null,2));
     console.log(JSON.stringify({quality,enemies:sample.enemies,frames:sample.frames,uiUploads:sample.uiUploads,uploadBytes:sample.uploadBytes,music:sample.music}));
     assert.equal(sample.state,'play');assert.equal(sample.enemies,count);

@@ -4,6 +4,30 @@ import assert from 'node:assert/strict';
 
 export async function reviewPhonePerformance(page,dir){
   const report={environment:'Compiled WeChat game in Chrome SwiftShader. Shader/clock work counts; not iPhone FPS.'};
+  report.fireTextures=await page.evaluate(()=>{
+    const {fireball,fireJet,fireSpin}=app.run.vfx.crafted,renderer=app.r.renderer;
+    return [fireball,fireJet,fireSpin].map(({mesh,texture})=>({
+      name:mesh.name,width:texture.image.width,height:texture.image.height,
+      prepared:renderer.properties.get(texture).__version===texture.version,
+    }));
+  });
+  assert.ok(report.fireTextures.every(t=>t.width>1&&t.prepared),'Fire textures should be resident before the first attack');
+  report.hitFeedback=await page.evaluate(()=>{
+    const ui=app.run.ui,env=inspected.env,draw=()=>env.drawUI(app.r.renderer);
+    const descriptor=Object.getOwnPropertyDescriptor(performance,'now');let now=performance.now();
+    // Advance the HUD clock without letting unrelated wall-clock hint/intro
+    // timers mutate the screen in the middle of the hit-feedback measurement.
+    Object.defineProperty(performance,'now',{configurable:true,value:()=>now});
+    try{
+      env.invalidateUI();draw();const before=auditUIUploads;
+      let visible=0;
+      for(let hit=0;hit<11;hit++){
+        now+=100;ui.damageFlash();draw();if(ui.flashEl.classList.contains('on'))visible++;
+      }
+      return {hits:11,fullUploads:auditUIUploads-before,visible};
+    }finally{if(descriptor)Object.defineProperty(performance,'now',descriptor);else delete performance.now;}
+  });
+  assert.equal(report.hitFeedback.fullUploads,0);assert.equal(report.hitFeedback.visible,0);
   report.warmup=await page.evaluate(async()=>{
     const run=app.run,r=app.r,gl=r.renderer.getContext(),p=run.player.pos;
     inspected.env.__zixingDeveloper?.close();

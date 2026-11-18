@@ -1,0 +1,37 @@
+{
+  "tile": 384,
+  "columns": 4,
+  "rows": 4,
+  "padding": 5,
+  "clips": {
+    "front": {
+      "first": 0,
+      "count": 16,
+      "source": "醉拳-技能08-醉倒钩/醉倒钩120度子弹",
+      "frames": [
+        "fire_wave_bullet_120°0001.png",
+        "fire_wave_bullet_120°0002.png",
+        "fire_wave_bullet_120°0003.png",
+        "fire_wave_bullet_120°0004.png",
+        "fire_wave_bullet_120°0005.png",
+        "fire_wave_bullet_120°0006.png",
+        "fire_wave_bullet_120°0007.png",
+        "fire_wave_bullet_120°0008.png",
+        "fire_wave_bullet_120°0009.png",
+        "fire_wave_bullet_120°0010.png",
+        "fire_wave_bullet_120°0011.png",
+        "fire_wave_bullet_120°0012.png",
+        "fire_wave_bullet_120°0013.png",
+        "fire_wave_bullet_120°0014.png",
+        "fire_wave_bullet_120°0015.png",
+        "fire_wave_bullet_120°0016.png"
+      ],
+      "crop": {
+        "left": 16,
+        "top": 20,
+        "width": 335,
+        "height": 459
+      }
+    }
+  }
+}

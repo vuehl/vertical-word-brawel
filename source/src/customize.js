@@ -1,6 +1,6 @@
 // Original rules and data are unchanged; these styles adapt the interface to portrait.
 import {laboratory, shop, roster, heldItems, biomes} from './catalogs.js';
-if(typeof document !== 'undefined'){
+if(typeof document !== 'undefined' && !globalThis.__ZILING_COMPILED_STYLES__){
  const style=document.createElement('style');
  style.textContent=`
     .rotate-hint{display:none!important;pointer-events:none!important}

@@ -105,15 +105,22 @@ async function unpack(name, revision, progress) {
   stats.unpackMs=Date.now()-unpackAt;
   const entries=[...resourceEntries(raw)],writeAt=Date.now();
   report(name,'write',0,entries.length);
-  let sliceStart = Date.now(),written=0;
-  for (const [file,part] of entries) {
-    // Keep model recipes on disk. Restore only models actually requested by
-    // gameplay, rather than copying all legacy GLBs before the first scene.
-    await writeFile(dir+'/'+file,part.buffer.slice(part.byteOffset,part.byteOffset+part.byteLength));
-    stats.writes++;
-    if (++written>=8 || Date.now() - sliceStart >= 6) {
+  let sliceStart = Date.now(),reported=0;
+  const batchSize=typeof fs().writeFile==='function'?4:1;
+  for(let i=0;i<entries.length;i+=batchSize){
+    // A retry can replace the directory. Drain every native write in this
+    // batch before propagating failure so an old callback cannot race it.
+    let failure;
+    await Promise.all(entries.slice(i,i+batchSize).map(async ([file,part])=>{
+      try {
+        await writeFile(dir+'/'+file,part.buffer.slice(part.byteOffset,part.byteOffset+part.byteLength));
+        stats.writes++;
+      } catch(error){failure=error;}
+    }));
+    if(failure)throw failure;
+    if (stats.writes-reported>=8 || Date.now() - sliceStart >= 6) {
       report(name,'write',stats.writes,entries.length);await yieldTask();
-      sliceStart = Date.now();written=0;
+      sliceStart = Date.now();reported=stats.writes;
     }
   }
   stats.writeMs=Date.now()-writeAt;

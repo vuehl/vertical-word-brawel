@@ -1,18 +1,20 @@
+import {formCopy} from './form-copy.js';
 import {glyphCatalog} from './glyph-catalog.js';
 import {heroWords,enemyWords} from './character-rules.js';
-import fireRigs from './fire-rigs.json' with {type:'json'};
+import heroRigs from './hero-rigs.json' with {type:'json'};
 
 const colors={fire:['#ff963e','#ed3438'],water:['#b9f2e7','#50bebd'],wood:['#c5e797','#72b778'],earth:['#e9b480','#b57649'],metal:['#ffe99a','#d5ac57'],ink:['#a5aac7','#6b719c'],dark:['#53695e','#1c302e']};
 let atlas,ready;
 const cache=new Map();
+export function releaseGlyphCanvasCache(){cache.clear();}
 // The atlas fits each authored cutout into the middle 80/96 of its tile.
-// Fire portraits already include 14 source-image pixels of dark ink.
+// Hero portraits already include 14 source-image pixels of dark ink.
 function bakedInkFraction(word){
-  const rig=Object.values(fireRigs).find(rig=>rig.word===word);
+  const rig=Object.values(heroRigs).find(rig=>rig.word===word);
   return rig?14*(80/96)/Math.max(rig.frame.width,rig.frame.height):0;
 }
-export function drawBattleOutline(ctx,mask,bakedFraction=0){
-  const size=mask.width,radius=size*(14/192-bakedFraction);
+export function drawBattleOutline(ctx,mask,bakedFraction=0,renderScale=1){
+  const size=mask.width,radius=size*(14/192-bakedFraction)/renderScale;
   for(let i=0;i<32;i++){
     const angle=i*Math.PI/16;
     ctx.drawImage(mask,Math.round(radius*Math.cos(angle)),Math.round(radius*Math.sin(angle)));
@@ -22,23 +24,26 @@ export function drawBattleOutline(ctx,mask,bakedFraction=0){
   ctx.globalCompositeOperation='source-over';
 }
 export function isOriginalHeroGlyph(word){return Object.values(heroWords).includes(word);}
-export function glyphAtlasReady(){
-  if(!ready)ready=new Promise((resolve,reject)=>{
+export function loadGlyphImage(filename){
+  return new Promise((resolve,reject)=>{
     const image=new Image();let done=false;
     const finish=error=>{
       if(done)return;done=true;clearTimeout(timer);image.onload=image.onerror=null;
-      if(error){ready=null;reject(error);}else{atlas=image;resolve(image);}
+      if(error)reject(error);else resolve(image);
     };
     // Some native image failures never call onerror. Let startup report the
     // error and clear the pending request so a retry can load the atlas.
     const timer=setTimeout(()=>finish(Error('字形图集读取超时')),12000);
     image.onload=()=>finish();image.onerror=()=>finish(Error('字形图集加载失败'));
-    image.src='assets/glyphs/atlas.png';
+    image.src='assets/glyphs/'+filename;
   });
+}
+export function glyphAtlasReady(){
+  ready??=loadGlyphImage('atlas.png').then(image=>(atlas=image),error=>{ready=null;throw error;});
   return ready;
 }
 export function glyphWordForSpecies(id){
-  return heroWords[id]||enemyWords[(Math.abs(Number(id))||0)%enemyWords.length];
+  return formCopy[id]?.word||enemyWords[(Math.abs(Number(id))||0)%enemyWords.length];
 }
 export function glyphTone(word){
   if('风讽疯飒飙'.includes(word))return 'water';
@@ -49,6 +54,18 @@ export function glyphTone(word){
   if('金鑫光星晶镜'.includes(word))return 'metal';
   return 'ink';
 }
+export function drawMenuGlyph(canvas,word,tone,large){
+  const preview=large&&atlas?.complete&&glyphCatalog.words[word]?.preview;
+  if(preview){
+    const {left,top,size}=preview;
+    canvas.width=canvas.height=size;
+    canvas.getContext('2d').drawImage(atlas,left,top,size,size,0,0,size,size);
+  }else{
+    const image=glyphCanvas(word,tone);
+    canvas.width=canvas.height=image.width;
+    canvas.getContext('2d').drawImage(image,0,0);
+  }
+}
 export function glyphCanvas(word,tone=glyphTone(word),{battle=false}={}){
   const key=word+'-'+tone+(battle?'-battle':'');if(cache.has(key))return cache.get(key);
   const canvas=document.createElement('canvas');canvas.width=canvas.height=192;
@@ -58,7 +75,7 @@ export function glyphCanvas(word,tone=glyphTone(word),{battle=false}={}){
   else {m.font='bold 144px "Ziling Swei", sans-serif';m.textAlign='center';m.textBaseline='middle';m.fillText(word,96,100);}
   if(battle)drawBattleOutline(ctx,mask,record&&atlas?.complete?bakedInkFraction(word):0);
   // Draw the supplied hero colors over the battle border.
-  if(isOriginalHeroGlyph(word)){
+  if(isOriginalHeroGlyph(word)||glyphCatalog.enemies[word]){
     ctx.drawImage(mask,0,0);
     if(record&&atlas?.complete)cache.set(key,canvas);
     return canvas;

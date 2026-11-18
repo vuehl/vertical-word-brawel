@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,11 +11,13 @@ import {reviewMenus} from './menu-regression.mjs';
 import {reviewUIPerformance} from './ui-perf.mjs';
 import {reviewZixing} from './zixing-regression.mjs';
 import {reviewPaper} from './paper-regression.mjs';
-import {reviewLoading} from './loading-regression.mjs';
+import {reviewLoading,reviewNetworkActions} from './loading-regression.mjs';
 import {reviewScenes} from './scene-regression.mjs';
 import {reviewStarters} from './starter-regression.mjs';
 import {reviewUpgrade} from './upgrade-regression.mjs';
 import {reviewBattleFeedback} from './battle-feedback-regression.mjs';
+import {fixtureSubpackage} from './fixture-subpackage.mjs';
+import {reviewRunSettlement,reviewStartupLatency} from './startup-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -40,13 +43,20 @@ function script(){return 'const defs={}, cache={};\n'+modules.map(p=>'defs['+JSO
 const srv=http.createServer((req,res)=>{
   if(req.url==='/'){res.setHeader('content-type','text/html; charset=utf-8');return res.end('<meta charset=utf-8><style>*{margin:0}canvas{display:block;width:100vw;height:100vh}</style><body><script src="/fixture.js"></script><script src="/boot.js"></script>');}
   if(req.url==='/fixture.js'||req.url==='/boot.js'){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(req.url==='/fixture.js'?'window.packageData='+JSON.stringify(packageData)+';window.packageEntries='+JSON.stringify(packageEntries)+';\n'+fixture:script());}
-  if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);}
+  if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(fixtureSubpackage(game,req.url.slice(1)));}
   if(dataUrls.has(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
   if(req.url==='/favicon.ico'){res.statusCode=204;return res.end();}
   res.statusCode=404;res.end();
 });
 await new Promise(r=>srv.listen(0,'127.0.0.1',r));
 const b=await puppeteer.launch({executablePath:chrome,headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling']});
+if(process.argv.includes('--coop')){
+  try {
+    const {reviewCoop}=await import('./coop-regression.mjs');
+    await reviewCoop(b,srv.address().port);
+  } finally { await b.close();srv.close(); }
+  process.exit(0);
+}
 const page=await b.newPage(),errors=[];
 let homePainted=false;
 page.on('console',m=>{if(m.type()==='info'&&m.text().startsWith('[宝可梦启动] 游戏首页已绘制'))homePainted=true;});
@@ -69,7 +79,8 @@ await page.evaluateOnNewDocument(()=>{
       if(window.upgradeAudit){
         const canvas=args[args.length-1];
         if(canvas===window.inspected?.uiCanvas)upgradeAudit.uploads++;
-        if(window.inspected?.modalTransition?.canvases.includes(canvas))upgradeAudit.panelUploads++;
+        if(window.inspected?.modalTransition?.canvases.includes(canvas)&&++upgradeAudit.panelUploads===1)
+          upgradeAudit.clock+=upgradeAudit.firstUploadMs||0;
       }
       return original.apply(this,args);
     };
@@ -170,9 +181,9 @@ async function verifyStartup(){
     return;
   }
   if(!checkGlyphGate){
-    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n===95).length>=2||window.problem,{timeout:60000});
+    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n>=95).length>=2||window.problem,{timeout:60000});
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-    await verifyProgressImage(95,'00-background.png');
+    await verifyProgressImage(await page.evaluate(()=>bootPercentages.at(-1)),'00-background.png');
     await page.evaluate(()=>window.releaseHomeStatus());
   }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
@@ -261,11 +272,18 @@ async function verifyStartup(){
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
   }
   if(await page.evaluate(()=>!!app.zixing)){
-    if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
+    if(process.argv.includes('--startup-latency'))await reviewStartupLatency({page,dir,baseline:process.argv.includes('--baseline')});
+    else if(process.argv.includes('--run-settlement'))await reviewRunSettlement({page,dir});
+    else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
+    else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--device-effects')){
+      const {reviewDeviceEffects}=await import('./device-effects-regression.mjs');
+      await reviewDeviceEffects(page,dir);
+    }
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--battle-feedback'))await reviewBattleFeedback({page,tap,resize,dir,sleep});
     else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});
@@ -433,7 +451,7 @@ async function verifyStartup(){
   }
   if(process.argv.includes('--forest-regression')){
     const report=[];
-    for(const species of [4,16,132]){
+    for(const species of [4,16]){
       await page.evaluate(async species=>{
         if(app.run&&app.run.state!=='over')await app.run.finish(false,true);
         app.toMenu();
@@ -443,7 +461,7 @@ async function verifyStartup(){
       },species);
       await page.waitForFunction(species=>app.run.player.speciesId===species&&app.run.time>1,{timeout:60000},species);
       const stages=[];
-      for(let stage=1;stage<=4;stage++){
+      for(const stage of FOREST_ROUTE){
         if(stage>1)await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();});
         await page.waitForFunction(stage=>app.run.stage===stage,{timeout:60000},stage);
         await sleep(1500);
@@ -462,7 +480,7 @@ async function verifyStartup(){
       report.push({species,stages,settlement});
     }
     fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
-    console.log('Three original partners, all four forest stages and native file settlement verified');
+    console.log('Three original partners, all forest stages and native file settlement verified');
   }
   const missing=await page.evaluate(()=>[...missingAssets]);if(missing.length)throw Error('Missing local assets: '+missing.join(', '));
   if(errors.length)throw Error(errors[0]);

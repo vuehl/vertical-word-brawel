@@ -3,6 +3,7 @@ public/assets/** -text
 
 # Local tooling/docs: normal line endings are fine.
 *.mjs text=auto
+src/DeviceScreenFx.mjs text eol=lf
 *.js text=auto
 *.md text=auto
 *.json text=auto

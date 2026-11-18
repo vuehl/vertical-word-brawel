@@ -3,25 +3,28 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {pathToFileURL} from 'node:url';
 import sharp from 'sharp';
 import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
 import {writeActorMetrics} from './actor-metrics.mjs';
-import {assetPolicyVersion,musicTracks,excludedAssetReason} from './asset-policy.mjs';
+import {writeHeroActions} from './hero-actions.mjs';
+import {assetPolicyVersion,compressedFireAtlases,musicTracks,excludedAssetReason} from './asset-policy.mjs';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
+import {gameProject} from './project-target.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const source = path.join(root, 'source');
 const pub = path.join(source, 'public');
 const development=process.argv.includes('--dev');
-const out = path.join(root, ...(development?['验收','开发者工程']:[]), 'minigame');
+const projectRoot=gameProject(root,development);
+const out=path.join(projectRoot,'minigame');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pokebonk-art-'));
 const packs = {art: {}, world: {}, text: {}};
 const index = {};
 const generatedSprites={};
 const fontText=[];
 await writeActorMetrics(source);
+await writeHeroActions(source);
 const hash = data => createHash('sha256').update(data).digest('hex').slice(0, 16);
 function add(pack, key, data, extension = path.extname(key)) {
   // Content-address files so repeated UI assets only occupy space once.
@@ -38,7 +41,7 @@ function sourceFor(key) {
   return fs.existsSync(override) ? override : path.join(pub, key);
 }
 const buckets = {pmd:'art', icons:'art', portraits:'art', items:'art', front:'art',
-  ui:'world', env:'world', models:'world', glyphs:'art', music:'sound'};
+  ui:'world', env:'world', models:'world', glyphs:'art', vfx:'art', music:'sound'};
 const selected = new Set();
 const excluded = new Map();
 for (const folder of ['assets', 'overrides/assets']) {
@@ -57,7 +60,10 @@ for (const folder of ['assets', 'overrides/assets']) {
       const input = sourceFor(key);
       const original = fs.readFileSync(input);
       if (name.endsWith('.png') && original.length > 3000) {
-        const webp = await sharp(original).webp({lossless:true, effort:category==='glyphs'?6:4}).toBuffer();
+        const options=compressedFireAtlases.has(key)
+          ? {quality:88,alphaQuality:100,effort:6,smartSubsample:true}
+          : {lossless:true,effort:category==='glyphs'?6:4};
+        const webp = await sharp(original).webp(options).toBuffer();
         if (webp.length < original.length) { add(targetPack, key, webp, '.webp'); continue; }
       }
       add(targetPack,key,original);
@@ -66,21 +72,18 @@ for (const folder of ['assets', 'overrides/assets']) {
 }
 for (const file of walk(path.join(pub,'data'))) {
   const key = path.relative(pub,file).replaceAll('\\','/');
-  if(key.startsWith('data/i18n/')&&key!=='data/i18n/zh.json')continue;
   const data=runtimeData(key,fs.readFileSync(file));
   add('text',key,data);fontText.push(data.toString('utf8'));
 }
-for (const file of fs.readdirSync(path.join(pub,'assets'))) {
-  const match = /^(zh)-.*\.js$/.exec(file);
-  if (match) {
-    const words = (await import(pathToFileURL(path.join(pub,'assets',file)).href)).default;
-    add('text','locale/'+match[1]+'.json',Buffer.from(JSON.stringify(words)));
-    fontText.push(JSON.stringify(words));
-  }
-}
+const uiText=fs.readFileSync(path.join(pub,'text/ui.json'));
+add('text','text/ui.json',uiText);fontText.push(uiText.toString('utf8'));
 for (const name of ['version.json','creditos.txt','legal']) add('text',name,fs.readFileSync(path.join(pub,name)));
 const python = process.env.POKEBONK_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
-if(development)fontText.push(fs.readFileSync(path.join(import.meta.dirname,'developer','panel.mjs'),'utf8'));
+const developer=development?await import('./developer/build-support.mjs'):null;
+if(developer){
+  fontText.push(fs.readFileSync(path.join(import.meta.dirname,'developer','panel.mjs'),'utf8'));
+  for(const {key,bytes} of developer.itemPreviewImages())add('text',key,bytes);
+}
 const fontInput=path.join(temp,'font-input.txt');fs.writeFileSync(fontInput,fontText.join('\n'));
 execFileSync(python,[...(python === 'py'?['-3.13']:[]),path.join(import.meta.dirname,'fonts.py'),source,temp,fontInput],{stdio:'inherit'});
 for (const weight of ['regular','bold']) add('text','fonts/'+weight+'.ttf',fs.readFileSync(path.join(temp,weight+'.ttf')));
@@ -98,7 +101,9 @@ if(fs.existsSync(packRoot))for(const entry of fs.readdirSync(packRoot,{withFileT
 }
 packModels(packs.world);
 for (const [name, entries] of Object.entries(packs)) {
-  const {bytes,rawSize}=packStream(entries,name==='text'?11:10), dir=path.join(out,'packs',name);
+  // A 1 MiB window keeps the small icon block compressible alongside the large atlases.
+  const {bytes,rawSize}=packStream(entries,name==='text'?11:10,name==='art'?20:23);
+  const dir=path.join(out,'packs',name);
   fs.mkdirSync(dir,{recursive:true});
   fs.writeFileSync(path.join(dir,'assets.br'),bytes);
   fs.rmSync(path.join(dir,'assets.zip'),{force:true});
@@ -107,9 +112,9 @@ for (const [name, entries] of Object.entries(packs)) {
   rawSizes[name]=rawSize;
   console.log(name, Object.keys(entries).length, (bytes.length/1048576).toFixed(2)+' MiB');
 }
-const devMetadata=development?{developerFontKey:(await import('./developer/build-support.mjs')).fontKey()}:{};
+const devMetadata=developer?{developerAssetKey:developer.assetKey()}:{};
 fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,...devMetadata,packs:meta,rawSizes,files:index,sprites:generatedSprites})+';\n');
-const reportDir=path.join(root,'验收',...(development?['开发者工程']:[]));fs.mkdirSync(reportDir,{recursive:true});
+const reportDir=projectRoot===root?path.join(root,'验收'):projectRoot;fs.mkdirSync(reportDir,{recursive:true});
 fs.writeFileSync(path.join(reportDir,'资源打包清单.json'),JSON.stringify({
   policyVersion:assetPolicyVersion,mappedResources:Object.keys(index).length,runtimeSpecies:runtimeSpecies.length,musicTracks,
   packs:Object.fromEntries(Object.keys(meta).map(name=>[name,{files:Object.keys(packs[name]).length,rawBytes:rawSizes[name],packedBytes:fs.statSync(path.join(out,'packs',name,'assets.br')).size}])),

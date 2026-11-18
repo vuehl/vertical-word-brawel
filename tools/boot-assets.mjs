@@ -2,17 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {brotliDecompressSync,deflateSync} from 'node:zlib';
+import {brotliDecompressSync} from 'node:zlib';
 import postcss from 'postcss';
 import sharp from 'sharp';
 import {packStream} from './pack-resources.mjs';
 import {unpackStream} from './resource-stream.mjs';
+import {characters} from '../source/src/starter-characters.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex').slice(0,16);
 
 export async function writeBootHeroArt(root,out){
   const images={};
-  for(const [id,word] of [[4,'炎'],[16,'风'],[132,'摹']]){
+  for(const {id,word} of characters){
     // The splash draws these at 72 logical pixels (about 159 physical pixels
     // on a 430px phone at 2x). Keep extra detail without decoding 512px art.
     // Only the generated main-package copy changes; keep the supplied PNGs.
@@ -41,7 +42,7 @@ export function bootAssets(root) {
     }
   });
   return {
-    'engine/styles.bin':deflateSync(JSON.stringify(rules),{level:9})
+    'engine/styles.json':Buffer.from(JSON.stringify(rules))
   };
 }
 

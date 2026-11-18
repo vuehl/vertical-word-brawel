@@ -119,7 +119,7 @@ export async function reviewMenus({page,tap,resize,shown,dir,sleep,probe=false})
     await page.evaluate(()=>{inspected.doc.querySelector('.lab-wrap').scrollTop=0;});
     await snapshot('lab-'+width,['.lab-card','.lab-bd']);
     await tap('.lab-mode[data-mode="items"]');await geometry('items');await scroll('.lab-wrap');
-    await tap('.it-filters .it-f','在你的精灵球中');await geometry('items');
+    await tap('.it-filters .it-f','在你的扭蛋中');await geometry('items');
     await tap('.it-filters .it-f','未解锁');await geometry('items');
     await snapshot('items-'+width,['.ic','.ic-desc','.ic-foot']);
     await tap('.screen.lab .back-btn');await tap('.lite-actions button','设置');

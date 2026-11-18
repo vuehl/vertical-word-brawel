@@ -19,17 +19,18 @@ export class ExperienceRing {
     if(this.phase==='idle'){
       if(player.level===this.level){this.progress=fraction(player);return;}
       this.phase='fill';this.elapsed=0;this.from=this.progress;
+      this.fillMs=player.level-this.level>1?40:40+70*(1-this.from);
       return;
     }
     if(!playing)return;
     this.elapsed+=dt;
     if(this.phase==='fill'){
-      this.progress=Math.min(1,this.from+(1-this.from)*this.elapsed/140);
+      this.progress=Math.min(1,this.from+(1-this.from)*this.elapsed/this.fillMs);
       if(this.progress>=1){this.progress=1;this.phase='full';this.elapsed=0;}
       // Never consume the full-ring hold in the same update, even at low FPS.
       return;
     }
-    if(this.elapsed>=180){
+    if(this.elapsed>=40){
       this.level++;this.phase='idle';this.elapsed=0;
       this.progress=this.level===player.level?fraction(player):0;
     }

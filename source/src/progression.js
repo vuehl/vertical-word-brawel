@@ -1,5 +1,5 @@
 // Pure rules extracted from the published v0.8.34 client.
-import { c as e, d as t, i as n, n as r, o as i, r as a, s as o, t as s, u as c } from "./i18n.js";
+import {defaultStarter,LITE_SPECIES} from './lite-rules.js';
 import {
   $ as l,
   $n as u,
@@ -197,14 +197,14 @@ import {
   zr as fr,
   zt as pr,
 } from "./config.js";
-var bO = [4, 132, 16],
+var bO = LITE_SPECIES,
   xO = () => ({ idx: 0, ids: [], prog: [], claimed: [], rerolls: 0 }),
   SO = {
     master: 0.8,
     music: 0.5,
     sfx: 0.7,
     cries: 0.6,
-    quality: `low`,
+    quality: `high`,
     aimMode: `auto`,
     sensitivity: 1,
     invertY: !1,
@@ -300,7 +300,7 @@ function wO(e) {
     Array.isArray(t.league) || (t.league = []),
     typeof e.starter != `number`)
   ) {
-    t.starter = t.league.find((e) => bO.includes(e)) ?? 1;
+    t.starter = t.league.find((e) => bO.includes(e)) ?? defaultStarter;
     for (let e of bO)
       (t.unlocked.includes(e) || t.unlocked.push(e), t.league.includes(e) || t.league.push(e));
   }

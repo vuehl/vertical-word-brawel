@@ -23,8 +23,29 @@ function waitForPlayEntry() {
   });
 }
 
+function wechatShareCard(roomCode, source) {
+  const card = {
+    imageUrl: 'https://mmocgame.qpic.cn/wechatgame/Lnv5AWb3c38RlWjS8GK26kuqMRK1WBCibFAnuaX4Y9zrVUyWYSia6a8uZWDZmb7RQH/0',
+    imageUrlId: '7gHnnS4/SAOz6NkjSKZjYg==',
+  };
+  if (roomCode) card.query = 'roomCode=' + roomCode;
+  try {
+    const account = wx.getAccountInfoSync && wx.getAccountInfoSync().miniProgram;
+    if (account && (account.envVersion === 'develop' || account.envVersion === 'trial')) {
+      const info = wx.getAppBaseInfo ? wx.getAppBaseInfo() : wx.getSystemInfoSync();
+      console.info('[房间分享]', JSON.stringify({source, appId:account.appId, envVersion:account.envVersion,
+        wechat:info.version, sdk:info.SDKVersion, card}));
+    }
+  } catch (error) { console.warn('[房间分享] 无法读取版本信息', error); }
+  return card;
+}
+
 async function launchEngine(host, play, showProgress) {
   const env = await play.setup(host);
+  host.getLobbyRoomCode = () => {
+    const room = env.__zixingApp && env.__zixingApp.coopRoom;
+    return room && room.open && !room.leaving && room.room.state === 'lobby' ? room.code : undefined;
+  };
   showProgress(95);
   if (host.onApp) env.onApp = host.onApp;
   let booted = false;
@@ -39,7 +60,7 @@ async function launchEngine(host, play, showProgress) {
     };
     env.drawUI = (renderer,...args) => {
       draw(renderer,...args);
-      showProgress(booted ? 100 : 95, renderer);
+      showProgress(booted ? 100 : undefined, renderer);
       if (!booted) return;
       env.drawUI = draw;
       if (env.invalidateUI) env.invalidateUI();
@@ -47,18 +68,45 @@ async function launchEngine(host, play, showProgress) {
       resolve();
     };
   });
+  host.bootStage('读取玩法与字形',95);
   const engine = play.run(env).then(() => { booted = true; });
   await Promise.all([firstFrame, engine]);
 }
 
 async function start() {
   const began = Date.now();
+  // A card can be opened while the play subpackage is still downloading.
+  const roomInvites = {code: '', onInvite: null};
+  const host = {
+    roomInvites,
+    bootDiagnostics:{stages:[],completed:false},
+    shareRoomCode(code) {
+      if (!wx.shareAppMessage) throw Error('请在微信小游戏内分享房间号');
+      wx.shareAppMessage(wechatShareCard(code, '房间按钮'));
+    },
+  };
+  if (wx.onShareAppMessage) {
+    wx.onShareAppMessage(() => wechatShareCard(host.getLobbyRoomCode && host.getLobbyRoomCode(), '微信菜单'));
+  }
+  if (wx.showShareMenu) {
+    wx.showShareMenu({menus:['shareAppMessage'], fail:e=>console.warn('[字行] 转发菜单未开启', e.errMsg)});
+  }
+  function receiveInvite(options) {
+    const code = options && options.query && options.query.roomCode;
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return;
+    roomInvites.code = code;
+    if (roomInvites.onInvite) roomInvites.onInvite();
+  }
+  if (wx.getLaunchOptionsSync) receiveInvite(wx.getLaunchOptionsSync());
+  wx.onShow(receiveInvite);
   let phase = '创建画面', splash, shown = 0;
   function stage(title) {
     phase = title;
-    console.info('[宝可梦启动]', title, Date.now() - began, 'ms');
+    const ms=Date.now()-began;
+    host.bootDiagnostics.stages.push({stage:title,ms});
+    console.info('[宝可梦启动]', title, ms, 'ms');
   }
-  function showProgress(value, renderer) {
+  function showProgress(value = shown, renderer) {
     if (!splash || value < shown || (value === shown && !renderer)) return;
     shown = value;
     try {
@@ -71,6 +119,7 @@ async function start() {
       if (renderer) renderer.resetState();
     }
   }
+  host.bootStage=(title,value)=>{stage(title);showProgress(value);};
   try {
     stage('字行 · 打开纸上世界');
     const canvas = wx.createCanvas();
@@ -91,7 +140,7 @@ async function start() {
       console.warn('[宝可梦启动] 启动画面不可用', error);
     }
     const files = require('./files');
-    const host = GameGlobal.pokebonk = {canvas, files};
+    GameGlobal.pokebonk = Object.assign(host, {canvas, files});
     stage('准备游戏资源');
     const downloaded = {play:0, text:0};
     function packageProgress(name, percent) {
@@ -111,6 +160,8 @@ async function start() {
     stage('绘制游戏首页');
     showProgress(90);
     await withTimeout(launchEngine(host,play,showProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
+    host.bootDiagnostics.completed=true;
+    host.bootDiagnostics.totalMs=Date.now()-began;
     console.info('[宝可梦启动] 游戏首页已绘制', Date.now() - began, 'ms');
   } catch (error) {
     console.error('[宝可梦] ' + phase + '失败', error);

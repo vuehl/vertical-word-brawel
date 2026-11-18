@@ -38,7 +38,7 @@ export async function reviewQuality(page,dir){
     for(const sample of samples){
       assert.deepEqual(sample.ui,high.ui);assert.deepEqual(sample.display,high.display);
       assert.deepEqual(sample.layers,high.layers);assert.equal(sample.headingHash,high.headingHash,'Heading pixels stay identical');
-      assert.doesNotMatch(sample.text,/各档界面文字|当前生效|对流畅度有多大帮助|场景像素预算/);
+      assert.doesNotMatch(sample.text,/各档界面文字|当前生效|对流畅度有多大帮助|场景像素预算|帧率上限/);
     }
     assert.ok(pixels(low)<pixels(medium)&&pixels(medium)<pixels(high));
     assert.deepEqual(saver.world,low.world);assert.deepEqual(restored.world,high.world);
@@ -47,11 +47,10 @@ export async function reviewQuality(page,dir){
     const scroll=await page.evaluate(()=>{
       const body=inspected.doc.querySelector('.zx-body');body.scrollTop=10000;
       inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
-      const fps=[...body.querySelectorAll('.zx-setting')].find(e=>e.textContent.startsWith('帧率上限'));
-      const b=inspected.layout.box(fps),back=inspected.layout.box(inspected.doc.querySelector('.zx-footer button'));
-      return {fpsVisible:b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1,backVisible:back.y>=back.clip.y&&back.y+back.h<=back.clip.b+1};
+      const b=inspected.layout.box(body.querySelector('[aria-label="省电模式"]')),back=inspected.layout.box(inspected.doc.querySelector('.zx-footer button'));
+      return {saverVisible:b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1,backVisible:back.y>=back.clip.y&&back.y+back.h<=back.clip.b+1};
     });
-    assert.ok(scroll.fpsVisible&&scroll.backVisible,JSON.stringify(scroll));
+    assert.ok(scroll.saverVisible&&scroll.backVisible,JSON.stringify(scroll));
     await page.screenshot({path:path.join(dir,'settings-bottom-'+width+'.png')});
     report.screens.push({width,height,samples,scroll,worldReduction:{medium:1-pixels(medium)/pixels(high),low:1-pixels(low)/pixels(high)}});
   }
