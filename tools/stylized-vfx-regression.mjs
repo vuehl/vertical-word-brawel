@@ -72,6 +72,28 @@ export async function reviewStylizedVFX(page,dir){
     return reviewFireBreath(page,dir,moves);
   }
   const screenshot=async name=>{await page.screenshot({path:path.join(dir,name+'.png')});report.screens.push(name);};
+  if(process.argv.includes('--wind-vortex')){
+    await page.evaluate(async()=>{
+      await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
+      vfxSetup();app.run.ult.charge=1;app.run.ult.fire();
+    });
+    const frames=[],poses=new Set();
+    for(let i=0;i<24;i++){
+      const state=await page.evaluate(()=>{
+        vfxAdvance(3);
+        const art=app.run.vfx.crafted.windVortex;
+        return {visible:art.mesh.visible,frame:art.pose.getX(0)};
+      });
+      if(state.visible)poses.add(state.frame);
+      frames.push(await sharp(await page.screenshot()).resize(390,844).ensureAlpha().raw().toBuffer());
+    }
+    assert.ok(poses.size>=6);
+    assert.equal(await page.evaluate(()=>app.run.vfx.crafted.windVortex.mesh.visible),false);
+    await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
+      .gif({delay:100,loop:0}).toFile(path.join(dir,'一阵刮来.gif'));
+    console.log('Verified the moving wind ultimate, animated poses and cleanup.');
+    return;
+  }
   async function recordElements(){
     const elementFrames=[];
     for(const key of ['flamethrower','hydro-pump']){
@@ -118,6 +140,7 @@ export async function reviewStylizedVFX(page,dir){
     const state=await page.evaluate(()=>{const r=app.run;return {species:r.player.speciesId,name:r.ult.name,active:r.ult.active,authoredFire:r.vfx.crafted.fireFamily.mesh.count,volumes:r.vfx.crafted.entries.map(e=>({mode:e.mode,type:e.type,age:e.age,x:e.x,z:e.z})),particles:r.vfx.add.n+r.vfx.norm.n,damage:r.stats.damage,vertices:r.vfx.crafted.mesh.count,camera:r.camDist,rings:r.vfx.rings.n};});
     if(species===17){assert.equal(state.name,'卷着打转');assert.ok(state.rings>0);}
     assert.equal(state.species,species);assert.equal(state.camera,42);assert.ok(state.particles+state.volumes.length+state.authoredFire>0);if([4,5,6].includes(species))assert.ok(state.authoredFire>0);if([16,58].includes(species))assert.ok(state.volumes.some(v=>v.mode===1));
+    if(species===16)assert.ok(await page.evaluate(()=>app.run.vfx.crafted.windVortex?.mesh.count>0),'The supplied wind atlas must be visible during 一阵刮来');
     report.ultimates.push(state);if([4,6,16,17,58].includes(species))await screenshot('ultimate-'+species);
   }
   // Replay the real moving wind ultimate: these frames are the actual game

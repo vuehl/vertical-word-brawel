@@ -831,7 +831,7 @@ export function createZixingUI(app,api) {
   function offerBody(cards,onStats) {
     return [button([el('span','','查看当前属性'),icon('stats',15,'#65577b'),el('span','','›')],onStats,'zx-upgrade-stats',{'data-action':'upgrade-stats'}),...cards];
   }
-  function levelUp(run,offers,chooseOffer,art) {
+  function levelUp(run,offers,chooseOffer,heroArt) {
     let choosing=false;
     const choose=(offer,action)=>{
       if(choosing)return;choosing=true;
@@ -841,7 +841,7 @@ export function createZixingUI(app,api) {
     };
     const cards=offers.map((offer,index)=>{
       const desc=api.offer(run,offer);
-      const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):art[index];
+      const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):heroArt;
       return button(offerContent(picture,desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});
     });
     overlay('择一而进','',cards,
@@ -931,9 +931,11 @@ export function createZixingUI(app,api) {
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
     run.hints.show=(key,site)=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key,site);};
-    // Move offers reuse these glyph canvases. Paint them on the loading screen.
-    const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
-    hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
+    let form=run.player.speciesId, heroArt=glyph(character(form));
+    hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>{
+      if(form!==r.player.speciesId){form=r.player.speciesId;heroArt=glyph(character(form));}
+      levelUp(r,offers,choose,heroArt);
+    };
     hud.saving=active=>{
       if(active){hud.hideModal();pendingScreen('对局结算','正在保存本局战绩与星尘');}
     };

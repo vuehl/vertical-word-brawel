@@ -3,6 +3,48 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {reviewUltimateUpgrade} from './ultimate-upgrade-regression.mjs';
 
+async function reviewRandomOffers(page){
+  const moves=JSON.parse(fs.readFileSync(new URL('../source/public/data/moves.json',import.meta.url)));
+  const ids=Object.fromEntries(moves.filter(m=>['fire-spin','fire-blast'].includes(m.key)).map(m=>[m.key,m.id]));
+  const result=await page.evaluate(ids=>{
+    const r=app.run, p=r.player, originalRandom=Math.random;
+    const show=r.ui.showLevelUp, ready=r.ui.experienceReady;
+    let offers, pick, seed=613;
+    try{
+      const recharge=[];
+      for(const [initial,roll] of [[0,.499],[0,.50],[1,.10],[2,.05]]){
+        r.rerolls=initial;Math.random=()=>roll;p.gainLevel();recharge.push(r.rerolls);
+      }
+      Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+      r.ui.experienceReady=()=>true;
+      r.ui.showLevelUp=(_run,items,choose)=>{offers=items;pick=choose;};
+      p.addMove(ids['fire-spin']); // The third slot is already available at game time zero.
+      p.level=3;r.stageTime=0;r.state='play';r.pendingLevels=1;r.rerolls=800;r.doLevelUp();
+      let allVitamins=0, lockedOffers=0, unlockedOffers=0;
+      const positions=new Set();
+      for(let draw=0;draw<800;draw++){
+        p.level=draw<400?3:4;
+        pick(null,'reroll');
+        const index=offers.findIndex(o=>!o.vit);
+        if(index===-1)allVitamins++;else positions.add(index);
+        if(offers.length!==3 || offers.filter(o=>!o.vit).length>1 || new Set(offers.map(o=>o.key)).size!==3)
+          throw Error('Invalid mixed offer: '+JSON.stringify(offers));
+        if(offers.some(o=>o.id===ids['fire-blast'])){
+          if(p.level===3)lockedOffers++;else unlockedOffers++;
+        }
+      }
+      const exhausted=offers;pick(null,'reroll');
+      return {recharge,allVitamins,lockedOffers,unlockedOffers,positions:[...positions].sort(),
+        zero:r.rerolls,blocked:exhausted===offers};
+    }finally{Math.random=originalRandom;r.ui.showLevelUp=show;r.ui.experienceReady=ready;}
+  },ids);
+  assert.deepEqual(result.recharge,[1,0,1,2]);
+  assert.deepEqual(result.positions,[0,1,2]);
+  assert.ok(result.allVitamins>0 && result.unlockedOffers>0 && result.blocked);
+  assert.equal(result.lockedOffers,0);assert.equal(result.zero,0);
+  console.log('Mixed draft and empty-reroll checks:',result);
+}
+
 export async function reviewUpgrade({page,resize,dir}){
   const baseline=process.argv.includes('--baseline'),samples=[];let liveLoop=null;
   await page.evaluate(async()=>{
@@ -11,6 +53,7 @@ export async function reviewUpgrade({page,resize,dir}){
     await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;app.run.godMode=true;app.run.update(1/60);
   });
+  if(!baseline)await reviewRandomOffers(page);
   const ultimate=baseline?null:await reviewUltimateUpgrade(page,dir);
   // The animation/cache checks need a fresh dialog after the three ultimate
   // scenarios; the last hero can otherwise leave an already cached offer.
@@ -22,8 +65,9 @@ export async function reviewUpgrade({page,resize,dir}){
   try{
     for(const width of (baseline?[390]:[320,390,430])){
       await resize(width,width===320?568:width===430?932:844);
-      const build=await page.evaluate(()=>{
+      const build=await page.evaluate(({width,baseline})=>{
         const r=app.run;r.ui.hideModal();r.state='play';r.pendingLevels=1;r.rerolls=2;
+        if(!baseline)r.player.setSpecies(width===320?4:width===390?5:6);
         r.ui.hud(r);r.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
         const began=performance.now();r.doLevelUp();const buildMs=performance.now()-began;r.ui.hud(r);
         const clock=performance.now(),descriptor=Object.getOwnPropertyDescriptor(performance,'now');
@@ -40,8 +84,15 @@ export async function reviewUpgrade({page,resize,dir}){
           if(upgradeAudit.layouts===1)upgradeAudit.clock+=300; // Simulate a slow first layout.
           return result;
         };
-        return {buildMs,clock};
-      });
+        const cards=[...r.ui.modalEl.querySelectorAll('[data-offer]')];
+        return {buildMs,clock,glyphs:cards.flatMap(card=>[...card.querySelectorAll('.zx-glyph')].map(node=>node.getAttribute('aria-label'))),
+          vitamins:cards.filter(card=>card.querySelector('img')).length};
+      },{width,baseline});
+      if(!baseline){
+        assert.ok(build.glyphs.length<=1);
+        if(build.glyphs.length)assert.deepEqual(build.glyphs,[width===320?'炎':width===390?'焱':'燚']);
+        assert.equal(build.vitamins,3-build.glyphs.length);
+      }
       const frames=[];
       try{
         for(const offset of [0,40,80,140,200,240,400]){

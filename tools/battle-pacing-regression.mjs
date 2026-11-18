@@ -19,14 +19,16 @@ export async function reviewBattlePacing(page) {
       r.renderWorld = () => {};
       r.ui.experienceReady = () => true;
       r.ui.showLevelUp = (run, offers, choose) => {
-        if (drafts.length < 2) drafts.push({time:run.time, offers:offers.map(o => [o.kind, o.id])});
-        choose(offers.find(o => o.kind === 'upMove') ?? offers[0]);
+        if (offers.filter(o=>!o.vit).length>1 || new Set(offers.map(o=>o.key)).size!==offers.length)
+          throw Error('Invalid upgrade panel: '+JSON.stringify(offers));
+        if (stage===1 && run.stageTime<90) drafts.push({time:run.stageTime, offers:offers.map(o=>o.kind)});
+        choose(offers.find(o => o.kind === 'newMove') ?? offers.find(o=>o.kind==='upMove') ?? offers[0]);
       };
       r.ui.showBranch = (run, ids, choose) => choose(ids[0]);
       r.ui.hud = () => {};
-      // Exercise the slow-XP guarantee for wind, and natural XP for fire.
+      // Exercise the existing early XP catch-up for wind. Neither draft forces a move.
       const addXp = p.addXp.bind(p);
-      if (species === 16 && stage === 1) p.addXp = amount => { if (r.time > 50) addXp(amount); };
+      if (species === 16 && stage === 1) p.addXp = amount => { if (r.time > 85) addXp(amount); };
       let openingCount = 0, movesAtMinute, openingHp, oldForm = p.speciesId, bossAt, bossHp;
       for (let frame = 0; frame < (duration + 90) * 25 && r.stageTime < duration + 30; frame++) {
         if (kiteOpening && !movesAtMinute) {
@@ -75,15 +77,10 @@ export async function reviewBattlePacing(page) {
     console.log('Battle pacing', JSON.stringify(summary));
     assert.equal(sample.stage, stage);
     assert.equal(sample.firstClock, duration === 360 ? '06:00' : '05:00');
-    assert.ok(sample.openingCount >= 10);
+    assert.ok(sample.openingCount > 0 && sample.openingCount <= 10);
     if (stage === 1) {
-      assert.equal(sample.drafts.length, 2);
-      for (const {offers} of sample.drafts) {
-        assert.ok(offers.every(([kind]) => kind === 'newMove'));
-        assert.equal(new Set(offers.map(([,id]) => id)).size, 3);
-      }
-      assert.ok(sample.drafts[0].time <= 19 && sample.drafts[1].time <= 46);
-      assert.equal(new Set(sample.movesAtMinute).size, 3);
+      assert.equal(sample.drafts[0].offers.length,3);
+      assert.ok(sample.drafts[0].time <= 19);
       assert.ok(sample.openingHp > 0);
       assert.deepEqual(sample.forms.map(f => f.id), species === 4 ? [5,6] : [17,18]);
       assert.deepEqual(sample.forms.map(f => f.level), [8,16]);

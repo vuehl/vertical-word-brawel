@@ -8,17 +8,20 @@ export const SPAWN_RATE_SCALE=.5;
 const zoneCaps=Object.freeze([14,32,44,56,72,90,115,140,160,180,200]);
 const longRunCaps=Object.freeze([5,15,30,50,70,90,115,140,160,180,200]);
 const longRunFirstCaps=Object.freeze([5,25,...longRunCaps.slice(2)]);
+// Halve the opening density and refill rate, then restore both over 30 seconds.
+const openingScale = seconds => .5 + .5 * Math.max(0, Math.min(1, ((Number(seconds)||0) - 30) / 30));
 export function ordinaryLimit(seconds,stage=1,mode='standard'){
   const pace=wavePace(mode);
   const minute=Math.max(0,Math.min(10,(Number(seconds)||0)*pace/60)),index=Math.floor(minute);
   const caps=pace>1?zoneCaps:stage===1?longRunFirstCaps:longRunCaps;
-  return index===10?MAX_ORDINARY:Math.floor(caps[index]+(caps[index+1]-caps[index])*(minute-index));
+  const limit = index===10 ? MAX_ORDINARY : caps[index]+(caps[index+1]-caps[index])*(minute-index);
+  return Math.floor(limit * (pace > 1 ? openingScale(seconds) : 1));
 }
 export function naturalCreditRate(baseRate,seconds,stage,mode='standard'){
   const pace=wavePace(mode);
   if(pace>1){
     const openingBonus=(stage===1?3.2:2.4)*Math.max(0,Math.min(1,(90-seconds)/45));
-    return baseRate*SPAWN_RATE_SCALE*pace+openingBonus;
+    return (baseRate*SPAWN_RATE_SCALE*pace+openingBonus)*openingScale(seconds);
   }
   const openingBonus = stage === 1 ? 0.65 * Math.max(0, Math.min(1, (120 - seconds) / 60)) : 0;
   return baseRate*SPAWN_RATE_SCALE+openingBonus;

@@ -21942,7 +21942,7 @@ function Ih(e, t, n, r, i, a, o) {
       (a(u.x, d, u.z, i), s.later(i, () => o(u.x, U(s, u.x, u.z), u.z)));
     });
 }
-function Lh(e, t, n, r, i, a, o, s = {}, artRadius = o) {
+function Lh(e, t, n, r, i, a, o, s = {}, artRadius = o, openingVortex = false) {
   let c = e.run,
     l = e.x,
     u = e.z,
@@ -21958,7 +21958,8 @@ function Lh(e, t, n, r, i, a, o, s = {}, artRadius = o) {
       x = Math.hypot(v, y);
     x > b && ((v *= b / x), (y *= b / x));
     let S = U(c, v, y);
-    c.vfx.crafted.tornado(d,v,S+.12,y,artRadius*1.05,artRadius*3.4,'flying');
+    if (openingVortex) c.vfx.crafted.openingVortex(d,v,S+.12,y,artRadius*1.05,artRadius*3.4,h);
+    else c.vfx.crafted.tornado(d,v,S+.12,y,artRadius*1.05,artRadius*3.4,'flying');
     if ((kh(c, v, y, (5 * e.R * o) / 2, 30 * m), (f -= m), f <= 0)) {
       f = 0.16;
       for (let t of c.enemies.within(v, y, (2.2 * e.R * o) / 2))
@@ -22839,7 +22840,7 @@ var J = {
           Lh(e, Math.cos(i), Math.sin(i), 16 * e.R, 2.2, 0.4, 1.8 + e.tier * 0.35, {
             status: `confusion`,
             statusChance: 0.2,
-          }, 1.8);
+          }, 1.8, e.run.player.speciesId === 16);
         }
         if ((J.whoosh(t.audio, 2, 0.16, 260), e.tier >= 1)) {
           (xh(t, e.x, e.y + 1, e.z, I.PixFeather, 24, 14, 0.7, 0.7, 6),
@@ -33639,7 +33640,7 @@ var mv = 30,
       this.pace = wavePace(e.mode);
       let t = this.rng;
       for (let e = 0; e < 3; e++) this.addCard();
-      this.credits = this.pace > 1 ? 14 : 0;
+      this.credits = this.pace > 1 ? 7 : 0;
       if (e.endless) {
         this.beats = [
           { kind: `card`, next: 60, every: [48, 72] },
@@ -35293,8 +35294,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
       return { totals: n, dps: r, span: i };
     }
   },
-  Lb = 2.6,
-  Rb = 0.35;
+  Lb = 5.2; // Half the previous player-level requirement for learnset moves.
 function zb(e) {
   let t = new Map(),
     n = k.get(e),
@@ -35368,132 +35368,45 @@ function Hb(e, t = 0, n = 0, r) {
   for (let e = 0; e < 5; e++) if (((u -= c[e]), u <= 0)) return e;
   return 0;
 }
-function newMoveOffer(id) {
-  return {kind: 'newMove', id, rarity: 0, key: 'm' + id};
-}
-function Ub(e, t) {
-  let n = e.player;
-  // The first two earned choices fill the opening loadout, even if several
-  // levels were queued together by XP or a starting candy.
-  const opening = e.stage === 1 && !e.endless && !e.tower && n.level - e.pendingLevels < 3;
-  let r = [],
-    i = e.banished,
-    a = [],
-    eligibleMoves = [];
-  if (n.moves.some((e, t) => t < n.moveSlots && !e)) {
-    let t = n.level * Lb + 10,
-      r = n.ownedMoveIds(),
-      s = zb(n.speciesId),
-      c = n.roster,
-      l = Ye;
-    c &&
-      c.kit.forEach((e, t) => {
-        const id = k.movesByKey.get(e)?.id;
-        if (id == null || r.has(id) || i.has(`m` + id) || n.level < l[t] || !O_(id)) return;
-        if (opening) eligibleMoves.push(id);
-        for (let e = 0; e < 3; e++) a.push(() => newMoveOffer(id));
-      });
-    let u;
-    if (
-      ((u =
-        c?.passive === `mew`
-          ? [...k.moves.values()]
-              .filter((e) => e.cls !== `status` && (e.power ?? 0) >= 60 && O_(e.id))
-              .map((e) => e.id)
-          : A_(n.speciesId).filter((e) => (s.get(e) ?? 0) <= t)),
-      (u = u.filter((e) => !r.has(e) && !i.has(`m` + e) && !c?.kit.includes(k.moves.get(e).key))),
-      u.length && (!c || Math.random() < 0.35))
-    ) {
-      let e = u[Math.floor(Math.random() * u.length)];
-      a.push(() => newMoveOffer(e));
-    }
-    eligibleMoves.push(...u);
-    let d = new Set(),
-      f = n.moves.some((e) => e?.def.arch === `random`);
-    for (let t of y)
-      t !== c &&
-        e.meta.inLeague(t.id) &&
-        k.get(t.id).types.some((e) => n.types.includes(e)) &&
-        t.kit.forEach((e, t) => {
-          let a = k.movesByKey.get(e)?.id,
-            o = a == null ? void 0 : k.moves.get(a)?.type;
-          o &&
-            (o === `normal` || n.types.includes(o)) &&
-            a != null &&
-            n.level >= l[t] &&
-            O_(a) &&
-            !r.has(a) &&
-            !i.has(`m` + a) &&
-            !c?.kit.includes(e) &&
-            !(f && O_(a).arch === `random`) &&
-            d.add(a);
-        });
-    if ((eligibleMoves.push(...d), d.size && Math.random() < 0.5)) {
-      let e = [...d],
-        t = e[Math.floor(Math.random() * e.length)];
-      a.push(() => newMoveOffer(t));
+function Ub(run, count) {
+  const player = run.player, pool = [];
+  if (player.moves.slice(0,player.moveSlots).some(move => !move)) {
+    const catalog = Vb(player.speciesId,player.roster,player.types,id => run.meta.inLeague(id));
+    const owned = player.ownedMoveIds();
+    const hasRandom = player.moves.some(move => move?.def.arch === 'random');
+    const shared = catalog.shared.filter(move => move.open && !(hasRandom && O_(move.id).arch === 'random'));
+    for (const {id,level} of [...catalog.kit,...catalog.line,...shared,...(catalog.any ?? [])]) {
+      const key = 'm'+id;
+      if (level <= player.level && !owned.has(id) && !run.banished.has(key)) {
+        pool.push({kind:'newMove', id, key, rarity:0});
+        owned.add(id);
+      }
     }
   }
-  if (opening) {
-    const ids = F.shuffle([...new Set(eligibleMoves)]);
-    r.push(...ids.slice(0, t).map(newMoveOffer));
-    if (r.length === t) return r;
-  }
-  n.moves.forEach((t, r) => {
-    !t ||
-      t.level >= n.capOf(t) ||
-      i.has(`m` + t.def.id) ||
-      (a.push(() => {
-        let n = Hb(e);
-        return { kind: `upMove`, slot: r, rarity: n, ups: P_(t, E[n]), key: `m` + t.def.id };
-      }),
-      a.push(() => {
-        let n = Hb(e);
-        return { kind: `upMove`, slot: r, rarity: n, ups: P_(t, E[n]), key: `m` + t.def.id };
-      }));
+  player.moves.forEach((move,slot) => {
+    if (!move || move.level >= player.capOf(move)) return;
+    const key = 'm'+move.def.id;
+    if (!run.banished.has(key)) pool.push({kind:'upMove', slot, key});
   });
-  let s = n.vitamins.size < n.vitaminSlots,
-    c = [];
-  for (let t of m) {
-    if (i.has(`v` + t.key)) continue;
-    let r = n.vitamins.get(t.key);
-    if (r) {
-      if (r.level < n.vitCap)
-        for (let n = 0; n < 2; n++)
-          a.push(() => ({ kind: `upVit`, vit: t.key, rarity: Hb(e), key: `v` + t.key }));
-    } else
-      s &&
-        (Math.random() < 0.45
-          ? a.push(() => ({ kind: `newVit`, vit: t.key, rarity: Hb(e), key: `v` + t.key }))
-          : c.push(t.key));
+  for (const vitamin of m) {
+    const key = 'v'+vitamin.key, current = player.vitamins.get(vitamin.key);
+    if (run.banished.has(key)) continue;
+    if (current ? current.level >= player.vitCap : player.vitamins.size >= player.vitaminSlots) continue;
+    pool.push({kind:current?'upVit':'newVit', vit:vitamin.key, key});
   }
-  F.shuffle(a);
-  let l = new Set(r.map(offer => offer.key)),
-    u = a.findIndex((e) => {
-      let t = e();
-      return t?.kind === `newMove` || t?.kind === `upMove`;
-    });
-  if (u > 0) {
-    let [e] = a.splice(u, 1);
-    a.unshift(e);
-  }
-  for (let e of a) {
-    if (r.length >= t) break;
-    let n = e();
-    n && !l.has(n.key) && (l.add(n.key), r.push(n));
-  }
-  if (r.length < t)
-    for (let e of F.shuffle([...new Set(eligibleMoves)])) {
-      if (r.length >= t) break;
-      let n = `m` + e;
-      l.has(n) || (l.add(n), r.push(newMoveOffer(e)));
+  const offers = [];
+  let hasMove = false;
+  for (const offer of F.shuffle(pool)) {
+    if (!offer.vit) {
+      if (hasMove) continue;
+      hasMove = true;
     }
-  if (r.length < t)
-    for (let n of F.shuffle(c)) {
-      if (r.length >= t) break;
-      l.has(`v` + n) || (l.add(`v` + n), r.push({ kind: `newVit`, vit: n, rarity: Hb(e), key: `v` + n }));
-    }
-  return r;
+    if (offer.kind !== 'newMove') offer.rarity = Hb(run);
+    if (offer.kind === 'upMove') offer.ups = P_(player.moves[offer.slot], E[offer.rarity]);
+    offers.push(offer);
+    if (offers.length === count) break;
+  }
+  return offers;
 }
 function Wb(e, t) {
   let r = e.player;
@@ -54437,6 +54350,7 @@ var GT = 15,
         const kit=this.player.roster?.kit??[];
         const keys=new Set(this.coop||kit.includes('mimic')?['ember','fire-spin','flamethrower']:kit);
         if(this.coop||kit.includes('mimic')||[4,5,6].includes(this.player.speciesId))keys.add('fire-ultimate');
+        if(this.player.speciesId===16)keys.add('wind-ultimate');
         for(const move of this.player.moves)if(move)keys.add(move.def.key);
         for(const key of keys){
           const uploaded=await this.vfx.crafted.prepareMoveTexture(key);
@@ -54699,6 +54613,7 @@ var GT = 15,
     }
     queueLevelUp() {
       this.pendingLevels++;
+      if (this.rerolls === 0 && Math.random() < .5) this.rerolls = 1;
     }
     pendingBlessings = [];
     queueBlessing(e, t = 0) {
@@ -55846,7 +55761,11 @@ var GT = 15,
             ? e.length === 1 && this.meta.profile.settings.skipEmptyLevelUp
               ? i(e[0])
               : this.ui.showLevelUp(this, e, (e, r) => {
-                  if (r === `reroll`) (this.rerolls--, a(Ub(this, t)));
+                  if (r === `reroll`) {
+                    if (this.rerolls <= 0) return;
+                    this.rerolls--;
+                    a(Ub(this, t));
+                  }
                   else if (r === `banish` && e) (this.banishes--, this.banished.add(e.key), a(Ub(this, t)));
                   else
                     try {
@@ -56517,8 +56436,7 @@ var GT = 15,
             ((u.x[e] = r), (u.z[e] = i), (u.y[e] = this.terrain.height(r, i)));
         }
       }
-      // Top up only a missed opening level. Normal kills can unlock both
-      // drafts earlier and keep their XP and subsequent level progression.
+      // A slow start may earn a player level. Its draft uses the same random pool.
       if (this.stage === 1 && !this.endless && !l && !n.dead && this.state === 'play' &&
           ((n.level === 1 && this.stageTime >= 18) || (n.level === 2 && this.stageTime >= 45))) n.gainLevel();
       (!this.sanctuary && !this.endless && !l && !this.stageCleared && this.stageTime >= zoneDuration(this.mode) && this.director.startFinalSwarm(),
@@ -59043,12 +58961,7 @@ function ZD(e, t = {}) {
             f.append(
               te(
                 c(`De su línea evolutiva`),
-                e.roster
-                  ? c(
-                      `Al subir de nivel, hay un {pct}% de que se te ofrezca uno de estos al azar (hay que tener un hueco libre).`,
-                      { pct: Math.round(Rb * 100) },
-                    )
-                  : c(`Lo que aprende subiendo de nivel él y sus formas anteriores.`),
+                c(`Lo que aprende subiendo de nivel él y sus formas anteriores.`),
                 n.length
                   ? X(`div`, { class: `mp-grid` }, ...n.map((e) => KD(formMove(e.id, s), ne(e), null, o(e), l, t)))
                   : X(`p`, { class: `mp-none` }, c(`No le queda ninguno por aprender.`)),

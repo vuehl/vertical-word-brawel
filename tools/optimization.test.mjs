@@ -37,11 +37,14 @@ test('ordinary waves grow to 200, include event and elite spawns, and leave boss
   run.stageTime=600;run.enemyCap=60;assert.equal(allowOrdinarySpawn(run),false);
 });
 
-test('short zones start with a crowd and refill faster across both opening minutes',()=>{
-  assert.deepEqual([0,30,60,180,360].map(t=>ordinaryLimit(t,1,SINGLE_STAGE)),[14,29,40,90,200]);
+test('short zones halve the first 30 seconds and gradually recover the existing curve',()=>{
+  assert.deepEqual([0,30,45,60,180,360].map(t=>ordinaryLimit(t,1,SINGLE_STAGE)),[7,14,26,40,90,200]);
   for(const stage of [1,2]){
-    assert.deepEqual([0,30,60,150,300].map(t=>ordinaryLimit(t,stage,'standard')),[14,32,44,90,200]);
-    assert.ok(naturalCreditRate(2,0,stage)>naturalCreditRate(2,60,stage));
+    assert.deepEqual([0,30,45,60,150,300].map(t=>ordinaryLimit(t,stage,'standard')),[7,16,28,44,90,200]);
+    const originalPeak=2+(stage===1?3.2:2.4);
+    assert.equal(naturalCreditRate(2,0,stage),originalPeak*.5);
+    assert.equal(naturalCreditRate(2,30,stage),originalPeak*.5);
+    assert.equal(naturalCreditRate(2,45,stage),originalPeak*.75);
     assert.equal(naturalCreditRate(2,90,stage),2);
   }
   assert.deepEqual([0,60,300,600].map(t=>ordinaryLimit(t,1,'endless')),[5,25,90,200]);
