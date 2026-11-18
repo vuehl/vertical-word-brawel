@@ -50,6 +50,7 @@ function viewport(info) {
 }
 export async function setup(host) {
   await initCrypto();
+  host.bootStage?.('装载字体与界面',91);
   const {document:doc}=D.parseHTML('<!doctype html><html><head></head><body><canvas id="game"></canvas><div id="ui"></div></body></html>');
   const win=new D.EventTarget(),system=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();
   const view=viewport(system);
@@ -283,7 +284,7 @@ export async function setup(host) {
     Blob,URL:LocalURL,URLSearchParams:Params,fetch,Request,Headers,Response,AbortController,AbortSignal,TextDecoder,TextEncoder,createImageBitmap:undefined,ImageBitmap:undefined,OffscreenCanvas:undefined,
     ProgressEvent:InputEvent,MouseEvent:InputEvent,KeyboardEvent:InputEvent,PointerEvent:InputEvent,Path2D:CanvasPath,MutationObserver:doc.defaultView.MutationObserver,
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
-    nativeUI:true,nativeDevice:device,backgroundMusicEnabled:false,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    nativeUI:true,nativeDevice:device,bootStage:host.bootStage,backgroundMusicEnabled:false,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
     setNativeFrameRate:typeof wx.setPreferredFramesPerSecond==='function'?fps=>wx.setPreferredFramesPerSecond(fps):undefined,
     iosPowerMode:__WX_IOS_POWER_MODE__&&device.platform==='ios'?createIOSPowerMode(wx,GameGlobal,typeof requirePlugin==='function'?requirePlugin:null):null,
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},

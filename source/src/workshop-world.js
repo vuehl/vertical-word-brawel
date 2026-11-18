@@ -8,7 +8,6 @@ import {proximityBulb,updateToyProximity} from './workshop-proximity.js';
 import {WORKSHOP_SHADOW} from './workshop-shadows.js';
 import {buildIllustratedDesk} from './illustrated-desk-layout.js';
 import {drawDeskPaper,drawDeskWall} from './workshop-desk-art.js';
-import {buildAlarmClock,ALARM_CLOCK_BOUNDS} from './workshop-alarm-clock.js';
 import {addTabletopInlays} from './workshop-tabletop-inlays.js';
 
 const TAU=Math.PI*2;
@@ -92,6 +91,8 @@ export function* workshopWorldSteps(terrain){
   const batches=new Map(),transform=new Group(),groundSurfaces=[];
   const groundCells=new Map();
   terrain.workshopGroundSurfaces=groundSurfaces;
+  // Movement and pathfinding use this same step height on the illustrated desk.
+  terrain.workshopStepHeight=1.8;
   terrain.workshopLightStrands=[];terrain.workshopShadowStyle='illustrated-contact-shadows';
   function groundY(x,z){
     const surfaces=groundCells.get(terrain.cellKey(x,z));
@@ -147,9 +148,14 @@ export function* workshopWorldSteps(terrain){
   }
   function group(x,z,angle=0){const g=new Group();g.position.set(x,0,z);g.rotation.y=angle;root.add(g);return g;}
   function prop(kind,x,z,w,d,h,angle=0){
-    const g=group(x,z,angle),baseY=groundY(x,z);g.position.y=baseY;terrain.zxProps.push({kind,x,z,w,d,h,angle,baseY});
+    const g=group(x,z,angle),baseY=groundY(x,z);
+    const boundary=kind.startsWith('boundary-'),walkable=!boundary&&h<=terrain.workshopStepHeight;
+    g.position.y=baseY;
+    terrain.zxProps.push({kind,x,z,w,d,h,angle,baseY,walkable});
     const top=baseY+h;
-    terrain.addCollider(paperBox(x,z,w,d,top+.2,angle,kind.startsWith('boundary-')?undefined:top));terrain.reserve(x,z,Math.hypot(w,d)/2+1);
+    if(walkable)groundSurface(x,z,w,d,angle,top,kind);
+    else terrain.addCollider(paperBox(x,z,w,d,top+.2,angle,boundary?undefined:top));
+    terrain.reserve(x,z,Math.hypot(w,d)/2+1);
     terrain.landmarks.push({kind:'meadow',x,z,r:Math.hypot(w,d)/2});return g;
   }
   function glow(c,reactive=false){const key=(reactive?'sensor-glow-':'glow-')+c,m=mat(key,{color:c,emissive:c,emissiveIntensity:reactive?3.4:.12});if(reactive&&!m.userData.proximity)proximityBulb(m,assets);if(!terrain.workshopGlows.includes(m))terrain.workshopGlows.push(m);return m;}
@@ -483,7 +489,7 @@ export function* workshopWorldSteps(terrain){
       terrain.workshopLooseMarbles.push({x:xx,z:zz,r,vx:0,vz:0,rollX:0,rollZ:0,armed:false,color:palette[i%6],coreColor:color(palette[i%6])});
     }
   }
-  yield* buildIllustratedDesk({terrain,stage,assets,group,prop,mesh,box,roundedBox,ball,cyl,ring,plane,cable,texture,texMat,groundSurface,groundY,bookStack,ballpoint,eraser,tapeRoll,penCup,placeMarble,looseMarbles,deskLamp,notebook,paperPile,handheld});
+  yield* buildIllustratedDesk({terrain,stage,assets,group,prop,mesh,box,roundedBox,ball,cyl,ring,plane,cable,texture,texMat,mat,groundSurface,groundY,bookStack,ballpoint,eraser,tapeRoll,penCup,placeMarble,looseMarbles,deskLamp,notebook,paperPile,handheld});
   root.clear();
   const inkBatches=new Map();
   for(const {geo,material,matrices,colors:instanceColors} of batches.values()){

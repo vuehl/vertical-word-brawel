@@ -15,10 +15,11 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
   await shot('04-live-battle');
   report.enemyCollision = await page.evaluate(()=>{
     const run = app.run, terrain = run.terrain, enemies = run.enemies;
-    const eraser = terrain.zxProps.find(prop=>prop.kind==='eraser');
-    const box = terrain.colliders.find(c=>c.x===eraser.x && c.z===eraser.z);
+    const cube = terrain.zxProps.find(prop=>prop.kind==='color-cube' && !prop.walkable);
+    const box = terrain.colliders.find(c=>c.x===cube.x && c.z===cube.z);
+    window.paperTestBox=box;
     const across = distance=>({x:box.x+box.sin*distance, z:box.z+box.cos*distance});
-    const start = across(-5), target = across(5), saved = run.player.pos.clone();
+    const start = across(-box.halfZ-3), target = across(box.halfZ+3), saved = run.player.pos.clone();
     run.state = 'paused';
     enemies.clear();
     const id = enemies.spawn(129, box.x, box.z, 1, 1);
@@ -49,9 +50,8 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
   assert.deepEqual(report.enemyCollision,{spawnClear:true,knockbackBlocked:true,enteredProp:false,landedOnTop:true,reached:true});
   report.springShoes=await page.evaluate(()=>{
     const r=app.run,p=r.player,t=r.terrain,dt=1/30;
-    const saved=p.pos.clone(),prop=t.zxProps.find(prop=>prop.kind==='eraser');
-    const box=t.colliders.find(b=>b.x===prop.x && b.z===prop.z);
-    const x=box.x-box.sin*4,z=box.z-box.cos*4;
+    const saved=p.pos.clone(),box=paperTestBox;
+    const offset=box.halfZ+2.5,x=box.x-box.sin*offset,z=box.z-box.cos*offset;
     p.pos.set(x,t.height(x,z),z);p.vel.set(0,0,0);p.grounded=true;
     const advance=()=>{r.realDt=dt;p.update(dt);r.input.endFrame();};
     r.input.touchKey('Space',true);advance();r.input.touchKey('Space',false);
@@ -104,9 +104,11 @@ export async function reviewPaper({page,tap,resize,dir,sleep}){
       window.tap(x,y,'down');window.tap(x+35,y,'move');window.tap(280,220,'down',2);window.tap(200,280,'move',2);window.tap(200,280,'up',2);
       const stickHeld=Math.hypot(run.input.stickX,run.input.stickY)>0;window.tap(x+35,y,'up');
       run.input.look(400,250);run.input.zoom(10);run.input.mouseDX=500;run.input.mouseDY=400;run.input.wheel=20;run.update(.016);
-      return {before,after:{yaw:run.camYaw,pitch:run.camPitch,fov:cam.fov,distance:run.camDist},stickHeld,released:run.input.stickX===0&&run.input.stickY===0,looks:run.ui.touch.looks.size,props:run.terrain.zxProps.length,colliders:run.terrain.colliders.length};
+      const t=run.terrain;
+      const matched=t.zxProps.every(p=>(p.walkable?t.workshopGroundSurfaces:t.colliders).some(c=>c.x===p.x&&c.z===p.z));
+      return {before,after:{yaw:run.camYaw,pitch:run.camPitch,fov:cam.fov,distance:run.camDist},stickHeld,released:run.input.stickX===0&&run.input.stickY===0,looks:run.ui.touch.looks.size,props:t.zxProps.length,colliders:t.colliders.length,matched};
     });
-    assert.deepEqual(camera.after,camera.before);assert.ok(camera.stickHeld&&camera.released);assert.equal(camera.looks,0);assert.ok(camera.props>15);assert.ok(camera.colliders>=camera.props,'Every stationery prop keeps its collision footprint');report.camera.push({width,...camera});
+    assert.deepEqual(camera.after,camera.before);assert.ok(camera.stickHeld&&camera.released);assert.equal(camera.looks,0);assert.ok(camera.props>15);assert.ok(camera.matched,'Each prop has a walkable surface or a solid footprint');report.camera.push({width,...camera});
     await shot('05-camera-'+width);
   }
   await resize(390,844);

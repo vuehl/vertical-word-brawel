@@ -76,20 +76,30 @@ export async function reviewIllustratedDesk(page,dir){
       let activeLights=0;app.r.scene.traverse(o=>{if(o.isPointLight)activeLights++;});
       const coloredContours=t.group.children.filter(o=>o.name==='painted-prop-contour');
       const buildings=r.interactables.list.map(b=>({kind:b.kind,x:b.x,z:b.z,inside:t.inBounds(b.x,b.z),reachable:reachable(b.x,b.z,5),groundError:Math.abs(b.y-t.height(b.x,b.z))}));
-      const sampleProps=t.zxProps.filter(p=>['mechanical-keyboard','milk-bottle','rangefinder-camera','storage-crate','smartphone'].includes(p.kind));
+      const sampleProps=t.zxProps.filter(p=>['milk-bottle','rangefinder-camera','storage-crate'].includes(p.kind));
       return {stage:r.stage,world:t.world,play:t.play,props:t.zxProps.length,colliders:t.colliders.length,surfaces:t.workshopGroundSurfaces.length,anchors:t.workshopLayout.anchors.length,
         spawn:t.spawn.toArray(),spawnClear:!t.hitProp(t.spawn.x,t.spawn.y+.03,t.spawn.z,r.player.radius),reachableFraction:queue.length/openCount,
-        matchedColliders:t.zxProps.every(p=>t.colliders.some(c=>c.paperBox&&Math.abs(c.x-p.x)<.001&&Math.abs(c.z-p.z)<.001&&Math.abs(c.halfX*2-p.w)<.001&&Math.abs(c.halfZ*2-p.d)<.001)),
+        matchedColliders:t.zxProps.every(p=>p.walkable
+          ? t.workshopGroundSurfaces.some(s=>s.kind===p.kind&&Math.abs(s.x-p.x)<.001&&Math.abs(s.z-p.z)<.001&&Math.abs(s.y-p.baseY-p.h)<.001)
+          : t.colliders.some(c=>c.paperBox&&Math.abs(c.x-p.x)<.001&&Math.abs(c.z-p.z)<.001&&Math.abs(c.halfX*2-p.w)<.001&&Math.abs(c.halfZ*2-p.d)<.001)),
         solidFraction:solidCount/validCount,surfaceFraction:surfaceCount/validCount,reachableAnchors:t.workshopLayout.anchors.every(a=>reachable(a.x,a.z,8)),
         buildings,activeLights,contourBatches:coloredContours.length,coloredContours:coloredContours.every(o=>!!o.instanceColor&&o.material.name==='own-colour-hand-drawn-contour'),
         solidExamples:sampleProps.every(p=>t.hitProp(p.x,p.baseY+.05,p.z,.3)),marbles:t.workshopLooseMarbles.length,
         render:{width:app.r.composer.inputBuffer.width,height:app.r.composer.inputBuffer.height,calls:app.r.renderer.info.render.calls,triangles:app.r.renderer.info.render.triangles},
         textFailures:t.paperAssets.photoFailures,desktopInlays:{regions:t.workshopDesktopInlays||[],changedFraction:inlayCount/validCount},
-        stationery:{pencils:t.zxProps.filter(p=>/pencil/.test(p.kind)).length,ballpoints:t.zxProps.filter(p=>p.kind==='ballpoint-pen').length,gelPens:t.zxProps.filter(p=>p.kind==='gel-pen').length,penCups:t.zxProps.filter(p=>p.kind==='pen-cup').length}};
+        stationery:{pencils:t.zxProps.filter(p=>!p.kind.startsWith('boundary-')&&p.kind.includes('pencil')).length,ballpoints:t.zxProps.filter(p=>p.kind==='ballpoint-pen').length,gelPens:t.zxProps.filter(p=>p.kind==='gel-pen').length,penCups:t.zxProps.filter(p=>p.kind==='pen-cup').length}};
     };
   });
   const audit=async()=>{
     const result=await page.evaluate(()=>deskAudit());report.stages.push(result);
+    if(await page.evaluate(()=>app.run.terrain.workshopBoundary?.style==='giant-desk-objects')){
+      const {reviewDeskBoundary}=await import('./desk-boundary-regression.mjs');
+      result.boundary=await reviewDeskBoundary(page);
+    }
+    if(process.argv.includes('--low-props')){
+      const {reviewLowProps}=await import('./low-props-regression.mjs');
+      result.lowProps=await reviewLowProps(page,dir);
+    }
     fs.writeFileSync(path.join(dir,'illustrated-desk-report.json'),JSON.stringify(report,null,2));
     assert.ok(result.spawnClear,'Spawn must remain clear');
     assert.ok(result.matchedColliders,'Each tall prop needs its matching footprint (arena columns add their own colliders)');
@@ -135,7 +145,7 @@ export async function reviewIllustratedDesk(page,dir){
       },kind);report.pens.push(state);await shot(kind);
     }
   }
-  // Real player movement crosses the tablet lip and stops at the keyboard.
+  // The keyboard is now a low surface, so the player crosses it without jumping.
   report.movement=await page.evaluate(()=>{
     const r=app.run,p=r.player,t=r.terrain;deskPlace(0,0);
     const walk=(dx,dz,frames)=>{
@@ -143,10 +153,10 @@ export async function reviewIllustratedDesk(page,dir){
       for(let i=0;i<frames;i++){r.realDt=1/60;p.update(1/60);r.input.endFrame();if(p.grounded)maxError=Math.max(maxError,Math.abs(p.pos.y-t.height(p.pos.x,p.pos.z)));}
       r.input.stickX=r.input.stickY=0;return {x:p.pos.x,y:p.pos.y,z:p.pos.z,maxError,inside:t.hitProp(p.pos.x,p.pos.y+.03,p.pos.z,p.radius-.04)};
     };
-    const exit=walk(0,1,120);deskPlace(0,0);const blocked=walk(0,-1,180);return {exit,blocked};
+    const exit=walk(0,1,120);deskPlace(0,0);const keyboard=walk(0,-1,180);return {exit,keyboard};
   });
   assert.ok(report.movement.exit.z>8,'The player must walk off the drawing tablet');assert.ok(report.movement.exit.maxError<.36);
-  assert.equal(report.movement.blocked.inside,false,'Keyboard collision must stop the player outside its silhouette');assert.ok(report.movement.blocked.z>-10&&report.movement.blocked.z<-3);
+  assert.equal(report.movement.keyboard.inside,false,'Low surfaces must not trap the player inside a solid');assert.ok(report.movement.keyboard.z<-12,'Walk directly across the keyboard');
   report.workloads=[];
   for(const quality of ['low','medium','high']){
     const sample=await page.evaluate(quality=>{

@@ -15,9 +15,20 @@ export function initGameCloud(cloud) {
 export async function callProgress(method, data) {
   const cloud=wx.cloud;
   if(!cloud?.callContainer) throw Error('微信云存档接口不可用，请检查微信版本和网络');
-  await initGameCloud(cloud);
-  const res=await cloud.callContainer({config:{env:config.env},path:'/v1/progress',
-    method,header:{'X-WX-SERVICE':config.service,'content-type':'application/json'},...(data ? {data} : {})});
+  // The native fetch bridge cannot abort callContainer. Bound the native
+  // promise too, so a lost callback cannot hold the local API queue forever.
+  // A timed-out write still retains cloudPending and its idempotent receipt.
+  let timer,res;
+  try {
+    res=await Promise.race([
+      (async()=>{
+        await initGameCloud(cloud);
+        return cloud.callContainer({config:{env:config.env},path:'/v1/progress',
+          method,header:{'X-WX-SERVICE':config.service,'content-type':'application/json'},...(data ? {data} : {})});
+      })(),
+      new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('云存档'+(method==='PUT'?'保存':'读取')+'超时，请检查网络后重试')),method==='PUT'?15000:8000);})
+    ]);
+  } finally {clearTimeout(timer);}
   if(res.statusCode===409) return {conflict:true};
   if(res.statusCode!==200 || !res.data?.owner || !res.data.progress?.stages ||
      !Number.isSafeInteger(res.data.revision)) {

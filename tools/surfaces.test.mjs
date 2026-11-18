@@ -60,3 +60,20 @@ test('visible image errors can switch to a fallback without loading hidden repla
   f.draw(img);await Promise.resolve();f.images[1].onload();
   assert.deepEqual(f.requests,['missing.png','fallback.png']);assert.ok(img.complete);
 });
+
+test('WeChat WebGL skips only the unsupported browser unpack setting',t=>{
+  const previous=globalThis.wx,calls=[],native={canvas:{},pixelStorei(parameter,value){
+    assert.equal(this,native);calls.push([parameter,value]);return 42;
+  }};
+  t.after(()=>{globalThis.wx=previous;});
+  globalThis.wx={createOffscreenCanvas:()=>({getContext:()=>native})};
+  const {document:doc}=D.parseHTML('<html><body><canvas id="game"></canvas></body></html>');
+  installSurfaces(D,doc,{canvas:{getContext:()=>native}},{});
+  const gl=doc.getElementById('game').getContext('webgl2');
+  for(let i=0;i<200;i++)gl.pixelStorei(0x9243,0);
+  assert.deepEqual(calls,[]);
+  assert.equal(gl.pixelStorei(0x9240,true),42);
+  gl.pixelStorei(0x9241,false);gl.pixelStorei(0x0cf5,4);
+  assert.deepEqual(calls,[[0x9240,true],[0x9241,false],[0x0cf5,4]]);
+  assert.equal(gl.pixelStorei,gl.pixelStorei,'Retain the stable method identity');
+});

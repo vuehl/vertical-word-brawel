@@ -10533,7 +10533,7 @@ var qu = `
         let i = e + n * s,
           c = t + r * s,
           l = this.height(i, c);
-        if (l > o + 0.6 || this.hitProp(i, l + 0.3, c, a * 0.8)) return !1;
+        if (l > o + (this.workshopStepHeight ?? 0.6) || this.hitProp(i, l + 0.3, c, a * 0.8)) return !1;
         o = l;
       }
       return !0;
@@ -33381,7 +33381,7 @@ var mv = 30,
           Math.random() < 0.3 &&
             t.vfx.trail(this.pos.x, this.pos.y + 0.3, this.pos.z, 16777215, 0.4, I.Soft, 0.4)),
         (this.vel.y -= mv * e));
-      let ne = 0.6,
+      let ne = r.workshopStepHeight ?? 0.6,
         re = this.radius * 0.8,
         ie = (e, t, n, i) => {
           let a = e + Math.sign(n) * re,
@@ -87987,6 +87987,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           r.append(X(`button`, { class: `btn big red`, onclick: () => location.reload() }, c(`Reintentar`))));
         return;
       }
+      window.bootStage?.('游戏数据已就绪',96);
       for (let t = 0; !this.r; t++)
         try {
           this.r = new dc(e);
@@ -87995,6 +87996,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
             (n.lastChild.textContent = c(`La tarjeta gráfica no responde, reintentando…`)),
             await new Promise((e) => setTimeout(e, Math.min(5e3, 1e3 + t * 500))));
         }
+      window.bootStage?.('画面引擎已就绪',97);
       ((this.r.onLost = (e) => this.contextLost(e)),
         Io(),
         (this.input = new es(e)),
@@ -88130,6 +88132,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         (this.backend.onUpdate = () => {
           dN(this);
         }));
+      window.bootStage?.('读取本机登录状态',98);
       let u = null;
       try {
         u = await this.backend.restore();
@@ -88137,6 +88140,15 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         return e.maintenance || _L(e) ? void 0 : this.offline();
       }
       if (u?.guest && this.guestClosed()) return DP(this, !0);
+      if(window.nativeUI){
+        const ui=ZX(this);
+        // The home screen does not need a cloud profile. Share this request
+        // with menu actions, without a late response navigating the player.
+        if(u)ui.prepareProfile(u).catch(error=>console.warn('[字行] 后台读取存档失败',error));
+        ui.home();
+        window.bootStage?.('首页内容已就绪',99);
+        return;
+      }
       if (u) {
         (await this.signedIn(u), ik && XF(this, ik));
         let e = null; // No room links in the single-player edition.

@@ -47,6 +47,11 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
         if(typeof v!=='function')return v;
         if(['drawImage','createPattern','texImage2D','texSubImage2D','texImage3D','texSubImage3D','copyImageSubData'].includes(k))
           cache[k]=(...args)=>v.apply(native,args.map(a=>a?._surface||a));
+        // WeChat ignores this browser-only unpack setting and logs a warning
+        // for every texture upload. Keep all other native WebGL calls intact.
+        else if(type.startsWith('webgl')&&k==='pixelStorei')cache[k]=(parameter,value)=>{
+          if(parameter!==0x9243)return v.call(native,parameter,value);
+        };
         else if(['fill','stroke','clip','isPointInPath'].includes(k))cache[k]=(...args)=>{
           if(args[0] instanceof CanvasPath){args.shift().trace(native);}return v.apply(native,args);
         };

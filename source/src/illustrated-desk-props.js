@@ -101,7 +101,7 @@ export function illustratedDeskProps(api){
     });plane(g,0,0,0,w*s,d*s,art);return g;
   }
   function phone(x,z,s=1,a=-.22){
-    const g=prop('smartphone',x,z,5*s,9.6*s,.55*s,a);g.scale.setScalar(s);
+    const g=prop('smartphone',x,z,5*s,9.6*s,.65*s,a);g.scale.setScalar(s);
     rb(g,0,.27,0,5,.54,9.6,'#c78c83');rb(g,0,.56,0,4.75,.10,9.31,'#f0d5b9');
     const screen=stamp('phone-screen',384,768,c=>{
       c.fillStyle='#203b56';c.fillRect(0,0,384,768);
@@ -227,20 +227,21 @@ export function illustratedDeskProps(api){
     cyl(g,0,5.7,.96,.6,.22,'#d1c9b2',Math.PI/2);return g;
   }
   function laptop(x,z,s=1,a=-.18){
-    const g=prop('laptop',x,z,16*s,13*s,8.7*s,a);g.scale.setScalar(s);
-    rb(g,0,.25,0,16,.5,11,'#b1b2b6');rb(g,0,.54,-1.6,14,.12,6,'#525865');
-    for(let row=0;row<4;row++)for(let col=0;col<12;col++)rb(g,-6.35+col*1.15,.67,-3.7+row*1.36,1.0,.20,1.05,'#3c4351');
-    rb(g,0,.57,3.0,5,.04,2.8,'#a1a7ad');
-    const screen=child(g,0,.46,-5.0);screen.rotation.x=-.18;
-    rb(screen,0,4.1,0,16,8.2,.48,'#474a5a');
-    mesh(screen,assets.planes,stamp('laptop-screen',1024,512,c=>{
-      c.fillStyle='#2b394c';c.fillRect(0,0,1024,512);
-      c.fillStyle='#657c91';c.fillRect(36,30,952,35);label(c,'SKETCHBOOK  /  untitled',59,55,18,'#e1dac9');
-      c.fillStyle='#c6a49b';c.fillRect(270,96,600,343);
-      c.fillStyle='#8a90aa';c.beginPath();c.moveTo(270,439);c.lineTo(440,190);c.lineTo(610,363);c.lineTo(713,249);c.lineTo(870,439);c.fill();
-      for(let i=0;i<6;i++)rr(c,59+i%3*52,109+Math.floor(i/3)*53,39,39,4,['#e7bf8a','#ae7490','#74988c','#5c6988','#adbdac','#dbd1b2'][i]);
-      for(let i=0;i<6;i++)line(c,[[60,276+i*24],[206,276+i*24]],'#a9adbc',3);
-    }),0,4.15,.255,15.15,7.35,1);return g;
+    const g=prop('laptop',x,z,16*s,11*s,.86*s,a);g.scale.setScalar(s);
+    rb(g,0,.25,0,16,.5,11,'#a0a6b2');
+    rb(g,0,.52,0,15.75,.08,10.8,'#626b7e');
+    rb(g,0,.69,0,16,.30,11,'#b6bccb');
+    for(const xx of [-5.5,5.5])rb(g,xx,.46,-5.24,2,.27,.54,'#7e8798');
+    rb(g,0,.33,5.48,2.6,.10,.05,'#6a7485');
+    for(const xx of [-5,-3.8])box(g,xx,.25,5.51,.65,.12,.035,'#626b7e');
+    paintedTop(g,'closed-laptop-lid',.85,15.5,10.5,c=>{
+      c.fillStyle='#b6bccb';c.fillRect(0,0,768,768);
+      line(c,[[28,710],[28,32],[739,32]],'#d4d8e2',3);
+      line(c,[[739,54],[739,735],[48,735]],'#929bae',2);
+      c.fillStyle='#939fb4';c.beginPath();c.moveTo(384,334);c.lineTo(425,384);c.lineTo(384,434);c.lineTo(343,384);c.closePath();c.fill();
+      line(c,[[371,384],[384,365],[398,384],[384,404]],'#dce0e8',3);
+      label(c,'Z I L I N G',557,699,15,'#79859a');
+    });return g;
   }
   return {tablet,keyboard,planner,paperNote,phone,camera,mug,bottle,crate,cuttingMat,correctionTape,cube,succulent,paintTube,headphones,fan,laptop};
 }

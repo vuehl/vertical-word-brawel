@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {progressDispatcher} from '../platform/cloud-progress.mjs';
+import {progressDispatcher,callProgress} from '../platform/cloud-progress.mjs';
 
 function server(){
   let state,drop=false;
@@ -81,5 +81,34 @@ test('periodic checkpoints retain their active run without serializing saved his
   assert.equal(copies,0);assert.equal(saved,undefined);
   await dispatch({pathname:'/api/profile/prefs'},'PUT',{},'{}');
   assert.equal(copies,1);assert.deepEqual(saved.runs.current.cps,[300]);
+});
+
+test('a stalled native cloud read falls back to the existing save and releases the request',async t=>{
+  const previous=globalThis.wx;
+  t.after(()=>{globalThis.wx=previous;});
+  t.mock.timers.enable({apis:['setTimeout']});
+  let started,reply;
+  const begun=new Promise(resolve=>{started=resolve;});
+  globalThis.wx={cloud:{init(){},callContainer(){started();return new Promise(resolve=>{reply=resolve;});}}};
+  const phone=device(null,26,callProgress),request=phone.start()();
+  await begun;t.mock.timers.tick(8000);
+  const result=await request;
+  assert.equal(result.status,200);
+  assert.equal(result.data.profile.stardust,26);
+  assert.match(result.data.profile.cloudSaveError,/云存档读取超时/);
+  reply({statusCode:200,data:{owner:'late',revision:1,progress:{stardust:99,stages:{forest:0}}}});
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(phone.stored().accounts.a.profile.stardust,26,'Ignore a response after the request has timed out');
+});
+
+test('a stalled native cloud write rejects without claiming success',async t=>{
+  const previous=globalThis.wx;
+  t.after(()=>{globalThis.wx=previous;});
+  t.mock.timers.enable({apis:['setTimeout']});
+  let started;
+  const begun=new Promise(resolve=>{started=resolve;});
+  globalThis.wx={cloud:{init(){},callContainer(){started();return new Promise(()=>{});}}};
+  const rejected=assert.rejects(callProgress('PUT',{}),/云存档保存超时/);
+  await begun;t.mock.timers.tick(15000);await rejected;
 });
 

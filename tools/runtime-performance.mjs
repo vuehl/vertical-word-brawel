@@ -84,7 +84,8 @@ try{
   }
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
-  const repeatableMap=fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg));
+  const deskReview=process.argv.includes('--map-play')||process.argv.includes('--illustrated-desk');
+  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
@@ -93,13 +94,13 @@ try{
     // Prevent the software rasterizer from monopolizing startup. Manual sample frames follow.
     window.realFrameGap=app.frameGap.bind(app);
     app.frameGap=()=>250;
-    if(development)return initial;
     if(repeatableMap){
       const start=app.backend.startRun.bind(app.backend);
       app.backend.startRun=async(...args)=>({...await start(...args),seed:53090});
       let seed=53090;
       Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
     }
+    if(development)return initial;
     await inspected.env.prepareForest();
     if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Start failed');
     app.halted=true;app.run.godMode=true;app.run.queueLevelUp=()=>{};

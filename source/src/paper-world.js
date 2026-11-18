@@ -41,6 +41,15 @@ export function updatePaperCamera(run,dt){
   const distance=PAPER_CAMERA.distance*Math.max(1,.46/Math.max(.25,c.aspect));
   focus.set(run.camTarget.x,run.camTarget.y+.5,run.camTarget.z-2.5);
   c.position.set(focus.x,focus.y+Math.sin(PAPER_CAMERA.pitch)*distance,focus.z+Math.cos(PAPER_CAMERA.pitch)*distance);
+  // Keep the camera on the inside of the tall southern boundary. As the player
+  // approaches it, the view naturally becomes more overhead, rather than
+  // looking through a bookcase or removing the visible boundary behind them.
+  if(run.terrain.workshopBoundary?.style==='giant-desk-objects'){
+    const inner=run.terrain.workshopBoundary.inner;
+    c.position.x=Math.max(-inner+1,Math.min(inner-1,c.position.x));
+    c.position.z=Math.min(c.position.z,inner-2);
+    run.camPitch=Math.atan2(c.position.y-focus.y,c.position.z-focus.z);
+  }
   c.lookAt(focus);if(c.fov!==PAPER_CAMERA.fov){c.fov=PAPER_CAMERA.fov;c.updateProjectionMatrix();}
   const trauma=Math.max(0,(run.trauma||0)-Math.max(0,dt)*2.4);
   run.trauma=trauma;const strength=trauma*trauma*.2,time=run.realTime*39;

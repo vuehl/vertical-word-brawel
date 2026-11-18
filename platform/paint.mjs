@@ -136,7 +136,7 @@ export function compositor(gl,canvas) {
     function prepareUpload(useCanvas){
       if(premultiply===undefined){
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_ALIGNMENT,4);
-        gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,gl.BROWSER_DEFAULT_WEBGL);
+        // Native WeChat canvases do not implement browser color conversion.
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH,0);gl.pixelStorei(gl.UNPACK_SKIP_PIXELS,0);gl.pixelStorei(gl.UNPACK_SKIP_ROWS,0);
       }
       if(premultiply!==useCanvas){gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,useCanvas);premultiply=useCanvas;}

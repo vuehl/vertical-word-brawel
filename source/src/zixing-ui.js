@@ -177,7 +177,7 @@ export function createZixingUI(app,api) {
   if(!globalThis.__ZILING_COMPILED_STYLES__)document.head.append(el('style','',zixingStyle));
   window.__zixingApp=app;
   let selected=4,selectedDifficulty=difficulties[1],labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null,activeEntry=null;
-  const ui=app.zixing={home,choose,map,difficulty,lab,settings,help,stats,attachRun,loading,start};
+  const ui=app.zixing={home,choose,map,difficulty,lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready};
   if(window.nativeUI)window.addEventListener('memorywarning',releaseGlyphCanvasCache);
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
@@ -189,9 +189,14 @@ export function createZixingUI(app,api) {
     if(actions.length)node.append(el('footer','zx-footer',actions));
     app.setScreen(node);return node;
   }
-  async function ready() {
+  async function ready(account) {
+    if(authPromise)return authPromise;
     if(profile())return;
-    if(!authPromise)authPromise=(async()=>{const account=await app.backend.guest();await app.meta.load(account);app.applySettings();})().finally(()=>{authPromise=null;});
+    authPromise=(async()=>{
+      await app.meta.load(account||await app.backend.guest());
+      app.applySettings();
+      selected=character(profile().lastSpecies||profile().starter||4).id;
+    })().finally(()=>{authPromise=null;});
     return authPromise;
   }
   function pendingScreen(title,message,back) {
@@ -247,11 +252,8 @@ export function createZixingUI(app,api) {
     const root=screen('home','','',[
       el('div','zx-home-copy',[el('h2','','从一个字开始'),text('走位避险，自动出招。'),text('在五行之间，写下你的这一局。')]),
       el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
-      button([el('span','','开始旅程'),el('span','','→')],async()=>{
-        const origin=app.screen;
-        if(!profile())await ready();
-        if(app.screen===origin)choose();
-      },'primary zx-home-start',{'data-action':'journey'}),
+      button([el('span','','开始旅程'),el('span','','→')],()=>openProfilePage('开始旅程',choose),
+        'primary zx-home-start',{'data-action':'journey'}),
       button('多人联机',()=>multiplayer(),'zx-home-coop',{'data-action':'multiplayer'}),
       button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),openLab,'purple zx-home-lab',{'data-action':'lab'}),
       el('div','zx-home-foot',button([icon('book',16,'#61567b'),el('span','','玩法说明')],()=>help(),'zx-plain')),

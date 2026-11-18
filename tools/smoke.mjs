@@ -17,6 +17,7 @@ import {reviewStarters} from './starter-regression.mjs';
 import {reviewUpgrade} from './upgrade-regression.mjs';
 import {reviewBattleFeedback} from './battle-feedback-regression.mjs';
 import {fixtureSubpackage} from './fixture-subpackage.mjs';
+import {reviewStartupLatency} from './startup-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -180,9 +181,9 @@ async function verifyStartup(){
     return;
   }
   if(!checkGlyphGate){
-    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n===95).length>=2||window.problem,{timeout:60000});
+    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n>=95).length>=2||window.problem,{timeout:60000});
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-    await verifyProgressImage(95,'00-background.png');
+    await verifyProgressImage(await page.evaluate(()=>bootPercentages.at(-1)),'00-background.png');
     await page.evaluate(()=>window.releaseHomeStatus());
   }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
@@ -271,7 +272,8 @@ async function verifyStartup(){
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
   }
   if(await page.evaluate(()=>!!app.zixing)){
-    if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
+    if(process.argv.includes('--startup-latency'))await reviewStartupLatency({page,dir,baseline:process.argv.includes('--baseline')});
+    else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
     else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});

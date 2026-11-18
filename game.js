@@ -60,7 +60,7 @@ async function launchEngine(host, play, showProgress) {
     };
     env.drawUI = (renderer,...args) => {
       draw(renderer,...args);
-      showProgress(booted ? 100 : 95, renderer);
+      showProgress(booted ? 100 : undefined, renderer);
       if (!booted) return;
       env.drawUI = draw;
       if (env.invalidateUI) env.invalidateUI();
@@ -68,6 +68,7 @@ async function launchEngine(host, play, showProgress) {
       resolve();
     };
   });
+  host.bootStage('读取玩法与字形',95);
   const engine = play.run(env).then(() => { booted = true; });
   await Promise.all([firstFrame, engine]);
 }
@@ -78,6 +79,7 @@ async function start() {
   const roomInvites = {code: '', onInvite: null};
   const host = {
     roomInvites,
+    bootDiagnostics:{stages:[],completed:false},
     shareRoomCode(code) {
       if (!wx.shareAppMessage) throw Error('请在微信小游戏内分享房间号');
       wx.shareAppMessage(wechatShareCard(code, '房间按钮'));
@@ -100,9 +102,11 @@ async function start() {
   let phase = '创建画面', splash, shown = 0;
   function stage(title) {
     phase = title;
-    console.info('[宝可梦启动]', title, Date.now() - began, 'ms');
+    const ms=Date.now()-began;
+    host.bootDiagnostics.stages.push({stage:title,ms});
+    console.info('[宝可梦启动]', title, ms, 'ms');
   }
-  function showProgress(value, renderer) {
+  function showProgress(value = shown, renderer) {
     if (!splash || value < shown || (value === shown && !renderer)) return;
     shown = value;
     try {
@@ -115,6 +119,7 @@ async function start() {
       if (renderer) renderer.resetState();
     }
   }
+  host.bootStage=(title,value)=>{stage(title);showProgress(value);};
   try {
     stage('字行 · 打开纸上世界');
     const canvas = wx.createCanvas();
@@ -155,6 +160,8 @@ async function start() {
     stage('绘制游戏首页');
     showProgress(90);
     await withTimeout(launchEngine(host,play,showProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
+    host.bootDiagnostics.completed=true;
+    host.bootDiagnostics.totalMs=Date.now()-began;
     console.info('[宝可梦启动] 游戏首页已绘制', Date.now() - began, 'ms');
   } catch (error) {
     console.error('[宝可梦] ' + phase + '失败', error);

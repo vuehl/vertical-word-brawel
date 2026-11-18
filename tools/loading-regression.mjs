@@ -144,7 +144,11 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       return {stage:r.stage,actors:batches.length,glyphs:batches.filter(b=>b.zxGlyph).length,
         legacyImages:batches.filter(b=>b.url).length,estimatedActorBytes:batches.reduce((n,b)=>n+b.bytes,0),
         feet:Object.fromEntries(batches.map(b=>[b.sid,b.foot])),textures:t.textures.map(t=>t.uuid),
-        colliders:t.colliders.length,props:t.zxProps.length,terrainBatches:t.group.children.length,
+        colliders:t.colliders.length,props:t.zxProps.length,walkableProps:t.zxProps.filter(p=>p.walkable).length,
+        matchedProps:t.zxProps.every(p=>p.walkable
+          ? t.workshopGroundSurfaces.some(s=>s.kind===p.kind&&Math.abs(s.x-p.x)<.001&&Math.abs(s.z-p.z)<.001&&Math.abs(s.y-p.baseY-p.h)<.001)
+          : t.colliders.some(c=>c.paperBox&&Math.abs(c.x-p.x)<.001&&Math.abs(c.z-p.z)<.001&&Math.abs(c.halfX*2-p.w)<.001&&Math.abs(c.halfZ*2-p.d)<.001)),
+        terrainBatches:t.group.children.length,
         readbacks:loadProbe.readbacks,loadingMetrics:r.loadingMetrics,
         hiddenImages:hiddenImages.map(img=>({src:img.src,width:img.naturalWidth,height:img.naturalHeight})),
         hiddenImageBytes:hiddenImages.reduce((sum,img)=>sum+img.naturalWidth*img.naturalHeight*4,0),
@@ -338,7 +342,12 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     }
     assert.deepEqual(probe.requests.filter(p=>/assets\/(?:cries|pmd(?:-shiny)?|portraits(?:-shiny)?|front|icons)\//.test(p)),[],'Glyph actors must not request any excluded image or cry');
     for(const s of [...stages,restart])assert.deepEqual(s.hiddenImages,[],'Hidden legacy HUD images must never be decoded');
-    for(const s of [...stages,restart]){assert.equal(s.legacyImages,0);assert.equal(s.glyphs,s.actors);assert.ok(s.estimatedActorBytes<12*1048576);assert.ok(s.colliders>=s.props&&s.colliders<200&&s.props>10);}
+    for(const s of [...stages,restart]){
+      assert.equal(s.legacyImages,0);assert.equal(s.glyphs,s.actors);assert.ok(s.estimatedActorBytes<12*1048576);
+      // Low desk objects are ground surfaces, while tall objects are blockers.
+      assert.ok(s.matchedProps,'Every prop needs its ground surface or matching collider');
+      assert.ok(s.colliders>=s.props-s.walkableProps&&s.colliders<200&&s.props>10);
+    }
     assert.ok(stages[1].textures.filter(id=>stages[0].textures.includes(id)).length>=10,'Area changes must reuse the paper textures');
     const before=path.join(dir,'loading-before.json');
     if(fs.existsSync(before)){
