@@ -5,6 +5,7 @@ import sizes from './items/sizes.json' with {type:'json'};
 import {createWorkload,workloadPreset} from './workload.mjs';
 import {createEncounterTest,encounterAt,nextEncounter} from './encounters.mjs';
 import {ordinaryLimit} from '../../source/src/spawn-budget.js';
+import {heroActionCatalog} from '../../source/src/hero-action-catalog.js';
 import heroRigs from '../../source/src/hero-rigs.json' with {type:'json'};
 const SPECIAL=2|4|128|2048|4096|8192|16384|32768|65536|131072;
 const MAX_COUNT=1000;
@@ -85,6 +86,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   const modeNames={none:'只调怪物',timed:'按时间实战',stress:'满负载压测'};
   let run=null,button=null,monitor=null,monitorLayer=null,panel=null,target=30,seconds=120;
   let strokePreview=null;
+  let restoreHeroRender=null;
   let calls=0,triangles=0,lastSample=0,lastMaintain=0;
   let values=null,error=null;
   let mountEntrance=()=>{};
@@ -202,10 +204,30 @@ export function installDeveloperMode(app,{skills,speciesName}){
     const update=director.update.bind(director);
     director.update=dt=>{if(options.spawn&&!options.lockCount)update(dt);};
   }
+  function removePanel(){
+    restoreHeroRender?.();restoreHeroRender=null;
+    closeItemPreview();panel?.remove();panel=null;values=null;error=null;
+  }
   function close(){
-    if(!panel)return;closeItemPreview();panel.remove();panel=null;values=null;error=null;
+    if(!panel)return;removePanel();
     if(run&&!run.disposed&&run.state==='paused')run.resume();
     refresh();invalidate();
+  }
+  function previewDeath(shell){
+    const player=run.player,render=player.render;
+    // The battle renderer reads the real form and position through this stand-in.
+    // Only the preview owns the death flag and the animation clock.
+    const pose=Object.assign(Object.create(player),{dead:true,heroPlayback:undefined});
+    player.render=()=>render.call(pose);
+    restoreHeroRender=()=>{player.render=render;};
+    shell.hidden=true;
+    panel.style.background='transparent';
+    const controls=node('div','','position:absolute;bottom:24px;align-self:center;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 14px;border-radius:12px;background:#fffaf0;color:#36443e;');
+    const clip=heroActionCatalog[player.speciesId]?.clips.faint;
+    controls.append(node('b',speciesName(player.speciesId)+(clip?' · 死亡动作':' · 默认死亡姿态（暂无专属动画）'),'font-size:14px;'));
+    controls.append(row(action('重播',()=>{pose.heroPlayback=undefined;},'replay-hero-death'),
+      action('返回战斗',close,'close-hero-death')));
+    panel.append(controls);invalidate();
   }
   function advanceEvolution(){
     if(!run||run.disposed||!['play','paused'].includes(run.state))return false;
@@ -259,7 +281,8 @@ export function installDeveloperMode(app,{skills,speciesName}){
       text(scenery,options.hideScenery?'地图文具：已隐藏':'地图文具：已显示');
       scenery.setAttribute('aria-pressed',String(options.hideScenery));
     });
-    card.append(action('道具对比',showItemPreview,'item-preview'),action('大招连升测试',testUltimateUpgrade,'ultimate-upgrade'),
+    card.append(action('测试死亡动作',()=>previewDeath(shell),'preview-hero-death'),
+      action('道具对比',showItemPreview,'item-preview'),action('大招连升测试',testUltimateUpgrade,'ultimate-upgrade'),
       node('small','替换普通怪并立即放大招。击败整组测试怪、吸收经验可连升两级。','font-size:11px;'),scenery);
     card.append(modes,values.preset,values.skills);
     values.evolution=node('small','','font-size:12px;line-height:1.45;');
@@ -307,7 +330,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   function attach(next){
     // startRun can route through the loading flow and call itself again.
     if(run===next)return;
-    closeItemPreview();panel?.remove();panel=null;values=null;error=null;button?.remove();monitorLayer?.remove();
+    removePanel();button?.remove();monitorLayer?.remove();
     workload?.stop();strokePreview=null;run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run);lastMaintain=0;showOnEntry=true;
     syncScenery();
     const renderWorld=run.renderWorld.bind(run);
@@ -341,7 +364,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     monitor.id='zx-dev-monitor';monitor.hidden=!options.monitor;monitorLayer.append(monitor);run.ui.root.append(monitorLayer);
     const hurt=run.player.hurt.bind(run.player);run.player.hurt=(...args)=>options.invincible?false:hurt(...args);
     const resume=run.resume.bind(run);
-    run.resume=()=>{panel?.remove();panel=null;values=null;error=null;const result=resume();mountEntrance();refresh();invalidate();return result;};
+    run.resume=()=>{removePanel();const result=resume();mountEntrance();refresh();invalidate();return result;};
     const showPause=run.ui.showPause.bind(run.ui);
     run.ui.showPause=(...args)=>{
       const result=showPause(...args),body=run.ui.modalEl?.querySelector('.zx-pause-body');
@@ -370,7 +393,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     };
     let wiredDirector=run.director;
     const dispose=run.dispose.bind(run);
-    run.dispose=()=>{workload.stop();panel?.remove();panel=null;values=null;error=null;button?.remove();monitorLayer?.remove();return dispose();};
+    run.dispose=()=>{removePanel();workload.stop();button?.remove();monitorLayer?.remove();return dispose();};
   }
   const start=app.startRun.bind(app);
   app.startRun=async(...args)=>{const result=await start(...args);if(result&&app.run){attach(app.run);if(showOnEntry)open();}return result;};

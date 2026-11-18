@@ -4,6 +4,54 @@ import path from 'node:path';
 import {reviewEncounters} from './encounters-regression.mjs';
 import {reviewDeveloperSkills} from './skills-regression.mjs';
 import {reviewDeveloperEvolution} from './evolution-regression.mjs';
+import {heroActionCatalog} from '../../source/src/hero-action-catalog.js';
+
+async function reviewDeathPreview(page,dir,tap){
+  for(const species of [4,16,17,18,58,59,5,6]){
+    const before=await page.evaluate(async species=>{
+      const r=app.run,p=r.player,dev=inspected.env.__zixingDeveloper;
+      dev.options.invincible=true;dev.options.hideScenery=false;
+      p.setSpecies(species);p.level=60;r.ui.developerSyncExperience();r.ui.hud(r);
+      await r.sprites.prepareHeroForm(species);
+      dev.open();
+      window.deathPreviewStats=()=>({species:p.speciesId,level:p.level,hp:p.hp,xp:p.xp,dead:p.dead,
+        revives:p.revives,kills:r.stats.kills,time:r.stageTime,invincible:dev.options.invincible});
+      const get=r.sprites.getPlayerGlyph;
+      r.sprites.getPlayerGlyph=(...args)=>{
+        window.previewFrame=args[3];return get(...args);
+      };
+      window.restorePreviewProbe=()=>{r.sprites.getPlayerGlyph=get;};
+      return deathPreviewStats();
+    },species);
+    await tap('preview-hero-death');
+    const clip=heroActionCatalog[species]?.clips.faint;
+    const result=await page.evaluate(()=>{
+      const r=app.run,seen=[];
+      for(let i=0;i<90;i++){
+        r.update(1/60);
+        if(previewFrame&&seen.at(-1)!==previewFrame.index)seen.push(previewFrame.index);
+      }
+      app.r.render(0);inspected.env.drawUI(app.r.renderer);
+      return {state:r.state,action:previewFrame?.action,seen,stats:deathPreviewStats(),
+        replay:!!inspected.doc.querySelector('[data-dev-action="replay-hero-death"]'),ring:r.playerFootRing.visible};
+    });
+    assert.equal(result.replay,true);assert.equal(result.state,'paused');assert.equal(result.ring,false);
+    assert.deepEqual(result.stats,before);
+    assert.equal(result.action,clip?'faint':undefined);
+    assert.deepEqual(result.seen,Array.from({length:clip?.count??0},(_,index)=>index));
+    if(species===4)await page.screenshot({path:path.join(dir,'主角死亡动作预览.png')});
+    await tap('replay-hero-death');
+    assert.equal(await page.evaluate(()=>previewFrame?.index),clip?0:undefined);
+    await tap('close-hero-death');
+    const after=await page.evaluate(()=>{
+      restorePreviewProbe();
+      return {stats:deathPreviewStats(),state:app.run.state,ring:app.run.playerFootRing.visible,action:previewFrame?.action};
+    });
+    assert.deepEqual(after.stats,before);assert.equal(after.state,'play');assert.equal(after.ring,true);
+    assert.notEqual(after.action,'faint');
+  }
+  console.log('Verified level 60 invincible death previews, replay and resume for both hero families.');
+}
 
 async function reviewUpgradeWave(page){
   for(const mode of ['timed','stress']){
@@ -97,6 +145,7 @@ export async function reviewDeveloper(page,dir){
   report.firstEntry=await page.evaluate(()=>({state:app.run.state,panel:!!inspected.doc.querySelector('#zx-dev-panel')}));
   assert.deepEqual(report.firstEntry,{state:'paused',panel:true},'First battle must display the minute/count panel automatically');
   await draw();await page.screenshot({path:path.join(dir,'dev-first-entry.png')});
+  if(process.argv.includes('--death-only'))return reviewDeathPreview(page,dir,tap);
   if(process.argv.includes('--scenery-only')){
     await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({count:200,seek:false}));
     const sample=()=>page.evaluate(()=>{
@@ -311,6 +360,7 @@ export async function reviewDeveloper(page,dir){
   await reviewDeveloperSkills(page,dir);
   await reviewDeveloperEvolution(page,dir);
   await reviewUpgradeWave(page);
+  await reviewDeathPreview(page,dir,tap);
   fs.writeFileSync(path.join(dir,'developer-regression.json'),JSON.stringify(report,null,2)+'\n');
   console.log('Developer checks passed:',report.widths.length,'viewport sizes,',report.waves.length,'time jumps; isolated save and lifecycle.');
 }
