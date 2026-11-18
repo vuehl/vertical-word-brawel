@@ -114,7 +114,7 @@ async function reviewPortalProgression(page,dir,draw){
     api.options.invincible=true;api.options.lockCount=true;
     api.close();
     // The late-game preset should exercise the exit without stopping for
-    // either of the earlier level 8/16 evolution confirmations.
+    // either of the earlier level 10/20 evolution confirmations.
     const r=app.run;
     r.player.setSpecies(6);r.player.evoStage=2;r.nextEvo=null;
   });

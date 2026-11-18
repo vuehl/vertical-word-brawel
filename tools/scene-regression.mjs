@@ -149,6 +149,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
   await playing();
   const singleDiff=await page.evaluate(async()=>{
     const r=app.run;
+    if(r.interactables.list.filter(o=>o.kind==='altar').length!==1)throw Error('Expected one guardian altar in single-stage mode');
     await r.enterPortal();
     if(r.stage!==1||r.state!=='play'||r.interactables.list.some(o=>o.kind==='portal'))throw Error('Premature portal or victory');
     r.godMode=true;
@@ -258,6 +259,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     for(const kind of removed){assert.equal(inventory.counts[kind]||0,0,kind+' must not spawn');assert.ok(!inventory.markers.includes(kind));}
     assert.deepEqual(Object.keys(inventory.counts).sort(),(stage===4?[]:retained).slice().sort());
     if(stage!==4){
+      assert.equal(inventory.counts.altar,1);
       assert.equal(inventory.counts.ditto,1);
       const s=inventory.spacing;
       assert.ok(s.accessible&&s.quadrants===4&&s.minGap>10&&s.outsideOldCircle>0,JSON.stringify(s));
@@ -275,7 +277,8 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       await page.touchscreen.tap(point.x,point.y);
       await page.waitForFunction(()=>app.run.ui.mapOpen());
       const mapText=await page.evaluate(()=>app.run.ui.modalEl.textContent);
-      assert.match(mapText,/守护者祭坛/);
+      assert.match(mapText,/附近地图/);
+      assert.doesNotMatch(mapText,/点击类别|附近 \d+ 处|守护者祭坛/);
       assert.doesNotMatch(mapText,/Snorlax|Porygon|卡比兽|多边兽|诅咒雕像|诅咒祭坛|贪婪|笼子|金矿石|Altar maldito|Jaula|Roca de oro|Altar de Gengar/i);
       await shot('scene-full-map');
       await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});
@@ -293,7 +296,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});
       report.blessing=await page.evaluate(()=>{
         const r=app.run,f=r.interactables;
-        const altar=f.list.filter(o=>o.kind==='altar').sort((a,b)=>b.data.tier-a.data.tier)[0];
+        const altar=f.list.find(o=>o.kind==='altar');
         r.state='play';r.player.pos.set(altar.x+1,altar.y,altar.z);r.player.vel.set(0,0,0);
         const timers=r.timers.length,mods=r.tempMods.length,curses=r.curses;
         while(altar.charge<.5&&!altar.used){
@@ -315,7 +318,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
           boss:r.bossSpawned,title:r.ui.modalEl.querySelector('h2')?.textContent};
       });
       const blessing=report.blessing;
-      assert.ok(blessing.tier>=2&&blessing.atPlant&&blessing.complete&&blessing.used&&!blessing.boss);
+      assert.ok([0,1,2,3].includes(blessing.tier)&&blessing.atPlant&&blessing.complete&&blessing.used&&!blessing.boss);
       assert.equal(blessing.title,'守护者祭坛');assert.equal(blessing.orbitGlyphs,0);assert.equal(blessing.waveTimers,0);
       for(let i=0;i<(blessing.tier===3?2:1);i++)await tap('[data-choice="showBlessing"] [data-offer="0"]');
       const reward=await page.evaluate(before=>({mods:app.run.tempMods.slice(before),curses:app.run.curses}),blessing.mods);

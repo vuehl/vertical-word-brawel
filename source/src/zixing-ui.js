@@ -5,7 +5,7 @@ import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
 import {drawMenuGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from './paper-glyph-art.js';
 import {drawPaperIllustration,drawCoopMap} from './paper-ui-art.js';
-import {buildingMapKinds,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
+import {mapWorldScale,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
@@ -13,7 +13,7 @@ import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
 import {characters,characterForSpecies,starterEvolutionLevels,windRoutes} from './starter-characters.js';
-import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,zoneDuration,remainingZoneSeconds} from './lite-rules.js';
+import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,remainingZoneSeconds} from './lite-rules.js';
 
 export {characters};
 const character=characterForSpecies;
@@ -496,8 +496,7 @@ export function createZixingUI(app,api) {
     screen('difficulty','选择难度',current().word+' · 桌上世界 · 单人',[
       ...difficulties.map(option=>{
         const locked=option.tier>max,chosen=option===selectedDifficulty;
-        const duration=(option.mode===SINGLE_STAGE?'':'每区 ')+zoneDuration(option.mode)/60+' 分钟';
-        return button([glyph(option.glyph),col(el('h3','',option.name),small(duration+' · '+option.note),locked?small('通关上一难度后解锁'):null),locked?icon('lock',22):chosen?icon('check',24):icon('radio-empty',24)],
+        return button([glyph(option.glyph),col(el('h3','',option.name),small(option.note),locked?small('通关上一难度后解锁'):null),locked?icon('lock',22):chosen?icon('check',24):icon('radio-empty',24)],
           ()=>{selectedDifficulty=option;difficulty();},'zx-difficulty'+(chosen?' on':''),{disabled:locked,'aria-pressed':chosen,'data-tier':option.tier,'data-mode':option.mode});
       }),
     ],[button('进入桌上世界  →',start,'primary',{'data-action':'enter'}),button('返回',map)]);
@@ -701,7 +700,7 @@ export function createZixingUI(app,api) {
     }else if(settingsTab===1) {
       title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']]))];
     }else if(settingsTab===2) {
-      title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),toggle('自动大招','autoUlt','就绪且附近有敌人时自动释放。'))];
+      title='触控设置';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'))];
     }else if(settingsSub===0) {
       title='界面外观';content=[card(range('界面大小','hudScale',.6,1.3,.05),range('界面不透明度','hudOpacity',.3,1,.05)),card(range('首领血条不透明度','bossBarOpacity',.2,1,.05),options('首领体力','zxBossHealth',[['value','数值'],['percent','百分比']]))];
     }else if(settingsSub===1) {
@@ -727,7 +726,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等设施旁停留 ${facilityDwellSeconds} 秒可触发互动。每个战斗区开战满 ${bossSummonUnlockSeconds / 60} 分钟后，站进青色漩涡「${facilityNames.boss}」${bossSummonSeconds} 秒可唤醒镇守。击败镇守后，从木门前往下一区域或通关。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，蓄满可选祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等设施旁停留 ${facilityDwellSeconds} 秒可触发互动。每个战斗区开战满 ${bossSummonUnlockSeconds / 60} 分钟后，站进青色漩涡「${facilityNames.boss}」${bossSummonSeconds} 秒可唤醒镇守。击败镇守后，从木门前往下一区域或通关。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，蓄满可选祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招充满后会保留能量。看到按钮显示「就绪」时，点击即可释放。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -943,37 +942,65 @@ export function createZixingUI(app,api) {
     hud.showSummary=summary;hud.showSlots=slots;
     let expandedMap=null;
     hud.mapFacilityKind='chest';
+    const mapIcons=new Map();
+    hud.mapFacilityIcon=kind=>{
+      if(!mapIcons.has(kind)){
+        const image=new Image();
+        image.onload=()=>{
+          if(expandedMap?.canvas.isConnected){expandedMap.paint();window.invalidateUI?.();}
+        };
+        mapIcons.set(kind,image);
+        image.src=api.facilityIcon(kind);
+      }
+      return mapIcons.get(kind);
+    };
     hud.showMap=(r,fromPause=false)=>{
       const close=fromPause?()=>pause(r):()=>r.resume();
-      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-420));
-      const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图'});
+      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-190));
+      const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图，拖动查看建筑，轻点建筑图标追踪'});
       const frame=el('div','zx-battle-map-frame',canvas);
       frame.style.width=frame.style.height=side+'px';
       const hudSide=hud.minimap.getBoundingClientRect().width || (window.innerWidth<=350?84:96);
-      const status=el('b','zx-map-status');
-      const hint=el('small','zx-map-hint','点击类别查看位置 · ×数字表示相邻同类地点');
-      const filters=el('div','zx-map-filters',[],{'aria-label':'选择地图道具类型'});
-      const choices=buildingMapKinds.map(kind=>button(facilityNames[kind],()=>{
-        hud.mapFacilityKind=kind;
-        for(const choice of choices){
-          const selected=choice.dataset.mapKind===kind;
-          choice.classList.toggle('on',selected);
-          choice.setAttribute('aria-pressed',String(selected));
-        }
-        paint();
-        hud.drawMinimap(r,true);
-        window.invalidateUI?.();
-      },'zx-map-filter'+(kind===hud.mapFacilityKind?' on':''),{'data-map-kind':kind,'aria-pressed':kind===hud.mapFacilityKind}));
-      for(let i=0;i<choices.length;i+=3)filters.append(el('div','zx-map-filter-row',choices.slice(i,i+3)));
-      overlay('附近地图','',[frame,filters,el('div','zx-map-info',[status,hint])],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
-      const contentZoom=1.5;
+      overlay('附近地图','',[frame],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
+      const contentZoom=2.3;
       const viewRatio=(canvas.getBoundingClientRect().width || side)/(hudSide*contentZoom);
+      let center=null,drag=null,groups=[];
       function paint(){
-        const {count}=drawBattleMinimap(canvas,r,{shadow:false,viewRatio});
-        updateText(status,r.events?.blind?'视野受限':facilityNames[hud.mapFacilityKind]+' · 附近 '+count+' 处');
+        groups=drawBattleMinimap(canvas,r,{shadow:false,viewRatio,center:center??r.player.pos,facilityKind:null}).groups;
       }
+      canvas.addEventListener('pointerdown',event=>{
+        if(drag||event.button!==0)return;
+        const origin=center??r.player.pos;
+        drag={id:event.pointerId,x:event.clientX,y:event.clientY,originX:origin.x,originZ:origin.z,moved:false};
+        canvas.setPointerCapture(event.pointerId);
+      });
+      function pan(event){
+        if(drag?.id!==event.pointerId)return;
+        const dx=event.clientX-drag.x,dy=event.clientY-drag.y;
+        if(!drag.moved&&Math.hypot(dx,dy)<4)return;
+        drag.moved=true;
+        const units=120*viewRatio/(canvas.getBoundingClientRect().width*mapWorldScale);
+        const limit=r.terrain.play,clamp=value=>Math.max(-limit,Math.min(limit,value));
+        center={x:clamp(drag.originX-dx*units),z:clamp(drag.originZ-dy*units)};
+        paint();window.invalidateUI?.();
+      }
+      canvas.addEventListener('pointermove',pan);
+      canvas.addEventListener('pointerup',event=>{
+        if(drag?.id!==event.pointerId)return;
+        pan(event);
+        if(!drag.moved){
+          const rect=canvas.getBoundingClientRect();
+          const x=(event.clientX-rect.left)*120/rect.width,y=(event.clientY-rect.top)*120/rect.height;
+          const hit=groups.slice().reverse().find(({box})=>x>=box.x&&x<=box.x+box.w&&y>=box.y&&y<=box.y+box.h);
+          if(hit){hud.mapFacilityKind=hit.kind;hud.drawMinimap(r,true);}
+        }
+        drag=null;
+      });
+      const cancel=event=>{if(drag?.id===event.pointerId)drag=null;};
+      canvas.addEventListener('pointercancel',cancel);
+      canvas.addEventListener('lostpointercapture',cancel);
       paint();
-      if(r.coop)expandedMap={canvas,paint,at:performance.now()};
+      expandedMap={canvas,paint,at:performance.now()};
       hud.pauseBack=close;
     };
     hud.mapOpen=()=>!!hud.root.querySelector('.zx-battle-map');
@@ -1134,7 +1161,7 @@ export function createZixingUI(app,api) {
       updatePeers?.();
       if(expandedMap){
         if(!expandedMap.canvas.isConnected)expandedMap=null;
-        else if(now-expandedMap.at>=(run.performance?.mapInterval??120)){
+        else if(run.coop&&now-expandedMap.at>=(run.performance?.mapInterval??120)){
           expandedMap.paint();
           expandedMap.at=now;window.invalidateUI?.();
         }

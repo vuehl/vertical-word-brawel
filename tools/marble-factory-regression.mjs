@@ -14,7 +14,6 @@ export async function reviewMarbleFactories(page,dir){
     window.dispatchEvent(new Event('resize'));
     Object.assign(app.meta.profile.settings,{quality:'high',batterySaver:false});app.applySettings();vfxSetup();app.run.enemies.clear();
     await Promise.all(app.run.terrain.paperAssets.photoJobs);
-    if(app.run.roomLightsOn===false){const button=inspected.doc.querySelector('[data-action="room-light"]');if(!button)throw Error('Missing player light switch');button.click();}
     vfxDraw(false);
     window.marbleFactoryKind=kind=>kind==='marble-factory'||kind==='factory'||!kind?'helix':kind.replace(/^marble-/,'');
   });

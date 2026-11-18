@@ -158,7 +158,11 @@ for(const kind of Object.keys(facilityNames)){
   assert.equal(scene.deviceModel,({bill:'billpc',boss:'portal',portal:'boss'})[kind]??kind,key);
   if(kind==='boss'||kind==='portal')assert.equal(facilityIconFile(kind),'ui/devices/'+scene.deviceModel+'.png');
   assert.ok(index.files['assets/'+facilityIconFile(kind)],'Missing model thumbnail for '+kind);
-  assert.equal(scene.deviceScreenFx.version,1,key);
+  assert.equal(adapter.apiVersion,2,key);
+  assert.equal(scene.deviceScreenFx.version,2,key);
+  assert.equal(scene.deviceScreenFx.cycleSeconds,3,key);
+  assert.equal(scene.deviceScreenFx.stars.sharedOrigin,true,key);
+  assert.equal(scene.deviceScreenFx.stars.scatter.tracks,8,key);
   assert.ok(scene.deviceScreenFx.supportXYZ.length>=12,key);
 }
 for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.startsWith('assets/env/'))) {

@@ -25,7 +25,7 @@ import {warmCombatShaders,warmCombatDraw} from './combat-warmup.js';
 import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
-import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE,ENEMY_HEALTH_SCALE,SPECIAL_ACTORS} from './spawn-budget.js';
+import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE,ENEMY_HEALTH_SCALE,ENEMY_DAMAGE_SCALE,ENEMY_XP_SCALE,SPECIAL_ACTORS} from './spawn-budget.js';
 import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
 import {createStylizedEffectAtlas,EFFECT_CELL} from './stylized-effect-atlas.js';
 import {StylizedSkillFX} from './stylized-skill-vfx.js';
@@ -491,7 +491,6 @@ var Ni = {
     aim: `KeyQ`,
     autorun: `KeyT`,
     map: `KeyM`,
-    autoult: `KeyY`,
     pause: `KeyP`,
     reroll: `KeyF`,
     skip: `KeyX`,
@@ -510,7 +509,6 @@ var Ni = {
     `aim`,
     `autorun`,
     `map`,
-    `autoult`,
     `pause`,
     `reroll`,
     `skip`,
@@ -5066,7 +5064,6 @@ var oc = (e, t) =>
       uWind: { value: 1 },
     };
     chromaAmt = 0;
-    eclTmp = new ti();
     quality = { pixelRatio: 1, bloom: !0, aa: !1, shadows: !1, pixelScale: 0 };
     outline;
     grade;
@@ -5116,16 +5113,14 @@ var oc = (e, t) =>
           cloudTint: { value: new Ei(1, 1, 1) },
           cover: { value: 0 },
           uPx: { value: 4 },
-          eclipse: { value: 0 },
           glowCol: { value: new Ei(16760960) },
           glowK: { value: 0 },
           stars: { value: 0 },
-          eclDir: { value: new ti(0, 0.1, -1).normalize() },
           moon: { value: 0 },
           moonDir: { value: new ti(0.8, 0.28, -0.55).normalize() },
         },
         vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.); gl_Position = p.xyww; }`,
-        fragmentShader: `uniform vec3 top; uniform vec3 bottom; uniform vec3 sunDir; uniform float uTime; uniform vec3 cloudTint; uniform float cover; uniform float eclipse; uniform vec3 eclDir; uniform float uPx; uniform vec3 glowCol; uniform float glowK; uniform float stars; uniform float moon; uniform vec3 moonDir; varying vec3 vDir;
+        fragmentShader: `uniform vec3 top; uniform vec3 bottom; uniform vec3 sunDir; uniform float uTime; uniform vec3 cloudTint; uniform float cover; uniform float uPx; uniform vec3 glowCol; uniform float glowK; uniform float stars; uniform float moon; uniform vec3 moonDir; varying vec3 vDir;
         float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
         float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
         float fbm(vec2 p){ return n(p)*0.5 + n(p*2.03+1.7)*0.28 + n(p*4.1+4.3)*0.14 + n(p*8.3+2.1)*0.08; }
@@ -5150,12 +5145,10 @@ var oc = (e, t) =>
           }
           // Sun: a pixel disc with a pale ring and two stepped glow bands.
           float s = max(dot(dir, sunDir), 0.);
-          float sunA = (1. - eclipse) * (1. - moon);
+          float sunA = 1. - moon;
           c = mix(c, mix(c, vec3(1., 0.97, 0.86), 0.5), step(0.9955, s) * sunA);
           c = mix(c, vec3(1., 0.98, 0.9), step(0.9985, s) * sunA);
           c += vec3(1., 0.85, 0.6) * (step(0.97, s) * 0.06 + step(0.92, s + (dth - 0.5) * 0.01) * 0.04) * sunA;
-          // Events: stars during the eclipse (pixel-sized, hashed on the dome).
-          if (eclipse > 0.01) c += step(0.9975, h(floor(dir.xz/(dir.y+0.35)*90.))) * smoothstep(0.02, 0.3, dir.y) * eclipse * 0.9;
           // Dusk: the first stars, high up and twinkling.
           if (stars > 0.01) { vec2 sg = floor(dir.xz/(dir.y+0.35)*90.); c += step(0.9978, h(sg)) * smoothstep(0.3, 0.7, dir.y) * stars * (0.6 + 0.4 * sin(uTime * 2.5 + h(sg + 3.1) * 40.)); }
           // Cumulus on a cloud plane (perspective toward the horizon), in four flat tones: sunlit rim, white body,
@@ -5190,10 +5183,6 @@ var oc = (e, t) =>
             float hal = (1. - disc) * (step(d, R * 1.45) * 0.16 + step(d, R * 2.3 + (dth - 0.5) * 0.006) * 0.07 + exp(-max(d - R, 0.) * 9.) * 0.1);
             c += vec3(1., 0.86, 0.62) * hal * moon;
           }
-          // Eclipse: a black disc with a red-orange corona, always in view (eclDir follows the camera).
-          if (eclipse > 0.01) { float d = acos(clamp(dot(dir, eclDir), -1., 1.));
-            float disc = 1. - smoothstep(0.085, 0.09, d); float cor = exp(-max(d - 0.088, 0.) * 28.) * (1. - disc);
-            c = mix(c, vec3(0.03, 0.01, 0.05), disc * eclipse); c += vec3(1., .5, .3) * cor * 1.5 * eclipse; }
           gl_FragColor = vec4(c,1.); }`,
       });
       ((this.sky = new Tr(new wi(500, 32, 16), t)),
@@ -5310,15 +5299,18 @@ var oc = (e, t) =>
       let n = this.sky.material.uniforms;
       ((n.moon.value = e), t && n.moonDir.value.set(t[0], t[1], t[2]).normalize());
     }
-    setAtmos(e, t, n, r, i, a, o = 1, s = 1, c = 1) {
-      let l = this.sky.material.uniforms;
-      Number.isFinite(e + t + n + r + i + a + o + s + c) &&
-        (this.calmFx && ((o = Math.min(o, 1.04)), (s = Math.min(s, 1.04)), (c = Math.min(c, 1.04))),
-        this.tint.uniforms.get(`uTint`).value.setRGB(o, s, c),
-        l.cloudTint.value.setRGB(e, t, n),
-        (l.cover.value = r),
-        (l.eclipse.value = i),
-        (this.vignette.darkness = a));
+    setAtmos(red, green, blue, cover, vignette, tintR = 1, tintG = 1, tintB = 1) {
+      if (!Number.isFinite(red + green + blue + cover + vignette + tintR + tintG + tintB)) return;
+      if (this.calmFx) {
+        tintR = Math.min(tintR, 1.04);
+        tintG = Math.min(tintG, 1.04);
+        tintB = Math.min(tintB, 1.04);
+      }
+      this.tint.uniforms.get(`uTint`).value.setRGB(tintR, tintG, tintB);
+      const sky = this.sky.material.uniforms;
+      sky.cloudTint.value.setRGB(red, green, blue);
+      sky.cover.value = cover;
+      this.vignette.darkness = vignette;
     }
     kick(e) {
       this.chromaAmt = Math.min(0.012, this.chromaAmt + e);
@@ -5357,19 +5349,12 @@ var oc = (e, t) =>
     get hires() {
       return this.quality.hires ?? this.quality.bloom;
     }
-    eclPlaced = !1;
     render(e) {
       (this.dynDirty && ((this.dynDirty = !1), this.resize()),
         (this.needsDraw = !1),
         (this.shared.uTime.value += e),
         (this.chromaAmt *= Math.exp(-e * 8)),
         this.sky.position.copy(this.camera.position));
-      let t = this.sky.material.uniforms;
-      if (t.eclipse.value > 0 && !this.eclPlaced) {
-        this.camera.getWorldDirection(this.eclTmp);
-        let e = Math.atan2(this.eclTmp.x, this.eclTmp.z) + 0.35;
-        (t.eclDir.value.set(Math.sin(e), 0.16, Math.cos(e)).normalize(), (this.eclPlaced = !0));
-      } else t.eclipse.value <= 0 && (this.eclPlaced = !1);
       this.composer.render(e);
     }
   },
@@ -9146,7 +9131,9 @@ var qu = `
     }
     clearZones = [];
     reserve(e, t, n) {
-      this.clearZones.push({ x: e, z: t, r: n });
+      const zone = { x: e, z: t, r: n };
+      this.clearZones.push(zone);
+      return zone;
     }
     isReserved(e, t, n = 0) {
       for (let r of this.clearZones) if ((e - r.x) ** 2 + (t - r.z) ** 2 < (r.r + n) ** 2) return !0;
@@ -11513,7 +11500,7 @@ var Vd = class {
       (this.r.setSky(3970303, 13823999, 12904191, 36, 120, 1.05, 16773328, 6982218),
         this.r.setSun(),
         this.r.setMoon(0),
-        this.r.setAtmos(1, 1, 1, 0, 0, 0.4));
+        this.r.setAtmos(1, 1, 1, 0, 0.4));
     }
     update(e, t) {
       this.t += e;
@@ -12187,7 +12174,7 @@ var Vd = class {
       (this.r.setSky(656928, 4858450, 2760772, 24, 95, 0.58, 12629247, 2761284),
         this.r.setSun([-0.4, 0.85, 0.5], 0.3, 16747082, 0.35, 1),
         this.r.setMoon(1, [0.42, 0.34, -0.84]),
-        this.r.setAtmos(0.42, 0.36, 0.58, 0.35, 0, 0.72, 0.72, 0.66, 0.96));
+        this.r.setAtmos(0.42, 0.36, 0.58, 0.35, 0.72, 0.72, 0.66, 0.96));
     }
     update(e, t) {
       this.t += e;
@@ -28522,8 +28509,8 @@ var e_ = class {
         !a.director.eliteChest &&
         !a.sanctuary &&
         ((a.director.eliteChest = !0),
-        a.interactables.spawnChest(e, n, !1, !0),
-        a.ui.toast(c(`¡El primer élite de la zona suelta una Poké Ball gratis!`), null));
+        a.interactables.spawnChest(e, n, !1, !0) &&
+          a.ui.toast(c(`¡El primer élite de la zona suelta una Poké Ball gratis!`), null));
     }
   },
   t_ = ji({ OVERRIDES: () => n_, SPECIAL: () => r_ }),
@@ -32160,11 +32147,14 @@ var mv = 30,
         this.ability === `magic-guard` && n < 0 && (f *= 0.7),
         this.ability === `multiscale` && this.hp >= this.maxHp - 0.5 && (f *= 0.5));
       let p = Bg(this.ability);
+      // Contact and boss effects carry an enemy index. Projectiles and death bursts
+      // keep a source snapshot because the enemy slot can be reused before impact.
+      const enemyHit = typeof s === 'number' ? s >= 0 : s?.species > 0 && s.kind !== 'event';
       if (
         (p?.hurtMod && (f = Math.max(0, p.hurtMod(u, this, f, n))),
         l.floor && (f = Math.max(f, this.maxHp * l.floor * (1 - wv * (e > 0 ? 1 - Math.min(1, f / e) : 0)))),
         o > 0 && (f = Math.min(f, this.maxHp * o)),
-        (f = df(u, f)),
+        (f = df(u, f) * (enemyHit ? ENEMY_DAMAGE_SCALE : 1)),
         this.overheal > 0)
       ) {
         let e = Math.min(this.overheal, f);
@@ -33881,8 +33871,7 @@ var mv = 30,
           this.rng.chance(
             (o +
               (T.elite[this.run.tier] ?? 0) +
-              (this.run.player.stats.difficulty - 1) * 0.05 +
-              (this.run.events?.eliteBonus ?? 0)) *
+              (this.run.player.stats.difficulty - 1) * 0.05) *
               this.run.player.stats.eliteSpawn,
           )
             ? R.Elite
@@ -34959,7 +34948,6 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     sun: 12618495,
     clouds: [0.32, 0.2, 0.5],
     cover: 0.9,
-    eclipse: 0.5,
     vignette: 0.8,
     tint: [0.46, 0.37, 0.76],
   },
@@ -34987,7 +34975,6 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
       sun: new Ei(),
       clouds: kb.clouds,
       cover: 0,
-      eclipse: 0,
       vignette: 0.4,
       tint: kb.tint,
     };
@@ -35166,7 +35153,6 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         (e.far = kb.far),
         (e.light = kb.light),
         (e.cover = kb.cover),
-        (e.eclipse = kb.eclipse),
         (e.vignette = kb.vignette),
         e
       );
@@ -45681,16 +45667,13 @@ var RS = [
 ];
 var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
   VS = { altar: 200, challenge: 240, ditto: 150, magnet: 150, berry: 120 };
-function HS(e, t, n) {
-  let r = t >= 4 ? Math.max(1, Math.round(t * 0.15)) : 0,
-    i = Math.round(t * 0.3),
-    a = Array.from({ length: t }, (e, t) => (t < r ? 2 : +(t < r + i)));
-  t && e.chance(Math.min(0.3, 0.2 * Math.sqrt(Math.max(1, n)))) && (a[0] = 3);
-  for (let n = t - 1; n > 0; n--) {
-    let t = e.int(0, n);
-    [a[n], a[t]] = [a[t], a[n]];
-  }
-  return a;
+function rollAltarTier(rng, poolSize, luckMult) {
+  // Draw one blessing from the area's original tier distribution.
+  const slot = rng.int(0, poolSize - 1);
+  if (slot === 0 && rng.chance(Math.min(.3, .2 * Math.sqrt(Math.max(1, luckMult))))) return 3;
+  const rareSlots = poolSize >= 4 ? Math.max(1, Math.round(poolSize * .15)) : 0;
+  if (slot < rareSlots) return 2;
+  return slot < rareSlots + Math.round(poolSize * .3) ? 1 : 0;
 }
 var GS = class e {
     run;
@@ -45726,11 +45709,13 @@ var GS = class e {
         // Only the unlocked part of a crossing frame contributes to the three-second hold.
         if (gameSeconds > 0 && unlockedFor < gameSeconds) seconds *= unlockedFor / gameSeconds;
       }
-      this.waitingForGold = run.gold < this.interactionCost(target);
-      if (this.waitingForGold) {
+      if (run.gold < this.interactionCost(target)) {
+        if (!this.waitingForGold && target.kind === 'chest') run.ui.toast('金币不够');
+        this.waitingForGold = true;
         this.dwellTime = 0;
         return;
       }
+      this.waitingForGold = false;
       const duration = this.dwellDuration;
       if (this.dwellTime >= duration) return;
       if (run.coop?.lifting || run.capture.throwing || run.capture.canThrow()) {
@@ -45747,7 +45732,9 @@ var GS = class e {
     constructor(run, deferred = false) {
       this.run = run;
       run.r.scene.add(this.group);
-      this.dwellRing = createFacilityDwellRing(this.group, {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr});
+      const three = {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr};
+      this.dwellRing = createFacilityDwellRing(this.group, three);
+      this.idleRingMaterial = this.dwellRing.material.clone();
       // Pens, keyboards and other low props are walkable but still have visible models.
       this.lowProps = (run.terrain.zxProps ?? []).filter(p => p.walkable)
         .map(p => paperBox(p.x, p.z, p.w, p.d, p.h, p.angle));
@@ -45755,6 +45742,7 @@ var GS = class e {
     }
     disposed = !1;
     static CHEST_BASE = 18;
+    static CHESTS_PER_KIND = 4;
     chestCost() {
       let t = 1 - Math.min(0.4, 0.08 * (this.run.player.items.get(`big-nugget`) ?? 0)),
         n = this.run.endless?.curse.chest ?? 1;
@@ -45789,11 +45777,17 @@ var GS = class e {
       group.add(model);
       group.userData.h = model.userData.displayHeight * scale;
       facility.ringRadius = Math.max(facility.r, model.userData.footprintRadius * scale + 0.7);
+      const ring = facility.halo = this.dwellRing.clone();
+      ring.material = this.idleRingMaterial;
+      group.add(ring);
+      ring.position.set(0, .12, 0);
+      ring.scale.setScalar(facility.ringRadius);
+      ring.visible = !facility.used;
       if (facility.kind === 'altar') {
         const color = new Ei(RS[facility.data.tier].color);
-        const ring = facility.chargeRing = createAltarChargeRing(group, {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr}, color);
-        ring.position.y = .12;
-        ring.scale.setScalar(facility.ringRadius);
+        const charge = facility.chargeRing = createAltarChargeRing(group, {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr}, color);
+        charge.position.copy(ring.position);
+        charge.scale.copy(ring.scale);
       }
       facility.model = model;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
@@ -45802,6 +45796,8 @@ var GS = class e {
     }
     releaseDevice(facility) {
       clearTimeout(facility.retry);
+      facility.halo?.removeFromParent();
+      facility.halo = null;
       if (facility.chargeRing) {
         const ring = facility.chargeRing;
         ring.removeFromParent();
@@ -45818,6 +45814,18 @@ var GS = class e {
     }
     add(kind, x, z, options = {}) {
       if (!isActiveFacility(kind) || options.data?.comet) return null;
+      if (kind === 'chest' || kind === 'freechest') {
+        const category = BS({kind, data: options.data});
+        const slots = this.list.filter(f => BS(f) === category);
+        if (slots.length >= GS.CHESTS_PER_KIND) {
+          // An event drop relocates a live machine. A cooling slot stays on its timer.
+          const live = slots.filter(f => !f.used);
+          if (!live.length) return null;
+          const farthest = live.reduce((a,b) =>
+            Math.hypot(a.x-x,a.z-z) >= Math.hypot(b.x-x,b.z-z) ? a : b);
+          this.remove(farthest);
+        }
+      }
       const y = this.run.terrain.height(x, z);
       const facility = {kind, x, y, z, r: 2.6, used: false, cost: 0, ...options};
       const group = facility.group = new Cr();
@@ -45844,7 +45852,7 @@ var GS = class e {
         facility.r = 2.8;
       }
       this.group.add(group);
-      this.run.terrain.reserve(x, z, facility.r + 0.6);
+      facility.reservation = this.run.terrain.reserve(x, z, facility.r + 0.6);
       this.list.push(facility);
       facility.modelReady = this.loadDevice(facility);
       return facility;
@@ -45877,13 +45885,12 @@ var GS = class e {
       const rng = new Ol(terrain.seed ^ 30634);
       const count = base => Math.round(base * (0.5 + 0.5 * terrain.areaMul));
       const bonus = player.items.get('dowsing-machine') ?? 0;
-      const altarCount = count(endless ? 3 : 5) + bonus;
-      const tiers = HS(rng, altarCount, player.stats.luckMult);
+      const altarTier = rollAltarTier(rng, count(endless ? 3 : 5) + bonus, player.stats.luckMult);
       const kinds = [];
       for (const [kind, amount] of [
-        ['altar', altarCount], ['bill', 1], ['nest', 1], ['ditto', endless ? 2 : 1],
-        ['magnet', endless ? 1 : 2], ['freechest', count(endless ? 2 : 3)],
-        ['berry', count(endless ? 4 : 5)], ['chest', count(endless ? 8 : 14) + 2 * bonus],
+        ['altar', 1], ['bill', 1], ['nest', 1], ['ditto', endless ? 2 : 1],
+        ['magnet', endless ? 1 : 2], ['freechest', GS.CHESTS_PER_KIND],
+        ['berry', count(endless ? 4 : 5)], ['chest', GS.CHESTS_PER_KIND],
       ]) {
         for (let i = 0; i < amount; i++) kinds.push(kind);
       }
@@ -45906,6 +45913,9 @@ var GS = class e {
         yield;
       }
       rng.shuffle(sites);
+      // Reuse the shuffled, walkable sites for later refills. Initial placement
+      // splices out occupied sites; live facilities are checked again on refill.
+      this.chestSites = sites;
       for (const kind of kinds) {
         const minDistance = kind === 'boss' ? limit * .55 : 14;
         const needsLargeSite = kind === 'boss' || kind === 'altar';
@@ -45915,7 +45925,7 @@ var GS = class e {
           if (best < 0 || sites[i].clearance > sites[best].clearance) best = i;
         }
         const site = best >= 0 ? sites.splice(best, 1)[0] : terrain.randomPoint(rng, 0, 0, minDistance, limit);
-        const facility = this.add(kind, site.x, site.z, kind === 'altar' ? {data: {tier: tiers.pop()}} : {});
+        const facility = this.add(kind, site.x, site.z, kind === 'altar' ? {data: {tier: altarTier}} : {});
         for (const other of sites) {
           other.clearance = Math.min(other.clearance, Math.hypot(other.x - site.x, other.z - site.z) - facility.r);
         }
@@ -45975,15 +45985,7 @@ var GS = class e {
           ((o = e.x), (s = e.z));
         }
       }
-      let p = this.add(n ? `freechest` : `chest`, o, s, r ? { data: { gift: !0 } } : {});
-      if (r) {
-        let e = fb(16765498, 0.9, 4.2, 16);
-        (e.position.set(p.x, p.y, p.z), this.group.add(e), (p.beacon = e));
-      } else if (n) {
-        let e = fb(9430271, 1.5, 1.6, 46, { near: [6, 18], fadePow: 0.7, gain: 1.4 });
-        (e.position.set(p.x, p.y, p.z), this.group.add(e), (p.beacon = e));
-      }
-      return p;
+      return this.add(n ? `freechest` : `chest`, o, s, r ? { data: { gift: !0 } } : {});
     }
     rewardsLeft() {
       let e = this.run.player.pos;
@@ -46000,6 +46002,9 @@ var GS = class e {
     remove(e) {
       this.run.ui.removeWorldLabel(e);
       this.releaseDevice(e);
+      const zones = this.run.terrain.clearZones;
+      const index = zones.indexOf(e.reservation);
+      if (index >= 0) zones.splice(index, 1);
       ((this.list = this.list.filter((t) => t !== e)),
         e.group && this.group.remove(e.group),
         e.beacon && this.group.remove(e.beacon),
@@ -46390,10 +46395,11 @@ var GS = class e {
     }
     openChest(e, t, n = !1, r) {
       let i = this.run;
+      if (e.used) return;
+      if (!i.sanctuary && (e.kind === 'chest' || e.kind === 'freechest')) e.respawnAt = i.time + 30;
       if (
         ((e.used = !0),
         (this.run.chestsBought += t || n ? 0 : 1),
-        (e.beacon &&= (this.group.remove(e.beacon), void 0)),
         i.meta.count(`chests`, 1),
         e.group)
       ) {
@@ -46420,11 +46426,25 @@ var GS = class e {
             ),
         );
       }
-      (i.vfx.burst(e.x, e.y + 1, e.z, 16777215, 24, 7, I.Star, 0.6, 0.6),
-        i.vfx.ring(e.x, e.y, e.z, 4, 16765498, 0.5),
-        i.audio.chest());
+      i.vfx.burst(e.x, e.y + 1, e.z, 16777215, 24, 7, I.Star, 0.6, 0.6);
+      i.audio.chest();
       let a = !t && !n && !i.endless ? 3 : 1;
       i.later(0.35, () => i.rollChestItem(t, r, a));
+    }
+    respawnChest(chest) {
+      const {terrain, player, time} = this.run;
+      const sites = this.chestSites;
+      const start = F.int(0,sites.length-1);
+      for (let i = 0; i < sites.length; i++) {
+        const {x,z} = sites[(start+i)%sites.length];
+        if (Math.hypot(x-chest.x,z-chest.z) < 14 || Math.hypot(x-player.pos.x,z-player.pos.z) < 10 ||
+            terrain.isReserved(x,z,3) || !this.fitsOnDesk(x,z,4.5) ||
+            !this.hasBuildingSpace(x,z,2.6)) continue;
+        this.remove(chest);
+        this.add(BS(chest),x,z);
+        return;
+      }
+      chest.respawnAt = time + 1;
     }
     update(e, dwellSeconds = e) {
       let t = this.run,
@@ -46432,6 +46452,10 @@ var GS = class e {
         r = null,
         i = 1e9;
       for (let a of this.list) {
+        if (a.respawnAt !== undefined && t.time >= a.respawnAt && t.state === 'play') {
+          this.respawnChest(a);
+          continue;
+        }
         const ready = this.hasVisual(a);
         if (a.beacon) a.beacon.visible = ready;
         if (!a.used && !ready) continue;
@@ -46737,18 +46761,17 @@ var GS = class e {
         ring.position.set(target.x, target.y + .12, target.z);
         ring.scale.setScalar(target.ringRadius);
       }
-      const player = this.run.player.pos;
-      for (const altar of this.list) {
-        const chargeRing = altar.chargeRing;
-        if (!chargeRing) continue;
-        const opacity = altar.used ? Math.max(0, 1 - (this.run.time - (altar.completedAt ?? -Infinity)) / .6) : 1;
-        chargeRing.visible = opacity > 0 && !this.run.player.dead && this.hasVisual(altar) &&
-          (this.run.state === 'play' || (altar.used && this.run.state === 'modal')) &&
-          (altar.x - player.x) ** 2 + (altar.z - player.z) ** 2 < 24 ** 2;
-        if (chargeRing.visible) {
-          chargeRing.material.uniforms.dwell.value = altar.charge;
-          chargeRing.material.uniforms.opacity.value = opacity;
+      for (const facility of this.list) {
+        if (!facility.halo) continue;
+        const visible = this.hasVisual(facility);
+        const charge = facility.chargeRing;
+        if (charge) {
+          const opacity = facility.used ? Math.max(0, 1 - (this.run.time - (facility.completedAt ?? -Infinity)) / .6) : 1;
+          charge.visible = visible && facility.charge > 0 && opacity > 0;
+          charge.material.uniforms.dwell.value = facility.charge;
+          charge.material.uniforms.opacity.value = opacity;
         }
+        facility.halo.visible = visible && !facility.used && !charge?.visible && !(ring.visible && target === facility);
       }
     }
     portalFx(e, t) {
@@ -47027,6 +47050,7 @@ var GS = class e {
     dispose() {
       this.disposed = true;
       for (const facility of this.list) this.releaseDevice(facility);
+      this.idleRingMaterial.dispose();
       this.deviceFx?.dispose();
       this.deviceFx = null;
       (this.run.ui.clearWorldNotices(),
@@ -50186,7 +50210,6 @@ var kw = class {
     sun: 9079551,
     clouds: [0.4, 0.4, 0.6],
     cover: 0.7,
-    eclipse: 0,
     vignette: 0.7,
     tint: [0.62, 0.62, 0.9],
   },
@@ -50230,7 +50253,6 @@ var kw = class {
       sun: new Ei(),
       clouds: Bw.clouds,
       cover: 0,
-      eclipse: 0,
       vignette: 0.4,
       tint: Bw.tint,
     };
@@ -50412,8 +50434,9 @@ var kw = class {
         a = n.height(r.x, r.z);
       if ((e.vfx.beams.spawn(r.x, a, r.z, r.x, a + 18, r.z, 0.9, 16765498, 8, 0.45), i < 0.65)) {
         let t = i < 0.15,
-          n = e.interactables.spawnChest(r.x, r.z, t),
-          a = n.group;
+          n = e.interactables.spawnChest(r.x, r.z, t);
+        if (!n) return;
+        const a = n.group;
         if (a) {
           let t = a.position.y;
           e.animate(
@@ -50503,7 +50526,6 @@ var kw = class {
         (e.far = t.far),
         (e.light = t.light),
         (e.cover = t.cover),
-        (e.eclipse = t.eclipse),
         (e.vignette = t.vignette),
         e
       );
@@ -50677,8 +50699,8 @@ var kw = class {
       plan: Zw[2],
     },
     {
-      name: c(`Velas apagadas`),
-      sub: c(`La oscuridad lo cubre todo. Enciende las velas para ver`),
+      name: `烛台长廊`,
+      sub: `靠近烛台可以恢复生命并发现幽灵`,
       pool: [93, 42, 88, 89, 48, 49],
       waves: [32, 38, 44],
       veil: 0.6,
@@ -50843,19 +50865,6 @@ var iT = Math.PI / 180,
     clouds: [0.5, 0.45, 0.65],
     cover: 0.3,
   },
-  TT = {
-    top: 394254,
-    bottom: 1708080,
-    fog: 788504,
-    near: 2,
-    far: 15,
-    light: 0.42,
-    sun: 9075416,
-    tint: [0.6, 0.56, 0.82],
-    vignette: 0.85,
-    clouds: [0.3, 0.25, 0.4],
-    cover: 0.6,
-  },
   ET = {
     top: 266778,
     bottom: 1989210,
@@ -50897,7 +50906,6 @@ var iT = Math.PI / 180,
     candlesLit = 0;
     offerings = [];
     dark4 = 0;
-    blackout = 0;
     curse = { hp: 1, speed: 1, amount: 1 };
     arrivalBall = !1;
     stT = 0;
@@ -50945,7 +50953,6 @@ var iT = Math.PI / 180,
       sun: new Ei(),
       clouds: [1, 1, 1],
       cover: 0,
-      eclipse: 0,
       vignette: 0.4,
       tint: [1, 1, 1],
     };
@@ -51224,13 +51231,13 @@ var iT = Math.PI / 180,
         depthWrite: !1,
         blending: 2,
         side: 2,
-        uniforms: { uTime: t.r.shared.uTime, uK: { value: this.def.dark && !this.beyond ? 0.35 : 1 } },
+        uniforms: { uTime: t.r.shared.uTime },
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
-        fragmentShader: `uniform float uTime; uniform float uK; varying vec2 vUv;
+        fragmentShader: `uniform float uTime; varying vec2 vUv;
         void main(){ float edge = smoothstep(0., 0.3, vUv.x) * smoothstep(1., 0.7, vUv.x);
           float fall = smoothstep(0., 0.35, vUv.y) * smoothstep(1., 0.75, vUv.y);
           float flick = 0.8 + 0.2 * sin(uTime * 0.7 + vUv.x * 3.);
-          gl_FragColor = vec4(vec3(0.62, 0.6, 1.0) * edge * fall * flick * 0.14 * uK, 1.); }`,
+          gl_FragColor = vec4(vec3(0.62, 0.6, 1.0) * edge * fall * flick * 0.14, 1.); }`,
       });
       let r = [],
         i = [],
@@ -51698,8 +51705,7 @@ var iT = Math.PI / 180,
           if (((o.lit -= e), o.lit <= 0)) {
             ((o.lit = 0),
               o.flame && (o.flame.visible = !1),
-              t.vfx.burst(o.x, o.y + 2.2, o.z, 9075354, 6, 2, I.Soft, 0.4, 0.8),
-              this.def.dark && !this.beyond && t.pushLook());
+              t.vfx.burst(o.x, o.y + 2.2, o.z, 9075354, 6, 2, I.Soft, 0.4, 0.8));
             continue;
           }
           if (
@@ -51756,8 +51762,7 @@ var iT = Math.PI / 180,
         t.vfx.burst(e.x, e.y + 2.2, e.z, 16765562, 14, 4, I.Twinkle, 0.4, 0.6),
         t.audio.power(),
         this.candlesLit === 1 &&
-          t.ui.toast(c(`La luz de las velas revela a los fantasmas y te cura poco a poco`), null),
-        this.def.dark && !this.beyond && t.pushLook());
+          t.ui.toast(c(`La luz de las velas revela a los fantasmas y te cura poco a poco`), null));
     }
     updateHoly(e) {
       let t = this.run,
@@ -51912,47 +51917,10 @@ var iT = Math.PI / 180,
           glow: 0.5,
         });
       }
-      this.shaftMat &&
-        (this.shaftMat.uniforms.uK.value =
-          this.def.dark && !this.beyond
-            ? 0.25 + 0.75 * (this.litCount() / Math.max(1, this.candles.length))
-            : 1);
     }
     atmos() {
       let e = this.out,
         t = this.roof ? DT : this.beyond ? ET : wT;
-      if (this.def.dark && !this.beyond && !this.roof) {
-        let e = Math.min(1, this.litCount() / Math.max(1, this.candles.length * 0.6)),
-          n = (t, n) => new Ei(t).lerp(new Ei(n), e).getHex();
-        t = {
-          top: n(TT.top, wT.top),
-          bottom: n(TT.bottom, wT.bottom),
-          fog: n(TT.fog, wT.fog),
-          near: TT.near + (wT.near * 0.5 - TT.near) * e,
-          far: TT.far + (wT.far * 0.6 - TT.far) * e,
-          light: TT.light + (wT.light - TT.light) * e,
-          sun: wT.sun,
-          tint: [0, 1, 2].map((t) => TT.tint[t] + (wT.tint[t] - TT.tint[t]) * e),
-          vignette: TT.vignette + (wT.vignette - TT.vignette) * e,
-          clouds: TT.clouds,
-          cover: TT.cover,
-        };
-      }
-      if (this.blackout > 0) {
-        let e = this.blackout,
-          n = (t, n) => new Ei(t).lerp(new Ei(n), e).getHex();
-        t = {
-          ...t,
-          top: n(t.top, TT.top),
-          bottom: n(t.bottom, TT.bottom),
-          fog: n(t.fog, TT.fog),
-          near: t.near + (TT.near * 3 - t.near) * e,
-          far: t.far + (TT.far * 1.8 - t.far) * e,
-          light: t.light + (TT.light - t.light) * e,
-          tint: [0, 1, 2].map((n) => t.tint[n] + (TT.tint[n] - t.tint[n]) * e),
-          vignette: t.vignette + (TT.vignette - t.vignette) * e,
-        };
-      }
       return (
         (e.k = 1),
         (e.flash = 0),
@@ -51965,7 +51933,6 @@ var iT = Math.PI / 180,
         e.sun.set(t.sun),
         (e.clouds = t.clouds),
         (e.cover = t.cover),
-        (e.eclipse = 0),
         (e.vignette = t.vignette),
         (e.tint = t.tint),
         e
@@ -52211,9 +52178,9 @@ var iT = Math.PI / 180,
       this.disposeFloor();
     }
   },
-  kT = 95,
-  AT = 0.004,
-  jT = 0.024,
+  ultimateRechargeSeconds = 45,
+  AT = 0.006,
+  jT = 0.036,
   MT = 40,
   NT = class {
     run;
@@ -52229,17 +52196,10 @@ var iT = Math.PI / 180,
       ((this.run = e), (this.drones = new Rh(e)), (this.risers = new zh(e)));
     }
     get quiet() {
-      let e = this.run.meta.profile.settings;
-      return e.ultQuiet ?? !!e.autoUlt;
+      return !!this.run.meta.profile.settings.ultQuiet;
     }
     get ready() {
       return this.charge >= 1;
-    }
-    holdOk = !0;
-    enemyNear() {
-      let e = this.run,
-        t = e.player.pos;
-      return e.enemies.nearest(t.x, t.z, 16) >= 0 || e.mewtwo.active;
     }
     get def() {
       let e = this.run.player;
@@ -52283,9 +52243,9 @@ var iT = Math.PI / 180,
     }
     onKill(e, t) {
       if (t !== 8) {
-        if (e & R.Boss) this.add(0.2);
-        else if (e & (R.Alpha | 12290)) this.add(0.08);
-        else if (e & R.Elite) this.add(0.03);
+        if (e & R.Boss) this.add(0.3);
+        else if (e & (R.Alpha | 12290)) this.add(0.12);
+        else if (e & R.Elite) this.add(0.045);
         else {
           let e = Math.min(AT, this.killRoom);
           ((this.killRoom -= e), this.add(e));
@@ -52293,27 +52253,23 @@ var iT = Math.PI / 180,
       }
     }
     onHurt(e) {
-      this.add(e * 0.35);
+      this.add(e * 0.525);
     }
     update(e) {
       let t = this.run;
       ((this.killRoom = Math.min(jT, this.killRoom + jT * e)),
         (this.denyT = Math.max(0, this.denyT - e)),
-        this.active > 0 ? (this.active = Math.max(0, this.active - e)) : this.add(e / kT),
+        this.active > 0 ? (this.active = Math.max(0, this.active - e)) : this.add(e / ultimateRechargeSeconds),
         this.drones.update(e),
         this.risers.update(e));
       updateStarterSpeed(t,e,I.Soft);
-      let n = t.input.down(`KeyR`);
-      (n || (this.holdOk = !0),
-        t.state === `play` &&
-          !t.player.dead &&
-          (t.input.hit(`KeyR`)
-            ? this.ready && this.active <= 0
-              ? this.fire()
-              : ((this.denyT = 0.4), t.audio.deny())
-            : ((n && this.holdOk && this.ready && this.active <= 0) ||
-                (this.ready && this.active <= 0 && t.meta.profile.settings.autoUlt && this.enemyNear())) &&
-              this.fire()));
+      if (t.state === `play` && !t.player.dead && t.input.hit(`KeyR`)) {
+        if (this.ready && this.active <= 0) this.fire();
+        else {
+          this.denyT = 0.4;
+          t.audio.deny();
+        }
+      }
     }
     fire() {
       let e = this.run,
@@ -52342,7 +52298,6 @@ var iT = Math.PI / 180,
           R: Math.sqrt(t.stats.area),
         };
       ((this.charge = 0),
-        (this.holdOk = !1),
         (this.active = a),
         e.upgradeTiming.beginUltimate(),
         this.uses++,
@@ -54250,7 +54205,7 @@ var GT = 15,
       return this.coop ? this.maxEnemies : Math.min(this.maxEnemies, this.liveCap);
     }
     nextEvo = null;
-    diff = { enemyHp: 1, enemyDamage: 1, enemySpeed: 1, enemyAmount: 1, xp: 1, xpMult: 1, stardust: 1 };
+    diff = { enemyHp: 1, enemyDamage: 1, enemySpeed: 1, enemyAmount: 1, xp: ENEMY_XP_SCALE, xpMult: 1, stardust: 1 };
     stats = {
       kills: 0,
       damage: 0,
@@ -54329,7 +54284,7 @@ var GT = 15,
         enemyDamage: T.dmg[o] ?? 1,
         enemySpeed: T.speed[o] ?? 1,
         enemyAmount: T.amount[o] ?? 1,
-        xp: 1,
+        xp: ENEMY_XP_SCALE,
         xpMult: 1 + o * 0.15,
         stardust: 1 + o * 0.75,
       }),
@@ -55113,7 +55068,7 @@ var GT = 15,
         let n = this.zone,
           r = n.tint,
           [i, a, o, s] = this.ultAtmos(0.4, r[0], r[1], r[2]);
-        t.setAtmos(n.clouds[0], n.clouds[1], n.clouds[2], n.cover, 0, i, a, o, s);
+        t.setAtmos(n.clouds[0], n.clouds[1], n.clouds[2], n.cover, i, a, o, s);
         return;
       }
       let r = n.k,
@@ -55151,7 +55106,6 @@ var GT = 15,
         d[1] + (n.clouds[1] - d[1]) * r,
         d[2] + (n.clouds[2] - d[2]) * r,
         l.cover + (n.cover - l.cover) * r,
-        n.eclipse * r,
         f,
         p,
         m,
@@ -56452,8 +56406,7 @@ var GT = 15,
       let t = this.input,
         n = this.player,
         r = !!this.coop && n.dead;
-      if (
-        (Fl.leave(),
+      (Fl.leave(),
         (this.time += e),
         (this.stageTime += e),
         this.time >= this.nextCp && ((this.nextCp += kn.heartbeat), this.checkpoint()),
@@ -56464,17 +56417,7 @@ var GT = 15,
           this.ui.toast(
             this.autoRun ? c(`Avance automático activado`) : c(`Avance automático desactivado`),
             null,
-          )),
-        t.hit(`KeyY`))
-      ) {
-        let e = this.meta.profile.settings;
-        ((e.autoUlt = !e.autoUlt),
-          this.meta.save(),
-          this.ui.toast(
-            e.autoUlt ? c(`Ultimate automática activada`) : c(`Ultimate automática desactivada`),
-            null,
-          ));
-      }
+          )));
       (t.hit(`KeyQ`) &&
         ((this.aimMode = this.aimMode === `auto` ? `manual` : `auto`),
         this.ui.toast(
@@ -56972,7 +56915,7 @@ var GT = 15,
         this.hints.dispose(),
         this.mapEvents.clear(),
         this.audio.stopMusic(),
-        this.r.setAtmos(1, 1, 1, 0, 0, 0.4),
+        this.r.setAtmos(1, 1, 1, 0, 0.4),
         this.r.setSun(),
         (this.r.shared.uWind.value = 1),
         this.capture?.dispose(),
@@ -57541,7 +57484,7 @@ var IE = {
   "tm-case": () => [c(`Movimientos hasta el nivel 10, fusiones hasta ★6`)],
   "max-ether": () => [c(`Vitaminas hasta el nivel 12`)],
   "secret-key": (e, t) => [c(`Altares un {pct}% más rápidos`, { pct: 30 * t })],
-  "dowsing-machine": (e, t) => [c(`Cada zona nueva: +{a} altares y +{b} Poké Balls`, { a: t, b: 2 * t })],
+  "dowsing-machine": (e, t) => [c(`每个新区域额外增加 {n} 个扭蛋`, { n: 2 * t })],
   "gold-teeth": (e, t) => [c(`Meowth y la tragaperras: -{pct}%`, { pct: 8 * Math.min(3, t) })],
   "poke-flute": (e) => [
     c(`Ultimate un 25% más rápida`),
@@ -60269,7 +60212,6 @@ var bO = [...LITE_SPECIES],
     fixedStick: !1,
     padRumble: !0,
     padDead: 0.15,
-    autoUlt: !1,
     ultPose: !0,
     tours: ``,
     hintsSeen: ``,
@@ -70806,7 +70748,7 @@ function $M(e, t, n = `play`) {
               [
                 Z(`vela`, 30),
                 c(
-                  `Enciende las velas para ver en la oscuridad. Las lápidas de Gengar esconden un truco... o un trato.`,
+                  `靠近烛台可以恢复生命。耿鬼的墓碑中藏着恶作剧或奖励。`,
                 ),
               ],
               [
@@ -72044,7 +71986,6 @@ var NN = (e) => {
     aim: c(`Apuntado auto/manual`),
     autorun: c(`Avance automático`),
     map: c(`Mapa grande`),
-    autoult: c(`Ultimate automática`),
     pause: c(`Pausa`),
     reroll: c(`Refrescar (subida de nivel)`),
     skip: c(`Saltar (subida de nivel)`),
@@ -72927,6 +72868,7 @@ function ZX(app) {
     vitaminName: id => Ne.get(id)?.name || id,
     vitaminIcon: id => itemIcon(Ne.get(id)?.icon||id),
     itemName: id => Zb(id)?.name || id,
+    facilityIcon: kind => Zt(facilityIconFile(kind)),
     itemIcon,
     credits: () => nPFull(() => rI(app)),
     glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
@@ -79503,7 +79445,6 @@ function nI(e) {
           `touchScale`,
           `padRumble`,
           `padDead`,
-          `autoUlt`,
           `ultPose`,
           `ultQuiet`,
         ],
@@ -79553,23 +79494,11 @@ function nI(e) {
                 ),
               )
             : null,
-          l(
-            c(`Ultimate automática`),
-            `autoUlt`,
-            c(
-              `Se lanza sola en cuanto está cargada y hay enemigos cerca. Mantener su tecla pulsada también la lanza al cargarse`,
-            ),
-          ),
           l(c(`Pausa de imagen de la Ultimate`), `ultPose`, c(`El parón y el retrato al lanzarla`)),
-          s(
+          l(
             c(`Ultimate sin interrupciones`),
-            () => !!(t.ultQuiet ?? t.autoUlt),
-            () => {
-              ((t.ultQuiet = !(t.ultQuiet ?? t.autoUlt)), r());
-            },
-            c(
-              `Al lanzarla no hay cámara lenta, retrato, zoom ni grito: solo el efecto y el daño. Sigues siendo invulnerable. Si no lo eliges, se activa con la Ultimate automática`,
-            ),
+            `ultQuiet`,
+            '简化大招的镜头和音效。',
           ),
           Fo() ? u() : null,
           eI()
@@ -87453,7 +87382,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     biomeSky() {
       let e = fr.find((e) => e.id === this.biome) ?? fr[0];
       (this.r.setSky(e.sky[0], e.sky[1], e.fog, e.fogNear, e.fogFar, e.light, e.sun, e.hemiGround),
-        this.r.setAtmos(1, 1, 1, 0, 0, 0.4),
+        this.r.setAtmos(1, 1, 1, 0, 0.4),
         this.r.setSun(),
         this.r.setMoon(0));
     }

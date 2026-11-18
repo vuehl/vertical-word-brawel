@@ -281,7 +281,9 @@ export async function reviewDeveloper(page,dir){
       const peak={projectiles:0,zones:0,texts:0,particles:0,pickups:0},budgetViolations=[];
       for(let frame=0;frame<360;frame++){
         if(frame%60===0)api.apply({count:200,seek:false});
+        if(frame===30){r.ult.charge=1;r.input.touchKey('KeyR',true);}
         r.update(1/30);
+        if(frame===30){r.input.touchKey('KeyR',false);r.input.endFrame();}
         const s=api.snapshot();for(const key in peak)peak[key]=Math.max(peak[key],s[key]);
         const current=limits();
         if(s.texts>current[2]||s.particles>current[0]+current[1])budgetViolations.push({frame,texts:s.texts,particles:s.particles,limits:current});
@@ -301,7 +303,7 @@ export async function reviewDeveloper(page,dir){
     assert.equal(sample.state,'play');if(sample.mode==='stress')assert.ok(sample.levelStable);
     assert.equal(sample.displayedLevel,'LV.'+sample.initial.workload.level,'HUD must immediately show the applied level');
     assert.ok(sample.damage>0,'Real skills must damage real enemies');
-    assert.ok(sample.ultimates>0,'Real ultimate must run');
+    assert.equal(sample.ultimates,1,'One button press must cast one ultimate');
     for(const key of ['projectiles','texts','particles','pickups'])assert.ok(sample.peak[key]>0,`${sample.mode}: missing ${key}`);
     // A legal character kit need not contain a persistent-area attack.
     assert.ok(sample.limits.every((v,i)=>v<=report.workloads.beforeLimits[i]),'Crowd pressure must stay within production quality budgets');

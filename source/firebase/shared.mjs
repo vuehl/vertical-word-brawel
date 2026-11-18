@@ -19,7 +19,7 @@ export const DEFAULT_SETTINGS = {
   showItems: true, mapScale: 1, mapIcons: 1, mapNorthUp: false, fxOpacity: 1,
   ownFxOpacity: 1, camDist: 9, calmCandies: false, pickupFx: 'full',
   skipEmptyLevelUp: false, hideOwnFx: false, fixedStick: false, padRumble: true,
-  padDead: 0.15, autoUlt: false, ultPose: true, tours: '', hintsSeen: '', tips: true,
+  padDead: 0.15, ultPose: true, tours: '', hintsSeen: '', tips: true,
 };
 
 export function newProfile(name) {

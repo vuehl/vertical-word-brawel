@@ -46,13 +46,17 @@ test('marbles bounce off thin scenery and map edges, slow down and can be kicked
     run.player.pos.x=marble.x-.9;run.player.pos.z=marble.z;updateLooseMarbles(run,1/30);assert.ok(marble.armed);
   }
 });
-test('both map sizes name functional buildings; used markers stay absent',()=>{
+test('both map sizes draw model thumbnails for functional buildings',()=>{
   assert.equal(buildingMapName({kind:'bill'}),'订书机');
   assert.equal(buildingMapName({kind:'tower',data:{sub:'stairs'}}),'');
-  const text=[],ctx=new Proxy({fillText:t=>text.push(t),measureText:t=>({width:t.length*5})},{get:(t,k)=>t[k]??(()=>{})});
+  const icons=[],ctx=new Proxy({drawImage:image=>icons.push(image.kind)},{get:(t,k)=>t[k]??(()=>{})});
   const canvas={width:240,height:240,getContext:()=>ctx};
   const run={player:{pos:{x:0,z:0}},terrain:{world:240},boss:{alive:false},enemies:{n:0},allies:{list:[]},
     interactables:{markers:()=>[{kind:'bill',x:10,z:0},{kind:'ditto',x:-25,z:-20}]}};
-  for(const viewRatio of [1,2]){text.length=0;drawBattleMinimap(canvas,run,{viewRatio,shadow:viewRatio===1});assert.ok(text.includes('订书机'));assert.ok(text.includes('拍立得'));}
-  text.length=0;run.interactables.markers=()=>[];drawBattleMinimap(canvas,run);assert.deepEqual(text,[]);
+  const iconFor=kind=>({kind,naturalWidth:16,naturalHeight:20});
+  for(const viewRatio of [1,2]){
+    icons.length=0;drawBattleMinimap(canvas,run,{viewRatio,shadow:viewRatio===1,iconFor});
+    assert.deepEqual(icons.sort(),['bill','ditto']);
+  }
+  icons.length=0;run.interactables.markers=()=>[];drawBattleMinimap(canvas,run,{iconFor});assert.deepEqual(icons,[]);
 });

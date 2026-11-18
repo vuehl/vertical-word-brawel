@@ -40,14 +40,14 @@ test('legacy starter selection migrates without losing currency, research, setti
 });
 
 test('rejoining restores wave time, keeps a wind branch and migrates only old evolution levels',()=>{
-  for(const [version,expected] of [[undefined,8],[1,8],[2,12]]){
+  for(const [version,saved,expected] of [[undefined,26,10],[1,26,10],[2,8,10],[2,12,12],[3,12,12]]){
     const cards=[],timeline=[{kind:'card',t:30},{kind:'card',t:60},{kind:'totem',t:145},
       {kind:'guardian',t:250},{kind:'card',t:275}];
     const player={speciesId:16,hp:10,maxHp:10,moves:[],pos:{set(){}},xpFor:()=>30,recompute(){}};
-    const run={player,coop:{},camTarget:{copy(){}},planEvolution:()=>({to:-1,level:8}),
+    const run={player,coop:{},camTarget:{copy(){}},planEvolution:()=>({to:-1,level:10}),
       director:{timeline,addCard:()=>cards.push(run.stageTime)}};
     const data={v:version,stage:1,player:{speciesId:16,level:7,hp:10},pos:[1,0,1],
-      moves:[],run:{nextEvo:{to:58,level:version===2?12:26}}};
+      moves:[],run:{nextEvo:{to:58,level:saved}}};
     restoreProgress(run,data,{stage:1,time:261,stageTime:253});
     assert.deepEqual(run.nextEvo,{to:58,level:expected});
     assert.deepEqual(cards,[30,60]);

@@ -28,7 +28,7 @@ export function drawCompassDial(canvas,angle){
 
 // Place labels in the map frame after projecting the icons, so zooming or
 // pinning an icon to the rim never changes the distance shown.
-function drawBossDistances(ctx,labels,fontSize,obstacles=[]){
+function drawBossDistances(ctx,labels,fontSize,obstacles=[],player={x:60,y:58}){
   ctx.font='bold '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineJoin='round';ctx.lineWidth=2.5;ctx.strokeStyle='#fffdf5';ctx.fillStyle='#873d32';
   const placed=[];
@@ -43,7 +43,7 @@ function drawBossDistances(ctx,labels,fontSize,obstacles=[]){
       const range=Math.max(0,chord-half);
       for(const candidate of [Math.max(60-range,Math.min(60+range,label.x)),60-range,60+range]){
         x=candidate;
-        if(Math.abs(y-58)<fontSize/2+5&&Math.abs(x-60)<half+5)continue;
+        if(Math.abs(y-player.y)<fontSize/2+5&&Math.abs(x-player.x)<half+5)continue;
         if(labels.some(icon=>Math.abs(y-icon.y)<fontSize/2+4&&Math.abs(x-icon.x)<half+4))continue;
         if(obstacles.some(b=>x+half+1>b.x&&x-half-1<b.x+b.w&&y+fontSize/2+1>b.y&&y-fontSize/2-1<b.y+b.h))continue;
         if(placed.some(p=>Math.abs(y-p.y)<step&&Math.abs(x-p.x)<half+p.half+1))continue;
@@ -130,7 +130,7 @@ export function buildingMapName(marker){
   if(marker.kind==='chest'&&marker.data?.gift)return facilityNames.freechest;
   return facilityNames[marker.kind]||'';
 }
-export const buildingMapKinds=['chest','freechest','berry','altar','bill','magnet','ditto','nest','portal'];
+export const mapWorldScale=.9;
 export const buildingMapKind=marker=>marker.kind==='chest'&&marker.data?.gift?'freechest':marker.kind==='sanct_portal'?'portal':marker.kind;
 
 export function nearestMapFacility(markers,position,kind){
@@ -154,12 +154,11 @@ function drawFacilityGuide(ctx,target){
   ctx.fillStyle='#f3b540';ctx.fill();ctx.restore();
 }
 
-// Only neighbouring places of the same type share a label. Keep every real
+// Only neighbouring places of the same type share an icon. Keep every real
 // location as a dot, and anchor each group at its nearest member, not a new point.
-export function layoutBuildingNames(labels,measure,fontSize){
+export function layoutBuildingIcons(markers,size,player={x:60,y:58}){
   const box=group=>{
-    const text=group.text+(group.count>1?' ×'+group.count:'');
-    const w=Math.min(80,measure(text)+6),h=fontSize+4;
+    const w=size,h=size;
     const limit=Math.sqrt(47**2-(w/2)**2)-h/2;
     let y=Math.max(58-limit,Math.min(58+limit,group.y));
     const fitX=()=>{
@@ -167,51 +166,57 @@ export function layoutBuildingNames(labels,measure,fontSize){
       return Math.max(60-half,Math.min(60+half,group.x));
     };
     let x=fitX();
-    if(Math.abs(x-60)<w/2+6&&Math.abs(y-58)<h/2+7){
-      y=Math.max(58-limit,Math.min(58+limit,58+(y<58?-1:1)*(h/2+8)));x=fitX();
+    if(Math.abs(x-player.x)<w/2+6&&Math.abs(y-player.y)<h/2+7){
+      y=Math.max(58-limit,Math.min(58+limit,player.y+(y<player.y?-1:1)*(h/2+8)));x=fitX();
     }
-    return {...group,label:text,box:{x:x-w/2,y:y-h/2,w,h}};
+    return {...group,box:{x:x-w/2,y:y-h/2,w,h}};
   };
-  const groups=labels.map(label=>box({...label,count:1})).sort((a,b)=>
+  const groups=markers.map(marker=>box({...marker,count:1})).sort((a,b)=>
     Math.hypot(a.x-60,a.y-58)-Math.hypot(b.x-60,b.y-58)||a.x-b.x||a.y-b.y);
   for(let changed=true;changed;){
     changed=false;
     outer:for(let i=0;i<groups.length;i++)for(let j=i+1;j<groups.length;j++){
       const a=groups[i],b=groups[j],u=a.box,v=b.box;
       if(a.kind!==b.kind||u.x>v.x+v.w+2||v.x>u.x+u.w+2||u.y>v.y+v.h+2||v.y>u.y+u.h+2)continue;
-      groups[i]=box({...a,count:a.count+b.count});groups.splice(j,1);changed=true;break outer;
+      a.count+=b.count;groups.splice(j,1);changed=true;break outer;
     }
   }
   return groups;
 }
-function mapLabelPill(ctx,x,y,w,h){
-  const r=h/2;ctx.beginPath();ctx.arc(x+w-r,y+r,r,-Math.PI/2,Math.PI/2);
-  ctx.arc(x+r,y+r,r,Math.PI/2,Math.PI*1.5);ctx.closePath();
-}
-function drawBuildingNames(ctx,labels,fontSize){
-  ctx.font='700 '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-  const groups=layoutBuildingNames(labels,text=>ctx.measureText(text).width,fontSize);
-  for(const label of labels){
-    ctx.beginPath();ctx.arc(label.x,label.y,fontSize*.2,0,Math.PI*2);ctx.fillStyle='#4d7891';ctx.fill();
+function drawBuildingIcons(ctx,markers,size,iconFor,player){
+  const groups=layoutBuildingIcons(markers,size,player);
+  for(const marker of markers){
+    ctx.beginPath();ctx.arc(marker.x,marker.y,1,0,Math.PI*2);ctx.fillStyle='#517589';ctx.fill();
   }
   for(const group of groups){
-    const {x,y,w,h}=group.box;
-    mapLabelPill(ctx,x,y,w,h);ctx.fillStyle='#fffef9';ctx.fill();
-    ctx.lineWidth=.65;ctx.strokeStyle=group.kind==='boss'?'#b19878':'#a6bdc8';ctx.stroke();
-    ctx.fillStyle=group.kind==='boss'?'#85613a':'#315a70';ctx.fillText(group.label,x+w/2,y+h/2,w-6);
+    const {x,y}=group.box,icon=iconFor?.(group.kind);
+    if(icon?.naturalWidth){
+      const scale=size/Math.max(icon.naturalWidth,icon.naturalHeight);
+      const w=icon.naturalWidth*scale,h=icon.naturalHeight*scale;
+      ctx.drawImage(icon,x+(size-w)/2,y+(size-h)/2,w,h);
+    }
+    if(group.count>1){
+      const r=size*.26,cx=x+size-r,cy=y+size-r;
+      ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#365868';ctx.fill();
+      ctx.lineWidth=.45;ctx.strokeStyle='#fffdf5';ctx.stroke();
+      ctx.font='bold '+r*1.6+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillStyle='#fff';ctx.fillText(String(group.count),cx,cy,2*r-.5);
+    }
   }
   return groups;
 }
 
 // Both map sizes use a north-up projection. In co-op the open map follows peer snapshots.
-export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKind=run.ui?.mapFacilityKind??null}={}) {
-  const ctx=canvas.getContext('2d'),p=run.player.pos,scale=.9;
-  const distances=[],buildingNames=[];
+export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKind=run.ui?.mapFacilityKind??null,iconFor=run.ui?.mapFacilityIcon,center=run.player.pos}={}) {
+  const ctx=canvas.getContext('2d'),p=run.player.pos,scale=mapWorldScale;
+  const distances=[],buildings=[];
   const markers=run.events?.blind?[]:run.interactables.markers();
   // Search the whole current area, including targets beyond the visible map.
   const guidance=shadow?nearestMapFacility(markers,p,facilityKind):null;
   const radius=49*viewRatio,edgeRadius=radius-9;
-  const point=(x,z)=>[60+(x-p.x)*scale,58+(z-p.z)*scale];
+  const point=(x,z)=>[60+(x-center.x)*scale,58+(z-center.z)*scale];
+  const [px,py]=point(p.x,p.z);
+  const playerOnDial={x:60+(px-60)/viewRatio,y:58+(py-58)/viewRatio};
   const visible=(x,y)=>(x-60)**2+(y-58)**2<=radius**2;
   const dot=(x,y,r,color,outline='#fffdf2')=>{
     ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
@@ -244,7 +249,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
       const kind=buildingMapKind(marker),name=portal?facilityNames.portal:buildingMapName(marker);
       if(facilityKind&&kind!==facilityKind&&kind!=='boss'&&!portal)continue;
       if(name){
-        buildingNames.push({text:name,kind,x:60+(x-60)/viewRatio,y:58+(y-58)/viewRatio});
+        buildings.push({kind,x:60+(x-60)/viewRatio,y:58+(y-58)/viewRatio});
         continue;
       }
       dot(x,y,portal?4.4:3.7,portal?'#a480c8':'#dfb950');
@@ -259,7 +264,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
       for(let i=0;i<enemies.n;i++){
         if(!enemies.alive[i]||enemies.dying[i]>0||(enemies.flags[i]&32768))continue;
         const type=(enemies.flags[i]&(128|2048|16384))?3:boss(i)?2:(enemies.flags[i]&3)?1:0;if(type!==kind)continue;
-        const x=60+(enemies.x[i]-p.x)*scale,y=58+(enemies.z[i]-p.z)*scale;
+        const x=60+(enemies.x[i]-center.x)*scale,y=58+(enemies.z[i]-center.z)*scale;
         if(!visible(x,y))continue;
         if(kind>0&&(x-60)**2+(y-58)**2>edgeRadius**2)continue;
         if(kind===2){
@@ -273,7 +278,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
     }
     for(let i=0;i<enemies.n;i++){
       if(!enemies.alive[i]||enemies.dying[i]>0||(enemies.flags[i]&32768))continue;
-      const marker=specialMapMarker(enemies.flags[i],(enemies.x[i]-p.x)*scale,(enemies.z[i]-p.z)*scale,boss(i),edgeRadius);
+      const marker=specialMapMarker(enemies.flags[i],(enemies.x[i]-center.x)*scale,(enemies.z[i]-center.z)*scale,boss(i),edgeRadius);
       // Alpha, Totem and Summoner are the three timed miniboss encounters.
       if(marker&&(boss(i)||(enemies.flags[i]&2))){
         const meters=Math.hypot(enemies.x[i]-p.x,enemies.z[i]-p.z);
@@ -288,14 +293,13 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
     for(const ally of run.allies.list){const [x,y]=point(ally.x,ally.z);if(visible(x,y))dot(x,y,2.8,'#559e78');}
   }
   let groups=[];
-  if(buildingNames.length){
-    // Use fixed-size text at each projected location, inside the map rim.
-    // Player and co-op markers are painted afterwards so they stay visible.
+  if(buildings.length){
     ctx.save();ctx.translate(60,58);ctx.scale(viewRatio,viewRatio);ctx.translate(-60,-58);
-    groups=drawBuildingNames(ctx,buildingNames,shadow?10:Math.max(5.2,2880/canvas.width));ctx.restore();
+    const size=shadow?17:Math.min(16,Math.max(9,5760/canvas.width));
+    groups=drawBuildingIcons(ctx,buildings,size,iconFor,playerOnDial);ctx.restore();
   }
   for(const peer of run.coop?.visiblePeers()||[]){
-    const dx=(peer.x-p.x)*scale,dz=(peer.z-p.z)*scale;
+    const dx=(peer.x-center.x)*scale,dz=(peer.z-center.z)*scale;
     const k=Math.min(1,40*viewRatio/(Math.hypot(dx,dz)||1));
     const x=60+dx*k,y=58+dz*k;
     ctx.save();ctx.translate(x,y);ctx.scale(viewRatio,viewRatio);
@@ -305,20 +309,16 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
     }
     dot(0,0,5.3,color);ctx.font='bold 8px sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('友',0,0);ctx.restore();
   }
+  ctx.save();ctx.translate(px-60,py-58);
   dot(60,58,8.3,'#688dc633',null);dot(60,58,5.7,'#647fbb');
   if(guidance&&guidance.distance>.5)drawFacilityGuide(ctx,guidance);
   else{
     ctx.beginPath();ctx.moveTo(60,53.5);ctx.lineTo(63,60.7);ctx.lineTo(60,59);ctx.lineTo(57,60.7);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();
   }
   ctx.restore();
-  if(distances.length)drawBossDistances(ctx,distances,shadow?8:4.5,groups.map(group=>group.box));
+  ctx.restore();
+  if(distances.length)drawBossDistances(ctx,distances,shadow?8:4.5,groups.map(group=>group.box),playerOnDial);
   // A quiet compass notch lives on the rim, outside the clipped map contents.
   ctx.beginPath();ctx.moveTo(60,3);ctx.lineTo(62.5,8);ctx.lineTo(57.5,8);ctx.closePath();ctx.fillStyle='#527ab2';ctx.fill();
-  if(shadow&&facilityKind){
-    const title=facilityNames[facilityKind]||'';ctx.font='700 10px sans-serif';
-    const w=ctx.measureText(title).width+12;
-    mapLabelPill(ctx,60-w/2,104,w,14);ctx.fillStyle='#fffdf7';ctx.fill();
-    ctx.fillStyle='#315a70';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(title,60,111);
-  }
-  return {count:buildingNames.filter(label=>!facilityKind||label.kind===facilityKind).length,groups,guidance};
+  return {count:buildings.filter(marker=>!facilityKind||marker.kind===facilityKind).length,groups,guidance};
 }

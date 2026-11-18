@@ -1,4 +1,4 @@
-// Both markers persist independently of the combat particle budget.
+// Ground markers persist independently of the combat particle budget.
 function groundRing(parent, {PlaneGeometry, ShaderMaterial, Mesh}, name, diameter, fragmentShader, uniforms = {}) {
   const geometry = new PlaneGeometry(diameter, diameter).rotateX(-Math.PI / 2);
   const material = new ShaderMaterial({
@@ -41,6 +41,12 @@ export function createFacilityDwellRing(parent, three) {
       float edge=abs(length(p)-.83);
       float rim=1.-smoothstep(.043,.058,edge);
       float path=1.-smoothstep(.023,.036,edge);
+      vec3 track=mix(vec3(.23),vec3(.76),path);
+      if(dwell<0.){
+        if(rim<.005)discard;
+        gl_FragColor=vec4(track,rim*.98);
+        return;
+      }
       float turn=fract(atan(p.x,p.y)/tau+1.);
       float written=1.-smoothstep(dwell-.003,dwell+.003,turn);
       vec2 tip=.83*vec2(sin(dwell*tau),cos(dwell*tau));
@@ -48,7 +54,6 @@ export function createFacilityDwellRing(parent, three) {
       float bead=1.-smoothstep(.045,.061,tipDistance);
       float alpha=max(rim,bead);
       if(alpha<.005)discard;
-      vec3 track=mix(vec3(.17,.24,.23),vec3(.98,.94,.78),path);
       vec3 ink=mix(vec3(.025,.46,.32),vec3(.05,.68,.42),dwell);
       vec3 color=mix(track,ink,path*written);
       vec3 gold=mix(vec3(.55,.31,.10),vec3(1.,.77,.29),1.-smoothstep(.032,.048,tipDistance));

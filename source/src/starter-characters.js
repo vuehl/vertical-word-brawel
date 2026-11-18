@@ -2,7 +2,7 @@ import {formCopy, moveCopy} from './form-copy.js';
 
 // Keep species IDs stable for saved unlocks and glyph artwork.
 export const starterSpecies = Object.freeze([4,16]);
-export const starterEvolutionLevels = Object.freeze([8,16]);
+export const starterEvolutionLevels = Object.freeze([10,20]);
 export const starterWords = Object.freeze(Object.fromEntries(
   [4,5,6,132,16,17,18,58,59].map(id=>[id,formCopy[id].word])
 ));

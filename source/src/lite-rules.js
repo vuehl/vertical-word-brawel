@@ -46,6 +46,7 @@ export function validLiteRun(run) {
     Number.isInteger(run.tier ?? 0) && (run.tier ?? 0) >= 0 && (run.tier ?? 0) <= 2;
 }
 export function constrainLiteProfile(p) {
+  if (p.settings) delete p.settings.autoUlt;
   if (p.starter) p.starter = playableStarter(p.starter);
   p.lastSpecies = playableStarter(p.lastSpecies || p.starter);
   p.league = [...LITE_SPECIES];

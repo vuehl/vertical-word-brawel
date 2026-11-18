@@ -8,7 +8,7 @@ export async function reviewDeviceEffects(page, dir) {
   const inventory = await page.evaluate(async () => {
     const account = await app.backend.guest();
     await app.meta.load(account);
-    Object.assign(app.meta.profile.settings, {quality: 'high', batterySaver: false});
+    Object.assign(app.meta.profile.settings, {quality: 'high', batterySaver: false, showBanners: false});
     app.applySettings();
     if (!await app.startRun({species: 4, biome: 'forest', tier: 0, boosts: [], mode: 'standard'})) throw Error('Entry failed');
     app.halted = true;
@@ -16,15 +16,26 @@ export async function reviewDeviceEffects(page, dir) {
     const portal = facilities.spawnPortal(0, 0, false, true);
     const sanct = facilities.spawnPortal(10, 0, true, true);
     const gift = facilities.spawnChest(2, 0, false, true);
+    const reward = facilities.spawnChest(4, 0, true);
     const removed = facilities.add('magnet', 0, 1);
     facilities.remove(removed);
-    await Promise.all([portal, sanct, gift, removed].map(f => f.modelReady));
+    await Promise.all([portal, sanct, gift, reward, removed].map(f => f.modelReady));
     run.stepAnims(1);
+    facilities.render();
+    if (run.events.start('eclipse') || 'eclipse' in host.sky.material.uniforms) throw Error('Eclipse still active');
+    if (run.terrain.paperAssets.textures.has('scenery-foot-ring')) throw Error('Decorative scenery has dashed rings');
     const inventory = {};
     for (const f of facilities.list) {
       const kind = f.data?.gift ? 'freechest' : f.kind, model = f.model;
       if (!facilities.hasVisual(f) || !model?.userData.deviceScreenFx) throw Error('Missing ' + kind);
       const expectedScale = kind === 'berry' ? .5 : 1;
+      const ring = f.halo;
+      if (!ring?.visible || ring.parent !== f.group || ring.position.y <= 0 ||
+          ring.scale.x <= model.userData.footprintRadius * expectedScale) throw Error('Missing ground ring on ' + kind);
+      if (ring.position.x || ring.position.z || f.chargeRing?.visible || ring.geometry !== facilities.dwellRing.geometry ||
+          ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1)
+        throw Error('Idle building must show only the empty interaction track: ' + kind);
+      if (['freechest','chest'].includes(kind) && f.beacon) throw Error('Unexpected gacha beam');
       if (model.scale.toArray().some(x => x !== expectedScale) || f.group.scale.toArray().some(x => x !== 1) ||
           f.group.userData.h !== model.userData.displayHeight * expectedScale) throw Error('Wrong display scale for ' + kind);
       const expectedModel = {bill:'billpc',boss:'portal',portal:'boss'}[kind] ?? kind;
@@ -47,7 +58,8 @@ export async function reviewDeviceEffects(page, dir) {
     window.deviceProbe = {run, host, facilities, sample};
     return inventory;
   });
-  assert.deepEqual(Object.keys(inventory).sort(), Object.keys(facilityNames).sort());
+  assert.deepEqual(Object.keys(inventory).sort(),
+    ['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'].sort());
   await page.screenshot({path: path.join(dir, 'devices-in-game.png')});
   await page.evaluate(() => {
     const {host, facilities, sample, run} = deviceProbe;
@@ -55,6 +67,26 @@ export async function reviewDeviceEffects(page, dir) {
     for (const child of facilities.group.children) child.visible = child === sample.group;
     sample.group.rotation.y = 0;
     const center = sample.model.localToWorld(run.player.pos.clone().fromArray(sample.model.userData.deviceScreenFx.centerXYZ));
+    // Observe the actual triangles submitted for this device, including sparks
+    // that overlap each other or fall behind the ink at this camera angle.
+    const draw = host.renderer.render;
+    deviceProbe.restoreDraw = () => {host.renderer.render = draw;};
+    host.renderer.render = function(scene, camera) {
+      const geometry = scene.children[0]?.geometry;
+      const sprites = geometry?.attributes.spriteFrame;
+      if (sprites) {
+        const {position, anchorUv} = geometry.attributes;
+        deviceProbe.sprites = [];
+        for (let i = 0; i < geometry.drawRange.count; i += 6) {
+          deviceProbe.sprites.push({
+            anchor: [anchorUv.getX(i), anchorUv.getY(i)],
+            center: [(position.getX(i)+position.getX(i+2))/2, (position.getY(i)+position.getY(i+2))/2],
+            frame: sprites.getX(i), opacity: sprites.getY(i),
+          });
+        }
+      }
+      return draw.call(this, scene, camera);
+    };
     deviceProbe.pointCamera = angle => {
       host.camera.position.set(center.x + 16*Math.sin(angle), center.y + 6, center.z + 16*Math.cos(angle));
       host.camera.lookAt(center);
@@ -76,6 +108,7 @@ export async function reviewDeviceEffects(page, dir) {
   async function frame(time, filename) {
     const url = await page.evaluate(time => {
       const {host} = deviceProbe;
+      deviceProbe.sprites = [];
       host.shared.uTime.value = time;
       host.renderer.resetState();
       host.render(0);
@@ -126,8 +159,12 @@ export async function reviewDeviceEffects(page, dir) {
     for (const time of [.8, 1.06]) {
       const scan = await frame(time, name + '-sweep-' + time);
       const u = (time-.22)/1.3, head = -.14 + 1.28*(.24*u + .76*u*u*(3-2*u));
-      let thick = 0, thin = 0, outsideBands = 0, spill = 0;
+      let thick = 0, thin = 0, outsideBands = 0, spill = 0, inkPixels = 0;
       for (let i = 0; i < scan.data.length; i += 3) {
+        if ([39,35,47].every((c,k) => Math.abs(base.data[i+k]-c) <= 2) && delta(base,empty,i) > 5) {
+          inkPixels++;
+          assert.ok(delta(scan,base,i) <= 5, 'Bloom painted over device ink');
+        }
         if (delta(scan, base, i) < 10) continue;
         if (delta(base, empty, i) < 3) spill++;
         if ([239,234,208].some((c,k) => Math.abs(scan.data[i+k]-c) > 3)) continue;
@@ -137,12 +174,27 @@ export async function reviewDeviceEffects(page, dir) {
         else if (Math.abs(d+.079) <= .015) thin++;
         else outsideBands++;
       }
-      view.bands.push({time, thick, thin, outsideBands, spill});
+      assert.ok(inkPixels > 100, 'Missing device ink');
+      view.bands.push({time, thick, thin, outsideBands, spill, inkPixels});
       assert.ok(thick > thin && thin > 30 && outsideBands < (thick+thin)*.02, JSON.stringify(view));
       assert.ok(spill < 15, 'Sweep outside the silhouette: ' + spill);
     }
-    for (const [time, beat] of [[1.65,'first'],[1.95,'gap'],[2.12,'second']]) {
+    for (const [time, beat] of [[1.65,'ringed-star'],[1.87,'gap'],[2.20,'scatter'],[2.56,'rest']]) {
       const shot = await frame(time, name + '-' + beat);
+      const sprites = await page.evaluate(() => deviceProbe.sprites);
+      if (beat === 'ringed-star') {
+        assert.equal(sprites.length, 1);
+        assert.ok(sprites[0].frame >= 0);
+        view.starAnchor = sprites[0].anchor;
+      } else if (beat === 'scatter') {
+        assert.equal(sprites.length, 8);
+        assert.equal(new Set(sprites.map(s => s.center.join(','))).size, 8);
+        assert.ok(new Set(sprites.map(s => s.opacity)).size > 1);
+        for (const sprite of sprites) {
+          assert.equal(sprite.frame, -1);
+          assert.deepEqual(sprite.anchor, view.starAnchor);
+        }
+      } else assert.equal(sprites.length, 0);
       let count = 0, wrongCorner = 0, minX = Infinity, maxX = -Infinity;
       for (let i = 0; i < shot.data.length; i += 3) {
         if (delta(shot, base, i) < 15) continue;
@@ -151,11 +203,15 @@ export async function reviewDeviceEffects(page, dir) {
         minX = Math.min(minX,x); maxX = Math.max(maxX,x); count++;
       }
       view.stars.push({beat, count, minX: count ? minX : null, maxX: count ? maxX : null});
-      assert.ok(beat === 'gap' ? count === 0 : count > 20 && wrongCorner === 0, JSON.stringify(view));
+      assert.ok(['gap','rest'].includes(beat) ? count === 0 : count > 20 && wrongCorner === 0, JSON.stringify(view));
+      if (beat === 'scatter') assert.ok(shot.data.equals((await frame(time+3)).data), 'Scatter must repeat after three seconds');
     }
-    assert.ok(view.stars[2].maxX > view.stars[0].maxX, 'Small star must appear to the right on the second beat');
+    const anchorX = view.starAnchor[0] * base.info.width;
+    assert.ok(view.stars[2].minX < anchorX && view.stars[2].maxX > anchorX,
+      'Small stars must spread to both sides of their origin');
     report.views.push(view);
   }
+  await page.evaluate(() => deviceProbe.restoreDraw());
   if (process.argv.includes('--device-preview')) {
     const {execFileSync} = await import('node:child_process');
     const {default: ffmpeg} = await import('@ffmpeg-installer/ffmpeg');
@@ -227,7 +283,28 @@ export async function reviewDeviceEffects(page, dir) {
     assert.ok(count > 100, 'Device sweep missing at ' + quality);
   }
   await page.evaluate(() => {
-    const {facilities, host} = deviceProbe;
+    const {facilities, host, run, sample} = deviceProbe;
+    sample.group.visible = true;
+    facilities.nearest = sample;
+    facilities.dwellTime = facilities.dwellDuration * .5;
+    facilities.render();
+    if (sample.halo.visible || !facilities.dwellRing.visible) throw Error('Overlapping interaction rings');
+    facilities.updateDwell(null, 0, 0);
+    facilities.render();
+    if (!sample.halo.visible || facilities.dwellRing.visible) throw Error('Idle ring did not return');
+    const free = facilities.list.find(f => f.kind === 'freechest');
+    const emitRing = run.vfx.ring;
+    run.vfx.ring = () => {throw Error('Unexpected ring on gacha open');};
+    try {
+      for (const chest of [sample, free]) {
+        chest.group.visible = true;
+        facilities.openChest(chest, chest === free);
+        facilities.render();
+        if (!chest.used || chest.halo.visible) throw Error('Opened gacha still marked');
+      }
+    } finally {
+      run.vfx.ring = emitRing;
+    }
     facilities.dispose();
     if (host.composer.passes.some(p => ['Visible devices','Device screen effects'].includes(p.name))) throw Error('Device passes survived unload');
   });

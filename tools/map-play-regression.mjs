@@ -29,38 +29,69 @@ export async function reviewMapPlay(page,dir){
   assert.equal(report.stages[0].world,240);assert.equal(report.stages[0].camera,42);assert.equal(report.stages[0].twin,.33*1.2);
   assert.ok(report.stages[0].marbles>=4);
   assert.ok(report.stages[0].buildings.every(b=>b.inside));
-  // Actual generated fusion building, with labels captured from the map draw.
+  assert.equal(report.stages[0].buildings.filter(b=>b.kind==='chest').length,4);
+  // Inspect the native image submitted to Canvas for the selected building.
   await page.evaluate(()=>{
     const r=app.run,b=r.interactables.list.find(b=>b.kind==='bill');if(!b)throw Error('Missing skill fusion building');
     r.player.pos.set(b.x,r.terrain.height(b.x,b.z+10),b.z+10);r.camTarget.copy(r.player.pos);
     r.openMap();
     inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
-    const filter=inspected.doc.querySelector('[data-map-kind="bill"]');
-    const box=filter.getBoundingClientRect(),screen=inspected.doc.getElementById('game').getBoundingClientRect();
-    window.tap(box.x+box.width/2-screen.x,box.y+box.height/2-screen.y);
-    if(filter.getAttribute('aria-pressed')!=='true')throw Error('Stapler selection did not reach the map');
-    r.resume();
-    const proto=CanvasRenderingContext2D.prototype,fill=proto.fillText;window.mapPlayLabels=[];
-    proto.fillText=function(text,x,y,...args){
-      // Facility labels are inside the dial. The category caption below it can also say 订书机.
-      if(this.canvas===r.ui.minimap._surface&&y<104)mapPlayLabels.push(text);
-      return fill.call(this,text,x,y,...args);
-    };
-    // The WeChat DOM facade caches bound native methods on first use.
-    delete r.ui.minimap._contexts['2d'];mapPlayFrame();
   });
-  report.labels=[];
+  await page.waitForFunction(()=>app.run.ui.mapFacilityIcon('bill').naturalWidth>0);
+  await page.evaluate(()=>{inspected.env.drawUI(app.r.renderer,true);});
+  await page.screenshot({path:path.join(dir,'gacha-map.png')});
+  await page.evaluate(()=>{
+    const r=app.run;
+    window.mapPlayIconPosition=canvas=>{
+      const icon=r.ui.mapFacilityIcon('bill'),proto=CanvasRenderingContext2D.prototype,draw=proto.drawImage;
+      let drawn=null;
+      proto.drawImage=function(image,...args){
+        if(this.canvas===canvas._surface&&image===icon._surface){
+          const [x,y,w,h]=args;drawn={x:x+w/2,y:y+h/2};
+        }
+        return draw.call(this,image,...args);
+      };
+      delete canvas._contexts['2d'];
+      try{
+        if(canvas===r.ui.minimap)r.ui.drawMinimap(r,true);
+        else icon.onload();
+      }finally{proto.drawImage=draw;delete canvas._contexts['2d'];}
+      return drawn;
+    };
+  });
+  report.pan=await page.evaluate(()=>{
+    const r=app.run,p=r.player.pos,canvas=inspected.doc.querySelector('.zx-battle-map-art');
+    const rect=canvas.getBoundingClientRect(),screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const first=mapPlayIconPosition(canvas),playerX=p.x,playerZ=p.z;
+    const x=rect.x+rect.width/2-screen.x,y=rect.y+rect.height/2-screen.y;
+    const dx=p.x>0?45:-45,dy=p.z>0?30:-30;
+    window.tap(x,y,'down');window.tap(x+dx,y+dy,'move');window.tap(x+dx,y+dy,'up');
+    const after=mapPlayIconPosition(canvas);
+    if(!after||Math.abs(after.x-first.x)<5)throw Error('Dragging did not pan the building');
+    window.tap(rect.x-screen.x+after.x*rect.width/120,rect.y-screen.y+after.y*rect.height/120);
+    const selection=r.ui.mapFacilityKind;
+    const text=inspected.doc.querySelector('.zx-battle-map').textContent;
+    inspected.env.drawUI(app.r.renderer,true);
+    return {first,after,selection,text,stationary:p.x===playerX&&p.z===playerZ};
+  });
+  assert.equal(report.pan.selection,'bill');assert.ok(report.pan.stationary);
+  assert.doesNotMatch(report.pan.text,/扭蛋|点击类别|附近 \d+ 处/);
+  await page.screenshot({path:path.join(dir,'map-after-pan.png')});
+  await page.evaluate(()=>app.run.resume());
+  report.icons=[];
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await page.setViewport({width,height,deviceScaleFactor:1});
-    const labels=await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));mapPlayLabels.length=0;mapPlayFrame();return mapPlayLabels;});
-    assert.ok(labels.includes('订书机'));report.labels.push({width,labels:labels.filter(t=>/订书机|守护者祭坛|商店|遗忘|拍立得/.test(t))});
-    await page.screenshot({path:path.join(dir,`building-label-${width}.png`)});
+    await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));mapPlayFrame();});
+    await page.waitForFunction(()=>mapPlayIconPosition(app.run.ui.minimap));
+    report.icons.push({width,kind:'bill'});
+    await page.screenshot({path:path.join(dir,`building-icon-${width}.png`)});
   }
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.run.openMap();mapPlayFrame();});
   assert.equal(await page.evaluate(()=>app.run.ui.mapOpen()),true);
-  assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-map-kind="bill"]').getAttribute('aria-pressed')),'true');
-  await page.screenshot({path:path.join(dir,'building-label-expanded.png')});
+  assert.equal(await page.evaluate(()=>app.run.ui.mapFacilityKind),'bill');
+  assert.deepEqual(await page.evaluate(()=>mapPlayIconPosition(inspected.doc.querySelector('.zx-battle-map-art'))),report.pan.first);
+  await page.screenshot({path:path.join(dir,'building-icon-expanded.png')});
   await page.evaluate(()=>app.run.resume());
   // Contact occurs through the actual player update and simulation path. The
   // stationary high-HP target isolates marble kills from ordinary attacks.
@@ -107,6 +138,34 @@ export async function reviewMapPlay(page,dir){
     await page.setViewport({width:390,height:844,deviceScaleFactor:1});
     await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
   }
+  report.respawns=await page.evaluate(async()=>{
+    const r=app.run,f=r.interactables,terrain=r.terrain;
+    const kind=chest=>chest.data?.gift?'freechest':chest.kind;
+    const chests=()=>f.markers().filter(chest=>['freechest','chest'].includes(kind(chest)));
+    const counts=()=>['chest','freechest'].map(k=>chests().filter(c=>kind(c)===k).length);
+    const rounds=[],reserved=terrain.clearZones.length,slotCount=f.list.length;
+    const time=r.time;
+    const gift=f.spawnChest(0,0,false,true);
+    if(kind(gift)!=='freechest'||counts().join()!=='4,4')throw Error('Gift exceeded the free machine cap');
+    for(let round=0;round<6;round++){
+      const batch=chests(),start=r.time;
+      for(const chest of batch){r.gold=f.interactionCost(chest);f.interact(chest);}
+      if(chests().length||f.spawnChest(0,0,true))throw Error('Opened slot became available during cooldown');
+      r.time=start+29.99;f.update(0,0);
+      if(chests().length)throw Error('Machine respawned early');
+      r.time=start+30;f.update(0,0);
+      const next=chests();
+      await Promise.all(next.map(c=>c.modelReady));
+      if(batch.some(c=>f.list.includes(c)||terrain.clearZones.includes(c.reservation))||
+         !next.every(c=>f.hasVisual(c)&&terrain.inBounds(c.x,c.z,6)&&f.fitsOnDesk(c.x,c.z,c.r))||
+         reserved!==terrain.clearZones.length||slotCount!==f.list.length)throw Error('Invalid respawn or stale site');
+      rounds.push(counts());
+    }
+    r.time=time;
+    r.timers.length=r.anims.length=0;
+    return rounds;
+  });
+  assert.deepEqual(report.respawns,Array.from({length:6},()=>[4,4]));
   for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.halted=true;});
     await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
@@ -115,9 +174,10 @@ export async function reviewMapPlay(page,dir){
     assert.ok(layout.buildings.every(b=>b.inside));
   }
   for(const stage of report.stages){
+    for(const kind of ['chest','freechest'])assert.equal(stage.buildings.filter(b=>b.kind===kind).length,stage.stage===4?0:4);
     assert.equal(stage.reference,'desk-clearance-20261117');assert.equal(stage.boundary,'giant-desk-objects');
     assert.deepEqual(stage.kinds,boundaryKinds);assert.equal(stage.boundaryCount,stage.stage===4?20:32);
   }
   fs.writeFileSync(path.join(dir,'map-play-report.json'),JSON.stringify(report,null,2));
-  console.log('Map play verified: desktop layouts, buildings and labels at three phone widths, four giant boundary objects, twin track, marble kills and rewards, pause and area transitions.');
+  console.log('Map play verified: desktop layouts, building icons at three phone widths, four giant boundary objects, twin track, marble kills and rewards, pause and area transitions.');
 }

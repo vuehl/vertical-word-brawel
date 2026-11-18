@@ -4,7 +4,7 @@ import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from '../source/sr
 import fs from 'node:fs';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
-import {drawBattleMinimap,specialMapMarker,layoutBuildingNames,nearestMapFacility} from '../source/src/paper-hud-art.js';
+import {drawBattleMinimap,specialMapMarker,layoutBuildingIcons,nearestMapFacility} from '../source/src/paper-hud-art.js';
 
 test('facility guidance follows all eight north-up directions, including outside the map',()=>{
   const position={x:17,z:-23};
@@ -48,12 +48,12 @@ test('only the minimap draws guidance, clearing it at the target, when absent, a
   run.events.blind=false;marker.used=true;assert.equal(draw().guidance,null);assert.deepEqual(rotations,[]);
 });
 
-test('dense same-type map labels preserve every location in counts without overlap or clipping',()=>{
-  for(const fontSize of [5.2,9.6,10]){
-    const labels=Array.from({length:36},(_,i)=>({kind:'altar',text:'守护者祭坛',
+test('dense same-type map icons preserve every location in counts without overlap or clipping',()=>{
+  for(const size of [9,12,17]){
+    const labels=Array.from({length:36},(_,i)=>({kind:'altar',
       x:60+Math.cos(i*Math.PI/18)*48,y:58+Math.sin(i*Math.PI/18)*48}));
     labels.push({kind:'altar',text:'守护者祭坛',x:60,y:58});
-    const result=layoutBuildingNames(labels,text=>text.length*fontSize,fontSize);
+    const result=layoutBuildingIcons(labels,size);
     assert.equal(result.reduce((sum,g)=>sum+g.count,0),labels.length);
     assert.ok(result.length<labels.length);
     for(const group of result){
@@ -72,18 +72,17 @@ test('dense same-type map labels preserve every location in counts without overl
 });
 
 test('map filters distinguish free gifts, preserve exits, and clear used or blinded locations',()=>{
-  const texts=[],ctx=new Proxy({fillText:text=>texts.push(text),measureText:text=>({width:text.length*5})},
+  const icons=[],texts=[],ctx=new Proxy({drawImage:icon=>icons.push(icon.kind),fillText:text=>texts.push(text),measureText:text=>({width:text.length*5})},
     {get:(target,key)=>target[key]??(()=>{})});
   const canvas={width:620,height:620,getContext:()=>ctx};
   let markers=[{kind:'chest',x:10,z:10},{kind:'chest',x:12,z:12,data:{gift:true}},
     {kind:'freechest',x:13,z:13},{kind:'portal',x:-20,z:-20},{kind:'berry',x:30,z:0}];
-  const run={player:{pos:{x:0,z:0}},enemies:{n:0},boss:{alive:false},terrain:{world:240},
+  const run={ui:{mapFacilityIcon:kind=>({kind,naturalWidth:16,naturalHeight:20})},player:{pos:{x:0,z:0}},enemies:{n:0},boss:{alive:false},terrain:{world:240},
     interactables:{markers:()=>markers},allies:{list:[]}};
   let result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'freechest'});
-  assert.equal(result.count,2);assert.ok(texts.some(text=>text.startsWith('免费扭蛋')));assert.ok(texts.includes('传送门'));
-  assert.ok(!texts.includes('扭蛋')&&!texts.includes('QQ糖'));
-  texts.length=0;result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'});
-  assert.equal(result.count,1);assert.ok(texts.includes('扭蛋'));assert.ok(!texts.some(text=>text.startsWith('免费扭蛋')));
+  assert.equal(result.count,2);assert.deepEqual(icons.sort(),['freechest','portal']);assert.deepEqual(texts,['2']);
+  icons.length=0;texts.length=0;result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'});
+  assert.equal(result.count,1);assert.deepEqual(icons.sort(),['chest','portal']);assert.deepEqual(texts,[]);
   markers=markers.filter(marker=>marker.kind!=='chest');
   assert.equal(drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'}).count,0);
   texts.length=0;run.events={blind:true};result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'freechest'});
@@ -91,8 +90,8 @@ test('map filters distinguish free gifts, preserve exits, and clear used or blin
 });
 
 test('overlapping different facility types are never counted as one type',()=>{
-  const result=layoutBuildingNames([{kind:'chest',text:'扭蛋',x:45,y:35},
-    {kind:'freechest',text:'免费扭蛋',x:45,y:35}],text=>text.length*5,5.2);
+  const result=layoutBuildingIcons([{kind:'chest',x:45,y:35},
+    {kind:'freechest',x:45,y:35}],10);
   assert.equal(result.length,2);assert.deepEqual(result.map(group=>group.count),[1,1]);
 });
 

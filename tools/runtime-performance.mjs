@@ -448,7 +448,7 @@ try{
     // The illustrated desk enforces its ink outline and disables bloom on every preset.
     assert.equal(sample.outline,true);assert.equal(sample.bloom,0);
     assert.ok(sample.submitted<sample.authored*.4);assert.equal(sample.sky,false);
-    assert.equal(sample.interactions,29);assert.equal(sample.colliders,sample.props);
+    assert.equal(sample.interactions,26);assert.equal(sample.colliders,sample.props);
   }
   assert.deepEqual(report.gameplay.loot.before.totals,report.gameplay.loot.after.totals);assert.ok(report.gameplay.loot.after.count<report.gameplay.loot.before.count);
   assert.equal(report.gameplay.misses,0);assert.ok(report.gameplay.escaped&&report.gameplay.stress.finite);assert.equal(report.gameplay.stress.state,'play');

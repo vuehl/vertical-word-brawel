@@ -11,7 +11,28 @@ export async function reviewUltimateUpgrade(page,dir){
       const realNow=performance.now.bind(performance),descriptor=Object.getOwnPropertyDescriptor(performance,'now');
       let clock=realNow(),frames=0;Object.defineProperty(performance,'now',{configurable:true,value:()=>clock});
       try{
-        run.ult.charge=1;run.ult.fire();
+        const ult=run.ult;
+        ult.charge=0;
+        run.input.touchKey('KeyR',true);
+        ult.update(0);
+        run.input.endFrame();
+        let ticks=0;
+        while(!ult.ready && ticks<46*60){ult.update(1/60);ticks++;}
+        const rechargeSeconds=ticks/60;
+        run.input.touchKey('KeyR',false);
+        // Old clients can still send a saved auto-cast preference.
+        const settings=run.meta.profile.settings,nearest=run.enemies.nearest;
+        try{
+          settings.autoUlt=true;
+          run.enemies.nearest=()=>0;
+          ult.update(1/60);
+          if(ult.uses || !ult.ready)throw Error('Full charge must wait for a fresh press');
+        }finally{delete settings.autoUlt;run.enemies.nearest=nearest;}
+        run.input.touchKey('KeyR',true);
+        ult.update(0);
+        run.input.touchKey('KeyR',false);
+        run.input.endFrame();
+        if(ult.uses!==1 || ult.charge!==0)throw Error('Fresh press must spend the charge exactly once');
         const duration=run.ult.active,time=run.time,startLevel=p.level;
         p.addXp((p.xpNext-p.xp+5)/(p.stats.xpGain*run.diff.xpMult));
         const overflow=p.xp;run.ui.hud(run);
@@ -28,11 +49,12 @@ export async function reviewUltimateUpgrade(page,dir){
           if(run.upgradeTiming.waiting(run.ult)&&run.player.iframes<=0)protectedDuringDelay=false;
         }
         run.ui.hud(run);app.r.render(0);inspected.env.drawUI(app.r.renderer);
-        return {species,duration,elapsed:(frames+1)/60,simulation:run.time-time,first,paused,readyWhilePlaying,protectedDuringDelay,
+        return {species,duration,rechargeSeconds,elapsed:(frames+1)/60,simulation:run.time-time,first,paused,readyWhilePlaying,protectedDuringDelay,
           state:run.state,active:run.ult.active,castPending:run.ult.castPending,pending:run.pendingLevels,
           level:p.level,startLevel,overflow,xp:p.xp};
       }finally{if(descriptor)Object.defineProperty(performance,'now',descriptor);else delete performance.now;}
     },species);
+    assert.ok(Math.abs(sample.rechargeSeconds-45)<=1/60+1e-8,'Base ultimate recharge should take 45 seconds');
     assert.ok(sample.first.advanced&&sample.first.state==='play'&&!sample.first.ringReady,'XP must not freeze the ultimate');
     assert.ok(sample.paused.minimumUnchanged&&sample.paused.activeUnchanged);
     assert.ok(sample.elapsed>=1.5&&sample.simulation>=sample.duration+.19);
@@ -41,6 +63,6 @@ export async function reviewUltimateUpgrade(page,dir){
     assert.equal(sample.pending,1);assert.equal(sample.level,sample.startLevel+1);assert.ok(sample.xp>=sample.overflow);
     samples.push(sample);await page.screenshot({path:path.join(dir,'ultimate-'+species+'-upgrade.png')});
   }
-  console.log('Ultimate finish before upgrade:',samples.map(({species,duration,elapsed})=>({species,duration,elapsed})));
+  console.log('Manual ultimate recharge and finish before upgrade:',samples.map(({species,rechargeSeconds,duration,elapsed})=>({species,rechargeSeconds,duration,elapsed})));
   return samples;
 }

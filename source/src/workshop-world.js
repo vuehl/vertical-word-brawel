@@ -557,7 +557,7 @@ export function applyWorkshopLight(run){
   r.setSun([-50,85,38],.8,0xffedcf,0,0);r.sun.color.set(0xffedcf);r.sun.intensity=2.8;
   r.hemi.color.set(0xb4c9ed);r.hemi.groundColor.set(0x485c8e);r.hemi.intensity=.48;
   r.shared.uLight.value.setRGB(1,1,1);r.shared.uWind.value=0;
-  r.setAtmos(1,1,1,0,0,.02,1,1,1);r.grade.uniforms.get('uAmount').value=.025;
+  r.setAtmos(1,1,1,0,.02);r.grade.uniforms.get('uAmount').value=.025;
   r.renderer.toneMapping=0;r.renderer.toneMappingExposure=1;
   if(run.terrain)run.terrain.workshopLighting='daylight';
   for(const m of run.terrain?.workshopGlows||[])m.emissiveIntensity=m.userData.proximity?3.4:.12;

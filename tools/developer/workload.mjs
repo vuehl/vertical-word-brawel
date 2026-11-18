@@ -28,7 +28,7 @@ export function workloadMoves(run,preset,skills){
 }
 
 export function createWorkload(run,skills){
-  let saved=null,mode='none',preset=null,elapsed=0,refill=0,ultimate=0,serial=0,evolutionQueued=false;
+  let saved=null,mode='none',preset=null,elapsed=0,refill=0,serial=0,evolutionQueued=false;
   const p=run.player;
   function stop(){
     mode='none';preset=null;evolutionQueued=false;
@@ -63,7 +63,7 @@ export function createWorkload(run,skills){
     }
     // Every application starts clean; rewinding does not stack old upgrades/loot.
     run.projectiles.clear();run.zones.clear();run.vfx.clear();run.pickups.clear();
-    mode=nextMode;preset=next;elapsed=refill=ultimate=serial=0;
+    mode=nextMode;preset=next;elapsed=refill=serial=0;
     p.moves=[null,null,null,null];p.vitamins=new Map();
     p.items=new Map(next.items?[['razor-claw',Math.min(3,next.items)],['assault-vest',Math.min(3,next.items)]]:[]);
     p.level=next.level;p.xpNext=p.xpFor(p.level);
@@ -100,21 +100,17 @@ export function createWorkload(run,skills){
       else if(run.tryEvolve()){evolutionQueued=false;return;}
     }
     if(!Number.isFinite(dt)||dt<=0)return;
-    elapsed+=dt;refill-=dt;ultimate-=dt;
+    elapsed+=dt;refill-=dt;
     if(refill<=0){refill=1;fillLoot(mode==='stress'?40:12);}
     // Normal attacks run in run.update. Stress shortens cooldowns within a
     // bounded four-slot build; no extra render loop or uncapped particle spam.
     if(mode==='stress')for(const m of p.moves)if(m)m.timer=Math.min(m.timer,.35);
-    if((mode==='stress'||preset.at>=120)&&ultimate<=0&&!run.pendingLevels&&run.ult.active<=0&&!run.ult.castPending){
-      run.ult.charge=1;run.ult.fire();ultimate=mode==='stress'?8:25;
-    }
   }
   function prepareUltimateTest(){
     if(mode==='stress'){
       mode='timed';preset=workloadPreset(run.stageTime,mode,p.level);
       p.addXp=saved.player.addXp;p.gainLevel=saved.player.gainLevel;
     }
-    ultimate=25;
     return mode;
   }
   return {apply,update,stop,prepareUltimateTest,advanceEvolution:()=>{

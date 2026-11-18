@@ -62,12 +62,19 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
     await snapshot('14-interaction-'+width);
   }
   await resize(390,844);
-  const visit=await page.evaluate(()=>{
+  const visit=await page.evaluate(async()=>{
     const r=app.run,objects=r.interactables.list;
     const costLabel=inspected.doc.querySelector('.wlabel.cost')?.textContent;
     qaPlace(objects.find(o=>o.kind==='freechest'&&!o.used));r.hints.scanT=0;const switched=qaItemFrames(1);
     const freeHint=r.hints.el?.dataset.kind;
-    const altar=objects.find(o=>o.kind==='altar'&&!o.data.tier&&!o.used);
+    let altar=objects.find(o=>o.kind==='altar'&&!o.used);
+    // These timed screenshots exercise the eight-second, cyan tier.
+    if(altar.data.tier!==0){
+      const {x,z}=altar;
+      r.interactables.remove(altar);
+      altar=r.interactables.add('altar',x,z,{data:{tier:0}});
+      await altar.modelReady;
+    }
     qaPlace(altar);
     r.player.pos.set(altar.x+.15,altar.y,altar.z+2.7);r.camTarget.copy(r.player.pos);
     qaItemFrames(91);
@@ -140,11 +147,11 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
     r.gold=0;qaPlace(qaChest);
     const dwell=qaItemFrames(22);qaItemFrames(26);
     facilities.interact(qaChest);
-    const toasts=r.ui.toastsEl.textContent;
+    const warnings=[...r.ui.toastsEl.children].filter(node=>node.textContent==='金币不够').length;
     return {state:r.state,used:qaChest.used,waiting:facilities.waitingForGold,dwell,prompt:facilities.label(qaChest),
-      hasPrice:r.ui.worldLabelNodes.has(qaChest)||old.isConnected,hasWarning:/不足|不够|没有足够/.test(toasts)};
+      hasPrice:r.ui.worldLabelNodes.has(qaChest)||old.isConnected,warnings};
   });
-  assert.deepEqual(poor,{state:'play',used:false,waiting:true,dwell:-1,prompt:'',hasPrice:false,hasWarning:false});
+  assert.deepEqual(poor,{state:'play',used:false,waiting:true,dwell:-1,prompt:'',hasPrice:false,warnings:1});
   // The simulation is halted here. Present the throttled counter and its tile
   // as they would appear on the next live HUD frame before taking the photo.
   await page.waitForFunction(()=>{

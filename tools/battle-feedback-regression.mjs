@@ -54,7 +54,7 @@ export async function reviewBattleFeedback(context){
   await tap('[data-action="journey"]');await tap('[data-species="16"]');await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.time>2&&app.run.state==='play',{timeout:90000});
   await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});
-  assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-element').textContent),'基础');
+  assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-element').textContent),'风');
   report.controls=await reviewFloatingControls(context);
   // Freeze simulation while independently inspecting actual HUD canvas pixels.
   await sleep(700);
@@ -102,12 +102,9 @@ export async function reviewBattleFeedback(context){
         shadowPixel:Array.from(canvas.getContext('2d').getImageData(Math.floor(60*scale),Math.floor(116*scale),1,1).data)};
     });
     assert.equal(map.title,'附近地图');assert.equal(map.back,'返回战斗');
-    assert.deepEqual(map.types,['chest','freechest','berry','altar','bill','magnet','ditto','nest','portal']);
+    assert.deepEqual(map.types,[]);
     assert.equal(map.shadowPixel[3],0);assert.ok(map.bottom<=height);
     await page.screenshot({path:path.join(dir,'clean-map-'+width+'.png')});report.maps.push({width,...map});
-    await tap('[data-map-kind="bill"]');
-    assert.equal(await page.evaluate(()=>app.run.ui.mapFacilityKind),'bill');
-    assert.match(await page.evaluate(()=>inspected.doc.querySelector('.zx-map-status').textContent),/^订书机 · 附近 \d+ 处$/);
     await tap('[data-action="close-battle-map"]');assert.equal(await page.evaluate(()=>app.run.state),'play');
   }
   await context.resize(390,844);

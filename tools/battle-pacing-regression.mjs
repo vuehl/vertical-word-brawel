@@ -30,6 +30,7 @@ export async function reviewBattlePacing(page) {
       const addXp = p.addXp.bind(p);
       if (species === 16 && stage === 1) p.addXp = amount => { if (r.time > 85) addXp(amount); };
       let openingCount = 0, movesAtMinute, openingHp, oldForm = p.speciesId, bossAt, bossHp;
+      let requiredLevel = r.nextEvo?.level;
       for (let frame = 0; frame < (duration + 90) * 25 && r.stageTime < duration + 30; frame++) {
         if (kiteOpening && !movesAtMinute) {
           r.input.stickX = Math.cos(r.stageTime * 0.3);
@@ -52,8 +53,9 @@ export async function reviewBattlePacing(page) {
           }
         }
         if (p.speciesId !== oldForm && r.state === 'play') {
-          forms.push({at:r.time, level:p.level, id:p.speciesId});
+          forms.push({at:r.time, level:p.level, requiredLevel, id:p.speciesId});
           oldForm = p.speciesId;
+          requiredLevel = r.nextEvo?.level;
         }
         if (r.bossSpawned && bossAt == null) {
           bossAt = r.stageTime;
@@ -83,7 +85,8 @@ export async function reviewBattlePacing(page) {
       assert.ok(sample.drafts[0].time <= 19);
       assert.ok(sample.openingHp > 0);
       assert.deepEqual(sample.forms.map(f => f.id), species === 4 ? [5,6] : [17,18]);
-      assert.deepEqual(sample.forms.map(f => f.level), [8,16]);
+      assert.deepEqual(sample.forms.map(f => f.requiredLevel), [10,20]);
+      assert.ok(sample.forms.every(f => f.level >= f.requiredLevel));
     }
     assert.ok(timeline.every(event => event.t < duration));
     const guardianAt = stage === 2 ? 243 : duration - 50;
@@ -97,4 +100,38 @@ export async function reviewBattlePacing(page) {
     r.update(0);
     return [r.stage, r.boss.alive];
   }), [4, true]);
+
+  const balance = await page.evaluate(async () => {
+    await app.startRun({mode:'standard',species:4,tier:0,biome:'forest',boosts:[]});
+    const r = app.run, p = r.player;
+    const id = r.enemies.spawn(19, p.pos.x + 3, p.pos.z, 1, 1);
+    if (id < 0) throw Error('Missing enemy for balance check');
+    p.stats.armor = p.stats.evasion = 0;
+    p.maxHp = 100;
+    function damage(raw, source, cap = 0, floor = 0) {
+      p.hp = p.maxHp;
+      p.iframes = p.shield = p.overheal = 0;
+      p.hurt(raw, null, -1, NaN, NaN, false, cap, source, {floor});
+      return p.maxHp - p.hp;
+    }
+    const contact = damage(20, id);
+    const projectile = damage(20, {kind:'common',species:19});
+    const capped = damage(100, id, .3);
+    const floored = damage(1, id, 0, .2);
+    const terrain = damage(20, -1);
+    const xpPerKill = () => {
+      let xp = 0;
+      for (let i = 0; i < r.pickups.n; i++)
+        if (r.pickups.alive[i] && r.pickups.kind[i] === 0) xp += r.pickups.value[i];
+      return xp;
+    };
+    r.enemies.xp[id] = 8;
+    r.pickups.clear();
+    r.combat.hit(id, 30000, {type:'normal',cls:'physical',fixed:true,noReact:true});
+    const localXp = xpPerKill();
+    r.pickups.clear();
+    r.combat.creditRemote(-1, 19, 0, p.pos.x, p.pos.y, p.pos.z, 8);
+    return {contact,projectile,capped,floored,terrain,localXp,remoteXp:xpPerKill()};
+  });
+  assert.deepEqual(balance, {contact:10,projectile:10,capped:15,floored:10,terrain:20,localXp:10,remoteXp:10});
 }
