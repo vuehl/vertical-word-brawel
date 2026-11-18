@@ -400,8 +400,12 @@ export const specialNames = Object.fromEntries(['ultimate', 'fusion', 'passive']
 export function moveCopy(species, original, moveKey) {
   const form = formCopy[species];
   if (!form) return original;
-  const slot = form.starterAttack;
-  if (slot && moveKey === slot[0]) return form.moves[slot[1]];
+  if (moveKey && form.starterAttack) {
+    const [openingKey, tableName] = form.starterAttack;
+    if (moveKey === openingKey) return form.moves[tableName];
+    // The basic-attack row can share its source title with a learnable move.
+    if (original === tableName) return original;
+  }
   return form.moves[original] ?? original;
 }
 

@@ -111,3 +111,16 @@ test('all supplied form and skill names resolve in the original catalogs',()=>{
   assert.equal(specialNames.ultimate.get('暴鲤龙之怒'),'巨浪压顶');
   assert.equal(specialNames.fusion.get('暴鲤龙之怒'),'河底翻上');
 });
+
+test('only the opening combat move uses the basic attack label of its form',()=>{
+  const moves=JSON.parse(fs.readFileSync(new URL('../source/public/data/moves.json',import.meta.url)));
+  for(const [species,form] of Object.entries(formCopy)){
+    if(!form.starterAttack)continue;
+    const [openingKey,tableName]=form.starterAttack;
+    const basicLabel=form.moves[tableName];
+    const basicMoves=moves.filter(move=>moveCopy(species,move.name,move.key)===basicLabel);
+    assert.deepEqual(basicMoves.map(move=>move.key),[openingKey],form.word+' · '+basicLabel);
+    const independentMove=moves.find(move=>move.name===tableName);
+    assert.equal(moveCopy(species,tableName,independentMove.key),tableName);
+  }
+});

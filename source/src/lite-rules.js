@@ -15,6 +15,20 @@ export function zoneDuration(mode = 'standard') {
   return WAVE_SECONDS;
 }
 export const wavePace = mode => WAVE_SECONDS / zoneDuration(mode);
+export function isSoloNormalOpening(run) {
+  return run.stage === 1 && run.tier === 0 && !run.coop &&
+    (run.mode === SINGLE_STAGE || run.mode === 'standard');
+}
+// Times are elapsed game seconds. Leave one final recovery interval before the guardian.
+export function normalOpeningWaves(mode, firstHorde, honey) {
+  const waves = mode === SINGLE_STAGE
+    ? [[90,'alpha'],[115,'event'],[141,firstHorde],[170,'totem'],[198,'alpha'],
+       [226,'elitewave'],[254,'summoner'],[282,'swarm']]
+    : [[75,'alpha'],[100,'event'],[125,firstHorde],[150,'totem'],[175,'elitewave'],
+       [200,'summoner'],[225,'swarm']];
+  if (honey) waves.unshift([waves[0][0] - 25,'alpha']);
+  return waves.map(([t,kind]) => ({t,kind}));
+}
 export const remainingZoneSeconds = run => Math.ceil(zoneDuration(run.mode) - run.stageTime);
 export const runRecordKey = run => run.biome + '-' + (run.mode === SINGLE_STAGE ? SINGLE_STAGE : (run.tier ?? 0));
 export const isLiteSpecies = id => LITE_SPECIES.includes(Number(id));

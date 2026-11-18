@@ -4,9 +4,11 @@ import {createFacilityEffects} from './facility-effects.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
-import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds} from './lite-rules.js';
+import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
+import {dragonChantSeconds,startDragonChant} from './dragon-chant.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
+import {windMoveEffect} from './wind-move-art.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI,paperIcon} from './zixing-ui.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
@@ -23,7 +25,7 @@ import {warmCombatShaders,warmCombatDraw} from './combat-warmup.js';
 import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
-import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE} from './spawn-budget.js';
+import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE,ENEMY_HEALTH_SCALE,SPECIAL_ACTORS} from './spawn-budget.js';
 import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
 import {createStylizedEffectAtlas,EFFECT_CELL} from './stylized-effect-atlas.js';
 import {StylizedSkillFX} from './stylized-skill-vfx.js';
@@ -5921,6 +5923,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     }
     push(e, t, n, r, i, a, o, s = 0, c = 0, l = 0, u = 0, d = 1, f = 1, p = 1, m = 0, h = !1, g = 0, glyphRect = this.zxGlyphRect) {
       if (!this.ready) {
+        if (this.zxGlyph) return;
         this.standIn?.push(
           e,
           t + Math.abs(Math.sin(performance.now() / 160)) * 0.25 * o,
@@ -12673,6 +12676,7 @@ var Df = 0.4,
     }
     glyphWords = new Array(2200);
     spawn(e, t, n, r, i, a = 0, o = 1) {
+      if (this.run.dragonDuel && !(a & R.Object)) return -1;
       if(!allowOrdinarySpawn(this.run,a))return -1;
       if (a & 1536) {
         let e = this.run;
@@ -12705,7 +12709,7 @@ var Df = 0.4,
         h = f ? 2.6 : p ? 2.2 : d ? 2 : m ? 1.9 : u ? 1.35 : 1;
       a & 128 && (h = 1.25);
       let g = c.stats,
-        _ = (12 + c.bst * 0.055) * r,
+        _ = (12 + c.bst * 0.055) * r * ENEMY_HEALTH_SCALE,
         v = a & 28806 ? 1 : (this.run.director?.toughness() ?? 1);
       ((_ *= v * o),
         u && (_ *= 4.5),
@@ -12811,6 +12815,7 @@ var Df = 0.4,
         this.free.push(e));
     }
     spawnProxy(e, t, n, r, i, a, word = enemySpeciesWord(e,i)) {
+      if (this.run.dragonDuel) return -1;
       let o;
       if (this.free.length) o = this.free.pop();
       else if (this.n < 2200) o = this.n++;
@@ -13187,7 +13192,7 @@ var Df = 0.4,
             !1,
             e,
             i,
-            y & 4 ? { floor: 0.05 * (T.strike[t.tier] ?? 1) } : {},
+            y & 4 ? { floor: 0.05 * (T.strike[t.tier] ?? 1) } : {ordinaryContact: !(y & (SPECIAL_ACTORS | R.Elite))},
           ) &&
             ((this.atkAnim[i] = 0.35),
             n.shove(
@@ -13300,7 +13305,7 @@ var Df = 0.4,
           !1,
           n,
           e,
-          s & R.Boss ? {floor:.05*(T.strike[a.tier]??1)} : {},
+          s & R.Boss ? {floor:.05*(T.strike[a.tier]??1)} : {ordinaryContact: !(s & (SPECIAL_ACTORS | R.Elite))},
         ) && ((this.atkAnim[e] = 0.35), o.shove(-l / p, -u / p, t ? 9 : 3 + Math.min(4, c * 2.5)));
       }
     }
@@ -14628,6 +14633,8 @@ var Yp = 3e3,
     impact(e) {
       (this.flags[e] & 16
         ? this.explode(e)
+        : qp(this.fx[e]).hitCover
+          ? qp(this.fx[e]).hit(this.run,this.x[e],this.y[e],this.z[e])
         : Jp(this.fx[e]) === 'ember'
           ? this.run.vfx.crafted.fireball.impact(this.x[e], this.y[e], this.z[e], !(this.flags[e] & 1))
           : this.run.vfx.burst(this.x[e], this.y[e], this.z[e], this.color[e], 5, 3, I.Spark, 0.35, 0.25),
@@ -14888,6 +14895,7 @@ var Yp = 3e3,
     }
     render() {
       (this.pool.begin(), this.glow.begin());
+      this.run.vfx.crafted.windMoves?.begin();
       let e = this.run.vfx.ownOpacity,
         t = this.run.hideOwnFx;
       for (let n = 0; n < this.n; n++) {
@@ -14941,6 +14949,7 @@ var Yp = 3e3,
                       r ? e : 1,
                     ));
       }
+      this.run.vfx.crafted.windMoves?.end();
       (this.pool.end(), this.glow.end());
     }
     clear() {
@@ -15071,6 +15080,15 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
     }
     spawnCoin(e, t, n, r) {
       this.spawnMerged(1, e, t, n, r);
+    }
+    attractNearbyXp(radius) {
+      const player = this.run.player.pos;
+      for (let i = 0; i < this.n; i++) {
+        if (!this.alive[i] || this.kind[i] !== 0 || this.attract[i]) continue;
+        if ((this.x[i] - player.x) ** 2 + (this.z[i] - player.z) ** 2 > radius * radius) continue;
+        this.rest[i] = 0;
+        this.attract[i] = 1;
+      }
     }
     spawnMerged(e, t, n, r, i) {
       if (this.count > (e === 0 ? this.run.performance.mergeXp*2 : this.run.performance.mergeCoins*2)) {
@@ -29630,6 +29648,8 @@ function formMove(id, species) {
   const def = O_(id);
   if (!def || def.fusion) return def;
   const name = moveCopy(species, def.name, def.key);
+  const effectKey = windMoveEffect(def.key,species);
+  if(effectKey)return {...def,name,effectKey};
   return name === def.name ? def : {...def, name};
 }
 function k_(e) {
@@ -29985,7 +30005,7 @@ function Q_(e, t, n, r) {
       slot: t,
       drain: o.drain,
     },
-    S = Kp(o.key),
+    S = Kp(o.effectKey ?? o.key),
     C = qp(S),
     w = C.shape ?? l,
     T = C.size ?? 1;
@@ -30234,7 +30254,7 @@ function Q_(e, t, n, r) {
         });
       }
       (C.cast?.(e, v, y, b, r.x, r.z, c, artRadius),
-        o.key !== 'ember' && e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
+        o.key !== 'ember' && o.effectKey !== 'wind-aerial-ace' && e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
         Y_(e, o.key, `cast`, { k: f }, () => e.audio.shot(o.type, 0.6)));
       break;
     }
@@ -30406,7 +30426,7 @@ function Q_(e, t, n, r) {
         n.timer = 0.2; n.waitingForTarget = true;
         return;
       }
-      const drawGhost=o.key!=='flare-blitz';
+      const drawGhost=o.key!=='flare-blitz' && !C.replacesDash;
       const artLength=o.speed;
       for (let n = 0; n < f; n++) {
         let r = (n - (f - 1) / 2) * 0.35,
@@ -31843,14 +31863,17 @@ var mv = 30,
         (this.hp = Math.min(this.hp, this.maxHp)),
         (this.radius = 0.5));
     }
+    freeMoveSlot() {
+      return this.moves.findIndex((move, slot) => slot < this.moveSlots && !move);
+    }
     addMove(e) {
       let t = formMove(e, this.speciesId);
       if (!t) return !1;
-      let n = this.moves.findIndex((e, t) => t < this.moveSlots && !e);
+      let n = this.freeMoveSlot();
       if(n<0)return false;
       this.moves[n]=new M_(t);
       if(this.run.fireTexturesPrepared){
-        this.run.vfx.crafted.prepareMoveTexture(t.key).catch(error=>console.warn('技能贴图预热失败',error));
+        this.run.vfx.crafted.prepareMoveTexture(t.effectKey ?? t.key).catch(error=>console.warn('技能贴图预热失败',error));
       }
       return true;
     }
@@ -32164,7 +32187,7 @@ var mv = 30,
                 : { kind: a ? `hazard` : u.sanctuary && u.stage >= 4 ? `legendary` : `other`, species: 0 }),
         u.ult?.onHurt(f / this.maxHp),
         p?.onHurt?.(u, this, f, n),
-        (this.iframes = 0.45),
+        (this.iframes = l.ordinaryContact && u.director.normalOpening && !u.bossSpawned ? 1.25 : 0.45),
         (this.flash = 1),
         (this.hurtT = 0.3),
         (this.pstat.sleep = 0),
@@ -33638,6 +33661,7 @@ var mv = 30,
     constructor(e) {
       ((this.run = e), (this.rng = new Ol(e.seed ^ 859847)), this.buildPool());
       this.pace = wavePace(e.mode);
+      this.normalOpening = isSoloNormalOpening(e);
       let t = this.rng;
       for (let e = 0; e < 3; e++) this.addCard();
       this.credits = this.pace > 1 ? 7 : 0;
@@ -33655,23 +33679,28 @@ var mv = 30,
       }
       let n = [];
       for (let e = 1; e < 9.6; e += t.range(0.8, 1.2)) n.push({ t: e * 60, kind: `card` });
-      (n.push({ t: 150, kind: `alpha` }, { t: 330, kind: `alpha` }, { t: 480, kind: `alpha` }),
-        e.boosts.has(`honey`) && n.push({ t: 240, kind: `alpha` }));
-      let r = e.stage === 1;
-      (n.push(
-        { t: r ? 235 : 200, kind: t.chance(0.5) ? `swarm` : `stampede` },
-        { t: 390, kind: `swarm` },
-        { t: 520, kind: `stampede` },
-      ),
-        n.push({ t: r ? 330 : 270, kind: `elitewave` }, { t: 450, kind: `elitewave` }),
-        n.push({ t: r ? 290 : 255, kind: `totem` }, { t: 420, kind: `totem` }, { t: 360, kind: `summoner` }),
-        e.stage === 1
-          ? n.push({ t: t.range(170, 300), kind: `event` })
-          : n.push({ t: t.range(130, 230), kind: `event` }, { t: t.range(340, 460), kind: `event` }));
-      let i = T.early[e.tier] ?? 0;
-      if (i) for (let e of n) e.kind !== `card` && e.kind !== `event` && (e.t = Math.max(60, e.t - i));
-      if (e.tier >= 2) n.push({ t: 510, kind: `totem` });
-      for (const event of n) event.t /= this.pace;
+      if (this.normalOpening) {
+        for (const card of n) card.t /= this.pace;
+        n.push(...normalOpeningWaves(e.mode, t.chance(0.5) ? 'swarm' : 'stampede', e.boosts.has('honey')));
+      } else {
+        (n.push({ t: 150, kind: `alpha` }, { t: 330, kind: `alpha` }, { t: 480, kind: `alpha` }),
+          e.boosts.has(`honey`) && n.push({ t: 240, kind: `alpha` }));
+        let r = e.stage === 1;
+        (n.push(
+          { t: r ? 235 : 200, kind: t.chance(0.5) ? `swarm` : `stampede` },
+          { t: 390, kind: `swarm` },
+          { t: 520, kind: `stampede` },
+        ),
+          n.push({ t: r ? 330 : 270, kind: `elitewave` }, { t: 450, kind: `elitewave` }),
+          n.push({ t: r ? 290 : 255, kind: `totem` }, { t: 420, kind: `totem` }, { t: 360, kind: `summoner` }),
+          e.stage === 1
+            ? n.push({ t: t.range(170, 300), kind: `event` })
+            : n.push({ t: t.range(130, 230), kind: `event` }, { t: t.range(340, 460), kind: `event` }));
+        let i = T.early[e.tier] ?? 0;
+        if (i) for (let e of n) e.kind !== `card` && e.kind !== `event` && (e.t = Math.max(60, e.t - i));
+        if (e.tier >= 2) n.push({ t: 510, kind: `totem` });
+        for (const event of n) event.t /= this.pace;
+      }
       if (this.pace > 1 && e.stage <= FOREST_COMBAT_ZONES) {
         // Leave the guardian's normal fight time and a short walk to the exit.
         const scheduled = zoneDuration(e.mode) - wy.guardian[e.stage - 1] - 10;
@@ -33862,6 +33891,7 @@ var mv = 30,
     }
     update(t) {
       let n = this.run;
+      if (n.dragonDuel) return;
       if (n.endless) {
         this.updateEndless(t);
         return;
@@ -33869,6 +33899,7 @@ var mv = 30,
       let r = n.stageTime;
       for (const event of this.timeline) {
         if (!event.done && r >= event.t) event.done = this.fire(event.kind) !== false;
+        if (n.dragonDuel) return;
       }
       let i = this.effTime();
       this.caps(
@@ -33876,7 +33907,7 @@ var mv = 30,
       );
       let a = n.player.stats,
         o =
-          naturalCreditRate(Tt(i), r, n.stage, n.mode) *
+          naturalCreditRate(Tt(i), r, n.stage, n.mode, this.normalOpening) *
           (1 + (n.stage - 1) * 0.35) *
           a.difficulty *
           a.enemyAmount *
@@ -33914,6 +33945,7 @@ var mv = 30,
     }
     fire(e) {
       let t = this.run;
+      if (t.dragonDuel) return;
       if (e === 'guardian') {
         if (t.bossSpawned || t.stageCleared) return;
         if (t.stageTime < bossSummonUnlockSeconds + bossSummonSeconds || t.state !== 'play' ||
@@ -34028,6 +34060,7 @@ var mv = 30,
           case `totem`:
           case `summoner`: {
             let n = e === `totem` ? t.minibosses.spawnTotem() : t.minibosses.spawnSummoner();
+            if (this.normalOpening) break;
             const retryAt = t.stageTime + 20 / this.pace;
             !n && t.endless
               ? this.retry(e, 20)
@@ -34039,6 +34072,7 @@ var mv = 30,
           }
           case `event`: {
             let n = t.events.startRandom();
+            if (this.normalOpening) break;
             const retryAt = t.stageTime + 15 / this.pace;
             !n && t.endless
               ? this.retry(e, 15)
@@ -34049,6 +34083,7 @@ var mv = 30,
             break;
           }
           case `elitewave`:
+            if (this.normalOpening && (t.minibosses.has('totem') || t.minibosses.has('summoner'))) break;
             for (let e = 0; e < Math.round((4 + t.stage * 2) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE); e++)
               this.spawnCard(this.rng.pick(this.cards), R.Elite);
             t.ui.toast(c(`Una oleada de Pokémon élite se acerca`), null);
@@ -34148,6 +34183,7 @@ var mv = 30,
         e.audio.alarm());
     }
     startFinalSwarm() {
+      if (this.run.dragonDuel) return;
       this.finalSwarm ||
         ((this.finalSwarm = !0),
         (this.finalSwarmAt = zoneDuration(this.run.mode)),
@@ -35368,9 +35404,12 @@ function Hb(e, t = 0, n = 0, r) {
   for (let e = 0; e < 5; e++) if (((u -= c[e]), u <= 0)) return e;
   return 0;
 }
+function isNewAttackOffer(offer) {
+  return offer.kind === 'newMove' && O_(offer.id)?.dmg > 0;
+}
 function Ub(run, count) {
   const player = run.player, pool = [];
-  if (player.moves.slice(0,player.moveSlots).some(move => !move)) {
+  if (player.freeMoveSlot() >= 0) {
     const catalog = Vb(player.speciesId,player.roster,player.types,id => run.meta.inLeague(id));
     const owned = player.ownedMoveIds();
     const hasRandom = player.moves.some(move => move?.def.arch === 'random');
@@ -35384,7 +35423,7 @@ function Ub(run, count) {
     }
   }
   player.moves.forEach((move,slot) => {
-    if (!move || move.level >= player.capOf(move)) return;
+    if (slot >= player.moveSlots || !move || move.level >= player.capOf(move)) return;
     const key = 'm'+move.def.id;
     if (!run.banished.has(key)) pool.push({kind:'upMove', slot, key});
   });
@@ -35396,7 +35435,8 @@ function Ub(run, count) {
   }
   const offers = [];
   let hasMove = false;
-  for (const offer of F.shuffle(pool)) {
+  const shuffled = F.shuffle(pool);
+  for (const offer of shuffled) {
     if (!offer.vit) {
       if (hasMove) continue;
       hasMove = true;
@@ -35405,6 +35445,14 @@ function Ub(run, count) {
     if (offer.kind === 'upMove') offer.ups = P_(player.moves[offer.slot], E[offer.rarity]);
     offers.push(offer);
     if (offers.length === count) break;
+  }
+  if (run.director.normalOpening && run.openingDraftMisses >= 2 &&
+      player.moves.filter(Boolean).length === 1 && !offers.some(isNewAttackOffer)) {
+    const attack = shuffled.find(isNewAttackOffer);
+    if (attack) {
+      const slot = offers.findIndex(offer => !offer.vit);
+      offers[slot < 0 ? offers.length - 1 : slot] = attack;
+    }
   }
   return offers;
 }
@@ -35466,19 +35514,22 @@ function Gb(e, t) {
   let n = e.player;
   switch (t.kind) {
     case `newMove`:
-      (n.addMove(t.id), e.stats.movesLearned++);
+      if (n.ownedMoveIds().has(t.id) || !n.addMove(t.id)) return false;
+      e.stats.movesLearned++;
       break;
     case `upMove`: {
       let e = n.moves[t.slot];
-      e && F_(e, t.ups);
+      if (t.slot >= n.moveSlots || !e || (t.key && t.key !== 'm'+e.def.id) || e.level >= n.capOf(e)) return false;
+      F_(e, t.ups);
       break;
     }
     case `newVit`:
     case `upVit`:
       n.addVitamin(t.vit, E[t.rarity]);
-      return;
+      return true;
   }
   n.recompute();
+  return true;
 }
 var Kb = (e, t) => !!e.tower && t === `dowsing-machine`;
 function qb(e, t = 0) {
@@ -54157,8 +54208,11 @@ var GT = 15,
     skips = 0;
     banishes = 0;
     pendingLevels = 0;
+    openingDraftMisses = 0;
+    openingXpChecked = false;
     upgradeTiming = new UpgradeTiming();
     bossSpawned = !1;
+    dragonDuel = false;
     stageCleared = !1;
     camYaw = 0;
     camPitch = 0.45;
@@ -54351,7 +54405,7 @@ var GT = 15,
         const keys=new Set(this.coop||kit.includes('mimic')?['ember','fire-spin','flamethrower']:kit);
         if(this.coop||kit.includes('mimic')||[4,5,6].includes(this.player.speciesId))keys.add('fire-ultimate');
         if(this.player.speciesId===16)keys.add('wind-ultimate');
-        for(const move of this.player.moves)if(move)keys.add(move.def.key);
+        for(const move of this.player.moves)if(move)keys.add(move.def.effectKey ?? move.def.key);
         for(const key of keys){
           const uploaded=await this.vfx.crafted.prepareMoveTexture(key);
           check();
@@ -54456,6 +54510,7 @@ var GT = 15,
       finally {this.buildingStage=false;}
     }
     buildStage(e, preparedTerrain, deferred = false) {
+      this.dragonDuel = false;
       let t = this.r,
         r = this.stage === 4 ? (this.biome.sanctuary ?? null) : null;
       this.streakPaid.clear();
@@ -54774,16 +54829,111 @@ var GT = 15,
         c * c + l * l < 2.6 * 2.6 && ((o.visible = !1), this.capHidden.push(o));
       }
     }
+    sacrificeToDragon(boss) {
+      this.projectiles.clearHostile();
+      this.director.finalSwarm = false;
+      this.events.end(true);
+      this.events.meowth = -1;
+      if (this.capture.index >= 0) {
+        this.capture.state = 'done';
+        this.capture.index = -1;
+        this.capture.dropBeam();
+      }
+      this.lockTarget = -1;
+
+      const enemies = this.enemies, fx = this.vfx;
+      const x = enemies.x[boss], y = enemies.y[boss], z = enemies.z[boss];
+      const heart = y + enemies.hgt[boss] * .55;
+      const strokes = [];
+      for (let id = 0; id < enemies.n; id++) {
+        if (!enemies.alive[id] || id === boss || (enemies.flags[id] & R.Object)) continue;
+        const dx = enemies.x[id] - x, dz = enemies.z[id] - z;
+        strokes.push({dx, dz, y: enemies.y[id] + enemies.hgt[id] * .5, distance: dx*dx + dz*dz});
+        // Sacrifices leave through the pool, bypassing combat rewards and death triggers.
+        enemies.kill(id);
+      }
+      // Prioritize strokes near the intro camera when a whole horde is present.
+      strokes.sort((a,b) => a.distance - b.distance);
+      strokes.length = Math.min(24, strokes.length);
+      const victims = strokes.length;
+      // Interleave three waves around the camera, even when the altar was empty.
+      // The deeper ellipse compensates for the portrait camera's foreshortening.
+      const outerStrokes = 36;
+      for (let i = 0; i < outerStrokes; i++) {
+        const angle = 2 * Math.PI * (i + .3 * Math.sin(i * 2.4)) / outerStrokes;
+        const radius = 8 + (i * 5 % 7) * .7;
+        const dx = radius * Math.cos(angle), dz = radius * 1.45 * Math.sin(angle);
+        strokes.push({dx, dz, y: this.terrain.height(x + dx, z + dz) + .2});
+      }
+      const colors = [0xffc44e, 0xb14edd, 0xffe297, 0x9156e7, 0xe986ff];
+      for (let i = 0; i < strokes.length; i++) {
+        const stroke = strokes[i], wave = i % 3;
+        stroke.delay = wave * .11 + (i * 7 % 11) * .005;
+        stroke.bend = .58 + (i % 4) * .16;
+        stroke.lift = 1 + wave * .8;
+        stroke.width = .32 + (i % 4) * .13;
+        stroke.color = colors[i % colors.length];
+        if (i < victims) fx.burst(x + stroke.dx, stroke.y, z + stroke.dz, 0x60335f, 4, 2.2, I.Spark, .65, .35);
+      }
+      const tail = new ti(), middle = new ti(), head = new ti();
+      function pointAt(out, stroke, t) {
+        const reach = 1 - t * t, angle = t * stroke.bend;
+        const cos = reach * Math.cos(angle), sin = reach * Math.sin(angle);
+        return out.set(x + stroke.dx * cos - stroke.dz * sin,
+          heart + (stroke.y - heart) * reach + stroke.lift * Math.sin(Math.PI * t),
+          z + stroke.dx * sin + stroke.dz * cos);
+      }
+      const seconds = 1.55;
+      fx.rings.spawn(x, y + .16, z, 10, .8, 0xb97ae9, seconds, 1, .35);
+      let frame = -1;
+      this.animate(seconds, progress => {
+        const next = Math.floor(progress * seconds * 24);
+        if (frame === next) return;
+        frame = next;
+        for (const stroke of strokes) {
+          const t = (progress - stroke.delay) / .54;
+          if (t <= 0 || t >= 1.35) continue;
+          const back = Math.max(0, t - .35), front = Math.min(1, t);
+          pointAt(tail, stroke, back);
+          pointAt(middle, stroke, (back + front) * .5);
+          pointAt(head, stroke, front);
+          fx.beams.spawn(tail.x, tail.y, tail.z, middle.x, middle.y, middle.z, stroke.width * .65, stroke.color, .12);
+          fx.beams.spawn(middle.x, middle.y, middle.z, head.x, head.y, head.z, stroke.width, stroke.color, .12);
+        }
+      });
+      return seconds;
+    }
     introBoss(e, t) {
-      let n = this.enemies,
-        r = t ? 3.2 : 2.6,
-        i = n.species[e];
       this.state = `cinematic`;
-      let a = this.camYaw;
-      (this.setCine({ follow: e, dist: 4.5 + n.hgt[e] * 1.4, pitch: 0.12, orbit: 0.3 }),
-        this.ui.bossIntro(i, t, r, n.glyphWords[e]),
-        this.audio.duck(0.25, r));
-      let o = t ? 16765498 : 16730762,
+      const enemies = this.enemies, species = enemies.species[e], yaw = this.camYaw;
+      this.setCine({follow:e, dist:4.5 + enemies.hgt[e] * 1.4, pitch:.12, orbit:.3});
+      if (species === finalBossSpecies) {
+        this.dragonDuel = true;
+        const revealSeconds = 2.25;
+        this.audio.duck(.25, dragonChantSeconds + revealSeconds);
+        const chant = this.ui.dragonChant = startDragonChant(this.ui, beat => {
+          J.whoosh(this.audio, .4 + beat * .08, .11, 560 + beat * 130);
+          if (beat === 3) this.audio.boom(.55);
+        });
+        this.animate(dragonChantSeconds, progress => chant.draw(progress * dragonChantSeconds), () => {
+          chant.clearWords();
+          if (!this.boss.live(e)) {
+            this.state = 'play'; this.cine.want = 0; this.yawBack = yaw; this.ui.endCinematic();
+            return;
+          }
+          const travelSeconds = this.sacrificeToDragon(e);
+          this.revealBoss(e, revealSeconds, travelSeconds / revealSeconds, true, yaw);
+        });
+        return;
+      }
+      const seconds = t ? 3.2 : 2.6;
+      this.ui.bossIntro(species, t, seconds, enemies.glyphWords[e]);
+      this.audio.duck(.25, seconds);
+      this.revealBoss(e, seconds, .35, t, yaw);
+    }
+    revealBoss(e, r, roarAt, golden, yaw) {
+      const n = this.enemies, i = n.species[e];
+      let o = golden ? 16765498 : 16730762,
         s = !1;
       this.animate(
         r,
@@ -54805,7 +54955,7 @@ var GT = 15,
               glow: 0.8,
             }),
             !s &&
-              t > 0.35 &&
+              t > roarAt &&
               ((s = !0),
               this.cry(i),
               (n.flash[e] = 0.6),
@@ -54815,7 +54965,7 @@ var GT = 15,
               this.shake(0.7)));
         },
         () => {
-          ((this.state = `play`), (this.cine.want = 0), (this.yawBack = a), this.ui.endCinematic());
+          ((this.state = `play`), (this.cine.want = 0), (this.yawBack = yaw), this.ui.endCinematic());
         },
       );
     }
@@ -55181,7 +55331,15 @@ var GT = 15,
       let a = r[i + 1];
       ((this.lockTarget = a ? a.j : -1), a && this.audio.click());
     }
+    get stageBossSpecies() {
+      if (this.stage === 4 && this.biome.sanctuary) return finalBossSpecies;
+      const pool = Je(this.stage >= 3 && !this.biome.sanctuary ? this.biome.legendaries :
+        (this.biome.guardians?.[this.stage - 1] ?? [this.biome.bosses[this.stage - 1]]));
+      const species = pool[(this.seed + this.stage) % pool.length];
+      return k.hasSprite(species) ? species : this.biome.bosses[0];
+    }
     spawnBoss(e, t) {
+      if (this.dragonDuel) return;
       (this.coop?.bossCalled(e, t), (this.bossSpawned = !0));
       let n = this.biome.sanctuary;
       if (this.stage === 4 && n) {
@@ -55189,14 +55347,8 @@ var GT = 15,
         return;
       }
       let r = this.stage >= 3 && !n,
-        i = Je(
-          r
-            ? this.biome.legendaries
-            : (this.biome.guardians?.[this.stage - 1] ?? [this.biome.bosses[this.stage - 1]]),
-        ),
-        a = i[(this.seed + this.stage) % i.length],
         o = this.terrain.randomPoint(F, e, t, 6, 10),
-        s = this.boss.spawn(k.hasSprite(a) ? a : this.biome.bosses[0], o.x, o.z, r);
+        s = this.boss.spawn(this.stageBossSpecies, o.x, o.z, r);
       (r && s >= 0 && this.capture.rollLegendShiny() && this.capture.shinyBoss(s),
         (this.audio.intensity = 1));
     }
@@ -55227,6 +55379,7 @@ var GT = 15,
         return;
       }
       if (this.tower) {
+        this.dragonDuel = false;
         (this.tower.onBossKilled(e), this.checkpoint());
         return;
       }
@@ -55308,6 +55461,7 @@ var GT = 15,
       this.pickups.spawn(`candy`, o, t.y[e], s, 1);
     }
     onMilestoneKilled(e) {
+      this.dragonDuel = false;
       let t = this.enemies,
         n = !!this.boss.kit;
       (this.boss.kit && (this.boss.kit.dead = !0),
@@ -55722,8 +55876,13 @@ var GT = 15,
       if (this.state !== `play` || this.pendingLevels <= 0 || this.upgradeTiming.waiting(this.ult) || this.ui.experienceReady?.() === false || this.tryEvolve()) return;
       ((this.state = `modal`), this.audio.levelUp(), this.hints.show(`level`));
       if(this.coop)this.levelUpEffect(30);
+      const openingDraft = this.director.normalOpening && this.player.moves.filter(Boolean).length === 1;
+      let offeredNewAttack = false;
       let t = this.meta.lab(`choice4`) ? 4 : 3,
         n = (e = !0) => {
+          // Count completed levels. Rerolls and banishes share the same draft.
+          if (openingDraft && offeredNewAttack) this.openingDraftMisses = 0;
+          else if (openingDraft && this.stageTime <= 90) this.openingDraftMisses++;
           this.pendingLevels = Math.max(0, this.pendingLevels - 1);
           this.noResumeGrace = !e;
           if(this.pendingLevels>0){
@@ -55745,44 +55904,46 @@ var GT = 15,
             n(!1);
           }
         },
-        i = (e) => {
+        resolveChoice = (offer, action, automatic = false) => {
           try {
-            Gb(this, e);
-            let t = Wb(this, e);
-            this.ui.toast(c(`Nivel: {name} ({sub})`, { name: t.title, sub: t.sub }), null);
+            if (offer) {
+              if (!Gb(this, offer)) return showOffers(Ub(this, t));
+              if (automatic) {
+                const description = Wb(this, offer);
+                this.ui.toast(c(`Nivel: {name} ({sub})`, {name: description.title, sub: description.sub}), null);
+              }
+            } else {
+              if (action === 'skip') {
+                this.skips--;
+                this.addGold(Math.max(10 * this.stage, 0.2 * OS(this)));
+              }
+              this.player.recompute();
+            }
           } catch (e) {
             oc(`levelup`, e);
-          } finally {
-            n(!1);
           }
+          if (!automatic) globalThis.__pbCoop?.localPicked?.();
+          n(!automatic);
         },
-        a = (e) => {
+        showOffers = (e) => {
+          if (openingDraft && e.some(isNewAttackOffer)) offeredNewAttack = true;
           e.length
             ? e.length === 1 && this.meta.profile.settings.skipEmptyLevelUp
-              ? i(e[0])
+              ? resolveChoice(e[0], null, true)
               : this.ui.showLevelUp(this, e, (e, r) => {
                   if (r === `reroll`) {
                     if (this.rerolls <= 0) return;
                     this.rerolls--;
-                    a(Ub(this, t));
+                    showOffers(Ub(this, t));
                   }
-                  else if (r === `banish` && e) (this.banishes--, this.banished.add(e.key), a(Ub(this, t)));
-                  else
-                    try {
-                      (r === `skip` &&
-                        (this.skips--, this.addGold(Math.max(10 * this.stage, 0.2 * OS(this)))),
-                        e ? Gb(this, e) : this.player.recompute());
-                    } catch (e) {
-                      oc(`levelup`, e);
-                    } finally {
-                      (globalThis.__pbCoop && __pbCoop.localPicked && __pbCoop.localPicked(), n());
-                    }
+                  else if (r === `banish` && e) (this.banishes--, this.banished.add(e.key), showOffers(Ub(this, t)));
+                  else resolveChoice(e, r);
                 })
             : r();
         };
       globalThis.__pbCoop && __pbCoop.openLevel
-        ? __pbCoop.openLevel(this, () => a(Ub(this, t)))
-        : a(Ub(this, t));
+        ? __pbCoop.openLevel(this, () => showOffers(Ub(this, t)))
+        : showOffers(Ub(this, t));
     }
     training = new Map();
     autoRun = !1;
@@ -56400,11 +56561,15 @@ var GT = 15,
       } finally {
         Fl.leave();
       }
+      if (this.director.normalOpening && !this.openingXpChecked && this.stageTime >= 135 && !n.dead) {
+        this.openingXpChecked = true;
+        if (n.level < 6) this.pickups.attractNearbyXp(40);
+      }
       (this.pickups.update(e),
         ff(this, e),
         vf(this, e),
         !this.endless && !l && this.capture.beamFx(),
-        !this.sanctuary && !s && !this.endless && !l && this.capture.update(e),
+        !this.dragonDuel && !this.sanctuary && !s && !this.endless && !l && this.capture.update(e),
         !l && !this.coop && this.mewtwo.update(e),
         s || this.allies.update(e),
         this.sanctuary?.update(e),
@@ -83865,10 +84030,12 @@ var JI = class {
         ));
     }
     endCinematic() {
+      this.dragonChant?.end();
+      this.dragonChant = null;
       (this.hudEl.querySelectorAll(`.evo, .bossintro`).forEach((e) => e.remove()), this.uncinematic());
     }
     uncinematic() {
-      this.hudEl.querySelector(`.evo, .bossintro`) || this.hudEl.classList.remove(`cinematic`);
+      this.hudEl.querySelector(`.evo, .bossintro, .zx-dragon-chant`) || this.hudEl.classList.remove(`cinematic`);
     }
     evolutionReveal(e, t, n, r) {
       let i = k.get(t),

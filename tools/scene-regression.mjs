@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import sharp from 'sharp';
 
 const removed=['cursed','greed','porygon','snorlax','cage','rock','challenge','fossil','rhydon','meowth','hypno','slots','cursedchest','shroom','shrine','tower'];
 const retained=['boss','altar','bill','nest','ditto','magnet','freechest','berry','chest'];
@@ -9,7 +10,7 @@ const retained=['boss','altar','bill','nest','ditto','magnet','freechest','berry
 export async function reviewScenes({page,tap,dir,sleep}) {
   const report={mode:'Compiled WeChat bundle in Chrome fixture. Controlled zone traversal and isolated NPC transactions, not a natural playthrough or phone test.',removed,stages:[],summons:[]};
   const shot=async name=>{await sleep(400);await page.screenshot({path:path.join(dir,name+'.png')});};
-  async function summonAtBuilding() {
+  async function summonAtBuilding(captureIntro=false) {
     const timing=await page.evaluate(async()=>{
       const run=app.run,facilities=run.interactables;
       const building=facilities.list.find(o=>o.kind==='boss');
@@ -52,14 +53,79 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       pos.x=beside;
       stay(179);
       const before=facilities.dwellProgress,waiting=!run.bossSpawned&&!building.used;
+      const enemies=run.enemies, kills=run.stats.kills, xp=run.player.xp;
+      const victims=[0,1,4096,8192,128].map((flag,i)=>
+        enemies.spawn(19,beside+i-2,building.z+4,1,1,flag));
+      victims.push(enemies.spawnProxy(19,beside+3,building.y,building.z-3,0,1));
+      if(victims.some(id=>id<0))throw Error('Could not populate the area before summoning');
+      run.later(.05,()=>{
+        if(enemies.spawn(19,beside,building.z,1,1,1024)>=0)throw Error('A delayed wave joined the duel');
+      });
       stay(1);
       const index=run.boss.bossIndex,previousBurn=run.enemies.burn[index];
+      const blocked=[0,1,2,4,128,512,4096,8192,16384].every(flag=>
+        enemies.spawn(19,beside,building.z,1,1,flag)===-1) && enemies.spawnProxy(19,0,0,0,1,1)===-1;
+      const wasHalted=app.halted;
+      app.halted=true;
+      const batch=run.sprites.get(enemies.species[index],false,enemies.glyphWords[index]);
+      const ready=batch.ready;
+      try{
+        batch.ready=false;
+        run.renderWorld(0);
+        if(run.sprites.standIn.count)throw Error('A loading ball appeared in the dragon intro');
+      }finally{batch.ready=ready;}
       run.enemies.burn[index]=1;run.ui.bossSt.update(run.enemies,index);
       const burnIcon=[...run.ui.bossSt.el.querySelectorAll('img')].some(img=>img.src.includes('/ui/types/fire.png'));
       run.enemies.burn[index]=previousBurn;run.ui.bossSt.update(run.enemies,index);
       return {stage:run.stage,sealed,sealedLabel,atUnlock,crossed,stillWaiting,readyLabel,earlyEvent,eventWhileHolding,halfway,target,visible,ringAtDoor,model:building.model.userData.deviceModel,
-        left,before,waiting,burnIcon,summoned:building.used&&run.bossSpawned&&run.boss.alive};
+        left,before,waiting,burnIcon,blocked,kills,xp,victims,wasHalted,summoned:building.used&&run.bossSpawned&&run.boss.alive};
     });
+    const beats=[],frames=[];
+    let peakBeamSegments=0;
+    try{
+      for(let frame=0;frame<58;frame++){
+        const state=await page.evaluate(({victims,captureIntro,sampleEdges})=>{
+          const r=app.run, e=r.enemies, id=r.boss.bossIndex;
+          r.update(1/30);r.update(1/30);
+          const chant=r.ui.hudEl.querySelector('.zx-dragon-chant');
+          if(r.ui.hudEl.querySelector('.bossintro'))throw Error('Unexpected dragon intro card');
+          if(!r.ui.root.querySelector('.zx-hud').hidden)throw Error('Combat HUD covered the dragon cinematic');
+          if(chant && !victims.every(i=>e.alive[i]))throw Error('Sacrifice began during the incantation');
+          if(!chant && (e.count!==1||e.remotes||!r.boss.live(id)))throw Error('Unexpected sacrifice survivors');
+          const focus=r.player.pos.clone().set(e.x[id],e.y[id]+e.hgt[id]*.55,e.z[id]).project(app.r.camera);
+          if(captureIntro){
+            app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
+            if(chant){
+              const box=inspected.layout.box(chant);
+              const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+              if(!box||box.opacity<.9||box.x!==screen.x||box.y!==screen.y||box.w!==screen.width||box.h!==screen.height)
+                throw Error('Incantation overlay must fill the game screen');
+              if(sampleEdges){
+                const ui=inspected.uiCanvas,context=ui.getContext('2d');
+                for(const x of [0,Math.floor(ui.width/2),ui.width-1])for(const y of [0,ui.height-1]){
+                  if(context.getImageData(x,y,1,1).data[3]<90)throw Error('Unshaded screen edge at '+[x,y]);
+                }
+              }
+            }
+          }
+          const focused=!chant && Math.abs(focus.x)<.1 && Math.abs(focus.y)<.1 && e.count===1;
+          return {word:chant?.dataset.word,beams:focused?r.vfx.beams.mesh.count:0,
+            kills:r.stats.kills,xp:r.player.xp};
+        },{victims:timing.victims,captureIntro,sampleEdges:[2,9,15,21].includes(frame)});
+        if(state.word && state.word!==beats.at(-1))beats.push(state.word);
+        peakBeamSegments=Math.max(peakBeamSegments,state.beams);
+        assert.equal(state.kills,timing.kills);assert.equal(state.xp,timing.xp);
+        if(captureIntro){
+          const png=await page.screenshot();
+          frames.push(await sharp(png).resize(320,692,{fit:'contain'}).ensureAlpha().raw().toBuffer());
+          if(frame===41)fs.writeFileSync(path.join(dir,'万字归一.png'),png);
+        }
+      }
+      assert.deepEqual(beats,['万','字','归','一']);
+      assert.ok(peakBeamSegments>=72,'Expected a dense convergence on the dragon, saw '+peakBeamSegments+' beam segments');
+      if(captureIntro)await sharp(Buffer.concat(frames),{raw:{width:320,height:692*frames.length,channels:4,pageHeight:692}})
+        .gif({delay:67,loop:0}).toFile(path.join(dir,'万字归一.gif'));
+    }finally{await page.evaluate(halted=>{app.halted=halted;},timing.wasHalted);}
     assert.ok(Math.abs(timing.halfway-.5)<1e-6,'The summon ring should be half full at 1.5 seconds: '+JSON.stringify(timing));
     assert.ok(timing.sealed&&timing.stillWaiting&&timing.earlyEvent===false&&timing.eventWhileHolding===false);
     assert.equal(timing.atUnlock,0);
@@ -68,8 +134,9 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     assert.ok(timing.ringAtDoor&&timing.visible&&timing.model==='portal');
     assert.ok(timing.left&&timing.waiting&&Math.abs(timing.before-179/180)<1e-6,'Leaving should require three fresh seconds');
     assert.ok(timing.summoned,'The boss should appear on the frame that completes three seconds');
+    assert.ok(timing.blocked);
     assert.ok(timing.burnIcon,'The boss status row must use the installed fire icon');
-    report.summons.push(timing);
+    report.summons.push({...timing,peakBeamSegments});
   }
   await tap('[data-action="journey"]');
   await tap('.zx-footer button','选择关卡');
@@ -85,6 +152,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     await r.enterPortal();
     if(r.stage!==1||r.state!=='play'||r.interactables.list.some(o=>o.kind==='portal'))throw Error('Premature portal or victory');
     r.godMode=true;
+    r.queueLevelUp=()=>{}; // Jumping to the summon clock would trigger the opening catch-up draft.
     return r.diff;
   });
   const previousHalt=await page.evaluate(async()=>{
@@ -111,10 +179,11 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     if(r.ui.worldLabelNodes.get(door)?.textContent!=='距漩涡解封 00:12')throw Error('Missing countdown after the tutorial closes');
     app.halted=previous;
   },previousHalt);
-  await summonAtBuilding();
+  await summonAtBuilding(true);
   await playing();
   const cleared=await page.evaluate(()=>{
     const r=app.run;
+    if(r.ui.root.querySelector('.zx-hud').hidden)throw Error('Combat HUD was not restored after the cinematic');
     r.combat.killEnemy(r.boss.bossIndex,{type:'normal'});
     return {cleared:r.stageCleared,bosses:r.stats.bosses,legendaries:r.stats.legendaries,state:r.state,portals:r.interactables.list.filter(o=>o.kind==='portal').length};
   });
@@ -269,9 +338,11 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     const defeated=await page.evaluate(()=>{
       const r=app.run;
       const name=r.boss.name,final=!!r.boss.kit;
+      if(r.enemies.count!==1||r.enemies.remotes)throw Error('An enemy joined the dragon duel');
       const bossCount=Array.from(r.enemies.flags.subarray(0,r.enemies.n)).filter((flag,i)=>
         (flag&4) && r.enemies.isAlive(i)).length;
       r.state='play';r.combat.killEnemy(r.boss.bossIndex,{type:'normal'});
+      if(r.enemies.spawn(19,0,0,1,1)!==-1)throw Error('Enemy waves resumed at the exit');
       const portals=r.interactables.list.filter(o=>o.kind==='portal');
       return {name,final,bossCount,portals:portals.length,sanct:portals[0]?.data.sanct,cleared:r.stageCleared,
         bosses:r.stats.bosses,legendaries:r.stats.legendaries};

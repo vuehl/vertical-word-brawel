@@ -45,6 +45,75 @@ async function reviewRandomOffers(page){
   console.log('Mixed draft and empty-reroll checks:',result);
 }
 
+async function reviewMoveCapacity(page){
+  const result=await page.evaluate(async()=>{
+    await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    const r=app.run,p=r.player,ui=r.ui;
+    const {showLevelUp,showFusion,experienceReady}=ui,random=Math.random;
+    let offers,choose,seed=84;
+    const open=()=>{
+      r.pendingLevels=2;r.state='play';r.doLevelUp();
+    };
+    const newOffer=()=>{
+      for(let draw=0;draw<200;draw++){
+        const offer=offers.find(o=>o.kind==='newMove');
+        if(offer)return offer;
+        choose(null,'reroll');
+      }
+      throw Error('No new skill offered with a free slot');
+    };
+    const checkFull=()=>{
+      let upgrades=0;
+      for(let draw=0;draw<100;draw++){
+        for(const offer of offers){
+          if(offer.vit)continue;
+          if(offer.kind!=='upMove'||offer.slot>=p.moveSlots||offer.key!=='m'+p.moves[offer.slot]?.def.id)
+            throw Error('Unexpected skill offered at capacity: '+JSON.stringify(offer));
+          upgrades++;
+        }
+        choose(null,'reroll');
+      }
+      if(!upgrades)throw Error('No equipped skill upgrades offered');
+    };
+    try{
+      Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+      ui.experienceReady=()=>true;
+      ui.showLevelUp=(_run,items,pick)=>{offers=items;choose=pick;};
+      p.addMove(83); // Fire Spin alongside the starter move.
+      p.level=40;r.nextEvo=null;r.rerolls=1000;
+      open();
+      const stale=newOffer(),learned=r.stats.movesLearned,rerolls=r.rerolls;
+      // Fill the final slot between drawing this card and accepting it.
+      const other=[52,53,83,126].find(id=>id!==stale.id&&!p.hasMove(id));
+      if(p.moves.filter(Boolean).length!==2||!p.addMove(other))throw Error('Expected one free slot');
+      choose(stale);
+      const rejected=r.pendingLevels===2&&r.stats.movesLearned===learned&&r.rerolls===rerolls&&!p.hasMove(stale.id);
+      checkFull();
+
+      p.moves[0].level=p.moves[1].level=8;
+      ui.showFusion=(_run,recipes,pick)=>pick(recipes.findIndex(recipe=>recipe.ready));
+      r.pendingLevels=0;r.state='play';
+      r.interactables.interact({kind:'bill',x:0,y:0,z:0});
+      r.stepAnims(3,true);
+      const fused=p.moves.find(move=>move?.def.fusion);
+      if(!fused||p.moves.filter(Boolean).length!==2)throw Error('Fusion did not free a slot');
+      open();
+      const replacement=newOffer();
+      if(fused.parents.includes(replacement.id))throw Error('Offered a consumed fusion ingredient');
+      choose(replacement);
+      checkFull(); // The queued level immediately sees the replacement in slot three.
+
+      p.moveSlots=4;choose(null,'reroll');
+      const fourth=newOffer();
+      choose(fourth);
+      open();checkFull();
+      return {rejected,learned:r.stats.movesLearned-learned,slots:p.moves.filter(Boolean).length};
+    }finally{Object.assign(ui,{showLevelUp,showFusion,experienceReady});Math.random=random;}
+  });
+  assert.deepEqual(result,{rejected:true,learned:2,slots:4});
+  console.log('Skill capacity, stale choice and fusion checks passed');
+}
+
 export async function reviewUpgrade({page,resize,dir}){
   const baseline=process.argv.includes('--baseline'),samples=[];let liveLoop=null;
   await page.evaluate(async()=>{
@@ -53,7 +122,10 @@ export async function reviewUpgrade({page,resize,dir}){
     await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;app.run.godMode=true;app.run.update(1/60);
   });
-  if(!baseline)await reviewRandomOffers(page);
+  if(!baseline){
+    await reviewRandomOffers(page);
+    await reviewMoveCapacity(page);
+  }
   const ultimate=baseline?null:await reviewUltimateUpgrade(page,dir);
   // The animation/cache checks need a fresh dialog after the three ultimate
   // scenarios; the last hero can otherwise leave an already cached offer.

@@ -21,5 +21,7 @@ export function gameViewport(info,menu){
   hudTop.y-=top;
   const stack={x:pad,y:Math.max(8,hudTop.y+hudTop.h+15),w:right-left-pad*2,h:156};
   const hint={x:stack.x+4,y:stack.y+144,w:Math.min(292,stack.w-52),h:100};
-  return {w:right-left,h:bottom-top,x:left,y:top,width,height,dpr:info.pixelRatio||1,regions:{'hud-top':hudTop,'hud-stack':stack,'hud-hint':hint}};
+  const gameScreen={x:-left,y:-top,w:width,h:height,fill:true};
+  return {w:right-left,h:bottom-top,x:left,y:top,width,height,dpr:info.pixelRatio||1,
+    regions:{'hud-top':hudTop,'hud-stack':stack,'hud-hint':hint,'game-screen':gameScreen}};
 }

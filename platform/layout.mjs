@@ -199,7 +199,11 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     // Only explicitly registered overlay regions may extend outside the
     // common safe-area clip; menus and touch controls keep their usual bounds.
     const region=view.regions?.[el.dataset?.uiRegion];
-    if(region){x=region.x;y=region.y;parentClip={x:region.x,y:region.y,r:region.x+region.w,b:region.y+region.h};}
+    if(region){
+      x=region.x;y=region.y;
+      if(region.fill){w=region.w;h=region.h;}
+      parentClip={x,y,r:x+region.w,b:y+region.h};
+    }
     const alpha=parseFloat(s.opacity);
     const opacity=parentOpacity*(Number.isFinite(alpha)?Math.max(0,Math.min(1,alpha)):1);
     const box={...item,s:style,x,y,w,h,naturalW,naturalH,opacity,clip:parentClip,singleLine:single&&(!changedText||liveLabel)};seen.set(el,box);boxes.push(box);

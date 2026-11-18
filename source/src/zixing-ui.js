@@ -842,7 +842,8 @@ export function createZixingUI(app,api) {
     const cards=offers.map((offer,index)=>{
       const desc=api.offer(run,offer);
       const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):heroArt;
-      return button(offerContent(picture,desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});
+      const detail=offer.kind==='upMove'?'已学技能 · '+desc.sub:desc.sub;
+      return button(offerContent(picture,desc.title,[small(detail),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});
     });
     overlay('择一而进','',cards,
       [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');

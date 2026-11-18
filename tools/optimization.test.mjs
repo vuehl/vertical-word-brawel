@@ -10,7 +10,7 @@ import {performanceProfiles} from '../source/src/performance-profile.js';
 import {createActorTypeLookup} from '../source/src/actor-types.js';
 import {createGlyphBatches} from '../source/src/glyph-batches.js';
 import {ordinaryLimit,runOrdinaryLimit,allowOrdinarySpawn,countOrdinary,naturalCreditRate} from '../source/src/spawn-budget.js';
-import {SINGLE_STAGE,zoneDuration,remainingZoneSeconds} from '../source/src/lite-rules.js';
+import {SINGLE_STAGE,zoneDuration,remainingZoneSeconds,isSoloNormalOpening,normalOpeningWaves} from '../source/src/lite-rules.js';
 import {performanceProfile} from '../source/src/performance-profile.js';
 import {readDevice} from '../platform/device.mjs';
 
@@ -56,6 +56,30 @@ test('the team shares the stage population budget through late waves',()=>{
     const total=Array.from({length:size},(_,budgetRank)=>
       runOrdinaryLimit({stage:1,stageTime,coop:{size,budgetRank}})).reduce((a,b)=>a+b);
     assert.equal(total,ordinaryLimit(stageTime));
+  }
+});
+
+test('normal solo first zones space strong encounters and ease the multi-zone refill',()=>{
+  const first={stage:1,tier:0,mode:'standard',stageTime:240};
+  assert.equal(isSoloNormalOpening(first),true);
+  assert.equal(runOrdinaryLimit(first),135);
+  for(const change of [{tier:1},{tier:2},{stage:2},{coop:{size:1,budgetRank:0}}]){
+    const other={...first,...change};
+    assert.equal(isSoloNormalOpening(other),false);
+    assert.equal(runOrdinaryLimit(other),160);
+  }
+  for(const mode of ['standard',SINGLE_STAGE]){
+    for(const honey of [false,true]){
+      const waves=normalOpeningWaves(mode,'stampede',honey);
+      assert.equal(waves.filter(w=>w.kind==='stampede').length,1);
+      const times=[...waves.map(w=>w.t),zoneDuration(mode)-50];
+      assert.ok(times.slice(1).every((t,i)=>t-times[i]>=25));
+    }
+  }
+  assert.deepEqual([120,180,240,300].map(stageTime=>runOrdinaryLimit({...first,stageTime})),[72,98,135,200]);
+  for(const [time,factor] of [[120,1],[180,.9],[240,.8],[300,.8]]){
+    assert.equal(naturalCreditRate(10,time,1,'standard',true),10*factor);
+    assert.equal(naturalCreditRate(10,time,1,SINGLE_STAGE,true),naturalCreditRate(10,time,1,SINGLE_STAGE));
   }
 });
 

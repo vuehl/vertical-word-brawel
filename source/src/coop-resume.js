@@ -1,4 +1,5 @@
 import {jr as heldItemRules, Nr as vitaminRules} from './config.js';
+import {finalBossSpecies} from './character-rules.js';
 const seatKey='ziling.coop.seat.1', progressKey='ziling.coop.progress.1';
 function read(key) {
   try {return JSON.parse(localStorage.getItem(key));} catch {return null;}
@@ -72,6 +73,7 @@ export function restoreProgress(run,data,world) {
   }
   run.stageTime=world.stageTime;
   if(world.portal){
+    run.dragonDuel=run.stageBossSpecies===finalBossSpecies;
     run.stageCleared=true;run.bossSpawned=true;coop.wakeAltars();
     run.interactables.spawnPortal(world.portal.x,world.portal.z,world.portal.sanct,true);
   }else if(world.boss)coop.onBossCall(null,world.stage,world.boss.x,world.boss.z,world.boss.slot);

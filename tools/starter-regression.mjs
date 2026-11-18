@@ -34,6 +34,36 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
   await resize(390,844);
   await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.state==='play',{timeout:60000});
+  // Reproduce the reported card using the opening wind hero's real offer pool.
+  const gustCard=await page.evaluate(()=>{
+    app.halted=true;
+    const r=app.run,ui=r.ui,{showLevelUp,experienceReady}=ui;
+    const random=Math.random;
+    let seed=16,options,pick;
+    try{
+      Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+      ui.experienceReady=()=>true;
+      ui.showLevelUp=(_run,offers,choose)=>{options=offers;pick=choose;};
+      r.player.level=2;r.pendingLevels=1;r.rerolls=100;r.doLevelUp();
+      const gust=offer=>offer.kind==='newMove'&&offer.id===16;
+      while(!options.some(gust)&&r.rerolls>0)pick(null,'reroll');
+      const index=options.findIndex(gust);
+      if(index<0)throw Error('Gust missing from wind hero draft');
+      showLevelUp(r,options,pick);
+      const card=ui.modalEl.querySelector('[data-offer="'+index+'"]');
+      return {index,title:card.querySelector('b').textContent,text:card.textContent};
+    }finally{Object.assign(ui,{showLevelUp,experienceReady});Math.random=random;}
+  });
+  assert.equal(gustCard.title,'起风');
+  assert.ok(gustCard.text.includes('新招式')&&gustCard.text.includes('漩涡'),gustCard.text);
+  await page.waitForFunction(()=>{
+    inspected.env.drawUI(app.r.renderer);
+    return !inspected.modalTransition.active;
+  });
+  await snapshot('wind-gust-offer');
+  await tap('[data-offer="'+gustCard.index+'"]');
+  await draw(); // The halted game needs a UI frame to complete the exit and apply the choice.
+  assert.deepEqual(await page.evaluate(()=>app.run.player.moves.filter(Boolean).map(m=>m.def.name)),['连扇','起风']);
   await page.evaluate(()=>{
     app.halted=true;
     window.starterTestSetup=()=>{

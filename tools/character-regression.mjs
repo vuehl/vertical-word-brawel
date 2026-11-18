@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {enemyWords,eliteWords,minibossWords} from '../source/src/character-rules.js';
+import {enemyWords,eliteWords,minibossWords,finalBossSpecies,finalBossWord} from '../source/src/character-rules.js';
 
 export async function reviewCharacters(page,dir) {
   const report={heroes:[],branches:[],spawns:[],buffs:[]};
@@ -87,21 +87,17 @@ export async function reviewCharacters(page,dir) {
     assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-name').textContent),finalWord);
     await page.screenshot({path:path.join(dir,`battle-${species}-${branch}.png`)});
   }
-  report.boss=await page.evaluate(async()=>{
+  report.boss=await page.evaluate(async({finalBossSpecies,finalBossWord})=>{
     const r=app.run,en=r.enemies,p=r.player.pos;
     en.clear();r.stageTime=240;r.time=Math.max(r.time,240);
     const door=r.interactables.list.find(item=>item.kind==='boss');
     await door.modelReady;
     p.set(door.x,door.y,door.z);
     r.camTarget.copy(p);r.updateCamera(1);r.r.camera.updateMatrixWorld();
-    for(let i=0;i<180;i++)r.interactables.update(0,1/60);
-    const index=r.boss.bossIndex,word=en.glyphWords[index];
-    r.interactables.interact(door);
-    const intro=r.ui.hudEl.querySelector('.bossintro h1')?.textContent;
-    r.ui.hud(r);
-    const second=en.spawn(en.species[index],p.x+1,p.z,1,1,4);
-    en.x[index]=p.x-1;en.z[index]=p.z;
-    const batch=r.sprites.get(en.species[index],false,word);
+    // Compare two health frames before summoning locks the battlefield.
+    const first=en.spawn(finalBossSpecies,p.x-1,p.z,1,1,4);
+    const second=en.spawn(finalBossSpecies,p.x+1,p.z,1,1,4);
+    const batch=r.sprites.get(finalBossSpecies,false,finalBossWord);
     await batch.material.uniforms.zxGlyph.value.userData.ready;
     const frames=batch.zxStrokeFrames;
     const sample=()=>{
@@ -113,14 +109,20 @@ export async function reviewCharacters(page,dir) {
       }
       return result;
     };
-    en.hp[index]=en.maxHp[index]/2;
+    en.hp[first]=en.maxHp[first]/2;
     en.hp[second]=1;en.maxHp[second]=4800;
     const injured=sample();
-    en.hp[index]=en.maxHp[index];en.hp[second]=0;
+    for(let i=0;i<180;i++)r.interactables.update(0,1/60);
+    const index=r.boss.bossIndex,word=en.glyphWords[index];
+    en.x[index]=p.x-1;en.z[index]=p.z;
+    r.interactables.interact(door);
+    const intro=r.ui.hudEl.querySelector('.zx-dragon-chant')?.getAttribute('aria-label');
+    for(let i=0;i<60;i++)r.update(1/30);
+    r.ui.hud(r);
     return {name:r.boss.name,word,hudName:r.ui.els.bossName.textContent,portrait:r.ui.els.bossPt.querySelector('canvas')?.dataset.glyph,
       intro,species:en.species[index],used:door.used,injured,healed:sample()};
-  });
-  assert.deepEqual(report.boss,{name:'龘',word:'龘',hudName:'龘',portrait:'龘',intro:'龘',species:149,used:true,injured:[24,1],healed:[48]});
+  },{finalBossSpecies,finalBossWord});
+  assert.deepEqual(report.boss,{name:'龘',word:'龘',hudName:'龘',portrait:'龘',intro:'万字归一',species:149,used:true,injured:[24,1],healed:[48]});
   fs.writeFileSync(path.join(dir,'characters.json'),JSON.stringify(report,null,2));
   console.log('Hero branches, tiered spawns, summon-point boss and independent health frames passed.');
 }

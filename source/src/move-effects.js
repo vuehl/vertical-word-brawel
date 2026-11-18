@@ -9369,7 +9369,7 @@ export function createMoveEffects({F, I, L, bl, Sl, wl, El, Ll, Vf, k}) {
     Gp = [``];
   for (let [e, t] of Object.entries(Vp)) {
     let n = Up.indexOf(t);
-    (n < 0 && ((n = Up.length), Up.push(t), Gp.push(e)), Wp.set(e, n));
+    (n < 0 && ((n = Up.length), Up.push(t), Gp.push(t.sourceKey ?? e)), Wp.set(e, n));
   }
   function Kp(e) {
     return Wp.get(e) ?? 0;

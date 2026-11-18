@@ -1,5 +1,6 @@
 import {formCopy, moveCopy} from './form-copy.js';
 import {finalBossSpecies} from './character-rules.js';
+import {ENEMY_HEALTH_SCALE} from './spawn-budget.js';
 import {chineseText as c} from './chinese-text.js';
 import {Dn as T, Rr as Je, vn as Yn} from './config.js';
 import {E as yr, I as Cr, K as Tr, ct as Kr, w as Ei} from '../assets/three-DmSYIDKK.js';
@@ -7337,20 +7338,21 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
     },
     Ty = 2.5;
   function Ey(e, t) {
-    return e.combat.meter.budget(t * (1 + 0.15 * e.tier) * e.player.stats.difficulty);
+    return e.combat.meter.budget(t * (1 + 0.15 * e.tier) * e.player.stats.difficulty) * ENEMY_HEALTH_SCALE;
   }
   var Dy = { guardian: [25, 30, 35], totem: [10, 12, 14], summoner: [6, 7, 8], endlessGuardian: 25 };
   function Oy(e, t, n, maxScale = 4) {
     let r = e.enemies;
     t < 0 ||
       !Number.isFinite(n) ||
-      ((n = Math.min(n, r.maxHp[t] * maxScale)), n > r.maxHp[t] && (r.hp[t] = r.maxHp[t] = Math.min(n, 1e30)));
+      ((n = Math.min(n, r.maxHp[t] * maxScale)), n > r.maxHp[t] && (r.hp[t] = r.maxHp[t] = Math.min(n, 1e30 * ENEMY_HEALTH_SCALE)));
   }
   function ky(e, t, n) {
     let r = e.enemies;
     t < 0 ||
       !(n > 0) ||
-      ((r.capRate[t] = r.maxHp[t] / n), (r.capBank[t] = r.capRate[t] * 3), (r.capT[t] = e.time));
+      // Preserve the damage allowed per second when the health pool shrinks.
+      ((r.capRate[t] = r.maxHp[t] / (n * ENEMY_HEALTH_SCALE)), (r.capBank[t] = r.capRate[t] * 3), (r.capT[t] = e.time));
   }
   var Ay = 12,
     jy = 20,
@@ -7403,6 +7405,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       }
       spawn(e, t, n, r, i = {}) {
         let a = this.run;
+        if (a.dragonDuel) return -1;
         (a.sprites.get(e), (this.roars = a.endless ? 0 : a.roars));
         // Players have accumulated real minutes of upgrades even though the
         // wave table runs faster. Size a timed guardian on that same clock.
@@ -7432,7 +7435,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         Oy(a, l, timedGuardian ? damageBudget * 0.6 : damageBudget, timedGuardian ? 2 : 4);
         if (a.coop && l >= 0) {
           let e = a.enemies;
-          ((e.maxHp[l] = Math.min(1e30, e.maxHp[l] * a.coop.bossHpMul)), (e.hp[l] = e.maxHp[l]));
+          ((e.maxHp[l] = Math.min(1e30 * ENEMY_HEALTH_SCALE, e.maxHp[l] * a.coop.bossHpMul)), (e.hp[l] = e.maxHp[l]));
         }
         (i.kit || ky(a, l, (a.endless ? Dy.endlessGuardian : Dy.guardian[Math.min(2, a.stage - 1)]) * o),
           (this.fightT = 0),
@@ -7787,6 +7790,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (this.callT = 0.6));
       }
       callEscorts(e, t, n) {
+        if (this.run.dragonDuel) return;
         let r = this.run,
           i = r.enemies,
           a = r.director,
