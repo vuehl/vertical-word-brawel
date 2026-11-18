@@ -23,7 +23,7 @@ export function saveProgress(run) {
   const {coop,player:p}=run;
   if(!p || !coop || coop.ended || run.state==='over' || run.buildingStage)return;
   const fields=(object,keys)=>Object.fromEntries(keys.map(key=>[key,object[key]]));
-  const data={seat:coop.room.me,party:coop.party,stage:run.stage,
+  const data={v:2,seat:coop.room.me,party:coop.party,stage:run.stage,
     run:fields(run,['stats','gold','keys','goldSpent','splits','pendingLevels','rerolls','skips','tempMods','curses','nextEvo']),
     player:fields(p,['speciesId','evoStage','level','xp','growth','hp','shield','overheal','revives','dead']),
     bleed:coop.bleed,out:coop.out,pos:[p.pos.x,p.pos.y,p.pos.z],
@@ -50,15 +50,27 @@ export function restoreProgress(run,data,world) {
       const {id,...attributes}=saved;Object.assign(move,attributes);
     }
     p.recompute();p.hp=Math.min(data.player.hp,p.maxHp);p.xpNext=p.xpFor(p.level);
-    if(!('nextEvo' in data.run))run.nextEvo=run.planEvolution(p.speciesId,p.level);
+    if(!('nextEvo' in data.run))run.nextEvo=run.planEvolution(p.speciesId,1);
+    else if((data.v ?? 1)<2 && run.nextEvo){
+      // Older seats saved the previous 24/26/44 level thresholds. Preserve a
+      // committed wind branch while bringing its pending level up to date.
+      const plan=run.planEvolution(p.speciesId,1);
+      if(plan)run.nextEvo={...run.nextEvo,level:Math.min(run.nextEvo.level,plan.level)};
+    }
     if(data.stage===world.stage){
       p.pos.set(...data.pos);coop.bleed=data.bleed;coop.out=data.out;
     }else if(p.dead)coop.revive(null);
   }
   if(data?.stage!==world.stage)p.pos.set(world.x,run.terrain.height(world.x,world.z),world.z);
   run.camTarget.copy(p.pos);
-  run.time=world.time;run.stageTime=world.stageTime;
-  for(const event of run.director.timeline)if(event.t<=run.stageTime)event.done=true;
+  run.time=world.time;
+  for(const event of run.director.timeline){
+    if(event.t>world.stageTime)continue;
+    run.stageTime=event.t;
+    if(event.kind==='card')run.director.addCard();
+    event.done=event.kind!=='guardian'||!!(world.boss||world.portal);
+  }
+  run.stageTime=world.stageTime;
   if(world.portal){
     run.stageCleared=true;run.bossSpawned=true;coop.wakeAltars();
     run.interactables.spawnPortal(world.portal.x,world.portal.z,world.portal.sanct,true);

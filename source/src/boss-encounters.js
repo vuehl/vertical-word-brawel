@@ -7340,11 +7340,11 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
     return e.combat.meter.budget(t * (1 + 0.15 * e.tier) * e.player.stats.difficulty);
   }
   var Dy = { guardian: [25, 30, 35], totem: [10, 12, 14], summoner: [6, 7, 8], endlessGuardian: 25 };
-  function Oy(e, t, n) {
+  function Oy(e, t, n, maxScale = 4) {
     let r = e.enemies;
     t < 0 ||
       !Number.isFinite(n) ||
-      ((n = Math.min(n, r.maxHp[t] * 4)), n > r.maxHp[t] && (r.hp[t] = r.maxHp[t] = Math.min(n, 1e30)));
+      ((n = Math.min(n, r.maxHp[t] * maxScale)), n > r.maxHp[t] && (r.hp[t] = r.maxHp[t] = Math.min(n, 1e30)));
   }
   function ky(e, t, n) {
     let r = e.enemies;
@@ -7404,9 +7404,13 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       spawn(e, t, n, r, i = {}) {
         let a = this.run;
         (a.sprites.get(e), (this.roars = a.endless ? 0 : a.roars));
+        // Players have accumulated real minutes of upgrades even though the
+        // wave table runs faster. Size a timed guardian on that same clock.
+        const timedGuardian = !r && i.hp == null && a.director.pace > 1;
+        const guardianMinutes = timedGuardian ? a.stageTime / 60 : undefined;
         let o = 1 + Bv * this.roars,
           s =
-            (i.hp ?? a.director.hpMult(r ? 0 : Ty) * (r ? 1.6 : 1) * (Av.BOSS_ZONE_HP[a.stage - 1] ?? 0.5)) * o,
+            (i.hp ?? a.director.hpMult(r ? 0 : Ty, guardianMinutes) * (r ? 1.6 : 1) * (Av.BOSS_ZONE_HP[a.stage - 1] ?? 0.5)) * o,
           c = (i.dmg ?? a.director.dmgMult()) * (1 + Vv * this.roars),
           l = a.enemies.spawn(e, t, n, s, c, R.Boss);
         if (l < 0) {
@@ -7421,11 +7425,12 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             }
           l = a.enemies.spawn(e, t, n, s, c, R.Boss);
         }
-        if (
-          ((this.fightSecs = (i.secs ?? (r ? wy.legendary : wy.guardian[Math.min(2, a.stage - 1)])) * o),
-          Oy(a, l, Ey(a, this.fightSecs)),
-          a.coop && l >= 0)
-        ) {
+        this.fightSecs = (i.secs ?? (r ? wy.legendary : wy.guardian[Math.min(2, a.stage - 1)])) * o;
+        // The meter samples peak damage to one enemy. Allow time for dodging
+        // and attacking the rest of the wave during the short guardian fight.
+        const damageBudget = Ey(a, this.fightSecs);
+        Oy(a, l, timedGuardian ? damageBudget * 0.6 : damageBudget, timedGuardian ? 2 : 4);
+        if (a.coop && l >= 0) {
           let e = a.enemies;
           ((e.maxHp[l] = Math.min(1e30, e.maxHp[l] * a.coop.bossHpMul)), (e.hp[l] = e.maxHp[l]));
         }
@@ -9633,7 +9638,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             s = i.x + Math.cos(a) * o,
             c = i.z + Math.sin(a) * o;
           if (!t.terrain.inBounds(s, c, 5)) continue;
-          let l = this.kind === `eclipse` && e === 0 && t.stageTime > 90 ? R.Elite : 0,
+          let l = this.kind === `eclipse` && e === 0 && t.stageTime * t.director.pace > 90 ? R.Elite : 0,
             u = n.spawn(F.pick(r), s, c, t.director.hpMult(), t.director.dmgMult(), l);
           u < 0 ||
             (this.spawned++,

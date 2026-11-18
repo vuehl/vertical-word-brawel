@@ -24,8 +24,11 @@ export async function reviewDeviceEffects(page, dir) {
     for (const f of facilities.list) {
       const kind = f.data?.gift ? 'freechest' : f.kind, model = f.model;
       if (!facilities.hasVisual(f) || !model?.userData.deviceScreenFx) throw Error('Missing ' + kind);
-      if ([...model.scale.toArray(), ...f.group.scale.toArray()].some(x => x !== 1)) throw Error('Rescaled ' + kind);
-      if (model.userData.deviceModel !== (kind === 'bill' ? 'billpc' : kind)) throw Error('Wrong GLB for ' + kind);
+      const expectedScale = kind === 'berry' ? .5 : 1;
+      if (model.scale.toArray().some(x => x !== expectedScale) || f.group.scale.toArray().some(x => x !== 1) ||
+          f.group.userData.h !== model.userData.displayHeight * expectedScale) throw Error('Wrong display scale for ' + kind);
+      const expectedModel = {bill:'billpc',boss:'portal',portal:'boss'}[kind] ?? kind;
+      if (model.userData.deviceModel !== expectedModel) throw Error('Wrong GLB for ' + kind);
       model.traverse(m => {
         if (m.isMesh && (!m.material.isMeshBasicMaterial || !(m.material.map?.image?.width > 0))) throw Error('Texture or legacy hull on ' + kind);
       });

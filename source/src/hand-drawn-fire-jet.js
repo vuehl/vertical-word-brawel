@@ -135,7 +135,7 @@ export class HandDrawnFireJet{
     // side sectors. Every packet still starts at the same small nozzle.
     const fan=((n*.61803398875)%1)*2-1;
     const spread=fan*.73*(.3+ignition*.7);
-    const angle=emitter.angle+spread,scale=Math.sqrt(emitter.length/7);
+    const angle=emitter.angle+spread,scale=Math.sqrt(emitter.artLength/7);
     this.packets.push({id:n,age,life:.52+b*.19,seed:c*TAU,dx:Math.cos(angle),dz:Math.sin(angle),
       x:emitter.x,y:emitter.y,z:emitter.z,length:emitter.length*(.86+a*.14),
       radius:(.38+b*.30)*scale,stretch:(.85+c*.35)*scale,lift:.45+c*.7,own:emitter.own!==false,painted:painted(emitter),purple:emitter.type==='dragon'});
@@ -207,7 +207,7 @@ export class HandDrawnFireJet{
     // The original connecting core retains its growth, length, timing and
     // stop envelope. Only its pixels now come from the authored spray frames.
     for(const emitter of emitters){
-      const authored=painted(emitter),growth=smooth(emitter.age/.24),length=emitter.length*(authored?.66:.55)*growth;
+      const authored=painted(emitter),growth=smooth(emitter.age/.24),length=emitter.artLength*(authored?.66:.55)*growth;
       if(length<.025)continue;
       const dx=Math.cos(emitter.angle),dz=Math.sin(emitter.angle),tail=clamp((this.clock-(emitter.fireLast??this.clock))/.10);
       instances.push({x:emitter.x+dx*length*.5,y:emitter.y+.20,z:emitter.z+dz*length*.5,radius:length*.36,

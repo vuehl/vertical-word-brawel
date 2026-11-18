@@ -253,6 +253,15 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 .zx-toast-layer .zx-note-tab{flex:none;width:5px;height:13px;background:#c98f4b;border-radius:2px}
 .zx-toast-layer .zx-note-text{min-width:0;flex-shrink:1}
 .zx-toast-layer .toast img,.zx-toast-layer .toast canvas{width:21px;height:21px;flex:none}
+.zx-hint-slot{position:absolute;left:16px;top:193px;width:calc(100% - 76px);max-width:292px;height:100px;pointer-events:none}
+html.zixing .run-hint.zx-hint{position:relative;left:0;top:0;width:100%;max-width:100%;min-height:52px;display:flex;align-items:center;gap:10px;padding:6px 10px 6px 6px;border:1px solid #cdbfa7;border-radius:11px;background:#fffcf4;box-shadow:none;text-align:left;text-shadow:none;transform:none;animation:none;transition:opacity .25s;pointer-events:none}
+.zx-hint .zx-hint-art{flex:none;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:8px;background:#f6e7cc}
+.zx-hint[data-kind="altar"] .zx-hint-art,.zx-hint[data-kind="nest"] .zx-hint-art{background:#e2eee2}
+.zx-hint[data-kind="portal"] .zx-hint-art,.zx-hint[data-kind="freechest"] .zx-hint-art{background:#e1edf2}
+.zx-hint .zx-hint-art img,.zx-hint .zx-hint-art canvas{position:static;display:block;width:36px;height:36px;object-fit:contain;image-rendering:auto}
+.zx-hint .zx-hint-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.run-hint.zx-hint .zx-hint-title{display:block;font-family:inherit;font-size:14px;line-height:1.25;font-weight:700;color:#304841}
+.run-hint.zx-hint .zx-hint-text{display:block;font-size:12px;line-height:1.4;font-weight:500;color:#505d58}
 .zx-compass .zx-compass-dial{position:absolute;left:-32px;top:-32px;width:64px;height:64px;pointer-events:none}
 .zx-compass .cp-ic{left:-16px;top:-16px;width:32px;height:32px;transform:none;animation:none;filter:none}
 .zx-compass .mapbadge{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;background:transparent;box-shadow:none}

@@ -9,15 +9,22 @@ import {crowdStep,separationBudget} from '../source/src/crowd-cadence.js';
 import {performanceProfiles} from '../source/src/performance-profile.js';
 import {createActorTypeLookup} from '../source/src/actor-types.js';
 import {createGlyphBatches} from '../source/src/glyph-batches.js';
-import {minuteCaps,ordinaryLimit,runOrdinaryLimit,allowOrdinarySpawn,countOrdinary,naturalCreditRate} from '../source/src/spawn-budget.js';
+import {ordinaryLimit,runOrdinaryLimit,allowOrdinarySpawn,countOrdinary,naturalCreditRate} from '../source/src/spawn-budget.js';
+import {SINGLE_STAGE,zoneDuration,remainingZoneSeconds} from '../source/src/lite-rules.js';
 import {performanceProfile} from '../source/src/performance-profile.js';
 import {readDevice} from '../platform/device.mjs';
 
 test('ordinary waves grow to 200, include event and elite spawns, and leave boss slots available',()=>{
-  assert.deepEqual(minuteCaps,[5,15,30,50,70,90,115,140,160,180,200]);
-  let previous=0;
-  for(let second=0;second<3600;second++){
-    const limit=ordinaryLimit(second);assert.ok(limit>=previous&&limit<=200);previous=limit;
+  for(const [mode,seconds] of [[SINGLE_STAGE,360],['standard',300]]){
+    assert.equal(zoneDuration(mode),seconds);
+    assert.equal(remainingZoneSeconds({mode,stageTime:.05}),seconds);
+    assert.equal(remainingZoneSeconds({mode,stageTime:seconds+1}),-1);
+    let previous=0;
+    for(let second=0;second<=seconds+60;second++){
+      const limit=ordinaryLimit(second,1,mode);assert.ok(limit>=previous&&limit<=200);previous=limit;
+    }
+    assert.ok(ordinaryLimit(seconds-1,1,mode)<200);
+    assert.equal(ordinaryLimit(seconds,1,mode),200);
   }
   const enemies={n:201,count:201,alive:new Uint8Array(201).fill(1),flags:new Uint32Array(201)};
   enemies.flags[200]=4;
@@ -30,12 +37,15 @@ test('ordinary waves grow to 200, include event and elite spawns, and leave boss
   run.stageTime=600;run.enemyCap=60;assert.equal(allowOrdinarySpawn(run),false);
 });
 
-test('first-stage ordinary spawns refill faster and rejoin the regular curve at two minutes',()=>{
-  const seconds=[0,30,60,90,120,180];
-  assert.deepEqual(seconds.map(t=>ordinaryLimit(t,1)),[5,15,25,27,30,50]);
-  assert.deepEqual(seconds.map(t=>ordinaryLimit(t,2)),[5,10,15,22,30,50]);
-  assert.deepEqual(seconds.map(t=>naturalCreditRate(2,t,1)),[1.65,1.65,1.65,1.325,1,1]);
-  assert.ok(seconds.every(t=>naturalCreditRate(2,t,2)===1));
+test('short zones start with a crowd and refill faster across both opening minutes',()=>{
+  assert.deepEqual([0,30,60,180,360].map(t=>ordinaryLimit(t,1,SINGLE_STAGE)),[14,29,40,90,200]);
+  for(const stage of [1,2]){
+    assert.deepEqual([0,30,60,150,300].map(t=>ordinaryLimit(t,stage,'standard')),[14,32,44,90,200]);
+    assert.ok(naturalCreditRate(2,0,stage)>naturalCreditRate(2,60,stage));
+    assert.equal(naturalCreditRate(2,90,stage),2);
+  }
+  assert.deepEqual([0,60,300,600].map(t=>ordinaryLimit(t,1,'endless')),[5,25,90,200]);
+  assert.equal(naturalCreditRate(2,0,1,'endless'),1.65);
 });
 
 test('the team shares the stage population budget through late waves',()=>{

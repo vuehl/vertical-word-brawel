@@ -49,9 +49,9 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
   for(const [choice,end] of [[17,18],[58,59]]){
     await start(16);
     const plan=await page.evaluate(()=>{
-      const r=app.run;r.player.level=26;r.player.xpNext=r.player.xpFor(26);r.player.recompute();
+      const r=app.run;r.player.level=r.nextEvo.level;r.player.xpNext=r.player.xpFor(r.player.level);r.player.recompute();
       const next={...r.nextEvo};r.tryEvolve();return next;
-    });assert.deepEqual(plan,{to:-1,level:26});
+    });assert.deepEqual(plan,{to:-1,level:8});
     for(const [width,height] of [[320,568],[390,844],[430,932]]){
       await resize(width,height);await snapshot('branch-'+choice+'-'+width);
       const bounds=await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-branch-id]')].map(e=>{
@@ -70,9 +70,9 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     const middle=await page.evaluate(()=>{
       starterTestAdvance(300);const r=app.run;
       return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types,kit:r.player.roster.kit};
-    });assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:44});
+    });assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:16});
     assert.equal(middle.ult,choice===17?'卷着打转':'叫完就冲');
-    await page.evaluate(()=>{const r=app.run;r.player.level=44;r.player.xpNext=r.player.xpFor(44);r.tryEvolve();});
+    await page.evaluate(()=>{const r=app.run;r.player.level=r.nextEvo.level;r.player.xpNext=r.player.xpFor(r.player.level);r.tryEvolve();});
     await draw();await tap('.zx-modal button','确认进阶');
     const final=await page.evaluate(()=>{
       starterTestAdvance(300);const r=app.run;return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types,kit:r.player.roster.kit,passive:r.player.ability};

@@ -30,7 +30,7 @@ export async function reviewEncounters(page,dir,tap,draw){
     if(sample.expected){assert.ok(sample.distance<=12.1&&sample.visible,'Boss should be near the player and inside view');assert.ok(sample.snapshot.encounter.current.hp>0);}
   }
   // Native touch covers the new scrollable controls and the exact next-wave shortcut.
-  await tap('open');await tap('minute-2');await tap('boss-timed');await tap('next-boss');await tap('apply');
+  await tap('open');await tap('minute-0');await tap('boss-timed');await tap('next-boss');await tap('apply');
   const next=await page.evaluate(()=>inspected.env.__zixingDeveloper.snapshot());
   assert.equal(next.encounter.current.kind,'alpha');assert.equal(next.stageTime,next.encounter.current.at);
   await tap('minute-5');await tap('boss-guardian');await tap('apply');
@@ -45,7 +45,8 @@ export async function reviewEncounters(page,dir,tap,draw){
     const savedMoves=p.moves;p.moves=[];
     const results=[];
     try{
-      for(const [boss,time] of [['timed',290],['timed',360],['guardian',300]]){
+      const waveAt=kind=>r.director.timeline.find(event=>event.kind===kind).t;
+      for(const [boss,time] of [['timed',waveAt('totem')],['timed',waveAt('summoner')],['guardian',300]]){
         const initial=api.apply({boss,time,count:0,mode:'none'}),actor=initial.encounter.current;
         let telegraphs=0;const telegraph=r.vfx.telegraph;
         r.vfx.telegraph=function(...args){telegraphs++;return telegraph.apply(this,args);};
@@ -112,6 +113,10 @@ async function reviewPortalProgression(page,dir,draw){
     const api=inspected.env.__zixingDeveloper;
     api.options.invincible=true;api.options.lockCount=true;
     api.close();
+    // The late-game preset should exercise the exit without stopping for
+    // either of the earlier level 8/16 evolution confirmations.
+    const r=app.run;
+    r.player.setSpecies(6);r.player.evoStage=2;r.nextEvo=null;
   });
   const results=[];
   for(let zone=1;zone<=2;zone++){
@@ -124,7 +129,8 @@ async function reviewPortalProgression(page,dir,draw){
       const chests=r.interactables.list.filter(i=>i.kind==='freechest').length;
       r.combat.killEnemy(actor.index,{type:'normal'});
       const portals=r.interactables.list.filter(i=>i.kind==='portal'),portal=portals[0];
-      r.player.pos.set(portal.x,r.terrain.height(portal.x,portal.z),portal.z);
+      const x=portal.x+(portal.x>0?-6:6);
+      r.player.pos.set(x,r.terrain.height(x,portal.z),portal.z);
       r.camTarget.copy(r.player.pos);r.updateCamera(1);
       return {stage:r.stage,time:r.stageTime,stageCleared:r.stageCleared,stagesAdded:r.stats.stagesCleared-stages,
         bossesAdded:r.stats.bosses-bosses,splitsAdded:r.splits.length-splits,portals:portals.length,
@@ -144,15 +150,17 @@ async function reviewPortalProgression(page,dir,draw){
     // animation to finish before capturing the actual rendered exit.
     await new Promise(resolve=>setTimeout(resolve,300));
     await draw();await page.screenshot({path:path.join(dir,'dev-portal-zone-'+zone+'.png')});
-    const warning=await page.evaluate(()=>{
+    const warning=await page.evaluate(async()=>{
       const r=app.run,portal=r.interactables.list.find(i=>i.kind==='portal');
+      await portal.modelReady;
       const rewards=r.interactables.rewardsLeft();
-      r.interactables.interact(portal);
+      r.player.pos.set(portal.x,portal.y,portal.z);r.player.vel.set(0,0,0);
+      for(let i=0;i<45;i++)r.interactables.update(0,1/30);
       return {rewards,stage:r.stage,state:r.state,warned:r.interactables.warnedPortal===portal};
     });
     assert.ok(warning.rewards>0);assert.equal(warning.stage,zone);assert.equal(warning.state,'play');
     assert.ok(warning.warned,'The normal unclaimed-reward warning must still run');
-    await page.evaluate(()=>app.run.interactables.interact(app.run.interactables.list.find(i=>i.kind==='portal')));
+    await page.evaluate(()=>{for(let i=0;i<45;i++)app.run.interactables.update(0,1/30);});
     const nextStage=zone===1?2:4;
     await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},nextStage);
     const arrived=await page.evaluate(()=>{

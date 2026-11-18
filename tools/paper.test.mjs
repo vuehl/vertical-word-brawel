@@ -50,9 +50,9 @@ test('only the minimap draws guidance, clearing it at the target, when absent, a
 
 test('dense same-type map labels preserve every location in counts without overlap or clipping',()=>{
   for(const fontSize of [5.2,9.6,10]){
-    const labels=Array.from({length:36},(_,i)=>({kind:'altar',text:'时尚小垃圾',
+    const labels=Array.from({length:36},(_,i)=>({kind:'altar',text:'守护者祭坛',
       x:60+Math.cos(i*Math.PI/18)*48,y:58+Math.sin(i*Math.PI/18)*48}));
-    labels.push({kind:'altar',text:'时尚小垃圾',x:60,y:58});
+    labels.push({kind:'altar',text:'守护者祭坛',x:60,y:58});
     const result=layoutBuildingNames(labels,text=>text.length*fontSize,fontSize);
     assert.equal(result.reduce((sum,g)=>sum+g.count,0),labels.length);
     assert.ok(result.length<labels.length);

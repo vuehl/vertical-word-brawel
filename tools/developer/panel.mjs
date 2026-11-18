@@ -5,6 +5,7 @@ import sizes from './items/sizes.json' with {type:'json'};
 import {createWorkload,workloadPreset} from './workload.mjs';
 import {createEncounterTest,encounterAt,nextEncounter} from './encounters.mjs';
 import {ordinaryLimit} from '../../source/src/spawn-budget.js';
+import {zoneDuration} from '../../source/src/lite-rules.js';
 import {heroActionCatalog} from '../../source/src/hero-action-catalog.js';
 import heroRigs from '../../source/src/hero-rigs.json' with {type:'json'};
 const SPECIAL=2|4|128|2048|4096|8192|16384|32768|65536|131072;
@@ -30,7 +31,7 @@ export function seekWave(run,seconds){
   run.stageTime=seconds;run.time=Math.max(0,run.time+seconds-old);
   run.nextCp=run.time+30;
   run.director=director;
-  if(seconds>=600)director.startFinalSwarm();
+  if(seconds>=zoneDuration(run.mode))director.startFinalSwarm();
   return director;
 }
 
@@ -305,7 +306,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
       strokePreview={start:run.time,id:run.player.speciesId,frames};
       close();
     },'preview-hero-strokes'));
-    const selectTime=value=>{seconds=bounded(value,600);if(selectedMode==='timed')target=ordinaryLimit(seconds,run.stage);refresh();};
+    const selectTime=value=>{seconds=bounded(value,600);if(selectedMode==='timed')target=ordinaryLimit(seconds,run.stage,run.mode);refresh();};
     const times=row(...[0,2,2.5,3,5,6,7,8,10].map(m=>action(m+'分',()=>selectTime(m*60),'minute-'+m)));
     card.append(values.seconds,times,row(action('−30秒',()=>selectTime(seconds-30),'time-minus'),action('+30秒',()=>selectTime(seconds+30),'time-plus')));
     card.append(values.count,row(...[0,100,200,400,600,1000].map(n=>action(String(n),()=>{target=n;refresh();},'count-'+n))),row(action('−10怪',()=>{target=bounded(target-10,MAX_COUNT);refresh();}),action('+10怪',()=>{target=bounded(target+10,MAX_COUNT);refresh();})));

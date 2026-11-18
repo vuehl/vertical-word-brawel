@@ -6,6 +6,16 @@ export const LITE_BIOME = 'forest';
 export const FOREST_ROUTE = Object.freeze([1, 2, 4]);
 export const FOREST_COMBAT_ZONES = FOREST_ROUTE.length - 1;
 export const SINGLE_STAGE = 'single-stage';
+// Encounter tables are authored on a ten-minute clock. Only wave progression
+// uses that clock. Movement, cooldowns, drops and run records use game seconds.
+export const WAVE_SECONDS = 600;
+export function zoneDuration(mode = 'standard') {
+  if (mode === SINGLE_STAGE) return 360;
+  if (mode === 'standard' || mode === 'classic') return 300;
+  return WAVE_SECONDS;
+}
+export const wavePace = mode => WAVE_SECONDS / zoneDuration(mode);
+export const remainingZoneSeconds = run => Math.ceil(zoneDuration(run.mode) - run.stageTime);
 export const runRecordKey = run => run.biome + '-' + (run.mode === SINGLE_STAGE ? SINGLE_STAGE : (run.tier ?? 0));
 export const isLiteSpecies = id => LITE_SPECIES.includes(Number(id));
 export const defaultStarter = LITE_SPECIES[0];

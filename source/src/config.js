@@ -4333,7 +4333,7 @@ var xn = (e) => Math.max(0, ...(e.board?.prizes ?? []).map((e) => e.top)),
       ],
     },
   ],
-  Dn = [0, 2, 4, 7],
+  Dn = [0, 2, 2, 7],
   On = { common: t(`Común`), uncommon: t(`Poco común`), rare: t(`Raro`), legendary: t(`Legendario`) },
   M = [
     {

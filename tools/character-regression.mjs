@@ -24,7 +24,7 @@ export async function reviewCharacters(page,dir) {
     assert.equal(start.ultimate,({4:'一点火苗',16:'一阵刮来'})[species]);
     if(branch){
       if(species===16){
-        const choices=await page.evaluate(()=>{const r=app.run;r.player.level=26;r.tryEvolve();return r.ui.modalEl.textContent;});
+        const choices=await page.evaluate(()=>{const r=app.run;r.player.level=r.nextEvo.level;r.tryEvolve();return r.ui.modalEl.textContent;});
         assert.ok(choices.includes('讽')&&choices.includes('飒'));
         await draw();await page.screenshot({path:path.join(dir,'wind-branches.png')});
         await page.evaluate(branch=>{const r=app.run;const buttons=[...r.ui.modalEl.querySelectorAll('button')];buttons.find(n=>n.textContent.includes(branch===17?'讽':'飒')).click();},branch);
@@ -89,11 +89,14 @@ export async function reviewCharacters(page,dir) {
   }
   report.boss=await page.evaluate(async()=>{
     const r=app.run,en=r.enemies,p=r.player.pos;
-    en.clear();r.stageTime=30;
-    const altar=r.interactables.list.find(item=>item.kind==='boss');
-    r.interactables.interact(altar);
+    en.clear();r.stageTime=240;r.time=Math.max(r.time,240);
+    const door=r.interactables.list.find(item=>item.kind==='boss');
+    await door.modelReady;
+    p.set(door.x,door.y,door.z);
+    r.camTarget.copy(p);r.updateCamera(1);r.r.camera.updateMatrixWorld();
+    for(let i=0;i<180;i++)r.interactables.update(0,1/60);
     const index=r.boss.bossIndex,word=en.glyphWords[index];
-    r.interactables.interact(altar);
+    r.interactables.interact(door);
     const intro=r.ui.hudEl.querySelector('.bossintro h1')?.textContent;
     r.ui.hud(r);
     const second=en.spawn(en.species[index],p.x+1,p.z,1,1,4);
@@ -115,7 +118,7 @@ export async function reviewCharacters(page,dir) {
     const injured=sample();
     en.hp[index]=en.maxHp[index];en.hp[second]=0;
     return {name:r.boss.name,word,hudName:r.ui.els.bossName.textContent,portrait:r.ui.els.bossPt.querySelector('canvas')?.dataset.glyph,
-      intro,species:en.species[index],used:altar.used,injured,healed:sample()};
+      intro,species:en.species[index],used:door.used,injured,healed:sample()};
   });
   assert.deepEqual(report.boss,{name:'龘',word:'龘',hudName:'龘',portrait:'龘',intro:'龘',species:149,used:true,injured:[24,1],healed:[48]});
   fs.writeFileSync(path.join(dir,'characters.json'),JSON.stringify(report,null,2));

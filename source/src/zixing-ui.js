@@ -1,5 +1,5 @@
 import {displayedFormType} from './form-copy.js';
-import {facilityDwellSeconds,facilityNames} from './active-content.js';
+import {bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityNames} from './active-content.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
 import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
@@ -12,8 +12,8 @@ import {laboratory} from './catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
-import {characters,characterForSpecies,windRoutes} from './starter-characters.js';
-import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES} from './lite-rules.js';
+import {characters,characterForSpecies,starterEvolutionLevels,windRoutes} from './starter-characters.js';
+import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,zoneDuration,remainingZoneSeconds} from './lite-rules.js';
 
 export {characters};
 const character=characterForSpecies;
@@ -60,6 +60,7 @@ function glyph(c,large=false){
   canvas.dataset.glyphReady='true';return node;
 }
 const statRow=(label,value)=>el('div','zx-stat-row',[el('b','',label),el('span','',value)]);
+export {icon as paperIcon};
 // Paths keep icons independent of the device's font and emoji support.
 function icon(name,size=24,color='#766a88') {
   const canvas=el('canvas','zx-icon',[],{width:size*2,height:size*2,'data-icon':name,'aria-hidden':true});
@@ -451,7 +452,7 @@ export function createZixingUI(app,api) {
       hero.replaceChildren(small('字灵 · '+c.word),glyph(c,true),text(c.motto,'zx-note'));
       skills.replaceChildren(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),
         row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id)))));
-      updateText(evolution,c.evolution);
+      updateText(evolution,c.evolution+' · '+starterEvolutionLevels.join(' / ')+' 级进阶');
       choices.forEach((choice,i)=>{
         const active=characters[i].id===selected;
         choice.classList.toggle('on',active);
@@ -495,7 +496,8 @@ export function createZixingUI(app,api) {
     screen('difficulty','选择难度',current().word+' · 桌上世界 · 单人',[
       ...difficulties.map(option=>{
         const locked=option.tier>max,chosen=option===selectedDifficulty;
-        return button([glyph(option.glyph),col(el('h3','',option.name),small(option.note),locked?small('通关上一难度后解锁'):null),locked?icon('lock',22):chosen?icon('check',24):icon('radio-empty',24)],
+        const duration=(option.mode===SINGLE_STAGE?'':'每区 ')+zoneDuration(option.mode)/60+' 分钟';
+        return button([glyph(option.glyph),col(el('h3','',option.name),small(duration+' · '+option.note),locked?small('通关上一难度后解锁'):null),locked?icon('lock',22):chosen?icon('check',24):icon('radio-empty',24)],
           ()=>{selectedDifficulty=option;difficulty();},'zx-difficulty'+(chosen?' on':''),{disabled:locked,'aria-pressed':chosen,'data-tier':option.tier,'data-mode':option.mode});
       }),
     ],[button('进入桌上世界  →',start,'primary',{'data-action':'enter'}),button('返回',map)]);
@@ -725,7 +727,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等物件旁停留 ${facilityDwellSeconds} 秒，脚下的圆环填满时会自动触发。祝福祭坛按显示的百分比蓄能。`],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等设施旁停留 ${facilityDwellSeconds} 秒可触发互动。每个战斗区开战满 ${bossSummonUnlockSeconds / 60} 分钟后，站进青色漩涡「${facilityNames.boss}」${bossSummonSeconds} 秒可唤醒镇守。击败镇守后，从木门前往下一区域或通关。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，蓄满可选祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -928,7 +930,7 @@ export function createZixingUI(app,api) {
     const hud=run.ui;selected=character(run.startSpecies).id;
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
-    run.hints.show=key=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key);};
+    run.hints.show=(key,site)=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key,site);};
     // Move offers reuse these glyph canvases. Paint them on the loading screen.
     const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
     hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
@@ -1053,7 +1055,7 @@ export function createZixingUI(app,api) {
           supplies,
         ]),level,
       ]),minimap,button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),
-    ],{'data-ui-region':'hud-stack'}),inventory,health);
+    ],{'data-ui-region':'hud-stack'}),el('div','zx-hint-slot',[],{'data-ui-region':'hud-hint'}),inventory,health);
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
@@ -1149,7 +1151,9 @@ export function createZixingUI(app,api) {
       const p=run.player;
       updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'/'+(run.mode===SINGLE_STAGE?1:FOREST_COMBAT_ZONES)+'区'));updateText(stageLabel,difficultyName(run));
       stageLabel.dataset.tier=String(run.tier);
-      updateText(clock,time(run.time));updateText(gold,number(run.gold));
+      const remaining=remainingZoneSeconds(run);
+      updateText(clock,run.sanctuary?time(run.stageTime):run.endless||run.tower?time(run.time):remaining>=0?time(remaining):'+'+time(-remaining));
+      updateText(gold,number(run.gold));
       updateSkillSlots(skillSlots,run);
       const supplyKey=JSON.stringify([[...p.vitamins].map(([id,v])=>[id,v.level]),[...p.items],profile().settings.showItems,innerWidth]);
       if(supplyKey!==lastSupplies){

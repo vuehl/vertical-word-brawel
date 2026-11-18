@@ -6,6 +6,7 @@ import {constrainLiteProfile,isLiteFamily,validLiteRun} from '../source/src/lite
 import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff} from '../source/src/starter-characters.js';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
 import {glyphCatalog} from '../source/src/glyph-catalog.js';
+import {restoreProgress} from '../source/src/coop-resume.js';
 
 test('both wind paths follow the supplied design, and all nine supplied cutouts override old artwork',()=>{
   const data=JSON.parse(fs.readFileSync(new URL('../source/public/data/pokemon.json',import.meta.url)));
@@ -36,6 +37,23 @@ test('legacy starter selection migrates without losing currency, research, setti
     assert.deepEqual(profile.team,[1,132].includes(old)?[]:[id]);
   }
   for(const species of [1,7,17,18,58,59,132])assert.equal(validLiteRun({species,biome:'forest'}),false);
+});
+
+test('rejoining restores wave time, keeps a wind branch and migrates only old evolution levels',()=>{
+  for(const [version,expected] of [[undefined,8],[1,8],[2,12]]){
+    const cards=[],timeline=[{kind:'card',t:30},{kind:'card',t:60},{kind:'totem',t:145},
+      {kind:'guardian',t:250},{kind:'card',t:275}];
+    const player={speciesId:16,hp:10,maxHp:10,moves:[],pos:{set(){}},xpFor:()=>30,recompute(){}};
+    const run={player,coop:{},camTarget:{copy(){}},planEvolution:()=>({to:-1,level:8}),
+      director:{timeline,addCard:()=>cards.push(run.stageTime)}};
+    const data={v:version,stage:1,player:{speciesId:16,level:7,hp:10},pos:[1,0,1],
+      moves:[],run:{nextEvo:{to:58,level:version===2?12:26}}};
+    restoreProgress(run,data,{stage:1,time:261,stageTime:253});
+    assert.deepEqual(run.nextEvo,{to:58,level:expected});
+    assert.deepEqual(cards,[30,60]);
+    assert.deepEqual(timeline.map(event=>!!event.done),[true,true,true,false,false]);
+    assert.deepEqual([run.time,run.stageTime],[261,253]);
+  }
 });
 
 test('borrowed ultimates keep the original cast, while wind forms use the correct source stage',()=>{

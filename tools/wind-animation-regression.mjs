@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {heroActionCatalog} from '../source/src/hero-action-catalog.js';
-import {starterWords} from '../source/src/starter-characters.js';
+import {starterForSpecies,starterWords,windRoutes} from '../source/src/starter-characters.js';
 
 export async function reviewWindAnimation(page,dir){
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
@@ -21,8 +21,9 @@ export async function reviewWindAnimation(page,dir){
     };
   });
   for(const [id,{clips}] of Object.entries(heroActionCatalog)){
-    const species=Number(id),starter=species===4?4:16;
-    const requests=await page.evaluate(async({species,starter})=>{
+    const species=Number(id),starter=starterForSpecies(species).id;
+    const branch=windRoutes.find(route=>route.middle===species||route.final===species)?.middle;
+    const requests=await page.evaluate(async({species,starter,branch})=>{
       app.toMenu();heroImageRequests.length=0;
       if(await app.startRun({species:132,biome:'forest',tier:0,boosts:[],mode:'standard'}))
         throw Error('Hidden starter opened a run');
@@ -33,8 +34,18 @@ export async function reviewWindAnimation(page,dir){
       const entry=heroImageRequests.filter(url=>url.includes('/hero-actions/'));
       r.state='play';r.enemies.clear();r.director.update=()=>{};r.capture.update=()=>{};
       r.ui.hideModal();p.moves=Array(4).fill(null);
+      while(p.speciesId!==species){
+        p.level=r.nextEvo.level;
+        if(!r.tryEvolve())throw Error('Cannot evolve from '+p.speciesId);
+        if(r.nextEvo.to===-1)r.ui.modalEl.querySelector('[data-branch-id="'+branch+'"]').click();
+        const target=r.nextEvo.to;
+        [...r.ui.modalEl.querySelectorAll('button')].find(button=>button.textContent.includes('确认进阶')).click();
+        for(let i=0;i<140&&r.state==='evolving';i++)r.update(1/30);
+        if(p.speciesId!==target||r.state!=='play')throw Error('Evolution did not finish: '+target);
+        if(!heroImageRequests.includes('assets/glyphs/hero-actions/'+target+'.png'))throw Error('Missing evolution atlas request: '+target);
+        await r.sprites.prepareHeroForm(target);
+      }
       inspected.doc.querySelectorAll('.zx-intro,.evo-reveal,.ultcut,.banner,.run-hint').forEach(n=>n.remove());
-      if(species!==starter){p.setSpecies(species);await r.sprites.prepareHeroForm(species);}
       Object.assign(p,{speedNow:0,grounded:true,gliding:false,swimNow:false,slideT:0,hurtT:0,
         attackT:0,ultPoseT:0,heroPose:null,firePose:null,heroPlayback:undefined});
       const get=r.sprites.getPlayerGlyph;
@@ -45,27 +56,25 @@ export async function reviewWindAnimation(page,dir){
       };
       drawHeroReview();
       return entry;
-    },{species,starter});
+    },{species,starter,branch});
     assert.deepEqual(requests,['assets/glyphs/hero-actions/'+starter+'.png']);
     report.entryImages[starter]=requests;
-    if(species===starter){
-      const movement=await page.evaluate(()=>{
-        const r=app.run,p=r.player,origin=p.pos.clone();
-        r.input.stickX=1;
-        for(let i=0;i<30;i++)r.update(1/60);
-        drawHeroReview();
-        const moving={distance:p.pos.distanceTo(origin),action:heroObserved.frame?.action};
-        r.input.stickX=0;
-        for(let i=0;i<90;i++)r.update(1/60);
-        drawHeroReview();
-        return {moving,stopped:heroObserved.frame?.action};
-      });
-      assert.ok(movement.moving.distance>.1);
-      assert.equal(movement.moving.action,'walk');
-      assert.equal(movement.stopped,'idle');
-      report.movement??={};
-      report.movement[starter]=movement;
-    }
+    const movement=await page.evaluate(()=>{
+      const r=app.run,p=r.player,origin=p.pos.clone();
+      r.input.stickX=1;
+      for(let i=0;i<30;i++)r.update(1/60);
+      drawHeroReview();
+      const moving={distance:p.pos.distanceTo(origin),action:heroObserved.frame?.action};
+      r.input.stickX=0;
+      for(let i=0;i<90;i++)r.update(1/60);
+      drawHeroReview();
+      return {moving,stopped:heroObserved.frame?.action};
+    });
+    assert.ok(movement.moving.distance>.1);
+    assert.equal(movement.moving.action,'walk');
+    assert.equal(movement.stopped,'idle');
+    report.movement??={};
+    report.movement[species]=movement;
     const states={};
     for(const [action,{count,fps,loop}] of Object.entries(clips)){
       const result=await page.evaluate(({action,count,fps,loop})=>{

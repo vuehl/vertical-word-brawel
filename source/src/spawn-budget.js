@@ -1,22 +1,30 @@
+import {wavePace} from './lite-rules.js';
+
 // Shared by natural spawns, event waves and summoned ordinary enemies.
 // Elites belong to the ordinary budget; bosses, capture actors and allies do not.
 export const SPECIAL_ACTORS=2|4|128|2048|4096|8192|16384|32768|65536|131072;
 export const MAX_ORDINARY=200;
 export const SPAWN_RATE_SCALE=.5;
-export const minuteCaps=Object.freeze([5,15,30,50,70,90,115,140,160,180,200]);
-const firstStageCaps=Object.freeze([minuteCaps[0],25,...minuteCaps.slice(2)]);
-export function ordinaryLimit(seconds,stage=1){
-  const minute=Math.max(0,Math.min(10,(Number(seconds)||0)/60)),index=Math.floor(minute);
-  const caps=stage===1?firstStageCaps:minuteCaps;
+const zoneCaps=Object.freeze([14,32,44,56,72,90,115,140,160,180,200]);
+const longRunCaps=Object.freeze([5,15,30,50,70,90,115,140,160,180,200]);
+const longRunFirstCaps=Object.freeze([5,25,...longRunCaps.slice(2)]);
+export function ordinaryLimit(seconds,stage=1,mode='standard'){
+  const pace=wavePace(mode);
+  const minute=Math.max(0,Math.min(10,(Number(seconds)||0)*pace/60)),index=Math.floor(minute);
+  const caps=pace>1?zoneCaps:stage===1?longRunFirstCaps:longRunCaps;
   return index===10?MAX_ORDINARY:Math.floor(caps[index]+(caps[index+1]-caps[index])*(minute-index));
 }
-export function naturalCreditRate(baseRate,seconds,stage){
-  // Extra credits per second keep spawning after fast clears, fading out over minute two.
+export function naturalCreditRate(baseRate,seconds,stage,mode='standard'){
+  const pace=wavePace(mode);
+  if(pace>1){
+    const openingBonus=(stage===1?3.2:2.4)*Math.max(0,Math.min(1,(90-seconds)/45));
+    return baseRate*SPAWN_RATE_SCALE*pace+openingBonus;
+  }
   const openingBonus = stage === 1 ? 0.65 * Math.max(0, Math.min(1, (120 - seconds) / 60)) : 0;
   return baseRate*SPAWN_RATE_SCALE+openingBonus;
 }
 export function runOrdinaryLimit(run){
-  const total=Math.min(ordinaryLimit(run.endless?run.time:run.stageTime,run.stage),run.enemyCap??MAX_ORDINARY);
+  const total=Math.min(ordinaryLimit(run.endless?run.time:run.stageTime,run.stage,run.mode),run.enemyCap??MAX_ORDINARY);
   if(!run.coop)return total;
   const {size,budgetRank:rank}=run.coop;
   return Math.floor(total/size)+(rank<total%size?1:0);

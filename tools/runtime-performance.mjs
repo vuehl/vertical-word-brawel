@@ -87,7 +87,7 @@ try{
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
   const deskReview=process.argv.includes('--map-play')||process.argv.includes('--illustrated-desk');
-  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg))));
+  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
@@ -119,7 +119,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--native-performance')){
+  if(process.argv.includes('--battle-pacing')){
+    const {reviewBattlePacing}=await import('./battle-pacing-regression.mjs');
+    await reviewBattlePacing(page);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--native-performance')){
     await reviewNativePerformance(page,dir);assert.deepEqual(errors,[]);
   }else if(upgradeResume){
     const {reviewUpgradeResume}=await import('./upgrade-resume-regression.mjs');
@@ -312,7 +315,7 @@ try{
     const first=colliders[0],resolved={x:0,z:0};terrain.resolve(first.x,first.z,.5,.3,resolved);
     const escaped=!terrain.hitProp(resolved.x,.3,resolved.z,.49);
     run.enemies.clear();run.director.update=()=>{};run.queueLevelUp=()=>{};run.pendingLevels=0;
-    run.stageTime=600; // The natural spawn budget reaches 200 at ten minutes.
+    run.stageTime=300; // Standard zones reach the full population at five minutes.
     const far=[];
     for(let i=0;i<200;i++){
       const a=i*2.39996,d=i<120?8+(i%15):30+(i%30),x=run.player.pos.x+Math.cos(a)*d,z=run.player.pos.z+Math.sin(a)*d;

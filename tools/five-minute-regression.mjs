@@ -43,7 +43,7 @@ export async function reviewFiveMinute(page,dir,baseline){
     }
     const measuredFrames=60;
     for(let i=0;i<measuredFrames;i++)r.update(1/30);
-    return {initial,final:e.count,state:r.state,stageTime:r.stageTime,events,checkpoints,surfaces:surfaces.length,
+    return {initial,final:e.count,state:r.state,stageTime:r.stageTime,events,finalSwarm:r.director.finalSwarm,checkpoints,surfaces:surfaces.length,
       measuredFrames,planeTests,heightCalls,bucketReads,frames:times.length,p50Ms:times[200],p95Ms:times[380],maxMs:times.at(-1),
       slowest:peaks.sort((a,b)=>b.ms-a.ms).slice(0,3)};
   });
@@ -103,7 +103,7 @@ export async function reviewFiveMinute(page,dir,baseline){
   fs.writeFileSync(path.join(dir,'five-minute.json'),JSON.stringify(result,null,2));
   console.log('Five-minute solo forest',result);
   assert.equal(result.initial,86);assert.equal(result.state,'play');assert.ok(result.stageTime>300);
-  assert.ok(result.events.includes('totem')&&result.checkpoints.some(t=>t>=300&&t<301));
+  assert.ok(result.finalSwarm&&result.checkpoints.some(t=>t>=300&&t<301));
   assert.ok(result.heightCalls>500);
   assert.equal(result.geometry.mismatches,0);
   assert.ok(result.geometry.lateCollider);

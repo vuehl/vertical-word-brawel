@@ -98,8 +98,8 @@ export async function reviewIOSBudget(page,dir){
     click('count-600');click('apply');const stress=api.snapshot().ordinary;
     api.close();return {values,stress};
   });
-  assert.deepEqual(report.panel.values,[30,90,200]);assert.equal(report.panel.stress,600);
-  const caps=[5,25,30,50,70,90,115,140,160,180,200];
+  assert.deepEqual(report.panel.values,[72,200,200]);assert.equal(report.panel.stress,600);
+  const caps=[14,44,72,115,160,200,200,200,200,200,200];
   for(let minute=0;minute<=10;minute++){
     const wave=await page.evaluate(minute=>{
       const run=app.run,api=inspected.env.__zixingDeveloper;
@@ -131,7 +131,7 @@ export async function reviewIOSBudget(page,dir){
     return {peak,total:api.snapshot().ordinary};
   });
   assert.ok(report.spawnBurst.peak<=3&&report.spawnBurst.total<=48&&report.spawnBurst.total>0);
-  for(const [seconds,count] of [[120,30],[300,90],[600,200]]){
+  for(const [seconds,count] of [[120,72],[300,200],[600,200]]){
     const sample=await page.evaluate(async({seconds,count})=>{
       const run=app.run,api=inspected.env.__zixingDeveloper,renderer=app.r.renderer;
       Object.assign(api.options,{invincible:true,lockCount:true,monitor:false});

@@ -2,6 +2,7 @@ import {formCopy, moveCopy} from './form-copy.js';
 
 // Keep species IDs stable for saved unlocks and glyph artwork.
 export const starterSpecies = Object.freeze([4,16]);
+export const starterEvolutionLevels = Object.freeze([8,16]);
 export const starterWords = Object.freeze(Object.fromEntries(
   [4,5,6,132,16,17,18,58,59].map(id=>[id,formCopy[id].word])
 ));
@@ -35,8 +36,8 @@ export function characterForSpecies(id){
 export function configureStarterRoster(roster){
   const byId=new Map(roster.map(actor=>[actor.id,actor]));
   return starterSpecies.map(id=>({
-    ...byId.get(id),start:true,
-    ...(id===16?{branch:windRoutes.map(route=>route.middle),evoLevel:26,evoLevels:[26,44]}:{}),
+    ...byId.get(id),start:true,evoLevels:starterEvolutionLevels,
+    ...(id===16?{branch:windRoutes.map(route=>route.middle),evoLevel:starterEvolutionLevels[0]}:{}),
   }));
 }
 export function configureStarterSpecies(species){

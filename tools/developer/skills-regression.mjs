@@ -51,7 +51,7 @@ export async function reviewDeveloperSkills(page,dir){
     Math.random=()=>0;
     try{
       const preset=api.apply({mode:'timed',time:120,count:0,boss:'none'}).workload.moves[0];
-      api.stopWorkload();p.level=8;p.recompute();r.ui.experienceReady=()=>true;
+      api.stopWorkload();p.level=r.nextEvo.level-1;p.recompute();r.ui.experienceReady=()=>true;
       // Restrict this comparison to the one existing skill so randomized
       // three-card selection cannot hide it behind new moves or vitamins.
       p.moveSlots=1;p.vitaminSlots=0;app.meta.profile.settings.skipEmptyLevelUp=false;

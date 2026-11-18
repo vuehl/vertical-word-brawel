@@ -10,9 +10,10 @@ import {restoreSprite} from './sprite-png.mjs';
 import {unpackStream} from './resource-stream.mjs';
 import {measureActor} from './actor-metrics.mjs';
 import {actorMetrics} from '../source/src/actor-metrics.js';
+import {heroActionCatalog} from '../source/src/hero-action-catalog.js';
 import {assetPolicyVersion,compressedFireAtlases,excludedAssetReason,musicTracks} from './asset-policy.mjs';
 import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/catalogs.js';
-import {facilityNames,facilityModelFile,isActiveItem} from '../source/src/active-content.js';
+import {facilityNames,facilityIconFile,facilityModelFile,isActiveItem} from '../source/src/active-content.js';
 import {resolveItemIcon} from '../source/src/item-icons.js';
 import {glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
@@ -23,7 +24,7 @@ assert.equal(index.policyVersion,assetPolicyVersion,'Rebuild the changed asset p
 assert.deepEqual(biomes.map(b=>b.id),['forest'],'Review asset exclusions if a map opens');
 assert.deepEqual(roster.map(p=>p.id),[4,16]);
 assert.deepEqual(Object.keys(index.files).filter(key=>key.startsWith('assets/glyphs/hero-actions/')).sort(),
-  [16,17,18,4,58,59].map(id=>'assets/glyphs/hero-actions/'+id+'.png'));
+  Object.keys(heroActionCatalog).map(id=>'assets/glyphs/hero-actions/'+id+'.png').sort());
 assert.ok(!index.files['assets/glyphs/copy-strokes.png']);
 assert.equal(events.length,0,'Review excluded event assets if events are enabled');
 const declaredPacks=new Set(JSON.parse(fs.readFileSync(path.join(root,'game.json'))).subpackages.map(p=>p.name));
@@ -154,7 +155,9 @@ for(const kind of Object.keys(facilityNames)){
   const adapter=gltf.asset.extras.deviceScreenFxAdapter,scene=gltf.scenes[gltf.scene??0].extras;
   assert.equal(adapter.sha256,adapterHash,key);
   assert.equal(digest(adapter.source),adapterHash,key);
-  assert.equal(scene.deviceModel,kind==='bill'?'billpc':kind,key);
+  assert.equal(scene.deviceModel,({bill:'billpc',boss:'portal',portal:'boss'})[kind]??kind,key);
+  if(kind==='boss'||kind==='portal')assert.equal(facilityIconFile(kind),'ui/devices/'+scene.deviceModel+'.png');
+  assert.ok(index.files['assets/'+facilityIconFile(kind)],'Missing model thumbnail for '+kind);
   assert.equal(scene.deviceScreenFx.version,1,key);
   assert.ok(scene.deviceScreenFx.supportXYZ.length>=12,key);
 }

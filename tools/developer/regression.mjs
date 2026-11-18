@@ -59,8 +59,8 @@ async function reviewUpgradeWave(page){
       await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
       app.halted=true;
       const api=inspected.env.__zixingDeveloper,r=app.run,p=r.player;
-      // A fire hero who already chose the first evolution at level 24.
-      p.setSpecies(5);p.evoStage=1;r.nextEvo=r.planEvolution(5,1);
+      // The late-game loadout is past both evolutions. Isolate the two upgrade choices.
+      p.setSpecies(6);p.evoStage=2;r.nextEvo=null;
       api.apply({time:600,count:0,mode,boss:'none'});
       api.options.lockCount=false;api.options.spawn=false;
       const start=p.level,kills=r.stats.kills,uses=r.ult.uses;
@@ -231,7 +231,7 @@ export async function reviewDeveloper(page,dir){
     },seconds);
     assert.equal(sample.state.stageTime,seconds);assert.equal(sample.state.ordinary,600);
     assert.deepEqual(sample.before,sample.after,'Debug removal must not award rewards');
-    assert.equal(sample.pendingPast,0);assert.equal(sample.finalSwarm,seconds>=600);
+    assert.equal(sample.pendingPast,0);assert.equal(sample.finalSwarm,seconds>=300);
     report.waves.push(sample);
   }
   assert.ok(report.waves[3].state.hpMultiplier>report.waves[1].state.hpMultiplier,'Jump must change actual monster strength');

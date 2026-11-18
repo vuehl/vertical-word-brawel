@@ -7,13 +7,16 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
     const r=app.run,p=r.player.pos;
     const before={x:p.x,y:p.y,z:p.z,halted:app.halted,spent:r.goldSpent,bought:r.chestsBought};
     app.halted=true;
+    r.hints.el?.remove();
+    Object.assign(r.hints,{on:true,el:null,site:null,busyUntil:0,scanT:0,queued:null});
+    r.hints.seen.clear();
     window.qaPlace=target=>{
       p.set(target.x+1,target.y,target.z+1);r.player.vel.set(0,0,0);r.camTarget.copy(p);
     };
     window.qaItemFrames=(count,delta=1/30)=>{
       for(let i=0;i<count;i++){r.update(delta);r.input.endFrame();}
       r.updateCamera(1);r.renderWorld(0);app.r.render(0);r.ui.worldLabels(r);inspected.env.drawUI(app.r.renderer);
-      return r.playerFootRing.material.uniforms.dwell.value;
+      return r.interactables.dwellRing.material.uniforms.dwell.value;
     };
     window.qaChest=r.interactables.list.find(e=>e.kind==='chest'&&!e.used&&!e.data?.gift);
     r.gold=1000;qaPlace(qaChest);
@@ -21,24 +24,85 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
   });
   const mid=await page.evaluate(()=>{
     const r=app.run;r.input.touchKey('KeyE',true);qaItemFrames(1,1/60);r.input.touchKey('KeyE',false);
-    return {progress:qaItemFrames(22),used:qaChest.used,spent:r.goldSpent,button:r.ui.touch.actText};
+    const progress=qaItemFrames(22),ring=r.interactables.dwellRing;
+    return {progress,used:qaChest.used,spent:r.goldSpent,button:r.ui.touch.actText,
+      atBase:ring.visible&&ring.position.x===qaChest.x&&ring.position.z===qaChest.z&&ring.position.y>qaChest.y,
+      outsideModel:ring.scale.x>qaChest.model.userData.footprintRadius,
+      atPlayer:r.playerFootRing.position.x===r.player.pos.x&&r.playerFootRing.position.z===r.player.pos.z};
   });
   assert.ok(Math.abs(mid.progress-.5)<.015);assert.ok(!mid.used&&!mid.button);assert.equal(mid.spent,original.spent);
+  assert.ok(mid.atBase&&mid.outsideModel&&mid.atPlayer);
+  const checkHint=async(kind,title)=>{
+    await page.waitForFunction(k=>{
+      const card=inspected.doc.querySelector('.zx-hint-slot .run-hint'),img=card?.querySelector('img');
+      qaItemFrames(0);
+      return card?.dataset.kind===k&&img?.complete&&img.naturalWidth>0&&
+        [card,img,card.querySelector('.zx-hint-copy'),inspected.doc.querySelector('.zx-hud-pause'),
+          inspected.doc.querySelector('.zx-hud-counters')].every(el=>inspected.layout.box(el)?.opacity>0);
+    },{timeout:4500,polling:50},kind);
+    const card=await page.evaluate(()=>{
+      const doc=inspected.doc,node=doc.querySelector('.run-hint');
+      const box=el=>inspected.layout.box(el);
+      const rect=box(node),pic=box(node.querySelector('img')),pause=box(doc.querySelector('.zx-hud-pause'));
+      const counters=box(doc.querySelector('.zx-hud-counters')),copy=box(node.querySelector('.zx-hint-copy'));
+      return {title:node.querySelector('b').textContent,src:node.querySelector('img').getAttribute('src'),
+        fits:rect.x>=0&&rect.x+rect.w<=inspected.env.innerWidth&&rect.y>=counters.y+counters.h&&
+          (rect.x+rect.w<=pause.x||rect.y>=pause.y+pause.h)&&copy.x>=pic.x+pic.w&&copy.x+copy.w<=rect.x+rect.w+1};
+    });
+    assert.equal(card.title,title);assert.ok(card.src.includes('/ui/devices/'+kind+'.png'),card.src);
+    assert.ok(card.fits,'The hint should clear the HUD controls and fit its model and text');
+  };
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
-    await resize(width,height);await page.evaluate(()=>qaItemFrames(0));
+    await resize(width,height);await page.evaluate(()=>{
+      // Each viewport gets a fresh visit so screenshot time cannot expire the real-time toast.
+      const r=app.run,h=r.hints;h.seen.delete('b');h.busyUntil=0;h.scanT=0;
+      h.tick(r,0);qaItemFrames(0);
+    });
+    await checkHint('chest','扭蛋');
     await snapshot('14-interaction-'+width);
   }
   await resize(390,844);
   const visit=await page.evaluate(()=>{
     const r=app.run,objects=r.interactables.list;
     const costLabel=inspected.doc.querySelector('.wlabel.cost')?.textContent;
-    qaPlace(objects.find(o=>o.kind==='freechest'&&!o.used));const switched=qaItemFrames(1);
+    qaPlace(objects.find(o=>o.kind==='freechest'&&!o.used));r.hints.scanT=0;const switched=qaItemFrames(1);
+    const freeHint=r.hints.el?.dataset.kind;
     const altar=objects.find(o=>o.kind==='altar'&&!o.data.tier&&!o.used);
-    qaPlace(altar);const left=qaItemFrames(91);
-    return {costLabel,switched,left,charge:altar.charge,percent:inspected.doc.querySelector('.charge span')?.textContent};
+    qaPlace(altar);
+    r.player.pos.set(altar.x+.15,altar.y,altar.z+2.7);r.camTarget.copy(r.player.pos);
+    qaItemFrames(91);
+    return {costLabel,switched,freeHint,ringCharge:altar.chargeRing.material.uniforms.dwell.value,
+      baseColor:altar.chargeRing.material.uniforms.baseColor.value.getHex(),charge:altar.charge,
+      clear:!r.ui.worldLabelNodes.has(altar)&&!inspected.doc.querySelector('.charge')&&!r.interactables.dwellRing.visible};
   });
   assert.match(visit.costLabel,/金币/);assert.ok(visit.switched>0&&visit.switched<.025);
-  assert.equal(visit.left,-1);assert.ok(visit.charge>0&&visit.charge<1);assert.match(visit.percent,/^\d+%$/);
+  assert.equal(visit.ringCharge,visit.charge);assert.ok(visit.charge>0&&visit.charge<1);
+  assert.equal(visit.freeHint,'freechest');assert.equal(visit.baseColor,0x5af0ff);assert.ok(visit.clear);
+  await checkHint('altar','守护者祭坛');
+  await snapshot('14-guardian-altar');
+  const later=await page.evaluate(()=>{
+    qaItemFrames(88);
+    const r=app.run,a=r.interactables.list.find(o=>o.kind==='altar'&&o.charge>0);
+    return {charge:a.charge,arc:a.chargeRing.material.uniforms.dwell.value,clear:!r.ui.worldLabelNodes.has(a)};
+  });
+  assert.ok(later.charge>visit.charge+.25&&later.charge<1&&later.clear);assert.equal(later.arc,later.charge);
+  await snapshot('14-guardian-altar-late');
+  const almost=await page.evaluate(()=>{
+    qaItemFrames(50);
+    const a=app.run.interactables.list.find(o=>o.kind==='altar'&&o.charge>0);
+    return a.chargeRing.material.uniforms.dwell.value;
+  });
+  assert.ok(almost>.94&&almost<1);
+  await snapshot('14-guardian-altar-close');
+  const retreat=await page.evaluate(()=>{
+    const r=app.run,f=r.interactables,a=f.list.find(o=>o.kind==='altar'&&o.charge>0);
+    r.player.pos.set(a.x,a.y,a.z+a.r+1);
+    f.update(.6,0);const held=a.charge;
+    f.update(.8,0);f.render();
+    return {held,charge:a.charge,arc:a.chargeRing.material.uniforms.dwell.value,visible:a.chargeRing.visible};
+  });
+  assert.equal(retreat.held,almost);assert.equal(retreat.arc,retreat.charge);
+  assert.ok(retreat.visible&&retreat.charge>0&&retreat.charge<retreat.held);
   const lifecycle=await page.evaluate(async()=>{
     const r=app.run,ui=r.ui,facilities=r.interactables,group=qaChest.group;
     const label=()=>ui.worldLabelNodes.get(qaChest);
@@ -139,7 +203,7 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
   },original.halted);
   assert.ok(opened.almost>.97&&opened.almost<1&&!opened.early&&opened.used);
   assert.equal(opened.spent,original.spent+opened.cost);assert.equal(opened.bought,original.bought+1);
-  fs.writeFileSync(path.join(dir,'item-dwell.json'),JSON.stringify({mid,visit,lifecycle,poor,notices,opened},null,2));
+  fs.writeFileSync(path.join(dir,'item-dwell.json'),JSON.stringify({mid,visit,later,almost,retreat,lifecycle,poor,notices,opened},null,2));
   await page.waitForFunction(()=>inspected.doc.querySelector('[data-choice="showItemChoice"]'),{timeout:15000});
   async function checkDialog(name){
     await snapshot(name);

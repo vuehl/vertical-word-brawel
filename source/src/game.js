@@ -1,21 +1,21 @@
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
-import {facilityDwellSeconds,facilityModelFile,isActiveFacility} from './active-content.js';
+import {bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,facilityModelFile,facilityNames,isActiveFacility} from './active-content.js';
 import {createFacilityEffects} from './facility-effects.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
-import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey} from './lite-rules.js';
+import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds} from './lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
 import {mountLiteQA} from './lite-qa.js';
-import {createZixingUI} from './zixing-ui.js';
+import {createZixingUI,paperIcon} from './zixing-ui.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
 import {heroActionCatalog} from './hero-action-catalog.js';
 import {playerHeroAction} from './hero-actions.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
-import {createPlayerFootRing} from './player-foot-ring.js';
+import {createPlayerFootRing,createFacilityDwellRing,createAltarChargeRing} from './player-foot-ring.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
 import {FramePacer} from './frame-pacing.js';
@@ -37,7 +37,7 @@ import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pick
 import {performanceProfile,batterySaverEnabled,selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
 import {UpgradeTiming} from './upgrade-timing.js';
 import {updatePaperVisibility} from './paper-visibility.js';
-import {hitsPaperBox,resolvePaperBox,moveEnemyPastProps,obstacleJumpSpeed} from './paper-collision.js';
+import {paperBox,hitsPaperBox,resolvePaperBox,moveEnemyPastProps,obstacleJumpSpeed} from './paper-collision.js';
 import './customize.js';
 import {chineseMessage as t,formatChineseNumber as n,chineseText as c} from "./chinese-text.js";
 import {
@@ -8449,7 +8449,9 @@ function loadModelTemplate(e) {
           let e = await new xi().loadAsync(t ? `${n}&r=${t}` : n);
           if (e.scene.userData.deviceScreenFx) {
             // Retain the authored unlit textures, glass and root metadata. yu adds the legacy hull.
-            e.scene.userData.displayHeight = new Qr().setFromObject(e.scene).getSize(new ti()).y;
+            const size = new Qr().setFromObject(e.scene).getSize(new ti());
+            e.scene.userData.displayHeight = size.y;
+            e.scene.userData.footprintRadius = Math.hypot(size.x, size.z) / 2;
           } else {
             vu(e.scene);
             yu(e.scene);
@@ -14496,6 +14498,7 @@ var Yp = 3e3,
     bounce = new Int16Array(Yp);
     flags = new Int32Array(Yp);
     explodeR = new Float32Array(Yp);
+    explosionArtRadius = new Float32Array(Yp);
     size = new Float32Array(Yp);
     shape = new Uint8Array(Yp);
     color = new Uint32Array(Yp);
@@ -14552,6 +14555,7 @@ var Yp = 3e3,
         (this.bounce[r] = e.bounce ?? 0),
         (this.flags[r] = e.flags ?? 0),
         (this.explodeR[r] = e.explodeR ?? 0),
+        (this.explosionArtRadius[r] = e.explosionArtRadius ?? this.explodeR[r]),
         (this.size[r] = e.size ?? e.radius * 2),
         (this.shape[r] = e.shape ?? I.Soft),
         (this.color[r] = e.color ?? Ni[e.type]),
@@ -14632,12 +14636,13 @@ var Yp = 3e3,
     explode(e) {
       let t = this.run,
         n = this.explodeR[e],
+        artRadius = this.explosionArtRadius[e],
         r = this.color[e],
         i = qp(this.fx[e]);
       (i.boom
-        ? i.boom(t, this.x[e], this.y[e], this.z[e], n, r)
+        ? i.boom(t, this.x[e], this.y[e], this.z[e], n, r, artRadius)
         : (t.vfx.ring(this.x[e], t.terrain.height(this.x[e], this.z[e]), this.z[e], n, r, 0.4),
-          t.vfx.flash(this.x[e], this.y[e], this.z[e], r, n * 1.4, 0.18),
+          t.vfx.flash(this.x[e], this.y[e], this.z[e], r, artRadius * 1.4, 0.18),
           t.vfx.burst(this.x[e], this.y[e], this.z[e], r, 14, n * 2.2, I.Soft, 0.7, 0.45)),
         t.shake(0.12, this.x[e], this.z[e]));
       for (let r of t.enemies.within(this.x[e], this.z[e], n, this.tmpBoom))
@@ -16267,6 +16272,7 @@ var Pm = class {
           cls: `special`,
           flags: em.Homing | em.Explode,
           explodeR: 2.2 * Math.sqrt(t.area),
+          explosionArtRadius: 2.2,
           status: a,
           statusChance: 0.2,
           size: 0.95,
@@ -19093,7 +19099,7 @@ var rh = {
           Lh(e, Math.cos(n), Math.sin(n), 15 * e.R, 2, 0.4, 1.9 + e.tier * 0.2, {
             status: `wet`,
             statusChance: 0.5,
-          });
+          }, 1.9);
         }
         (W(t, 1.8, () => {
           if (Math.random() < 0.7) {
@@ -19941,7 +19947,7 @@ var lh = {
                     rot: Math.PI * 0.75,
                   }),
                     t.later(0.15, () => {
-                      (G(t, a, s, 5 * e.R, I.PixCrack, 16777215, 2.2),
+                      (G(t, a, s, 5, I.PixCrack, 16777215, 2.2),
                         bh(t, a, c, s, 10, 6),
                         t.vfx.dust(a, c, s, 14207144, 12, 5),
                         K(t, a, c, s, 4.5 * e.R, [12109946, 16777215], 2, 0.06, L.Jagged),
@@ -20726,7 +20732,7 @@ var hh = {
                   });
               },
             });
-          (G(t, r.x, r.z, 6 * e.R, I.PixCrack, 16777215, 2.4), t.shake(0.35), J.boom(t.audio, 0.9));
+          (G(t, r.x, r.z, 6, I.PixCrack, 16777215, 2.4), t.shake(0.35), J.boom(t.audio, 0.9));
         }),
           t.cry(141, 0.6));
       },
@@ -21444,7 +21450,7 @@ var hh = {
           Lh(e, Math.cos(i), Math.sin(i), 16 * e.R, 2, 0.45, 1.9 + e.tier * 0.3, {
             status: `confusion`,
             statusChance: 0.2,
-          });
+          }, 1.9);
         }
         if (
           (W(t, 1.6, (e) => {
@@ -21936,7 +21942,7 @@ function Ih(e, t, n, r, i, a, o) {
       (a(u.x, d, u.z, i), s.later(i, () => o(u.x, U(s, u.x, u.z), u.z)));
     });
 }
-function Lh(e, t, n, r, i, a, o, s = {}) {
+function Lh(e, t, n, r, i, a, o, s = {}, artRadius = o) {
   let c = e.run,
     l = e.x,
     u = e.z,
@@ -21952,7 +21958,7 @@ function Lh(e, t, n, r, i, a, o, s = {}) {
       x = Math.hypot(v, y);
     x > b && ((v *= b / x), (y *= b / x));
     let S = U(c, v, y);
-    c.vfx.crafted.tornado(d,v,S+.12,y,o*1.05,o*3.4,'flying');
+    c.vfx.crafted.tornado(d,v,S+.12,y,artRadius*1.05,artRadius*3.4,'flying');
     if ((kh(c, v, y, (5 * e.R * o) / 2, 30 * m), (f -= m), f <= 0)) {
       f = 0.16;
       for (let t of c.enemies.within(v, y, (2.2 * e.R * o) / 2))
@@ -22358,8 +22364,8 @@ var J = {
         J.fire(t.audio,1,.2);
         const rings=e.tier>=1?3:1;
         for(let index=0;index<rings;index++)t.later(.18+index*.22,()=>{
-          const p=t.player.pos, radius=(8+index*3)*e.R;
-          art.ultimateRing(p.x,p.y,p.z,radius,.6);
+          const p=t.player.pos, ringRadius=8+index*3, radius=ringRadius*e.R;
+          art.ultimateRing(p.x,p.y,p.z,ringRadius,.6);
           q(e,p.x,p.z,radius,1.3,{status:'burn',statusChance:.9,knock:4});
           for(let j=0;j<8;j++){
             const angle=j/8*H+index, x=p.x+Math.cos(angle)*radius*.6,z=p.z+Math.sin(angle)*radius*.6;
@@ -22377,9 +22383,9 @@ var J = {
             t.shake(.12,x,z);J.boom(t.audio,.5);
           });
           t.later(2.55,()=>{
-            const p=t.player.pos,radius=13*e.R;
-            art.finale(p.x,p.y,p.z,radius);
-            for(let j=0;j<3;j++)t.later(j*.07,()=>art.ring(p.x,p.y,p.z,radius*(.55+j/2*.5),.5));
+            const p=t.player.pos, ringRadius=13, radius=ringRadius*e.R;
+            art.finale(p.x,p.y,p.z,ringRadius);
+            for(let j=0;j<3;j++)t.later(j*.07,()=>art.ring(p.x,p.y,p.z,ringRadius*(.55+j/2*.5),.5));
             Nh(e,p.x,p.z,8,{len:15*e.R,glow:Y.magma,mul:.6,life:3.5,authoredFire:true});
             q(e,p.x,p.z,radius,2,{status:'burn',statusChance:1,knock:6});
             t.shake(.5);J.boom(t.audio,1.3);J.fire(t.audio,1.2,.2);
@@ -22450,8 +22456,8 @@ var J = {
             y: U(t, e.x, e.z) + 0.1,
             z: e.z,
             life: 2.3,
-            size: 5 * e.R,
-            endSize: 11 * e.R,
+            size: 5,
+            endSize: 11,
             color: 16777215,
             shape: I.PixWaterSwirl,
             spin: -9,
@@ -22570,7 +22576,7 @@ var J = {
                     z: c,
                     life: 4,
                     size: 0.5,
-                    endSize: 4.6 * e.R,
+                    endSize: 4.6,
                     color: 16777215,
                     shape: I.PixWeb,
                     rot: F.range(0, H),
@@ -22833,7 +22839,7 @@ var J = {
           Lh(e, Math.cos(i), Math.sin(i), 16 * e.R, 2.2, 0.4, 1.8 + e.tier * 0.35, {
             status: `confusion`,
             statusChance: 0.2,
-          });
+          }, 1.8);
         }
         if ((J.whoosh(t.audio, 2, 0.16, 260), e.tier >= 1)) {
           (xh(t, e.x, e.y + 1, e.z, I.PixFeather, 24, 14, 0.7, 0.7, 6),
@@ -22925,7 +22931,7 @@ var J = {
           t.later(i * 0.12 + 0.1, () => {
             let n = r.pos;
             (wh(t, n.x, n.y + 1.5, n.z, I.PixFang, 2.2, 4.2, 0.35),
-              G(t, n.x, n.z, 6 * e.R, I.PixCrack, 16777215, 2.2),
+              G(t, n.x, n.z, 6, I.PixCrack, 16777215, 2.2),
               K(t, n.x, n.y, n.z, 7 * e.R, [11569880, Y.white], 2, 0.07, L.Jagged),
               q(e, n.x, n.z, 7 * e.R, 1.6, { knock: 5 }),
               t.shake(0.3),
@@ -23273,7 +23279,7 @@ var J = {
               let i = r.pos;
               (K(t, i.x, i.y, i.z, 9 * e.R, [14203e3, 11044954], 3, 0.08, L.Jagged),
                 bh(t, i.x, i.y, i.z, 14, 8),
-                G(t, i.x, i.z, 7 * e.R, I.PixCrack, 16777215, 2.5),
+                G(t, i.x, i.z, 7, I.PixCrack, 16777215, 2.5),
                 Nh(e, i.x, i.z, 4, {
                   len: 10 * e.R,
                   mul: 0.9,
@@ -23345,6 +23351,7 @@ var J = {
               cls: `physical`,
               flags: em.Mine | em.Explode,
               explodeR: 3 * e.R,
+              explosionArtRadius: 3,
               status: `poison`,
               statusChance: 1,
               size: 1.2,
@@ -23396,7 +23403,7 @@ var J = {
               let r = n.pos;
               (K(t, r.x, r.y, r.z, 10 * e.R, [6986464, 14203e3, Y.white], 3, 0.07, L.Jagged),
                 bh(t, r.x, r.y, r.z, 16, 9),
-                G(t, r.x, r.z, 8 * e.R, I.PixCrack, 16777215, 3),
+                G(t, r.x, r.z, 8, I.PixCrack, 16777215, 3),
                 Nh(e, r.x, r.z, 6, { len: 9 * e.R, glow: 11819752, mul: 0.6 }),
                 q(e, r.x, r.z, 10 * e.R, 2.2, { status: `stun`, statusChance: 1, knock: 6 }),
                 t.shake(0.5),
@@ -29844,10 +29851,11 @@ function I_(e, t) {
   return n;
 }
 var L_ = 3.4;
+const baseFusionScale = 1.25;
 function R_(e) {
-  return Math.min(L_, 1.25 * (Math.max(0.3, e) || 1) ** 0.9);
+  return Math.min(L_, baseFusionScale * (Math.max(0.3, e) || 1) ** 0.9);
 }
-var z_ = (e) => 1.25 * (Math.max(0.3, e) || 1) ** 0.9 >= L_,
+var z_ = (e) => baseFusionScale * (Math.max(0.3, e) || 1) ** 0.9 >= L_,
   B_ = [],
   V_ = -1,
   H_ = 0;
@@ -29875,7 +29883,7 @@ var W_ = 0.45,
           let e = r.x + F.range(-r.r, r.r) * 0.6,
             n = r.z + F.range(-r.r, r.r) * 0.6;
           i?.zone
-            ? i.zone(t, e, r.y, n, r.r, r.life)
+            ? i.zone(t, e, r.y, n, r.artRadius ?? r.r, r.life)
             : t.vfx.trail(e, r.y + 0.3, n, r.color, 0.5, am(r.type), 0.5);
         }
         if (r.tick <= 0) {
@@ -29980,6 +29988,9 @@ function Q_(e, t, n, r) {
     C = qp(S),
     w = C.shape ?? l,
     T = C.size ?? 1;
+  // Range upgrades move the hit boundary and the points where effects appear.
+  // Each painted frame keeps the dimensions authored for the base move.
+  const artRadius = o.area;
   if (o.arch === `orbit`) {
     if (((n.timer -= r), n.active > 0)) {
       ((n.active -= r), (n.phase += r * m));
@@ -29990,8 +30001,8 @@ function Q_(e, t, n, r) {
           s = b + Math.sin(i) * t,
           d = y + Math.sin(i * 2) * 0.2;
         C.orbit
-          ? C.orbit(e, o, d, s, i, 0.9 * Math.sqrt(a.area), c)
-          : (e.orbitals.push(o, d, s, 0.9 * Math.sqrt(a.area), c, l, i * 3, 0.5),
+          ? C.orbit(e, o, d, s, i, 0.9, c)
+          : (e.orbitals.push(o, d, s, 0.9, c, l, i * 3, 0.5),
             e.orbitalsGlow.push(o, d, s, 2, c, I.Soft, 0, 0.2, 0.5),
             Math.random() < 0.4 && e.vfx.trail(o, d, s, c, 0.35, I.Soft, 0.25));
         for (let t of e.enemies.within(o, s, 0.8, B_)) {
@@ -30017,7 +30028,7 @@ function Q_(e, t, n, r) {
       e.vfx.trail(v + Math.cos(n) * t, i.pos.y + 0.3, b + Math.sin(n) * t, c, 0.5, l, 0.6);
     }
     if ((e.auraRing(v, i.pos.y, b, t, c), (n.timer -= r), n.timer <= 0)) {
-      ((n.timer = h), a.aura?.(e, v, i.pos.y, b, t, c, !0), Y_(e, o.key, `cast`));
+      ((n.timer = h), a.aura?.(e, v, i.pos.y, b, t, c, !0, artRadius), Y_(e, o.key, `cast`));
       for (let n of e.enemies.within(v, b, t))
         e.combat.hit(n, u, { ...x, knock: 0.3, silent: Math.random() < 0.3 });
     }
@@ -30033,6 +30044,7 @@ function Q_(e, t, n, r) {
           z: b,
           y: i.pos.y,
           r: d,
+          artRadius,
           life: p,
           tick: 0,
           dmg: u,
@@ -30052,7 +30064,7 @@ function Q_(e, t, n, r) {
     let t = e.aimDir(13, n),
       i = t.x,
       a = t.z;
-    e.vfx.crafted.cone(n,v+i*.8,y,b+a*.8,i,a,d,o.type,.7*Math.sqrt(d/7));
+    e.vfx.crafted.cone(n,v+i*.8,y,b+a*.8,i,a,d,o.type,.7*Math.sqrt(artRadius/7),true,true,artRadius);
     if (n.tick <= 0) {
       n.tick = 0.1;
       for (let t of e.enemies.within(v, b, d)) {
@@ -30077,10 +30089,10 @@ function Q_(e, t, n, r) {
         p = Math.sin(a),
         m = i * f - s * p,
         h = i * p + s * f;
-      if (C.beam) C.beam(e, v + m * 0.6, y, b + h * 0.6, v + m * t, y, b + h * t, d, c);
+      if (C.beam) C.beam(e, v + m * 0.6, y, b + h * 0.6, v + m * t, y, b + h * t, artRadius, c);
       else {
-        (e.vfx.beams.spawn(v + m * 0.6, y, b + h * 0.6, v + m * t, y, b + h * t, d * 1.1, c, 0.05),
-          e.vfx.beams.spawn(v + m * 0.6, y, b + h * 0.6, v + m * t, y, b + h * t, d * 0.45, c, 0.05));
+        (e.vfx.beams.spawn(v + m * 0.6, y, b + h * 0.6, v + m * t, y, b + h * t, artRadius * 1.1, c, 0.05),
+          e.vfx.beams.spawn(v + m * 0.6, y, b + h * 0.6, v + m * t, y, b + h * t, artRadius * 0.45, c, 0.05));
         for (let n = 0; n < 2; n++) {
           let n = Math.random(),
             r = F.range(4, 9);
@@ -30208,9 +30220,10 @@ function Q_(e, t, n, r) {
           bounce: o.arch === `bolt` ? n.mods.bounce + a.bounces : 0,
           flags: g,
           explodeR: o.arch === `orb` ? d : 0,
+          explosionArtRadius: artRadius,
           status: o.status,
           statusChance: _,
-          size: (o.arch === `boomerang` ? 1.3 * Math.sqrt(d) : o.arch === `orb` ? 1 : 0.7) * T,
+          size: (o.arch === `boomerang` ? 1.3 * Math.sqrt(artRadius) : o.arch === `orb` ? 1 : 0.7) * T,
           shape: o.arch === `orb` ? (C.shape ?? I.Soft) : w,
           color: C.color,
           slot: t,
@@ -30219,7 +30232,7 @@ function Q_(e, t, n, r) {
           fx: S,
         });
       }
-      (C.cast?.(e, v, y, b, r.x, r.z, c, d),
+      (C.cast?.(e, v, y, b, r.x, r.z, c, artRadius),
         o.key !== 'ember' && e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
         Y_(e, o.key, `cast`, { k: f }, () => e.audio.shot(o.type, 0.6)));
       break;
@@ -30249,6 +30262,7 @@ function Q_(e, t, n, r) {
           cls: o.cls,
           flags: em.Arc | em.Explode,
           explodeR: d,
+          explosionArtRadius: artRadius,
           status: o.status,
           statusChance: _,
           size: 1.1 * T,
@@ -30292,7 +30306,7 @@ function Q_(e, t, n, r) {
             glow: 0.8,
           });
         }
-        (C.cast?.(e, v, y, b, t.x, t.z, c, d),
+        (C.cast?.(e, v, y, b, t.x, t.z, c, artRadius),
           Y_(e, o.key, `charge`),
           (n.charging = !0),
           e.later(0.5, () => {
@@ -30313,7 +30327,7 @@ function Q_(e, t, n, r) {
     case `cone`:
       ((n.active = p),
         (n.tick = 0),
-        C.cast?.(e, v, y, b, n.aimX, n.aimZ, c, d),
+        C.cast?.(e, v, y, b, n.aimX, n.aimZ, c, artRadius),
         Y_(e, o.key, `cast`, { dur: p }, () => e.audio.cone(o.type, p)));
       break;
     case `nova`:
@@ -30326,7 +30340,7 @@ function Q_(e, t, n, r) {
             s = i.pos.y,
             u = i.pos.z,
             d = t * (1 + n * 0.12);
-          if (C.nova) C.nova(e, a, s, u, d, c);
+          if (C.nova) C.nova(e, a, s, u, d, c, artRadius * (1 + n * 0.12));
           else {
             (e.vfx.ring(a, s, u, d, c, 0.45), e.vfx.ring(a, s, u, d * 0.7, 16777215, 0.3));
             for (let t = 0; t < (o.arch === `nova` ? 28 : 14); t++) {
@@ -30379,7 +30393,7 @@ function Q_(e, t, n, r) {
           m = l / f,
           h = v + p * Math.min(f, d * 0.6),
           g = b + m * Math.min(f, d * 0.6);
-        C.strike ? C.strike(e, h, y, g, p, m, d, c, r) : e.slash(h, y, g, p, m, d, c, r % 2 == 1);
+        C.strike ? C.strike(e, h, y, g, p, m, artRadius, c, r) : e.slash(h, y, g, p, m, artRadius, c, r % 2 == 1);
         for (let t of E.within(h, g, d * 0.75)) e.combat.groupHit(t, u, p, m);
       }
       (e.combat.flushGroup({ ...x, knock: 2.2 }), Y_(e, o.key, `cast`, void 0, () => e.audio.slash(o.type)));
@@ -30392,6 +30406,7 @@ function Q_(e, t, n, r) {
         return;
       }
       const drawGhost=o.key!=='flare-blitz';
+      const artLength=o.speed;
       for (let n = 0; n < f; n++) {
         let r = (n - (f - 1) / 2) * 0.35,
           a = Math.cos(r),
@@ -30400,7 +30415,7 @@ function Q_(e, t, n, r) {
           l = t.x * o + t.z * a,
           p = m;
         if(drawGhost)e.ghostDash(v, i.pos.y, b, s, l, p, c);
-        C.dash?.(e, v, i.pos.y, b, s, l, p, c);
+        C.dash?.(e, v, i.pos.y, b, s, l, p, c, artLength);
         for (let t of E.within(v + s * p * 0.5, b + l * p * 0.5, p * 0.55)) {
           let n = E.x[t] - v,
             r = E.z[t] - b,
@@ -30482,14 +30497,14 @@ function Q_(e, t, n, r) {
           e.later(a, () => {
             let t = U_(e) <= 0;
             (C.sky
-              ? C.sky(e, n, i, r, d, c)
+              ? C.sky(e, n, i, r, d, c, artRadius)
               : o.arch === `meteor`
                 ? (t
                     ? e.vfx.burst(n, i + 0.5, r, c, 8, d * 3, l, 1, 0.5, 10)
                     : (e.vfx.beams.spawn(n + 6, i + 30, r - 4, n, i, r, d * 0.5, c, 0.15, 0.7),
                       e.vfx.burst(n, i + 0.5, r, c, 34, d * 3, l, 1, 0.7, 10),
                       e.vfx.dust(n, i, r, 10127994, 16, d * 2)),
-                  e.vfx.flash(n, i + 1, r, c, d * 2.2, 0.2),
+                  e.vfx.flash(n, i + 1, r, c, artRadius * 2.2, 0.2),
                   t || e.shake(0.35, n, r))
                 : (o.type === `electric`
                     ? e.vfx.lightning(n + F.range(-1, 1), i + 22, r, n, i, r, c, 0.5, 8)
@@ -30524,6 +30539,7 @@ function Q_(e, t, n, r) {
           cls: o.cls,
           flags: em.Mine | em.Explode,
           explodeR: d,
+          explosionArtRadius: artRadius,
           status: o.status,
           statusChance: _,
           size: 0.9 * T,
@@ -30556,6 +30572,7 @@ function Q_(e, t, n, r) {
           cls: o.cls,
           flags: em.Pull | em.Explode | em.Spin,
           explodeR: d,
+          explosionArtRadius: artRadius,
           pierce: 99,
           status: o.status,
           statusChance: _,
@@ -30603,7 +30620,7 @@ function Q_(e, t, n, r) {
             pierce: 99,
             status: o.status,
             statusChance: _,
-            size: Math.max(1.4, h * 1.5) * T,
+            size: 1.4 * T,
             shape: C.shape ?? I.Soft,
             color: C.color,
             slot: t,
@@ -33590,7 +33607,6 @@ var mv = 30,
         e.playerFootRing ??= createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr}));
       e.playerFootRing.visible=!this.dead;
       e.playerFootRing.position.set(this.pos.x,p+.09,this.pos.z);
-      e.playerFootRing.material.uniforms.dwell.value = e.state === 'play' ? e.interactables.dwellProgress : -1;
     }
   },
   kv = 12,
@@ -33620,9 +33636,11 @@ var mv = 30,
     hordes = [];
     constructor(e) {
       ((this.run = e), (this.rng = new Ol(e.seed ^ 859847)), this.buildPool());
+      this.pace = wavePace(e.mode);
       let t = this.rng;
       for (let e = 0; e < 3; e++) this.addCard();
-      if (((this.credits = 0), e.endless)) {
+      this.credits = this.pace > 1 ? 14 : 0;
+      if (e.endless) {
         this.beats = [
           { kind: `card`, next: 60, every: [48, 72] },
           { kind: `alpha`, next: 150, every: [150, 150] },
@@ -33651,7 +33669,14 @@ var mv = 30,
           : n.push({ t: t.range(130, 230), kind: `event` }, { t: t.range(340, 460), kind: `event` }));
       let i = T.early[e.tier] ?? 0;
       if (i) for (let e of n) e.kind !== `card` && e.kind !== `event` && (e.t = Math.max(60, e.t - i));
-      (e.tier >= 2 && n.push({ t: 510, kind: `totem` }), n.sort((e, t) => e.t - t.t), (this.timeline = n));
+      if (e.tier >= 2) n.push({ t: 510, kind: `totem` });
+      for (const event of n) event.t /= this.pace;
+      if (this.pace > 1 && e.stage <= FOREST_COMBAT_ZONES) {
+        // Leave the guardian's normal fight time and a short walk to the exit.
+        const scheduled = zoneDuration(e.mode) - wy.guardian[e.stage - 1] - 10;
+        n.push({ t: Math.max(scheduled, bossSummonUnlockSeconds + bossSummonSeconds), kind: 'guardian' });
+      }
+      this.timeline = n.sort((a, b) => a.t - b.t);
     }
     buildPool() {
       let e = this.run.biome,
@@ -33695,7 +33720,7 @@ var mv = 30,
     }
     addCard() {
       let e = this.cardsDrawn++ % 3 == 1 && this.residentPool.length,
-        t = !e && this.run.stageTime > 240 && this.latePool.length && this.rng.chance(0.4),
+        t = !e && this.run.stageTime * this.pace > 240 && this.latePool.length && this.rng.chance(0.4),
         n = e ? this.residentPool : t ? this.latePool : this.pool,
         r = new Set(this.cards.map((e) => e.id)),
         i = n.find((e) => !r.has(e.id)) ?? this.pool[0];
@@ -33713,7 +33738,7 @@ var mv = 30,
     effTime() {
       if (this.run.endless) return we(this.run.time);
       if (this.run.tower) return this.run.tower.vmin * 60;
-      let e = this.run.stageTime;
+      let e = this.run.stageTime * this.pace;
       return e + (p[this.run.stage - 1] ?? 0) * Math.min(1, e / 20);
     }
     static hpCurve(e, t) {
@@ -33723,13 +33748,13 @@ var mv = 30,
       return (1 + t * 0.3 + i * i * r) * n;
     }
     static BOSS_ZONE_HP = [0.8, 0.55, 0.5, 0.5];
-    hpMult(t = 0) {
+    hpMult(t = 0, minutes) {
       let n = this.run.endless;
       if (n) return _(Math.max(t, this.run.time / 60)) * n.curse.hp * this.run.player.stats.difficulty;
       let r = this.run.tower;
       return r?.beyond
         ? _(Math.max(t, r.vmin)) * r.curse.hp * this.run.player.stats.difficulty
-        : e.hpCurve(this.run.stage, Math.max(t, this.effTime() / 60)) *
+        : e.hpCurve(this.run.stage, Math.max(t, minutes ?? this.effTime() / 60)) *
             this.run.diff.enemyHp *
             this.run.player.stats.difficulty *
             this.swarmMult(4);
@@ -33813,13 +33838,14 @@ var mv = 30,
       }
     }
     spawnCard(e, t = 0, n = 1) {
-      let r = this.spawnPoint();
+      let r = this.pace > 1 && this.run.stageTime < 45 ? this.spawnPoint(14, 22) : this.spawnPoint();
       if (!r) return;
-      let i = this.run.stage === 1 && this.run.stageTime < 90,
+      let waveTime = this.run.stageTime * this.pace;
+      let i = this.run.stage === 1 && waveTime < 90,
         a = this.run.endless,
         o = a
           ? Math.min(0.25, 0.012 + (this.run.time / 60) * 0.004) * a.curse.elite
-          : 0.012 + (this.run.stageTime / 60) * 0.004 + (this.run.stage - 1) * 0.03,
+          : 0.012 + (waveTime / 60) * 0.004 + (this.run.stage - 1) * 0.03,
         s =
           !i &&
           this.rng.chance(
@@ -33840,14 +33866,16 @@ var mv = 30,
         return;
       }
       let r = n.stageTime;
-      for (let e of this.timeline) e.done || r < e.t || ((e.done = !0), this.fire(e.kind));
+      for (const event of this.timeline) {
+        if (!event.done && r >= event.t) event.done = this.fire(event.kind) !== false;
+      }
       let i = this.effTime();
       this.caps(
-        Math.round((10 + i * 0.65 + (i / 60) ** 2 * 4.5) * (1 + (n.stage - 1) * 0.6) * (T.cap[n.tier] ?? 1)),
+        Math.round((14 + i * 0.65 + (i / 60) ** 2 * 4.5) * (1 + (n.stage - 1) * 0.6) * (T.cap[n.tier] ?? 1)),
       );
       let a = n.player.stats,
         o =
-          naturalCreditRate(Tt(i), r, n.stage) *
+          naturalCreditRate(Tt(i), r, n.stage, n.mode) *
           (1 + (n.stage - 1) * 0.35) *
           a.difficulty *
           a.enemyAmount *
@@ -33872,7 +33900,7 @@ var mv = 30,
         o = i / 60;
       this.caps(Math.round((10 + a * 0.65 + (a / 60) ** 2 * 4.5) * (1 + 0.012 * o)));
       let s = n.player.stats,
-        c = naturalCreditRate(ft(i), i, n.stage) * s.difficulty * s.enemyAmount * r.curse.amount * (r.night ? 2 : 1);
+        c = naturalCreditRate(ft(i), i, n.stage, n.mode) * s.difficulty * s.enemyAmount * r.curse.amount * (r.night ? 2 : 1);
       this.credits = Math.min(this.credits + c * t, c * 2 + 10 * this.weight);
       let l = e.MAX_SPAWNS_PER_SEC;
       if (
@@ -33885,6 +33913,20 @@ var mv = 30,
     }
     fire(e) {
       let t = this.run;
+      if (e === 'guardian') {
+        if (t.bossSpawned || t.stageCleared) return;
+        if (t.stageTime < bossSummonUnlockSeconds + bossSummonSeconds || t.state !== 'play' ||
+            t.boss.alive || t.mewtwo.active || (t.coop && (!t.coop.isHost || t.coop.pendingBoss))) return false;
+        // Let an ongoing hold finish before the scheduled guardian encounter takes over.
+        if (t.interactables.nearest?.kind === 'boss' && t.interactables.dwellProgress > 0) return false;
+        t.spawnBoss(t.player.pos.x, t.player.pos.z);
+        const vortex = t.interactables.list.find(facility => facility.kind === 'boss');
+        if (vortex) {
+          vortex.used = true;
+          t.interactables.dim(vortex);
+        }
+        return;
+      }
       if (e === `card` || this.cards.length)
         switch (e) {
           case `card`:
@@ -33927,7 +33969,7 @@ var mv = 30,
             let e = this.rng.pick(this.cards),
               n = t.player.pos,
               r = Math.round(
-                (t.stage === 1 && t.stageTime < 300 ? 40 : 46 + t.stage * 12) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE,
+                (t.stage === 1 && t.stageTime * this.pace < 300 ? 40 : 46 + t.stage * 12) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE,
               );
             for (let i = 0; i < r; i++) {
               let a = (i / r) * Math.PI * 2,
@@ -33960,7 +34002,7 @@ var mv = 30,
               s = -o,
               l = a,
               u = Math.round(
-                (t.stage === 1 && t.stageTime < 300 ? 30 : 34 + t.stage * 8) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE,
+                (t.stage === 1 && t.stageTime * this.pace < 300 ? 30 : 34 + t.stage * 8) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE,
               );
             for (let e = 0; e < u; e++) {
               let i = ((e % 17) - 8) * 2.2,
@@ -33985,22 +34027,24 @@ var mv = 30,
           case `totem`:
           case `summoner`: {
             let n = e === `totem` ? t.minibosses.spawnTotem() : t.minibosses.spawnSummoner();
+            const retryAt = t.stageTime + 20 / this.pace;
             !n && t.endless
               ? this.retry(e, 20)
               : !n &&
                 !t.stageCleared &&
-                t.stageTime + 20 < 570 &&
-                this.timeline.push({ t: t.stageTime + 20, kind: e });
+                retryAt < 570 / this.pace &&
+                this.timeline.push({ t: retryAt, kind: e });
             break;
           }
           case `event`: {
             let n = t.events.startRandom();
+            const retryAt = t.stageTime + 15 / this.pace;
             !n && t.endless
               ? this.retry(e, 15)
               : !n &&
                 !t.stageCleared &&
-                t.stageTime + 15 < 540 &&
-                this.timeline.push({ t: t.stageTime + 15, kind: e });
+                retryAt < 540 / this.pace &&
+                this.timeline.push({ t: retryAt, kind: e });
             break;
           }
           case `elitewave`:
@@ -34105,7 +34149,7 @@ var mv = 30,
     startFinalSwarm() {
       this.finalSwarm ||
         ((this.finalSwarm = !0),
-        (this.finalSwarmAt = this.run.stageTime),
+        (this.finalSwarmAt = zoneDuration(this.run.mode)),
         this.run.ui.banner(c(`¡ENJAMBRE FINAL!`), c(`No deberías seguir aquí...`), `#ff3a5a`),
         this.run.audio.alarm());
     }
@@ -34287,7 +34331,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     shinyAt = 1 / 0;
     shinyStage = 0;
     constructor(e) {
-      ((this.run = e), (this.ball = new Om(e)), (this.spawnAt = F.range(50, 120)));
+      ((this.run = e), (this.ball = new Om(e)), (this.spawnAt = F.range(50, 120) / wavePace(e.mode)));
     }
     beam = null;
     beamShiny = !1;
@@ -34336,16 +34380,16 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
           (this.shinyAt =
             Math.random() <
             (Yn.zone + Math.min(Yn.zone, t.player.stats.luck / Yn.luckDiv)) * t.meta.shinyRate()
-              ? F.range(40, 420)
+              ? F.range(40, 420) / wavePace(t.mode)
               : 1 / 0),
           t.stage === 1 &&
             t.boosts.has(`shiny-stone`) &&
-            (this.shinyAt = Math.min(this.shinyAt, F.range(40, 150))));
+            (this.shinyAt = Math.min(this.shinyAt, F.range(40, 150) / wavePace(t.mode))));
         let e = !t.coop && this.classicPool().length > 0;
         this.classicAt =
           e &&
           Math.random() < (mn.zone + Math.min(mn.zone, t.player.stats.luck / mn.luckDiv)) * t.meta.shinyRate()
-            ? F.range(60, 420)
+            ? F.range(60, 420) / wavePace(t.mode)
             : 1 / 0;
       }
       if ((this.state === `idle` || this.state === `done`) && t.stageTime >= this.shinyAt)
@@ -34916,7 +34960,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
       ((this.run = e),
         (this.force = t),
         (this.endless = n),
-        (this.at = t ? e.stageTime + 0.5 : F.range(70, 150)),
+        (this.at = t ? e.stageTime + 0.5 : F.range(70, 150) / wavePace(e.mode)),
         !t &&
         (e.endless ||
           (e.stage !== 2 && e.stage !== 3) ||
@@ -35014,7 +35058,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     spawnNow() {
       let e = this.run,
         t = e.player.pos,
-        n = Math.max(5, e.stageTime / 60),
+        n = Math.max(5, e.stageTime * wavePace(e.mode) / 60),
         r = this.endless
           ? e.director.hpMult() * 3
           : Av.hpCurve(e.stage, n) *
@@ -35324,13 +35368,18 @@ function Hb(e, t = 0, n = 0, r) {
   for (let e = 0; e < 5; e++) if (((u -= c[e]), u <= 0)) return e;
   return 0;
 }
+function newMoveOffer(id) {
+  return {kind: 'newMove', id, rarity: 0, key: 'm' + id};
+}
 function Ub(e, t) {
   let n = e.player;
-  n.stats;
+  // The first two earned choices fill the opening loadout, even if several
+  // levels were queued together by XP or a starting candy.
+  const opening = e.stage === 1 && !e.endless && !e.tower && n.level - e.pendingLevels < 3;
   let r = [],
     i = e.banished,
     a = [],
-    o = [];
+    eligibleMoves = [];
   if (n.moves.some((e, t) => t < n.moveSlots && !e)) {
     let t = n.level * Lb + 10,
       r = n.ownedMoveIds(),
@@ -35339,9 +35388,10 @@ function Ub(e, t) {
       l = Ye;
     c &&
       c.kit.forEach((e, t) => {
-        let o = k.movesByKey.get(e)?.id;
-        if (!(o == null || r.has(o) || i.has(`m` + o) || n.level < l[t]))
-          for (let e = 0; e < 3; e++) a.push(() => ({ kind: `newMove`, id: o, rarity: 0, key: `m` + o }));
+        const id = k.movesByKey.get(e)?.id;
+        if (id == null || r.has(id) || i.has(`m` + id) || n.level < l[t] || !O_(id)) return;
+        if (opening) eligibleMoves.push(id);
+        for (let e = 0; e < 3; e++) a.push(() => newMoveOffer(id));
       });
     let u;
     if (
@@ -35355,9 +35405,9 @@ function Ub(e, t) {
       u.length && (!c || Math.random() < 0.35))
     ) {
       let e = u[Math.floor(Math.random() * u.length)];
-      a.push(() => ({ kind: `newMove`, id: e, rarity: 0, key: `m` + e }));
+      a.push(() => newMoveOffer(e));
     }
-    o.push(...u);
+    eligibleMoves.push(...u);
     let d = new Set(),
       f = n.moves.some((e) => e?.def.arch === `random`);
     for (let t of y)
@@ -35378,11 +35428,16 @@ function Ub(e, t) {
             !(f && O_(a).arch === `random`) &&
             d.add(a);
         });
-    if ((o.push(...d), d.size && Math.random() < 0.5)) {
+    if ((eligibleMoves.push(...d), d.size && Math.random() < 0.5)) {
       let e = [...d],
         t = e[Math.floor(Math.random() * e.length)];
-      a.push(() => ({ kind: `newMove`, id: t, rarity: 0, key: `m` + t }));
+      a.push(() => newMoveOffer(t));
     }
+  }
+  if (opening) {
+    const ids = F.shuffle([...new Set(eligibleMoves)]);
+    r.push(...ids.slice(0, t).map(newMoveOffer));
+    if (r.length === t) return r;
   }
   n.moves.forEach((t, r) => {
     !t ||
@@ -35413,7 +35468,7 @@ function Ub(e, t) {
           : c.push(t.key));
   }
   F.shuffle(a);
-  let l = new Set(),
+  let l = new Set(r.map(offer => offer.key)),
     u = a.findIndex((e) => {
       let t = e();
       return t?.kind === `newMove` || t?.kind === `upMove`;
@@ -35428,10 +35483,10 @@ function Ub(e, t) {
     n && !l.has(n.key) && (l.add(n.key), r.push(n));
   }
   if (r.length < t)
-    for (let e of F.shuffle([...new Set(o)])) {
+    for (let e of F.shuffle([...new Set(eligibleMoves)])) {
       if (r.length >= t) break;
       let n = `m` + e;
-      l.has(n) || (l.add(n), r.push({ kind: `newMove`, id: e, rarity: 0, key: n }));
+      l.has(n) || (l.add(n), r.push(newMoveOffer(e)));
     }
   if (r.length < t)
     for (let n of F.shuffle(c)) {
@@ -36180,8 +36235,9 @@ var jx = [
         let damageTick=0,spokeTick=0;const key={};
         art.play('seal',x,U(t,x,z)+.15,z,6*scale,{life:.28,mode:1,height:8*scale,priority:2});
         W(t,duration,(age,dt)=>{
-          const phase=age/duration,radius=(2.4+(main?phase*1.6:0))*scale*e.R,y=U(t,x,z);
-          art.fusionVortex(key,x,y+.12,z,radius,main);
+          const phase=age/duration,baseRadius=(2.4+(main?phase*1.6:0))*scale;
+          const radius=baseRadius*e.R,y=U(t,x,z);
+          art.fusionVortex(key,x,y+.12,z,baseRadius*baseFusionScale,main);
           kh(t,x,z,radius+3,22*dt);
           damageTick-=dt;
           if(damageTick<=0){damageTick=.25;q(e,x,z,radius,.22,{status:'burn',statusChance:.25,knock:0,silent:Math.random()<.6});}
@@ -36195,11 +36251,12 @@ var jx = [
             }
           }
         },()=>{
-          const y=U(t,x,z),radius=(main?5:3)*scale*e.R;
-          art.fusionBurst(x,y,z,radius,main);
+          const y=U(t,x,z),baseRadius=(main?5:3)*scale,radius=baseRadius*e.R;
+          const artRadius=baseRadius*baseFusionScale;
+          art.fusionBurst(x,y,z,artRadius,main);
           q(e,x,z,radius,main?1.8:.9,{status:'burn',statusChance:.8,knock:4});
           if(main){
-            gx(e,x,z,radius*.7,2.5,.12,'burn',.5,'flame-wheel',e.type,{authoredFire:true});
+            gx(e,x,z,radius*.7,2.5,.12,'burn',.5,'flame-wheel',e.type,{authoredFire:true,artRadius:artRadius*.7});
           }
           t.shake(main?.25:.1,x,z);M(t.audio,main?.8:.4);fs(t.audio,.18,.6);
         });
@@ -36253,8 +36310,8 @@ var jx = [
           y: U(t, n.x, n.z) + 0.1,
           z: n.z,
           life: a,
-          size: 4 * e.R,
-          endSize: 6 * e.R,
+          size: 4 * baseFusionScale,
+          endSize: 6 * baseFusionScale,
           color: 16777215,
           shape: I.PixWaterSwirl,
           spin: -10,
@@ -39321,8 +39378,8 @@ var Nx = [
                   y: p,
                   z: f,
                   life: 0.06,
-                  size: 2.6 * e.R,
-                  endSize: 2.4 * e.R,
+                  size: 2.6 * baseFusionScale,
+                  endSize: 2.4 * baseFusionScale,
                   color: 16777215,
                   shape: I.PixSlash,
                   rot: s + Math.PI / 2,
@@ -40601,7 +40658,7 @@ var Nx = [
                 z: d,
                 life: 2.6 * e.D,
                 size: 1,
-                endSize: 3.8 * e.R,
+                endSize: 3.8 * baseFusionScale,
                 color: 16777215,
                 shape: I.PixSludge,
                 rot: F.range(0, H),
@@ -40628,6 +40685,7 @@ var Nx = [
                       radius: 0.6,
                       flags: Sx.Arc | Sx.Explode,
                       explodeR: 2 * e.R,
+                      explosionArtRadius: 2 * baseFusionScale,
                       status: `poison`,
                       statusChance: 0.5,
                       shape: I.PixToxic,
@@ -40991,7 +41049,7 @@ var Wx = [
           Eh(t, r, a, i, 0.4, bl.PixPincer, 3.6, 18, 3),
           t.later(0.4, () => {
             (Np(t, r, a, i, 3.6 * e.R, 1.4),
-              G(t, r, i, 3.6 * e.R, I.PixCrack, 16777215, 1.6),
+              G(t, r, i, 3.6 * baseFusionScale, I.PixCrack, 16777215, 1.6),
               K(t, r, a, i, 3.6 * e.R, [15224890, Y.water], 2, 0.06, L.Ripple),
               q(e, r, i, 3.6 * e.R, 1.8, { status: `wet`, statusChance: 1, knock: 4 }),
               t.shake(0.3, r, i),
@@ -41305,7 +41363,7 @@ var Wx = [
           t.later(o, () => {
             (t.vfx.flash(r, a + 1, i, 16756848, 4, 0.18),
               K(t, r, a, i, 3.6 * e.R, [15245424, 16777215], 3, 0.06, L.Jagged),
-              G(t, r, i, 3.6 * e.R, I.PixCrack, 16777215, 1.8),
+              G(t, r, i, 3.6 * baseFusionScale, I.PixCrack, 16777215, 1.8),
               bh(t, r, a, i, 10, 6),
               t.vfx.dust(r, a, i, Rx, 10, 6),
               q(e, r, i, 3.6 * e.R, 2, { status: `stun`, statusChance: 0.4, knock: 6 }),
@@ -41695,7 +41753,7 @@ var Wx = [
             (K(t, c, u, l, 4.2 * e.R, [Rx, 14207144, Rx], 3, 0.06, L.Jagged),
               bh(t, c, u, l, 14, 7),
               t.vfx.dust(c, u, l, Rx, 14, 7),
-              G(t, c, l, 4.2 * e.R, I.PixCrack, 16777215, 2),
+              G(t, c, l, 4.2 * baseFusionScale, I.PixCrack, 16777215, 2),
               q(e, c, l, 4.2 * e.R, 2, _x(e, { status: `stun`, statusChance: 0.4, knock: 6 })),
               t.shake(0.35, c, l),
               M(t.audio, 0.9));
@@ -41987,7 +42045,7 @@ var Wx = [
                 z: r.z,
                 life: 1.4,
                 size: 1,
-                endSize: 3.4 * e.R,
+                endSize: 3.4 * baseFusionScale,
                 color: 16777215,
                 shape: Sl.PixInk,
                 rot: F.range(0, H),
@@ -42280,8 +42338,8 @@ var Xx = [
             vy: 4,
             drag: 9,
             life: i,
-            size: 2.4 * e.R,
-            endSize: 2.6 * e.R,
+            size: 2.4 * baseFusionScale,
+            endSize: 2.6 * baseFusionScale,
             color: 16777215,
             shape: wl.PixPane,
             rot: o,
@@ -42643,7 +42701,7 @@ var Xx = [
           rot: F.range(-0.3, 0.3),
         });
       }
-      (G(t, n.x, n.z, 4.5 * e.R, I.PixCrack, 16777215, r + 1),
+      (G(t, n.x, n.z, 4.5 * baseFusionScale, I.PixCrack, 16777215, r + 1),
         q(e, n.x, n.z, 3 * e.R, 0.8, { status: `burn`, statusChance: 0.5, knock: 4 }),
         t.shake(0.2, n.x, n.z));
       let o = 0,
@@ -43173,8 +43231,8 @@ var Xx = [
             y: o,
             z: a,
             life: 0.25,
-            size: 3 * e.R,
-            endSize: 3.6 * e.R,
+            size: 3 * baseFusionScale,
+            endSize: 3.6 * baseFusionScale,
             color: 16777215,
             shape: El.PixScythe,
             rot: r,
@@ -43184,8 +43242,8 @@ var Xx = [
               y: o,
               z: a,
               life: 0.2,
-              size: 3.4 * e.R,
-              endSize: 3.8 * e.R,
+              size: 3.4 * baseFusionScale,
+              endSize: 3.8 * baseFusionScale,
               color: 16777215,
               shape: I.PixSlash,
               rot: r,
@@ -43579,8 +43637,8 @@ var Xx = [
                 y: i + 2.2,
                 z: r.z,
                 life: 0.08,
-                size: 3.2 * c * e.R,
-                endSize: 2.8 * c * e.R,
+                size: 3.2 * c * baseFusionScale,
+                endSize: 2.8 * c * baseFusionScale,
                 color: px(16756794),
                 shape: I.Soft,
                 glow: 0,
@@ -43786,7 +43844,7 @@ var eS = [
         (t.vfx.telegraph(n, i, r, a, 15259832, 0.55),
           t.vfx.crafted.fireFamily.completion.starFall(n, i, r, 0.55),
           t.later(0.55, () => {
-            (t.vfx.crafted.fireFamily.completion.starImpact(n, i, r, a),
+            (t.vfx.crafted.fireFamily.completion.starImpact(n, i, r, 4.5 * baseFusionScale),
               q(e, n, r, a, 2.2, { knock: 5 }));
             let o = 8 + mx(e, 2, 6);
             for (let t = 0; t < o; t++) {
@@ -43837,14 +43895,14 @@ var eS = [
           i,
           (i, s) => {
             let c = U(t, n, r) + 5;
-            t.vfx.crafted.fireFamily.sun(e, n, c, r, i);
+            t.vfx.crafted.fireFamily.sun(e, n, c, r, i, baseFusionScale);
             if (((o -= s), o <= 0)) {
               o = 0.12;
               let i = bx(n, r, a, 0.5),
                 s = U(t, i.x, i.z);
               (t.vfx.crafted.fireFamily.sunRain(i.x, c - 0.5, i.z, s, n, r),
                 t.later(0.3, () => {
-                  t.vfx.crafted.fireFamily.sunImpact(i.x, s, i.z, 1.8 * e.R);
+                  t.vfx.crafted.fireFamily.sunImpact(i.x, s, i.z, 1.8 * baseFusionScale);
                   q(e, i.x, i.z, 1.8 * e.R, 0.3, {
                     status: `burn`,
                     statusChance: 0.3,
@@ -43856,7 +43914,7 @@ var eS = [
           },
           () => {
             let i = U(t, n, r);
-            t.vfx.crafted.fireFamily.sunBurst(n, i, r, a);
+            t.vfx.crafted.fireFamily.sunBurst(n, i, r, 5 * baseFusionScale);
             (q(e, n, r, a, 2, { status: `burn`, statusChance: 0.8, knock: 4 }),
               t.shake(0.25, n, r),
               M(t.audio, 0.8),
@@ -44119,7 +44177,7 @@ var eS = [
             color: 16777215,
             shape: I.PixFist,
           }),
-            G(t, r, i, 4 * e.R, I.PixCrack, 16777215, 1.6),
+            G(t, r, i, 4 * baseFusionScale, I.PixCrack, 16777215, 1.6),
             bh(t, r, a, i, 10, 5),
             q(e, r, i, 4 * e.R, 1.4, { knock: 6, status: `stun`, statusChance: 0.3 }),
             t.shake(0.25, r, i),
@@ -44157,6 +44215,7 @@ var eS = [
               radius: 0.7,
               flags: Sx.Arc | Sx.Explode,
               explodeR: 3 * e.R,
+              explosionArtRadius: 3 * baseFusionScale,
               status: `poison`,
               statusChance: 0.8,
               shape: I.PixToxic,
@@ -44174,7 +44233,7 @@ var eS = [
                 z: r.z,
                 life: 3 * e.D,
                 size: 1,
-                endSize: 3.6 * e.R,
+                endSize: 3.6 * baseFusionScale,
                 color: 16777215,
                 shape: I.PixSludge,
                 rot: F.range(0, H),
@@ -44238,7 +44297,7 @@ var eS = [
         Lh(e, e.ax, e.az, 15 * e.R, 1.8 * e.D, 0.5, 2 + mx(e, 0.3, 1), {
           status: `knock`,
           statusChance: 0.1,
-        });
+        }, 2);
         for (let t = 1; t <= mx(e, 0.5, 3); t++) {
           let n = (t % 2 ? 1 : -1) * 0.45 * Math.ceil(t / 2),
             r = Math.cos(n),
@@ -44345,6 +44404,7 @@ var eS = [
                 radius: 0.6,
                 flags: Sx.Homing | Sx.Explode,
                 explodeR: 1.8 * e.R,
+                explosionArtRadius: 1.8 * baseFusionScale,
                 target: a ?? -1,
                 status: `poison`,
                 statusChance: 0.3,
@@ -44460,7 +44520,7 @@ var eS = [
             (n, r, i) => {
               (t.vfx.crafted.fireFamily.completion.dragonImpact(n, r, i),
                 q(e, n, i, 3 * e.R, 0.95, { knock: 2 }),
-                gx(e, n, i, 1.8 * e.R, 1.6, 0.12, null, 0, `completion-dragon-floor`),
+                gx(e, n, i, 1.8 * e.R, 1.6, 0.12, null, 0, `completion-dragon-floor`, e.type, {artRadius: 1.8 * baseFusionScale}),
                 M(t.audio, 0.4));
             },
           ));
@@ -44485,8 +44545,8 @@ var eS = [
           y: U(t, n.x, n.z) + 0.1,
           z: n.z,
           life: 1.2,
-          size: r * 0.6,
-          endSize: r * 2.1,
+          size: 8 * baseFusionScale * 0.6,
+          endSize: 8 * baseFusionScale * 2.1,
           color: 2759226,
           shape: I.Soft,
         }),
@@ -44768,7 +44828,7 @@ var eS = [
           1 * e.D,
           (o, s) => {
             let c = t.player.pos;
-            t.vfx.crafted.fireFamily.wildfire(e, c.x, c.y, c.z, n, r, i, o);
+            t.vfx.crafted.fireFamily.wildfire(e, c.x, c.y, c.z, n, r, i, o, 12 * baseFusionScale);
             if (((a -= s), a <= 0)) {
               a = 0.12;
               for (let a of t.enemies.within(c.x, c.z, i)) {
@@ -45158,7 +45218,7 @@ var eS = [
             let n = 0;
             (W(t, 0.8 * e.D, (o, s) => {
               let c = t.player.pos;
-              t.vfx.crafted.fireFamily.completion.charmBreath(e, c.x, c.y + 1, c.z, i, a, r);
+              t.vfx.crafted.fireFamily.completion.charmBreath(e, c.x, c.y + 1, c.z, i, a, r, 11 * baseFusionScale);
               if (((n -= s), n <= 0)) {
                 n = 0.1;
                 for (let n of t.enemies.within(c.x, c.z, r)) {
@@ -45620,21 +45680,7 @@ function CS(e) {
     t.kn(0.6, { ft: `lowpass`, f: 1400, to: 0.15, v: 0.16, d: 1.5 }),
     [784, 988, 1175, 1568].forEach((e, n) => t.kt(e, 0.6, { v: 0.04, d: 2 + n * 0.07, a: 0.01 })));
 }
-var wS = {
-    altar: 1,
-    challenge: 1,
-    boss: 1,
-    fossil: 1,
-    rhydon: 1,
-    bill: 1,
-    meowth: 2,
-    ditto: 2,
-    hypno: 2,
-    magnet: 2,
-    slots: 2,
-    nest: 2,
-  },
-  TS = [92, 92, 93, 93, 94];
+var TS = [92, 92, 93, 93, 94];
 function DS(e) {
   let t = 35 * e;
   return (
@@ -45663,95 +45709,12 @@ function PS(e, t) {
   let n = NS * ex[t] * jS(e);
   return Math.round(Math.max([10, 18, 30, 50, 90][t] * e.stage, Math.min(n, MS[t] * OS(e))));
 }
-var IS = 201,
-  RS = [
-    {
-      color: 5959935,
-      css: `#2ec8e0`,
-      tint: [1, 1, 1, 0],
-      unown: 1,
-      charge: 8,
-      r: 6,
-      drain: 6,
-      min: 0,
-      offers: 3,
-      picks: 1,
-      wave: 0,
-      floor: 0,
-      seal: 0,
-    },
-    {
-      color: 5953658,
-      css: `#5ad87a`,
-      tint: [0.6, 1.4, 0.7, 0.4],
-      unown: 2,
-      charge: 14,
-      r: 5.5,
-      drain: 5,
-      min: 1,
-      offers: 3,
-      picks: 1,
-      wave: 0,
-      floor: 0,
-      seal: 0,
-    },
-    {
-      color: 12611839,
-      css: `#c070ff`,
-      tint: [1.25, 0.6, 1.5, 0.45],
-      unown: 3,
-      charge: 22,
-      r: 5,
-      drain: 4,
-      min: 2,
-      offers: 3,
-      picks: 1,
-      wave: 4,
-      floor: 3,
-      seal: 0,
-    },
-    {
-      color: 16765498,
-      css: `#ffd23a`,
-      tint: [1.45, 1.15, 0.35, 0.45],
-      unown: 5,
-      charge: 35,
-      r: 4.5,
-      drain: 3,
-      min: 3,
-      offers: 4,
-      picks: 2,
-      wave: 6,
-      floor: 5,
-      seal: 90,
-    },
-    {
-      color: 9099519,
-      css: `#4aa8ff`,
-      tint: [0.8, 1.1, 1.5, 0.5],
-      unown: 0,
-      charge: 10,
-      r: 6.5,
-      drain: 3,
-      min: 1,
-      offers: 3,
-      picks: 1,
-      wave: 2,
-      floor: 0,
-      seal: 0,
-    },
-  ];
-function zS(e) {
-  return (
-    [
-      c(`Altar Unown`),
-      c(`Altar Unown raro`),
-      c(`Altar Unown épico`),
-      c(`Altar Unown dorado`),
-      c(`Fragmento de cometa`),
-    ][e] ?? c(`Altar Unown`)
-  );
-}
+var RS = [
+  {color: 5959935, css: '#2ec8e0', charge: 8, r: 6, drain: 6, min: 0, offers: 3, picks: 1},
+  {color: 5953658, css: '#5ad87a', charge: 14, r: 5.5, drain: 5, min: 1, offers: 3, picks: 1},
+  {color: 12611839, css: '#c070ff', charge: 22, r: 5, drain: 4, min: 2, offers: 3, picks: 1},
+  {color: 16765498, css: '#ffd23a', charge: 35, r: 4.5, drain: 3, min: 3, offers: 4, picks: 2},
+];
 var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
   VS = { altar: 200, challenge: 240, ditto: 150, magnet: 150, berry: 120 };
 function HS(e, t, n) {
@@ -45773,11 +45736,15 @@ var GS = class e {
     dwellTime = 0;
     waitingForGold = false;
     warnedPortal = null;
-    get dwellProgress() {
-      return this.nearest && this.dwellTime > 0 && this.dwellTime < facilityDwellSeconds
-        ? this.dwellTime / facilityDwellSeconds : -1;
+    get dwellDuration() {
+      return this.nearest?.kind === 'boss' ? bossSummonSeconds : facilityDwellSeconds;
     }
-    updateDwell(target, seconds) {
+    get dwellProgress() {
+      const duration = this.dwellDuration;
+      return this.nearest && this.dwellTime > 0 && this.dwellTime < duration
+        ? this.dwellTime / duration : -1;
+    }
+    updateDwell(target, seconds, gameSeconds) {
       const run = this.run;
       if (target !== this.nearest) {
         this.nearest = target;
@@ -45786,22 +45753,40 @@ var GS = class e {
         this.warnedPortal = null;
       }
       if (!target || run.state !== 'play' || run.player.dead) return;
+      if (target.kind === 'boss') {
+        const unlockedFor = run.stageTime - bossSummonUnlockSeconds;
+        if (unlockedFor < 0) {
+          this.dwellTime = 0;
+          return;
+        }
+        // Only the unlocked part of a crossing frame contributes to the three-second hold.
+        if (gameSeconds > 0 && unlockedFor < gameSeconds) seconds *= unlockedFor / gameSeconds;
+      }
       this.waitingForGold = run.gold < this.interactionCost(target);
       if (this.waitingForGold) {
         this.dwellTime = 0;
         return;
       }
-      if (this.dwellTime >= facilityDwellSeconds) return;
+      const duration = this.dwellDuration;
+      if (this.dwellTime >= duration) return;
       if (run.coop?.lifting || run.capture.throwing || run.capture.canThrow()) {
         this.dwellTime = 0;
         return;
       }
-      this.dwellTime = Math.min(facilityDwellSeconds, this.dwellTime + seconds);
-      if (this.dwellTime === facilityDwellSeconds) this.interact(target);
+      this.dwellTime += seconds;
+      // Frame deltas can add up a fraction below the exact duration.
+      if (this.dwellTime + 1e-9 >= duration) {
+        this.dwellTime = duration;
+        this.interact(target);
+      }
     }
     constructor(run, deferred = false) {
       this.run = run;
       run.r.scene.add(this.group);
+      this.dwellRing = createFacilityDwellRing(this.group, {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr});
+      // Pens, keyboards and other low props are walkable but still have visible models.
+      this.lowProps = (run.terrain.zxProps ?? []).filter(p => p.walkable)
+        .map(p => paperBox(p.x, p.z, p.w, p.d, p.h, p.angle));
       if (!deferred) this.populate();
     }
     disposed = !1;
@@ -45835,8 +45820,17 @@ var GS = class e {
         facility.retry = setTimeout(() => this.loadDevice(facility), 10000);
         return;
       }
+      const scale = facility.kind === 'berry' ? 0.5 : 1;
+      model.scale.multiplyScalar(scale);
       group.add(model);
-      group.userData.h = model.userData.displayHeight;
+      group.userData.h = model.userData.displayHeight * scale;
+      facility.ringRadius = Math.max(facility.r, model.userData.footprintRadius * scale + 0.7);
+      if (facility.kind === 'altar') {
+        const color = new Ei(RS[facility.data.tier].color);
+        const ring = facility.chargeRing = createAltarChargeRing(group, {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr}, color);
+        ring.position.y = .12;
+        ring.scale.setScalar(facility.ringRadius);
+      }
       facility.model = model;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
       this.deviceFx.add(model);
@@ -45844,6 +45838,13 @@ var GS = class e {
     }
     releaseDevice(facility) {
       clearTimeout(facility.retry);
+      if (facility.chargeRing) {
+        const ring = facility.chargeRing;
+        ring.removeFromParent();
+        ring.geometry.dispose();
+        ring.material.dispose();
+        facility.chargeRing = null;
+      }
       if (!facility.model) return;
       this.deviceFx.remove(facility.model);
       this.restoreDeviceColour(facility);
@@ -45858,11 +45859,11 @@ var GS = class e {
       const group = facility.group = new Cr();
       group.position.set(x, y, z);
       if (kind === 'altar') {
-        const tier = RS[facility.data?.tier ?? 0];
+        const tier = facility.data?.tier;
+        facility.data = {tier: Number.isInteger(tier) && RS[tier] ? tier : 0};
         facility.charge = 0;
-        facility.r = tier.r;
-        this.run.sprites.get(IS);
-        if (tier.wave) this.altarBeacon(facility);
+        facility.r = RS[facility.data.tier].r;
+        if (facility.data.tier >= 2) this.altarBeacon(facility);
       } else if (kind === 'boss') {
         facility.r = this.run.sanctuary ? 5 : 4;
       } else if (kind === 'portal') {
@@ -45887,7 +45888,7 @@ var GS = class e {
     altarBeacon(e) {
       let t = e.data?.tier ?? 0,
         n = RS[t],
-        r = fb(n.color, t === 4 ? 1.2 : 0.9 + 0.3 * (t - 2), 4.2, t >= 3 ? 30 : 16);
+        r = fb(n.color, 0.9 + 0.3 * (t - 2), 4.2, t >= 3 ? 30 : 16);
       (r.position.set(e.x, e.y, e.z), this.group.add(r), (e.beacon = r));
     }
     place(e, t, n, r = {}) {
@@ -45907,49 +45908,72 @@ var GS = class e {
       return stats;
     }
     *populationSteps() {
-      let e = this.run,
-        t = e.terrain;
-      if (e.sanctuary) return;
+      const {terrain, player, endless, sanctuary} = this.run;
+      if (sanctuary) return;
+      const rng = new Ol(terrain.seed ^ 30634);
+      const count = base => Math.round(base * (0.5 + 0.5 * terrain.areaMul));
+      const bonus = player.items.get('dowsing-machine') ?? 0;
+      const altarCount = count(endless ? 3 : 5) + bonus;
+      const tiers = HS(rng, altarCount, player.stats.luckMult);
+      const kinds = [];
+      for (const [kind, amount] of [
+        ['altar', altarCount], ['bill', 1], ['nest', 1], ['ditto', endless ? 2 : 1],
+        ['magnet', endless ? 1 : 2], ['freechest', count(endless ? 2 : 3)],
+        ['berry', count(endless ? 4 : 5)], ['chest', count(endless ? 8 : 14) + 2 * bonus],
+      ]) {
+        for (let i = 0; i < amount; i++) kinds.push(kind);
+      }
+      rng.shuffle(kinds);
+      if (!endless) kinds.unshift('boss');
 
-      let n = new Ol(e.seed ^ 30634),
-        r = (e, r, i) => {
-          let a = wS[i],
-            o = t.randomPoint(n, 0, 0, e, r),
-            s = -1e9;
-          for (let c = 0; c < 30; c++) {
-            let l = c ? t.randomPoint(n, 0, 0, e, r) : o,
-              u = 1e9;
-            for (let e of t.landmarks) u = Math.min(u, Math.hypot(e.x - l.x, e.z - l.z) - e.r - 3);
-            for (let e of this.list) {
-              let t = Math.hypot(e.x - l.x, e.z - l.z) - Math.max(0, e.r - 2.6);
-              (e.kind === i ? (t *= 0.5) : a && wS[e.kind] === a && (t *= 0.65), t < u && (u = t));
-            }
-            u > s && ((s = u), (o = l));
-          }
-          return o;
-        },
-        i = (e) => Math.round(e * (0.5 + 0.5 * t.areaMul)),
-        a = t.play - 5,
-        o = !!e.endless;
-      if (!o) {
-        let e = r(a * 0.55, a * 0.97, `boss`);
-        this.add(`boss`, e.x, e.z);
+      // Sample the whole walkable square, including its corners, before picking
+      // sites. A large desk prop should only exclude its own footprint.
+      const limit = terrain.play - 9, sites = [];
+      const cells = Math.ceil(2 * limit / 5), cell = 2 * limit / cells;
+      for (let col = 0; col < cells; col++) {
+        for (let row = 0; row < cells; row++) {
+          const x = -limit + (col + rng.next()) * cell;
+          const z = -limit + (row + rng.next()) * cell;
+          const fromSpawn = Math.hypot(x - terrain.spawn.x, z - terrain.spawn.z);
+          if (fromSpawn < 14 || !terrain.inBounds(x, z, 6) || Math.hypot(x, z) > terrain.arenaR - 6 ||
+              !terrain.isFlatOpen(x, z) || !this.fitsOnDesk(x, z, 4.5)) continue;
+          sites.push({x, z, fromSpawn, fitsAltar: this.fitsOnDesk(x, z, 6.5), clearance: Infinity});
+        }
         yield;
       }
-      let s = [
-          [`altar`, i(o ? 3 : 5)], [`bill`, 1], [`nest`, 1], [`ditto`, o ? 2 : 1],
-          [`magnet`, o ? 1 : 2], [`freechest`, i(o ? 2 : 3)],
-          [`berry`, i(o ? 4 : 5)], [`chest`, i(o ? 8 : 14)],
-        ],
-        c = e.player.items.get(`dowsing-machine`) ?? 0;
-      if (c) for (let e of s) e[0] === `altar` ? (e[1] += c) : e[0] === `chest` && (e[1] += 2 * c);
-      let l = HS(n, s.find(([e]) => e === `altar`)?.[1] ?? 0, e.player.stats.luckMult);
-      for (let [e, t] of s)
-        for (let n = 0; n < t; n++) {
-          let t = r(14, a, e);
-          this.add(e, t.x, t.z, e === `altar` ? { data: { tier: l[n] ?? 0 } } : {});
-          yield;
+      rng.shuffle(sites);
+      for (const kind of kinds) {
+        const minDistance = kind === 'boss' ? limit * .55 : 14;
+        const needsLargeSite = kind === 'boss' || kind === 'altar';
+        let best = -1;
+        for (let i = 0; i < sites.length; i++) {
+          if (sites[i].fromSpawn < minDistance || (needsLargeSite && !sites[i].fitsAltar)) continue;
+          if (best < 0 || sites[i].clearance > sites[best].clearance) best = i;
         }
+        const site = best >= 0 ? sites.splice(best, 1)[0] : terrain.randomPoint(rng, 0, 0, minDistance, limit);
+        const facility = this.add(kind, site.x, site.z, kind === 'altar' ? {data: {tier: tiers.pop()}} : {});
+        for (const other of sites) {
+          other.clearance = Math.min(other.clearance, Math.hypot(other.x - site.x, other.z - site.z) - facility.r);
+        }
+        yield;
+      }
+    }
+    fitsOnDesk(x, z, radius) {
+      const terrain = this.run.terrain;
+      const floor = terrain.height(x, z);
+      if (terrain.hitProp(x, floor + .1, z, radius) ||
+          this.lowProps.some(prop => hitsPaperBox(prop, x, z, radius))) return false;
+      // A track straddling a raised notebook edge disappears into the paper.
+      for (let i = 0; i < 8; i++) {
+        const angle = i * Math.PI / 4;
+        const edge = terrain.height(x + radius * Math.cos(angle), z + radius * Math.sin(angle));
+        if (Math.abs(edge - floor) > .1) return false;
+      }
+      return true;
+    }
+    hasBuildingSpace(x, z, radius) {
+      return this.list.every(f => (f.used && !f.group.visible) ||
+        Math.hypot(x - f.x, z - f.z) >= f.r + radius + 5);
     }
     spawnChest(e, t, n, r = !1, i = e, a = t) {
       let o = e,
@@ -45964,8 +45988,8 @@ var GS = class e {
           !c.inBounds(e, t, 4) ||
           Math.hypot(e, t) > c.arenaR - 3 ||
           !c.isFlatOpen(e, t) ||
-          c.hitProp(e, c.height(e, t) + 0.3, t, 0.9) ||
-          this.list.some((n) => !n.used && Math.hypot(n.x - e, n.z - t) < n.r + 2.5);
+          !this.fitsOnDesk(e, t, 2.6) ||
+          !this.hasBuildingSpace(e, t, 2.6);
       for (let n = 0; n < 40 && f(o, s); n++) {
         let r = this.run.terrain.randomPoint(F, e, t, 2, 4 + n);
         ((o = r.x), (s = r.z));
@@ -46026,7 +46050,8 @@ var GS = class e {
           i.isFlatOpen(n.x, n.z) &&
           i.inBounds(n.x, n.z, 6) &&
           (!s || Math.hypot(n.x - e, n.z - t) >= 15) &&
-          !this.list.some((e) => Math.hypot(e.x - n.x, e.z - n.z) < e.r + 5.5) &&
+          this.hasBuildingSpace(n.x, n.z, 3.4) &&
+          this.fitsOnDesk(n.x, n.z, 3.4) &&
           !i.landmarks.some((e) => Math.hypot(e.x - n.x, e.z - n.z) < e.r + 3),
         l = { x: e, z: t, y: i.height(e, t) },
         u = r;
@@ -46084,7 +46109,7 @@ var GS = class e {
         case `altar`:
           return e.used
             ? c(`Altar agotado`)
-            : c(`{name} · quédate dentro para cargarlo`, { name: zS(e.data?.tier ?? 0) });
+            : c(`{name} · quédate dentro para cargarlo`, { name: facilityNames.altar });
         case `challenge`:
           return e.used
             ? e.data?.left
@@ -46106,7 +46131,9 @@ var GS = class e {
         case `boss`:
           return this.run.bossSpawned
             ? c(`El guardián ya despertó`)
-            : '召唤'+finalBossWord;
+            : this.run.stageTime < bossSummonUnlockSeconds
+              ? '距漩涡解封 ' + Ys(Math.ceil(bossSummonUnlockSeconds - this.run.stageTime)).padStart(5, '0')
+              : `停留 ${bossSummonSeconds} 秒 · 唤醒镇守`;
         case `shrine`:
           return this.run.bossSpawned ? c(`El santuario late con fuerza`) : c(`Tocar el santuario`);
         case `portal`:
@@ -46283,6 +46310,7 @@ var GS = class e {
               this.dim(e));
             break;
           case `boss`:
+            if (t.stageTime < bossSummonUnlockSeconds || this.nearest !== e || this.dwellTime < bossSummonSeconds) break;
             if (t.mewtwo.active) {
               t.ui.toast(c(`Una barrera psíquica te lo impide`), null);
               break;
@@ -46580,22 +46608,20 @@ var GS = class e {
         let s = a.x - n.x,
           l = a.z - n.z,
           u = Math.hypot(s, l);
-        (a.kind === `altar` && !a.used && this.altarUpdate(a, u, e),
-          (!a.used ||
-            a.kind === `meowth` ||
-            a.kind === `hypno` ||
-            a.kind === `portal` ||
-            (a.kind === `tower` && a.data?.sub !== `trick`)) &&
-            a.kind !== `altar` &&
-            a.kind !== `shroom` &&
-            u < a.r + 0.8 &&
-            u < i &&
-            ready &&
-            ((i = u), (r = a)));
+        if (a.kind === 'altar') {
+          if (!a.used) this.altarUpdate(a, u, e);
+          continue;
+        }
+        if (ready && u < a.r + 0.8 && u < i && a.kind !== 'shroom' &&
+            (!a.used || a.kind === 'meowth' || a.kind === 'hypno' || a.kind === 'portal' ||
+              (a.kind === 'tower' && a.data?.sub !== 'trick'))) {
+          i = u;
+          r = a;
+        }
       }
       this.landmarkFx(e);
       this.stepLaunch(e);
-      this.updateDwell(r, dwellSeconds);
+      this.updateDwell(r, dwellSeconds, e);
     }
     launch = null;
     static LAUNCH_T = 0.85;
@@ -46738,38 +46764,26 @@ var GS = class e {
       }
     }
     render() {
-      const e = this.run, t = e.player.pos;
-      for (const r of this.list) {
-        if (!e.sprites.visible(r.x, r.y + 3, r.z, 18)) continue;
-        if (r.kind === `altar` && !r.used && this.hasVisual(r)) {
-          let n = e.sprites.get(IS),
-            i = r.data?.tier ?? 0,
-            a = RS[i],
-            [o, s, c, l] = r.data?.sealed ? [0.55, 0.55, 0.6, 0.6] : a.tint;
-          if (!n.ready) continue;
-          for (let u = 0; u < a.unown; u++) {
-            let d = this.unownPos(r, u, a.unown);
-            (n.push(
-              d.x,
-              d.y,
-              d.z,
-              `idle`,
-              e.time + u * 0.37,
-              e.sprites.dirRow(t.x - d.x, t.z - d.z),
-              0.85,
-              0,
-              0,
-              +(i >= 2 && !r.data?.sealed),
-              0,
-              o,
-              s,
-              c,
-              l,
-              !1,
-            ),
-              Math.random() < 0.08 + (r.charge ?? 0) * 0.3 &&
-                e.vfx.trail(d.x, d.y + 0.4, d.z, a.color, 0.35, I.Spark, 0.4));
-          }
+      const progress = this.dwellProgress, target = this.nearest;
+      const ring = this.dwellRing;
+      ring.visible = progress > 0 && !target.used && this.run.state === 'play' &&
+        !this.run.player.dead && this.hasVisual(target);
+      ring.material.uniforms.dwell.value = ring.visible ? progress : -1;
+      if (ring.visible) {
+        ring.position.set(target.x, target.y + .12, target.z);
+        ring.scale.setScalar(target.ringRadius);
+      }
+      const player = this.run.player.pos;
+      for (const altar of this.list) {
+        const chargeRing = altar.chargeRing;
+        if (!chargeRing) continue;
+        const opacity = altar.used ? Math.max(0, 1 - (this.run.time - (altar.completedAt ?? -Infinity)) / .6) : 1;
+        chargeRing.visible = opacity > 0 && !this.run.player.dead && this.hasVisual(altar) &&
+          (this.run.state === 'play' || (altar.used && this.run.state === 'modal')) &&
+          (altar.x - player.x) ** 2 + (altar.z - player.z) ** 2 < 24 ** 2;
+        if (chargeRing.visible) {
+          chargeRing.material.uniforms.dwell.value = altar.charge;
+          chargeRing.material.uniforms.opacity.value = opacity;
         }
       }
     }
@@ -46890,60 +46904,28 @@ var GS = class e {
         glow: 0.3 + 0.4 * a,
       });
     }
-    altarUpdate(e, t, n) {
-      let r = this.run,
-        i = e.data?.tier ?? 0,
-        a = RS[i],
-        o = r.player.items.get(`secret-key`) ?? 0,
-        s = (a.charge * (1 + 0.25 * (Math.min(3, r.stage) - 1))) / (1 + 0.3 * o),
-        l = e.charge ?? 0,
-        u = r.stageTime < a.seal;
-      if (
-        (e.data.sealed && !u && this.altarWake(e, i),
-        (e.data.sealed = u),
-        e.beacon && (e.beacon.material.uniforms.uAlpha.value = u ? 0.3 : 1),
-        (e.spin = (e.spin ?? e.x) + n * (u ? 0.15 : 0.5 + l * 1.6)),
-        t < 70 && !u && this.altarIdleFx(e, i, l, n),
-        u)
-      )
-        return;
-      let d = t < e.r && !r.player.dead,
-        f = r.coop ? r.coop.altarCrew(e.x, e.z, e.r) : 0;
-      (d || f > 0
-        ? ((e.data.outT = 0),
-          d && (r.player.anchorT = 0.2),
-          (e.charge = l + (n * (1 + 0.6 * (f + +!!d - 1))) / s),
-          d && r.audio.charge(Math.min(1, e.charge)),
-          Math.random() < 0.5 + i * 0.15 &&
-            r.vfx.trail(
-              e.x + F.range(-e.r, e.r),
-              e.y + 0.5,
-              e.z + F.range(-e.r, e.r),
-              a.color,
-              0.5,
-              I.Spark,
-              0.6,
-            ),
-          a.wave &&
-            !r.mewtwo.active &&
-            (!e.data.warned &&
-              d &&
-              ((e.data.warned = !0),
-              r.ui.toast(
-                e.data.comet
-                  ? c(`¡El cometa atrae a la horda! Aguanta dentro del círculo`)
-                  : c(`¡Los Unown llaman a la horda! Aguanta dentro del círculo`),
-                null,
-              )),
-            (e.data.waveT = (e.data.waveT ?? 1.5) - n),
-            e.data.waveT <= 0 &&
-              ((e.data.waveT = s / a.wave),
-              (e.data.waveN = (e.data.waveN ?? 0) + 1),
-              (!r.coop || t < e.r + 30) && this.altarWave(e, i, e.data.waveN))),
-          e.charge >= 1 && this.altarDone(e, i))
-        : (e.data.outT = (e.data.outT ?? 1.2) + n) > 1.2 &&
-          (e.charge = Math.max(0, l - n / (a.drain * (o ? 2 : 1)))),
-        (e.charge ?? 0) > 0 && !e.used && r.altarRing(e.x, e.y, e.z, e.r, e.charge ?? 0, a.color));
+    altarUpdate(altar, distance, dt) {
+      const run = this.run, tier = altar.data.tier, blessing = RS[tier];
+      if (distance < 70) this.altarIdleFx(altar, tier, altar.charge, dt);
+      const inside = distance < altar.r && !run.player.dead;
+      const crew = (run.coop?.altarCrew(altar.x, altar.z, altar.r) ?? 0) + Number(inside);
+      const keys = run.player.items.get('secret-key') ?? 0;
+      if (crew > 0) {
+        const duration = blessing.charge * (1 + .25 * (Math.min(3, run.stage) - 1)) / (1 + .3 * keys);
+        altar.data.outT = 0;
+        altar.charge = Math.min(1, altar.charge + dt * (1 + .6 * (crew - 1)) / duration);
+        if (inside) {
+          run.player.anchorT = .2;
+          run.audio.charge(altar.charge);
+        }
+        if (Math.random() < .5 + tier * .15)
+          run.vfx.trail(altar.x + F.range(-altar.r, altar.r), altar.y + .5,
+            altar.z + F.range(-altar.r, altar.r), blessing.color, .5, I.Spark, .6);
+        if (altar.charge >= 1) this.altarDone(altar, tier);
+      } else if (altar.charge > 0) {
+        altar.data.outT = (altar.data.outT ?? 0) + dt;
+        if (altar.data.outT > 1.2) altar.charge = Math.max(0, altar.charge - dt / (blessing.drain * (keys ? 2 : 1)));
+      }
     }
     altarIdleFx(e, t, n, r) {
       let i = this.run,
@@ -46983,8 +46965,7 @@ var GS = class e {
           glow: 0.9,
         });
       }
-      (t === 3 &&
-        Math.random() < r * 2 &&
+      if (t === 3 && Math.random() < r * 2) {
         i.vfx.add.spawn({
           x: e.x,
           y: o,
@@ -46995,64 +46976,22 @@ var GS = class e {
           color: a,
           shape: I.Soft,
           glow: 0.5,
-        }),
-        t >= 1 &&
-          ((e.data.pulseT = (e.data.pulseT ?? F.range(0, 2)) - r),
-          e.data.pulseT <= 0 &&
-            ((e.data.pulseT = [0, 3, 2.2, 1.5, 1.2][t]),
-            i.vfx.ring(e.x, e.y, e.z, e.r * 1.6, a, 1, 0.35 + 0.1 * t))));
-    }
-    altarWake(e, t) {
-      let n = this.run,
-        r = RS[t].color;
-      (n.vfx.ring(e.x, e.y, e.z, 12, r, 0.9),
-        n.vfx.burst(e.x, e.y + 3, e.z, r, 30, 7, I.Star, 0.6, 0.8),
-        n.ui.toast(c(`¡El {name} ha despertado!`, { name: zS(t) }), null));
-    }
-    altarWave(e, t, n) {
-      let r = this.run,
-        i = r.enemies,
-        a = r.director,
-        o = a.pool.filter((e) => k.hasAnimated(e.id));
-      if (!o.length) return;
-      let s = (t === 3 ? 4 : 3) + Math.min(3, r.stage),
-        c = RS[t].color;
-      r.vfx.ring(e.x, e.y, e.z, 10, c, 0.6);
-      for (let l = 0; l < s; l++)
-        r.later(l * 0.08, () => {
-          let u = (l / s) * Math.PI * 2 + F.range(-0.3, 0.3),
-            d = F.range(9, 12),
-            f = e.x + Math.cos(u) * d,
-            p = e.z + Math.sin(u) * d;
-          r.terrain.inBounds(f, p, 4) || ((f = e.x + Math.cos(u) * 5), (p = e.z + Math.sin(u) * 5));
-          let m = t === 3 && l === 0 && n % 2 == 0,
-            h = RS[t].floor;
-          if (i.spawn(F.pick(o).id, f, p, a.hpMult(h), a.dmgMult(h), m ? R.Elite : 0) < 0) return;
-          let g = r.terrain.height(f, p);
-          r.vfx.burst(f, g + 0.8, p, c, 8, 4, I.Spark, 0.4, 0.4);
         });
+      }
     }
     altarDone(e, t, n = !1) {
       let r = this.run,
         i = RS[t],
         a = i.color;
+      e.charge = 1;
+      e.completedAt = r.time;
+      if (e.chargeRing) e.chargeRing.material.uniforms.dwell.value = 1;
       ((e.used = !0),
         this.dim(e),
         n || r.coop?.altarDone(e.x, e.z),
         (e.beacon &&= (this.group.remove(e.beacon), void 0)),
-        r.offerBlessing(zS(t), i.min, i.offers, i.picks),
-        e.data?.comet &&
-          (r.addGold(Math.max(40, 0.35 * OS(r))),
-          r.meta.count(`comets`, 1),
-          r.later(1.2, () => {
-            (r.vfx.burst(e.x, e.y + 2, e.z, a, 30, 7, I.Star, 0.6, 0.8), this.remove(e));
-          })),
-        r.vfx.ring(e.x, e.y, e.z, 6 + t * 3, a, 0.6 + t * 0.15),
+        r.offerBlessing(facilityNames.altar, i.min, i.offers, i.picks),
         r.audio.power());
-      for (let n = 0; n < i.unown; n++) {
-        let o = this.unownPos(e, n, i.unown);
-        r.vfx.burst(o.x, o.y, o.z, a, 10 + t * 4, 5, I.Spark, 0.5, 0.5);
-      }
       if (
         (t >= 2 &&
           (r.vfx.burst(e.x, e.y + 3, e.z, a, 20 + 15 * (t - 2), 8, I.Star, 0.6, 0.8),
@@ -47060,7 +46999,6 @@ var GS = class e {
           r.shake(0.15 + 0.1 * (t - 2), e.x, e.z)),
         t === 3)
       ) {
-        r.later(0.15, () => r.vfx.ring(e.x, e.y, e.z, 16, 16777215, 0.9, 0.6));
         for (let t = 0; t < 24; t++) {
           let n = (t / 24) * Math.PI * 2;
           r.vfx.add.spawn({
@@ -47085,17 +47023,6 @@ var GS = class e {
       let n = this.list.find((n) => n.kind === `altar` && !n.used && Math.hypot(n.x - e, n.z - t) < 1.5);
       n && this.altarDone(n, n.data?.tier ?? 0, !0);
     }
-    unownPos(e, t, n = 3) {
-      let r = e.charge ?? 0,
-        i = this.run.time,
-        a = (e.spin ?? e.x) + ((Math.PI * 2) / n) * t,
-        o = 3.1 - r * 1.3;
-      return {
-        x: e.x + Math.cos(a) * o,
-        y: e.y + 2.6 + Math.sin(i * 1.8 + t * 2) * 0.35 + r * 0.8,
-        z: e.z + Math.sin(a) * o,
-      };
-    }
     regen(e) {
       let t = this.run;
       if (
@@ -47112,10 +47039,9 @@ var GS = class e {
           r = RS[n].color;
         ((e.charge = 0),
           (e.data = { tier: n }),
-          RS[n].wave && !e.beacon && this.altarBeacon(e),
-          t.vfx.ring(e.x, e.y, e.z, 10, r, 0.8),
+          n >= 2 && !e.beacon && this.altarBeacon(e),
           t.vfx.burst(e.x, e.y + 3, e.z, r, 24, 6, I.Twinkle, 0.6, 0.7),
-          t.ui.toast(c(`¡Un {name} ha vuelto a cargarse!`, { name: zS(n) }), null));
+          t.ui.toast(c(`¡Un {name} ha vuelto a cargarse!`, { name: facilityNames.altar }), null));
       } else e.kind === `challenge` && (e.data = {});
     }
     burnOut(e) {
@@ -49688,34 +49614,33 @@ var mw = 7500,
   _w = {
     ball: {
       letter: `b`,
-      icon: () => Q(`poke-ball`),
-      title: () => c(`Poké Ball del mapa`),
-      text: () => `在扭蛋旁停留 ${facilityDwellSeconds} 秒即可开启。付费扭蛋会扣除标出的金币。`,
+      kind: 'chest',
+      text: () => `停留 ${facilityDwellSeconds} 秒，花费标价金币抽取道具。`,
+    },
+    freeball: {
+      letter: 'u',
+      kind: 'freechest',
+      text: () => `停留 ${facilityDwellSeconds} 秒，免费抽取一件道具。`,
     },
     altar: {
       letter: `a`,
-      icon: () => Q(`star-piece`),
-      title: () => c(`Altar Unown`),
-      text: () =>
-        c(
-          `Quédate dentro de su círculo hasta que se cargue: te dejará elegir una bendición. Si sales, se va vaciando.`,
-        ),
+      kind: 'altar',
+      text: () => '站进光圈，蓄满即可选择祝福。',
     },
     shop: {
       letter: `s`,
-      icon: () => Q(`amulet-coin`),
+      icon: () => paperIcon('coin', 26, '#a47638'),
       title: () => c(`Tienda de Meowth`),
       text: () => `在商店旁停留 ${facilityDwellSeconds} 秒即可选购道具。`,
     },
     guardian: {
       letter: `g`,
-      icon: () => Z(`map-boss`, 28),
-      title: () => c(`Altar del guardián`),
-      text: () => `在召唤点旁停留 ${facilityDwellSeconds} 秒就会唤醒镇守。击败它即可开启传送门。`,
+      kind: 'boss',
+      text: () => `每区封印 ${bossSummonUnlockSeconds / 60} 分钟，站满 ${bossSummonSeconds} 秒唤醒镇守。`,
     },
     alpha: {
       letter: `f`,
-      icon: () => Q(`rare-candy`),
+      icon: () => paperIcon('target', 26, '#b87054'),
       title: () => c(`Pokémon Alfa`),
       text: () =>
         c(
@@ -49724,32 +49649,24 @@ var mw = 7500,
     },
     portal: {
       letter: `p`,
-      icon: () => Z(`map-portal`, 28),
-      title: () => c(`Portal`),
-      text: () =>
-        c(
-          `Te lleva a la siguiente zona. Antes de entrar, mira el minimapa: quizá quede alguna Poké Ball por abrir.`,
-        ),
+      kind: 'portal',
+      text: () => `在木门旁停留 ${facilityDwellSeconds} 秒，前往下一区域或通关。`,
     },
     egg: {
       letter: `e`,
-      icon: () => Z(`egg`, 28),
-      title: () => c(`Huevo Pokémon`),
-      text: () => `在蛋旁停留 ${facilityDwellSeconds} 秒即可带上它。击败足够多的敌人后，孵出的伙伴会与你并肩战斗。`,
+      kind: 'nest',
+      text: () => `停留 ${facilityDwellSeconds} 秒带上蛋，击败敌人即可孵化伙伴。`,
     },
     level: {
       letter: `l`,
-      icon: () => Q(`rare-candy`),
+      icon: () => paperIcon('book', 26, '#607da0'),
       title: () => c(`Subida de nivel`),
-      text: () =>
-        c(
-          `Elige una carta: ataques nuevos, mejoras de ataque o vitaminas. Lo que elijas dura toda la partida.`,
-        ),
+      text: () => '选择一项强化，在本局中持续生效。',
     },
   },
   vw = {
     chest: [`ball`, 16],
-    freechest: [`ball`, 16],
+    freechest: ['freeball', 16],
     cursedchest: [`ball`, 16],
     altar: [`altar`, 18],
     meowth: [`shop`, 18],
@@ -49767,6 +49684,7 @@ var mw = 7500,
     scanT = 0;
     busyUntil = 0;
     queued = null;
+    site = null;
     constructor(e) {
       this.meta = e;
       let t = e.profile;
@@ -49774,48 +49692,66 @@ var mw = 7500,
         (this.seen = new Set((t.settings.hintsSeen ?? ``).split(``))));
     }
     tick(e, t) {
-      if (!this.on) return;
-      if (this.queued && performance.now() >= this.busyUntil) {
-        let e = this.queued;
-        ((this.queued = null), this.show(e));
-      }
-      if (e.state !== `play` || (this.scanT -= t) > 0) return;
+      if (!this.on || e.state !== 'play' || (this.scanT -= t) > 0) return;
       this.scanT = gw;
-      let n = e.player.pos,
-        r = null,
-        i = 1 / 0;
-      for (let t of e.interactables.list) {
-        let e = vw[t.kind];
-        if (!e || t.used || this.seen.has(_w[e[0]].letter)) continue;
-        let a = Math.hypot(t.x - n.x, t.z - n.z);
-        a < e[1] && a < i && ((i = a), (r = e[0]));
+      let nearest = null, hint = null, best = Infinity;
+      for (const facility of e.interactables.list) {
+        const entry = vw[BS(facility)];
+        if (!entry || facility.used || !e.interactables.hasVisual(facility)) continue;
+        const distance = Math.hypot(facility.x - e.player.pos.x, facility.z - e.player.pos.z);
+        if (distance < entry[1] && distance < best) {
+          nearest = facility;
+          hint = entry[0];
+          best = distance;
+        }
       }
-      r && this.show(r);
+      if (this.site && this.site !== nearest) {
+        this.el?.remove();
+        this.el = this.site = null;
+        this.busyUntil = 0;
+      }
+      if (this.queued && performance.now() >= this.busyUntil) {
+        const event = this.queued;
+        this.queued = null;
+        this.show(event);
+      }
+      if (nearest) this.show(hint, nearest);
+      if (nearest?.kind === 'boss' && this.site === nearest && this.el?.parentNode) {
+        const title = this.el.querySelector('.zx-hint-title');
+        const caption = facilityNames.boss + ' · ' + e.interactables.label(nearest);
+        if (title.textContent !== caption) title.textContent = caption;
+      }
     }
-    show(e) {
+    show(e, site = null) {
       if (!this.on) return;
       let t = _w[e];
       if (this.seen.has(t.letter)) return;
       if (performance.now() < this.busyUntil) {
-        this.queued ??= e;
+        if (!site) this.queued ??= e;
         return;
       }
       this.seen.add(t.letter);
+      this.site = site;
       let n = this.meta.profile.settings;
       ((n.hintsSeen = [...this.seen].join(``)), this.meta.save(), this.el?.remove());
       let r = X(
         `div`,
-        { class: `run-hint`, "aria-live": `polite` },
-        X(`span`, { class: `rh-ic` }, t.icon()),
-        X(`div`, {}, X(`b`, {}, t.title()), X(`span`, {}, t.text())),
+        { class: 'run-hint zx-hint', 'aria-live': 'polite', 'data-kind': t.kind ?? e },
+        X('div', { class: 'zx-hint-art' }, t.kind
+          ? X('img', {src: Zt(facilityIconFile(t.kind)), alt: '', draggable: 'false'})
+          : t.icon()),
+        X('div', {class: 'zx-hint-copy'},
+          X('b', {class: 'zx-hint-title'}, t.kind ? facilityNames[t.kind] : t.title()),
+          X('span', {class: 'zx-hint-text'}, t.text())),
       );
-      (document.body.append(r),
+      ((document.querySelector('.zx-hint-slot') ?? document.body).append(r),
         (this.el = r),
         (this.busyUntil = performance.now() + mw + hw),
         this.timers.push(
           window.setTimeout(() => r.classList.add(`out`), mw),
           window.setTimeout(() => {
-            (r.remove(), this.el === r && (this.el = null));
+            r.remove();
+            if (this.el === r) this.el = this.site = null;
           }, 7900),
         ));
     }
@@ -54641,6 +54577,7 @@ var GT = 15,
           this.zones.clear(),
           this.vfx.clear(),
           this.ult.clear());
+      this.stageTime = 0;
       this.player.moveSlots = this.stage > 1 && this.meta.lab('slot-move') ? 4 : 3;
       ((this.minibosses = new sb(this)),
         (this.events = new ub(this)),
@@ -54656,7 +54593,6 @@ var GT = 15,
         (this.player.sashUsed = !1),
         (this.player.rainbowUsed = !1),
         this.camTarget.copy(this.player.pos),
-        (this.stageTime = 0),
         (this.bossSpawned = !1),
         (this.stageCleared = !1),
         (this.baseWeather = r || i ? `clear` : F.pick(this.biome.weather)));
@@ -56581,7 +56517,11 @@ var GT = 15,
             ((u.x[e] = r), (u.z[e] = i), (u.y[e] = this.terrain.height(r, i)));
         }
       }
-      (!this.sanctuary && !this.endless && !l && this.stageTime >= 600 && this.director.startFinalSwarm(),
+      // Top up only a missed opening level. Normal kills can unlock both
+      // drafts earlier and keep their XP and subsequent level progression.
+      if (this.stage === 1 && !this.endless && !l && !n.dead && this.state === 'play' &&
+          ((n.level === 1 && this.stageTime >= 18) || (n.level === 2 && this.stageTime >= 45))) n.gainLevel();
+      (!this.sanctuary && !this.endless && !l && !this.stageCleared && this.stageTime >= zoneDuration(this.mode) && this.director.startFinalSwarm(),
         (this.audio.intensity = Js(
           this.audio.intensity,
           this.boss.alive || this.director.finalSwarm || this.endless?.night
@@ -79948,35 +79888,10 @@ function iI(e, t) {
         ),
   );
 }
-var aI = (e) => `ui/icons/map-${e}.png`,
-  oI = (e) => `portraits/${e}.png`;
-function sI() {
-  return {
-    chest: { src: aI(`ball`), ring: `#e8443a`, name: c(`Poké Ball (objeto, de pago)`) },
-    freechest: { src: aI(`freeball`), ring: `#3a7aff`, name: c(`Poké Ball gratis`) },
-    altar: { src: aI(`unown`), ring: `#2ec8e0`, name: c(`Altar Unown (bendición)`) },
-    boss: { src: aI(`boss`), ring: `#e8243a`, name: c(`Altar del guardián`) },
-    portal: {
-      src: aI(`portal`),
-      ring: `#9a6aff`,
-      name: c(`Portal (zona siguiente o, en Supervivencia, tierras nuevas)`),
-    },
-    magnet: { src: `items/magnet.png`, ring: `#8a8aa0`, name: buildingMapName({kind:'magnet'}) },
-    berry: { src: `items/oran-berry.png`, ring: `#3a7aff`, name: c(`Bayas`) },
-    ditto: { src: oI(132), ring: `#c88aff`, name: c(`Ditto (clona un objeto)`), round: !0 },
-    nest: {
-      src: oI(113),
-      ring: `#6ad05a`,
-      name: c(`Nido con un Huevo Pokémon (eclosiona luchando)`),
-      round: !0,
-    },
-    bill: {
-      src: aI(`bill`),
-      ring: `#ffb43a`,
-      name: c(`Máquina de Bill (fusiona dos movimientos al nivel máximo)`),
-    },
-  };
-}
+const facilityMapArt = Object.fromEntries(Object.entries({
+  chest:'#e8443a', freechest:'#3a7aff', altar:'#2ec8e0', portal:'#9a6aff', boss:'#e8243a',
+  magnet:'#8a8aa0', berry:'#3a7aff', ditto:'#c88aff', nest:'#6ad05a', bill:'#ffb43a',
+}).map(([kind, ring]) => [kind, {src: facilityIconFile(kind), ring, name: facilityNames[kind]}]));
 var cI = {
     boss: `#ff2a4a`,
     alpha: `#ff8a2a`,
@@ -80035,14 +79950,14 @@ function fI(e, t, n, r = !1, word) {
   );
 }
 function pI(e, t) {
-  let n = sI()[e];
+  let n = facilityMapArt[e];
   return n ? fI(n.src, n.ring, t, n.round) : null;
 }
 var mI = () => 60 - (26 * xI()) / (200 / 60),
   hI = new Set([`boss`, `portal`, `shrine`]),
   gI = (e) => (e.kind === `boss` || e.kind === `shrine` ? !e.used : e.kind === `portal`);
 function _I(e, t, n, r) {
-  let i = t.kind ? sI()[t.kind] : null,
+  let i = facilityMapArt[t.kind],
     a = 1 + 0.07 * Math.sin(r / 170);
   (e.save(),
     e.scale(a, a),
@@ -80194,7 +80109,7 @@ function TI(e) {
 }
 var EI = 5;
 function DI(e, t, n, r = [], i = !1) {
-  let a = sI(),
+  let a = facilityMapArt,
     o = innerWidth > innerHeight * 1.1,
     s = Math.floor(
       i
@@ -80636,6 +80551,7 @@ var OI = [
     { id: `healblock`, name: () => c(`Anticura`), on: (e, t) => +(e.healBlock[t] > 0 && e.poison[t] <= 0) },
     { id: `shield`, name: () => c(`Escudo`), on: (e, t) => +(e.shield[t] > 0) },
   ],
+  bossStatusTypes = {para:pO.paralysis, frozen:pO.freeze, chill:pO.freeze, confuse:pO.confusion, shield:'steel'},
   kI = class {
     el = X(`div`, { class: `bb-st` });
     key = ``;
@@ -80649,15 +80565,16 @@ var OI = [
         ((this.key = n), $(this.el));
         for (let n of OI) {
           let r = n.on(e, t);
-          r <= 0 ||
-            this.el.append(
-              X(
-                `span`,
-                { class: `bb-sti`, title: n.name() },
-                Z(`st-` + n.id, 22),
-                r > 1 ? X(`b`, {}, `×` + r) : null,
-              ),
-            );
+          if (r <= 0) continue;
+          const type = pO[n.id] ?? bossStatusTypes[n.id];
+          this.el.append(
+            X(
+              `span`,
+              { class: `bb-sti`, title: n.name() },
+              type ? ZC(type, 22) : X('b', {}, n.name()),
+              r > 1 ? X(`b`, {}, `×` + r) : null,
+            ),
+          );
         }
       }
       return n !== ``;
@@ -82163,12 +82080,12 @@ var JI = class {
         (n.name.textContent = t.data.name),
         $(n.types).append(...t.types.map((e) => XC(e))),
         YI(n).style.setProperty(`--tc`, YC(Ni[t.types[0]])));
-      let m = 600 - e.stageTime;
+      let m = remainingZoneSeconds(e);
       if (((n.clock.firstChild.textContent = Xs(e.time)), e.endless)) this.endlessClock(e);
       else if (e.tower) this.towerClock(e);
       else if (n.siege.dataset.k) ((n.siege.dataset.k = ``), (n.siege.style.display = `none`));
       else {
-        ((n.timer.textContent = e.sanctuary ? Ys(e.stageTime) : m > 0 ? Ys(m) : `+` + Ys(-m)),
+        ((n.timer.textContent = e.sanctuary ? Ys(e.stageTime) : m >= 0 ? Ys(m) : `+` + Ys(-m)),
           n.timer.classList.toggle(`final`, !e.sanctuary && m <= 0 && !e.stageCleared));
         let t = e.coop ? void 0 : e.meta.profile.times[`${e.biome.id}-${e.tier}`];
         if (n.clock.dataset.k !== String(e.splits.length)) {
@@ -82331,13 +82248,13 @@ var JI = class {
             s = e.enemies,
             l = b.i,
             u =
-              b===bossTarget ? sI().boss.ring : e.capture.marker || e.allies.marker
+              b===bossTarget ? facilityMapArt.boss.ring : e.capture.marker || e.allies.marker
                 ? cI.capture
                 : e.events?.marker
                   ? cI.treasure
                   : l != null
                     ? cI.summoner
-                    : sI().portal.ring,
+                    : facilityMapArt.portal.ring,
             d = l == null ? `portal` : `m${s.glyphWords[l]}${u}`,
             f = this.arrow;
           (f.dataset.k !== d &&
@@ -82395,8 +82312,8 @@ var JI = class {
           hypno: c(`Hypno`),
           magnet: buildingMapName({kind:'magnet'}),
           berry: c(`Bayas`),
-          boss: c(`Altar del guardián`),
-          portal: c(`¡Portal!`),
+          boss: facilityNames.boss,
+          portal: facilityNames.portal,
           shrine: c(`Santuario`),
           challenge: c(`Desafío`),
           cursedchest: c(`Maldita`),
@@ -82406,28 +82323,20 @@ var JI = class {
         const {kind, data} = facility;
         const wave = kind === 'challenge' && data?.wave;
         const landmark = RI.has(kind) || wave;
-        const range = landmark ? 18 : 6;
+        const range = landmark ? 18 : kind === 'altar' ? facility.r + 3 : 6;
         const distance = Math.hypot(facility.x - player.x, facility.z - player.z);
         if (distance >= range || !facilities.hasVisual(facility)) continue;
         if (facility.used && !wave && kind !== 'meowth' && kind !== 'hypno' && kind !== 'slots' && kind !== 'portal') continue;
 
-        let label, className = 'wlabel', percent = null;
+        let label, className = 'wlabel';
         if (kind === 'chest' || kind === 'slots') {
           const cost = facilities.interactionCost(facility);
           if (run.gold < cost) continue;
           className += ' cost';
           label = cost ? cost + ' 金币' : buildingMapName(facility);
         } else if (kind === 'altar') {
-          if (data?.sealed) {
-            if (distance >= facility.r + 1) continue;
-            className += ' nocost';
-            label = c(`Sellado · despierta en {s} s`, {s: Math.ceil(RS[data.tier].seal - run.stageTime)});
-          } else {
-            if (!(facility.charge > 0)) continue;
-            className = 'charge';
-            percent = Math.round(facility.charge * 100);
-            label = percent + '%';
-          }
+          if (facility.charge > 0 || distance < facility.r) continue;
+          label = facilityNames.altar;
         } else if (wave) {
           className += ' nocost';
           label = c(`Quedan {n}`, {n: data.left});
@@ -82437,13 +82346,13 @@ var JI = class {
             : kind === 'tower' ? towerLabels[data?.sub] : landmarkLabels[kind];
         }
         if (!label) continue;
+        if (kind === 'boss' && run.hints?.site === facility && run.hints.el?.parentNode) continue;
         const height = facility.group?.userData.h ?? 2.5;
         const point = this.project(run, facility.x, facility.y + height + 0.5, facility.z);
         // Reserve a full Chinese glyph per character plus padding and the shadow.
-        const halfWidth = percent !== null ? 37 : 17 + label.length * (kind === 'meowth' ? 7 : 6);
-        const above = percent !== null ? 37 : 30, below = percent !== null ? 37 : 4;
+        const halfWidth = 17 + label.length * (kind === 'meowth' ? 7 : 6);
         if (!(point.vis && point.x >= halfWidth && point.x <= innerWidth - halfWidth &&
-              point.y >= above && point.y <= innerHeight - below)) continue;
+              point.y >= 30 && point.y <= innerHeight - 4)) continue;
 
         let node = this.worldLabelNodes.get(facility);
         if (!node) {
@@ -82452,16 +82361,8 @@ var JI = class {
           this.worldLabelNodes.set(facility, node);
         }
         visible.add(facility);
-        if (node.className !== className) {
-          node.className = className;
-          node.replaceChildren(...(percent !== null ? [X('span')] : []));
-        }
-        const content = percent !== null ? node.firstChild : node;
-        if (content.textContent !== label) content.textContent = label;
-        if (percent !== null) {
-          node.style.setProperty('--p', String(percent));
-          node.style.setProperty('--ac', RS[data?.tier ?? 0].css);
-        }
+        if (node.className !== className) node.className = className;
+        if (node.textContent !== label) node.textContent = label;
         node.style.left = Math.round(point.x) + 'px';
         node.style.top = Math.round(point.y) + 'px';
         node.style.opacity = String(Math.min(1, (range - distance) / (landmark ? 5 : 2)));
@@ -82595,7 +82496,7 @@ var JI = class {
         n.strokeRect(r, a, t * i, t * i);
       }
       let c = xI() * this.mi,
-        l = sI(),
+        l = facilityMapArt,
         u = -a,
         d = 200 - 26 * c,
         f = Math.max(70, 200 - 44 * c),
@@ -82804,7 +82705,7 @@ var JI = class {
       if (r === this.leftKey) return;
       this.leftKey = r;
       let i = this.els,
-        a = sI();
+        a = facilityMapArt;
       ((i.left.style.display = n.size ? `` : `none`),
         $(i.left).append(
           X(`small`, {}, c(`Por usar`)),
@@ -84782,7 +84683,7 @@ var JI = class {
       let t = () => {
           (N.click(), this.showPause(e));
         },
-        n = sI(),
+        n = facilityMapArt,
         r = new Map();
       for (let t of e.interactables.markers()) r.set(BS(t), (r.get(BS(t)) ?? 0) + 1);
       let i = (e, t, n, r) =>

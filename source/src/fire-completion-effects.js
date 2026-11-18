@@ -37,9 +37,9 @@ export class FireCompletionEffects{
   if(index%3)return;const life=Math.min(.75,particle.life);
   this.play('heart',particle.x,particle.y,particle.z,1.6,{life,travelX:particle.vx*life,travelZ:particle.vz*life,rise:.6,angle:(index-7)*.035,scaleFrom:.65,scaleTo:1,fadeIn:.08,fadeOut:.28,priority:1});
  }
- charmBreath(ctx,x,y,z,dx,dz,length){
+ charmBreath(ctx,x,y,z,dx,dz,length,artLength=length){
   ctx.charmArtKey??={def:{key:'dragon-breath'}};
-  this.f.owner.cone(ctx.charmArtKey,x,y,z,dx,dz,length,'dragon',.7,true);
+  this.f.owner.cone(ctx.charmArtKey,x,y,z,dx,dz,length,'dragon',.7,true,true,artLength);
  }
  glitch(x,y,z,radius){
   this.play('gate',x,y+.7,z,radius*2.2,{life:.52,palette:1,spin:1.4,fadeIn:.055,fadeOut:.28,priority:2});

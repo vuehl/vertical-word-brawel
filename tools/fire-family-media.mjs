@@ -120,5 +120,38 @@ export async function reviewFireFamilyMedia(page,dir,moves){
  for(let i=0;i<36;i++){await page.evaluate(()=>{vfxAdvance(3);vfxDraw();});frames.push(await page.screenshot());if([3,7,14,27].includes(i))fs.writeFileSync(path.join(dir,'ultimate-phase-'+i+'.png'),frames.at(-1));}
  const buffers=await Promise.all(frames.map(frame=>sharp(frame).ensureAlpha().raw().toBuffer()));
  await sharp(Buffer.concat(buffers),{raw:{width:390,height:844*buffers.length,channels:4,pageHeight:844}}).gif({delay:Array(buffers.length).fill(100),loop:0}).toFile(path.join(dir,'fire-ultimate.gif'));
+ report.rangeUpgrades=await page.evaluate(heatId=>{
+  const run=app.run,player=run.player,family=run.vfx.crafted.fireFamily;
+  return [[1,4,1,1],[39,5,1,1],[45,6,1,1],[45,6,1.3,1.2]].map(([level,species,skillArea,playerArea])=>{
+   vfxSetup();
+   player.setSpecies(species);player.level=level;player.evoStage=species-4;player.growth=0;player.recompute();
+   player.stats.area=playerArea;player.addMove(heatId);
+   const move=player.moves[0];move.mods.area=skillArea;move.timer=0;
+   const enemies=run.enemies,target=1;
+   enemies.x[target]=0;enemies.z[target]=-9;enemies.update();run.lockTarget=target;
+   const startingHP=enemies.hp[target],frames=[];
+   for(let tick=0;tick<12;tick++){
+    run.castMove(0,move,1/30);run.vfx.update(1/30);
+    if(tick===3||tick===11){
+     if(family.heatMesh.count!==1)throw Error('Expected a single heat wave');
+     frames.push([family.heatAttributes[0].array[3],family.heatAttributes[2].array[3]]);
+    }
+   }
+   const front=family.events.find(event=>event.heatWave);
+   const travel=Math.hypot(front.travelX,front.travelZ),hit=enemies.hp[target]<startingHP;
+   run.vfx.clear();run.ult.charge=1;run.ult.fire();
+   const cloud=family.events.filter(event=>event.mushroomPart).map(event=>[event.size,event.height]);
+   return {level,skillArea,playerArea,frames,travel,hit,cloud};
+  });
+ },moves.find(move=>move.key==='heat-wave').id);
+ const [base,,,upgraded]=report.rangeUpgrades;
+ assert.ok(base.frames[0][0]>0&&base.frames[1][0]>base.frames[0][0],'Keep the original expansion within each cast');
+ assert.equal(base.cloud.length,2);
+ for(const sample of report.rangeUpgrades){
+  assert.deepEqual(sample.frames,base.frames,'Heat Wave frame size at level '+sample.level);
+  assert.deepEqual(sample.cloud,base.cloud,'Mushroom cloud size at level '+sample.level);
+ }
+ assert.ok(Math.abs(upgraded.travel/base.travel-1.56)<1e-6);
+ assert.deepEqual(report.rangeUpgrades.map(sample=>sample.hit),[false,false,false,true],'Only the range-upgraded cast hits the target at nine units');
  fs.writeFileSync(path.join(dir,'fire-family-visual-report.json'),JSON.stringify(report,null,2));console.log('Visual checks:',JSON.stringify(report));return report;
 }

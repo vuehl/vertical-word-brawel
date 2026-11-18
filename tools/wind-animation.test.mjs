@@ -7,7 +7,7 @@ import {heroActionFrame,playerHeroAction} from '../source/src/hero-actions.js';
 import {loadedHeroRig,prepareHeroStrokes} from '../source/src/hero-poses.js';
 import {starterWords} from '../source/src/starter-characters.js';
 
-const enabled=[4,16,17,18,58,59];
+const enabled=[4,5,6,16,17,18,58,59];
 const sourceMotion=id=>{
   const name=starterWords[id]+'_待机行走死亡_优化';
   return JSON.parse(fs.readFileSync(new URL('../source/art/hero-actions/'+id+'/'+name+'.json',import.meta.url)));
@@ -59,7 +59,7 @@ test('at normal and battery saver cadence each clip shows every frame in order',
 });
 
 test('species, motion, damage and death switch clips, and missed frames do not skip poses',()=>{
-  const p={speciesId:16,grounded:true,speedNow:0};
+  const p={speciesId:4,grounded:true,speedNow:0};
   const render=now=>heroActionFrame(p,p.speciesId,playerHeroAction(p),now);
   const first=render(0);
   assert.equal(first.action,'idle');
@@ -74,15 +74,17 @@ test('species, motion, damage and death switch clips, and missed frames do not s
   assert.equal(render(200),undefined);
   p.hurtT=0;
   assert.equal(render(300).index,0);
-  p.speciesId=17;
-  assert.equal(render(400).species,17);
-  assert.equal(render(400).index,0);
-  Object.assign(p,{dead:true,hurtT:1,heroPose:{word:'讽'}});
+  for(const species of [5,6]){
+    p.speciesId=species;
+    const frame=render(400);
+    assert.equal(frame.species,species);
+    assert.equal(frame.action,'walk');
+    assert.equal(frame.index,0);
+  }
+  Object.assign(p,{dead:true,hurtT:1,heroPose:{word:'燚'}});
   assert.equal(render(500).action,'faint');
   assert.equal(render(500).index,0);
   assert.equal(render(5000).index,1);
   p.speciesId=132;
   assert.equal(render(6000),undefined);
-  p.speciesId=5;
-  assert.equal(render(7000),undefined,'Forms without supplied artwork keep their existing pose');
 });
