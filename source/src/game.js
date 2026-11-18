@@ -1,3 +1,5 @@
+import {deskDevice} from './desk2d.js';
+import {ALTAR_RING_EMISSIVE,altarRingFragment} from './altar-ring-vfx.js';
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
 import {facilityDwellSeconds,facilityModelFile,isActiveFacility} from './active-content.js';
 import {createFacilityEffects} from './facility-effects.js';
@@ -6913,7 +6915,7 @@ var Rl = 20,
         depthWrite: !1,
         blending: 1, // Opaque pigment/ink silhouettes use normal alpha, never additive washout.
         uniforms: { map: { value: t }, uFogColor: a.uFogColor, uFogNear: a.uFogNear, uFogFar: a.uFogFar },
-        vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
+        vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec2 vLocalUv; varying vec4 vCol; varying float vGlow; varying float vD;
         void main(){
           float cs = cos(iC.y), sn = sin(iC.y);
           vec2 p2 = vec2(position.x*cs - ${i ? `position.z` : `position.y`}*sn, position.x*sn + ${i ? `position.z` : `position.y`}*cs) * iA.w;
@@ -6922,10 +6924,11 @@ var Rl = 20,
           gl_Position = projectionMatrix * mv;
           float idx = iC.x; vec2 cell = vec2(mod(idx,8.), 17. - floor(idx/8.));
           vUv = (cell + uv) / vec2(8., 18.);
-          vCol = iB; vGlow = iC.z;
+          vCol = iB; vGlow = iC.z; vLocalUv=uv;
         }`,
-        fragmentShader: `uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
-        void main(){ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if (a < 0.01) discard;
+        fragmentShader: `uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; varying vec2 vUv; varying vec2 vLocalUv; varying vec4 vCol; varying float vGlow; varying float vD;
+        void main(){ ${altarRingFragment}
+ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if (a < 0.01) discard;
           vec3 c = vCol.rgb * t.rgb * (1. + min(vGlow,.15));
           ${r ? Ml : `c = min(c, vec3(0.93)); c = mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD));`}
           gl_FragColor = vec4(c, a); }`,
@@ -13082,7 +13085,7 @@ var Df = 0.4,
         }
         if (
           ((this.x[i] = Math.max(-fe, Math.min(fe, ue))),
-          (this.z[i] = Math.max(-fe, Math.min(fe, de))),
+          (this.z[i] = Math.max(-(r.deskBounds?.z-2||fe), Math.min(r.deskBounds?.z-2||fe, de))),
           r.solidBoxes.length &&
             r.inSolid(this.x[i], this.z[i]) &&
             (r.inSolid(this.x[i], le)
@@ -33370,7 +33373,7 @@ var mv = 30,
       } else this.stuckT = Math.max(0, this.stuckT - e * 2);
       let _e = r.walkLim;
       if (
-        ((this.pos.x = Gs(this.pos.x, -_e, _e)), (this.pos.z = Gs(this.pos.z, -_e, _e)), r.arenaR < 1 / 0)
+        ((this.pos.x = Gs(this.pos.x, -_e, _e)), (this.pos.z = Gs(this.pos.z, -(r.deskBounds?.z-2||_e), r.deskBounds?.z-2||_e)), r.arenaR < 1 / 0)
       ) {
         let e = Math.hypot(this.pos.x, this.pos.z),
           t = r.arenaR - 0.3;
@@ -45829,7 +45832,8 @@ var GS = class e {
     async loadDevice(facility) {
       const group = facility.group;
       if (this.disposed || group.parent !== this.group) return;
-      const model = await bu(facilityModelFile(BS(facility)));
+      const flat=this.run.terrain.desk2d;
+      const model = flat ? await deskDevice(this.run.terrain,BS(facility)) : await bu(facilityModelFile(BS(facility)));
       if (this.disposed || group.parent !== this.group) return;
       if (!model) {
         facility.retry = setTimeout(() => this.loadDevice(facility), 10000);
@@ -45838,6 +45842,7 @@ var GS = class e {
       group.add(model);
       group.userData.h = model.userData.displayHeight;
       facility.model = model;
+      if(flat)group.rotation.y=0;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
       this.deviceFx.add(model);
       if (facility.used) this.dim(facility);
@@ -45845,7 +45850,7 @@ var GS = class e {
     releaseDevice(facility) {
       clearTimeout(facility.retry);
       if (!facility.model) return;
-      this.deviceFx.remove(facility.model);
+      this.deviceFx?.remove(facility.model);
       this.restoreDeviceColour(facility);
       // GLTF clones share the template's geometry, textures and original materials.
       facility.model.removeFromParent();
@@ -45896,7 +45901,7 @@ var GS = class e {
     populate() {for(const _ of this.populationSteps()){} }
     async populateAsync() {
       // The first summoned portal must open immediately when the boss falls.
-      const portal = !this.run.sanctuary && loadModelTemplate(facilityModelFile('portal'));
+      const portal = !this.run.terrain.desk2d && !this.run.sanctuary && loadModelTemplate(facilityModelFile('portal'));
       const check = () => { if (this.disposed || this.run.disposed) throw Error('本局已结束'); };
       const stats = await runLoadingSteps(this.populationSteps(),{
         check,
@@ -54781,7 +54786,7 @@ var GT = 15,
         endSize: r * 2,
         color: a,
         shape: I.Ring,
-        glow: 0.3,
+        glow: a === 5959935 ? ALTAR_RING_EMISSIVE : 0.3,
         rot: 0,
       }),
         this.vfx.ground.spawn({

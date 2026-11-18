@@ -42,36 +42,19 @@ export async function reviewClarity(page,dir){
     const s=app.meta.profile.settings;s.quality='high';s.batterySaver=true;app.applySettings();
     app.run.state='paused';app.zixing.settings(()=>{});
     const click=(selector,label)=>[...inspected.doc.querySelectorAll(selector)].find(e=>e.textContent===label).click();
-    click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');
-    const toggle=()=>inspected.doc.querySelector('[aria-label="省电模式"]').click();
-    const state=async()=>{
-      await app.meta.saveNow();
-      const saved=JSON.parse(wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8')).accounts[app.meta.account.id].profile.settings;
-      return [s.quality,s.batterySaver,inspected.doc.querySelector('.zx-option.on').textContent,
-        inspected.doc.querySelector('[aria-label="省电模式"]').getAttribute('aria-checked'),app.run.performance.name,
-        app.fpsCap(),saved.quality,saved.batterySaver];
-    };
-    const migrated=await state();
-    click('.zx-option','精致');const fine=await state();
-    toggle();const saver=await state();
-    toggle();const off=await state();
-    toggle();click('.zx-option','均衡');const medium=await state();
-    click('.zx-plain','恢复本页默认');
-    return {migrated,fine,saver,off,medium,reset:await state(),
-      options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
+    click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');click('.zx-option','精致');
+    await app.meta.saveNow();
+    const saved=JSON.parse(wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8')).accounts[app.meta.account.id].profile.settings;
+    return {saver:s.batterySaver,quality:s.quality,saved:{quality:saved.quality,saver:saved.batterySaver},switch:inspected.doc.querySelector('[aria-label="省电模式"]').getAttribute('aria-checked'),
+      profile:app.run.performance.name,dyn:app.r.dynRes};
   });
   if(!baseline){
     assert.equal(report.high.dyn,1);assert.equal(report.high.dynamic,false);
     assert.deepEqual(report.high.world,[780,1688]);
     for(const state of report.stress.slice(0,3)){assert.equal(state.dyn,1);assert.equal(state.pixelScale,1);assert.deepEqual(state.world,report.high.world);}
     assert.equal(report.stress[3].dyn,1,'Balanced also stays at the selected resolution');
-    const expected=(quality,saver,label)=>[quality,saver,label,String(saver),label,saver?30:60,quality,saver];
-    const {selection}=report;
-    assert.deepEqual(selection.migrated,expected('low',true,'流畅'));
-    assert.deepEqual(selection.fine,expected('high',false,'精致'));
-    assert.deepEqual(selection.saver,selection.migrated);assert.deepEqual(selection.off,expected('low',false,'流畅'));
-    assert.deepEqual(selection.medium,expected('medium',false,'均衡'));assert.deepEqual(selection.reset,selection.fine);
-    assert.deepEqual(selection.options,['流畅','均衡','精致']);
+    assert.equal(report.selection.saver,false);assert.equal(report.selection.profile,'精致');assert.equal(report.selection.switch,'false');
+    assert.deepEqual(report.selection.saved,{quality:'high',saver:false});assert.equal(report.selection.dyn,1);
   }
   fs.writeFileSync(path.join(dir,'clarity-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }

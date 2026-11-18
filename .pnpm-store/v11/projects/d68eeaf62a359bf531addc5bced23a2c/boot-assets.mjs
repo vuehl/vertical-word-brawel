@@ -41,7 +41,7 @@ export function bootAssets(root) {
     }
   });
   return {
-    'engine/styles.bin':deflateSync(JSON.stringify(rules),{level:9})
+    'engine/styles.json':Buffer.from(JSON.stringify(rules))
   };
 }
 

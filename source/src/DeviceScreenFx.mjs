@@ -207,7 +207,7 @@ export function createDeviceScreenFx(T, renderer) {
     if(count){positions.needsUpdate=data.needsUpdate=anchors.needsUpdate=true;}
     for(const u of [pu,su]){
       u.worldDepth.value=depth;u.resolution.value.set(w,h);u.planes.value.set(camera.near,camera.far);
-      u.orthographicView.value=camera.isOrthographicCamera?1:0;
+      u.orthographicView.value=camera.projectionMatrix.elements[15]===1?1:0;
     }
     pu.visibleBox.value.copy(union);
     return {active,count,refDepth};

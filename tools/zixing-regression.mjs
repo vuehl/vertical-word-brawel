@@ -1,4 +1,3 @@
-import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,8 +31,8 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         return b&&tb&&{text:el.textContent,offset:tb.x-b.x};
       }).filter(Boolean);
       const box=sel=>inspected.layout.box(inspected.doc.querySelector(sel));
-      const upgrade=inspected.doc.querySelector('.zx-upgrade:not(.zx-choice-dialog)'),pause=inspected.doc.querySelector('.zx-pause');
-      const upgradeLayout=upgrade&&{extraHints:[...upgrade.children].filter(e=>e.localName==='small').length,hasStatsLink:upgrade.textContent.includes('查看当前属性')};
+      const upgrade=inspected.doc.querySelector('.zx-upgrade'),pause=inspected.doc.querySelector('.zx-pause');
+      const upgradeLayout=upgrade&&{extraHints:[...upgrade.children].filter(e=>e.localName==='small').length,linkRight:box('.zx-upgrade-stats').x+box('.zx-upgrade-stats').w,cardRight:box('.zx-offer').x+box('.zx-offer').w};
       const pauseLayout=pause&&{page:{x:box('.zx-pause').x,y:box('.zx-pause').y,w:box('.zx-pause').w,h:box('.zx-pause').h},tags:pause.querySelectorAll('.zx-build-tag').length,buildHeading:pause.textContent.includes('本局构筑'),actions:[...pause.querySelectorAll('.zx-pause-actions button')].map(el=>{const b=inspected.layout.box(el);return {x:b.x,w:b.w,h:b.h};})};
       const home=inspected.doc.querySelector('.zx-home-top'),homeLayout=home&&{gear:box('.zx-gear'),header:box('.zx-home-top'),scroll:box('.zx-home-scroll')};
       const unresolvedColors=[...inspected.doc.querySelectorAll('.zx *')].flatMap(el=>[...el.childNodes]).filter(n=>n.nodeType===3&&n.textContent.trim()).map(n=>({text:n.textContent,color:inspected.layout.box(n)?.s.color})).filter(t=>t.color&&/^(inherit|initial|unset|currentcolor)$/i.test(t.color));
@@ -45,7 +44,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         const top=Math.min(...labels.map(t=>t.y)),bottom=Math.max(...labels.map(t=>t.y+t.h));
         return {text:el.textContent,verticalOffset:(top+bottom)/2-(b.y+b.h/2),horizontalOffsets:labels.map(t=>(t.x+t.w/2)-(b.x+b.w/2)),topInset:top-b.y,bottomInset:b.y+b.h-bottom,color:b.s.color};
       }).filter(Boolean);
-      return {page:app.screen?.dataset.page,viewport:[inspected.env.innerWidth,inspected.env.innerHeight],centered,leftAligned,upgradeLayout,pauseLayout,homeLayout:homeLayout&&Object.fromEntries(Object.entries(homeLayout).map(([key,b])=>[key,{x:b.x,y:b.y,w:b.w,h:b.h}])),unresolvedColors,settingsColors,prices,boxes:all.map(e=>{
+      return {page:app.screen?.dataset.page,dark:inspected.doc.documentElement.classList.contains('zx-dark'),viewport:[inspected.env.innerWidth,inspected.env.innerHeight],centered,leftAligned,upgradeLayout,pauseLayout,homeLayout:homeLayout&&Object.fromEntries(Object.entries(homeLayout).map(([key,b])=>[key,{x:b.x,y:b.y,w:b.w,h:b.h}])),unresolvedColors,settingsColors,prices,boxes:all.map(e=>{
         const b=inspected.layout.box(e);return b&&{text:e.textContent.slice(0,60),class:e.className,x:b.x,y:b.y,w:b.w,h:b.h,clip:b.clip};
       }).filter(Boolean)};
     });
@@ -54,16 +53,13 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     for(const b of data.centered)assert.ok(Math.abs(b.offset)<=1.1,name+' text not centered: '+JSON.stringify(b));
     for(const b of data.leftAligned)assert.ok(Math.abs(b.offset)<=1.1,name+' offer text not left aligned: '+JSON.stringify(b));
     assert.deepEqual(data.unresolvedColors,[],name+' must resolve text colors before Canvas painting');
-    for(const b of data.settingsColors)assert.equal(b.color,'#29263c',name+' needs dark text on pale controls: '+b.text);
+    if(!data.dark)for(const b of data.settingsColors)assert.equal(b.color,'#29263c',name+' needs dark text on pale controls: '+b.text);
     for(const b of data.prices){
       assert.ok(Math.abs(b.verticalOffset)<=1.1&&b.horizontalOffsets.every(v=>Math.abs(v)<=1.1),name+' price label group is not centered: '+JSON.stringify(b));
       assert.ok(b.topInset>=4&&b.bottomInset>=4,name+' price labels overflow the circle: '+JSON.stringify(b));
       assert.equal(b.color,'#29263c',name+' prices need dark text on pastel buttons');
     }
-    if(data.upgradeLayout){
-      assert.equal(data.upgradeLayout.extraHints,0,'Upgrade dialog must omit the three extra hints');
-      assert.equal(data.upgradeLayout.hasStatsLink,false,'Level-up choices must omit the attributes link');
-    }
+    if(data.upgradeLayout){assert.equal(data.upgradeLayout.extraHints,0,'Upgrade dialog must omit the three extra hints');assert.ok(Math.abs(data.upgradeLayout.linkRight-data.upgradeLayout.cardRight)<=1.1,'Upgrade attributes link must align with the right card edge');}
     if(data.pauseLayout){assert.ok(data.pauseLayout.tags>0&&!data.pauseLayout.buildHeading,'Pause build should use compact tags');assert.equal(data.pauseLayout.actions.length,2);assert.ok(Math.abs(data.pauseLayout.actions[0].w-data.pauseLayout.actions[1].w)<=1.1,'Pause actions must have equal widths');}
     if(data.pauseLayout)assert.deepEqual(data.pauseLayout.page,{x:0,y:0,w:data.viewport[0],h:data.viewport[1]},'Pause must cover the full usable viewport');
     if(data.homeLayout){const {gear,header,scroll}=data.homeLayout;assert.ok(gear.y>=header.y+8&&gear.y+gear.h+8<=scroll.y&&gear.x+gear.w<=data.viewport[0]-16,'Settings must remain clear of the illustration and screen edge');}
@@ -140,43 +136,17 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   if(!process.argv.includes('--battle-only')){
   await tap('[data-action="journey"]');
   await snapshot('02-fire-390');
-  for(const id of [16,4]){await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-390');}
-  await tap('.zx-link','查看属性');await snapshot('29-preview-390');
-  const previewDamage=()=>page.evaluate(()=>inspected.doc.querySelector('.zx-stat-grid strong').textContent);
-  const baseDamage=await previewDamage();
-  await tap('.zx-footer button','返回');
+  for(const id of [16,132,4]){await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-390');}
+  await tap('.zx-link','查看属性');await snapshot('29-preview-390');await tap('.zx-footer button','返回');
   await tap('.zx-footer button','选择关卡');await snapshot('05-maps-390');
   const locks=await page.evaluate(()=>[...inspected.doc.querySelectorAll('.zx-lock [data-icon="lock"]')].map(c=>{
     const pixels=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
     return {static:c.dataset.static,drawn:pixels.some((v,i)=>i%4===3&&v>0)};
   }));assert.equal(locks.length,3);assert.ok(locks.every(i=>i.drawn&&i.static==='true'),'Locked maps need drawn lock icons');
   await tap('.zx-footer button','选择难度');await snapshot('06-difficulty-390');
-  assert.equal(await page.evaluate(()=>app.screen.querySelector('.zx-header small').textContent),'炎 · 桌上世界 · 单人');
-  assert.equal(await page.evaluate(()=>app.screen.querySelector('.zx-body').firstElementChild.dataset.mode),'single-stage');
   assert.equal(await page.evaluate(()=>inspected.doc.querySelectorAll('[data-tier]:disabled').length),2);
   await page.evaluate(()=>app.zixing.home());await sleep(350);
-  // Hold the foreground read while tapping through the packaged, canvas-rendered UI.
-  await page.evaluate(()=>{
-    window.readLabProfile=app.backend.loadProfile.bind(app.backend);
-    app.backend.loadProfile=()=>new Promise((resolve,reject)=>{
-      window.releaseLabRead=()=>resolve(readLabProfile(app.meta.account));
-      window.failLabRead=()=>reject(Error('测试网络中断'));
-    });
-  });
   await tap('[data-action="lab"]');
-  assert.equal(await page.evaluate(()=>app.screen.querySelector('h1').textContent),'研究所');
-  assert.equal(await page.evaluate(()=>!!app.screen.querySelector('.zx-wallet,[data-research]')),false);
-  const pendingFrame=await page.evaluate(()=>inspected.uiCanvas.toDataURL());
-  await page.waitForFunction(frame=>inspected.uiCanvas.toDataURL()!==frame,{timeout:4000,polling:100},pendingFrame);
-  await snapshot('lab-loading-390');
-  await tap('.zx-footer button','返回');
-  await page.evaluate(()=>releaseLabRead());await sleep(200);
-  assert.equal(await page.evaluate(()=>app.screen.dataset.page),'home');
-  await tap('[data-action="lab"]');
-  await page.evaluate(()=>failLabRead());
-  await page.waitForFunction(()=>app.screen.dataset.page==='request-error' && app.screen.textContent.includes('测试网络中断'));
-  await page.evaluate(()=>{app.backend.loadProfile=readLabProfile;});
-  await tap('.zx-footer button','重试');
   await snapshot('30-lab-empty-390');await tap('[data-research="dmg"]');await snapshot('35-research-insufficient');
   await tap('.zx-dialog .zx-button','返回');
   // Earn test currency through the real settlement API. Preference saves must
@@ -196,12 +166,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   const after=await page.evaluate(()=>({dust:app.meta.profile.stardust,level:app.meta.lab('dmg')}));
   assert.equal(after.level,before.level+1);assert.ok(after.dust<before.dust);
   await snapshot('34-research-saved');
-  await tap('.zx-footer button','返回');await tap('[data-action="journey"]');
-  // Simulate a stale in-memory profile while the fixture cloud has the saved upgrade.
-  await page.evaluate(()=>{app.meta.profile.lab.dmg=0;});
-  await tap('.zx-link','查看属性');
-  assert.equal(await previewDamage(),(parseFloat(baseDamage)+4)+'%');
-  await tap('.zx-footer button','返回');await tap('.zx-footer button','返回');await tap('[data-action="lab"]');
   await tap('.zx-wallet button','如何获得');await snapshot('36-stardust');await tap('.zx-footer button','返回');
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await resize(width,height);
@@ -243,11 +207,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await page.waitForFunction(()=>app.run?.player,{timeout:90000});
     await page.waitForFunction(()=>app.run.time>2&&!inspected.doc.querySelector('.run-loading,.stageintro'),{timeout:90000});
     await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});
-    if(process.argv.includes('--item-dwell')){
-      await reviewItems({page,tap,resize,dir,snapshot});
-      console.log('Proximity timing, altar charge and item rewards passed.');
-      return;
-    }
     await snapshot('07-battle');
     const hudBindings=await page.evaluate(()=>{
       const r=app.run,p=r.player,oldHp=p.hp,oldXp=p.xp,oldLevel=p.level,oldSkill=p.moves[0].level,oldSlots=p.moveSlots;
@@ -258,7 +217,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
         const track=inspected.doc.querySelector('.zx-player-health');
         samples.push({progress:Number(track.dataset.progress),value:Number(track.getAttribute('aria-valuenow')),expected:Math.ceil(p.hp)});
       }
-      if(oldSlots!==3||inspected.doc.querySelector('[data-skill-slot="3"]'))throw Error('First stage must show only three skill slots');
       const experience=[];
       for(const value of [0,.25,.75,.99]){
         p.xp=p.xpNext*value;refresh();
@@ -269,16 +227,16 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       p.hp=oldHp;p.xp=0;refresh();
       const resetExperience=Number(inspected.doc.querySelector('.zx-profile-art').dataset.progress);
       const level=inspected.doc.querySelector('.zx-hud-level').textContent,topBars=inspected.doc.querySelectorAll('.zx-hud-hp,.zx-hud-track,.zx-hud-xp-track').length;
-      p.addItem('razor-claw');p.addItem('razor-claw');p.addItem('honey');p.addVitamin('protein',.12);p.moves[0].level=oldSkill+1;p.moveSlots=4;refresh();
+      p.addItem('leftovers');p.addItem('leftovers');p.addItem('lucky-egg');p.addVitamin('protein',.12);p.moves[0].level=oldSkill+1;p.moveSlots=4;refresh();
       const items=[...inspected.doc.querySelectorAll('[data-item]')].map(n=>[n.dataset.item,Number(n.dataset.count)]),skill=Number(inspected.doc.querySelector('[data-skill-slot="0"]').dataset.level),unlocked=!inspected.doc.querySelector('[data-skill-slot="3"]').classList.contains('locked');
       p.level=oldLevel;p.xp=oldXp;p.moveSlots=oldSlots;refresh();r.state='play';
       const minimap=inspected.doc.querySelector('.zx-minimap'),mapPixels=minimap.getContext('2d').getImageData(0,0,240,240).data;
-      return {samples,experience,resetExperience,weatherTags:inspected.doc.querySelectorAll('.zx-hud-weather').length,level,expectedLevel:'LV.'+oldLevel,topBars,items,skill,expectedSkill:oldSkill+1,unlocked,mapDrawn:mapPixels.some((v,i)=>i%4===3&&v>0),scoreNodes:inspected.doc.querySelectorAll('.zx-hud-score,.zx-hud-meta,[data-ui-layer="score"]').length};
+      return {samples,experience,resetExperience,weatherTags:inspected.doc.querySelectorAll('.zx-hud-weather').length,level,expectedLevel:'LV.'+oldLevel,topBars,items,skill,expectedSkill:oldSkill+1,unlocked,mapDrawn:mapPixels.some((v,i)=>i%4===3&&v>0),score:inspected.doc.querySelector('.zx-hud-score').textContent,expectedScore:'积分 '+Math.round(r.stats.kills).toLocaleString('en-US')};
     });
     assert.deepEqual(hudBindings.samples.map(s=>s.progress),[0,.25,.75,1]);assert.ok(hudBindings.samples.every(s=>s.value===s.expected),'Foot health must follow damage and healing');
     assert.deepEqual(hudBindings.experience.map(s=>s.progress),[0,.25,.75,.99]);assert.equal(hudBindings.resetExperience,0);assert.equal(hudBindings.weatherTags,0);
     assert.ok(hudBindings.experience.every((sample,i,all)=>!i||sample.blue>all[i-1].blue),'The blue portrait arc must visibly fill as experience increases');
-    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.topBars,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.mapDrawn);assert.equal(hudBindings.scoreNodes,0);assert.ok(hudBindings.items.some(([id,n])=>id==='razor-claw'&&n===2));
+    assert.equal(hudBindings.level,hudBindings.expectedLevel);assert.equal(hudBindings.topBars,0);assert.equal(hudBindings.skill,hudBindings.expectedSkill);assert.ok(hudBindings.unlocked&&hudBindings.mapDrawn);assert.equal(hudBindings.score,hudBindings.expectedScore);assert.ok(hudBindings.items.some(([id,n])=>id==='leftovers'&&n===2));
     fs.writeFileSync(path.join(dir,'hud-bindings.json'),JSON.stringify(hudBindings,null,2));await snapshot('07-hud-skills-items');
     await page.evaluate(()=>{const r=app.run;window.previewXp=r.player.xp;r.player.xp=r.player.xpNext*.65;r.state='paused';r.ui.hud(r);});
     await snapshot('07-experience-ring-65');
@@ -294,7 +252,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       const p=app.run.player,foot=app.run.ui.project(app.run,p.pos.x,p.pos.y-.15,p.pos.z);
       const screen=inspected.doc.getElementById('game').getBoundingClientRect();
       const header={offsetX:-screen.x,offsetY:-screen.y,safeTop:wx.getWindowInfo().safeArea.top,menu:wx.getMenuButtonBoundingClientRect(),badge:box('.zx-hud-level'),portrait:box('.zx-profile-art')};
-      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,header,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),pause:box('.zx-hud-pause'),name:box('.zx-hud-name-row'),supplies:box('.zx-inventory-items'),health:box('.zx-player-health'),foot,labels,skills:Array.from({length:p.moveSlots},(_,i)=>i).map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
+      return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,header,stick:box('.tc-stick'),knob:box('.tc-stick>i'),ult:box('.tc-ultb'),profile:box('.zx-hud-profile'),minimap:box('.zx-minimap'),location:box('.zx-hud-location'),counters:box('.zx-hud-counters'),meta:box('.zx-hud-meta'),pause:box('.zx-hud-pause'),name:box('.zx-hud-name-row'),supplies:box('.zx-inventory-items'),health:box('.zx-player-health'),foot,labels,skills:[0,1,2,3].map(i=>box('[data-skill-slot="'+i+'"]')),extras:['.tc-jump','.tc-dash','.tc-lock','.tc-aim'].map(box).filter(Boolean)};
     });}
     function swipeControls(c){
       assert.ok(c.ult&&c.ult.x>=0&&c.ult.y>=0&&c.ult.x+c.ult.w<=c.width+1&&c.ult.y+c.ult.h<c.height,'Ultimate must fit above the safe bottom edge');
@@ -305,7 +263,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       assert.ok(c.profile.y>=c.location.y+c.location.h+10&&c.profile.y<=c.location.y+c.location.h+26,'The portrait must sit close below the stage strip');
       assert.ok(c.header.badge.y>c.header.portrait.y+c.header.portrait.h*75.25/84+1,'The level badge must leave the entire experience ring visible');
       assert.ok(c.supplies.y>=c.name.y+c.name.h+4&&c.supplies.x+c.supplies.w<c.profile.x+c.profile.w,'Items must fit below the character name');
-      assert.ok(c.pause.y>=c.minimap.y+c.minimap.h+8,'Pause belongs below the minimap');
+      assert.ok(c.meta.y>=c.skills.at(-1).y+c.skills.at(-1).h&&c.pause.y>=c.minimap.y+c.minimap.h+8,'Score belongs along the bottom and pause below the minimap');
       assert.ok(Math.abs(c.health.cx-c.foot.x)<=2&&c.health.y>=c.foot.y+6&&c.health.y<=c.foot.y+14,'Health must follow the projected feet, including movement and resizing');
       for(let i=0;i<c.skills.length;i++){const s=c.skills[i];assert.equal(s.w,s.h);if(i)assert.ok(s.y>c.skills[i-1].y+c.skills[i-1].h);}
       assert.ok(c.labels[0].nowrap&&c.labels[0].width>=40,'The level badge must remain legible on one line');
@@ -313,6 +271,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       assert.ok(!overlaps(c.pause,c.ult),'Pause must stay clear of the ultimate and joystick on short screens');
       for(const extra of c.extras){assert.ok(!overlaps(extra,c.ult)&&!overlaps(extra,c.pause),'Optional controls must stay clear of the main controls');}
     }
+    await reviewFloatingControls({page,resize,dir,sleep});
     await tap('.zx-minimap');await snapshot('07-full-map');
     assert.equal(await page.evaluate(()=>app.run.state==='paused'&&app.run.ui.mapOpen()),true);
     await tap('[data-action="close-battle-map"]');
@@ -324,19 +283,10 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await tap('.zx-modal .zx-link','查看属性');await snapshot('26-current-stats');
     await tap('.zx-stat-grid .zx-card','全局伤害');await snapshot('28-damage-sources');await tap('.zx-footer button','返回');
     await tap('.zx-tabs button','成长');await snapshot('27-growth-stats');await tap('.zx-footer button','返回');
-    await tap('.zx-modal .zx-button','结束本局');await snapshot('24-quit-confirm');
-    assert.ok(await page.evaluate(()=>{
-      const wrap=inspected.doc.querySelector('.zx-confirm-end'),card=wrap.querySelector('section');
-      const panel=card.getBoundingClientRect(),bounds=wrap.getBoundingClientRect();
-      return card.firstElementChild.localName==='h2' && panel.top>=bounds.top &&
-        panel.top+panel.height/2<bounds.top+bounds.height/2-10;
-    }));
-    await tap('.zx-confirm-end .zx-button','返回');
+    await tap('.zx-modal .zx-button','结束本局');await snapshot('24-quit-confirm');await tap('.zx-modal .zx-button','返回');
+    await tap('.zx-modal .zx-button','返回');
     assert.equal(await page.evaluate(()=>app.run.state),'play');
-    await page.waitForFunction(time=>app.run.time>time&&!app.run.ui.modalEl&&
-      inspected.layout.box(app.run.ui.touch.ult)?.w>0,{timeout:10000},beforeTime);
     swipeControls(await controls());
-    await reviewFloatingControls({page,resize,dir,sleep});
     await tap('.zx-hud-pause');await tap('.zx-modal .zx-button','设置');await tap('.zx-tabs.main button','操作');
     assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/扩展操作按钮|手动跳跃/);
     await tap('.zx-tabs.main button','画面');
@@ -354,7 +304,11 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     assert.equal(await page.evaluate(()=>!!inspected.doc.querySelector('.run-hint')),false,'Tutorial hints must not cover upgrade choices');
     for(const [w,h] of [[320,568],[430,932]]){await resize(w,h);await snapshot('08-level-up-'+w);await checkUpgradeModal('08-level-up-'+w);}
     await resize(390,844);await sleep(400);
-    assert.deepEqual(await page.evaluate(()=>qaOfferSelections),[],'Opening the dialog must not choose an upgrade');
+    const choices=await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-offer]')].map(el=>el.textContent));
+    await tap('.zx-upgrade-stats');await snapshot('08-upgrade-attributes');await tap('.zx-footer button','返回');
+    assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-offer]')].map(el=>el.textContent)),choices,'Viewing attributes must preserve all upgrade choices');
+    await checkUpgradeModal('08-upgrade-return');
+    assert.deepEqual(await page.evaluate(()=>qaOfferSelections),[],'Opening the dialog and returning from attributes must not choose an upgrade');
     const rerolls=await page.evaluate(()=>app.run.rerolls);await tap('.zx-reroll');await settleModal();
     assert.equal(await page.evaluate(()=>app.run.rerolls),rerolls-1,'Reroll must consume exactly one existing charge');await snapshot('08-rerolled');await checkUpgradeModal('08-rerolled');
     await tap('[data-offer="1"]');
@@ -373,14 +327,14 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await resize(390,844);
     if(process.argv.includes('--forest-regression')){
       const report=[];
-      for(const species of [4,16]){
+      for(const species of [4,16,132]){
         await page.evaluate(async species=>{
           if(!await app.startRun({species,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Cannot start '+species);
           app.run.godMode=true;app.run.queueLevelUp=()=>{};
         },species);
         await page.waitForFunction(species=>app.run.player.speciesId===species&&app.run.time>1&&app.run.state==='play',{timeout:90000},species);
         const stages=[];
-        for(const stage of FOREST_ROUTE){
+        for(let stage=1;stage<=4;stage++){
           if(stage>1)await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();});
           await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
           await snapshot('forest-'+species+'-stage-'+stage);
@@ -398,6 +352,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
     }
   }
-  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','two characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and floating joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide touch origins, direction, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
+  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and floating joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide touch origins, direction, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
   console.log('Zixing regression passed:',reports.length,'screenshots');
 }

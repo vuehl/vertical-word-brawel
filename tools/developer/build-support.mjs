@@ -1,19 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import itemSizes from './items/sizes.json' with {type:'json'};
 
-export function itemPreviewImages(){
-  return itemSizes.map(name=>({
-    key:'developer/items/'+name+'.png',
-    bytes:fs.readFileSync(path.join(import.meta.dirname,'items',name+'.png'))
-  }));
-}
-export function assetKey(){
+export function fontKey(){
   const chars=[...new Set(fs.readFileSync(path.join(import.meta.dirname,'panel.mjs'),'utf8'))].sort().join('');
-  const hash=createHash('sha256').update(chars);
-  for(const {key,bytes} of itemPreviewImages())hash.update(key).update(bytes);
-  return hash.digest('hex').slice(0,16);
+  return createHash('sha256').update(chars).digest('hex').slice(0,16);
 }
 
 // This file is imported by the build tool only for --dev. Game sources never
@@ -33,7 +24,7 @@ export function instrumentGame(code){
     replaceOnce(code,'await app.boot();return app;',`await app.boot();installDeveloperMode(app,{
       skills:{
         pool:run=>Vb(run.player.speciesId,run.player.roster,run.player.types,id=>run.meta.inLeague(id)),
-        move:(id,species)=>formMove(id,species),
+        move:id=>O_(id),
         upgrade:(run,slot)=>Gb(run,{kind:'upMove',slot,ups:P_(run.player.moves[slot],E[0])})
       },speciesName:id=>k.get(id).name
     });return app;`);
@@ -50,11 +41,7 @@ export function isolatedStoragePlugin(platform){
       code=replaceOnce(code,"storage('pokebonk.web.')","storage('pokebonk.dev.web.')");
       code=replaceOnce(code,"storage('pokebonk.session.')","storage('pokebonk.dev.session.')");
       code=replaceOnce(code,'invalidateUI:()=>uiFrames.invalidate(false,true),',
-        `invalidateUI:()=>uiFrames.invalidate(false,true),developerInvalidateUI:()=>uiFrames.invalidate(true,true),
-        developerPreviewPixels(enabled){
-          view.originalPixels=enabled;
-          env.setUIPerformance();
-        },`);
+        'invalidateUI:()=>uiFrames.invalidate(false,true),developerInvalidateUI:()=>uiFrames.invalidate(true,true),');
       return {contents:code,resolveDir:platform};
     });
   }};
@@ -64,19 +51,15 @@ export function writeProject(root,out){
   config.projectname='字行 · 开发测试（独立存档）';
   config.description='仅供开发测试，禁止上传发布；正式工程位于上两级目录。';
   fs.writeFileSync(path.join(out,'project.config.json'),JSON.stringify(config,null,2)+'\n');
-  const main=path.join(out,'minigame/game.js'),directory=path.join(out,'minigame/play'),play=path.join(directory,'game.js');
-  const modules=fs.readdirSync(directory).filter(name=>name.endsWith('.js')&&name!=='game.js').sort()
-    .map(name=>[name,fs.readFileSync(path.join(directory,name))]);
-  const stamped=stampRuntime(fs.readFileSync(main,'utf8'),fs.readFileSync(play,'utf8'),modules);
+  const main=path.join(out,'minigame/game.js'),play=path.join(out,'minigame/play.js');
+  const stamped=stampRuntime(fs.readFileSync(main,'utf8'),fs.readFileSync(play,'utf8'));
   fs.writeFileSync(main,stamped.main);fs.writeFileSync(play,stamped.play);
 }
 
 // Main and gameplay must come from the same developer build. A stale release
 // subpackage must fail visibly instead of silently starting without the panel.
-export function stampRuntime(main,play,modules=[]){
-  const hash=createHash('sha256').update(main).update(play);
-  for(const [name,content] of modules)hash.update('\0').update(name).update('\0').update(content);
-  const id='dev8-'+hash.digest('hex').slice(0,12);
+export function stampRuntime(main,play){
+  const id='dev8-'+createHash('sha256').update(main).update(play).digest('hex').slice(0,12);
   return {id,
     main:replaceOnce(main,"if (api && typeof api.setup==='function' && typeof api.run==='function') resolve(api);",
       `if (api && api.developerBuild===${JSON.stringify(id)} && typeof api.setup==='function' && typeof api.run==='function') resolve(api);`)

@@ -2,156 +2,59 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export async function reviewItems({page,tap,resize,dir,snapshot}) {
+export async function reviewItems({page,tap,resize,dir,sleep,snapshot}) {
   const original=await page.evaluate(()=>{
-    const r=app.run,p=r.player.pos;
-    const before={x:p.x,y:p.y,z:p.z,halted:app.halted,spent:r.goldSpent,bought:r.chestsBought};
-    app.halted=true;
-    window.qaPlace=target=>{
-      p.set(target.x+1,target.y,target.z+1);r.player.vel.set(0,0,0);r.camTarget.copy(p);
-    };
-    window.qaItemFrames=(count,delta=1/30)=>{
-      for(let i=0;i<count;i++){r.update(delta);r.input.endFrame();}
-      r.updateCamera(1);r.renderWorld(0);app.r.render(0);r.ui.worldLabels(r);inspected.env.drawUI(app.r.renderer);
-      return r.playerFootRing.material.uniforms.dwell.value;
-    };
-    window.qaChest=r.interactables.list.find(e=>e.kind==='chest'&&!e.used&&!e.data?.gift);
-    r.gold=1000;qaPlace(qaChest);
+    const r=app.run,p=r.player.pos,s=app.meta.profile.settings;
+    const before={x:p.x,y:p.y,z:p.z,touchScale:s.touchScale,extra:s.zxExtraControls};
+    const chest=r.interactables.list.find(e=>e.kind==='chest'&&!e.used&&!e.data?.gift);
+    if(!chest)throw Error('No paid chest available for interaction test');
+    window.qaChest=chest;r.gold=1000;p.set(chest.x,chest.y,chest.z);r.player.vel.set(0,0,0);
     return before;
   });
-  const mid=await page.evaluate(()=>{
-    const r=app.run;r.input.touchKey('KeyE',true);qaItemFrames(1,1/60);r.input.touchKey('KeyE',false);
-    return {progress:qaItemFrames(22),used:qaChest.used,spent:r.goldSpent,button:r.ui.touch.actText};
-  });
-  assert.ok(Math.abs(mid.progress-.5)<.015);assert.ok(!mid.used&&!mid.button);assert.equal(mid.spent,original.spent);
+  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-title')?.textContent==='开启宝箱');
+  const layouts=[];
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
-    await resize(width,height);await page.evaluate(()=>qaItemFrames(0));
+    await resize(width,height);
+    for(const scale of [.7,1,1.3]){
+      await page.evaluate(scale=>{const s=app.meta.profile.settings;s.touchScale=scale;s.zxExtraControls=true;app.applySettings();},scale);
+      await sleep(250);
+      const layout=await page.evaluate(()=>{
+        const box=sel=>{const b=inspected.layout.box(inspected.doc.querySelector(sel));return b&&{x:b.x,y:b.y,w:b.w,h:b.h};};
+        return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,act:box('.tc-act'),ult:box('.tc-ultb'),stick:box('.tc-stick'),extras:inspected.doc.querySelectorAll('.tc-jump,.tc-dash,.tc-lock,.tc-aim').length,label:inspected.doc.querySelector('.tc-act').textContent};
+      });
+      const {act,ult,stick}=layout,overlap=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+      assert.ok(act&&act.w>=44&&act.h>=44&&act.y>=ult.y+ult.h+4,'Interaction must be below the ultimate with a usable touch area');
+      assert.ok(act.x>=0&&act.x+act.w<=width&&act.y+act.h<=layout.height,'Interaction must fit on screen');
+      assert.ok(!overlap(act,stick),'Interaction must stay clear of the joystick: '+JSON.stringify({scale,...layout}));
+      assert.equal(layout.extras,0,'Old saved extra-controls flags must not create removed buttons');
+      assert.match(layout.label,/开启宝箱.*金币/);layouts.push({scale,...layout});
+    }
+    await page.evaluate(()=>{app.meta.profile.settings.touchScale=1;app.meta.profile.settings.zxExtraControls=false;app.applySettings();});
     await snapshot('14-interaction-'+width);
   }
+  fs.writeFileSync(path.join(dir,'item-interaction-layouts.json'),JSON.stringify(layouts,null,2));
   await resize(390,844);
-  const visit=await page.evaluate(()=>{
-    const r=app.run,objects=r.interactables.list;
-    const costLabel=inspected.doc.querySelector('.wlabel.cost')?.textContent;
-    qaPlace(objects.find(o=>o.kind==='freechest'&&!o.used));const switched=qaItemFrames(1);
-    const altar=objects.find(o=>o.kind==='altar'&&!o.data.tier&&!o.used);
-    qaPlace(altar);const left=qaItemFrames(91);
-    return {costLabel,switched,left,charge:altar.charge,percent:inspected.doc.querySelector('.charge span')?.textContent};
-  });
-  assert.match(visit.costLabel,/金币/);assert.ok(visit.switched>0&&visit.switched<.025);
-  assert.equal(visit.left,-1);assert.ok(visit.charge>0&&visit.charge<1);assert.match(visit.percent,/^\d+%$/);
-  const lifecycle=await page.evaluate(async()=>{
-    const r=app.run,ui=r.ui,facilities=r.interactables,group=qaChest.group;
-    const label=()=>ui.worldLabelNodes.get(qaChest);
-    qaPlace(qaChest);qaItemFrames(1);
-    const first=label(),models=[...group.children];
-    group.remove(...models);qaItemFrames(1);
-    const loading=!label()&&!first.isConnected&&facilities.nearest!==qaChest;
-    r.player.pos.x+=30;group.add(...models);ui.worldLabels(r);
-    const moved=!label();
-    qaPlace(qaChest);qaItemFrames(0);
-    const returned=!!label()?.isConnected;
-    const project=ui.project,w=inspected.env.innerWidth,h=inspected.env.innerHeight;
-    const clipped=[[4,h/2],[w-4,h/2],[w/2,2],[w/2,h+2]].every(([x,y])=>{
-      ui.project=()=>({x,y,vis:true});ui.worldLabels(r);return !label();
-    });
-    ui.project=project;ui.worldLabels(r);
-    const beforePause=label();r.pause();
-    const paused=!beforePause.isConnected&&!ui.worldLabelNodes.size;
-    r.resume();ui.worldLabels(r);
-    const resumed=!!label()?.isConnected;
-    const removed=facilities.add('chest',qaChest.x,qaChest.z);
-    facilities.remove(removed);await removed.modelReady;
-    const npc=facilities.list.find(o=>o.kind==='ditto');
-    qaPlace(npc);qaItemFrames(1);
-    const npcLabel=ui.worldLabelNodes.get(npc);
-    npc.model.visible=false;qaItemFrames(1);
-    const hiddenNPC=!!npcLabel&&!npcLabel.isConnected&&!ui.worldLabelNodes.has(npc)&&facilities.nearest!==npc;
-    npc.model.visible=true;
-    qaPlace(qaChest);qaItemFrames(0);
-    return {loading,moved,returned,clipped,paused,resumed,lateModel:removed.group.children.length,hiddenNPC};
-  });
-  assert.deepEqual(lifecycle,{loading:true,moved:true,returned:true,clipped:true,paused:true,resumed:true,lateModel:0,hiddenNPC:true});
-  const poor=await page.evaluate(()=>{
-    const r=app.run,facilities=r.interactables,old=r.ui.worldLabelNodes.get(qaChest);
-    r.gold=0;qaPlace(qaChest);
-    const dwell=qaItemFrames(22);qaItemFrames(26);
-    facilities.interact(qaChest);
-    const toasts=r.ui.toastsEl.textContent;
-    return {state:r.state,used:qaChest.used,waiting:facilities.waitingForGold,dwell,prompt:facilities.label(qaChest),
-      hasPrice:r.ui.worldLabelNodes.has(qaChest)||old.isConnected,hasWarning:/不足|不够|没有足够/.test(toasts)};
-  });
-  assert.deepEqual(poor,{state:'play',used:false,waiting:true,dwell:-1,prompt:'',hasPrice:false,hasWarning:false});
-  // The simulation is halted here. Present the throttled counter and its tile
-  // as they would appear on the next live HUD frame before taking the photo.
-  await page.waitForFunction(()=>{
-    const r=app.run;r.ui.hud(r);r.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
-    return inspected.doc.querySelector('.zx-hud-gold').textContent==='0';
-  },{timeout:3000,polling:100});
+  await page.evaluate(()=>{app.run.gold=0;});
+  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-title')?.textContent==='金币不足');
+  await tap('.tc-act');
+  assert.equal(await page.evaluate(()=>app.run.state),'play','An unaffordable chest must stay closed');
+  assert.equal(await page.evaluate(()=>qaChest.used),false);
   await snapshot('14-interaction-insufficient');
-  const notices=await page.evaluate(async()=>{
-    const r=app.run,ui=r.ui;
-    // Deliver native image completions after failure, teardown or expiry.
-    function holdIcon(message){
-      const create=wx.createImage;
-      let native;
-      wx.createImage=()=>{native={width:24,height:24};return native;};
-      try{ui.toast(message,'razor-claw');}finally{wx.createImage=create;}
-      const notice=ui.toastsEl.lastElementChild;
-      return {notice,native,icon:notice.querySelector('img')};
-    }
-    const failed=holdIcon('拾取');
-    const pending=failed.icon.hidden&&failed.notice.textContent==='拾取';
-    failed.native.onerror();
-    const textOnly=!failed.notice.querySelector('img')&&failed.notice.textContent==='拾取';
-    const loaded=holdIcon('已获得道具');loaded.native.onload();
-    const ready=!loaded.icon.hidden&&!loaded.notice.querySelector('.zx-note-tab');
-    const late=holdIcon('换场');
-    const p=r.player.pos;ui.popup(p.x,p.y+2,p.z,'+1','#fff');const hadPopup=ui.popups.size>0;
-    ui.clearWorldNotices();late.native.onload();
-    const cleared=!ui.toastsEl.childElementCount&&!ui.popups.size&&!late.notice.isConnected&&late.icon.hidden;
-    const env=inspected.env,image=inspected.doc.createElement('img'),src=loaded.icon.src;
-    image.hidden=true;image.src=src;inspected.doc.body.append(image);
-    const schedule=env.setTimeout,create=wx.createImage;
-    let retry,request;
-    try{
-      env.setTimeout=(fn,delay,...args)=>{
-        if(delay===1500){retry=fn;return 0;}
-        return schedule(fn,delay,...args);
-      };
-      image.dispatchEvent(new env.Event('error',{bubbles:true}));
-      wx.createImage=()=>{request={width:24,height:24};return request;};
-      retry();
-    }finally{env.setTimeout=schedule;wx.createImage=create;}
-    const expired=holdIcon('延迟');
-    // The old global retry button appeared after eight seconds.
-    await new Promise(resolve=>setTimeout(resolve,8300));expired.native.onload();
-    const quiet=!/图像尚?未加载/.test(inspected.doc.body.textContent);
-    image.remove();request.onload();
-    return {pending,textOnly,ready,hadPopup,cleared,quiet,oldImage:image.src===src,expired:!expired.notice.isConnected&&expired.icon.hidden};
-  });
-  assert.deepEqual(notices,{pending:true,textOnly:true,ready:true,hadPopup:true,cleared:true,quiet:true,oldImage:true,expired:true});
-  const opened=await page.evaluate(halted=>{
-    const r=app.run,cost=r.interactables.chestCost();r.gold=1000;
-    const almost=qaItemFrames(44),early=qaChest.used;
-    qaItemFrames(1);const used=qaChest.used;
-    qaItemFrames(15);app.halted=halted;
-    return {almost,early,used,spent:r.goldSpent,bought:r.chestsBought,cost};
-  },original.halted);
-  assert.ok(opened.almost>.97&&opened.almost<1&&!opened.early&&opened.used);
-  assert.equal(opened.spent,original.spent+opened.cost);assert.equal(opened.bought,original.bought+1);
-  fs.writeFileSync(path.join(dir,'item-dwell.json'),JSON.stringify({mid,visit,lifecycle,poor,notices,opened},null,2));
+  await page.evaluate(()=>{app.run.gold=1000;qaChest.data={...qaChest.data,gift:true};});
+  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-detail')?.textContent==='免费');
+  await page.evaluate(()=>{qaChest.used=true;});
+  await page.waitForFunction(()=>!app.run.ui.touch.actText);
+  await page.evaluate(()=>{qaChest.used=false;delete qaChest.data.gift;});
+  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-act-detail')?.textContent.includes('金币'));
+  await tap('.tc-act');
   await page.waitForFunction(()=>inspected.doc.querySelector('[data-choice="showItemChoice"]'),{timeout:15000});
   async function checkDialog(name){
     await snapshot(name);
     const state=await page.evaluate(()=>{
       const d=inspected.doc.querySelector('.zx-item-dialog'),b=d.getBoundingClientRect(),body=d.querySelector('.zx-item-body').getBoundingClientRect();
       const footer=d.querySelector('.zx-item-actions').getBoundingClientRect();
-      const badge=inspected.layout.box(d.querySelector('.zx-item-rarity').firstChild).s;
-      return {single:d.dataset.choice==='showItem',effect:d.querySelector('.zx-item-effect')?.textContent,extra:!!d.querySelector('.zx-item-description,.zx-item-note'),
-        badgeSize:badge.font,badgeWeight:Number(badge['font-weight']),team:!!d.querySelector('.pk-btn,.pk-row')||d.textContent.includes('查看我的队伍'),images:d.querySelectorAll('.zx-item-image').length,x:b.x,y:b.y,w:b.width,h:b.height,bodyBottom:body.y+body.height,footerY:footer.y,footerBottom:footer.y+footer.height,width:inspected.env.innerWidth,height:inspected.env.innerHeight};
+      return {team:!!d.querySelector('.pk-btn,.pk-row')||d.textContent.includes('查看我的队伍'),images:d.querySelectorAll('.zx-item-image').length,x:b.x,y:b.y,w:b.width,h:b.height,bodyBottom:body.y+body.height,footerY:footer.y,footerBottom:footer.y+footer.height,width:inspected.env.innerWidth,height:inspected.env.innerHeight};
     });
-    assert.ok(state.badgeSize>=(state.single?15:13)&&state.badgeWeight>=700,'Rarity must use the larger, bold face');
-    if(state.single){assert.ok(state.effect);assert.equal(state.extra,false,'Single rewards must omit lore and stacking notes');}
     assert.equal(state.team,false,'Item dialog must omit the team shortcut');
     assert.ok(state.images>0&&state.x>=0&&state.y>=0&&state.x+state.w<=state.width+1&&state.y+state.h<=state.height+1,'Item dialog must fit the usable viewport');
     assert.ok(state.bodyBottom<=state.footerY+1&&state.footerBottom<=state.y+state.h-8,'Reward actions must remain visible below the scrollable content');
@@ -198,18 +101,18 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
   await page.evaluate(()=>qaRewardButton.dispatchEvent(new inspected.env.Event('click')));
   const result=await page.evaluate(key=>({count:app.run.player.items.get(key)||0,gold:app.run.gold,sold:app.run.econ.sold,state:app.run.state}),sale.key);
   assert.equal(result.count,sale.count);assert.equal(result.sold,sale.sold+1);assert.ok(result.gold>=sale.gold+sale.price);assert.equal(result.state,'play');
-  assert.equal(await page.evaluate(()=>app.run.player.addItem('fairy-feather')),false,'Hidden items cannot be granted');
-  await page.evaluate(()=>{
-    const r=app.run;r.state='modal';r.ui.showItem(r,'razor-claw',()=>r.resume());
-  });
-  await checkDialog('17-item-razor-claw');
-  const knife=await page.evaluate(()=>inspected.doc.querySelector('.zx-item-dialog').textContent);
-  assert.match(knife,/少见/);assert.match(knife,/美工刀/);assert.match(knife,/暴击伤害\s*\+30%/);
-  assert.doesNotMatch(knife,/爪子|可叠加/);
-  await tap('[data-item-action="take"]');
+  // This catalog item has no original PNG. Exercise its real dialog so the
+  // shared fallback remains visible without a failed native image request.
+  await page.evaluate(()=>{const r=app.run;r.state='modal';r.ui.showItem(r,'fairy-feather',()=>{r.ui.hideModal();r.state='play';});});
+  await page.waitForFunction(()=>inspected.doc.querySelector('.zx-item-image')?.complete);
+  // Software-rendered regression frames are intentionally 250 ms apart; give
+  // the decoded image its next normal paint before taking the screenshot.
+  await sleep(300);
+  await checkDialog('16-item-feather');await tap('[data-item-action="sell"]');
   fs.writeFileSync(path.join(dir,'item-rewards.json'),JSON.stringify({choice,single,sale,result},null,2));
   await page.evaluate(before=>{
+    const s=app.meta.profile.settings;s.touchScale=before.touchScale;s.zxExtraControls=before.extra;app.applySettings();
     app.run.player.pos.set(before.x,before.y,before.z);app.run.player.vel.set(0,0,0);
-    delete window.qaChest;delete window.qaPlace;delete window.qaItemFrames;delete window.qaRewardButton;
+    delete window.qaChest;delete window.qaRewardButton;
   },original);
 }

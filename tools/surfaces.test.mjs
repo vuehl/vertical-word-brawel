@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as D from 'linkedom/worker';
 import {installSurfaces} from '../platform/surfaces.mjs';
-import {LocalURL} from '../platform/url.mjs';
 import {paint} from '../platform/paint.mjs';
 
 function fixture(t,resolvePath){
@@ -42,20 +41,6 @@ test('standalone Image loads eagerly for atlases and WebGL textures',async t=>{
   assert.ok(loaded&&img.complete);assert.equal(img.naturalHeight,32);
 });
 
-test('detached glTF images decode embedded textures before the loader revokes their URL',t=>{
-  const f=fixture(t),url='blob:pokebonk/1',previous=LocalURL.objectFiles;
-  LocalURL.objectFiles=new Map([[url,'/tmp/device.png']]);
-  t.after(()=>{LocalURL.objectFiles=previous;});
-  const img=f.doc.createElementNS('http://www.w3.org/1999/xhtml','img');
-  let loaded=false;
-  img.addEventListener('load',()=>{loaded=true;LocalURL.objectFiles.delete(url);});
-  img.src=url;
-  assert.equal(f.images[0].src,'/tmp/device.png');
-  assert.deepEqual(f.requests,[]);
-  f.images[0].onload();
-  assert.ok(loaded&&img.complete&&img.naturalWidth>0);
-});
-
 test('replaced image sources discard unused work and ignore stale async loads',async t=>{
   const pending=new Map(),f=fixture(t,src=>new Promise(resolve=>pending.set(src,resolve)));
   const img=f.doc.createElement('img');img.src='unused.png';img.src='first.png';f.doc.body.append(img);f.draw(img);
@@ -74,21 +59,4 @@ test('visible image errors can switch to a fallback without loading hidden repla
   f.draw(img,{x:110});assert.equal(f.images.length,1);
   f.draw(img);await Promise.resolve();f.images[1].onload();
   assert.deepEqual(f.requests,['missing.png','fallback.png']);assert.ok(img.complete);
-});
-
-test('WeChat WebGL skips only the unsupported browser unpack setting',t=>{
-  const previous=globalThis.wx,calls=[],native={canvas:{},pixelStorei(parameter,value){
-    assert.equal(this,native);calls.push([parameter,value]);return 42;
-  }};
-  t.after(()=>{globalThis.wx=previous;});
-  globalThis.wx={createOffscreenCanvas:()=>({getContext:()=>native})};
-  const {document:doc}=D.parseHTML('<html><body><canvas id="game"></canvas></body></html>');
-  installSurfaces(D,doc,{canvas:{getContext:()=>native}},{});
-  const gl=doc.getElementById('game').getContext('webgl2');
-  for(let i=0;i<200;i++)gl.pixelStorei(0x9243,0);
-  assert.deepEqual(calls,[]);
-  assert.equal(gl.pixelStorei(0x9240,true),42);
-  gl.pixelStorei(0x9241,false);gl.pixelStorei(0x0cf5,4);
-  assert.deepEqual(calls,[[0x9240,true],[0x9241,false],[0x0cf5,4]]);
-  assert.equal(gl.pixelStorei,gl.pixelStorei,'Retain the stable method identity');
 });

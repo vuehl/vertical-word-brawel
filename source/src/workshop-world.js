@@ -565,7 +565,7 @@ export function applyWorkshopLight(run){
   updateWorkshopScene(run,0);
 }
 export function updateWorkshopScene(run,dt,view){
-  const terrain=run.terrain;if(!terrain?.zxPaper)return;
+  const terrain=run.terrain;if(!terrain?.zxPaper||terrain.desk2d)return;
   if(run.sprites)run.sprites.shadows.surface=terrain.workshopGroundY;
   const r=run.r,p=run.player?.pos||terrain.spawn;
   updateToyProximity(run,dt);

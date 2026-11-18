@@ -85,7 +85,7 @@ export async function reviewEncounters(page,dir,tap,draw){
   // reduced runtime metadata. This changes selection inputs, not loaded terrain.
   const guardianPools=await page.evaluate(()=>{
     const api=inspected.env.__zixingDeveloper,r=app.run,stage=r.stage,seed=r.seed,results=[];
-    try{for(let zone=1;zone<=2;zone++)for(let pick=0;pick<r.biome.guardians[zone-1].length;pick++){
+    try{for(let zone=1;zone<=3;zone++)for(let pick=0;pick<r.biome.guardians[zone-1].length;pick++){
       r.stage=zone;r.seed=pick;
       const snapshot=api.apply({boss:'guardian',mode:'none',time:300,count:0}),actor=snapshot.encounter.current;
       const family=r.meta.family(actor.species),research=r.meta.research(family),goal=r.meta.researchGoal(family);
@@ -99,7 +99,7 @@ export async function reviewEncounters(page,dir,tap,draw){
   });
   for(const result of guardianPools){assert.equal(result.species,result.expected);assert.ok(!result.alive&&result.stageCleared&&result.researchCredited);assert.equal(result.portals,1);}
   const progression=await reviewPortalProgression(page,dir,draw);
-  console.log('Developer boss checks passed: timed waves, rewind, attacks, research, rewards and real portal transitions through both combat zones.');
+  console.log('Developer boss checks passed: timed waves, rewind, attacks, research, rewards and real portal transitions through all three zones.');
   const report={samples,next,guardian,combat,guardianPools,progression};
   fs.writeFileSync(path.join(dir,'developer-encounters.json'),JSON.stringify(report,null,2)+'\n');
   return report;
@@ -107,17 +107,17 @@ export async function reviewEncounters(page,dir,tap,draw){
 
 async function reviewPortalProgression(page,dir,draw){
   await page.evaluate(async()=>{
-    await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    await app.startRun({species:132,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;
     const api=inspected.env.__zixingDeveloper;
     api.options.invincible=true;api.options.lockCount=true;
     api.close();
   });
   const results=[];
-  for(let zone=1;zone<=2;zone++){
+  for(let zone=1;zone<=3;zone++){
     const defeat=await page.evaluate(()=>{
       const api=inspected.env.__zixingDeveloper,r=app.run;
-      const snapshot=api.apply({boss:'guardian',mode:'stress',time:600,count:0}),actor=snapshot.encounter.current;
+      const snapshot=api.apply({boss:'guardian',mode:'timed',time:600,count:0}),actor=snapshot.encounter.current;
       // Advance past 10:00 with the ordinary fixed-build tools still active.
       for(let frame=0;frame<31;frame++)r.update(1/30);
       const stages=r.stats.stagesCleared,bosses=r.stats.bosses,splits=r.splits.length;
@@ -134,7 +134,7 @@ async function reviewPortalProgression(page,dir,draw){
     assert.equal(defeat.stage,zone);assert.ok(defeat.time>600&&defeat.stageCleared);
     assert.equal(defeat.stagesAdded,1);assert.equal(defeat.bossesAdded,1);assert.equal(defeat.splitsAdded,1);
     assert.equal(defeat.portals,1);assert.ok(defeat.portalInBounds&&defeat.chestsAdded>=1);
-    assert.equal(defeat.sanctuaryExit,zone===2);
+    assert.equal(defeat.sanctuaryExit,zone===3);
     await page.evaluate(()=>{
       const r=app.run;inspected.env.__zixingDeveloper.options.monitor=false;
       for(let frame=0;frame<150;frame++)r.update(1/30);
@@ -148,20 +148,19 @@ async function reviewPortalProgression(page,dir,draw){
       const r=app.run,portal=r.interactables.list.find(i=>i.kind==='portal');
       const rewards=r.interactables.rewardsLeft();
       r.interactables.interact(portal);
-      return {rewards,stage:r.stage,state:r.state,warned:r.interactables.warnedPortal===portal};
+      return {rewards,stage:r.stage,state:r.state,warnAt:r.rewardWarnAt,time:r.realTime};
     });
     assert.ok(warning.rewards>0);assert.equal(warning.stage,zone);assert.equal(warning.state,'play');
-    assert.ok(warning.warned,'The normal unclaimed-reward warning must still run');
+    assert.equal(warning.warnAt,warning.time,'The normal unclaimed-reward warning must still run');
     await page.evaluate(()=>app.run.interactables.interact(app.run.interactables.list.find(i=>i.kind==='portal')));
-    const nextStage=zone===1?2:4;
-    await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},nextStage);
+    await page.waitForFunction(zone=>app.run.stage===zone+1&&app.run.state==='play',{timeout:90000},zone);
     const arrived=await page.evaluate(()=>{
       const r=app.run;r.update(0);
       return {stage:r.stage,stageTime:r.stageTime,stageCleared:r.stageCleared,bossSpawned:r.bossSpawned,
         sanctuary:!!r.sanctuary,testEntry:!!inspected.doc.querySelector('#zx-dev-button')?.isConnected};
     });
-    assert.equal(arrived.stage,nextStage);assert.equal(arrived.stageTime,0);assert.equal(arrived.stageCleared,false);
-    assert.equal(arrived.bossSpawned,zone===2);assert.ok(arrived.testEntry);assert.equal(arrived.sanctuary,zone===2);
+    assert.equal(arrived.stage,zone+1);assert.equal(arrived.stageTime,0);assert.equal(arrived.stageCleared,false);
+    assert.ok(arrived.testEntry);assert.equal(arrived.sanctuary,zone===3);
     results.push({defeat,warning,arrived});
   }
   return results;

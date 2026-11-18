@@ -78,6 +78,7 @@ for (const file of fs.readdirSync(path.join(pub,'assets'))) {
     fontText.push(JSON.stringify(words));
   }
 }
+const uiText=fs.readFileSync(path.join(pub,'text/ui.json'));add('text','text/ui.json',uiText);fontText.push(uiText.toString('utf8'));
 for (const name of ['version.json','creditos.txt','legal']) add('text',name,fs.readFileSync(path.join(pub,name)));
 const python = process.env.POKEBONK_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
 if(development)fontText.push(fs.readFileSync(path.join(import.meta.dirname,'developer','panel.mjs'),'utf8'));

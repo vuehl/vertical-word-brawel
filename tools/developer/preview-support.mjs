@@ -3,9 +3,7 @@ import path from 'node:path';
 
 export function verifyDeveloperPreview(project){
   const main=fs.readFileSync(path.join(project,'minigame/game.js'),'utf8');
-  const directory=path.join(project,'minigame/play');
-  const play=fs.readdirSync(directory).filter(name=>name.endsWith('.js')).sort()
-    .map(name=>fs.readFileSync(path.join(directory,name),'utf8')).join('\n');
+  const play=fs.readFileSync(path.join(project,'minigame/play.js'),'utf8');
   return verifyDeveloperBundle(main,play);
 }
 export function verifyDeveloperBundle(main,play){

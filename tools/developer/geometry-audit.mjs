@@ -1,4 +1,3 @@
-import {FOREST_ROUTE} from '../../source/src/lite-rules.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import {build} from 'esbuild';
@@ -24,7 +23,7 @@ export async function auditGeometry(page,dir){
     }`},plugins:[{name:'source-three',setup(b){b.onResolve({filter:/assets\/three-[^/]+\.js$/},args=>({path:path.join(root,'source/public/assets',path.basename(args.path))}));}}]});
   const module={exports:{}};new Function('module','exports',bundled.outputFiles[0].text)(module,module.exports);
   const report={basis:'Geometry index count / 3. Scene counts include submitted instances; full-frame counts include post-processing passes, exclude native UI GL draws.',...module.exports.inspect(),scenes:[]};
-  for(const stage of FOREST_ROUTE){
+  for(let stage=1;stage<=4;stage++){
     if(stage>1)await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.run.state='play';});
     const sample=await page.evaluate(()=>{
       const run=app.run;run.renderWorld(0);

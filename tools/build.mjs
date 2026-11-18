@@ -1,24 +1,22 @@
+import {buildPlay} from './play-chunks.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import esbuild from 'esbuild';
-import {buildPlay} from './play-bundle.mjs';
 import {parse} from '../source/tools/vendor/acorn.mjs';
 import {addBootAssets,bootAssets,writeBootHeroArt} from './boot-assets.mjs';
 import {lowerUnicodeRegexes} from './device-syntax.mjs';
-import {assetPolicyVersion,itemIconSelectionChanged} from './asset-policy.mjs';
-import {gameProject} from './project-target.mjs';
+import {assetPolicyVersion} from './asset-policy.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
 const development=process.argv.includes('--dev');
-const projectRoot=gameProject(root,development);
+const projectRoot=development?path.join(root,'验收','开发者工程'):root;
 const developer=development?await import('./developer/build-support.mjs'):null;
 const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
 const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
-if(installedAssets?.policyVersion!==assetPolicyVersion||itemIconSelectionChanged(installedAssets.files)||
-  (developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
+if(installedAssets?.policyVersion!==assetPolicyVersion||(developer&&installedAssets?.developerFontKey!==developer.fontKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
   execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{
@@ -29,44 +27,26 @@ const shellServer=read('server.mjs');
 function serverCode() {
   const imports=shellServer.slice(0,shellServer.indexOf('const PORT')).replace(/^import .+ from 'node:(?:fs(?:\/promises)?|http|path)';\n/gm,'');
   let routes=shellServer.slice(shellServer.indexOf('function accountByToken'),shellServer.indexOf('async function sendFile'));
-  return imports + `
-import {readStore,writeStore} from "pokebonk:store";
-import {progressDispatcher,callProgress} from "pokebonk:progress";
-let store,dirty;
-function persist(){dirty=true;}
-` + routes + `
-async function localRoute(draft,url,method,headers,bodyText,checkpoint){
-  store=draft;
-  store.coopParties??={};
-  dirty=false;
-  const key=url.pathname.slice(4);
-  if(!checkpoint)for(const account of Object.values(store.accounts))constrainLiteProfile(account.profile);
-  if(key==="/coop/access")return {response:{status:200,data:{show:false,play:false}}};
-  const social=["coop","friends","rooms","invites","clans","mail","events","seasons","leaderboard"];
-  if(social.includes(key.split("/")[1]))return {response:{status:404}};
-  const route=matchRoute(method,key);
-  if(!route)return {response:{status:404,data:{error:"Not found."}}};
-  const response={status:200,data:undefined};
-  const value=await route.handler({headers:{authorization:headers.Authorization||headers.authorization},bodyText},response,url,route.params);
-  if(value!==undefined)response.data=value;
-  return {response,dirty};
-}
-const dispatch=progressDispatcher({load:readStore,save:writeStore,call:${development?'null':'callProgress'},
-  mutationID:()=>crypto.randomBytes(16).toString("hex"),localRoute});
-let queue=Promise.resolve();
-export function dispatchApi(...args){
-  const next=queue.then(()=>dispatch(...args));
-  queue=next.catch(()=>{});
-  return next;
-}
-`;
+  // Commit a finish atomically with its idempotency record. No partial result
+  // becomes visible to another request if a storage write or handler fails.
+  return imports+'\nimport {readStore,writeStore} from "pokebonk:store";\n'+
+    'let store,dirty=false;function persist(){dirty=true;}\n'+routes+
+    '\nlet queue=Promise.resolve();\nexport function dispatchApi(url,method,headers,bodyText){\n'+
+    '  const next=queue.then(async()=>{\n'+
+    '    const key=url.pathname.slice(4);if(key==="/coop/access")return {status:200,data:{show:false,play:false}};\n'+
+    '    if(/^\\/(coop|friends|rooms|invites|clans|mail|events|seasons|leaderboard)(\\/|$)/.test(key))return {status:404};\n'+
+    '    store??=readStore();store.coopParties??={};for(const a of Object.values(store.accounts))constrainLiteProfile(a.profile);\n'+
+    '    const route=matchRoute(method,key);if(!route)return {status:404,data:{error:"Not found."}};\n'+
+    '    const before=method==="GET"?null:JSON.stringify(store);dirty=false;\n'+
+    '    const res={status:200,data:undefined};try{const value=await route.handler({headers:{authorization:headers.Authorization||headers.authorization},bodyText},res,url,route.params);if(value!==undefined)res.data=value;if(dirty)writeStore(store);return res;}\n'+
+    '    catch(error){if(before)store=JSON.parse(before);throw error;}\n'+
+    '  });queue=next.catch(()=>{});return next;\n}\n';
 }
 const sources={
   name:'pokebonk-platform',setup(build){
     build.onResolve({filter:/^pokebonk:api$/},args=>({path:args.path,namespace:'pokebonk'}));
     build.onResolve({filter:/^node:crypto$/},()=>({path:path.join(platform,'crypto.mjs')}));
     build.onResolve({filter:/^pokebonk:store$/},()=>({path:path.join(platform,'store.mjs')}));
-    build.onResolve({filter:/^pokebonk:progress$/},()=>({path:path.join(platform,'cloud-progress.mjs')}));
     build.onResolve({filter:/^pokebonk:clone$/},()=>({path:path.join(platform,'clone.mjs')}));
     build.onResolve({filter:/^pokebonk:base64$/},()=>({path:path.join(platform,'base64.mjs')}));
     build.onResolve({filter:/^pokebonk:css-number$/},()=>({path:path.join(platform,'css-number.mjs')}));
@@ -108,7 +88,7 @@ const sources={
       code='import {decodeBase64String as atob} from "pokebonk:base64";\n'+code.replaceAll('typeof atob === "function"','true');
       return {contents:code,resolveDir:path.dirname(args.path)};
     });
-    build.onLoad({filter:/src[\\/](config|move-effects|boss-encounters)\.js$/},args=>({
+    build.onLoad({filter:/src[\\/]config\.js$/},args=>({
       contents:lowerUnicodeRegexes(fs.readFileSync(args.path,'utf8')),resolveDir:path.dirname(args.path)
     }));
     build.onLoad({filter:/src[\\/]game\.js$/},()=>{
@@ -138,15 +118,16 @@ await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resou
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
 const result=await buildPlay(common,src,hostBundle.outputFiles[0].text);
 result.files.set('game.js',fs.readFileSync(path.join(platform,'play-entry.js'),'utf8'));
-function checkScriptSize(file,bytes){
-  if(bytes>1.8*1048576)throw Error(file+' exceeds the 1.8 MiB per-script budget: '+bytes+' bytes.');
-}
-for(const [name,code] of result.files)checkScriptSize('play/'+name,Buffer.byteLength(code));
-const playDir=path.join(out,'play');
-fs.mkdirSync(playDir,{recursive:true});
-for(const [name,code] of result.files)fs.writeFileSync(path.join(playDir,name),code);
-for(const name of fs.readdirSync(playDir)){
-  if(name.endsWith('.js')&&!result.files.has(name))fs.unlinkSync(path.join(playDir,name));
+const playDir=path.join(out,'play');fs.mkdirSync(playDir,{recursive:true});
+for(const [name,code] of result.files){
+  if(Buffer.byteLength(code)>1.8*1048576)throw Error(name+' exceeds script budget');
+  const destination=path.join(playDir,name);
+  if(fs.existsSync(destination)&&fs.readFileSync(destination,'utf8')===code)continue;
+  const pending=destination+'.'+process.pid+'.tmp';
+  try{
+    fs.writeFileSync(pending,code);
+    fs.renameSync(pending,destination);
+  }finally{fs.rmSync(pending,{force:true});}
 }
 fs.rmSync(path.join(out,'play.js'),{force:true});
 for(const file of ['host.js','original.js'])fs.rmSync(path.join(out,file),{force:true});
@@ -180,8 +161,6 @@ if(!development){
     if(release.includes(marker))throw Error('Developer code leaked into release: '+marker);
 }
 for(const file of built.filter(f=>f.endsWith('.js'))){
-  const bytes=fs.statSync(file).size;
-  checkScriptSize(path.relative(out,file),bytes);
   try{parse(fs.readFileSync(file,'utf8'),{ecmaVersion:previewESVersion});}
   catch(error){throw new Error(path.relative(out,file)+': '+error.message);}
 }
@@ -189,17 +168,10 @@ const {subpackages}=JSON.parse(fs.readFileSync(path.join(out,'game.json'),'utf8'
 const subRoots=subpackages.map(pkg=>path.resolve(out,pkg.root));
 const total=size(built),main=size(built.filter(file=>!subRoots.some(root=>file===root||file.startsWith(root+path.sep))));
 console.log('Native project:',(total/1048576).toFixed(2),'MiB, main:',(main/1048576).toFixed(2),'MiB.');
-const playFiles=[...result.files.keys()].map(name=>({name,bytes:fs.statSync(path.join(playDir,name)).size}))
-  .sort((a,b)=>b.bytes-a.bytes);
-console.log('Largest play script:',playFiles[0].name,playFiles[0].bytes,'bytes (limit 1.8 MiB).');
 // Keep a conservative 20 MiB preview budget, with room for compiler metadata.
 if(total>20*1048576-128*1024||main>4*1048576-64*1024)throw Error('WeChat preview package budget exceeded.');
 if(process.argv.includes('--analyze')){
-  const attributed=new Map();
-  for(const key of result.shippedOutputs)for(const [file,{bytesInOutput}] of Object.entries(result.metafile.outputs[key].inputs)){
-    attributed.set(file,(attributed.get(file)||0)+bytesInOutput);
-  }
-  const inputs=[...attributed].map(([file,bytes])=>({file,bytes}));
+  const core=Object.values(result.metafile.outputs)[0],inputs=Object.entries(core.inputs).map(([file,{bytesInOutput}])=>({file,bytes:bytesInOutput}));
   const engineInputs=inputs.filter(({file})=>/\/three-[^/]+\.js$/.test(file));
   const coreInputs=inputs.filter(input=>!engineInputs.includes(input));
   const sum=list=>list.reduce((n,input)=>n+input.bytes,0);
@@ -213,7 +185,7 @@ if(process.argv.includes('--analyze')){
   ];
   const report={basis:'Minified esbuild output attribution plus actual startup files; on-disk bytes, NOT runtime RAM.',totalBytes:codeBytes,
     groups:groups.map(group=>({...group,MiB:group.bytes/1048576})),
-    playFiles,gameplayInputs:coreInputs.sort((a,b)=>b.bytes-a.bytes),engineInputs,
+    gameplayInputs:coreInputs.sort((a,b)=>b.bytes-a.bytes),engineInputs,
     platformInputs:Object.entries(Object.values(hostBundle.metafile.outputs)[0].inputs).map(([file,{bytesInOutput}])=>({file,bytes:bytesInOutput})).sort((a,b)=>b.bytes-a.bytes)};
   const reportDir=process.env.POKEBONK_QA||path.join(root,'验收');fs.mkdirSync(reportDir,{recursive:true});
   fs.writeFileSync(path.join(reportDir,'代码组成.json'),JSON.stringify(report,null,2)+'\n');

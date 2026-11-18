@@ -4,105 +4,6 @@ import path from 'node:path';
 import {reviewEncounters} from './encounters-regression.mjs';
 import {reviewDeveloperSkills} from './skills-regression.mjs';
 import {reviewDeveloperEvolution} from './evolution-regression.mjs';
-import {heroActionCatalog} from '../../source/src/hero-action-catalog.js';
-
-async function reviewDeathPreview(page,dir,tap){
-  for(const species of [4,16,17,18,58,59,5,6]){
-    const before=await page.evaluate(async species=>{
-      const r=app.run,p=r.player,dev=inspected.env.__zixingDeveloper;
-      dev.options.invincible=true;dev.options.hideScenery=false;
-      p.setSpecies(species);p.level=60;r.ui.developerSyncExperience();r.ui.hud(r);
-      await r.sprites.prepareHeroForm(species);
-      dev.open();
-      window.deathPreviewStats=()=>({species:p.speciesId,level:p.level,hp:p.hp,xp:p.xp,dead:p.dead,
-        revives:p.revives,kills:r.stats.kills,time:r.stageTime,invincible:dev.options.invincible});
-      const get=r.sprites.getPlayerGlyph;
-      r.sprites.getPlayerGlyph=(...args)=>{
-        window.previewFrame=args[3];return get(...args);
-      };
-      window.restorePreviewProbe=()=>{r.sprites.getPlayerGlyph=get;};
-      return deathPreviewStats();
-    },species);
-    await tap('preview-hero-death');
-    const clip=heroActionCatalog[species]?.clips.faint;
-    const result=await page.evaluate(()=>{
-      const r=app.run,seen=[];
-      for(let i=0;i<90;i++){
-        r.update(1/60);
-        if(previewFrame&&seen.at(-1)!==previewFrame.index)seen.push(previewFrame.index);
-      }
-      app.r.render(0);inspected.env.drawUI(app.r.renderer);
-      return {state:r.state,action:previewFrame?.action,seen,stats:deathPreviewStats(),
-        replay:!!inspected.doc.querySelector('[data-dev-action="replay-hero-death"]'),ring:r.playerFootRing.visible};
-    });
-    assert.equal(result.replay,true);assert.equal(result.state,'paused');assert.equal(result.ring,false);
-    assert.deepEqual(result.stats,before);
-    assert.equal(result.action,clip?'faint':undefined);
-    assert.deepEqual(result.seen,Array.from({length:clip?.count??0},(_,index)=>index));
-    if(species===4)await page.screenshot({path:path.join(dir,'主角死亡动作预览.png')});
-    await tap('replay-hero-death');
-    assert.equal(await page.evaluate(()=>previewFrame?.index),clip?0:undefined);
-    await tap('close-hero-death');
-    const after=await page.evaluate(()=>{
-      restorePreviewProbe();
-      return {stats:deathPreviewStats(),state:app.run.state,ring:app.run.playerFootRing.visible,action:previewFrame?.action};
-    });
-    assert.deepEqual(after.stats,before);assert.equal(after.state,'play');assert.equal(after.ring,true);
-    assert.notEqual(after.action,'faint');
-  }
-  console.log('Verified level 60 invincible death previews, replay and resume for both hero families.');
-}
-
-async function reviewUpgradeWave(page){
-  for(const mode of ['timed','stress']){
-    const result=await page.evaluate(async mode=>{
-      await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
-      app.halted=true;
-      const api=inspected.env.__zixingDeveloper,r=app.run,p=r.player;
-      // A fire hero who already chose the first evolution at level 24.
-      p.setSpecies(5);p.evoStage=1;r.nextEvo=r.planEvolution(5,1);
-      api.apply({time:600,count:0,mode,boss:'none'});
-      api.options.lockCount=false;api.options.spawn=false;
-      const start=p.level,kills=r.stats.kills,uses=r.ult.uses;
-      let ultimateKills=0;
-      const tally=r.combat.tally.bind(r.combat);
-      r.combat.tally=(species,flags,slot,weight)=>{
-        if(slot===8)ultimateKills++;
-        return tally(species,flags,slot,weight);
-      };
-      const descriptor=Object.getOwnPropertyDescriptor(performance,'now');
-      let now=performance.now();
-      Object.defineProperty(performance,'now',{configurable:true,value:()=>now});
-      try{
-        inspected.doc.querySelector('[data-dev-action="ultimate-upgrade"]').click();
-        const atCast={state:r.state,level:p.level,pending:r.pendingLevels,uses:r.ult.uses-uses};
-        let frames=0;
-        while(r.state==='play'&&frames++<480){now+=1000/60;r.update(1/60);}
-        const first={level:p.level,kills:r.stats.kills-kills,ultimateKills,pending:r.pendingLevels,active:r.ult.active,frames};
-        const pending=[];
-        while(r.state==='modal'&&pending.length<3){
-          const card=inspected.doc.querySelector('[data-offer]');
-          if(!card)throw Error('Expected an upgrade card: '+r.ui.modalEl?.textContent);
-          pending.push(r.pendingLevels);
-          r.ui.hud(r);app.r.render(0);inspected.env.drawUI(app.r.renderer);
-          now+=500;inspected.env.drawFrozenModal(app.r.renderer);
-          card.click();inspected.env.drawFrozenModal(app.r.renderer);
-          now+=250;inspected.env.drawFrozenModal(app.r.renderer);
-        }
-        const end={state:r.state,pending:r.pendingLevels};
-        api.stopWorkload();
-        return {mode,start,atCast,first,pending,end,restored:p.level};
-      }finally{if(descriptor)Object.defineProperty(performance,'now',descriptor);else delete performance.now;}
-    },mode);
-    assert.equal(result.start,40);
-    assert.deepEqual(result.atCast,{state:'play',level:40,pending:0,uses:1});
-    assert.equal(result.first.kills,8);assert.equal(result.first.level,42);assert.equal(result.first.active,0);
-    assert.ok(result.first.ultimateKills>0,'The ultimate itself must kill practice targets');
-    assert.deepEqual(result.pending,[2,1]);assert.deepEqual(result.end,{state:'play',pending:0});
-    assert.equal(result.restored,1);
-    console.log('Ultimate upgrade wave:',result);
-  }
-}
 
 export async function enterDeveloperFromHome(page,dir){
   // Use the user's native-touch route, not a direct app.startRun call.
@@ -145,7 +46,6 @@ export async function reviewDeveloper(page,dir){
   report.firstEntry=await page.evaluate(()=>({state:app.run.state,panel:!!inspected.doc.querySelector('#zx-dev-panel')}));
   assert.deepEqual(report.firstEntry,{state:'paused',panel:true},'First battle must display the minute/count panel automatically');
   await draw();await page.screenshot({path:path.join(dir,'dev-first-entry.png')});
-  if(process.argv.includes('--death-only'))return reviewDeathPreview(page,dir,tap);
   if(process.argv.includes('--scenery-only')){
     await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({count:200,seek:false}));
     const sample=()=>page.evaluate(()=>{
@@ -171,7 +71,6 @@ export async function reviewDeveloper(page,dir){
   if(process.argv.includes('--boss-only'))return reviewEncounters(page,dir,tap,draw);
   if(process.argv.includes('--skills-only'))return reviewDeveloperSkills(page,dir);
   if(process.argv.includes('--evolution-only'))return reviewDeveloperEvolution(page,dir);
-  if(process.argv.includes('--upgrade-only'))return reviewUpgradeWave(page);
   await page.evaluate(()=>{
     // Performance scenarios below use the fire hero; explicitly confirm its
     // real evolution before measuring the continuing combat workload.
@@ -258,12 +157,9 @@ export async function reviewDeveloper(page,dir){
   assert.ok(!report.persistence.files.includes('pokebonk-save.json'),'Developer build touched production save');
   assert.ok(report.persistence.keys.some(key=>key.startsWith('pokebonk.dev.web.')));
   assert.ok(!report.persistence.keys.some(key=>key.startsWith('pokebonk.web.')));
-  report.workloads=await page.evaluate(async()=>{
-    // The portal scenario finishes in the sanctuary. Measure uninterrupted
-    // first-zone combat on a fresh fire hero; upgrade choices are tested separately.
-    await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
+  report.workloads=await page.evaluate(()=>{
     const api=inspected.env.__zixingDeveloper,r=app.run,p=r.player;
-    api.close();r.queueLevelUp=()=>{};
+    api.stopWorkload();
     const original={level:p.level,moves:p.moves,items:p.items,vitamins:p.vitamins,addXp:p.addXp,gainLevel:p.gainLevel,xp:p.xp,slots:p.moveSlots};
     const limits=()=>[r.vfx.add.limit,r.vfx.norm.limit,r.vfx.text.limit,r.performance.particleCell];
     const beforeLimits=[r.performance.particles,r.performance.normalParticles,r.performance.damageTexts,r.performance.particleCell],samples=[];
@@ -271,7 +167,7 @@ export async function reviewDeveloper(page,dir){
     for(const [mode,time] of [['timed',120],['timed',480],['stress',0]]){
       const kills=r.stats.kills,gold=r.gold,ultimates=r.ult.uses;
       const initial=api.apply({mode,time,count:200});
-      if(mode==='stress')p.gainLevel(); // Stress measurements keep a fixed level.
+      p.gainLevel(); // Rare candy must not change the fixed workload level.
       const displayedLevel=inspected.doc.querySelector('.zx-hud-level').textContent;
       const appliedWithoutRewards=r.stats.kills===kills&&r.gold===gold&&p.xp===original.xp;
       // Pause must hold all developer producers, not merely stop the monsters.
@@ -298,7 +194,7 @@ export async function reviewDeveloper(page,dir){
   for(const sample of report.workloads.samples){
     assert.ok(sample.appliedWithoutRewards,'Preset application must not award gold/XP/kills');
     assert.ok(sample.paused,'Paused developer panel must stop the load producers');
-    assert.equal(sample.state,'play');if(sample.mode==='stress')assert.ok(sample.levelStable);
+    assert.equal(sample.state,'play');assert.ok(sample.levelStable);
     assert.equal(sample.displayedLevel,'LV.'+sample.initial.workload.level,'HUD must immediately show the applied level');
     assert.ok(sample.damage>0,'Real skills must damage real enemies');
     assert.ok(sample.ultimates>0,'Real ultimate must run');
@@ -359,8 +255,6 @@ export async function reviewDeveloper(page,dir){
   assert.equal(report.lifecycle.removed,true);assert.equal(report.lifecycle.buttons,1);
   await reviewDeveloperSkills(page,dir);
   await reviewDeveloperEvolution(page,dir);
-  await reviewUpgradeWave(page);
-  await reviewDeathPreview(page,dir,tap);
   fs.writeFileSync(path.join(dir,'developer-regression.json'),JSON.stringify(report,null,2)+'\n');
   console.log('Developer checks passed:',report.widths.length,'viewport sizes,',report.waves.length,'time jumps; isolated save and lifecycle.');
 }

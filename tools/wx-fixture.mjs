@@ -64,26 +64,7 @@ Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(ho
   const resolveAsync=host.files.resolvePath;
   host.files.resolvePath=async url=>{const p=await resolveAsync(url);if(!p)window.missingAssets.add(String(url));return p;};
 }});
-let fixtureSave;
-const fixtureReceipts=new Set();
-const fixtureCloud={init(){},async callContainer(options){
-  if(window.fixtureProgress)return window.fixtureProgress(options);
-  if(options.path!=='/v1/progress')throw Error('Unknown fixture cloud route');
-  const {data,method}=options;
-  if(method==='POST' && !fixtureSave)fixtureSave={revision:1,owner:'fixture',progress:structuredClone(data.progress)};
-  if(method==='PUT' && !fixtureReceipts.has(data.mutation)){
-    if(data.revision!==fixtureSave.revision)return {statusCode:409};
-    fixtureSave={...fixtureSave,revision:fixtureSave.revision+1,progress:structuredClone(data.progress)};
-    fixtureReceipts.add(data.mutation);
-  }
-  return {statusCode:fixtureSave?200:404,data:structuredClone(fixtureSave)};
-}};
 globalThis.wx={
-    cloud:fixtureCloud,
-  getLaunchOptionsSync:()=>window.fixtureLaunchOptions || {query:{}},
-  shareAppMessage:options=>{window.sharedCard=options;},
-  onShareAppMessage:listener=>{window.fixtureMenuCard=listener;},
-  showShareMenu:({menus})=>{window.fixtureShareMenus=menus;},
   env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>fs,
   getDeviceInfo:()=>({platform:window.fixturePlatform||'devtools'}),
   getWindowInfo:()=>({windowWidth:innerWidth,windowHeight:innerHeight,pixelRatio:devicePixelRatio,
@@ -126,13 +107,7 @@ globalThis.wx={
     return {onProgressUpdate(fn){notify=fn;}};
   }
 };
-const showCallbacks=[];
-wx.setPreferredFramesPerSecond=fps=>{(window.fixtureFrameRates??=[]).push(fps);};
-wx.onMemoryWarning=listener=>{window.fixtureMemoryWarning=listener;};
-wx.triggerGC=()=>{window.fixtureGCs=(window.fixtureGCs||0)+1;};
-wx.onShow=fn=>showCallbacks.push(fn);
-window.fixtureShow=options=>showCallbacks.forEach(fn=>fn(options));
-for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide'})){
+for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide',Show:'pageshow'})){
   wx['on'+key]=fn=>{events[key]=fn;if(event.startsWith('touch'))document.addEventListener(event,fn,{passive:false});};
 }
 const fingers=new Map();

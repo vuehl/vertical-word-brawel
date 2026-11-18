@@ -1,4 +1,5 @@
-import {FOREST_ROUTE} from '../source/src/lite-rules.js';
+import {fixtureSubpackage} from './fixture-play-chunks.mjs';
+import {reviewAltarRing} from './altar-ring-regression.mjs';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -11,13 +12,11 @@ import {reviewMenus} from './menu-regression.mjs';
 import {reviewUIPerformance} from './ui-perf.mjs';
 import {reviewZixing} from './zixing-regression.mjs';
 import {reviewPaper} from './paper-regression.mjs';
-import {reviewLoading,reviewNetworkActions} from './loading-regression.mjs';
+import {reviewLoading} from './loading-regression.mjs';
 import {reviewScenes} from './scene-regression.mjs';
 import {reviewStarters} from './starter-regression.mjs';
 import {reviewUpgrade} from './upgrade-regression.mjs';
 import {reviewBattleFeedback} from './battle-feedback-regression.mjs';
-import {fixtureSubpackage} from './fixture-subpackage.mjs';
-import {reviewRunSettlement,reviewStartupLatency} from './startup-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -50,13 +49,6 @@ const srv=http.createServer((req,res)=>{
 });
 await new Promise(r=>srv.listen(0,'127.0.0.1',r));
 const b=await puppeteer.launch({executablePath:chrome,headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling']});
-if(process.argv.includes('--coop')){
-  try {
-    const {reviewCoop}=await import('./coop-regression.mjs');
-    await reviewCoop(b,srv.address().port);
-  } finally { await b.close();srv.close(); }
-  process.exit(0);
-}
 const page=await b.newPage(),errors=[];
 let homePainted=false;
 page.on('console',m=>{if(m.type()==='info'&&m.text().startsWith('[宝可梦启动] 游戏首页已绘制'))homePainted=true;});
@@ -79,8 +71,7 @@ await page.evaluateOnNewDocument(()=>{
       if(window.upgradeAudit){
         const canvas=args[args.length-1];
         if(canvas===window.inspected?.uiCanvas)upgradeAudit.uploads++;
-        if(window.inspected?.modalTransition?.canvases.includes(canvas)&&++upgradeAudit.panelUploads===1)
-          upgradeAudit.clock+=upgradeAudit.firstUploadMs||0;
+        if(window.inspected?.modalTransition?.canvases.includes(canvas))upgradeAudit.panelUploads++;
       }
       return original.apply(this,args);
     };
@@ -181,9 +172,9 @@ async function verifyStartup(){
     return;
   }
   if(!checkGlyphGate){
-    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n>=95).length>=2||window.problem,{timeout:60000});
+    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n===95).length>=2||window.problem,{timeout:60000});
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-    await verifyProgressImage(await page.evaluate(()=>bootPercentages.at(-1)),'00-background.png');
+    await verifyProgressImage(95,'00-background.png');
     await page.evaluate(()=>window.releaseHomeStatus());
   }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
@@ -272,18 +263,12 @@ async function verifyStartup(){
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
   }
   if(await page.evaluate(()=>!!app.zixing)){
-    if(process.argv.includes('--startup-latency'))await reviewStartupLatency({page,dir,baseline:process.argv.includes('--baseline')});
-    else if(process.argv.includes('--run-settlement'))await reviewRunSettlement({page,dir});
-    else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
-    else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
+    if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--altar-ring'))await reviewAltarRing({page,tap,dir,sleep});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,resize,dir,sleep});
-    else if(process.argv.includes('--device-effects')){
-      const {reviewDeviceEffects}=await import('./device-effects-regression.mjs');
-      await reviewDeviceEffects(page,dir);
-    }
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--battle-feedback'))await reviewBattleFeedback({page,tap,resize,dir,sleep});
     else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});
@@ -451,7 +436,7 @@ async function verifyStartup(){
   }
   if(process.argv.includes('--forest-regression')){
     const report=[];
-    for(const species of [4,16]){
+    for(const species of [4,16,132]){
       await page.evaluate(async species=>{
         if(app.run&&app.run.state!=='over')await app.run.finish(false,true);
         app.toMenu();
@@ -461,7 +446,7 @@ async function verifyStartup(){
       },species);
       await page.waitForFunction(species=>app.run.player.speciesId===species&&app.run.time>1,{timeout:60000},species);
       const stages=[];
-      for(const stage of FOREST_ROUTE){
+      for(let stage=1;stage<=4;stage++){
         if(stage>1)await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();});
         await page.waitForFunction(stage=>app.run.stage===stage,{timeout:60000},stage);
         await sleep(1500);
@@ -480,7 +465,7 @@ async function verifyStartup(){
       report.push({species,stages,settlement});
     }
     fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
-    console.log('Three original partners, all forest stages and native file settlement verified');
+    console.log('Three original partners, all four forest stages and native file settlement verified');
   }
   const missing=await page.evaluate(()=>[...missingAssets]);if(missing.length)throw Error('Missing local assets: '+missing.join(', '));
   if(errors.length)throw Error(errors[0]);
@@ -492,7 +477,7 @@ async function verifyStartup(){
   assert.equal(values.filter(n=>n===100).length,1);
   console.log('Boot percentages through the first home frame:',[...new Set(values)].join(', '));
 }
-try{await verifyStartup();}
+try{if(process.argv.includes('--desk2d')){const {verifyDesk}=await import('./desk2d-regression.mjs');await verifyDesk(page,dir);}else await verifyStartup();}
 catch(error){console.error('Stopped on',await page.evaluate(()=>({screen:window.app?.screen?.className,state:window.app?.run?.state,
     text:window.inspected?.doc.body.textContent.slice(-400),errors:window.problem,
     boxes:[...(window.inspected?.doc.querySelectorAll('.lite-map button')||[])].map(el=>{const r=el.getBoundingClientRect();return [el.textContent,r.x,r.y,r.width,r.height,inspected.layout.hit(r.x+r.width/2,r.y+r.height/2)?.className];}),

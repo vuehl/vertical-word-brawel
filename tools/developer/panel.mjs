@@ -1,12 +1,8 @@
 // DEV ONLY: injected by tools/developer/build-support.mjs, never imported by
 // source/. No settings, debug actions or test rewards enter the release save.
-import {itemCardContent,itemDialog} from '../../source/src/zixing-ui.js';
-import sizes from './items/sizes.json' with {type:'json'};
 import {createWorkload,workloadPreset} from './workload.mjs';
 import {createEncounterTest,encounterAt,nextEncounter} from './encounters.mjs';
 import {ordinaryLimit} from '../../source/src/spawn-budget.js';
-import {heroActionCatalog} from '../../source/src/hero-action-catalog.js';
-import heroRigs from '../../source/src/hero-rigs.json' with {type:'json'};
 const SPECIAL=2|4|128|2048|4096|8192|16384|32768|65536|131072;
 const MAX_COUNT=1000;
 const ordinary=(enemies,i)=>enemies.alive[i]&&!(enemies.flags[i]&SPECIAL);
@@ -14,7 +10,7 @@ const bounded=(value,max)=>Math.max(0,Math.min(max,Number.isFinite(Number(value)
 const time=seconds=>Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0');
 
 export function seekWave(run,seconds){
-  if(run.stage>2||run.sanctuary||run.endless||run.tower)throw Error('时间跳转仅用于普通战斗区域。');
+  if(run.stage>3||run.sanctuary||run.endless||run.tower)throw Error('时间跳转仅用于普通三区。');
   seconds=bounded(seconds,600);
   const old=run.stageTime,Director=run.director.constructor;
   // Rebuild card draws at their authored times. Encounter restoration happens
@@ -38,7 +34,7 @@ export function ordinaryCount(run){
   let count=0;for(let i=0;i<run.enemies.n;i++)if(ordinary(run.enemies,i))count++;
   return count;
 }
-export function setEnemyCount(run,count,{reset=false,upgradeWave=false}={}){
+export function setEnemyCount(run,count,reset=false){
   count=Math.round(bounded(count,MAX_COUNT));
   const enemies=run.enemies;
   let current=ordinaryCount(run);
@@ -46,16 +42,9 @@ export function setEnemyCount(run,count,{reset=false,upgradeWave=false}={}){
   for(let i=enemies.n-1;i>=0;i--)if(ordinary(enemies,i)&&(reset||current>count)){enemies.kill(i);current--;}
   const cards=run.director.cards;
   if(!cards.length&&count>current)throw Error('当前区域没有可用怪物。');
-  const targets=[];
   let attempts=0;
   while(current<count&&attempts<count*16+32){
-    const index=attempts++;
-    // Group the practice wave within reach of both radial and aimed ultimates.
-    let angle=index*2.3999632297,distance=5+Math.sqrt((index%233)/232)*15;
-    if(upgradeWave){
-      angle=Math.atan2(run.player.facing.y,run.player.facing.x)+Math.floor(index/8)*1.5+(index%4-1.5)*.21;
-      distance=2.5+(index%2);
-    }
+    const index=attempts++,angle=index*2.3999632297,distance=5+Math.sqrt((index%233)/232)*15;
     const x=run.player.pos.x+Math.cos(angle)*distance,z=run.player.pos.z+Math.sin(angle)*distance;
     if(!run.terrain.inBounds(x,z,2)||run.terrain.hitProp(x,.6,z,.55))continue;
     let id;
@@ -63,14 +52,7 @@ export function setEnemyCount(run,count,{reset=false,upgradeWave=false}={}){
     try{id=enemies.spawn(cards[index%cards.length].id,x,z,run.director.hpMult(),run.director.dmgMult());}
     finally{run.developerSpawning=false;}
     if(id<0)break;
-    if(upgradeWave)targets.push(id);
     current++;
-  }
-  if(targets.length){
-    const p=run.player;
-    const needed=p.xpNext-p.xp+p.xpFor(p.level+1)+1;
-    const drop=needed/(targets.length*run.diff.xp*p.stats.xpGain*run.diff.xpMult);
-    for(const id of targets){enemies.hp[id]=enemies.maxHp[id]=1;enemies.xp[id]=drop;}
   }
   enemies.grid.build(enemies.n,enemies.x,enemies.z,enemies.alive,enemies.radius,enemies.dying);
   return current;
@@ -86,8 +68,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   const modeNames={none:'只调怪物',timed:'按时间实战',stress:'满负载压测'};
   let run=null,button=null,monitor=null,monitorLayer=null,panel=null,target=30,seconds=120;
   let strokePreview=null;
-  let restoreHeroRender=null;
-  let calls=0,triangles=0,lastSample=0,lastMaintain=0;
+  let frames=0,since=performance.now(),fps=0,frameMs=0,calls=0,triangles=0,lastSample=0,lastMaintain=0;
   let values=null,error=null;
   let mountEntrance=()=>{};
   const invalidate=()=>window.developerInvalidateUI?.();
@@ -98,58 +79,22 @@ export function installDeveloperMode(app,{skills,speciesName}){
   const doc=window.document;
   const node=(tag,text,style='')=>{const el=doc.createElement(tag);if(text)el.textContent=text;el.style.cssText=style;return el;};
   const text=(el,value)=>{if(el&&el.textContent!==value)el.textContent=value;};
-  const action=(label,fn,id,cls)=>{
-    const el=node('button',label,cls?'':'min-height:36px;padding:6px 9px;border:1px solid #c4c9c2;border-radius:9px;background:#fffdf7;color:#36443e;font-size:12px;font-weight:700;pointer-events:auto;');
-    if(cls)el.className=cls;
+  const action=(label,fn,id)=>{
+    const el=node('button',label,'min-height:36px;padding:6px 9px;border:1px solid #c4c9c2;border-radius:9px;background:#fffdf7;color:#36443e;font-size:12px;font-weight:700;pointer-events:auto;');
     el.type='button';if(id)el.dataset.devAction=id;
     el.addEventListener('click',async event=>{event.stopPropagation();try{await fn();}catch(e){text(error,e.message||String(e));console.error('Developer action:',e);}});
     return el;
   };
   const row=(...children)=>{const el=node('div','','display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;');el.append(...children);return el;};
-  let itemPreview=null;
-  function closeItemPreview(){
-    if(!itemPreview)return;
-    itemPreview.remove();itemPreview=null;
-    window.developerPreviewPixels(false);app.r.resize();invalidate();
-  }
-  function showItemPreview(){
-    if(itemPreview)return;
-    const wrap=node('div');wrap.className='zx zx-modal-wrap';wrap.id='zx-item-preview';
-    wrap.style.zIndex='1100';wrap.setAttribute('role','dialog');wrap.setAttribute('aria-label','道具原图预览');
-    const originalHeight=Math.ceil(Math.max(...sizes)/window.devicePixelRatio);
-    if(window.innerWidth-originalHeight<80)wrap.style.padding='10px 6px';
-    let index=0;
-    // Reserve the same area in every card. The painter places decoded pixels
-    // at integer framebuffer coordinates independently of this layout box.
-    const picture=node('img','','width:100%;height:'+Math.max(128,originalHeight)+'px;flex:none;image-rendering:pixelated;');
-    picture.className='zx-item-image';picture.setAttribute('data-original-pixels','');
-    const dimensions=node('p');dimensions.className='zx-item-effect';
-    const card=node('div');card.className='zx-item-card';
-    card.append(...itemCardContent(picture,'原图','',[dimensions]));
-    const next=action('',()=>{index=(index+1)%sizes.length;show();},'item-preview-next','zx-button primary');
-    const back=action('关闭',closeItemPreview,'item-preview-back','zx-button zx-item-sell');
-    const show=()=>{
-      const size=sizes[index],name=size+'.png';
-      picture.alt=name;picture.src='/developer/items/'+name;
-      text(card.querySelector('.zx-item-rarity'),size===64?'缩小版':'原图');
-      text(card.querySelector('h3'),name);text(dimensions,size+' × '+size+' 像素');
-      text(next,'下一张（'+sizes[(index+1)%sizes.length]+'.png）');invalidate();
-    };
-    wrap.append(itemDialog('你发现了一件道具！',[card],[next,back]));
-    itemPreview=wrap;(panel||app.screen).append(wrap);
-    window.developerPreviewPixels(true);app.r.resize();show();
-  }
   // Visible identity is deliberately confined to this separately built module.
   const markHome=()=>{
     const home=app.screen;if(!home?.classList.contains('zx-home'))return;
-    const bar=home.querySelector('.zx-home-top .zx-row');
-    if(bar&&!bar.querySelector('#zx-dev-version')){
-      const label=node('small','开发测试版 DEV 8','padding:5px 8px;border-radius:8px;background:#ffe0ad;color:#855329;font-weight:700;');
-      label.id='zx-dev-version';bar.prepend(label,action('道具对比',showItemPreview,'item-preview'));
-    }
+    const label=home.querySelector('.zx-home-top small');
+    if(label){text(label,'开发测试版 DEV 8');label.id='zx-dev-version';label.style.cssText='padding:5px 8px;border-radius:8px;background:#ffe0ad;color:#855329;font-weight:700;';}
+    text(home.querySelector('.zx-home-foot small'),'分钟 / 怪数 / 全战斗压测');
   };
   const setScreen=app.setScreen.bind(app);
-  app.setScreen=(...args)=>{closeItemPreview();const result=setScreen(...args);Promise.resolve().then(markHome);return result;};
+  app.setScreen=(...args)=>{const result=setScreen(...args);Promise.resolve().then(markHome);return result;};
   markHome();let showOnEntry=true;
   function snapshot(){
     if(!run)return null;
@@ -163,7 +108,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     let projectiles=0;for(let i=0;i<run.projectiles.n;i++)if(run.projectiles.alive[i])projectiles++;
     return {stage:run.stage,stageTime:run.stageTime,total:e.count,ordinary:normal,visible,
       device:window.nativeDevice,simMs:app.perf.sim,submitMs:app.perf.draw,
-      fps:app.perf.fps,frameMs:app.perf.fps>0?1000/app.perf.fps:0,calls,triangles,particles:run.vfx.add.n+run.vfx.norm.n,pickups:run.pickups.count,
+      fps,frameMs,calls,triangles,particles:run.vfx.add.n+run.vfx.norm.n,pickups:run.pickups.count,
       projectiles,zones:run.zones.list.length,texts:run.vfx.text.items.length,workload:workload?.snapshot(),encounter:encounters?.snapshot(),
       textures:app.r.renderer.info.memory.textures,geometries:app.r.renderer.info.memory.geometries,
       hpMultiplier:run.director.hpMult(),cards:run.director.cards.map(card=>card.id)};
@@ -204,46 +149,16 @@ export function installDeveloperMode(app,{skills,speciesName}){
     const update=director.update.bind(director);
     director.update=dt=>{if(options.spawn&&!options.lockCount)update(dt);};
   }
-  function removePanel(){
-    restoreHeroRender?.();restoreHeroRender=null;
-    closeItemPreview();panel?.remove();panel=null;values=null;error=null;
-  }
   function close(){
-    if(!panel)return;removePanel();
+    if(!panel)return;panel.remove();panel=null;values=null;error=null;
     if(run&&!run.disposed&&run.state==='paused')run.resume();
     refresh();invalidate();
-  }
-  function previewDeath(shell){
-    const player=run.player,render=player.render;
-    // The battle renderer reads the real form and position through this stand-in.
-    // Only the preview owns the death flag and the animation clock.
-    const pose=Object.assign(Object.create(player),{dead:true,heroPlayback:undefined});
-    player.render=()=>render.call(pose);
-    restoreHeroRender=()=>{player.render=render;};
-    shell.hidden=true;
-    panel.style.background='transparent';
-    const controls=node('div','','position:absolute;bottom:24px;align-self:center;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 14px;border-radius:12px;background:#fffaf0;color:#36443e;');
-    const clip=heroActionCatalog[player.speciesId]?.clips.faint;
-    controls.append(node('b',speciesName(player.speciesId)+(clip?' · 死亡动作':' · 默认死亡姿态（暂无专属动画）'),'font-size:14px;'));
-    controls.append(row(action('重播',()=>{pose.heroPlayback=undefined;},'replay-hero-death'),
-      action('返回战斗',close,'close-hero-death')));
-    panel.append(controls);invalidate();
   }
   function advanceEvolution(){
     if(!run||run.disposed||!['play','paused'].includes(run.state))return false;
     if(!workload.advanceEvolution())return false;
     selectedMode=workload.snapshot().mode;
     close();workload.update(0);refresh();invalidate();return true;
-  }
-  function testUltimateUpgrade(){
-    if(run.ult.active>0||run.ult.castPending)throw Error('请返回战斗，等当前大招结束后再试。');
-    const actual=setEnemyCount(run,8,{reset:true,upgradeWave:true});
-    if(!actual)throw Error('附近没有可生成测试怪的位置，请移动后再试。');
-    target=actual;
-    selectedMode=workload.prepareUltimateTest();
-    close();
-    run.pickups.magnetAll=Math.max(6,run.pickups.magnetAll);
-    run.ult.charge=1;run.ult.fire();
   }
   function apply(jump){
     if(!run||run.disposed||!['play','paused'].includes(run.state))throw Error('请先进入可操作的战斗。');
@@ -253,7 +168,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
       if(selectedMode==='stress')options.lockCount=true;
       try{window.localStorage.setItem('developer.workload',selectedMode);}catch{}
     }
-    const actual=setEnemyCount(run,target,{reset:jump});
+    const actual=setEnemyCount(run,target,jump);
     if(actual!==target)text(error,`可用位置或容量不足：实际生成 ${actual} 个。`);
     else text(error,jump?(workload.snapshot().evolutionQueued?'已到进化等级，返回战斗选择进化。':'已应用 '+modeNames[selectedMode]+'，返回战斗开始运行。'):'已更新普通怪数量。');
     run.renderWorld(0);refresh();
@@ -281,30 +196,22 @@ export function installDeveloperMode(app,{skills,speciesName}){
       text(scenery,options.hideScenery?'地图文具：已隐藏':'地图文具：已显示');
       scenery.setAttribute('aria-pressed',String(options.hideScenery));
     });
-    card.append(action('测试死亡动作',()=>previewDeath(shell),'preview-hero-death'),
-      action('道具对比',showItemPreview,'item-preview'),action('大招连升测试',testUltimateUpgrade,'ultimate-upgrade'),
-      node('small','替换普通怪并立即放大招。击败整组测试怪、吸收经验可连升两级。','font-size:11px;'),scenery);
+    card.append(scenery);
     card.append(modes,values.preset,values.skills);
     values.evolution=node('small','','font-size:12px;line-height:1.45;');
     values.evolve=action('升到下次进化',advanceEvolution,'evolve-next');
     card.append(values.evolution,values.evolve);
-    const rig=heroRigs[run.player.speciesId];
-    if(rig)card.append(action('预览偏旁动作',()=>{
-      const group=rig.word==='风'?rig.groups[1]:rig.groups[0];
-      const stroke=group.strokes[0];
-      // Move edge strokes inward so the preview stays inside the player texture.
-      const dx=rig.sheet==='fire'||stroke.px>256?-10:10;
-      const dy=rig.sheet==='fire'||stroke.py>256?-1:1;
-      const tilt=rig.sheet==='fire'?-12:-7;
-      const shift=rig.sheet==='fire'?-8:0;
+    const fire=({4:['炎','上火'],5:['焱','上火'],6:['燚','左上火']})[run.player.speciesId];
+    if(fire)card.append(action('预览偏旁动作',()=>{
+      const [word,group]=fire;
       const frames=Array.from({length:24},(_,i)=>{
         const lift=(1-Math.cos(i*Math.PI/12))/2;
-        return {word:rig.word,groups:{[group.name]:{angle:tilt*lift,y:shift*lift}},
-          strokes:{[group.name]:{[stroke.name]:{x:dx*lift,y:dy*38*lift,angle:32*lift}}}};
+        return {word,groups:{[group]:{angle:-12*lift,y:-8*lift}},
+          strokes:{[group]:{'左点':{x:-10*lift,y:-38*lift,angle:32*lift}}}};
       });
       strokePreview={start:run.time,id:run.player.speciesId,frames};
       close();
-    },'preview-hero-strokes'));
+    },'preview-fire-strokes'));
     const selectTime=value=>{seconds=bounded(value,600);if(selectedMode==='timed')target=ordinaryLimit(seconds,run.stage);refresh();};
     const times=row(...[0,2,2.5,3,5,6,7,8,10].map(m=>action(m+'分',()=>selectTime(m*60),'minute-'+m)));
     card.append(values.seconds,times,row(action('−30秒',()=>selectTime(seconds-30),'time-minus'),action('+30秒',()=>selectTime(seconds+30),'time-plus')));
@@ -330,16 +237,16 @@ export function installDeveloperMode(app,{skills,speciesName}){
   function attach(next){
     // startRun can route through the loading flow and call itself again.
     if(run===next)return;
-    removePanel();button?.remove();monitorLayer?.remove();
-    workload?.stop();strokePreview=null;run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run);lastMaintain=0;showOnEntry=true;
+    panel?.remove();panel=null;values=null;error=null;button?.remove();monitorLayer?.remove();
+    workload?.stop();strokePreview=null;run=next;workload=createWorkload(run,skills);encounters=createEncounterTest(run,speciesName);lastMaintain=0;showOnEntry=true;
     syncScenery();
     const renderWorld=run.renderWorld.bind(run);
     run.renderWorld=dt=>{
       syncScenery();
       if(strokePreview){
         const frame=Math.floor(Math.max(0,run.time-strokePreview.start)*20);
-        if(frame>=72||run.player.speciesId!==strokePreview.id){run.player.heroPose=null;strokePreview=null;}
-        else run.player.heroPose=strokePreview.frames[frame%24];
+        if(frame>=72||run.player.speciesId!==strokePreview.id){run.player.firePose=null;strokePreview=null;}
+        else run.player.firePose=strokePreview.frames[frame%24];
       }
       return renderWorld(dt);
     };
@@ -364,7 +271,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     monitor.id='zx-dev-monitor';monitor.hidden=!options.monitor;monitorLayer.append(monitor);run.ui.root.append(monitorLayer);
     const hurt=run.player.hurt.bind(run.player);run.player.hurt=(...args)=>options.invincible?false:hurt(...args);
     const resume=run.resume.bind(run);
-    run.resume=()=>{removePanel();const result=resume();mountEntrance();refresh();invalidate();return result;};
+    run.resume=()=>{panel?.remove();panel=null;values=null;error=null;const result=resume();mountEntrance();refresh();invalidate();return result;};
     const showPause=run.ui.showPause.bind(run.ui);
     run.ui.showPause=(...args)=>{
       const result=showPause(...args),body=run.ui.modalEl?.querySelector('.zx-pause-body');
@@ -393,7 +300,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     };
     let wiredDirector=run.director;
     const dispose=run.dispose.bind(run);
-    run.dispose=()=>{removePanel();workload.stop();button?.remove();monitorLayer?.remove();return dispose();};
+    run.dispose=()=>{workload.stop();panel?.remove();panel=null;values=null;error=null;button?.remove();monitorLayer?.remove();return dispose();};
   }
   const start=app.startRun.bind(app);
   app.startRun=async(...args)=>{const result=await start(...args);if(result&&app.run){attach(app.run);if(showOnEntry)open();}return result;};
@@ -411,7 +318,11 @@ export function installDeveloperMode(app,{skills,speciesName}){
         if(showOnEntry)open();
       }
     }
-    const info=app.r.renderer.info,autoReset=info.autoReset;
+    const now=performance.now(),info=app.r.renderer.info,autoReset=info.autoReset;
+    if(run?.state==='play'){
+      frames++;const elapsed=now-since;
+      if(elapsed>=1000){fps=frames*1000/elapsed;frameMs=elapsed/frames;frames=0;since=now;}
+    }else{frames=0;since=now;}
     info.autoReset=false;info.reset();
     try{return render(...args);}finally{calls=info.render.calls;triangles=info.render.triangles;info.autoReset=autoReset;}
   };
