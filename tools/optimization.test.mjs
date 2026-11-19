@@ -16,7 +16,7 @@ import {readDevice} from '../platform/device.mjs';
 
 test('ordinary waves grow to 200, include event and elite spawns, and leave boss slots available',()=>{
   for(const [mode,peak] of [[SINGLE_STAGE,360],['standard',300],['classic',300]]){
-    const seconds=300;
+    const seconds=360;
     assert.equal(zoneDuration(mode),seconds);
     assert.equal(remainingZoneSeconds({mode,stageTime:.05}),seconds);
     assert.equal(remainingZoneSeconds({mode,stageTime:seconds+1}),-1);

@@ -87,7 +87,7 @@ try{
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
   const deskReview=process.argv.includes('--map-play')||process.argv.includes('--illustrated-desk');
-  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg))));
+  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--boss-performance','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
@@ -119,7 +119,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--battle-pacing')){
+  if(process.argv.includes('--boss-performance')){
+    const {reviewBossPerformance}=await import('./boss-performance-regression.mjs');
+    await reviewBossPerformance(page,dir,process.argv.includes('--baseline'),process.argv.includes('--boss-programs'));assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--battle-pacing')){
     const {reviewBattlePacing}=await import('./battle-pacing-regression.mjs');
     await reviewBattlePacing(page);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--android-performance')){

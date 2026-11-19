@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 // Fire kites normally for the opening minute. Use invulnerability for the
 // rest of the timing comparison and automate menus without drawing frames.
 export async function reviewBattlePacing(page) {
-  const zones = [['single-stage', 4, 1, 300], ['standard', 16, 1, 300], ['standard', 16, 2, 300]];
+  const zones = [['single-stage', 4, 1, 360], ['standard', 16, 1, 360], ['standard', 16, 2, 360]];
   for (const [mode, species, stage, duration] of zones) {
     const sample = await page.evaluate(async ({mode, species, stage, duration}) => {
       if (stage === 1) await app.startRun({mode, species, tier:0, biome:'forest', boosts:[]});
@@ -85,7 +85,7 @@ export async function reviewBattlePacing(page) {
     const {timeline, ...summary} = sample;
     console.log('Battle pacing', JSON.stringify(summary));
     assert.equal(sample.stage, stage);
-    assert.equal(sample.firstClock, '05:00');
+    assert.equal(sample.firstClock, '06:00');
     assert.ok(sample.openingCount > 0 && sample.openingCount <= 10);
     if (stage === 1) {
       assert.equal(sample.drafts[0].offers.length,3);

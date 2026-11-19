@@ -64,7 +64,13 @@ export function createDeviceScreenFx(T, renderer) {
     depthBuffer:depth,stencilBuffer:false,generateMipmaps:false,samples:0
   });
   const mask=target(1,1,true);
-  let beauty=null;
+  // A conservative tile map keeps the expensive silhouette search out of the
+  // large empty gaps between devices. It never changes the outline samples.
+  const tileSide=32,tilePixels=new Uint8Array(tileSide*tileSide),nextTiles=new Uint8Array(tilePixels.length),activeBoxes=[];
+  const outlineTiles=new T.DataTexture(tilePixels,tileSide,tileSide,T.RedFormat,T.UnsignedByteType);
+  outlineTiles.minFilter=outlineTiles.magFilter=T.NearestFilter;outlineTiles.generateMipmaps=false;
+  outlineTiles.unpackAlignment=1;outlineTiles.needsUpdate=true;
+  let beauty=null,disposed=false;
   mask.texture.name='DeviceScreenFx visible devices';
   const quad = new T.BufferGeometry();
   quad.setAttribute('position',new T.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));
@@ -91,7 +97,7 @@ export function createDeviceScreenFx(T, renderer) {
         planes.x*planes.y/(planes.y-(planes.y-planes.x)*d);
     }`;
   const pass = shader(fullVS,`
-    uniform sampler2D beautyTex, maskTex, worldDepth;
+    uniform sampler2D beautyTex, maskTex, worldDepth, outlineTiles;
     uniform vec2 resolution,planes;
     uniform vec4 visibleBox;
     uniform float radius, clockSec, orthographicView;
@@ -131,7 +137,8 @@ export function createDeviceScreenFx(T, renderer) {
           }
         }
       }else if(all(greaterThanEqual(uv,visibleBox.xy-(radius+1.)*texel))
-            &&all(lessThanEqual(uv,visibleBox.zw+(radius+1.)*texel))){
+            &&all(lessThanEqual(uv,visibleBox.zw+(radius+1.)*texel))
+            &&texture2D(outlineTiles,uv).r>.5){
         float sceneZ=linearDepth(texture2D(worldDepth,uv).r);
         float coverage=0.;
         for(int i=0;i<16;i++){
@@ -143,7 +150,7 @@ export function createDeviceScreenFx(T, renderer) {
       }
       gl_FragColor=vec4(col,src.a);
       #include <colorspace_fragment>
-    }`,{beautyTex:null,worldDepth:null,maskTex:mask.texture,resolution:v2(),planes:v2(),
+    }`,{beautyTex:null,worldDepth:null,maskTex:mask.texture,outlineTiles,resolution:v2(),planes:v2(),
       visibleBox:v4(),radius:1,clockSec:0,orthographicView:0,cream:new T.Color(0xefead0),
       bloomColour:new T.Color(0xfdf4d3),ink:new T.Color(0x27232f)});
   const plane=new T.Mesh(quad,pass);plane.frustumCulled=false;screenScene.add(plane);
@@ -224,9 +231,12 @@ export function createDeviceScreenFx(T, renderer) {
     starGeometry.setAttribute('anchorUv',new T.BufferAttribute(new Float32Array(starCapacity*2),2).setUsage(T.DynamicDrawUsage));
     starGeometry.setAttribute('starData',new T.BufferAttribute(new Float32Array(starCapacity*4),4).setUsage(T.DynamicDrawUsage));
   }
-  function update(scene,camera,time,depth,w,h){
-    scene.updateMatrixWorld(true);camera.updateWorldMatrix(true,false);
+  function update(scene,camera,time,depth,w,h,matricesUpdated){
+    // A preceding scene RenderPass already updated every world matrix. For
+    // standalone composite callers retain the original explicit update.
+    if(!matricesUpdated){scene.updateMatrixWorld(true);camera.updateWorldMatrix(true,false);}
     vp.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);union.set(1,1,0,0);
+    activeBoxes.length=0;
     const worldPhase=time>=0?time%3:((time%3)+3)%3;
     const pu=pass.uniforms,su=starMat.uniforms;pu.clockSec.value=worldPhase;
     let count=0,active=0,refDepth=Infinity;
@@ -265,6 +275,7 @@ export function createDeviceScreenFx(T, renderer) {
       const phase=localPhase??worldPhase;
       const hero=phase>=1.52&&phase<1.82,scatter=phase>=1.92&&phase<2.52;
       mu.resolution.value.set(w,h);mu.box.value.set(x0,y0,x1,y1);
+      activeBoxes.push(mu.box.value);
       for(const [src,p] of e.meshes){
         p.visible=inScene(src,scene)&&camera.layers.test(src.layers);
         if(p.visible){p.matrix.copy(src.matrixWorld);p.matrixWorldNeedsUpdate=true;}
@@ -305,6 +316,20 @@ export function createDeviceScreenFx(T, renderer) {
     pu.visibleBox.value.copy(union);
     return {active,count,refDepth};
   }
+  function updateOutlineTiles(w,h,radius){
+    nextTiles.fill(0);
+    // Two extra pixels cover nearest-filter rounding at both mask and tile
+    // boundaries. Tiles intersecting a device or its outline are fully marked.
+    const dx=(radius+2)/w,dy=(radius+2)/h;
+    for(const box of activeBoxes){
+      const x0=clamp(Math.floor((box.x-dx)*tileSide),0,tileSide),x1=clamp(Math.ceil((box.z+dx)*tileSide),0,tileSide);
+      const y0=clamp(Math.floor((box.y-dy)*tileSide),0,tileSide),y1=clamp(Math.ceil((box.w+dy)*tileSide),0,tileSide);
+      for(let y=y0;y<y1;y++)nextTiles.fill(255,y*tileSide+x0,y*tileSide+x1);
+    }
+    for(let i=0;i<tilePixels.length;i++)if(tilePixels[i]!==nextTiles[i]){
+      tilePixels.set(nextTiles);outlineTiles.needsUpdate=true;break;
+    }
+  }
   function composite(scene,camera,time,source,destination=null,options={}){
     if(!source?.texture||!source.depthTexture||source===destination)throw Error('Pass distinct colour/depth input and output targets');
     const w=source.width,h=source.height;
@@ -312,12 +337,13 @@ export function createDeviceScreenFx(T, renderer) {
     renderer.getScissor(savedSC);renderer.getViewport(savedVP);renderer.getClearColor(savedColour);
     const alpha=renderer.getClearAlpha();mask.setSize(w,h);
     try{
-      const {active,count,refDepth}=update(scene,camera,time,source.depthTexture,w,h);
+      const {active,count,refDepth}=update(scene,camera,time,source.depthTexture,w,h,options.matricesUpdated);
       let z=refDepth;
       if(options.focusWorld){world.copy(options.focusWorld).applyMatrix4(camera.matrixWorldInverse);z=Math.max(camera.near,-world.z);}
       const magnification=camera.projectionMatrix.elements[5]*h*.5/(camera.isOrthographicCamera?1:z);
       const original=options.originalOutlineRadiusPx??clamp(.13*magnification,1,12);
       starMat.uniforms.rim.value=pass.uniforms.radius.value=.5*original;pass.uniforms.beautyTex.value=source.texture;
+      updateOutlineTiles(w,h,pass.uniforms.radius.value);
       renderer.autoClear=false;renderer.setScissorTest(false);
       renderer.setRenderTarget(mask);renderer.setClearColor(0,0);renderer.clear(true,true,false);
       if(active)renderer.render(proxyScene,camera);
@@ -335,13 +361,35 @@ export function createDeviceScreenFx(T, renderer) {
     beauty.setSize(w,h);const prev=renderer.getRenderTarget(),auto=renderer.autoClear;
     try{renderer.autoClear=true;renderer.setRenderTarget(beauty);renderer.render(scene,camera);}
     finally{renderer.setRenderTarget(prev);renderer.autoClear=auto;}
-    composite(scene,camera,time,beauty,destination,options);
+    composite(scene,camera,time,beauty,destination,{...options,matricesUpdated:true});
+  }
+  async function prepare(camera,destination=null){
+    if(disposed)return;
+    // These three internal scenes are absent from the world's shader warmup.
+    // Compile every actual proxy geometry, even when its source is offscreen or
+    // hidden (the portal's open pose). Three.js then caches HAS_NORMAL variants
+    // as well as the normal-free screen and star programs.
+    allocateStars(Math.max(6,entries.size*6*sparkFrames[0].length));
+    mask.setSize(destination?.width??1,destination?.height??1);
+    const previous=renderer.getRenderTarget(),pending=[];
+    try{
+      renderer.setRenderTarget(mask);
+      pending.push(renderer.compileAsync(proxyScene,camera));
+      renderer.setRenderTarget(destination);
+      pending.push(renderer.compileAsync(screenScene,screenCam));
+      pending.push(renderer.compileAsync(starScene,screenCam));
+      renderer.initTexture(atlas);
+      renderer.initTexture(outlineTiles);
+    }finally{renderer.setRenderTarget(previous);}
+    // Never leave a world target bound while the loading UI gets its next frame.
+    await Promise.all(pending);
   }
   function dispose(){
+    disposed=true;
     for(const root of [...entries.keys()])remove(root);mask.dispose();
     if(beauty){beauty.depthTexture?.dispose();beauty.dispose();}
-    atlas.dispose();pass.dispose();starMat.dispose();quad.dispose();starGeometry.dispose();
+    atlas.dispose();outlineTiles.dispose();pass.dispose();starMat.dispose();quad.dispose();starGeometry.dispose();
   }
-  return {add,remove,render,composite,dispose};
+  return {add,remove,render,composite,prepare,dispose};
 }
 

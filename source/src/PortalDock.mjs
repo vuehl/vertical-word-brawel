@@ -1,3 +1,4 @@
+import {createPortalScreenAnimation} from './portal-screen-atlas.js';
 const fxRGB=[72,45,154],fxOnBlack=level=>'rgb('+fxRGB.map(v=>Math.round(v*level)).join(',')+')';
 function screenPainter(canvas){
  const w=704,h=318;canvas.width=w;canvas.height=h;const screen=canvas.getContext('2d'),paths=new Map();
@@ -268,6 +269,7 @@ export function attachPortalDock(T,renderer,root,options={}){
   if(src.userData.portalPart==='screen')screens[phase]={mat,dynamic:null,original:old.map};
  }
  function display(phase,key){
+  if(phase===1){animation.frame(key/1000);screens[1].mat.map=animation.texture;return;}
   if(keys[phase]===key)return;const slot=screens[phase];
   if(phase===0&&key===300){slot.mat.map=slot.original;keys[phase]=key;return;}
   const pixels=paint(phase===1,key);
@@ -275,6 +277,11 @@ export function attachPortalDock(T,renderer,root,options={}){
   else{slot.dynamic.image.data=pixels;slot.dynamic.needsUpdate=true;}
   slot.mat.map=slot.dynamic;keys[phase]=key;
  }
+ const animation=createPortalScreenAnimation(T,renderer);
+ // Compile the real animated-screen material while the loading cover is up.
+ // Swapping the GLB's map for a different texture type on summon changes the
+ // renderer's program key and otherwise pays that compilation during battle.
+ screens[1].mat.map=animation.texture;
  const lib=readPoses(T),lamp=uniforms.dockLamp.value,vp=uniforms.dockViewport.value;
  const place={value:new T.Vector4()};
  const flareMaterial=new T.ShaderMaterial({uniforms:{...uniforms,dockPlace:place},toneMapped:false,
@@ -354,7 +361,7 @@ export function attachPortalDock(T,renderer,root,options={}){
   flare.visible=halo.visible=false;lamp.w=0;uniforms.dockSplit.value=-1;uniforms.dockCharge.value=0;root.userData.portalClip=-1;
   if(z===null)return;
   if(mode==='idle'||sweep)display(0,seconds);
-  if(mode!=='idle')display(1,Math.floor((age%4110)/41.1)*41.1);
+  if(mode!=='idle')display(1,age%4110);
   if(sweep){
    const t=age/sweepMs,sm=sweepMetrics(t,ranges.top,ranges.bottom);
    const warm=(ranges.bottom+1-sm.startLine)*(1-ease(sm.travel/.09));
@@ -372,12 +379,12 @@ export function attachPortalDock(T,renderer,root,options={}){
   }
  }
  function dispose(){
-  if(dead)return;dead=true;root.remove(flare,halo);for(const [obj,old] of originals)obj.material=old;
+  if(dead)return;dead=true;animation.dispose();root.remove(flare,halo);for(const [obj,old] of originals)obj.material=old;
   for(const asset of owned)asset.dispose();if(--lib.refs===0){for(const g of lib.frames)g.dispose();frameCaches.delete(T);}
   states[0].visible=true;states[1].visible=true;states[1].scale.copy(originalScale);delete root.userData.portalDockPose;delete root.userData.portalClip;delete root.userData.portalCreamPhase;
   live.delete(root);
  }
- const api={open,reset,update,dispose,get state(){return mode;}};live.set(root,api);reset(options.remainingSeconds??300);
+ const api={open,reset,update,dispose,ready:animation.ready,get state(){return mode;}};live.set(root,api);reset(options.remainingSeconds??300);
  if(options.startOpen){mode='open';setPose('open');}
  return api;
 }

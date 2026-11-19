@@ -1,11 +1,11 @@
-import {DeviceFxThree as T, F as Frustum, lt as Sphere, PostprocessingPass, RedFormat} from '../assets/three-DmSYIDKK.js';
+import {DeviceFxThree as T, dt as Texture, F as Frustum, lt as Sphere, PostprocessingPass, RedFormat} from '../assets/three-DmSYIDKK.js';
 import {createDeviceScreenFx} from './DeviceScreenFx.mjs';
 import {attachPortalDock} from './PortalDock.mjs';
 import earcut, {flatten} from './vendor/earcut.js';
 
 // The trimmed Three.js bundle omits ShapeUtils. The dock uses this one
 // operation to turn the authored flash silhouettes into triangles.
-const dockThree = {...T, ShapeUtils: {triangulateShape(contour, holes) {
+const dockThree = {...T, Texture, ShapeUtils: {triangulateShape(contour, holes) {
   const rings = [contour, ...holes].map(ring => ring.map(point => [point.x, point.y]));
   const polygon = flatten(rings);
   const indices = earcut(polygon.vertices, polygon.holes);
@@ -22,7 +22,7 @@ export function createFacilityEffects(host, focusWorld) {
   const visiblePass = new PostprocessingPass('Visible devices', null, null);
   const colourPass = new PostprocessingPass('Device screen effects', null, null);
   const source = {width: 0, height: 0, texture: null, depthTexture: null};
-  const options = {focusWorld};
+  const options = {focusWorld, matricesUpdated: true};
 
   // PixelOutline runs before grading. Only that preset needs this one-channel
   // exclusion mask. The supplied compositor handles its own outline after grading.
@@ -125,6 +125,19 @@ export function createFacilityEffects(host, focusWorld) {
   };
   composer.addPass(visiblePass, composer.passes.indexOf(outlinePass));
   composer.addPass(colourPass, composer.passes.indexOf(antiAliasPass));
+  async function prepare() {
+    // The exclusion pass is also outside the main world scene, including
+    // devices which have not yet entered the starting camera's frustum.
+    const previous = renderer.getRenderTarget();
+    let pending;
+    exclusion.setSize(composer.inputBuffer.width, composer.inputBuffer.height);
+    try {
+      renderer.setRenderTarget(exclusion);
+      pending = renderer.compileAsync(maskScene, camera);
+    } finally {renderer.setRenderTarget(previous);}
+    await pending;
+    await fx.prepare(camera, composer.inputBuffer);
+  }
   function dispose() {
     composer.removePass(visiblePass);
     composer.removePass(colourPass);
@@ -136,5 +149,5 @@ export function createFacilityEffects(host, focusWorld) {
     maskMaterial.dispose();
     exclusion.dispose();
   }
-  return {add, remove, dispose, attachDock: (model, options) => attachPortalDock(dockThree, renderer, model, options)};
+  return {add, remove, prepare, dispose, attachDock: (model, options) => attachPortalDock(dockThree, renderer, model, options)};
 }

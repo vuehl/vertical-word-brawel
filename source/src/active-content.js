@@ -1,5 +1,3 @@
-import {COMBAT_ZONE_SECONDS} from './lite-rules.js';
-
 // IDs keep items with identical display names distinct. Water Stone has a
 // catalog entry but no held-item combat definition.
 const itemIds = new Set([
@@ -14,7 +12,7 @@ export const isActiveItem = id => itemIds.has(id);
 export const facilityDwellSeconds = 1.5;
 export const altarChargeSeconds = 3;
 export const bossSummonSeconds = 3;
-export const bossSummonUnlockSeconds = COMBAT_ZONE_SECONDS - 60;
+export const bossSummonUnlockSeconds = 5 * 60;
 export const facilityNames = Object.freeze({
   chest: '扭蛋', freechest: '免费扭蛋', altar: '守护者祭坛', boss: '门？', portal: '传送门',
   magnet: '磁铁', berry: 'QQ糖', nest: '鹌鹑蛋', bill: '订书机',

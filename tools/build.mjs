@@ -4,7 +4,6 @@ import {execFileSync} from 'node:child_process';
 import esbuild from 'esbuild';
 import {buildPlay} from './play-bundle.mjs';
 import {bindPortalZoneClock} from '../source/tools/portal-zone-clock.mjs';
-import {bindPortalGlass} from '../source/tools/portal-glass.mjs';
 import {parse} from '../source/tools/vendor/acorn.mjs';
 import {addBootAssets,bootAssets,writeBootHeroArt} from './boot-assets.mjs';
 import {lowerUnicodeRegexes} from './device-syntax.mjs';
@@ -65,9 +64,6 @@ export function dispatchApi(...args){
 }
 const sources={
   name:'pokebonk-platform',setup(build){
-    build.onLoad({filter:/[\\/]DeviceScreenFx\.mjs$/},args=>({
-      contents:bindPortalGlass(fs.readFileSync(args.path,'utf8')),loader:'js',
-    }));
     build.onLoad({filter:/[\\/]PortalDock\.mjs$/},args=>({
       contents:bindPortalZoneClock(fs.readFileSync(args.path,'utf8')),loader:'js',
     }));

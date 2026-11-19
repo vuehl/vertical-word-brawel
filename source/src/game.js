@@ -4036,26 +4036,50 @@ var Ws = () =>
     cries = new Map();
     cryGain = new Map();
     lastPlay = new Map();
-    vEnds = [];
+    voices = new Set();
     lastWake = 0;
     voiceFree() {
       let e = this.ctx;
-      if (!e) return !1;
+      if (!e || this.hiddenMute || this.vol.master <= 0) return !1;
       if (e.state !== `running`) {
         let e = performance.now();
         return (e - this.lastWake > 1e3 && !document.hidden && ((this.lastWake = e), this.wake()), !1);
       }
-      let t = e.currentTime,
-        n = this.vEnds;
-      if (n.length > this.maxVoices) {
-        let e = 0;
-        for (let r = 0; r < n.length; r++) n[r] > t && (n[e++] = n[r]);
-        n.length = e;
-      }
-      return n.length <= this.maxVoices;
+      // Native Web Audio can delay onended. Also reclaim by audio time so
+      // finished filter/gain chains cannot accumulate across long battles.
+      for (const voice of this.voices) if (voice.end <= e.currentTime) voice.release();
+      return this.voices.size < this.maxVoices;
     }
-    addVoice(e) {
-      this.vEnds.push(e);
+    addVoice(end, source, nodes, extraSources = []) {
+      const voice = { end, release: () => {
+        if (!this.voices.delete(voice)) return;
+        source.onended = null;
+        for (const node of nodes) {
+          try { node.disconnect(); } catch {}
+        }
+      }, stop: () => {
+        for (const node of [source, ...extraSources]) {
+          try { node.stop(); } catch {}
+        }
+        voice.release();
+      }};
+      this.voices.add(voice);
+      source.onended = voice.release;
+    }
+    resetEffects() {
+      for (const voice of this.voices) voice.stop();
+      this.lastPlay.clear();
+      this.dens.clear();
+      this.kv = this.kp = 1;
+    }
+    beginRun() {
+      this.resetEffects();
+      this.init();
+      // A new run shares the audio engine, but not the previous run's voices,
+      // gain automation or stale native playback state.
+      this.setHiddenMute(document.hidden && this.hiddenMute);
+      this.applyVolumes();
+      this.checkAlive();
     }
     maxVoices = typeof matchMedia == `function` && matchMedia(`(pointer: coarse)`).matches ? 26 : 56;
     dens = new Map();
@@ -4136,13 +4160,13 @@ var Ws = () =>
       ((this.track = null),
         (this.trackWant = null),
         (this.trackLoading = !1),
-        (this.vEnds.length = 0),
-        this.lastPlay.clear(),
-        this.dens.clear());
-      try {
-        e.close().catch(() => {});
-      } catch {}
+        this.resetEffects());
+      clearTimeout(this.aliveTimer);
+      e.onstatechange = null;
       this.ctx = null;
+      try {
+        Promise.resolve(e.close()).catch(() => {});
+      } catch {}
       try {
         this.build();
       } catch {
@@ -4192,7 +4216,7 @@ var Ws = () =>
       this.noiseBuf = e.createBuffer(1, o, e.sampleRate);
       let s = this.noiseBuf.getChannelData(0);
       for (let e = 0; e < o; e++) s[e] = Math.random() * 2 - 1;
-      (this.applyVolumes(), e.state !== `running` && e.resume().catch(() => {}));
+      (this.applyVolumes(), e.state !== `running` && this.wake());
     }
     wake() {
       let e = this.ctx;
@@ -4202,7 +4226,7 @@ var Ws = () =>
         return;
       }
       let t = () => {
-        if (this.hiddenMute) return;
+        if (this.ctx !== e || this.hiddenMute) return;
         let t = this.master.gain;
         (t.cancelScheduledValues(e.currentTime), t.setValueAtTime(this.vol.master, e.currentTime));
       };
@@ -4210,9 +4234,10 @@ var Ws = () =>
       else {
         try {
           let t = e.createBufferSource();
-          ((t.buffer = e.createBuffer(1, 1, 22050)), t.connect(e.destination), t.start(0));
+          ((t.buffer = e.createBuffer(1, 1, 22050)),
+            (t.onended = () => t.disconnect()), t.connect(e.destination), t.start(0));
         } catch {}
-        e.resume()
+        Promise.resolve(e.resume())
           .then(t)
           .catch(() => {});
       }
@@ -4230,11 +4255,17 @@ var Ws = () =>
         t.linearRampToValueAtTime(e ? 0 : this.vol.master, n + 0.15));
     }
     applyVolumes() {
-      this.ctx &&
-        ((this.master.gain.value = this.hiddenMute ? 0 : this.vol.master),
-        (this.sfxBus.gain.value = this.vol.sfx * 0.55),
-        (this.musicBus.gain.value = this.vol.music * 0.32),
-        (this.cryBus.gain.value = this.vol.cries * 0.45));
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      for (const [bus, value] of [
+        [this.master, this.hiddenMute ? 0 : this.vol.master],
+        [this.sfxBus, this.vol.sfx],
+        [this.musicBus, this.vol.music * 0.32],
+        [this.cryBus, this.vol.cries * 0.45],
+      ]) {
+        bus.gain.cancelScheduledValues(now);
+        bus.gain.setValueAtTime(value, now);
+      }
     }
     ok(e, t) {
       if (!this.ctx) return !1;
@@ -4263,7 +4294,7 @@ var Ws = () =>
         d.connect(o ?? this.sfxBus),
         u.start(l),
         u.stop(l + t + 0.02),
-        this.addVoice(l + t + 0.05));
+        this.addVoice(l + t + 0.05, u, [u, d]));
     }
     noise(e, t, n, r = `lowpass`, i = 0, a = 0, o) {
       if (this.voiceFree())
@@ -4288,7 +4319,7 @@ var Ws = () =>
         d.connect(o ?? this.sfxBus),
         l.start(c, Math.random() * 0.5),
         l.stop(c + e + 0.02),
-        this.addVoice(c + e + 0.05));
+        this.addVoice(c + e + 0.05, l, [l, u, d]));
     }
     move(e, t, n = {}) {
       let r = Ls[e],
@@ -4328,6 +4359,7 @@ var Ws = () =>
         s.frequency.setValueAtTime(t, i),
         r.to && s.frequency.exponentialRampToValueAtTime(Math.max(20, t * r.to), i + (r.sl ?? n)));
       let l = s;
+      const nodes = [s, c], extraSources = [];
       if (r.lp || (s.type !== `sine` && s.type !== `triangle`)) {
         let t = e.createBiquadFilter();
         ((t.type = `lowpass`),
@@ -4335,6 +4367,7 @@ var Ws = () =>
           (t.Q.value = r.q ?? 0.7),
           s.connect(t),
           (l = t));
+        nodes.push(t);
       }
       if (r.vib) {
         let a = e.createOscillator(),
@@ -4345,6 +4378,8 @@ var Ws = () =>
           o.connect(s.frequency),
           a.start(i),
           a.stop(i + n + 0.05));
+        nodes.push(a, o);
+        extraSources.push(a);
       }
       (c.gain.setValueAtTime(1e-4, i),
         c.gain.exponentialRampToValueAtTime(a, i + o),
@@ -4353,7 +4388,7 @@ var Ws = () =>
         c.connect(this.kitBus),
         s.start(i),
         s.stop(i + n + 0.03),
-        this.addVoice(i + n + 0.05));
+        this.addVoice(i + n + 0.05, s, nodes, extraSources));
     }
     kn(e, t = {}) {
       let n = this.ctx;
@@ -4383,7 +4418,7 @@ var Ws = () =>
         l.connect(this.kitBus),
         s.start(r, Math.random() * 0.4),
         s.stop(r + t + 0.03),
-        this.addVoice(r + t + 0.05));
+        this.addVoice(r + t + 0.05, s, [s, c, l]));
     }
     hit(e, t, n = !1) {
       if (
@@ -33652,9 +33687,7 @@ var mv = 30,
         for (const event of n) event.t /= this.pace;
       }
       if (this.pace > 1 && e.stage <= FOREST_COMBAT_ZONES) {
-        const deadline = zoneDuration(e.mode);
-        n = n.filter(event => event.t < deadline);
-        n.push({ t: deadline, kind: 'guardian' });
+        n.push({ t: zoneDuration(e.mode), kind: 'guardian' });
       }
       this.timeline = n.sort((a, b) => a.t - b.t);
     }
@@ -45690,6 +45723,8 @@ var GS = class e {
           remainingSeconds: remainingZoneSeconds(this.run),
           startOpen: facility.used || this.run.bossSpawned,
         });
+        await facility.dock.ready;
+        if (this.disposed || group.parent !== this.group) return;
       }
       if (facility.used) this.dim(facility);
     }
@@ -46505,8 +46540,7 @@ var GS = class e {
           if (!a.used) this.altarUpdate(a, u, e, dwellSeconds);
           continue;
         }
-        const interactionRadius = a.kind === 'boss' ? a.ringRadius : a.r + 0.8;
-        if (ready && u < interactionRadius && u < i && a.kind !== 'shroom' &&
+        if (ready && u < a.r + 0.8 && u < i && a.kind !== 'shroom' &&
             (!a.used || a.kind === 'meowth' || a.kind === 'hypno' || a.kind === 'portal' ||
               (a.kind === 'tower' && a.data?.sub !== 'trick'))) {
           i = u;
@@ -54288,6 +54322,7 @@ var GT = 15,
         this.fireTexturesPrepared=true;
       }
       await warmCombatShaders(this.r);check();
+      await this.interactables.deviceFx?.prepare();check();
       if(!onProgress)this.ui.stageIntro(this);
     }
     stageSprites() {
@@ -56825,6 +56860,7 @@ var GT = 15,
         this.hints.dispose(),
         this.mapEvents.clear(),
         this.audio.stopMusic(),
+        this.audio.resetEffects(),
         this.r.setAtmos(1, 1, 1, 0, 0.4),
         this.r.setSun(),
         (this.r.shared.uWind.value = 1),
@@ -87844,7 +87880,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
             t = wA(this, `pausa`, () => e());
           e = this.hud.pauseOverlay(t);
         }),
-        N.init(),
+        N.beginRun(),
         onLoadProgress?.({phase:'准备对局',detail:'',progress:.45}),
         await waitForLoadingPaint(this.r.renderer),
         (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress,effectAtlas:await Nl()})),
