@@ -188,6 +188,38 @@ async function reviewMoveCapacity(page){
   console.log('Skill capacity, stale choice and fusion checks passed');
 }
 
+async function reviewVitaminArt(page,dir){
+  await page.evaluate(async()=>{
+    await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    app.halted=true;
+  });
+  for(const kind of ['newVit','upVit']){
+    await page.evaluate(kind=>{
+      const r=app.run;
+      const offers=['escape-rope','enigma-berry'].map(vit=>({kind,vit,rarity:0}));
+      if(kind==='upVit')for(const {vit} of offers)r.player.addVitamin(vit,1);
+      r.state='modal';r.ui.showLevelUp(r,[...offers,{kind:'newMove',id:297}],()=>{});
+      r.ui.hud(r);r.renderWorld(0);app.r.render(0);
+    },kind);
+    const cards=await page.evaluate(()=>[...app.run.ui.modalEl.querySelectorAll('[data-offer]')].map(card=>({
+      title:card.querySelector('b').textContent,
+      image:card.querySelector('img')?.getAttribute('src')?.split('?')[0].split('/').pop()??null,
+      glyph:card.querySelector('.zx-glyph')?.getAttribute('aria-label')??null,
+    })));
+    assert.deepEqual(cards,[
+      {title:'拾取增益',image:'escape-rope.png',glyph:null},
+      {title:'溢出治疗',image:'enigma-berry.png',glyph:null},
+      {title:'羽毛舞',image:null,glyph:'风'},
+    ]);
+    await page.waitForFunction(()=>{
+      inspected.env.drawUI(app.r.renderer);
+      return !inspected.modalTransition.active&&[...app.run.ui.modalEl.querySelectorAll('img')].every(img=>img.complete&&img.naturalWidth>0);
+    });
+    if(kind==='newVit')await page.screenshot({path:path.join(dir,'wind-vitamin-offers.png')});
+    await page.evaluate(()=>app.run.ui.hideModal());
+  }
+}
+
 export async function reviewUpgrade({page,resize,dir}){
   const baseline=process.argv.includes('--baseline'),samples=[];let liveLoop=null;
   await page.evaluate(async()=>{
@@ -200,6 +232,7 @@ export async function reviewUpgrade({page,resize,dir}){
     await reviewRandomOffers(page);
     await reviewRetiredOffers(page);
     await reviewMoveCapacity(page);
+    await reviewVitaminArt(page,dir);
   }
   const ultimate=baseline?null:await reviewUltimateUpgrade(page,dir);
   // The animation/cache checks need a fresh dialog after the three ultimate
@@ -212,6 +245,8 @@ export async function reviewUpgrade({page,resize,dir}){
   try{
     for(const width of (baseline?[390]:[320,390,430])){
       await resize(width,width===320?568:width===430?932:844);
+      // Deliver Chrome's viewport resize before instrumenting the active layout.
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
       const build=await page.evaluate(({width,baseline})=>{
         const r=app.run;r.ui.hideModal();r.state='play';r.pendingLevels=1;r.rerolls=2;
         if(!baseline)r.player.setSpecies(width===320?4:width===390?5:6);

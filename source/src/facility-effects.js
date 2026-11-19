@@ -1,5 +1,18 @@
 import {DeviceFxThree as T, F as Frustum, lt as Sphere, PostprocessingPass, RedFormat} from '../assets/three-DmSYIDKK.js';
 import {createDeviceScreenFx} from './DeviceScreenFx.mjs';
+import {attachPortalDock} from './PortalDock.mjs';
+import earcut, {flatten} from './vendor/earcut.js';
+
+// The trimmed Three.js bundle omits ShapeUtils. The dock uses this one
+// operation to turn the authored flash silhouettes into triangles.
+const dockThree = {...T, ShapeUtils: {triangulateShape(contour, holes) {
+  const rings = [contour, ...holes].map(ring => ring.map(point => [point.x, point.y]));
+  const polygon = flatten(rings);
+  const indices = earcut(polygon.vertices, polygon.holes);
+  const faces = [];
+  for (let i = 0; i < indices.length; i += 3) faces.push(indices.slice(i, i + 3));
+  return faces;
+}}};
 
 export function createFacilityEffects(host, focusWorld) {
   const {renderer, composer, scene, camera, outline, outlinePass, antiAliasPass} = host;
@@ -20,11 +33,13 @@ export function createFacilityEffects(host, focusWorld) {
   maskScene.matrixWorldAutoUpdate = false;
   const maskMaterial = new T.ShaderMaterial({
     side: T.DoubleSide, depthTest: false, depthWrite: false, toneMapped: false,
-    uniforms: {sceneDepth: {value: null}, size: {value: new T.Vector2()}},
+    uniforms: {sceneDepth: {value: null}, size: {value: new T.Vector2()}, portalCut: {value: -1}, portalPhase: {value: -1}},
     vertexShader: 'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform sampler2D sceneDepth; uniform vec2 size;
+    fragmentShader: `uniform sampler2D sceneDepth; uniform vec2 size; uniform float portalCut, portalPhase;
       void main(){
-        if(gl_FragCoord.z > texture2D(sceneDepth, gl_FragCoord.xy / size).r + .000002) discard;
+        vec2 uv=gl_FragCoord.xy / size;
+        if(gl_FragCoord.z > texture2D(sceneDepth,uv).r + .000002) discard;
+        if(portalCut>=0. && (portalPhase<.5 ? 1.-uv.y>=portalCut : 1.-uv.y<portalCut)) discard;
         gl_FragColor=vec4(1.);
       }`,
   });
@@ -40,6 +55,11 @@ export function createFacilityEffects(host, focusWorld) {
     root.traverse(mesh => {
       if (!mesh.isMesh) return;
       const proxy = new T.Mesh(mesh.geometry, maskMaterial);
+      proxy.onBeforeRender = () => {
+        maskMaterial.uniforms.portalCut.value = root.userData.portalClip ?? -1;
+        maskMaterial.uniforms.portalPhase.value = mesh.userData.portalPhase ?? -1;
+        maskMaterial.uniformsNeedUpdate = true;
+      };
       // RenderPass has already updated the real mesh, including its animated parents.
       proxy.matrixWorld = mesh.matrixWorld;
       proxy.matrixAutoUpdate = proxy.matrixWorldAutoUpdate = false;
@@ -116,5 +136,5 @@ export function createFacilityEffects(host, focusWorld) {
     maskMaterial.dispose();
     exclusion.dispose();
   }
-  return {add, remove, dispose};
+  return {add, remove, dispose, attachDock: (model, options) => attachPortalDock(dockThree, renderer, model, options)};
 }

@@ -10,6 +10,15 @@ const retained=['boss','altar','bill','nest','magnet','freechest','berry','chest
 export async function reviewScenes({page,tap,dir,sleep}) {
   const report={mode:'Compiled WeChat bundle in Chrome fixture. Controlled zone traversal and isolated NPC transactions, not a natural playthrough or phone test.',removed,stages:[],summons:[]};
   const shot=async name=>{await sleep(400);await page.screenshot({path:path.join(dir,name+'.png')});};
+  async function checkBlessingArt() {
+    const {hero,cards}=await page.evaluate(()=>{
+      const hero=app.run.ui.root.querySelector('.zx-hud-name').textContent;
+      return {hero,cards:[...app.run.ui.modalEl.querySelectorAll('[data-offer]')].map(card=>
+        card.querySelector('canvas.zx-glyph-image')?.parentNode.getAttribute('aria-label'))};
+    });
+    assert.ok(cards.length>=3);
+    assert.deepEqual(cards,Array(cards.length).fill(hero));
+  }
   async function checkSpringShoes(choice) {
     const result=await page.evaluate(choice=>{
       const run=app.run, shoes='air-balloon', other='razor-claw';
@@ -34,23 +43,23 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       const building=facilities.list.find(o=>o.kind==='boss');
       await building.modelReady;
       run.state='play';
-      const pos=run.player.pos,beside=building.x+1,outside=building.x+building.r+2;
+      const pos=run.player.pos,beside=building.x+1,outside=building.x+building.ringRadius+.1;
       const stay=frames=>{for(let i=0;i<frames;i++)facilities.update(0,1/60);};
       pos.set(outside,building.y,building.z);
       run.player.vel.set(0,0,0);
       facilities.update(0,0);
       pos.x=beside;
-      run.time=run.stage===2?650:299.875;
-      run.stageTime=299.875;
+      run.time=run.stage===2?650:239.875;
+      run.stageTime=239.875;
       stay(240);
       facilities.interact(building);
       const earlyEvent=run.director.fire('guardian');
       facilities.render();
       const sealed=!building.used&&!run.bossSpawned&&!facilities.dwellRing.visible&&facilities.dwellTime===0;
       const sealedLabel=facilities.label(building);
-      run.stageTime=300;facilities.update(.125,.125);
+      run.stageTime=240;facilities.update(.125,.125);
       const atUnlock=facilities.dwellTime;
-      run.time+=.25;run.stageTime=300.125;facilities.update(.25,.25);
+      run.time+=.25;run.stageTime=240.125;facilities.update(.25,.25);
       const crossed=facilities.dwellTime;
       facilities.interact(building);
       const stillWaiting=!building.used&&!run.bossSpawned;
@@ -58,7 +67,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       pos.x=outside;stay(1);pos.x=beside;
       stay(90);
       const halfway=facilities.dwellProgress,target=facilities.nearest?.kind,visible=facilities.hasVisual(building);
-      run.stageTime=304;
+      run.stageTime=244;
       const eventWhileHolding=run.director.fire('guardian');
       facilities.render();
       const ring=facilities.dwellRing;
@@ -147,7 +156,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     assert.ok(Math.abs(timing.halfway-.5)<1e-6,'The summon ring should be half full at 1.5 seconds: '+JSON.stringify(timing));
     assert.ok(timing.sealed&&timing.stillWaiting&&timing.earlyEvent===false&&timing.eventWhileHolding===false);
     assert.equal(timing.atUnlock,0);
-    assert.equal(timing.sealedLabel,'距漩涡解封 00:01');assert.match(timing.readyLabel,/3 秒.*唤醒镇守/);
+    assert.equal(timing.sealedLabel,'距可提前召唤 00:01');assert.match(timing.readyLabel,/3 秒.*唤醒镇守/);
     assert.equal(timing.crossed,.125);
     assert.ok(timing.ringAtDoor&&timing.visible&&timing.model==='portal');
     assert.ok(timing.left&&timing.waiting&&Math.abs(timing.before-179/180)<1e-6,'Leaving should require three fresh seconds');
@@ -179,11 +188,11 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     const r=app.run,f=r.interactables,door=f.list.find(o=>o.kind==='boss');
     await door.modelReady;
     const previous=app.halted;app.halted=true;
-    r.time=r.stageTime=288;
+    r.time=r.stageTime=228;
     r.player.pos.set(door.x,door.y,door.z+2.5);r.player.vel.set(0,0,0);r.camTarget.copy(r.player.pos);
     f.update(0,0);r.hints.tick(r,1);r.updateCamera(1);r.renderWorld(0);r.ui.hud(r);r.ui.worldLabels(r);
     app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
-    if(!r.hints.el?.textContent.includes('距漩涡解封 00:12')||r.ui.worldLabelNodes.has(door))
+    if(!r.hints.el?.textContent.includes('距可提前召唤 00:12')||r.ui.worldLabelNodes.has(door))
       throw Error('The door tutorial must present the countdown once');
     return previous;
   });
@@ -192,11 +201,11 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     return img?.complete&&img.naturalWidth>0&&img.src.split('?')[0].endsWith('/ui/devices/portal.png');
   },{timeout:6000,polling:50});
   await page.evaluate(()=>{app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);});
-  await shot('漩涡解封倒计时');
+  await shot('提前召唤倒计时');
   await page.evaluate(previous=>{
     const r=app.run,door=r.hints.site;
     r.hints.el.remove();r.ui.worldLabels(r);
-    if(r.ui.worldLabelNodes.get(door)?.textContent!=='距漩涡解封 00:12')throw Error('Missing countdown after the tutorial closes');
+    if(r.ui.worldLabelNodes.get(door)?.textContent!=='距可提前召唤 00:12')throw Error('Missing countdown after the tutorial closes');
     app.halted=previous;
   },previousHalt);
   await summonAtBuilding(true);
@@ -205,6 +214,9 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     const r=app.run;
     if(r.ui.root.querySelector('.zx-hud').hidden)throw Error('Combat HUD was not restored after the cinematic');
     r.combat.killEnemy(r.boss.bossIndex,{type:'normal'});
+    r.stageTime=300;
+    r.director.update(0);
+    if(r.boss.alive)throw Error('Deadline summoned a second guardian after a manual summon');
     return {cleared:r.stageCleared,bosses:r.stats.bosses,legendaries:r.stats.legendaries,state:r.state,portals:r.interactables.list.filter(o=>o.kind==='portal').length};
   });
   assert.deepEqual(cleared,{cleared:true,bosses:1,legendaries:0,state:'play',portals:1});
@@ -317,11 +329,8 @@ export async function reviewScenes({page,tap,dir,sleep}) {
         const altar=f.list.find(o=>o.kind==='altar');
         r.state='play';r.player.pos.set(altar.x+1,altar.y,altar.z);r.player.vel.set(0,0,0);
         const timers=r.timers.length,mods=r.tempMods.length,curses=r.curses;
-        while(altar.charge<.5&&!altar.used){
-          const previous=altar.charge;
-          f.update(.25);
-          if(altar.charge<=previous)throw Error('The guardian altar did not charge on approach');
-        }
+        for(let i=0;i<6;i++)f.update(.05,.25);
+        if(Math.abs(altar.charge-.5)>1e-8)throw Error('Expected half charge after 1.5 seconds inside the ring');
         const waveTimers=r.timers.length-timers;
         let orbitGlyphs=0;
         const get=r.sprites.get;
@@ -329,7 +338,10 @@ export async function reviewScenes({page,tap,dir,sleep}) {
         try{f.render();}finally{r.sprites.get=get;}
         const ring=altar.chargeRing,atPlant=ring.visible&&ring.parent===altar.group&&
           ring.position.y>0&&ring.material.uniforms.dwell.value===altar.charge&&!f.dwellRing.visible;
-        for(let i=0;i<200&&!altar.used;i++)f.update(.25);
+        for(let i=0;i<5;i++)f.update(.05,.25);
+        f.update(.05,.24);
+        if(altar.used)throw Error('Blessing granted before three seconds');
+        f.update(.01,.01);
         f.render();
         return {tier:altar.data.tier,atPlant,complete:ring.visible&&ring.material.uniforms.dwell.value===1,
           orbitGlyphs,waveTimers,used:altar.used,mods,curses,
@@ -338,10 +350,25 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       const blessing=report.blessing;
       assert.ok([0,1,2,3].includes(blessing.tier)&&blessing.atPlant&&blessing.complete&&blessing.used&&!blessing.boss);
       assert.equal(blessing.title,'守护者祭坛');assert.equal(blessing.orbitGlyphs,0);assert.equal(blessing.waveTimers,0);
+      await checkBlessingArt();
+      await shot('祭坛祝福角色图');
       for(let i=0;i<(blessing.tier===3?2:1);i++)await tap('[data-choice="showBlessing"] [data-offer="0"]');
       const reward=await page.evaluate(before=>({mods:app.run.tempMods.slice(before),curses:app.run.curses}),blessing.mods);
       assert.equal(reward.curses,blessing.curses);
       assert.ok(reward.mods.length>0&&reward.mods.every(m=>m.mul>1||m.add>0));
+      const oldSpecies=await page.evaluate(()=>{
+        const r=app.run,old=r.player.speciesId;
+        r.player.setSpecies(5);
+        if(!r.minibosses.spawnTotem())throw Error('Could not spawn the blessing boss');
+        r.combat.killEnemy(r.minibosses.lastIndex,{type:'normal'});
+        r.update(0);
+        return old;
+      });
+      await page.waitForFunction(()=>app.run.ui.modalEl?.querySelector('[data-choice="showBlessing"]'));
+      await checkBlessingArt();
+      await shot('霸主祝福角色图');
+      await tap('[data-choice="showBlessing"] [data-offer="0"]');
+      await page.evaluate(id=>app.run.player.setSpecies(id),oldSpecies);
     }
     const area=await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-area').textContent);
     assert.match(area,stage===4?/星灯书庭.*圣地/:new RegExp(stage+'/2区'));

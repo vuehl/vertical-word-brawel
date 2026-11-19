@@ -9374,7 +9374,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         if ((t.hitstop(0.25), t.shake(0.5), r.kind === `totem`)) {
           (t.stats.totems++,
             t.ui.banner(c(`¡Dominante derrotado!`), c(`Su aura es tuya: elige una bendición`), `#c25aff`, {
-              species: r.species,
+              species: t.player.speciesId,
             }),
             t.spawnChestAt(i, o, `free`));
           for (let e = 0; e < 10; e++) t.pickups.spawn(`coin`, i, a, o, Math.ceil((3 + t.stage * 3) * s.gold));

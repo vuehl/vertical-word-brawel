@@ -153,8 +153,18 @@ for(const kind of Object.keys(facilityNames)){
   const key='assets/models/'+facilityModelFile(kind)+'.glb',glb=Buffer.from(bytes(key));
   const gltf=JSON.parse(glb.toString('utf8',20,20+glb.readUInt32LE(12)));
   const adapter=gltf.asset.extras.deviceScreenFxAdapter,scene=gltf.scenes[gltf.scene??0].extras;
-  assert.equal(adapter.sha256,adapterHash,key);
-  assert.equal(digest(adapter.source),adapterHash,key);
+  assert.equal(digest(adapter.source),adapter.sha256,key);
+  if(kind==='boss'){
+    const dock=gltf.asset.extras.portalDockAdapter;
+    assert.equal(adapter.sha256,adapterHash,key);
+    assert.equal(dock.requiresDeviceScreenFxSha256,adapterHash,key);
+    assert.equal(digest(dock.source),dock.sha256,key);
+    assert.equal(digest(fs.readFileSync(path.join(root,'source/src/PortalDock.mjs'))),dock.sha256,key);
+    assert.equal(scene.portalDock.version,1,key);
+  }else{
+    // These GLBs embed the original compatible v2 compositor.
+    assert.equal(adapter.sha256,'d511b9afb11135ee25e24f07efa6fdf24d37c3af0dae3ac8a308bd4c320c4fae',key);
+  }
   assert.equal(scene.deviceModel,({bill:'billpc',boss:'portal',portal:'boss'})[kind]??kind,key);
   if(kind==='boss'||kind==='portal')assert.equal(facilityIconFile(kind),'ui/devices/'+scene.deviceModel+'.png');
   assert.ok(index.files['assets/'+facilityIconFile(kind)],'Missing model thumbnail for '+kind);

@@ -41,7 +41,9 @@ export async function reviewDeviceEffects(page, dir) {
       const expectedModel = {bill:'billpc',boss:'portal',portal:'boss'}[kind] ?? kind;
       if (model.userData.deviceModel !== expectedModel) throw Error('Wrong GLB for ' + kind);
       model.traverse(m => {
-        if (m.isMesh && (!m.material.isMeshBasicMaterial || !(m.material.map?.image?.width > 0))) throw Error('Texture or legacy hull on ' + kind);
+        if (!m.isMesh || m.userData.portalTransient) return;
+        if (m.material.name === 'MAT_DemonEyeEmission' && m.material.emissiveMap?.image?.width > 0) return;
+        if (!m.material.isMeshBasicMaterial || !(m.material.map?.image?.width > 0)) throw Error('Texture or legacy hull on ' + kind);
       });
       inventory[kind] = (inventory[kind] || 0) + 1;
     }
@@ -282,7 +284,138 @@ export async function reviewDeviceEffects(page, dir) {
     const count = report.presets[quality] = changedPixels(body, await frame(.85));
     assert.ok(count > 100, 'Device sweep missing at ' + quality);
   }
+  report.dockClock = await page.evaluate(() => {
+    const {host, facilities, run} = deviceProbe;
+    const door = facilities.list.find(f => f.kind === 'boss');
+    for (const child of facilities.group.children) child.visible = child === door.group;
+    const center = door.model.localToWorld(run.player.pos.clone().fromArray(door.model.userData.deviceScreenFx.centerXYZ));
+    // Decode the seven lit segments from the texture actually assigned to the GLB.
+    const masks = [63,6,91,79,102,109,125,7,127,111];
+    const segments = [[45,0],[88,45],[88,138],[45,182],[3,138],[3,45],[45,91]];
+    deviceProbe.readDockDigits = model => {
+      const screen = model.getObjectByName('Idle_screen');
+      const image = screen.material.map.image;
+      const {width,height} = image;
+      let data = image.data;
+      if (!data) {
+        const canvas = inspected.doc.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        context.drawImage(image, 0, 0);
+        data = context.getImageData(0, 0, width, height).data;
+      }
+      let digits = '';
+      for (let i=0; i<3; i++) {
+        let mask = 0;
+        segments.forEach(([x,y],bit) => {
+          const px = Math.round(183 + 119*i + 6 + x - .055*y);
+          if (data[(width*(62+y) + px)*4] > 235) mask |= 1 << bit;
+        });
+        digits += masks.indexOf(mask);
+      }
+      return digits;
+    };
+    function sample() {
+      host.camera.position.copy(center);
+      host.camera.position.z += 25;
+      host.camera.lookAt(center);
+      host.camera.updateMatrixWorld();
+      facilities.render();
+      run.ui.hud(run);
+      return [deviceProbe.readDockDigits(door.model), inspected.doc.querySelector('.zx-hud-clock').textContent, door.dock.state];
+    }
+    const samples = [];
+    for (const elapsed of [0,239.99,240,299.99,300]) {
+      run.stageTime = elapsed;
+      samples.push(sample());
+      if (elapsed === 0) {
+        run.stageTime = .99;
+        run.pause();
+        for (let i=0; i<25; i++) run.update(.05);
+        samples.push(sample());
+        run.resume();
+        // Cross the next integer through a normal simulation tick after resume.
+        run.update(.05);
+        samples.push(sample());
+      }
+    }
+    if (door.model.userData.portalCreamPhase !== -1) throw Error('Cream effects still active during transformation');
+    const transformTime = host.shared.uTime.value;
+    host.render(0);
+    const transforming = host.canvas.toDataURL();
+    for (const phase of [.85,1.65,2.2]) {
+      host.shared.uTime.value = phase;
+      host.render(0);
+      if (host.canvas.toDataURL() !== transforming) throw Error('Cream sweep or stars visible during transformation');
+    }
+    run.stageTime += 3;
+    host.shared.uTime.value = transformTime + 3;
+    facilities.render();
+    host.render(0);
+    const phase = door.model.userData.portalCreamPhase;
+    if (!(phase >= 0 && phase < 3)) throw Error('Cream cycle did not resume on the open dock');
+    samples.push(door.dock.state);
+    return samples;
+  });
+  assert.deepEqual(report.dockClock, [
+    ['300','05:00','idle'], ['300','05:00','idle'], ['299','04:59','idle'], ['061','01:01','idle'], ['060','01:00','idle'],
+    ['001','00:01','idle'], ['000','00:00','playing'], 'open',
+  ]);
+  // Look squarely at the glass and check that the cream core crosses every
+  // sampled part of its artwork through a normal post-transformation cycle.
+  const glass = await page.evaluate(() => {
+    const {facilities,host} = deviceProbe;
+    const door = facilities.list.find(f => f.kind === 'boss');
+    const screen = door.model.getObjectByName('Open_screen');
+    screen.geometry.computeBoundingBox();
+    const box = screen.geometry.boundingBox, size = box.getSize(host.camera.position.clone());
+    const center = screen.localToWorld(box.getCenter(size.clone()));
+    const normal = size.clone().set(0,size.z,size.y).transformDirection(screen.matrixWorld);
+    const distance = size.x / (1.5 * Math.tan(host.camera.fov*Math.PI/360) * host.camera.aspect);
+    host.camera.position.copy(center).addScaledVector(normal,distance);
+    host.camera.lookAt(center);
+    host.camera.updateMatrixWorld();
+    const positions = screen.geometry.attributes.position;
+    const xs = [], ys = [];
+    for (let i=0; i<positions.count; i++) {
+      const p=screen.localToWorld(size.fromBufferAttribute(positions,i)).project(host.camera);
+      xs.push((p.x+1)*host.canvas.width/2);
+      ys.push((1-p.y)*host.canvas.height/2);
+    }
+    return {x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys),
+      start:host.shared.uTime.value-door.model.userData.portalCreamPhase+3};
+  });
+  const hits = new Set(), samples = [];
+  for (let y=1; y<20; y++) for (let x=1; x<40; x++) {
+    samples.push([Math.round(glass.x0+(glass.x1-glass.x0)*x/40), Math.round(glass.y0+(glass.y1-glass.y0)*y/20)]);
+  }
+  for (let tick=0; tick<=32; tick++) {
+    const time = glass.start + .22 + .04*tick;
+    await page.evaluate(time => {
+      deviceProbe.host.shared.uTime.value = time;
+      deviceProbe.facilities.render();
+    }, time);
+    const shot = await frame(time,tick===13?'portal-glass-sweep':null);
+    for (const [index,[x,y]] of samples.entries()) {
+      const p=(y*shot.info.width+x)*3;
+      if ([239,234,208].every((v,c)=>Math.abs(v-shot.data[p+c])<=4)) hits.add(index);
+    }
+  }
+  report.glassCoverage = {sampled:samples.length,crossed:hits.size};
+  assert.equal(hits.size,samples.length,'Cream sweep left gaps in the open glass: '+JSON.stringify(report.glassCoverage));
+  const starTime = glass.start + 1.65;
+  await page.evaluate(time => {
+    deviceProbe.host.shared.uTime.value = time;
+    deviceProbe.facilities.render();
+  }, starTime);
+  const star = await frame(starTime,'portal-star-resumed');
   await page.evaluate(() => {
+    deviceProbe.facilities.list.find(f => f.kind === 'boss').model.userData.portalCreamPhase = -1;
+  });
+  report.resumedStarPixels = changedPixels(star,await frame(starTime));
+  assert.ok(report.resumedStarPixels > 20,'No cream star on the open phone');
+  await page.evaluate(async () => {
     const {facilities, host, run, sample} = deviceProbe;
     sample.group.visible = true;
     facilities.nearest = sample;
@@ -305,7 +438,21 @@ export async function reviewDeviceEffects(page, dir) {
     } finally {
       run.vfx.ring = emitRing;
     }
-    facilities.dispose();
+    const oldDoor = facilities.list.find(f => f.kind === 'boss');
+    await run.enterPortal();
+    const newDoor = run.interactables.list.find(f => f.kind === 'boss');
+    run.ui.hud(run);
+    if (run.stage !== 2 || oldDoor.dock || newDoor.dock.state !== 'idle' || deviceProbe.readDockDigits(newDoor.model) !== '300' ||
+        inspected.doc.querySelector('.zx-hud-clock').textContent !== '05:00') throw Error('Dock did not reset in the new zone');
+    run.player.pos.set(newDoor.x + newDoor.ringRadius + 5, newDoor.y, newDoor.z);
+    run.stageTime = 299.99;
+    run.director.update(0);
+    if (run.bossSpawned) throw Error('Guardian spawned before zero outside the ring');
+    run.stageTime = 300;
+    run.director.update(.01);
+    run.interactables.render();
+    if (!newDoor.used || !run.bossSpawned || !run.boss.alive || newDoor.dock.state !== 'playing') throw Error('Deadline did not summon outside the ring');
+    run.interactables.dispose();
     if (host.composer.passes.some(p => ['Visible devices','Device screen effects'].includes(p.name))) throw Error('Device passes survived unload');
   });
   fs.writeFileSync(path.join(dir,'device-effects.json'), JSON.stringify(report,null,2));

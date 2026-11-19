@@ -9,14 +9,14 @@ export const SINGLE_STAGE = 'single-stage';
 // Encounter tables are authored on a ten-minute clock. Only wave progression
 // uses that clock. Movement, cooldowns, drops and run records use game seconds.
 export const WAVE_SECONDS = 600;
-export const COMBAT_ZONE_SECONDS = 6 * 60;
+export const COMBAT_ZONE_SECONDS = 5 * 60;
 export function zoneDuration(mode = 'standard') {
   if (mode === SINGLE_STAGE || mode === 'standard' || mode === 'classic') return COMBAT_ZONE_SECONDS;
   return WAVE_SECONDS;
 }
-// Multi-zone waves keep their five-minute ramp independently of the guardian deadline.
+// Preserve the authored spawn ramps when the guardian deadline changes.
 export const wavePace = (mode = 'standard') => WAVE_SECONDS /
-  (mode === 'standard' || mode === 'classic' ? 300 : zoneDuration(mode));
+  (mode === SINGLE_STAGE ? 360 : mode === 'standard' || mode === 'classic' ? 300 : WAVE_SECONDS);
 export function isSoloNormalOpening(run) {
   return run.stage === 1 && run.tier === 0 && !run.coop &&
     (run.mode === SINGLE_STAGE || run.mode === 'standard');
@@ -25,7 +25,7 @@ export function isSoloNormalOpening(run) {
 export function normalOpeningWaves(mode, firstHorde, honey) {
   const waves = mode === SINGLE_STAGE
     ? [[90,'alpha'],[115,'event'],[141,firstHorde],[170,'totem'],[198,'alpha'],
-       [226,'elitewave'],[254,'summoner'],[282,'swarm']]
+       [225,'elitewave'],[250,'summoner'],[275,'swarm']]
     : [[75,'alpha'],[100,'event'],[125,firstHorde],[150,'totem'],[175,'elitewave'],
        [200,'summoner'],[225,'swarm']];
   if (honey) waves.unshift([waves[0][0] - 25,'alpha']);

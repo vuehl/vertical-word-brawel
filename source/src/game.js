@@ -1,5 +1,5 @@
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
-import {bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,facilityModelFile,facilityNames,isActiveFacility} from './active-content.js';
+import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,facilityModelFile,facilityNames,isActiveFacility} from './active-content.js';
 import {createFacilityEffects} from './facility-effects.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
@@ -33652,7 +33652,9 @@ var mv = 30,
         for (const event of n) event.t /= this.pace;
       }
       if (this.pace > 1 && e.stage <= FOREST_COMBAT_ZONES) {
-        n.push({ t: zoneDuration(e.mode), kind: 'guardian' });
+        const deadline = zoneDuration(e.mode);
+        n = n.filter(event => event.t < deadline);
+        n.push({ t: deadline, kind: 'guardian' });
       }
       this.timeline = n.sort((a, b) => a.t - b.t);
     }
@@ -45548,10 +45550,10 @@ function PS(e, t) {
   return Math.round(Math.max([10, 18, 30, 50, 90][t] * e.stage, Math.min(n, MS[t] * OS(e))));
 }
 var RS = [
-  {color: 5959935, css: '#2ec8e0', charge: 8, r: 6, drain: 6, min: 0, offers: 3, picks: 1},
-  {color: 5953658, css: '#5ad87a', charge: 14, r: 5.5, drain: 5, min: 1, offers: 3, picks: 1},
-  {color: 12611839, css: '#c070ff', charge: 22, r: 5, drain: 4, min: 2, offers: 3, picks: 1},
-  {color: 16765498, css: '#ffd23a', charge: 35, r: 4.5, drain: 3, min: 3, offers: 4, picks: 2},
+  {color: 5959935, css: '#2ec8e0', r: 6, drain: 6, min: 0, offers: 3, picks: 1},
+  {color: 5953658, css: '#5ad87a', r: 5.5, drain: 5, min: 1, offers: 3, picks: 1},
+  {color: 12611839, css: '#c070ff', r: 5, drain: 4, min: 2, offers: 3, picks: 1},
+  {color: 16765498, css: '#ffd23a', r: 4.5, drain: 3, min: 3, offers: 4, picks: 2},
 ];
 var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
   VS = { altar: 200, challenge: 240, magnet: 150, berry: 60 };
@@ -45666,11 +45668,13 @@ var GS = class e {
       group.userData.h = model.userData.displayHeight * scale;
       facility.ringRadius = Math.max(facility.r, model.userData.footprintRadius * scale + 0.7);
       const ring = facility.halo = this.dwellRing.clone();
-      ring.material = this.idleRingMaterial;
+      const isBerry = facility.kind === 'berry';
+      ring.material = isBerry ? this.idleRingMaterial.clone() : this.idleRingMaterial;
+      if (isBerry) ring.material.uniforms.berryCooldown.value = 0;
       group.add(ring);
       ring.position.set(0, .12, 0);
       ring.scale.setScalar(facility.ringRadius);
-      ring.visible = !facility.used;
+      ring.visible = isBerry || !facility.used;
       if (facility.kind === 'altar') {
         const color = new Ei(RS[facility.data.tier].color);
         const charge = facility.chargeRing = createAltarChargeRing(group, {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr}, color);
@@ -45680,10 +45684,18 @@ var GS = class e {
       facility.model = model;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
       this.deviceFx.add(model);
+      if (model.userData.portalDock) {
+        facility.dock = this.deviceFx.attachDock(model, {
+          durationSeconds: zoneDuration(this.run.mode),
+          remainingSeconds: remainingZoneSeconds(this.run),
+          startOpen: facility.used || this.run.bossSpawned,
+        });
+      }
       if (facility.used) this.dim(facility);
     }
     releaseDevice(facility) {
       clearTimeout(facility.retry);
+      if (facility.kind === 'berry') facility.halo?.material.dispose();
       facility.halo?.removeFromParent();
       facility.halo = null;
       if (facility.chargeRing) {
@@ -45695,6 +45707,8 @@ var GS = class e {
       }
       if (!facility.model) return;
       this.deviceFx.remove(facility.model);
+      facility.dock?.dispose();
+      facility.dock = null;
       this.restoreDeviceColour(facility);
       // GLTF clones share the template's geometry, textures and original materials.
       facility.model.removeFromParent();
@@ -45987,7 +46001,7 @@ var GS = class e {
           return this.run.bossSpawned
             ? c(`El guardián ya despertó`)
             : this.run.stageTime < bossSummonUnlockSeconds
-              ? '距漩涡解封 ' + Ys(Math.ceil(bossSummonUnlockSeconds - this.run.stageTime)).padStart(5, '0')
+              ? '距可提前召唤 ' + Ys(Math.ceil(bossSummonUnlockSeconds - this.run.stageTime)).padStart(5, '0')
               : `停留 ${bossSummonSeconds} 秒 · 唤醒镇守`;
         case `shrine`:
           return this.run.bossSpawned ? c(`El santuario late con fuerza`) : c(`Tocar el santuario`);
@@ -46263,6 +46277,10 @@ var GS = class e {
         });
     }
     dim(facility) {
+      if (facility.dock) {
+        facility.dock.open();
+        return;
+      }
       if (!facility.model || facility.originalMaterials) return;
       const originals = facility.originalMaterials = new Map();
       facility.model.traverse(mesh => {
@@ -46484,10 +46502,11 @@ var GS = class e {
           l = a.z - n.z,
           u = Math.hypot(s, l);
         if (a.kind === 'altar') {
-          if (!a.used) this.altarUpdate(a, u, e);
+          if (!a.used) this.altarUpdate(a, u, e, dwellSeconds);
           continue;
         }
-        if (ready && u < a.r + 0.8 && u < i && a.kind !== 'shroom' &&
+        const interactionRadius = a.kind === 'boss' ? a.ringRadius : a.r + 0.8;
+        if (ready && u < interactionRadius && u < i && a.kind !== 'shroom' &&
             (!a.used || a.kind === 'meowth' || a.kind === 'hypno' || a.kind === 'portal' ||
               (a.kind === 'tower' && a.data?.sub !== 'trick'))) {
           i = u;
@@ -46650,7 +46669,18 @@ var GS = class e {
       }
       for (const facility of this.list) {
         if (!facility.halo) continue;
+        if (facility.dock) {
+          if (facility.used || this.run.bossSpawned) facility.dock.open();
+          const host = this.run.r;
+          facility.dock.update(host.camera, host.shared.uTime.value, remainingZoneSeconds(this.run), host.composer.inputBuffer.viewport);
+        }
         const visible = this.hasVisual(facility);
+        if (facility.kind === 'berry') {
+          const remaining = (facility.data?.regenAt ?? this.run.time) - this.run.time;
+          facility.halo.material.uniforms.berryCooldown.value = Math.min(1, Math.max(0, remaining / VS.berry));
+          facility.halo.visible = visible && !(ring.visible && target === facility);
+          continue;
+        }
         const charge = facility.chargeRing;
         if (charge) {
           const opacity = facility.used ? Math.max(0, 1 - (this.run.time - (facility.completedAt ?? -Infinity)) / .6) : 1;
@@ -46778,16 +46808,16 @@ var GS = class e {
         glow: 0.3 + 0.4 * a,
       });
     }
-    altarUpdate(altar, distance, dt) {
+    altarUpdate(altar, distance, dt, dwellSeconds) {
       const run = this.run, tier = altar.data.tier, blessing = RS[tier];
       if (distance < 70) this.altarIdleFx(altar, tier, altar.charge, dt);
       const inside = distance < altar.r && !run.player.dead;
       const crew = (run.coop?.altarCrew(altar.x, altar.z, altar.r) ?? 0) + Number(inside);
       const keys = run.player.items.get('secret-key') ?? 0;
       if (crew > 0) {
-        const duration = blessing.charge * (1 + .25 * (Math.min(3, run.stage) - 1)) / (1 + .3 * keys);
+        const chargeRate = (1 + .3 * keys) * (1 + .6 * (crew - 1)) / altarChargeSeconds;
         altar.data.outT = 0;
-        altar.charge = Math.min(1, altar.charge + dt * (1 + .6 * (crew - 1)) / duration);
+        altar.charge = Math.min(1, altar.charge + dwellSeconds * chargeRate);
         if (inside) {
           run.player.anchorT = .2;
           run.audio.charge(altar.charge);
@@ -46795,7 +46825,7 @@ var GS = class e {
         if (Math.random() < .5 + tier * .15)
           run.vfx.trail(altar.x + F.range(-altar.r, altar.r), altar.y + .5,
             altar.z + F.range(-altar.r, altar.r), blessing.color, .5, I.Spark, .6);
-        if (altar.charge >= 1) this.altarDone(altar, tier);
+        if (altar.charge + 1e-9 >= 1) this.altarDone(altar, tier);
       } else if (altar.charge > 0) {
         altar.data.outT = (altar.data.outT ?? 0) + dt;
         if (altar.data.outT > 1.2) altar.charge = Math.max(0, altar.charge - dt / (blessing.drain * (keys ? 2 : 1)));
@@ -49500,7 +49530,7 @@ var mw = 7500,
     altar: {
       letter: `a`,
       kind: 'altar',
-      text: () => '站进光圈，蓄满即可选择祝福。',
+      text: () => `在多肉的光圈内停留 ${altarChargeSeconds} 秒，即可选择祝福。`,
     },
     shop: {
       letter: `s`,
@@ -49511,7 +49541,7 @@ var mw = 7500,
     guardian: {
       letter: `g`,
       kind: 'boss',
-      text: () => `满 ${bossSummonUnlockSeconds / 60} 分钟后，站进漩涡 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
+      text: () => `满 ${bossSummonUnlockSeconds / 60} 分钟后，在装置光圈内停留 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
     },
     alpha: {
       letter: `f`,
@@ -83688,11 +83718,12 @@ var JI = class {
     }
     showBlessing(e, t, n, r, i) {
       let a = X(`div`, { class: `cards` });
+      const recipient = e.player.speciesId;
       n.forEach((e, t) => {
         let n = X(
           `button`,
           { class: `card`, style: { minHeight: `200px` }, onclick: () => r(e) },
-          X(`div`, { class: `top` }, X(`span`, { class: `rar` }, Le[e.rarity]), Z(`blessing`, 64)),
+          X(`div`, { class: `top` }, X(`span`, { class: `rar` }, Le[e.rarity]), rw(recipient)),
           X(`div`, { class: `bd` }, X(`h3`, {}, e.label), X(`div`, { class: `key` }, `[${t + 1}]`)),
         );
         (n.style.setProperty(`--rc`, aw[e.rarity]), a.append(n));

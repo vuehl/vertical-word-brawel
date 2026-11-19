@@ -75,13 +75,15 @@ export function createDeviceScreenFx(T, renderer) {
     uniform vec2 resolution;
     uniform vec4 box;
     uniform float deviceId;
+    uniform float portalSide,portalCut,creamPhase;
     varying float viewDepth;
     void main(){
       vec2 uv=gl_FragCoord.xy/resolution;
+      if(portalCut>=0. && portalSide>=0. && (portalSide<.5 ? 1.-uv.y>=portalCut : 1.-uv.y<portalCut))discard;
       if(gl_FragCoord.z>texture2D(worldDepth,uv).r+.000002)discard;
       vec2 extent=max(box.zw-box.xy,1./resolution);
       vec2 p=(uv-box.xy)/extent;
-      gl_FragColor=vec4(deviceId,.55*p.x+.45*(1.-p.y),viewDepth,1.);
+      gl_FragColor=vec4(deviceId,.55*p.x+.45*(1.-p.y),viewDepth,creamPhase);
     }`;
   const depthFunction=`
     float linearDepth(float d){
@@ -109,7 +111,9 @@ export function createDeviceScreenFx(T, renderer) {
       vec4 src=texture2D(beautyTex,uv),m=texture2D(maskTex,uv);
       vec3 col=src.rgb;
       if(m.r>.5){
-        if(clockSec>=.22&&clockSec<=1.52){
+        // The mask keeps the silhouette available while the local effect is muted.
+        float sweepSec=m.a < -1.5 ? clockSec : m.a;
+        if(sweepSec>=.22&&sweepSec<=1.52){
           vec2 inset=texel*1.5;
           bool inner=texture2D(maskTex,uv+vec2(inset.x,0.)).r==m.r
                   &&texture2D(maskTex,uv-vec2(inset.x,0.)).r==m.r
@@ -117,7 +121,7 @@ export function createDeviceScreenFx(T, renderer) {
                   &&texture2D(maskTex,uv-vec2(0.,inset.y)).r==m.r;
           vec3 distanceToInk=abs(col-ink);
           if(inner&&max(max(distanceToInk.r,distanceToInk.g),distanceToInk.b)>.021){
-            float u=clamp((clockSec-.22)/1.30,0.,1.);
+            float u=clamp((sweepSec-.22)/1.30,0.,1.);
             float d=m.g-(-.14+1.28*mix(u,smoothstep(0.,1.,u),.76));
             if(abs(d)<=.036||abs(d+.079)<=.009)col=cream;
             else if(d>-.24&&d<.20){
@@ -198,11 +202,12 @@ export function createDeviceScreenFx(T, renderer) {
     if(entries.has(root))return root;
     const cfg=root.userData.deviceScreenFx;
     if(cfg?.version!==2||!Array.isArray(cfg.supportXYZ)||cfg.supportXYZ.length<12)throw Error('Missing deviceScreenFx v2 on the loaded scene root');
-    const mat=shader(maskVS,maskFS,{worldDepth:null,resolution:v2(),box:v4(),deviceId:1},
+    const mat=shader(maskVS,maskFS,{worldDepth:null,resolution:v2(),box:v4(),deviceId:1,portalSide:-1,portalCut:-1,creamPhase:-2},
                   {depthTest:true,depthWrite:true,side:T.DoubleSide});
     const meshes=[];
-    root.traverse(src=>{if(src.isMesh){
+    root.traverse(src=>{if(src.isMesh&&!src.userData.portalTransient){
       const proxy=new T.Mesh(src.geometry,mat);proxy.matrixAutoUpdate=false;proxy.frustumCulled=false;
+      proxy.onBeforeRender=()=>{mat.uniforms.portalSide.value=src.userData.portalPhase??-1;mat.uniforms.portalCut.value=root.userData.portalClip??-1;mat.uniformsNeedUpdate=true;};
       proxy.layers.enableAll();proxyScene.add(proxy);meshes.push([src,proxy]);
     }});
     entries.set(root,{cfg,mat,meshes,projected:new Float64Array(cfg.supportXYZ.length)});
@@ -222,9 +227,8 @@ export function createDeviceScreenFx(T, renderer) {
   function update(scene,camera,time,depth,w,h){
     scene.updateMatrixWorld(true);camera.updateWorldMatrix(true,false);
     vp.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);union.set(1,1,0,0);
-    const phase=time>=0?time%3:((time%3)+3)%3;
-    const hero=phase>=1.52&&phase<1.82,scatter=phase>=1.92&&phase<2.52;
-    const pu=pass.uniforms,su=starMat.uniforms;pu.clockSec.value=phase;
+    const worldPhase=time>=0?time%3:((time%3)+3)%3;
+    const pu=pass.uniforms,su=starMat.uniforms;pu.clockSec.value=worldPhase;
     let count=0,active=0,refDepth=Infinity;
     allocateStars(entries.size*6*sparkFrames[0].length);
     const positions=starGeometry.getAttribute('position'),data=starGeometry.getAttribute('starData'),anchors=starGeometry.getAttribute('anchorUv'),sprites=starGeometry.getAttribute('spriteFrame');
@@ -242,7 +246,10 @@ export function createDeviceScreenFx(T, renderer) {
       for(const [,p] of e.meshes)p.visible=false;
       if(!inScene(root,scene)||!e.meshes.some(([src])=>inScene(src,scene)&&camera.layers.test(src.layers)))continue;
       mvp.multiplyMatrices(vp,root.matrixWorld);
-      const pts=e.cfg.supportXYZ,p=e.projected;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,n=0;
+      const support=root.userData.portalDock?.support,pose=root.userData.portalDockPose;
+      const pts=support?(pose==='open'?support.open:pose==='sweep'?support.both:support.idle):e.cfg.supportXYZ;
+      if(e.projected.length<pts.length)e.projected=new Float64Array(pts.length);
+      const p=e.projected;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,n=0;
       for(let i=0;i<pts.length;i+=3){
         clip.set(pts[i],pts[i+1],pts[i+2],1).applyMatrix4(mvp);
         if(clip.w<=0||clip.z < -clip.w)continue;
@@ -253,6 +260,10 @@ export function createDeviceScreenFx(T, renderer) {
       if(!n||x0>1.25||y0>1.25||x1<-.25||y1<-.25||x1-x0<1e-6||y1-y0<1e-6)continue;
       if(active>=2047)throw Error('Device mask exhausted its exact half-float IDs');
       const id=++active,mu=e.mat.uniforms;mu.deviceId.value=id;mu.worldDepth.value=depth;
+      const localPhase=root.userData.portalCreamPhase;
+      mu.creamPhase.value=localPhase??-2;
+      const phase=localPhase??worldPhase;
+      const hero=phase>=1.52&&phase<1.82,scatter=phase>=1.92&&phase<2.52;
       mu.resolution.value.set(w,h);mu.box.value.set(x0,y0,x1,y1);
       for(const [src,p] of e.meshes){
         p.visible=inScene(src,scene)&&camera.layers.test(src.layers);

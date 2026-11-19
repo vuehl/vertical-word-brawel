@@ -68,7 +68,7 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
     qaPlace(objects.find(o=>o.kind==='freechest'&&!o.used));r.hints.scanT=0;const switched=qaItemFrames(1);
     const freeHint=r.hints.el?.dataset.kind;
     let altar=objects.find(o=>o.kind==='altar'&&!o.used);
-    // These timed screenshots exercise the eight-second, cyan tier.
+    // Use the cyan tier for consistent ring colours in the screenshots.
     if(altar.data.tier!==0){
       const {x,z}=altar;
       r.interactables.remove(altar);
@@ -77,7 +77,7 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
     }
     qaPlace(altar);
     r.player.pos.set(altar.x+.15,altar.y,altar.z+2.7);r.camTarget.copy(r.player.pos);
-    qaItemFrames(91);
+    qaItemFrames(30);
     return {costLabel,switched,freeHint,ringCharge:altar.chargeRing.material.uniforms.dwell.value,
       baseColor:altar.chargeRing.material.uniforms.baseColor.value.getHex(),charge:altar.charge,
       clear:!r.ui.worldLabelNodes.has(altar)&&!inspected.doc.querySelector('.charge')&&!r.interactables.dwellRing.visible};
@@ -88,14 +88,14 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
   await checkHint('altar','守护者祭坛');
   await snapshot('14-guardian-altar');
   const later=await page.evaluate(()=>{
-    qaItemFrames(88);
+    qaItemFrames(30);
     const r=app.run,a=r.interactables.list.find(o=>o.kind==='altar'&&o.charge>0);
     return {charge:a.charge,arc:a.chargeRing.material.uniforms.dwell.value,clear:!r.ui.worldLabelNodes.has(a)};
   });
   assert.ok(later.charge>visit.charge+.25&&later.charge<1&&later.clear);assert.equal(later.arc,later.charge);
   await snapshot('14-guardian-altar-late');
   const almost=await page.evaluate(()=>{
-    qaItemFrames(50);
+    qaItemFrames(28);
     const a=app.run.interactables.list.find(o=>o.kind==='altar'&&o.charge>0);
     return a.chargeRing.material.uniforms.dwell.value;
   });

@@ -176,11 +176,21 @@ export async function reviewMapPlay(page,dir){
     const r=app.run,f=r.interactables,p=r.player,start=r.time;
     const berries=f.list.filter(b=>b.kind==='berry'),berry=berries[0];
     const eat=()=>{p.hp=1;f.interact(berry);return p.hp>1;};
+    const checkRing=expected=>{
+      f.render();
+      if(!berry.halo.visible || Math.abs(berry.halo.material.uniforms.berryCooldown.value-expected)>1e-6)
+        throw Error('Unexpected QQ candy cooldown ring at '+(r.time-start)+' seconds');
+      if(berries.slice(1).some(b=>b.halo.material.uniforms.berryCooldown.value!==0))
+        throw Error('Cooling QQ candy tinted a different ring');
+    };
     if(!eat()||berries.slice(1).some(b=>b.used))throw Error('Berry heal or independent availability failed');
+    checkRing(1);
+    r.time=start+30;f.update(0,0);checkRing(.5);
     r.time=start+59.99;f.update(0,0);
     if(eat()||f.markers().includes(berry))throw Error('Berry available before cooldown');
-    r.time=start+60;f.update(0,0);
+    r.time=start+60;f.update(0,0);checkRing(0);
     if(berry.originalMaterials||!f.markers().includes(berry)||!eat())throw Error('Berry did not recharge');
+    checkRing(1);
     const cooldown=berry.data.regenAt-r.time;r.time=start;
     return {count:berries.length,cooldown};
   });
