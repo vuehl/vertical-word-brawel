@@ -29,7 +29,7 @@ export async function reviewMapPlay(page,dir){
   assert.equal(report.stages[0].world,240);assert.equal(report.stages[0].camera,42);assert.equal(report.stages[0].twin,.33*1.2);
   assert.ok(report.stages[0].marbles>=4);
   assert.ok(report.stages[0].buildings.every(b=>b.inside));
-  assert.equal(report.stages[0].buildings.filter(b=>b.kind==='chest').length,4);
+  assert.equal(report.stages[0].buildings.filter(b=>b.kind==='chest').length,6);
   // Inspect the native image submitted to Canvas for the selected building.
   await page.evaluate(()=>{
     const r=app.run,b=r.interactables.list.find(b=>b.kind==='bill');if(!b)throw Error('Missing skill fusion building');
@@ -87,12 +87,18 @@ export async function reviewMapPlay(page,dir){
     await page.screenshot({path:path.join(dir,`building-icon-${width}.png`)});
   }
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
-  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.run.openMap();mapPlayFrame();});
+  await page.evaluate(()=>{
+    window.dispatchEvent(new Event('resize'));
+    const r=app.run;
+    r.events.start('fog');r.events.k=1;
+    if(!r.events.blind||!mapPlayIconPosition(r.ui.minimap))throw Error('Fog hid the tracked facility on the HUD');
+    r.openMap();mapPlayFrame();
+  });
   assert.equal(await page.evaluate(()=>app.run.ui.mapOpen()),true);
   assert.equal(await page.evaluate(()=>app.run.ui.mapFacilityKind),'bill');
   assert.deepEqual(await page.evaluate(()=>mapPlayIconPosition(inspected.doc.querySelector('.zx-battle-map-art'))),report.pan.first);
   await page.screenshot({path:path.join(dir,'building-icon-expanded.png')});
-  await page.evaluate(()=>app.run.resume());
+  await page.evaluate(()=>{app.run.resume();app.run.events.end(true);});
   // Contact occurs through the actual player update and simulation path. The
   // stationary high-HP target isolates marble kills from ordinary attacks.
   report.marble=await page.evaluate(()=>{
@@ -146,7 +152,7 @@ export async function reviewMapPlay(page,dir){
     const rounds=[],reserved=terrain.clearZones.length,slotCount=f.list.length;
     const time=r.time;
     const gift=f.spawnChest(0,0,false,true);
-    if(kind(gift)!=='freechest'||counts().join()!=='4,4')throw Error('Gift exceeded the free machine cap');
+    if(kind(gift)!=='freechest'||counts().join()!=='6,6')throw Error('Gift exceeded the free machine cap');
     for(let round=0;round<6;round++){
       const batch=chests(),start=r.time;
       for(const chest of batch){r.gold=f.interactionCost(chest);f.interact(chest);}
@@ -165,7 +171,20 @@ export async function reviewMapPlay(page,dir){
     r.timers.length=r.anims.length=0;
     return rounds;
   });
-  assert.deepEqual(report.respawns,Array.from({length:6},()=>[4,4]));
+  assert.deepEqual(report.respawns,Array.from({length:6},()=>[6,6]));
+  report.berry=await page.evaluate(()=>{
+    const r=app.run,f=r.interactables,p=r.player,start=r.time;
+    const berries=f.list.filter(b=>b.kind==='berry'),berry=berries[0];
+    const eat=()=>{p.hp=1;f.interact(berry);return p.hp>1;};
+    if(!eat()||berries.slice(1).some(b=>b.used))throw Error('Berry heal or independent availability failed');
+    r.time=start+59.99;f.update(0,0);
+    if(eat()||f.markers().includes(berry))throw Error('Berry available before cooldown');
+    r.time=start+60;f.update(0,0);
+    if(berry.originalMaterials||!f.markers().includes(berry)||!eat())throw Error('Berry did not recharge');
+    const cooldown=berry.data.regenAt-r.time;r.time=start;
+    return {count:berries.length,cooldown};
+  });
+  assert.deepEqual(report.berry,{count:4,cooldown:60});
   for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();app.halted=true;});
     await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},stage);
@@ -174,7 +193,8 @@ export async function reviewMapPlay(page,dir){
     assert.ok(layout.buildings.every(b=>b.inside));
   }
   for(const stage of report.stages){
-    for(const kind of ['chest','freechest'])assert.equal(stage.buildings.filter(b=>b.kind===kind).length,stage.stage===4?0:4);
+    for(const [kind,count] of [['chest',6],['freechest',6],['berry',4]])
+      assert.equal(stage.buildings.filter(b=>b.kind===kind).length,stage.stage===4?0:count);
     assert.equal(stage.reference,'desk-clearance-20261117');assert.equal(stage.boundary,'giant-desk-objects');
     assert.deepEqual(stage.kinds,boundaryKinds);assert.equal(stage.boundaryCount,stage.stage===4?20:32);
   }

@@ -34,7 +34,7 @@ test('guidance changes with movement, filter, and consumption, distinguishing fr
   assert.equal(nearestMapFacility([{kind:'sanct_portal',x:4,z:0,used:true}],{x:0,z:0},'portal').x,4);
 });
 
-test('only the minimap draws guidance, clearing it at the target, when absent, and while blind',()=>{
+test('only the minimap draws guidance, including during fog',()=>{
   const rotations=[],ctx=new Proxy({rotate:angle=>rotations.push(angle),measureText:text=>({width:text.length*5})},
     {get:(target,key)=>target[key]??(()=>{})});
   const canvas={width:240,height:240,getContext:()=>ctx},marker={kind:'chest',x:100,z:-100};
@@ -44,7 +44,7 @@ test('only the minimap draws guidance, clearing it at the target, when absent, a
   assert.equal(draw().count,0);assert.deepEqual(rotations,[-Math.PI/4]);
   assert.equal(draw({shadow:false}).guidance,null);assert.deepEqual(rotations,[]);
   run.player.pos={x:100,z:-100};assert.equal(draw().guidance.distance,0);assert.deepEqual(rotations,[]);
-  run.player.pos={x:0,z:0};run.events={blind:true};assert.equal(draw().guidance,null);assert.deepEqual(rotations,[]);
+  run.player.pos={x:0,z:0};run.events={blind:true};assert.equal(draw().guidance.kind,'chest');assert.deepEqual(rotations,[-Math.PI/4]);
   run.events.blind=false;marker.used=true;assert.equal(draw().guidance,null);assert.deepEqual(rotations,[]);
 });
 
@@ -71,7 +71,7 @@ test('dense same-type map icons preserve every location in counts without overla
   }
 });
 
-test('map filters distinguish free gifts, preserve exits, and clear used or blinded locations',()=>{
+test('map filters distinguish free gifts and keep buildings visible through fog and image loading',()=>{
   const icons=[],texts=[],ctx=new Proxy({drawImage:icon=>icons.push(icon.kind),fillText:text=>texts.push(text),measureText:text=>({width:text.length*5})},
     {get:(target,key)=>target[key]??(()=>{})});
   const canvas={width:620,height:620,getContext:()=>ctx};
@@ -85,8 +85,11 @@ test('map filters distinguish free gifts, preserve exits, and clear used or blin
   assert.equal(result.count,1);assert.deepEqual(icons.sort(),['chest','portal']);assert.deepEqual(texts,[]);
   markers=markers.filter(marker=>marker.kind!=='chest');
   assert.equal(drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'}).count,0);
-  texts.length=0;run.events={blind:true};result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'freechest'});
-  assert.equal(result.count,0);assert.deepEqual(result.groups,[]);assert.deepEqual(texts,[]);
+  texts.length=0;run.events={blind:true};run.ui.mapFacilityIcon=()=>null;
+  for(const shadow of [true,false]){
+    result=drawBattleMinimap(canvas,run,{shadow,facilityKind:'freechest'});
+    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),['免','传'].sort());
+  }
 });
 
 test('overlapping different facility types are never counted as one type',()=>{

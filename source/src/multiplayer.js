@@ -1,4 +1,4 @@
-import {multiplayerConfig} from './multiplayer-config.js';
+import {COOP_ROOM_SIZE, multiplayerConfig} from './multiplayer-config.js';
 import {CoopStart} from './coop-start.js';
 
 
@@ -24,7 +24,7 @@ export class RelayRoom {
     };
   }
   static async connect({code, name, species = 4, factory, resume}) {
-    if (typeof factory !== 'function') throw Error('请在微信小游戏内进入多人联机');
+    if (typeof factory !== 'function') throw Error('请在微信小游戏内进入双人成行');
     const session = new RelayRoom();
     session.resume = resume;
     try {
@@ -51,6 +51,10 @@ export class RelayRoom {
       }, 10000);
       return session;
     } catch (error) { session.end(error.message, false); throw error; }
+  }
+  get canStart() {
+    const {members,state} = this.room;
+    return state === 'lobby' && this.isHost && members.length === COOP_ROOM_SIZE && members.every(m => !m.offline && m.ready);
   }
   get open() { return this.alive; }
   get code() { return this.room.code; }
@@ -102,6 +106,12 @@ export class RelayRoom {
     if (message.op === 'monsters') { this.ev.monsters?.(message); return; }
     if (message.op === 'pong') { this.pongAt = Date.now(); this.roundTrip = this.pongAt - (this.pingAt || this.pongAt); return; }
     if (message.op === 'closed') { this.end(message.reason); return; }
+    const room=message.room;
+    if (room && (room.members?.length > COOP_ROOM_SIZE ||
+        (room.state === 'started' && !this.startedSeen && room.members?.length !== COOP_ROOM_SIZE))) {
+      this.end('双人成行仅支持两人，请重新组队');
+      return;
+    }
     if (message.op === 'room') { this.apply(message.room); return; }
     if (message.op === 'ctl') {
       if (message.data?.t==='resume-world' && this.worldReply && this.room.members.some(m=>m.id===message.from && !m.offline)) {
@@ -141,7 +151,11 @@ export class RelayRoom {
   setReady(ready) { return this.request('ready', {ready}); }
   setSettings(_biome, tier) { return this.request('settings', {tier}); }
   kick(to) { return this.request('kick', {to}); }
-  start() { return this.request('start'); }
+  start() {
+    if (!this.isHost) return Promise.reject(Error('只有房主能开始'));
+    if (!this.canStart) return Promise.reject(Error('需要两位玩家在线并准备'));
+    return this.request('start');
+  }
   waitForBattleStart(progress) {
     if(!this.alive)return Promise.reject(Error('连接已断开，请重试'));
     if(this.returning)return Promise.resolve();

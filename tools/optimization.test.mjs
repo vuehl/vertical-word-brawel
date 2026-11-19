@@ -84,13 +84,19 @@ test('normal solo first zones space strong encounters and ease the multi-zone re
   }
 });
 
-test('iOS and Android keep exactly the player-selected quality',()=>{
+test('Android bounds scene resolution and shadow size within the player-selected preset',()=>{
   assert.deepEqual(readDevice({getDeviceInfo:()=>({platform:'iOS'})}),{platform:'ios'});
   assert.deepEqual(readDevice({getDeviceInfo(){throw Error();},getSystemInfoSync:()=>({platform:'ios'})}),{platform:'ios'});
   assert.deepEqual(readDevice({}),{platform:''});
   for(const platform of ['ios','android','devtools'])for(const quality of ['low','medium','high']){
     const settings={quality,batterySaver:false},profile=performanceProfile(settings,{platform});
-    assert.equal(profile,performanceProfiles[quality]);assert.equal(profile.dynamicResolution,false);assert.equal(profile.lockVisualQuality,true);
+    const preset=performanceProfiles[quality];
+    if(platform==='android' && quality!=='low'){
+      const {pixelBudget,maxPixelRatio,workshopShadowSize,...visuals}=profile;
+      assert.ok(pixelBudget<preset.pixelBudget && maxPixelRatio<preset.maxPixelRatio && workshopShadowSize<preset.workshopShadowSize);
+      assert.deepEqual({...visuals,pixelBudget:preset.pixelBudget,maxPixelRatio:preset.maxPixelRatio,workshopShadowSize:preset.workshopShadowSize},preset);
+    }else assert.equal(profile,preset);
+    assert.equal(profile.dynamicResolution,false);assert.equal(profile.lockVisualQuality,true);
     assert.equal(settings.quality,quality);
     settings.batterySaver=true;assert.equal(performanceProfile(settings,{platform}),performanceProfiles.low);
     settings.batterySaver=false;assert.equal(performanceProfile(settings,{platform}),profile);

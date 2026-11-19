@@ -32108,12 +32108,15 @@ var mv = 30,
       let p = Bg(this.ability);
       // Contact and boss effects carry an enemy index. Projectiles and death bursts
       // keep a source snapshot because the enemy slot can be reused before impact.
-      const enemyHit = typeof s === 'number' ? s >= 0 : s?.species > 0 && s.kind !== 'event';
+      const source = typeof s === 'number' && s >= 0 ? Ef(u, s) : s;
+      const enemyHit = source?.species > 0 && source.kind !== 'event';
+      const openingDragon = u.stage === 1 && !u.endless && !u.tower &&
+        source?.species === finalBossSpecies && (source.kind === 'boss' || source.kind === 'legendary');
       if (
         (p?.hurtMod && (f = Math.max(0, p.hurtMod(u, this, f, n))),
         l.floor && (f = Math.max(f, this.maxHp * l.floor * (1 - wv * (e > 0 ? 1 - Math.min(1, f / e) : 0)))),
         o > 0 && (f = Math.min(f, this.maxHp * o)),
-        (f = df(u, f) * (enemyHit ? ENEMY_DAMAGE_SCALE : 1)),
+        (f = df(u, f) * (enemyHit ? ENEMY_DAMAGE_SCALE : 1) * (openingDragon ? 0.5 : 1)),
         this.overheal > 0)
       ) {
         let e = Math.min(this.overheal, f);
@@ -32129,11 +32132,9 @@ var mv = 30,
         ((this.hp -= f),
         f > 0 &&
           (this.lastHit =
-            typeof s == `object`
-              ? s
-              : s >= 0
-                ? Ef(u, s)
-                : { kind: a ? `hazard` : u.sanctuary && u.stage >= 4 ? `legendary` : `other`, species: 0 }),
+            typeof source === 'object'
+              ? source
+              : { kind: a ? `hazard` : u.sanctuary && u.stage >= 4 ? `legendary` : `other`, species: 0 }),
         u.ult?.onHurt(f / this.maxHp),
         p?.onHurt?.(u, this, f, n),
         (this.iframes = l.ordinaryContact && u.director.normalOpening && !u.bossSpawned ? 1.25 : 0.45),
@@ -45553,7 +45554,7 @@ var RS = [
   {color: 16765498, css: '#ffd23a', charge: 35, r: 4.5, drain: 3, min: 3, offers: 4, picks: 2},
 ];
 var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
-  VS = { altar: 200, challenge: 240, magnet: 150, berry: 120 };
+  VS = { altar: 200, challenge: 240, magnet: 150, berry: 60 };
 function rollAltarTier(rng, poolSize, luckMult) {
   // Draw one blessing from the area's original tier distribution.
   const slot = rng.int(0, poolSize - 1);
@@ -45629,7 +45630,7 @@ var GS = class e {
     }
     disposed = !1;
     static CHEST_BASE = 18;
-    static CHESTS_PER_KIND = 4;
+    static CHESTS_PER_KIND = 6;
     chestCost() {
       let t = 1 - Math.min(0.4, 0.08 * (this.run.player.items.get(`big-nugget`) ?? 0)),
         n = this.run.endless?.curse.chest ?? 1;
@@ -45777,7 +45778,7 @@ var GS = class e {
       for (const [kind, amount] of [
         ['altar', 1], ['bill', 1], ['nest', 1],
         ['magnet', endless ? 1 : 2], ['freechest', GS.CHESTS_PER_KIND],
-        ['berry', count(endless ? 4 : 5)], ['chest', GS.CHESTS_PER_KIND],
+        ['berry', 4], ['chest', GS.CHESTS_PER_KIND],
       ]) {
         for (let i = 0; i < amount; i++) kinds.push(kind);
       }
@@ -46147,6 +46148,7 @@ var GS = class e {
             break;
           case `berry`:
             ((e.used = !0),
+              ((e.data ??= {}).regenAt = t.time + VS.berry),
               t.player.heal(t.player.maxHp * 0.5),
               t.meta.count(`berries`, 1),
               t.vfx.burst(e.x, e.y + 3, e.z, 5933823, 16, 4, I.Heart, 0.5),
@@ -46472,7 +46474,7 @@ var GS = class e {
               I.Twinkle,
               0.9,
             ),
-          t.endless && a.used && VS[a.kind] && this.regen(a),
+          (t.endless || a.kind === 'berry') && a.used && VS[a.kind] && this.regen(a),
           a.data?.comet && !a.used && (a.charge ?? 0) <= 0 && (a.data.life -= e) <= 0)
         ) {
           this.burnOut(a);

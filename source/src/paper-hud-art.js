@@ -190,10 +190,15 @@ function drawBuildingIcons(ctx,markers,size,iconFor,player){
   }
   for(const group of groups){
     const {x,y}=group.box,icon=iconFor?.(group.kind);
-    if(icon?.naturalWidth){
+    if(icon?.naturalWidth && icon.naturalHeight){
       const scale=size/Math.max(icon.naturalWidth,icon.naturalHeight);
       const w=icon.naturalWidth*scale,h=icon.naturalHeight*scale;
       ctx.drawImage(icon,x+(size-w)/2,y+(size-h)/2,w,h);
+    }else{
+      const cx=x+size/2,cy=y+size/2;
+      ctx.beginPath();ctx.arc(cx,cy,size*.44,0,Math.PI*2);ctx.fillStyle='#426178';ctx.fill();
+      ctx.font='bold '+size*.56+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillStyle='#fff';ctx.fillText(facilityNames[group.kind][0],cx,cy);
     }
     if(group.count>1){
       const r=size*.26,cx=x+size-r,cy=y+size-r;
@@ -210,7 +215,7 @@ function drawBuildingIcons(ctx,markers,size,iconFor,player){
 export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKind=run.ui?.mapFacilityKind??null,iconFor=run.ui?.mapFacilityIcon,center=run.player.pos}={}) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=mapWorldScale;
   const distances=[],buildings=[];
-  const markers=run.events?.blind?[]:run.interactables.markers();
+  const markers=run.interactables.markers();
   // Search the whole current area, including targets beyond the visible map.
   const guidance=shadow?nearestMapFacility(markers,p,facilityKind):null;
   const radius=49*viewRatio,edgeRadius=radius-9;
@@ -228,33 +233,34 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
   ctx.save();ctx.beginPath();ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
   // Scale map contents around the player within the fixed circular frame.
   ctx.translate(60,58);ctx.scale(1/viewRatio,1/viewRatio);ctx.translate(-60,-58);
+  const left=60-radius,right=60+radius,top=58-radius,bottom=58+radius;
+  const half=run.terrain.world/2,[bx,by]=point(-half,-half);
+  ctx.strokeStyle='#c3cec6';ctx.lineWidth=1;ctx.strokeRect(bx,by,half*2*scale,half*2*scale);
+  for(const prop of run.terrain.zxProps||[]){
+    if(prop.w*prop.d<80)continue;
+    const [x,y]=point(prop.x,prop.z),w=Math.max(2,prop.w*scale),h=Math.max(2,prop.d*scale);
+    if(x+w/2<left||y+h/2<top||x-w/2>right||y-h/2>bottom)continue;
+    ctx.fillStyle='#e4eae3';
+    ctx.fillRect(x-w/2,y-h/2,w,h);
+  }
+  for(const cover of run.sanctuary?.covers||[]){
+    if(!cover.alive)continue;const [x,y]=point(cover.x,cover.z);
+    if(visible(x,y))dot(x,y,Math.max(2,cover.r*scale),'#d6dfd2',null);
+  }
+  for(const marker of markers){
+    const [x,y]=point(marker.x,marker.z);if(!visible(x,y))continue;
+    const portal=marker.kind==='portal'||marker.kind==='sanct_portal';
+    const kind=buildingMapKind(marker),name=portal?facilityNames.portal:buildingMapName(marker);
+    if(facilityKind&&kind!==facilityKind&&kind!=='boss'&&!portal)continue;
+    if(name){
+      buildings.push({kind,x:60+(x-60)/viewRatio,y:58+(y-58)/viewRatio});
+      continue;
+    }
+    dot(x,y,portal?4.4:3.7,portal?'#a480c8':'#dfb950');
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(x-1.8,y);ctx.lineTo(x+1.8,y);ctx.moveTo(x,y-1.8);ctx.lineTo(x,y+1.8);ctx.stroke();
+  }
+  // Fog obscures combatants while landmarks and facility guidance stay visible.
   if(!run.events?.blind){
-    const left=60-radius,right=60+radius,top=58-radius,bottom=58+radius;
-    const half=run.terrain.world/2,[bx,by]=point(-half,-half);
-    ctx.strokeStyle='#c3cec6';ctx.lineWidth=1;ctx.strokeRect(bx,by,half*2*scale,half*2*scale);
-    for(const prop of run.terrain.zxProps||[]){
-      if(prop.w*prop.d<80)continue;
-      const [x,y]=point(prop.x,prop.z),w=Math.max(2,prop.w*scale),h=Math.max(2,prop.d*scale);
-      if(x+w/2<left||y+h/2<top||x-w/2>right||y-h/2>bottom)continue;
-      ctx.fillStyle='#e4eae3';
-      ctx.fillRect(x-w/2,y-h/2,w,h);
-    }
-    for(const cover of run.sanctuary?.covers||[]){
-      if(!cover.alive)continue;const [x,y]=point(cover.x,cover.z);
-      if(visible(x,y))dot(x,y,Math.max(2,cover.r*scale),'#d6dfd2',null);
-    }
-    for(const marker of markers){
-      const [x,y]=point(marker.x,marker.z);if(!visible(x,y))continue;
-      const portal=marker.kind==='portal'||marker.kind==='sanct_portal';
-      const kind=buildingMapKind(marker),name=portal?facilityNames.portal:buildingMapName(marker);
-      if(facilityKind&&kind!==facilityKind&&kind!=='boss'&&!portal)continue;
-      if(name){
-        buildings.push({kind,x:60+(x-60)/viewRatio,y:58+(y-58)/viewRatio});
-        continue;
-      }
-      dot(x,y,portal?4.4:3.7,portal?'#a480c8':'#dfb950');
-      ctx.strokeStyle='#fff';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(x-1.8,y);ctx.lineTo(x+1.8,y);ctx.moveTo(x,y-1.8);ctx.lineTo(x,y+1.8);ctx.stroke();
-    }
     const enemies=run.enemies;
     // One fill for each dot class, rather than a Canvas draw call per monster.
     // Draw bosses last so ordinary dots cannot cover their actual character.

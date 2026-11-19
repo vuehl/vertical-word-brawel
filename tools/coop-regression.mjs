@@ -30,8 +30,7 @@ export async function reviewCoop(browser, gamePort) {
       return true;
     },{polling:100},label);
   }
-  // Leave the first seat vacant before the two-player start to cover
-  // host transfer and routing when the remaining slots are 1 and 2.
+  // The new host retains slot 1. A replacement guest reuses slot 0.
   let loginSequence=0;
   const testWx={
     login({success}){success({code:userPrefix+(++loginSequence)});},
@@ -50,24 +49,28 @@ export async function reviewCoop(browser, gamePort) {
   const makeRoom=(code,species)=>RelayRoom.connect({factory:e=>cloudSocket(testWx,e),code,species});
   const first=await makeRoom(undefined,4);
   const second=await makeRoom(first.code,4);
-  const third=await makeRoom(first.code,16);
+  let third;
   try {
+    await assert.rejects(makeRoom(first.code,16),/最多两人/);
     await assert.rejects(first.start(),/准备/);
     await assert.rejects(second.start(),/房主/);
     const migrated=new Promise(resolve=>{second.ev.change=()=>{if(second.isHost)resolve();};});
     await first.leave();
     await migrated;
-    await Promise.all([second.setReady(true),third.setReady(true)]);
+    await assert.rejects(second.start(),/两位/);
+    third=await makeRoom(second.code,16);
+    const bothReady=new Promise(resolve=>{second.ev.change=()=>{if(second.canStart)resolve();};});
+    await Promise.all([second.setReady(true),third.setReady(true),bothReady]);
     const startedOnThird=new Promise(resolve=>{third.ev.start=resolve;});
     await Promise.all([second.start(),startedOnThird]);
     await assert.rejects(makeRoom(second.code,4),/已开局/);
     const times=await Promise.all([second.waitForBattleStart(),third.waitForBattleStart()]);
     assert.equal(times[0].startAt,times[1].startAt);
-  } finally { await Promise.all([first.leave(),second.leave(),third.leave()]); }
+  } finally { await Promise.all([first.leave(),second.leave(),third?.leave()]); }
   try {
     const configure=[];
     let cardQuery,code,defaultCard;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       const ctx = await browser.createBrowserContext();
       const page = await ctx.newPage();
       clients.push(page);
@@ -180,7 +183,7 @@ export async function reviewCoop(browser, gamePort) {
         }finally{await secondDevice.close();}
       }
       if(i===0){
-        await click(page,'多人联机');
+        await click(page,'双人成行');
         assert.deepEqual(await page.evaluate(()=>fixtureMenuCard()),defaultCard);
         await click(page,'创建房间');
         await page.waitForFunction(()=>app.coopRoom?.code);
@@ -192,23 +195,24 @@ export async function reviewCoop(browser, gamePort) {
         cardQuery=Object.fromEntries(new URLSearchParams(card.query));
         assert.deepEqual(cardQuery,{roomCode:code});
       }else{
-        if(i===2){
-          await page.evaluate(()=>fixtureShow({query:{roomCode:'invalid'}}));
-          assert.equal(await page.evaluate(()=>app.screen.dataset.page),'home');
-          await click(page,'多人联机');
-          await page.evaluate(code=>{window.roomCode=code==='000000'?'000001':'000000';},code);
-          await click(page,'加入房间');
-          await page.waitForFunction(()=>app.screen.textContent.includes('房间不存在'));
-          await click(page,'创建房间');
-          await page.waitForFunction(()=>app.coopRoom?.code);
-          await page.evaluate(query=>{
-            window.routes=[];
-            fixtureShow({query});fixtureShow({query});
-          },cardQuery);
-        }
+        await page.waitForFunction(code=>window.app?.coopRoom?.code===code,{timeout:90000},code);
+        await click(page,'离开房间');
+        await click(page,'返回首页');
+        await page.evaluate(()=>fixtureShow({query:{roomCode:'invalid'}}));
+        assert.equal(await page.evaluate(()=>app.screen.dataset.page),'home');
+        await click(page,'双人成行');
+        await page.evaluate(code=>{window.roomCode=code==='000000'?'000001':'000000';},code);
+        await click(page,'加入房间');
+        await page.waitForFunction(()=>app.screen.textContent.includes('房间不存在'));
+        await click(page,'创建房间');
+        await page.waitForFunction(()=>app.coopRoom?.code);
+        await page.evaluate(query=>{
+          window.routes=[];
+          fixtureShow({query});fixtureShow({query});
+        },cardQuery);
         await page.waitForFunction(code=>window.app?.coopRoom?.code===code,{timeout:90000},code);
         await page.evaluate(query=>fixtureShow({query}),cardQuery);
-        if(i===2)await click(page,'风');
+        await click(page,'风');
       }
       console.log('Lobby ready', i+1);
     }
@@ -220,9 +224,9 @@ export async function reviewCoop(browser, gamePort) {
     })));
     assert.deepEqual(await Promise.all(clients.map(page=>page.evaluate(()=>window.routes))),
       clients.map(()=>['login','exchange','cloud']));
-    await assert.rejects(makeRoom(code,4),/最多三人/);
+    await assert.rejects(makeRoom(code,4),/最多两人/);
     for(const page of clients){
-      await page.waitForFunction(()=>app.screen?.querySelectorAll('.zx-stat-row').length===3);
+      await page.waitForFunction(()=>app.screen?.querySelectorAll('.zx-stat-row').length===2);
       await page.evaluate(()=>{
         const root=app.screen, nodes=[...root.querySelectorAll('button,.zx-stat-row,.zx-body')];
         const body=root.querySelector('.zx-body');
@@ -261,32 +265,32 @@ export async function reviewCoop(browser, gamePort) {
     await host.waitForFunction(startEnabled,{},false);
     await click(host,'准备');
     await checkHostReady(true);
-    // Hold one device's scene-ready signal until both other loading pages
-    // are visibly waiting. Lobby readiness alone must never display 100%.
-    await guests[1].evaluate(()=>{
+    // Hold the guest scene-ready signal until the host loading page
+    // is visibly waiting. Lobby readiness alone must never display 100%.
+    await guests[0].evaluate(()=>{
       const room=app.coopRoom,ready=room.waitForBattleStart.bind(room);
       const held=new Promise(resolve=>window.releaseLastScene=resolve);
       room.waitForBattleStart=async progress=>{await held;return ready(progress);};
     });
     await click(host,'开始冒险');
-    console.log('Starting three clients');
-    await Promise.all([host,guests[0]].map(page=>page.waitForFunction(()=>
+    console.log('Starting two clients');
+    await host.waitForFunction(()=>
       app.screen?.querySelector('.zx-loading-percent')?.textContent==='90%' &&
-      app.screen.textContent.includes('等待小伙伴加载完成'),{timeout:90000})));
-    // Keep all three software rasterizers from stalling the relay heartbeat
+      app.screen.textContent.includes('等待小伙伴加载完成'),{timeout:90000});
+    // Keep both software rasterizers from stalling the relay heartbeat
     // when the shared start signal releases the first combat frame.
     await Promise.all(clients.map(page=>page.evaluate(()=>{
       window.renderDuringCoop=app.r.render;app.r.render=()=>{};
     })));
-    await guests[1].evaluate(()=>window.releaseLastScene());
-    await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run?.state==='play' && !app.screen && [...app.run.coop.active()].length===2, {timeout:110000,polling:200})));
+    await guests[0].evaluate(()=>window.releaseLastScene());
+    await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run?.state==='play' && !app.screen && [...app.run.coop.active()].length===1, {timeout:110000,polling:200})));
     const sample=await Promise.all(clients.map(p=>p.evaluate(()=>({seed:app.run.seed,species:app.run.startSpecies,received:app.coopRoom.traffic.snapReceived}))));
-    assert.deepEqual(sample.map(r=>r.species),[4,4,16]);
+    assert.deepEqual(sample.map(r=>r.species),[4,16]);
     assert.equal(new Set(sample.map(r=>r.seed)).size,1);
     assert.ok(sample.every(s=>s.received>0));
     assert.ok((await Promise.all(clients.map(p=>p.evaluate(()=>app.zixing.entryDiagnostics.percentages.at(-1))))).every(n=>n===100));
     assert.deepEqual(errors,[]);
-    console.log('Room card passed: cold launch, warm lobby switch, repeated opens and three-player start');
+    console.log('Room card passed: cold launch, warm lobby switch, repeated opens and two-player start');
     if(process.env.COOP_TEST_INVITES_ONLY==='1'){
       const next=await makeRoom(undefined,4);
       try{
@@ -299,35 +303,43 @@ export async function reviewCoop(browser, gamePort) {
       }finally{await next.leave();}
       return;
     }
-    // Keep this networking scenario in live combat through all three casts
+    // Keep this networking scenario in live combat through both players’ casts
     // and the late-game crowd. Random defeats or upgrade menus end the sample.
     await Promise.all(clients.map(page=>page.evaluate(()=>{
       app.run.player.iframes=3600;
       app.run.godMode=true;
       app.run.queueLevelUp=()=>{};
+      // Exercise one shared capture explicitly before the sanctuary.
+      Object.assign(app.run.capture,{spawnAt:Infinity,shinyAt:Infinity,classicAt:Infinity,shinyStage:app.run.stage});
       app.run.stageTime=120;
     })));
-    // Follow a slow marching enemy across a seeded eraser on all three seats.
-    const crossing=await host.evaluate(()=>{
-      const r=app.run,e=r.enemies,p=r.terrain.zxProps.find(p=>p.kind==='eraser');
-      const b=r.terrain.colliders.find(b=>b.x===p.x && b.z===p.z);
-      const id=e.spawn(129,b.x-6*b.sin,b.z-6*b.cos,1,1,1024);
+    // Follow a slow marching enemy across a seeded eraser on both seats.
+    const obstacle=await host.evaluate(()=>{
+      const t=app.run.terrain,p=t.zxProps.find(p=>p.kind==='eraser');
+      return {x:p.x,z:p.z,sin:Math.sin(p.angle),cos:Math.cos(p.angle),top:t.workshopGroundY(p.x,p.z)};
+    });
+    await Promise.all(clients.map(page=>page.evaluate(p=>{
+      app.run.player.pos.set(p.x+6,app.run.terrain.height(p.x+6,p.z),p.z);
+    },obstacle)));
+    const crossing=await host.evaluate(b=>{
+      const r=app.run,e=r.enemies;
+      const id=e.spawn(129,b.x-4*b.sin,b.z-4*b.cos,1,1,1024);
       if(id<0)throw Error('Could not spawn the obstacle test enemy');
       e.flags[id]=1024;e.dirX[id]=b.sin;e.dirZ[id]=b.cos;e.speed[id]=1.5;
       e.hp[id]=e.maxHp[id]=1000000;
-      return {id,slot:r.coop.mySlot,gen:e.gen[id],top:b.standY};
-    });
+      return {id,slot:r.coop.mySlot,gen:e.gen[id],top:b.top};
+    },obstacle);
     await Promise.all(clients.map(page=>page.waitForFunction(({id,slot,gen,top})=>{
       const {enemies:e,coop}=app.run,entry=coop.monsters.worldSlots.get(slot*4096+id);
       return entry?.gen===gen && !e.air[entry.id] && Math.abs(e.y[entry.id]-top)<.001;
     },{timeout:20000,polling:50},crossing)));
     await host.evaluate(id=>app.run.enemies.kill(id),crossing.id);
-    console.log('Monster landed on the eraser on all three clients');
-    // Rescue from proximity alone. The third player waits out of range.
+    await Promise.all(clients.map(page=>page.evaluate(()=>app.run.player.pos.copy(app.run.terrain.spawn))));
+    console.log('Monster landed on the eraser on both clients');
+    // Rescue from proximity alone.
     const downAt=await host.evaluate(()=>{
       const r=app.run;r.player.dead=true;r.player.hp=0;r.coop.onDowned();return {x:r.player.pos.x,z:r.player.pos.z};
     });
-    await guests[1].evaluate(p=>{app.run.player.pos.x=p.x+15;},downAt);
     await guests[0].evaluate(p=>{app.run.player.pos.x=p.x+1;app.run.player.pos.z=p.z;},downAt);
     await host.waitForFunction(()=>app.run.coop.reviveK>.3 && !app.hud.coopHud.lift.hidden &&
       +app.hud.coopHud.rescueRing.dataset.frame>0,{timeout:15000});
@@ -335,7 +347,6 @@ export async function reviewCoop(browser, gamePort) {
     await host.waitForFunction(()=>app.run.player.dead && app.run.coop.reviveK===0);
     await guests[0].evaluate(p=>{app.run.player.pos.x=p.x+1;},downAt);
     await host.waitForFunction(()=>!app.run.player.dead && app.run.player.hp>0,{timeout:20000});
-    await guests[1].evaluate(p=>{app.run.player.pos.x=p.x-1;app.run.player.pos.z=p.z;},downAt);
     await host.evaluate(()=>{app.r.render=window.renderDuringCoop;});
     const origin=await host.evaluate(()=>({x:app.run.player.pos.x,z:app.run.player.pos.z}));
     const mate=guests[0];
@@ -489,8 +500,22 @@ export async function reviewCoop(browser, gamePort) {
       await Promise.all(others.map(page=>page.waitForFunction((id,name)=>
         window.peerVisuals[id+'/ultFx']>0 && window.peerLabels.get(id)?.has('大招 · '+name),{},id,name)));
     }
+    const catchable=await host.evaluate(()=>{
+      const r=app.run,c=r.capture;c.spawnShiny();
+      if(c.state!=='roaming')throw Error('Missing capturable partner');
+      r.combat.killEnemy(c.index,{});return c.species;
+    });
+    await Promise.all(clients.map(page=>page.waitForFunction(species=>app.run.capture.state==='weakened' &&
+      app.run.capture.species===species,{timeout:15000},catchable)));
+    await host.evaluate(()=>{
+      const r=app.run,c=r.capture;r.player.pos.x=r.enemies.x[c.index];r.player.pos.z=r.enemies.z[c.index];
+      c.sure=true;c.throwBall();
+    });
+    await host.waitForFunction(()=>app.run.capture.state==='done',{timeout:25000});
+    await host.evaluate(({x,z})=>app.run.player.pos.set(x,app.run.terrain.height(x,z),z),origin);
+    console.log('Both clients synchronized the partner capture');
     // Exercise dense network traffic and simulation separately from the
-    // three SwiftShader rasterizers. The preceding battle uses normal rendering.
+    // two SwiftShader rasterizers. The preceding battle uses normal rendering.
     const filled=await Promise.all(clients.map(page=>page.evaluate(()=>{
       const run=app.run, enemies=run.enemies, p=run.player.pos;
       run.player.iframes=3600;
@@ -525,7 +550,7 @@ export async function reviewCoop(browser, gamePort) {
           }
           return count;
         });
-        return counts.every(count=>count>=50 && count<=67) && counts;
+        return counts.every(count=>count>=50 && count<=100) && counts;
       },{timeout:30000,polling:100});
       return result.jsonValue();
     }));
@@ -564,7 +589,7 @@ export async function reviewCoop(browser, gamePort) {
       return result.jsonValue();
     }));
     assert.equal(new Set(physical).size,1);
-    console.log('Server-selected totem attack on all three clients',physical);
+    console.log('Server-selected totem attack on both clients',physical);
     await Promise.all(clients.map(page=>page.evaluate(()=>{
       const boss=app.run.boss,attack=boss.roomAttack.bind(boss);
       window.roomBossMoves=[];
@@ -579,7 +604,7 @@ export async function reviewCoop(browser, gamePort) {
       return result.jsonValue();
     }));
     assert.equal(new Set(bossMoves).size,1);
-    console.log('Server-selected guardian skill on all three clients',bossMoves);
+    console.log('Server-selected guardian skill on both clients',bossMoves);
     const returning=guests[0];
     const seat=await returning.evaluate(()=>{
       const run=app.run;
@@ -624,19 +649,7 @@ export async function reviewCoop(browser, gamePort) {
       r.enemies.hp[b.bossIndex]=0;r.combat.killEnemy(b.bossIndex,{});});
     await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run.stageCleared && !app.run.boss.alive &&
       app.run.interactables.list.some(item=>item.kind==='portal'),{timeout:25000})));
-    const catchable=await host.evaluate(()=>{
-      const r=app.run,c=r.capture;c.spawnShiny();
-      if(c.state!=='roaming')throw Error('Missing capturable partner');
-      r.combat.killEnemy(c.index,{});return c.species;
-    });
-    await Promise.all(clients.map(page=>page.waitForFunction(species=>app.run.capture.state==='weakened' &&
-      app.run.capture.species===species,{timeout:15000},catchable)));
-    await host.evaluate(()=>{
-      const r=app.run,c=r.capture;r.player.pos.x=r.enemies.x[c.index];r.player.pos.z=r.enemies.z[c.index];
-      c.sure=true;c.throwBall();
-    });
-    await host.waitForFunction(()=>app.run.capture.state==='done',{timeout:25000});
-    console.log('Sanctuary phases, ultimate, victory portal and partner capture passed');
+    console.log('Sanctuary phases, ultimate, and victory portal passed');
     await returning.evaluate(()=>{app.run.endHow='quit';return app.run.finish(false);});
     await returning.waitForFunction(()=>app.screen?.dataset.page==='summary');
     if(sqlTest){
@@ -644,7 +657,7 @@ export async function reviewCoop(browser, gamePort) {
       assert.equal(remote.statusCode,200);assert.equal(remote.data.stardust,await returning.evaluate(()=>app.meta.profile.stardust));
     }
     assert.deepEqual(errors,[]);
-    console.log('3-player battle passed',JSON.stringify({sample,sharedEnemies:peers}));
+    console.log('2-player battle passed',JSON.stringify({sample,sharedEnemies:peers}));
   } catch(error) {
     for(const page of clients) console.error(await page.evaluate(()=>({boss:window.app?.run?.boss && {alive:app.run.boss.alive,phase:app.run.boss.kit?.phase,move:app.run.boss.roomAim?.move,turn:app.run.coop.monsters?.turn,auth:app.run.coop.bossAuth,capture:app.run.capture.state},screen:window.app?.screen?.textContent.slice(-420),state:window.app?.run?.state,
       rescue:window.app?.run && [app.run.coop.reviveK,app.run.coop.bleed,app.run.player.dead,app.run.player.pos.x,app.run.player.pos.z],error:window.app?.lastStartError?.message,gate:window.app?.coopRoom?.startGate?.error?.message,proxies:window.app?.run?.coop?.proxies.size,

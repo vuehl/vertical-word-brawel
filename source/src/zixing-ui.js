@@ -1,6 +1,7 @@
 import {displayedFormType} from './form-copy.js';
 import {bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityNames} from './active-content.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
+import {COOP_ROOM_SIZE} from './multiplayer-config.js';
 import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
 import {drawMenuGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from './paper-glyph-art.js';
@@ -255,7 +256,7 @@ export function createZixingUI(app,api) {
       el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
       button([el('span','','开始旅程'),el('span','','→')],()=>openProfilePage('开始旅程',choose),
         'primary zx-home-start',{'data-action':'journey'}),
-      button('多人联机',()=>multiplayer(),'zx-home-coop',{'data-action':'multiplayer'}),
+      button('双人成行',()=>multiplayer(),'zx-home-coop',{'data-action':'multiplayer'}),
       button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),openLab,'purple zx-home-lab',{'data-action':'lab'}),
       el('div','zx-home-foot',button([icon('book',16,'#61567b'),el('span','','玩法说明')],()=>help(),'zx-plain')),
     ]);
@@ -385,7 +386,7 @@ export function createZixingUI(app,api) {
       const illustration=activity && drawCoopMap(el('canvas','zx-coop-map',[],{width:720,height:720,'aria-hidden':true}));
       if(activity)body.push(activity);
       body.push(note);
-      const node=screen('coop',session?'队伍房间':'多人联机','桌上世界 · 2–3 人合作',body,actions);
+      const node=screen('coop',session?'队伍房间':'双人成行','桌上世界 · 双人合作',body,actions);
       const subtitle=node.querySelector('.zx-header small');
       let shownMessage;
       function update(){
@@ -403,7 +404,7 @@ export function createZixingUI(app,api) {
           if(choice.classList.contains('primary')!==active)choice.classList.toggle('primary',active);
         });
         const {members,host}=session.room;
-        updateText(subtitle,members.length+' / 3 人 · 普通难度');
+        updateText(subtitle,members.length+' / '+COOP_ROOM_SIZE+' 人 · 普通难度');
         members.forEach((member,i)=>{
           const label=(member.id===host?'房主':'队员')+' · '+character(member.species).word+(member.id===session.me?'（你）':'');
           const state=member.offline?'暂离':member.ready?'已准备':'未准备', memberRow=roster.children[i];
@@ -425,8 +426,7 @@ export function createZixingUI(app,api) {
         }
         updateText(readyButton,session.mine?.ready?'取消准备':'准备');
         if(startButton.hidden!==!session.isHost)startButton.hidden=!session.isHost;
-        const online=members.filter(m=>!m.offline);
-        const canStart=session.isHost && online.length>=2 && online.every(m=>m.ready);
+        const canStart=session.canStart;
         if(startButton.disabled!==!canStart)startButton.disabled=!canStart;
       }
       return {session,resume,node,update};
@@ -979,7 +979,8 @@ export function createZixingUI(app,api) {
         const dx=event.clientX-drag.x,dy=event.clientY-drag.y;
         if(!drag.moved&&Math.hypot(dx,dy)<4)return;
         drag.moved=true;
-        const units=120*viewRatio/(canvas.getBoundingClientRect().width*mapWorldScale);
+        const width=canvas.getBoundingClientRect().width || side;
+        const units=120*viewRatio/(width*mapWorldScale);
         const limit=r.terrain.play,clamp=value=>Math.max(-limit,Math.min(limit,value));
         center={x:clamp(drag.originX-dx*units),z:clamp(drag.originZ-dy*units)};
         paint();window.invalidateUI?.();
@@ -990,7 +991,7 @@ export function createZixingUI(app,api) {
         pan(event);
         if(!drag.moved){
           const rect=canvas.getBoundingClientRect();
-          const x=(event.clientX-rect.left)*120/rect.width,y=(event.clientY-rect.top)*120/rect.height;
+          const x=(event.clientX-rect.left)*120/(rect.width || side),y=(event.clientY-rect.top)*120/(rect.height || side);
           const hit=groups.slice().reverse().find(({box})=>x>=box.x&&x<=box.x+box.w&&y>=box.y&&y<=box.y+box.h);
           if(hit){hud.mapFacilityKind=hit.kind;hud.drawMinimap(r,true);}
         }

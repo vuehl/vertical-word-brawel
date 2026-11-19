@@ -127,6 +127,17 @@ export async function reviewBattlePacing(page) {
     const capped = damage(100, id, .3);
     const floored = damage(1, id, 0, .2);
     const terrain = damage(20, -1);
+    const dragon = r.enemies.spawn(149, p.pos.x+8, p.pos.z, 1, 1, 4);
+    const dragonShot = {kind:'boss', species:149};
+    for (const mode of ['single-stage','standard']) {
+      r.mode = mode;
+      if (damage(20, dragon) !== 5 || damage(100, dragonShot, .3) !== 7.5 ||
+          damage(1, dragon, 0, .2) !== 5) throw Error('Incorrect opening guardian damage in '+mode);
+    }
+    r.stage = 2;
+    if (damage(20, dragon) !== 10 || damage(100, dragonShot, .3) !== 15)
+      throw Error('Second guardian damage changed');
+    r.stage = 1;
     const xpPerKill = () => {
       let xp = 0;
       for (let i = 0; i < r.pickups.n; i++)

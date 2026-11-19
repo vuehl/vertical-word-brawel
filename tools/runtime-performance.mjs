@@ -73,7 +73,7 @@ try{
         return original.apply(this,args);
       };
     }
-  },process.argv.some(arg=>['--ios-budget','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
+  },process.argv.includes('--android-performance')?'android':process.argv.some(arg=>['--ios-budget','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
@@ -122,6 +122,35 @@ try{
   if(process.argv.includes('--battle-pacing')){
     const {reviewBattlePacing}=await import('./battle-pacing-regression.mjs');
     await reviewBattlePacing(page);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--android-performance')){
+    const samples=await page.evaluate(()=>{
+      const samples=[];
+      for(const quality of ['low','medium','high']){
+        app.meta.profile.settings.quality=quality;app.applySettings();
+        app.run.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
+        const {renderer,composer,sun}=app.r,gl=renderer.getContext();
+        const shader=renderer.info.programs
+          .flatMap(p=>gl.getAttachedShaders(p.program))
+          .filter(s=>gl.getShaderParameter(s,gl.SHADER_TYPE)===gl.FRAGMENT_SHADER)
+          .map(s=>gl.getShaderSource(s)).find(src=>src.includes('coverage+=workshopShadowTap'));
+        samples.push({quality,world:[composer.inputBuffer.width,composer.inputBuffer.height],
+          ui:[inspected.uiCanvas.width,inspected.uiCanvas.height],shadow:sun.shadow.mapSize.x,
+          filterTaps:shader?.match(/coverage\+=workshopShadowTap/g)?.length,
+          platform:inspected.env.nativeDevice.platform,fps:app.fpsCap(),error:gl.getError()});
+      }
+      return samples;
+    });
+    const baseline=process.argv.includes('--baseline');
+    const worldSizes=baseline?[[390,844],[585,1266],[780,1688]]:[[390,844],[487,1055],[585,1266]];
+    const shadowSizes=baseline?[1024,1536,2048]:[1024,1024,1536];
+    console.log('Android WebGL workload',samples);
+    for(const [i,sample] of samples.entries()){
+      assert.equal(sample.platform,'android');assert.equal(sample.error,0);
+      assert.deepEqual(sample.world,worldSizes[i]);
+      assert.deepEqual(sample.ui,[780,1688]);assert.equal(sample.fps,60);
+      assert.equal(sample.shadow,shadowSizes[i]);assert.equal(sample.filterTaps,baseline?8:4);
+    }
+    assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--native-performance')){
     await reviewNativePerformance(page,dir);assert.deepEqual(errors,[]);
   }else if(upgradeResume){

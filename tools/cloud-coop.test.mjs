@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {RelayRoom} from '../source/src/multiplayer.js';
 import {cloudSocket} from '../platform/cloud-coop.mjs';
 
 function setup(){
@@ -80,5 +81,19 @@ test('missing cloud API, rejected login, and failed cloud handshake surface with
     const error=await new Promise(resolve=>cloudSocket(wx,{open:assert.fail,error:resolve}));
     assert.match(error.message,/缺少云托管|凭证无效|握手失败/);
     assert.equal(publicCalls(),0);
+  }
+});
+
+test('duo clients reject oversized rooms and solo start messages before loading combat',async()=>{
+  for(const [op,state,count] of [['reply','lobby',3],['room','started',3],['room','started',1]]){
+    const session=new RelayRoom();
+    session.socket={send:()=>true,close(){}};
+    let starts=0;
+    session.ev.start=()=>starts++;
+    const pending=session.request('join');
+    const members=Array.from({length:count},(_,slot)=>({id:String(slot),slot,ready:true}));
+    session.receive(JSON.stringify({op,id:1,room:{state,members}}));
+    await assert.rejects(pending,/仅支持两人/);
+    assert.equal(starts,0);assert.equal(session.open,false);
   }
 });

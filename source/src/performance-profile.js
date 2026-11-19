@@ -27,7 +27,13 @@ export function selectGraphicsQuality(settings,quality){
 }
 // Every device follows the player's preset. Battery saver is also an explicit
 // player setting; neither FPS, crowd size nor OS may select a lower preset.
-export function performanceProfile(settings={}){
+const androidProfiles=Object.freeze({
+  low:performanceProfiles.low,
+  medium:Object.freeze({...performanceProfiles.medium,pixelBudget:600000,maxPixelRatio:1.25,workshopShadowSize:1024}),
+  high:Object.freeze({...performanceProfiles.high,pixelBudget:1000000,maxPixelRatio:1.5,workshopShadowSize:1536}),
+});
+export function performanceProfile(settings={},device){
   if(batterySaverEnabled(settings.batterySaver))return performanceProfiles.low;
-  return performanceProfiles[settings.quality]||performanceProfiles.high;
+  const profiles=device?.platform==='android'?androidProfiles:performanceProfiles;
+  return profiles[settings.quality]||profiles.high;
 }
