@@ -6,7 +6,7 @@ import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
-import {dragonChantSeconds,startDragonChant} from './dragon-chant.js';
+import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './dragon-chant.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus} from './starter-characters.js';
 import {windMoveEffect} from './wind-move-art.js';
 import {retiredMoveIds,retiredFusionKeys,moveAvailableForSpecies,configureSkillLearnsets} from './skill-availability.js';
@@ -32167,13 +32167,15 @@ var mv = 30,
       // keep a source snapshot because the enemy slot can be reused before impact.
       const source = typeof s === 'number' && s >= 0 ? Ef(u, s) : s;
       const enemyHit = source?.species > 0 && source.kind !== 'event';
+      const enemyDamageScale = ENEMY_DAMAGE_SCALE *
+        (u.biome.id === 'forest' && u.stage === 2 && !u.endless && !u.tower ? 1.5 : 1);
       const openingDragon = u.stage === 1 && !u.endless && !u.tower &&
         source?.species === finalBossSpecies && (source.kind === 'boss' || source.kind === 'legendary');
       if (
         (p?.hurtMod && (f = Math.max(0, p.hurtMod(u, this, f, n))),
         l.floor && (f = Math.max(f, this.maxHp * l.floor * (1 - wv * (e > 0 ? 1 - Math.min(1, f / e) : 0)))),
         o > 0 && (f = Math.min(f, this.maxHp * o)),
-        (f = df(u, f) * (enemyHit ? ENEMY_DAMAGE_SCALE : 1) * (openingDragon ? 0.5 : 1)),
+        (f = df(u, f) * (enemyHit ? enemyDamageScale : 1) * (openingDragon ? 0.5 : 1)),
         this.overheal > 0)
       ) {
         let e = Math.min(this.overheal, f);
@@ -33955,7 +33957,7 @@ var mv = 30,
         if (t.stageTime < zoneDuration(t.mode) || t.state !== 'play' ||
             t.boss.alive || t.mewtwo.active || (t.coop && (!t.coop.isHost || t.coop.pendingBoss))) return false;
         const vortex = t.interactables.list.find(facility => facility.kind === 'boss');
-        t.interactables.summonGuardian(vortex, t.player.pos);
+        t.interactables.summonGuardian(vortex, t.player.pos, 'auto');
         return;
       }
       if (e === `card` || this.cards.length)
@@ -45651,7 +45653,7 @@ var GS = class e {
       }
       if (!target || run.state !== 'play' || run.player.dead) return;
       if (target.kind === 'boss') {
-        const unlockedFor = run.stageTime - bossSummonUnlockSeconds;
+        const unlockedFor = run.stageTime - bossSummonUnlockSeconds(run);
         if (unlockedFor < 0) {
           this.dwellTime = 0;
           return;
@@ -46063,8 +46065,8 @@ var GS = class e {
         case `boss`:
           return this.run.bossSpawned
             ? c(`El guardián ya despertó`)
-            : this.run.stageTime < bossSummonUnlockSeconds
-              ? '距可提前召唤 ' + Ys(Math.ceil(bossSummonUnlockSeconds - this.run.stageTime)).padStart(5, '0')
+            : this.run.stageTime < bossSummonUnlockSeconds(this.run)
+              ? '距可提前召唤 ' + Ys(Math.ceil(bossSummonUnlockSeconds(this.run) - this.run.stageTime)).padStart(5, '0')
               : `停留 ${bossSummonSeconds} 秒 · 唤醒镇守`;
         case `shrine`:
           return this.run.bossSpawned ? c(`El santuario late con fuerza`) : c(`Tocar el santuario`);
@@ -46234,12 +46236,12 @@ var GS = class e {
               this.dim(e));
             break;
           case `boss`:
-            if (t.stageTime < bossSummonUnlockSeconds || this.nearest !== e || this.dwellTime < bossSummonSeconds) break;
+            if (t.stageTime < bossSummonUnlockSeconds(t) || this.nearest !== e || this.dwellTime < bossSummonSeconds) break;
             if (t.mewtwo.active) {
               t.ui.toast(c(`Una barrera psíquica te lo impide`), null);
               break;
             }
-            this.summonGuardian(e, e);
+            this.summonGuardian(e, e, 'manual');
             break;
           case `shrine`:
             t.bossSpawned || ((e.used = !0), t.spawnBoss(e.x, e.z));
@@ -46249,10 +46251,10 @@ var GS = class e {
             break;
         }
     }
-    summonGuardian(vortex, origin) {
+    summonGuardian(vortex, origin, mode) {
       const run = this.run;
       if (run.bossSpawned || run.stageCleared) return;
-      run.spawnBoss(origin.x, origin.z);
+      run.spawnBoss(origin.x, origin.z, mode);
       if (vortex) {
         vortex.used = true;
         this.dim(vortex);
@@ -49628,7 +49630,7 @@ var mw = 7500,
     guardian: {
       letter: `g`,
       kind: 'boss',
-      text: () => `满 ${bossSummonUnlockSeconds / 60} 分钟后，在装置光圈内停留 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
+      text: run => `满 ${bossSummonUnlockSeconds(run) / 60} 分钟后，在装置光圈内停留 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
     },
     alpha: {
       letter: `f`,
@@ -49707,14 +49709,14 @@ var mw = 7500,
         this.queued = null;
         this.show(event);
       }
-      if (nearest) this.show(hint, nearest);
+      if (nearest) this.show(hint, nearest, e);
       if (nearest?.kind === 'boss' && this.site === nearest && this.el?.parentNode) {
         const title = this.el.querySelector('.zx-hint-title');
         const caption = facilityNames.boss + ' · ' + e.interactables.label(nearest);
         if (title.textContent !== caption) title.textContent = caption;
       }
     }
-    show(e, site = null) {
+    show(e, site = null, run = null) {
       if (!this.on) return;
       let t = _w[e];
       if (this.seen.has(t.letter)) return;
@@ -49734,7 +49736,7 @@ var mw = 7500,
           : t.icon()),
         X('div', {class: 'zx-hint-copy'},
           X('b', {class: 'zx-hint-title'}, t.kind ? facilityNames[t.kind] : t.title()),
-          X('span', {class: 'zx-hint-text'}, t.text())),
+          X('span', {class: 'zx-hint-text'}, t.text(run))),
       );
       ((document.querySelector('.zx-hint-slot') ?? document.body).append(r),
         (this.el = r),
@@ -52795,7 +52797,7 @@ var GT = 15,
         let e = this.pendingBoss;
         ((this.pendingBoss = null), (this.remoteCall = !0));
         try {
-          (this.wakeAltars(), t.spawnBoss(e.x, e.z));
+          (this.wakeAltars(), t.spawnBoss(e.x, e.z, e.summonMode));
         } finally {
           this.remoteCall = !1;
         }
@@ -53229,7 +53231,7 @@ var GT = 15,
         Number.isFinite(r) &&
         ((i.pos.x - t) ** 2 + (i.pos.z - n) ** 2 > 900 || i.addXp(Math.min(r, 1e9) * Sb));
     }
-    bossCalled(e, t) {
+    bossCalled(e, t, summonMode) {
       let n = this.run;
       (this.remoteCall ||
         ((this.bossAuth =
@@ -53238,6 +53240,7 @@ var GT = 15,
             : this.mySlot),
         this.broadcast({
           t: `boss`,
+          summonMode,
           st: n.stage,
           x: Math.round(e * 10) / 10,
           z: Math.round(t * 10) / 10,
@@ -53250,13 +53253,13 @@ var GT = 15,
         (this.bdAcc = 0),
         this.bdAcks.clear());
     }
-    onBossCall(e, t, n, r, i) {
+    onBossCall(e, t, n, r, i, summonMode) {
       let a = this.run;
       t === a.stage &&
         Number.isFinite(n + r) &&
         ((this.bossAuth = this.bossAuth >= 0 && this.bossStage === t ? Math.min(this.bossAuth, i) : i),
         (this.bossStage = t),
-        a.bossSpawned || ((this.pendingBoss = { x: n, z: r }), this.wakeAltars()));
+        a.bossSpawned || ((this.pendingBoss = { x: n, z: r, summonMode: summonMode === 'auto' ? 'auto' : 'manual' }), this.wakeAltars()));
     }
     placePortal(e, t, n) {
       let r = this.run;
@@ -53728,7 +53731,7 @@ var GT = 15,
           this.onShare(n, +t.x, +t.z, +t.v);
           break;
         case `boss`:
-          this.onBossCall(n, t.st | 0, +t.x, +t.z, t.a | 0);
+          this.onBossCall(n, t.st | 0, +t.x, +t.z, t.a | 0, t.summonMode);
           break;
         case `bd`:
           this.onBossDamage(n, t.s | 0, +t.d);
@@ -54335,7 +54338,7 @@ var GT = 15,
     }
     async initialize() {
       this.state='transition';
-      await this.buildStageAsync(true);
+      await Promise.all([this.buildStageAsync(true), prepareDragonChant()]);
       this.applyBoosts();
     }
     async openStage(onProgress) {
@@ -54864,7 +54867,7 @@ var GT = 15,
       });
       return seconds;
     }
-    introBoss(e, t) {
+    introBoss(e, t, summonMode) {
       this.state = `cinematic`;
       const enemies = this.enemies, species = enemies.species[e], yaw = this.camYaw;
       this.setCine({follow:e, dist:4.5 + enemies.hgt[e] * 1.4, pitch:.12, orbit:.3});
@@ -54875,7 +54878,7 @@ var GT = 15,
         const chant = this.ui.dragonChant = startDragonChant(this.ui, beat => {
           J.whoosh(this.audio, .4 + beat * .08, .11, 560 + beat * 130);
           if (beat === 3) this.audio.boom(.55);
-        });
+        }, summonMode);
         this.animate(dragonChantSeconds, progress => chant.draw(progress * dragonChantSeconds), () => {
           chant.clearWords();
           if (!this.boss.live(e)) {
@@ -55298,21 +55301,21 @@ var GT = 15,
       const species = pool[(this.seed + this.stage) % pool.length];
       return k.hasSprite(species) ? species : this.biome.bosses[0];
     }
-    spawnBoss(e, t) {
+    spawnBoss(e, t, summonMode = 'manual') {
       if (this.dragonDuel) return;
-      (this.coop?.bossCalled(e, t), (this.bossSpawned = !0));
+      (this.coop?.bossCalled(e, t, summonMode), (this.bossSpawned = !0));
       let n = this.biome.sanctuary;
       if (this.stage === 4 && n) {
-        this.spawnLegendary();
+        this.spawnLegendary(summonMode);
         return;
       }
       let r = this.stage >= 3 && !n,
         o = this.terrain.randomPoint(F, e, t, 6, 10),
-        s = this.boss.spawn(this.stageBossSpecies, o.x, o.z, r);
+        s = this.boss.spawn(this.stageBossSpecies, o.x, o.z, r, {summonMode});
       (r && s >= 0 && this.capture.rollLegendShiny() && this.capture.shinyBoss(s),
         (this.audio.intensity = 1));
     }
-    spawnLegendary() {
+    spawnLegendary(summonMode) {
       const t = finalBossSpecies;
       let n =
           Av.hpCurve(3, 7.5) *
@@ -55322,7 +55325,7 @@ var GT = 15,
           1.6 *
           1.35 *
           2.5,
-        r = this.boss.spawn(t, 0, 8.5, !0, { hp: n, dmg: 1.975 * 2.7, kit: !0, secs: wy.legendary });
+        r = this.boss.spawn(t, 0, 8.5, !0, { summonMode, hp: n, dmg: 1.975 * 2.7, kit: !0, secs: wy.legendary });
       (r >= 0 && this.capture.rollLegendShiny() && this.capture.shinyBoss(r), (this.audio.intensity = 1));
     }
     debugMewtwo() {

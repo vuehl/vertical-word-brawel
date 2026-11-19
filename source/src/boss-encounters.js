@@ -7457,7 +7457,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         return (
           (this.mech = !this.kit && !r && l >= 0 ? (u ? new u(a, this, l) : hy(a, this, l)) : null),
           this.kit?.float && (a.enemies.flags[l] |= R.Flying),
-          l >= 0 && a.introBoss(l, r),
+          l >= 0 && a.introBoss(l, r, i.summonMode),
           a.audio.bossStart(),
           l
         );

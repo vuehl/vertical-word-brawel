@@ -43,6 +43,11 @@ for(const [group,expected] of Object.entries(index.packs)){
   if(group==='art')for(const [name,recipe] of Object.entries(index.sprites))files[name]=restoreSprite(files[recipe]);
 }
 function bytes(key){const [group,file]=index.files[key].split('/');return packs[group][file];}
+// This WebP encodes palette indices as pixels. Any transcoding corrupts both themes.
+const chantAsset='assets/vfx/dragon-chant.webp';
+assert.ok(index.files[chantAsset], 'Missing summon animation data atlas');
+assert.equal(digest(bytes(chantAsset)),digest(fs.readFileSync(path.join(pub,chantAsset))),
+  'Keep the summon data atlas byte-for-byte');
 for(const [key,ref] of Object.entries(index.files)){
   assert.equal(excludedAssetReason(key),null,'Unused asset still packaged: '+key);
   const data=bytes(key);assert.ok(data,'Missing '+key);assert.equal(digest(data).slice(0,16),path.basename(ref,path.extname(ref)));

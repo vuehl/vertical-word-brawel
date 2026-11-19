@@ -18,6 +18,7 @@
     "test": "node --test source/tools/lite.test.mjs tools/cloud-progress.test.mjs tools/cloud-coop.test.mjs tools/peer-motion.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs tools/paper.test.mjs tools/loading.test.mjs tools/surfaces.test.mjs tools/performance.test.mjs tools/optimization.test.mjs tools/experience.test.mjs tools/runtime-data.test.mjs tools/characters.test.mjs tools/starter-characters.test.mjs tools/audio.test.mjs tools/device-performance.test.mjs tools/portal-screen.test.mjs tools/frame-policy.test.mjs tools/skill-availability.test.mjs",
     "test:frame-stability": "node tools/runtime-performance.mjs --android-performance --frame-stability && node tools/runtime-performance.mjs --ios-budget --frame-stability",
     "test:boss-performance": "node tools/runtime-performance.mjs --android-performance --boss-performance",
+    "test:summon": "node tools/runtime-performance.mjs --summon-mode",
     "test:android-performance": "node tools/runtime-performance.mjs --android-performance --startup-soak",
     "test:android-stability": "node tools/runtime-performance.mjs --android-performance --android-stability --stability-probes",
     "build:portal-screen": "node tools/portal-screen-atlas.mjs",
