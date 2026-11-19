@@ -119,7 +119,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--boss-performance')){
+  if(process.argv.includes('--boss-telegraphs')){
+    const {reviewBossTelegraphs}=await import('./boss-telegraph-regression.mjs');
+    await reviewBossTelegraphs(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--boss-performance')){
     const {reviewBossPerformance}=await import('./boss-performance-regression.mjs');
     await reviewBossPerformance(page,dir,process.argv.includes('--baseline'),process.argv.includes('--boss-programs'));assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--battle-pacing')){

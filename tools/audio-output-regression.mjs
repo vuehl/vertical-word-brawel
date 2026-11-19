@@ -27,23 +27,25 @@ try {
       }
     };
     window.Ws=()=>false;window.backgroundMusicEnabled=false;
-    async function render(restarts,sfx=.7){
+    async function render(restarts,sfx=.7,battle=false){
       const audio=(0,eval)(synth);audio.init();audio.setVolumes({sfx});
       for(let i=0;i<restarts;i++){
         audio.bossStart();audio.kt(330,10,{w:'sawtooth',vib:[8,.1]});audio.beginRun();
       }
       audio.click();
+      if(battle){audio.hit(1,1);audio.boom(.9);audio.kt(330,.25,{w:'sawtooth'});audio.kn(.2);}
       const buffer=await raw.startRendering(),samples=buffer.getChannelData(0);
       let energy=0,peak=0;for(const value of samples){energy+=value*value;peak=Math.max(peak,Math.abs(value));}
       clearTimeout(audio.aliveTimer);
       return {rms:Math.sqrt(energy/samples.length),peak,remainingVoices:audio.voices.size};
     }
     const first=await render(0),second=await render(1),twelfth=await render(11);
-    const oldGain=await render(0,.7*.55),muted=await render(1,0);
+    const oldGain=await render(0,.7/1.8),muted=await render(1,0,true);
+    const battle=await render(0,.7,true),loudBattle=await render(0,1,true);
     window.AudioContext=OriginalContext;
-    return {first,second,twelfth,oldGain,muted,gainRatio:first.rms/oldGain.rms};
+    return {first,second,twelfth,oldGain,muted,battle,loudBattle,gainRatio:first.rms/oldGain.rms};
   },synth);
-  for(const key of ['first','second','twelfth']){
+  for(const key of ['first','second','twelfth','battle','loudBattle']){
     assert.ok(result[key].rms>1e-4,`${key}: audible waveform`);
     assert.ok(result[key].peak<1,`${key}: no clipped samples`);
     assert.equal(result[key].remainingVoices,0,`${key}: nodes released`);

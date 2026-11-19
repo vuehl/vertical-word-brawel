@@ -1,4 +1,5 @@
 import {formCopy, moveCopy} from './form-copy.js';
+import {ENEMY_DANGER_COLOR} from './enemy-telegraphs.js';
 import {finalBossSpecies} from './character-rules.js';
 import {FOREST_COMBAT_ZONES, SINGLE_STAGE} from './lite-rules.js';
 import {ENEMY_HEALTH_SCALE} from './spawn-budget.js';
@@ -192,10 +193,10 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       circle(e, t, n, r, i, a, o, s) {
         let c = this.run,
           l = this.groundY(e, t);
-        (c.vfx.telegraph(e, l, t, n, a, r),
+        (c.vfx.enemyCircle(e, l, t, n, a, r),
           c.later(r, () => {
             (c.vfx.burst(e, l + 0.5, t, a, 20, 8, o, 0.75, 0.6),
-              c.vfx.ring(e, l, t, n, a, 0.4),
+              c.vfx.ring(e, l, t, n, ENEMY_DANGER_COLOR, 0.4, 0.15, 0),
               c.vfx.flash(e, l + 0.8, t, a, n * 1.2, 0.15),
               c.shake(0.15, e, t),
               c.audio.boom(0.6),
@@ -212,22 +213,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           m = e + (n - e) * p,
           h = t + (r - t) * p,
           g = Math.hypot(m - e, h - t);
-        for (let n = 0; n <= g; n += 1.3) {
-          let r = e + ((m - e) * n) / (g || 1),
-            o = t + ((h - t) * n) / (g || 1);
-          u.vfx.ground.spawn({
-            x: r,
-            y: this.groundY(r, o) + 0.12,
-            z: o,
-            life: a,
-            size: i * 2,
-            endSize: i * 2,
-            color: s,
-            shape: I.Soft,
-            glow: 0,
-            rot: 0,
-          });
-        }
+        u.vfx.enemyLine(e, t, m, h, i, s, a);
         u.later(a, () => {
           (u.vfx.beams.spawn(e, f, t, m, this.groundY(m, h) + 1, h, i * 1.4, s, 0.3),
             u.vfx.beams.spawn(e, f, t, m, this.groundY(m, h) + 1, h, i * 0.5, 16777215, 0.25));
@@ -1141,7 +1127,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         return (
           (this.lock = 1.1),
           (t.atkAnim[n] = 0.8),
-          e.vfx.telegraph(this.bx, this.by, this.bz, 5, 13142602, 0.8),
+          e.vfx.enemyCircle(this.bx, this.by, this.bz, 5, 13142602, 0.8),
           e.later(0.8, () => {
             (e.shake(0.45, this.bx, this.bz),
               e.audio.boom(0.9),
@@ -1834,7 +1820,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       quake() {
         let e = this.run,
           t = e.player.pos;
-        (e.vfx.telegraph(this.bx, this.by - 1, this.bz, 5, 14200954, 0.7),
+        (e.vfx.enemyCircle(this.bx, this.by - 1, this.bz, 5, 14200954, 0.7),
           e.later(0.7, () => {
             (e.shake(0.4), e.audio.boom(0.9));
             let n = this.bx,
@@ -1973,7 +1959,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           i.fuse < 0 &&
             i.arm <= 0 &&
             (o < 2.6 || i.t <= 0) &&
-            ((i.fuse = 0.45), t.vfx.telegraph(i.x, a, i.z, 3, 16739032, 0.45), t.audio.click());
+            ((i.fuse = 0.45), t.vfx.enemyCircle(i.x, a, i.z, 3, 16739032, 0.45), t.audio.click());
           let s = i.fuse >= 0 ? 1 + (0.45 - i.fuse) * 1.6 : 1 + Math.sin(t.time * 4 + r) * 0.06;
           (i.arm <= 0 &&
             t.orbitals.push(
@@ -4209,7 +4195,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       149: {
         tele(e, t, n, r, i, a) {
           ly(e, t, n, r, i, 3.2, (t, n, r, i) =>
-            e.later(i * a * 0.7, () => e.vfx.ring(t, n, r, 1.4, 9075455, 0.4, 0.3)),
+            e.later(i * a * 0.7, () => e.vfx.ring(t, n, r, 1.4, ENEMY_DANGER_COLOR, 0.4, 0.3, 0)),
           );
         },
         dash(e, t, n, r, i, a) {
@@ -4441,7 +4427,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               t = e.x,
               i = e.z,
               a = this.gy(t, i);
-            (this.run.vfx.telegraph(t, a, i, 2.6, 16738890, 0.45 * this.B.tk),
+            (this.run.vfx.enemyCircle(t, a, i, 2.6, 16738890, 0.45 * this.B.tk),
               this.run.later(0.45 * this.B.tk, () => {
                 if (!this.live) return;
                 ((n.atkAnim[r] = 0.4),
@@ -4465,7 +4451,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 o = this.bz + Math.sin(r + e) * i,
                 s = this.gy(a, o),
                 c = (0.7 + n * 0.12) * this.B.tk;
-              (t.vfx.telegraph(a, s, o, 2.2, 6994175, c),
+              (t.vfx.enemyCircle(a, s, o, 2.2, 6994175, c),
                 t.later(c, () => {
                   if (!this.live) return;
                   for (let e = 0; e < 8; e++)
@@ -4634,7 +4620,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                   t.arm <= 0 &&
                   Math.hypot(r.x - t.x, r.z - t.z) < 2.2 &&
                   ((t.fuse = 0.7),
-                  n.vfx.telegraph(t.x, this.gy(t.x, t.z), t.z, 3.4, 16726586, 0.7),
+                  n.vfx.enemyCircle(t.x, this.gy(t.x, t.z), t.z, 3.4, 16726586, 0.7),
                   n.audio.alarm()),
                 t.fuse >= 0
                   ? ((t.fuse -= e), t.fuse <= 0 && this.blow(t))
@@ -4694,7 +4680,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               i = n.x + Math.cos(e) * r,
               a = n.z + Math.sin(e) * r;
             t.terrain.inBounds(i, a, 6) &&
-              (t.vfx.telegraph(i, this.gy(i, a), a, 5.5, 4892927, 0.9),
+              (t.vfx.enemyCircle(i, this.gy(i, a), a, 5.5, 4892927, 0.9),
               t.later(0.9, () => {
                 this.live && this.pools.push({ x: i, z: a, t: 7 });
               }));
@@ -4867,7 +4853,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               if (!t.terrain.inBounds(i, o, 3)) continue;
               let s = (0.9 + e * 0.32) * this.B.tk,
                 c = this.gy(i, o);
-              (t.vfx.telegraph(i, c, o, 1.5, 12090111, s),
+              (t.vfx.enemyCircle(i, c, o, 1.5, 12090111, s),
                 t.later(s, () => {
                   if (!this.live) return;
                   (t.vfx.burst(i, c + 0.3, o, 9071178, 10, 5, I.PixRock, 0.5, 0.5, 14), t.audio.boom(0.35));
@@ -4911,7 +4897,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 r.lash <= 0 &&
                 r.t > 0.8 &&
                 ((r.lash = F.range(2, 2.8)),
-                n.vfx.telegraph(r.x, i, r.z, 2.8, 12090111, 0.6 * this.B.tk),
+                n.vfx.enemyCircle(r.x, i, r.z, 2.8, 12090111, 0.6 * this.B.tk),
                 n.later(0.6 * this.B.tk, () => {
                   if (!this.live || !r.o) return;
                   for (let e = 0; e < 12; e++) {
@@ -5880,7 +5866,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         }
         castWail(e) {
           let t = () => {
-            (this.run.vfx.telegraph(this.bx, this.gy(this.bx, this.bz), this.bz, 3.5, _y, 0.5),
+            (this.run.vfx.enemyCircle(this.bx, this.gy(this.bx, this.bz), this.bz, 3.5, _y, 0.5),
               this.waves.push({ r: -5, hit: !1 }));
           };
           return (
@@ -5969,7 +5955,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             let e = r.candles.filter((e) => e.memorial && e.lit > 0);
             if (e.length) {
               let t = F.pick(e);
-              (n.vfx.telegraph(t.x, t.y, t.z, 2, _y, 1.2),
+              (n.vfx.enemyCircle(t.x, t.y, t.z, 2, _y, 1.2),
                 n.later(1.2, () => {
                   this.live &&
                     ((t.lit = 0),
@@ -6361,7 +6347,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           o = 2.8,
           s = this.rodNear(e, t, 4);
         s
-          ? (i.vfx.telegraph(s.x, s.y, s.z, 2, by, r),
+          ? (i.vfx.enemyCircle(s.x, s.y, s.z, 2, by, r),
             i.later(r, () => {
               this.dead ||
                 (this.S?.hitRod(s),
@@ -6374,7 +6360,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                   0.9,
                 ));
             }))
-          : (i.vfx.telegraph(e, a, t, o, by, r),
+          : (i.vfx.enemyCircle(e, a, t, o, by, r),
             i.later(r, () => {
               (i.vfx.lightning(e + F.range(-3, 3), a + 26, t + F.range(-3, 3), e, a, t, 16777215, 0.6, 9, 0.25),
                 i.vfx.lightning(e, a + 20, t, e, a, t, by, 0.35, 7, 0.3),
@@ -7593,7 +7579,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             continue;
           }
           if (
-            (t.vfx.staticRing(r.x, t.terrain.height(r.x, r.z) + 0.1, r.z, r.r, r.col, 0.85),
+            (t.vfx.staticRing(r.x, t.terrain.height(r.x, r.z) + 0.1, r.z, r.r, r.col, 0.85, 0),
             Math.random() < e * 30)
           ) {
             let e = F.range(0, Math.PI * 2),
@@ -7830,11 +7816,11 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 u = s.z + (l === 0 ? c.z * 0.8 : this.attackRandom.range(-7, 7)),
                 d = n.terrain.height(r, u),
                 f = 3.6;
-              (n.vfx.telegraph(r, d, u, f, 16726586, o),
+              (n.vfx.enemyCircle(r, d, u, f, t, o),
                 n.later(o, () => {
                   if (!this.live(e)) return;
                   (n.vfx.burst(r, d + 0.5, u, t, 22, 9, am(a), 0.8, 0.6),
-                    n.vfx.ring(r, d, u, f, t, 0.4),
+                    n.vfx.ring(r, d, u, f, ENEMY_DANGER_COLOR, 0.4, 0.15, 0),
                     n.shake(0.2, r, u),
                     n.audio.boom(0.7));
                   let o = i.pos.x - r,
@@ -7858,7 +7844,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           i = this.enraged ? 18 : 14,
           a = this.enraged ? 3 : 1,
           o = this.attackRandom.range(0, 1);
-        n.vfx.telegraph(r.x[e], r.y[e], r.z[e], 3, t, 0.4);
+        n.vfx.enemyCircle(r.x[e], r.y[e], r.z[e], 3, t, 0.4);
         for (let s = 0; s < a; s++)
           n.later(0.4 + s * 0.5, () => {
             if (this.live(e)) {
@@ -7879,17 +7865,10 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           l = o / s,
           u = 0.75 * this.tk;
         return (
-          n.vfx.beams.spawn(
-            r.x[e],
-            r.y[e] + 0.3,
-            r.z[e],
-            r.x[e] + c * 22,
-            r.y[e] + 0.3,
-            r.z[e] + l * 22,
-            2.2,
-            16726586,
-            u,
-          ),
+          (this.hold = u),
+          (r.vx[e] = r.vz[e] = r.kx[e] = r.kz[e] = 0),
+          n.vfx.enemyLine(r.x[e], r.z[e], r.x[e] + c * 22.5, r.z[e] + l * 22.5,
+            r.radius[e] + 1.3, Ni[r.typesOf(e)[0]], u),
           n.later(u, () => {
             this.live(e) &&
               ((this.cdx = c),
@@ -7932,7 +7911,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           r = n.enemies,
           i = this.enraged ? 3 : 2,
           a = 0.8 * this.tk;
-        (n.vfx.telegraph(r.x[e], n.terrain.height(r.x[e], r.z[e]), r.z[e], 4.5, 16747066, a),
+        (n.vfx.enemyCircle(r.x[e], n.terrain.height(r.x[e], r.z[e]), r.z[e], 4.5, t, a),
           (this.hold = a + i * 0.55));
         for (let o = 0; o < i; o++)
           n.later(a + o * 0.55, () => {
@@ -7942,7 +7921,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               n.shake(0.3, r.x[e], r.z[e]),
               n.audio.boom(0.8),
               n.vfx.dust(r.x[e], r.y[e], r.z[e], 13154456, 14, 7),
-              this.waves.push({ x: r.x[e], z: r.z[e], r: r.radius[e] + 0.5, max: 26, hit: !1, col: t }));
+              this.waves.push({ x: r.x[e], z: r.z[e], r: r.radius[e] + 0.5, max: 26, hit: !1, col: ENEMY_DANGER_COLOR }));
           });
         return 3 + i * 0.3;
       }
@@ -7950,7 +7929,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         let n = this.run,
           r = n.enemies;
         return (
-          n.vfx.telegraph(r.x[e], r.y[e], r.z[e], 4, t, 0.6),
+          n.vfx.enemyCircle(r.x[e], r.y[e], r.z[e], 4, t, 0.6),
           (this.hold = 3.2),
           n.later(0.6, () => {
             this.live(e) &&
@@ -7982,7 +7961,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             let l = n.terrain.height(o, c),
               u = 2.6,
               d = 1.1 * this.tk;
-            n.vfx.telegraph(o, l, c, u, t, d);
+            n.vfx.enemyCircle(o, l, c, u, t, d);
             let f = n.r.camera.position,
               p = Math.hypot(o - f.x, c - f.z) || 1,
               m = ((o - f.x) / p) * 4,
@@ -8004,7 +7983,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               n.later(d, () => {
                 if (!this.live(e)) return;
                 (n.vfx.burst(o, l + 0.5, c, t, 14, 7, s, 0.6, 0.5),
-                  n.vfx.ring(o, l, c, u, t, 0.35),
+                  n.vfx.ring(o, l, c, u, ENEMY_DANGER_COLOR, 0.35, 0.15, 0),
                   n.audio.boom(0.4));
                 let r = i.pos.x - o,
                   a = i.pos.z - c;
@@ -8023,7 +8002,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           if (!n.terrain.inBounds(o, s, 2)) continue;
           let c = n.terrain.height(o, s),
             l = 3.4;
-          (n.vfx.telegraph(o, c, s, l, t, this.tk),
+          (n.vfx.enemyCircle(o, c, s, l, t, this.tk),
             n.later(this.tk, () => {
               if (!this.live(e)) return;
               n.vfx.burst(o, c + 0.4, s, t, 16, 6, am(n.enemies.typesOf(e)[0]), 0.6, 0.5);
@@ -8041,22 +8020,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           f = u.player,
           p = d.typesOf(c)[0],
           m = Math.hypot(n - e, r - t) || 1;
-        for (let o = 0; o <= m; o += 1.3) {
-          let c = e + ((n - e) * o) / m,
-            l = t + ((r - t) * o) / m;
-          u.vfx.ground.spawn({
-            x: c,
-            y: u.terrain.height(c, l) + 0.12,
-            z: l,
-            life: a,
-            size: i * 2,
-            endSize: i * 2,
-            color: s,
-            shape: I.Soft,
-            glow: 0,
-            rot: 0,
-          });
-        }
+        u.vfx.enemyLine(e, t, n, r, i, s, a);
         (l.tele?.(u, e, t, n, r, a),
           u.later(a, () => {
             if (!this.live(c)) return;
@@ -8154,7 +8118,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           p = i.terrain.height(d, f),
           m = 1.07 * this.tk;
         return (
-          i.vfx.telegraph(d, p, f, 5, 16747066, m),
+          i.vfx.enemyCircle(d, p, f, 5, t, m),
           this.roomAim?.move==='signature' && i.coop?.monsters?.bossSkill({leap:[d,f,m]}),
           (a.air[e] = 1),
           (a.vy[e] = 16),
@@ -8171,7 +8135,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             () => {
               this.live(e) &&
                 (n.land ? n.land(i, d, p, f, 5) : i.vfx.burst(d, p + 0.5, f, t, 26, 10, am(c), 0.8, 0.7, 14),
-                i.vfx.ring(d, p, f, 5, 16747066, 0.5),
+                i.vfx.ring(d, p, f, 5, ENEMY_DANGER_COLOR, 0.5, 0.15, 0),
                 i.vfx.dust(d, p, f, 13154456, n.land ? 8 : 20, n.land ? 5 : 8),
                 i.shake(0.5, d, f),
                 i.audio.boom(0.9),
@@ -8179,7 +8143,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 this.shards(e, t, 12, n.shard),
                 r &&
                   i.later(0.35, () => {
-                    this.live(e) && this.waves.push({ x: d, z: f, r: 5, max: 24, hit: !1, col: t });
+                    this.live(e) && this.waves.push({ x: d, z: f, r: 5, max: 24, hit: !1, col: ENEMY_DANGER_COLOR });
                   }));
             },
           ),
@@ -8198,7 +8162,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           f = c / l,
           p = 0.8 * this.tk;
         return (
-          this.lineStrike(a.x[e], a.z[e], a.x[e] + d * u, a.z[e] + f * u, 1.8, p, 0, t, e, {
+          (this.hold = p),
+          (a.vx[e] = a.vz[e] = a.kx[e] = a.kz[e] = 0),
+          this.lineStrike(a.x[e], a.z[e], a.x[e] + d * u, a.z[e] + f * u, a.radius[e] + 1.3, p, 0, t, e, {
             tele: n.tele,
             strike: () => {},
           }),
@@ -9157,7 +9123,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             s = t.terrain.height(a, o),
             c = 3.2,
             l = 1.1 + n * 0.1;
-          (t.vfx.telegraph(a, s, o, c, e.color, l),
+          (t.vfx.enemyCircle(a, s, o, c, e.color, l),
             t.later(l, () => {
               if (!this.alive(e)) return;
               (t.vfx.burst(a, s + 0.5, o, e.color, 18, 8, am(i), 0.7, 0.5),
@@ -9243,7 +9209,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           d = 4.5,
           f = 1.07;
         return (
-          t.vfx.telegraph(c, u, l, d, e.color, f),
+          t.vfx.enemyCircle(c, u, l, d, e.color, f),
           (n.air[i] = 1),
           (n.vy[i] = 16),
           t.audio.jump(0.5),
@@ -9299,22 +9265,10 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           c = Math.min(24, s + 6),
           l = a / s,
           u = o / s;
-        for (let r = 0; r <= c; r += 1.3) {
-          let a = n.x[i] + l * r,
-            o = n.z[i] + u * r;
-          t.vfx.ground.spawn({
-            x: a,
-            y: t.terrain.height(a, o) + 0.12,
-            z: o,
-            life: 0.95,
-            size: 3,
-            endSize: 3,
-            color: e.color,
-            shape: I.Soft,
-            glow: 0,
-            rot: 0,
-          });
-        }
+        e.windupUntil = t.time + .95;
+        n.vx[i] = n.vz[i] = n.kx[i] = n.kz[i] = 0;
+        t.vfx.enemyLine(n.x[i], n.z[i], n.x[i] + l * c, n.z[i] + u * c,
+          n.radius[i] + 1.2, e.color, .95);
         return (
           t.later(0.95, () => {
             this.alive(e) &&
@@ -9359,7 +9313,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               (n.vfx.ring(r.x[i], r.y[i], r.z[i], 5, e.color, 0.4), n.audio.shot(a, 0.7));
             }
           });
-        return (n.vfx.telegraph(r.x[i], r.y[i], r.z[i], 3, e.color, 0.35), 4.2);
+        return (n.vfx.enemyCircle(r.x[i], r.y[i], r.z[i], 3, e.color, 0.35), 4.2);
       }
       onKilled(e) {
         let t = this.run,
@@ -9728,7 +9682,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             (l = 0.6));
         }
         let u = t.terrain.surface(s, c);
-        (t.vfx.telegraph(s, u, c, 3, 16773754, l), t.later(l, () => this.bolt(s, u, c, 3)));
+        (t.vfx.enemyCircle(s, u, c, 3, 16773754, l), t.later(l, () => this.bolt(s, u, c, 3)));
       }
       bolt(e, t, n, r) {
         let i = this.run,

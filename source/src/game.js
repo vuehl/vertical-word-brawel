@@ -17,7 +17,8 @@ import {heroActionCatalog} from './hero-action-catalog.js';
 import {playerHeroAction} from './hero-actions.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
-import {createPlayerFootRing,createFacilityDwellRing,createAltarChargeRing} from './player-foot-ring.js';
+import {createPlayerFootRing,createFacilityDwellRing} from './player-foot-ring.js';
+import {EnemyTelegraphs} from './enemy-telegraphs.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
 import {FramePacer} from './frame-pacing.js';
@@ -4259,7 +4260,7 @@ var Ws = () =>
       const now = this.ctx.currentTime;
       for (const [bus, value] of [
         [this.master, this.hiddenMute ? 0 : this.vol.master],
-        [this.sfxBus, this.vol.sfx],
+        [this.sfxBus, this.vol.sfx * 1.8],
         [this.musicBus, this.vol.music * 0.32],
         [this.cryBus, this.vol.cries * 0.45],
       ]) {
@@ -7567,7 +7568,7 @@ var Gl = class {
     track(e) {
       return (this.faded.push(e), (e.fade = this.opacity), e);
     }
-    constructor(e, t, atlas) {
+    constructor(e, t, atlas, run) {
       ((this.atlas = atlas),
         (this.add = new zl(e, this.atlas, 3000, !0, !1, t)),
         (this.norm = new zl(e, this.atlas, 1800, !1, !1, t)),
@@ -7577,6 +7578,7 @@ var Gl = class {
         (this.rings = new Ul(e)),
         (this.text = new Gl(e)));
       this.crafted=new StylizedSkillFX(this,e);
+      this.danger=new EnemyTelegraphs(e,()=>run.time,(x,z)=>run.terrain.height(x,z));
     }
     setPerformance(profile,view){
       for(const pool of [this.add,this.norm,this.ground,this.groundN,this.beams])pool.lockVisualQuality=!!profile.lockVisualQuality;
@@ -7587,7 +7589,7 @@ var Gl = class {
       applyCrowdEffects(this,profile);
     }
     update(e) {
-      flushDamage(this,e);this.particleBudget?.next();this.crafted.update(e);
+      flushDamage(this,e);this.particleBudget?.next();this.crafted.update(e);this.danger.update();
       (this.add.update(e),
         this.norm.update(e),
         this.ground.update(e),
@@ -7597,7 +7599,7 @@ var Gl = class {
         this.text.update(e));
     }
     clear() {
-      this.damagePending?.clear();this.damageClock=0;this.crafted.clear();
+      this.damagePending?.clear();this.damageClock=0;this.crafted.clear();this.danger.clear();
       (this.add.clear(),
         this.norm.clear(),
         this.ground.clear(),
@@ -7655,6 +7657,12 @@ var Gl = class {
           rot: 0,
           essential: true,
         }));
+    }
+    enemyCircle(x,y,z,radius,color,seconds) {
+      return this.danger.circle(x,y,z,radius,color,seconds);
+    }
+    enemyLine(x,z,endX,endZ,halfWidth,color,seconds) {
+      return this.danger.line(x,z,endX,endZ,halfWidth,color,seconds);
     }
     flash(e, t, n, r, i = 3, a = 0.15) {
       ((i = Math.min(i, 4.5)),
@@ -13006,6 +13014,7 @@ var Df = 0.4,
           let e = t.boss.kit.steer(m);
           ((O = e.x), (te = e.z), (b *= e.speed / Math.max(0.1, this.speed[i])));
         } else if (y & 4 && i === t.boss.bossIndex && t.boss.hold > 0) b = 0;
+        else if (y & (R.Totem | R.Summoner) && t.minibosses.get(i)?.windupUntil > t.time) b = 0;
         else if (y & 1024) ((O = this.dirX[i]), (te = this.dirZ[i]), (b *= 1.9));
         else if (this.confuse[i] > 0) {
           let e = this.anim[i] * 2.3;
@@ -45709,8 +45718,9 @@ var GS = class e {
       ring.scale.setScalar(facility.ringRadius);
       ring.visible = isBerry || !facility.used;
       if (facility.kind === 'altar') {
-        const color = new Ei(RS[facility.data.tier].color);
-        const charge = facility.chargeRing = createAltarChargeRing(group, {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr}, color);
+        const charge = facility.chargeRing = this.dwellRing.clone();
+        charge.material = this.dwellRing.material.clone();
+        group.add(charge);
         charge.position.copy(ring.position);
         charge.scale.copy(ring.scale);
       }
@@ -45736,7 +45746,6 @@ var GS = class e {
       if (facility.chargeRing) {
         const ring = facility.chargeRing;
         ring.removeFromParent();
-        ring.geometry.dispose();
         ring.material.dispose();
         facility.chargeRing = null;
       }
@@ -46720,7 +46729,7 @@ var GS = class e {
           const opacity = facility.used ? Math.max(0, 1 - (this.run.time - (facility.completedAt ?? -Infinity)) / .6) : 1;
           charge.visible = visible && facility.charge > 0 && opacity > 0;
           charge.material.uniforms.dwell.value = facility.charge;
-          charge.material.uniforms.opacity.value = opacity;
+          charge.material.uniforms.ringOpacity.value = opacity;
         }
         facility.halo.visible = visible && !facility.used && !charge?.visible && !(ring.visible && target === facility);
       }
@@ -54254,7 +54263,7 @@ var GT = 15,
         this.setHordeQuality(s.quality),
         (Fl.density = this.performance.particleDensity),
         (this.sprites = new rl(e.scene, e.shared)),
-        (this.vfx = new Kl(e.scene, e.shared, a.effectAtlas)),
+        (this.vfx = new Kl(e.scene, e.shared, a.effectAtlas, this)),
         this.vfx.crafted.attach(this),
         this.vfx.setPerformance(this.performance,this.sprites),
         (this.vfx.calm = !!i.profile.settings.reduceFlashes),
@@ -56874,6 +56883,7 @@ var GT = 15,
         this.sprites.clear());
       this.sprites.standIn.dispose();
       this.vfx.crafted.dispose();
+      this.vfx.danger.dispose();
       this.vfx.atlas.dispose();
       disposePaperAssets(this.paperAssets);
       for (let e of [
