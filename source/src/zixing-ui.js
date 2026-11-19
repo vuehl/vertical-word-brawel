@@ -1,19 +1,20 @@
 import {displayedFormType} from './form-copy.js';
-import {facilityDwellSeconds,facilityNames} from './active-content.js';
+import {bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityNames} from './active-content.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
+import {COOP_ROOM_SIZE} from './multiplayer-config.js';
 import {RelayRoom} from './multiplayer.js';
 import {createPeerHud} from './coop-peer-hud.js';
 import {drawMenuGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from './paper-glyph-art.js';
 import {drawPaperIllustration,drawCoopMap} from './paper-ui-art.js';
-import {buildingMapKinds,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
+import {mapWorldScale,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
-import {characters,characterForSpecies,windRoutes} from './starter-characters.js';
-import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES} from './lite-rules.js';
+import {characters,characterForSpecies,starterEvolutionLevels,windRoutes} from './starter-characters.js';
+import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,zoneDuration,remainingZoneSeconds} from './lite-rules.js';
 
 export {characters};
 const character=characterForSpecies;
@@ -60,6 +61,7 @@ function glyph(c,large=false){
   canvas.dataset.glyphReady='true';return node;
 }
 const statRow=(label,value)=>el('div','zx-stat-row',[el('b','',label),el('span','',value)]);
+export {icon as paperIcon};
 // Paths keep icons independent of the device's font and emoji support.
 function icon(name,size=24,color='#766a88') {
   const canvas=el('canvas','zx-icon',[],{width:size*2,height:size*2,'data-icon':name,'aria-hidden':true});
@@ -254,7 +256,7 @@ export function createZixingUI(app,api) {
       el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
       button([el('span','','开始旅程'),el('span','','→')],()=>openProfilePage('开始旅程',choose),
         'primary zx-home-start',{'data-action':'journey'}),
-      button('多人联机',()=>multiplayer(),'zx-home-coop',{'data-action':'multiplayer'}),
+      button('双人成行',()=>multiplayer(),'zx-home-coop',{'data-action':'multiplayer'}),
       button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),openLab,'purple zx-home-lab',{'data-action':'lab'}),
       el('div','zx-home-foot',button([icon('book',16,'#61567b'),el('span','','玩法说明')],()=>help(),'zx-plain')),
     ]);
@@ -384,7 +386,7 @@ export function createZixingUI(app,api) {
       const illustration=activity && drawCoopMap(el('canvas','zx-coop-map',[],{width:720,height:720,'aria-hidden':true}));
       if(activity)body.push(activity);
       body.push(note);
-      const node=screen('coop',session?'队伍房间':'多人联机','桌上世界 · 2–3 人合作',body,actions);
+      const node=screen('coop',session?'队伍房间':'双人成行','桌上世界 · 双人合作',body,actions);
       const subtitle=node.querySelector('.zx-header small');
       let shownMessage;
       function update(){
@@ -402,7 +404,7 @@ export function createZixingUI(app,api) {
           if(choice.classList.contains('primary')!==active)choice.classList.toggle('primary',active);
         });
         const {members,host}=session.room;
-        updateText(subtitle,members.length+' / 3 人 · 普通难度');
+        updateText(subtitle,members.length+' / '+COOP_ROOM_SIZE+' 人 · 普通难度');
         members.forEach((member,i)=>{
           const label=(member.id===host?'房主':'队员')+' · '+character(member.species).word+(member.id===session.me?'（你）':'');
           const state=member.offline?'暂离':member.ready?'已准备':'未准备', memberRow=roster.children[i];
@@ -424,8 +426,7 @@ export function createZixingUI(app,api) {
         }
         updateText(readyButton,session.mine?.ready?'取消准备':'准备');
         if(startButton.hidden!==!session.isHost)startButton.hidden=!session.isHost;
-        const online=members.filter(m=>!m.offline);
-        const canStart=session.isHost && online.length>=2 && online.every(m=>m.ready);
+        const canStart=session.canStart;
         if(startButton.disabled!==!canStart)startButton.disabled=!canStart;
       }
       return {session,resume,node,update};
@@ -451,7 +452,7 @@ export function createZixingUI(app,api) {
       hero.replaceChildren(small('字灵 · '+c.word),glyph(c,true),text(c.motto,'zx-note'));
       skills.replaceChildren(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),
         row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id)))));
-      updateText(evolution,c.evolution);
+      updateText(evolution,c.evolution+' · '+starterEvolutionLevels.join(' / ')+' 级进阶');
       choices.forEach((choice,i)=>{
         const active=characters[i].id===selected;
         choice.classList.toggle('on',active);
@@ -699,7 +700,7 @@ export function createZixingUI(app,api) {
     }else if(settingsTab===1) {
       title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']]))];
     }else if(settingsTab===2) {
-      title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),toggle('自动大招','autoUlt','就绪且附近有敌人时自动释放。'))];
+      title='触控设置';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'))];
     }else if(settingsSub===0) {
       title='界面外观';content=[card(range('界面大小','hudScale',.6,1.3,.05),range('界面不透明度','hudOpacity',.3,1,.05)),card(range('首领血条不透明度','bossBarOpacity',.2,1,.05),options('首领体力','zxBossHealth',[['value','数值'],['percent','百分比']]))];
     }else if(settingsSub===1) {
@@ -725,7 +726,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等物件旁停留 ${facilityDwellSeconds} 秒，脚下的圆环填满时会自动触发。祝福祭坛按显示的百分比蓄能。`],['把握大招','大招就绪后点击释放，也可在设置中开启自动大招。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等设施旁停留 ${facilityDwellSeconds} 秒可触发互动。每个战斗区开战满 ${bossSummonUnlockSeconds / 60} 分钟后，站进青色漩涡「${facilityNames.boss}」${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟仍未召唤时，龘会自动现身。击败镇守后，从木门前往下一区域或通关。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，蓄满可选祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招充满后会保留能量。看到按钮显示「就绪」时，点击即可释放。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -829,7 +830,7 @@ export function createZixingUI(app,api) {
   function offerBody(cards,onStats) {
     return [button([el('span','','查看当前属性'),icon('stats',15,'#65577b'),el('span','','›')],onStats,'zx-upgrade-stats',{'data-action':'upgrade-stats'}),...cards];
   }
-  function levelUp(run,offers,chooseOffer,art) {
+  function levelUp(run,offers,chooseOffer,heroArt) {
     let choosing=false;
     const choose=(offer,action)=>{
       if(choosing)return;choosing=true;
@@ -839,8 +840,9 @@ export function createZixingUI(app,api) {
     };
     const cards=offers.map((offer,index)=>{
       const desc=api.offer(run,offer);
-      const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):art[index];
-      return button(offerContent(picture,desc.title,[small(desc.sub),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});
+      const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):heroArt;
+      const detail=offer.kind==='upMove'?'已学技能 · '+desc.sub:desc.sub;
+      return button(offerContent(picture,desc.title,[small(detail),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});
     });
     overlay('择一而进','',cards,
       [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
@@ -928,47 +930,78 @@ export function createZixingUI(app,api) {
     const hud=run.ui;selected=character(run.startSpecies).id;
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
-    run.hints.show=key=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key);};
-    // Move offers reuse these glyph canvases. Paint them on the loading screen.
-    const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
-    hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
+    run.hints.show=(key,site)=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key,site);};
+    let form=run.player.speciesId, heroArt=glyph(character(form));
+    hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>{
+      if(form!==r.player.speciesId){form=r.player.speciesId;heroArt=glyph(character(form));}
+      levelUp(r,offers,choose,heroArt);
+    };
     hud.saving=active=>{
       if(active){hud.hideModal();pendingScreen('对局结算','正在保存本局战绩与星尘');}
     };
     hud.showSummary=summary;hud.showSlots=slots;
     let expandedMap=null;
     hud.mapFacilityKind='chest';
+    const mapIcons=new Map();
+    hud.mapFacilityIcon=kind=>{
+      if(!mapIcons.has(kind)){
+        const image=new Image();
+        image.onload=()=>{
+          if(expandedMap?.canvas.isConnected){expandedMap.paint();window.invalidateUI?.();}
+        };
+        mapIcons.set(kind,image);
+        image.src=api.facilityIcon(kind);
+      }
+      return mapIcons.get(kind);
+    };
     hud.showMap=(r,fromPause=false)=>{
       const close=fromPause?()=>pause(r):()=>r.resume();
-      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-420));
-      const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图'});
+      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-190));
+      const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图，拖动查看建筑，轻点建筑图标追踪'});
       const frame=el('div','zx-battle-map-frame',canvas);
       frame.style.width=frame.style.height=side+'px';
       const hudSide=hud.minimap.getBoundingClientRect().width || (window.innerWidth<=350?84:96);
-      const status=el('b','zx-map-status');
-      const hint=el('small','zx-map-hint','点击类别查看位置 · ×数字表示相邻同类地点');
-      const filters=el('div','zx-map-filters',[],{'aria-label':'选择地图道具类型'});
-      const choices=buildingMapKinds.map(kind=>button(facilityNames[kind],()=>{
-        hud.mapFacilityKind=kind;
-        for(const choice of choices){
-          const selected=choice.dataset.mapKind===kind;
-          choice.classList.toggle('on',selected);
-          choice.setAttribute('aria-pressed',String(selected));
-        }
-        paint();
-        hud.drawMinimap(r,true);
-        window.invalidateUI?.();
-      },'zx-map-filter'+(kind===hud.mapFacilityKind?' on':''),{'data-map-kind':kind,'aria-pressed':kind===hud.mapFacilityKind}));
-      for(let i=0;i<choices.length;i+=3)filters.append(el('div','zx-map-filter-row',choices.slice(i,i+3)));
-      overlay('附近地图','',[frame,filters,el('div','zx-map-info',[status,hint])],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
-      const contentZoom=1.5;
+      overlay('附近地图','',[frame],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
+      const contentZoom=2.3;
       const viewRatio=(canvas.getBoundingClientRect().width || side)/(hudSide*contentZoom);
+      let center=null,drag=null,groups=[];
       function paint(){
-        const {count}=drawBattleMinimap(canvas,r,{shadow:false,viewRatio});
-        updateText(status,r.events?.blind?'视野受限':facilityNames[hud.mapFacilityKind]+' · 附近 '+count+' 处');
+        groups=drawBattleMinimap(canvas,r,{shadow:false,viewRatio,center:center??r.player.pos,facilityKind:null}).groups;
       }
+      canvas.addEventListener('pointerdown',event=>{
+        if(drag||event.button!==0)return;
+        const origin=center??r.player.pos;
+        drag={id:event.pointerId,x:event.clientX,y:event.clientY,originX:origin.x,originZ:origin.z,moved:false};
+        canvas.setPointerCapture(event.pointerId);
+      });
+      function pan(event){
+        if(drag?.id!==event.pointerId)return;
+        const dx=event.clientX-drag.x,dy=event.clientY-drag.y;
+        if(!drag.moved&&Math.hypot(dx,dy)<4)return;
+        drag.moved=true;
+        const width=canvas.getBoundingClientRect().width || side;
+        const units=120*viewRatio/(width*mapWorldScale);
+        const limit=r.terrain.play,clamp=value=>Math.max(-limit,Math.min(limit,value));
+        center={x:clamp(drag.originX-dx*units),z:clamp(drag.originZ-dy*units)};
+        paint();window.invalidateUI?.();
+      }
+      canvas.addEventListener('pointermove',pan);
+      canvas.addEventListener('pointerup',event=>{
+        if(drag?.id!==event.pointerId)return;
+        pan(event);
+        if(!drag.moved){
+          const rect=canvas.getBoundingClientRect();
+          const x=(event.clientX-rect.left)*120/(rect.width || side),y=(event.clientY-rect.top)*120/(rect.height || side);
+          const hit=groups.slice().reverse().find(({box})=>x>=box.x&&x<=box.x+box.w&&y>=box.y&&y<=box.y+box.h);
+          if(hit){hud.mapFacilityKind=hit.kind;hud.drawMinimap(r,true);}
+        }
+        drag=null;
+      });
+      const cancel=event=>{if(drag?.id===event.pointerId)drag=null;};
+      canvas.addEventListener('pointercancel',cancel);
+      canvas.addEventListener('lostpointercapture',cancel);
       paint();
-      if(r.coop)expandedMap={canvas,paint,at:performance.now()};
+      expandedMap={canvas,paint,at:performance.now()};
       hud.pauseBack=close;
     };
     hud.mapOpen=()=>!!hud.root.querySelector('.zx-battle-map');
@@ -976,7 +1009,7 @@ export function createZixingUI(app,api) {
       const render=hud[method].bind(hud);
       hud[method]=(r,items,...args)=>{const result=render(r,items,...args);restyleItems(r,method==='showItem'?[items]:items,method==='showItemChoice');return result;};
     }
-    for(const [method,symbol] of Object.entries({showBlessing:'祝',showTrade:'易',showPact:'契',showFusion:'合',showDitto:'复',showParty:'伴',showShinySwap:'伴'})){
+    for(const [method,symbol] of Object.entries({showBlessing:'祝',showTrade:'易',showPact:'契',showFusion:'合',showParty:'伴',showShinySwap:'伴'})){
       const render=hud[method].bind(hud);
       hud[method]=(...args)=>{const result=render(...args);restyleChoice(run,method,args,symbol);return result;};
     }
@@ -1053,7 +1086,7 @@ export function createZixingUI(app,api) {
           supplies,
         ]),level,
       ]),minimap,button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),
-    ],{'data-ui-region':'hud-stack'}),inventory,health);
+    ],{'data-ui-region':'hud-stack'}),el('div','zx-hint-slot',[],{'data-ui-region':'hud-hint'}),inventory,health);
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
@@ -1129,7 +1162,7 @@ export function createZixingUI(app,api) {
       updatePeers?.();
       if(expandedMap){
         if(!expandedMap.canvas.isConnected)expandedMap=null;
-        else if(now-expandedMap.at>=(run.performance?.mapInterval??120)){
+        else if(run.coop&&now-expandedMap.at>=(run.performance?.mapInterval??120)){
           expandedMap.paint();
           expandedMap.at=now;window.invalidateUI?.();
         }
@@ -1149,7 +1182,9 @@ export function createZixingUI(app,api) {
       const p=run.player;
       updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'/'+(run.mode===SINGLE_STAGE?1:FOREST_COMBAT_ZONES)+'区'));updateText(stageLabel,difficultyName(run));
       stageLabel.dataset.tier=String(run.tier);
-      updateText(clock,time(run.time));updateText(gold,number(run.gold));
+      const remaining=remainingZoneSeconds(run);
+      updateText(clock,run.sanctuary?time(run.stageTime):run.endless||run.tower?time(run.time):remaining>=0?time(remaining):'+'+time(-remaining));
+      updateText(gold,number(run.gold));
       updateSkillSlots(skillSlots,run);
       const supplyKey=JSON.stringify([[...p.vitamins].map(([id,v])=>[id,v.level]),[...p.items],profile().settings.showItems,innerWidth]);
       if(supplyKey!==lastSupplies){

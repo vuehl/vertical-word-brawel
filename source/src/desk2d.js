@@ -78,7 +78,7 @@ export function deskCamera(run,dt){
   t.deskCamera=c;run.camYaw=0;run.camPitch=pitch;run.camDist=42;run.camLift=0;
 }
 export async function deskDevice(t,kind){
-  const {size,height,strips,fx}=deviceSizes[kind];
+  const {size,height,footprintRadius,strips,fx}=deviceSizes[kind];
   const texture=await deskTexture(t,'device-'+kind+'.png');
   if(t.disposed)return null;
   t.deskDeviceGeometries??=new Map();
@@ -101,5 +101,6 @@ export async function deskDevice(t,kind){
   sprite.rotation.x=-pitch;
   sprite.position.set(0,size*.3*Math.cos(pitch),-size*.3*tilt);
   const root=new Group();root.name=sprite.name;root.userData.displayHeight=height;
+  root.userData.footprintRadius=footprintRadius;
   root.userData.deviceScreenFx=fx;root.add(sprite);return root;
 }

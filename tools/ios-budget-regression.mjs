@@ -2,6 +2,49 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 
+export function installNativePerformanceFixture(){
+  window.fixturePluginLoads=[];
+  window.requirePlugin=name=>{
+    fixturePluginLoads.push(name);
+    throw Error('This game must run without a power-mode plugin');
+  };
+}
+
+export async function reviewNativePerformance(page,dir){
+  const report=await page.evaluate(async()=>{
+    const {env,doc}=inspected,r=app.r,renderer=r.renderer,gl=renderer.getContext();
+    const settings=app.meta.profile.settings;
+    const firstRequest=fixtureFrameRates.length;
+    const frame=()=>app.pacer.ready(performance.now(),realFrameGap());
+    app.pacer.reset();app.run.state='play';frame();frame();
+    app.run.state='paused';frame();app.run.state='play';frame();
+    settings.batterySaver=true;app.applySettings();frame();
+    settings.batterySaver=false;app.applySettings();frame();
+    const requestedFrameRates=fixtureFrameRates.slice(firstRequest);
+    app.run.ui.hud(app.run);r.render(0);env.drawUI(renderer);
+    app.run.state='paused';app.zixing.settings(()=>{});
+    const graphics=[...doc.querySelectorAll('.zx-tabs.main button')].find(el=>el.textContent==='画面');
+    graphics.click();await new Promise(resolve=>setTimeout(resolve,0));
+    const hasPowerSetting=!!doc.querySelector('[aria-label="iPhone 温控模式"]');
+    const hasPowerControl='iosPowerMode' in env;
+    env.drawUI(renderer,true);
+    const remove=gl.deleteTexture,create=gl.createTexture;let released=0,recreated=0;
+    gl.deleteTexture=function(texture){released++;return remove(texture);};
+    gl.createTexture=function(){recreated++;return create();};
+    try{
+      fixtureMemoryWarning({level:10});fixtureMemoryWarning({level:10});
+      app.setScreen(null);app.run.state='play';app.run.ui.hud(app.run);r.render(0);env.drawUI(renderer);
+    }finally{gl.deleteTexture=remove;gl.createTexture=create;}
+    return {platform:env.nativeDevice.platform,pluginLoads:fixturePluginLoads,hasPowerSetting,hasPowerControl,
+      requestedFrameRates,gc:fixtureGCs,released,recreated,glError:gl.getError()};
+  });
+  assert.equal(report.platform,'ios');assert.deepEqual(report.pluginLoads,[]);
+  assert.equal(report.hasPowerSetting,false);assert.equal(report.hasPowerControl,false);
+  assert.deepEqual(report.requestedFrameRates,[60,30,60,30,60]);
+  assert.equal(report.gc,1);assert.ok(report.released>0&&report.recreated>0);assert.equal(report.glError,0);
+  fs.writeFileSync(path.join(dir,'native-performance.json'),JSON.stringify(report,null,2));console.log(report);
+}
+
 export async function reviewIOSBudget(page,dir){
   const report={environment:'Compiled WeChat developer build; iOS API fixture in Chrome SwiftShader. This does not measure iPhone FPS.',waves:[],combat:[]};
   report.device=await page.evaluate(()=>{
@@ -36,6 +79,15 @@ export async function reviewIOSBudget(page,dir){
   });
   for(const sample of report.qualityLock){assert.deepEqual(sample.after,sample.before);assert.equal(sample.after.dyn,1);}
   assert.deepEqual(report.qualityLock.slice(0,3).map(s=>s.before),report.qualityLock.slice(3).map(s=>s.before));
+  report.saverShadows=await page.evaluate(()=>{
+    const run=app.run,s=app.meta.profile.settings;
+    return ['high','saver','off','high'].map(action=>{
+      s.batterySaver=action==='saver';if(action==='high')s.quality='high';
+      app.applySettings();run.renderWorld(0);app.r.render(0);
+      return {quality:s.quality,size:app.r.sun.shadow.map.width};
+    });
+  });
+  assert.deepEqual(report.saverShadows,[{quality:'high',size:2048},{quality:'low',size:1024},{quality:'low',size:1024},{quality:'high',size:2048}]);
   report.panel=await page.evaluate(()=>{
     const api=inspected.env.__zixingDeveloper,doc=inspected.doc;
     api.open();
@@ -46,8 +98,8 @@ export async function reviewIOSBudget(page,dir){
     click('count-600');click('apply');const stress=api.snapshot().ordinary;
     api.close();return {values,stress};
   });
-  assert.deepEqual(report.panel.values,[30,90,200]);assert.equal(report.panel.stress,600);
-  const caps=[5,25,30,50,70,90,115,140,160,180,200];
+  assert.deepEqual(report.panel.values,[72,200,200]);assert.equal(report.panel.stress,600);
+  const caps=[14,44,72,115,160,200,200,200,200,200,200];
   for(let minute=0;minute<=10;minute++){
     const wave=await page.evaluate(minute=>{
       const run=app.run,api=inspected.env.__zixingDeveloper;
@@ -79,7 +131,7 @@ export async function reviewIOSBudget(page,dir){
     return {peak,total:api.snapshot().ordinary};
   });
   assert.ok(report.spawnBurst.peak<=3&&report.spawnBurst.total<=48&&report.spawnBurst.total>0);
-  for(const [seconds,count] of [[120,30],[300,90],[600,200]]){
+  for(const [seconds,count] of [[120,72],[300,200],[600,200]]){
     const sample=await page.evaluate(async({seconds,count})=>{
       const run=app.run,api=inspected.env.__zixingDeveloper,renderer=app.r.renderer;
       Object.assign(api.options,{invincible:true,lockCount:true,monitor:false});
@@ -91,11 +143,13 @@ export async function reviewIOSBudget(page,dir){
         if(frame%20===0){await new Promise(r=>setTimeout(r,0));app.r.render(1/60);inspected.env.drawUI(renderer);draws.push(renderer.info.render.calls);}
       }
       return {seconds,count,ordinary:api.snapshot().ordinary,state:run.state,damage:run.stats.damage-damage,particles,texts,draws,
-        limits:[run.vfx.add.limit,run.vfx.norm.limit,run.vfx.text.limit],bloom:app.r.bloom.intensity,
+        limits:[run.vfx.add.limit,run.vfx.norm.limit,run.vfx.text.limit],presetBloom:run.performance.bloom,bloom:app.r.bloom.intensity,
         textures:renderer.info.memory.textures,geometry:renderer.info.memory.geometries};
     },{seconds,count});
     assert.equal(sample.ordinary,count);assert.equal(sample.state,'play');assert.ok(sample.damage>0);
-    assert.ok(sample.particles<=4800&&sample.texts<=160);assert.deepEqual(sample.limits,[3000,1800,160]);assert.ok(sample.bloom>0);report.combat.push(sample);
+    assert.ok(sample.particles<=4800&&sample.texts<=160);assert.deepEqual(sample.limits,[3000,1800,160]);
+    // The illustrated desk explicitly disables scene bloom in every preset.
+    assert.equal(sample.presetBloom,true);assert.equal(sample.bloom,0);report.combat.push(sample);
     await page.screenshot({path:path.join(dir,`ios-${seconds}.png`)});
   }
   report.longRun=await page.evaluate(async()=>{

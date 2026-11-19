@@ -1259,34 +1259,6 @@ export function createMoveEffects({F, I, L, bl, Sl, wl, El, Ll, Vf, k}) {
           });
         },
       },
-      reversal: {
-        nova(e, t, n, r, i) {
-          for (let t = 0; t < 8; t++)
-            e.later(t * 0.03, () => {
-              let n = e.player.pos,
-                r = (t / 8) * z,
-                a = i * 0.6;
-              e.vfx.norm.spawn({
-                x: n.x + Math.cos(r) * a,
-                y: n.y + 0.9,
-                z: n.z + Math.sin(r) * a,
-                vx: Math.cos(r) * 5,
-                vz: Math.sin(r) * 5,
-                life: 0.16,
-                size: t % 2 ? 0.7 : 1.2,
-                endSize: t % 2 ? 0.8 : 1.4,
-                color: 16765104,
-                shape: I.PixFist,
-                rot: r,
-              });
-            });
-          for (let a = 0; a < 2; a++)
-            e.later(a * 0.08, () =>
-              e.vfx.ring(t, n, r, i * (0.6 + a * 0.4), a ? 16756848 : 13650490, 0.4, 0.15, L.Jagged),
-            );
-          (e.vfx.dust(t, n, r, 14207144, 8, i), e.shake(0.12));
-        },
-      },
       "mega-punch": {
         warn(e, t, n, r, i, a, o) {
           (zp(e, t, n, r, o, 16767152, I.PixFist, i * 0.65, 20, 4), e.vfx.telegraph(t, n, r, i, 14191194, o));
@@ -4712,25 +4684,6 @@ export function createMoveEffects({F, I, L, bl, Sl, wl, El, Ll, Vf, k}) {
           vp(e, t, n, r, 16771178, 6, 5, I.Star, 0.35, 0.3);
         },
       },
-      bite: {
-        strike(e, t, n, r, i, a, o) {
-          let s = t + i * o * 0.3,
-            c = r + a * o * 0.3;
-          (B(e, s, n + 0.3, c, I.Fang, V.white, o * 0.75, o * 0.3, 0.2, 0, 0.9),
-            B(e, s, n + 0.3, c, I.Soft, 5913210, o * 0.9, o * 0.4, 0.2, 0, 0),
-            vp(e, s, n + 0.3, c, 6965898, 5, 4, I.Spark, 0.4, 0.25));
-        },
-      },
-      crunch: {
-        strike(e, t, n, r, i, a, o) {
-          let s = t + i * o * 0.3,
-            c = r + a * o * 0.3;
-          (B(e, s, n + 0.4, c, I.Fang, V.white, o * 1.05, o * 0.35, 0.24, 0, 1),
-            B(e, s, n + 0.4, c, I.Soft, 3809360, o * 1.2, o * 0.5, 0.24, 0, 0),
-            _p(e, s, n, c, 4864602, 6, 4, I.Shard, 0.4),
-            e.shake(0.05, s, c));
-        },
-      },
       "last-resort": {
         warn(e, t, n, r, i, a, o) {
           zp(e, t, n, r, o, 16771178, I.Star, i * 0.8, 24, 4);
@@ -5944,19 +5897,6 @@ export function createMoveEffects({F, I, L, bl, Sl, wl, El, Ll, Vf, k}) {
             e.shake(0.06, t, r));
         },
       },
-      "take-down": {
-        dash(e, t, n, r, i, a, o) {
-          (e.vfx.dust(t, n, r, 13158608, 10, 4),
-            Tp(e, t, n + 0.8, r, t + i * o, n + 0.8, r + a * o, V.steel, I.Square, 6, 0.25, 0, 2));
-          let s = t + i * o,
-            c = r + a * o;
-          e.later(0.12, () => {
-            (B(e, s, n + 0.9, c, I.Twinkle, V.white, 0.7, 2.8, 0.2),
-              e.vfx.ring(s, e.terrain.height(s, c), c, 2.2, V.steel, 0.3),
-              _p(e, s, n, c, V.steelDark, 5, 4, I.Square, 0.3));
-          });
-        },
-      },
       "metal-claw": {
         strike(e, t, n, r, i, a, o, s, c) {
           let l = c % 2 ? -0.35 : 0.35,
@@ -6437,47 +6377,6 @@ export function createMoveEffects({F, I, L, bl, Sl, wl, El, Ll, Vf, k}) {
             );
           }
           Op(e, s, n + 0.3, c, 3, 3, 0.4);
-        },
-      },
-      "flame-wheel": {
-        zone(e, t, n, r, i, a) {
-          Math.random() < Math.min(1, a) &&
-            Ep(
-              e,
-              t,
-              e.terrain.height(t, r) + 0.3,
-              r,
-              F.range(-0.4, 0.4),
-              F.range(1.5, 3),
-              F.range(-0.4, 0.4),
-              0.45,
-              F.range(0.5, 0.8),
-              0.15,
-            );
-        },
-      },
-      "extreme-speed": {
-        dash(e, t, n, r, i, a, o) {
-          let s = -a,
-            c = i;
-          for (let l = 0; l < 9; l++) {
-            let u = F.range(-1.2, 1.2),
-              d = F.range(0.2, 1.8),
-              f = F.range(0, 0.3);
-            e.vfx.beams.spawn(
-              t + i * o * f + s * u,
-              n + d,
-              r + a * o * f + c * u,
-              t + i * o * (f + 0.7) + s * u,
-              n + d,
-              r + a * o * (f + 0.7) + c * u,
-              l % 3 ? 0.1 : 0.16,
-              l % 3 ? V.white : 16769162,
-              0.18,
-            );
-          }
-          (e.vfx.flash(t + i * o, n + 1, r + a * o, 16774352, 2.4, 0.1),
-            B(e, t + i * o, n + 1, r + a * o, I.Twinkle, V.white, 0.6, 3, 0.18));
         },
       },
       "flare-blitz": {
@@ -8663,42 +8562,6 @@ export function createMoveEffects({F, I, L, bl, Sl, wl, El, Ll, Vf, k}) {
           });
         },
       },
-      "play-rough": {
-        nova(e, t, n, r, i) {
-          for (let t = 0; t < 6; t++)
-            e.later(t * 0.03, () => {
-              let n = e.player.pos,
-                r = F.range(0, z),
-                a = F.range(0.6, i * 0.7);
-              (e.vfx.norm.spawn({
-                x: n.x + Math.cos(r) * a,
-                y: n.y + 0.8,
-                z: n.z + Math.sin(r) * a,
-                vy: 1.5,
-                drag: 2,
-                life: 0.4,
-                size: 1.1,
-                endSize: 1.8,
-                color: 15786224,
-                shape: I.PixPuff,
-              }),
-                B(
-                  e,
-                  n.x + Math.cos(r) * a,
-                  n.y + 1.1,
-                  n.z + Math.sin(r) * a,
-                  t % 2 ? I.Star : I.Heart,
-                  t % 2 ? 16773280 : 16752856,
-                  0.3,
-                  1,
-                  0.2,
-                  0,
-                  0.3,
-                ));
-            });
-          (e.vfx.ring(t, n, r, i, V.fairy, 0.3, 0.15, L.Petals), e.shake(0.05));
-        },
-      },
       soak: {
         cone(e, t, n, r, i, a, o, s, c) {
           if (Math.random() < 0.3) return;
@@ -9369,7 +9232,7 @@ export function createMoveEffects({F, I, L, bl, Sl, wl, El, Ll, Vf, k}) {
     Gp = [``];
   for (let [e, t] of Object.entries(Vp)) {
     let n = Up.indexOf(t);
-    (n < 0 && ((n = Up.length), Up.push(t), Gp.push(e)), Wp.set(e, n));
+    (n < 0 && ((n = Up.length), Up.push(t), Gp.push(t.sourceKey ?? e)), Wp.set(e, n));
   }
   function Kp(e) {
     return Wp.get(e) ?? 0;

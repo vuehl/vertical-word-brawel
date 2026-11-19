@@ -9,8 +9,9 @@ export function stabiliseWorkshopBump(material){
   material.metalness=0;material.roughness=1;material.bumpMap=null;material.bumpScale=0;
   material.normalMap=null;material.displacementMap=null;
   material.userData.inkPaint=true;
+  const android=typeof window!=='undefined' && window.nativeDevice?.platform==='android';
   material.onBeforeCompile=shader=>{
-    workshopShadowShader(shader);
+    workshopShadowShader(shader,android);
     shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`
       float baseValue=max(dot(diffuseColor.rgb,vec3(.2126,.7152,.0722)),.015);
       float direct=dot(reflectedLight.directDiffuse,vec3(.2126,.7152,.0722))/baseValue;
@@ -35,7 +36,7 @@ export function stabiliseWorkshopBump(material){
       #include <opaque_fragment>
     `);
   };
-  material.customProgramCacheKey=()=> 'illustrated-desktop-pigment-v1';return material;
+  material.customProgramCacheKey=()=> android?'illustrated-desktop-pigment-android':'illustrated-desktop-pigment-v1';return material;
 }
 
 // The playfield uses its own quiet, flat texture. Curved wood knots and

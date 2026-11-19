@@ -33,6 +33,36 @@ export async function verifyDesk(page,dir){
  });
  assert.equal(stats.layers.length,24);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.edges&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
  await page.screenshot({path:path.join(dir,'stage1.png')});
+ const ringPixels=await page.evaluate(()=>{
+   const r=app.run, facilities=r.interactables;
+   for(const f of facilities.list){
+     if(!Number.isFinite(f.ringRadius)||f.ringRadius<f.r||f.halo?.scale.x!==f.ringRadius)
+       throw Error('Invalid desk facility ring on '+f.kind+': '+f.ringRadius);
+   }
+   const chest=facilities.list.find(f=>f.kind==='chest'&&!f.used);
+   r.player.pos.copy(chest.group.position);
+   r.player.pos.z+=4;
+   r.camTarget.copy(r.player.pos);r.updateCamera(1);r.renderWorld(0);
+   if(!chest.halo.visible)throw Error('Idle chest ring is hidden');
+   const gl=r.r.renderer.getContext();
+   function frame(){
+     r.r.render(0);
+     const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight,pixels=new Uint8Array(w*h*4);
+     gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+     return pixels;
+   }
+   chest.halo.visible=false;
+   const without=frame();
+   chest.halo.visible=true;
+   const withRing=frame();
+   let changed=0;
+   for(let i=0;i<without.length;i+=4){
+     if(Math.abs(withRing[i]-without[i])+Math.abs(withRing[i+1]-without[i+1])+Math.abs(withRing[i+2]-without[i+2])>30)changed++;
+   }
+   return changed;
+ });
+ assert.ok(ringPixels>30,'Idle chest ring should change visible pixels: '+ringPixels);
+ await page.screenshot({path:path.join(dir,'desk-facility-ring.png')});
  await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();});
  assert.ok(await page.evaluate(()=>app.run.stage===2&&!app.run.terrain.desk2d));
 }

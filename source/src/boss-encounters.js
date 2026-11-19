@@ -1,8 +1,13 @@
 import {formCopy, moveCopy} from './form-copy.js';
 import {finalBossSpecies} from './character-rules.js';
+import {FOREST_COMBAT_ZONES, SINGLE_STAGE} from './lite-rules.js';
+import {ENEMY_HEALTH_SCALE} from './spawn-budget.js';
 import {chineseText as c} from './chinese-text.js';
-import {Dn as T, Rr as Je, vn as Yn} from './config.js';
+import {Dn as T, Rr as Je} from './config.js';
 import {E as yr, I as Cr, K as Tr, ct as Kr, w as Ei} from '../assets/three-DmSYIDKK.js';
+
+const ZONE_BOSS_HEALTH_MULTIPLIER = 5;
+const NORMAL_MULTI_GUARDIAN_HP = [45_000, 100_000];
 
 export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv, Ol}) {
   var Kv = [0.66, 0.33],
@@ -2697,6 +2702,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 type: `psychic`,
                 cls: `special`,
                 flags: em.Hostile,
+                from: this.i,
                 size: 1.5,
                 shape: I.Crescent,
                 color: 13667071,
@@ -3101,6 +3107,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 type: `rock`,
                 cls: `special`,
                 flags: em.Hostile,
+                from: r,
                 size: 1.5,
                 shape: I.PixRock,
                 color: 16777215,
@@ -6017,13 +6024,13 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (super(e, t, n), e.sprites.get(94));
         }
         name() {
-          return this.phase === 1 ? c(`Doble Equipo`) : this.phase === 2 ? c(`Apagón`) : c(`Comesueños`);
+          return this.phase === 1 ? c(`Doble Equipo`) : this.phase === 2 ? `潜入墙壁` : c(`Comesueños`);
         }
         cast(e) {
           return this.phase === 1
             ? this.doubleTeam(e)
             : this.phase === 2
-              ? this.blackout(e)
+              ? this.wallDive(e)
               : Math.random() < 0.4
                 ? this.doubleTeam(e)
                 : this.hypnosis(e);
@@ -6084,7 +6091,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               (this.run.vfx.burst(e.x[t], e.y[t] + 1.5, e.z[t], vy, 10, 4, I.Wisp, 0.5, 0.5), e.kill(t));
           this.clones = [];
         }
-        blackout(e) {
+        wallDive(e) {
           let t = this.run,
             n = this.E,
             r = F.range(0, Math.PI * 2),
@@ -6169,32 +6176,22 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             (this.exposed = Math.max(0, this.exposed - e)),
             !t)
           ) {
-            (this.killClones(), n.tower && (n.tower.blackout = 0));
+            this.killClones();
             return;
           }
           let o = r.hp[i] / r.maxHp[i],
             s = o > 0.66 ? 1 : o > 0.33 ? 2 : 3;
-          if (
-            (s !== this.phase &&
-              ((this.phase = s),
-              this.killClones(),
-              n.ui.banner(
-                c(s === 2 ? `¡Apagón!` : `¡Comesueños!`),
-                c(
-                  s === 2
-                    ? `Gengar apaga la luna. Enciende las velas y espera a que salga del muro`
-                    : `No dejes que te duerma: esquiva la Hipnosis`,
-                ),
-                `#9a5aff`,
-                { species: 94 },
-              ),
-              n.tower?.ringBell(s),
-              n.audio.bossStart()),
-            n.tower)
-          ) {
-            let t = s >= 2 ? 0.75 : 0,
-              r = n.tower.blackout;
-            Math.abs(r - t) > 0.01 && ((n.tower.blackout = r + (t - r) * Math.min(1, e * 1.5)), n.pushLook());
+          if (s !== this.phase) {
+            this.phase = s;
+            this.killClones();
+            n.ui.banner(
+              s === 2 ? `潜入墙壁` : c(`¡Comesueños!`),
+              s === 2 ? `留意墙边的眼睛，等对手现身后反击` : c(`No dejes que te duerma: esquiva la Hipnosis`),
+              `#9a5aff`,
+              { species: 94 },
+            );
+            n.tower?.ringBell(s);
+            n.audio.bossStart();
           }
           (this.exposed > 0 &&
             Math.random() < e * 12 &&
@@ -6252,7 +6249,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           }
         }
         dispose() {
-          (this.killClones(), this.run.tower && (this.run.tower.blackout = 0), super.dispose());
+          this.killClones();
+          super.dispose();
         }
       },
     },
@@ -7337,20 +7335,21 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
     },
     Ty = 2.5;
   function Ey(e, t) {
-    return e.combat.meter.budget(t * (1 + 0.15 * e.tier) * e.player.stats.difficulty);
+    return e.combat.meter.budget(t * (1 + 0.15 * e.tier) * e.player.stats.difficulty) * ENEMY_HEALTH_SCALE;
   }
   var Dy = { guardian: [25, 30, 35], totem: [10, 12, 14], summoner: [6, 7, 8], endlessGuardian: 25 };
-  function Oy(e, t, n) {
+  function Oy(e, t, n, maxScale = 4) {
     let r = e.enemies;
     t < 0 ||
       !Number.isFinite(n) ||
-      ((n = Math.min(n, r.maxHp[t] * 4)), n > r.maxHp[t] && (r.hp[t] = r.maxHp[t] = Math.min(n, 1e30)));
+      ((n = Math.min(n, r.maxHp[t] * maxScale)), n > r.maxHp[t] && (r.hp[t] = r.maxHp[t] = Math.min(n, 1e30 * ENEMY_HEALTH_SCALE)));
   }
   function ky(e, t, n) {
     let r = e.enemies;
     t < 0 ||
       !(n > 0) ||
-      ((r.capRate[t] = r.maxHp[t] / n), (r.capBank[t] = r.capRate[t] * 3), (r.capT[t] = e.time));
+      // Preserve the damage allowed per second when the health pool shrinks.
+      ((r.capRate[t] = r.maxHp[t] / (n * ENEMY_HEALTH_SCALE)), (r.capBank[t] = r.capRate[t] * 3), (r.capT[t] = e.time));
   }
   var Ay = 12,
     jy = 20,
@@ -7403,10 +7402,15 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       }
       spawn(e, t, n, r, i = {}) {
         let a = this.run;
+        if (a.dragonDuel) return -1;
         (a.sprites.get(e), (this.roars = a.endless ? 0 : a.roars));
+        // Players have accumulated real minutes of upgrades even though the
+        // wave table runs faster. Size a timed guardian on that same clock.
+        const timedGuardian = !r && i.hp == null && a.director.pace > 1;
+        const guardianMinutes = timedGuardian ? a.stageTime / 60 : undefined;
         let o = 1 + Bv * this.roars,
           s =
-            (i.hp ?? a.director.hpMult(r ? 0 : Ty) * (r ? 1.6 : 1) * (Av.BOSS_ZONE_HP[a.stage - 1] ?? 0.5)) * o,
+            (i.hp ?? a.director.hpMult(r ? 0 : Ty, guardianMinutes) * (r ? 1.6 : 1) * (Av.BOSS_ZONE_HP[a.stage - 1] ?? 0.5)) * o,
           c = (i.dmg ?? a.director.dmgMult()) * (1 + Vv * this.roars),
           l = a.enemies.spawn(e, t, n, s, c, R.Boss);
         if (l < 0) {
@@ -7421,13 +7425,22 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             }
           l = a.enemies.spawn(e, t, n, s, c, R.Boss);
         }
-        if (
-          ((this.fightSecs = (i.secs ?? (r ? wy.legendary : wy.guardian[Math.min(2, a.stage - 1)])) * o),
-          Oy(a, l, Ey(a, this.fightSecs)),
-          a.coop && l >= 0)
-        ) {
-          let e = a.enemies;
-          ((e.maxHp[l] = Math.min(1e30, e.maxHp[l] * a.coop.bossHpMul)), (e.hp[l] = e.maxHp[l]));
+        this.fightSecs = (i.secs ?? (r ? wy.legendary : wy.guardian[Math.min(2, a.stage - 1)])) * o;
+        const zoneBoss = a.stage >= 1 && a.stage <= FOREST_COMBAT_ZONES &&
+          (a.mode === SINGLE_STAGE || a.mode === 'standard' || a.mode === 'classic');
+        const fixedGuardianHp = zoneBoss && timedGuardian && a.mode !== SINGLE_STAGE && a.tier === 0
+          ? NORMAL_MULTI_GUARDIAN_HP[a.stage - 1] : undefined;
+        if (fixedGuardianHp === undefined) {
+          const damageBudget = Ey(a, this.fightSecs);
+          Oy(a, l, timedGuardian ? damageBudget * 0.6 : damageBudget, timedGuardian ? 2 : 4);
+        }
+        if (l >= 0 && (zoneBoss || a.coop)) {
+          const enemies = a.enemies;
+          const baseHealth = fixedGuardianHp === undefined
+            ? enemies.maxHp[l] * (zoneBoss ? ZONE_BOSS_HEALTH_MULTIPLIER : 1)
+            : fixedGuardianHp * (a.coop?.hpMul ?? 1);
+          const health = baseHealth * (a.coop?.bossHpMul ?? 1);
+          enemies.hp[l] = enemies.maxHp[l] = Math.min(1e30 * ENEMY_HEALTH_SCALE, health);
         }
         (i.kit || ky(a, l, (a.endless ? Dy.endlessGuardian : Dy.guardian[Math.min(2, a.stage - 1)]) * o),
           (this.fightT = 0),
@@ -7782,6 +7795,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (this.callT = 0.6));
       }
       callEscorts(e, t, n) {
+        if (this.run.dragonDuel) return;
         let r = this.run,
           i = r.enemies,
           a = r.director,
@@ -8337,7 +8351,6 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         sun: new Ei(),
         clouds: [1, 1, 1],
         cover: 0,
-        eclipse: 0,
         vignette: 0.4,
         tint: [1, 1, 1],
       };
@@ -8779,7 +8792,6 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (t.light = 0.82),
           (t.clouds = [0.92, 0.95, 1]),
           (t.cover = 0.9),
-          (t.eclipse = 0),
           (t.vignette = 0.55),
           (t.tint = [0.94, 0.97, 1.04]),
           t
@@ -8814,9 +8826,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       rock: [c(`Avalancha`), c(`Poder Pasado`)],
       ghost: [c(`Garra Umbría`), c(`Bola Sombra`)],
       dragon: [c(`Garra Dragón`), c(`Pulso Dragón`)],
-      dark: [c(`Triturar`), c(`Pulso Umbrío`)],
+      dark: [c(`Golpe Cuerpo`), c(`Pulso Umbrío`)],
       steel: [c(`Cabeza de Hierro`), c(`Foco Resplandor`)],
-      fairy: [c(`Carantoña`), c(`Fuerza Lunar`)],
+      fairy: [c(`Golpe Cuerpo`), c(`Fuerza Lunar`)],
     },
     sb = class {
       run;
@@ -9407,7 +9419,6 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           sun: 12101887,
           clouds: [0.55, 0.52, 0.66],
           cover: 0.6,
-          eclipse: 0,
           vignette: 0.62,
           tint: [0.74, 0.72, 0.9],
         },
@@ -9432,34 +9443,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           sun: 13162751,
           clouds: [0.36, 0.4, 0.48],
           cover: 1,
-          eclipse: 0,
           vignette: 0.55,
           tint: [0.62, 0.68, 0.82],
-        },
-      },
-      eclipse: {
-        name: c(`Eclipse`),
-        sub: c(`La luz se apaga. Salen los Pokémon de la noche... y algún variocolor`),
-        color: `#ff6a5a`,
-        dur: 40,
-        pool: [
-          [41, 92, 96, 35, 43],
-          [42, 93, 97, 36, 44],
-          [42, 94, 97, 36, 45],
-        ],
-        look: {
-          top: 1182244,
-          bottom: 5909050,
-          fog: 3809844,
-          near: 26,
-          far: 120,
-          light: 0.42,
-          sun: 16743002,
-          clouds: [0.32, 0.22, 0.34],
-          cover: 0.3,
-          eclipse: 1,
-          vignette: 0.65,
-          tint: [0.58, 0.4, 0.5],
         },
       },
       meowth: {
@@ -9496,11 +9481,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         sun: new Ei(),
         clouds: [1, 1, 1],
         cover: 0,
-        eclipse: 0,
         vignette: 0.4,
         tint: [1, 1, 1],
       };
-      shinyRolled = !1;
       constructor(e) {
         this.run = e;
       }
@@ -9513,9 +9496,6 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       get blind() {
         return this.kind === `fog` && this.k > 0.5;
       }
-      get eliteBonus() {
-        return this.kind === `eclipse` ? 0.12 : 0;
-      }
       get marker() {
         let e = this.run.enemies,
           t = this.meowth;
@@ -9524,22 +9504,22 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       startRandom() {
         let e = this.run;
         if (this.active || e.boss.alive || e.stageCleared || e.mapEvents.busy) return !1;
-        let t = [`fog`, `storm`, `eclipse`, `meowth`].filter((e) => !this.done.has(e));
+        let t = Object.keys(cb).filter((e) => !this.done.has(e));
         return (
-          !t.length && e.endless && (this.done.clear(), (t = [`fog`, `storm`, `eclipse`, `meowth`])),
+          !t.length && e.endless && (this.done.clear(), (t = Object.keys(cb))),
           !t.length || this.start(F.weighted(t, (e) => (e === `meowth` ? 0.8 : 1)))
         );
       }
       start(e) {
         let t = this.run,
           n = cb[e];
+        if (!n) return false;
         (this.active && this.end(!0),
           (this.kind = e),
           (this.left = n.dur),
           (this.spawned = 0),
           (this.spawnT = 2),
           (this.boltT = 3),
-          (this.shinyRolled = !1),
           this.done.add(e));
         for (let e of this.pool()) t.sprites.get(e);
         return e === `meowth` && !this.spawnMeowth()
@@ -9566,9 +9546,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               ? c(`La niebla se disipa`)
               : this.kind === `storm`
                 ? c(`La tormenta se aleja`)
-                : this.kind === `eclipse`
-                  ? c(`La luz vuelve`)
-                  : ``;
+                : ``;
           e && t.ui.toast(e, null);
         }
         ((this.kind = null), (this.left = 0));
@@ -9585,9 +9563,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 this.updateSpawns(e),
                 this.kind === `fog`
                   ? this.fogFx(e)
-                  : this.kind === `storm`
-                    ? this.stormFx(e)
-                    : this.eclipseFx(e)),
+                  : this.stormFx(e)),
             this.left <= 0 && this.end())
           : (this.k = Math.max(0, this.k - e / 3)),
           (this.flash = Math.max(0, this.flash - e * 5)),
@@ -9609,7 +9585,6 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (e.light = n.light),
           (e.clouds = n.clouds),
           (e.cover = n.cover),
-          (e.eclipse = n.eclipse),
           (e.vignette = n.vignette),
           (e.tint = n.tint),
           e
@@ -9633,8 +9608,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             s = i.x + Math.cos(a) * o,
             c = i.z + Math.sin(a) * o;
           if (!t.terrain.inBounds(s, c, 5)) continue;
-          let l = this.kind === `eclipse` && e === 0 && t.stageTime > 90 ? R.Elite : 0,
-            u = n.spawn(F.pick(r), s, c, t.director.hpMult(), t.director.dmgMult(), l);
+          let u = n.spawn(F.pick(r), s, c, t.director.hpMult(), t.director.dmgMult(), 0);
           u < 0 ||
             (this.spawned++,
             this.kind === `fog` &&
@@ -9795,40 +9769,6 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             noReact: !0,
           }),
             o.isAlive(t) && i.combat.applyStatus(t, `paralysis`, 0));
-        }
-      }
-      eclipseFx(e) {
-        let t = this.run,
-          n = t.r.camera.position;
-        if (Math.random() < e * 8 * this.k) {
-          let e = n.x + F.range(-20, 20),
-            r = n.z + F.range(-20, 20);
-          t.vfx.add.spawn({
-            x: e,
-            y: t.terrain.surface(e, r) + F.range(0.2, 1.5),
-            z: r,
-            vy: F.range(0.4, 1),
-            life: 2.2,
-            size: 0.3,
-            endSize: 0,
-            color: 16743002,
-            shape: I.Twinkle,
-            glow: 0.7,
-          });
-        }
-        if (!this.shinyRolled && this.left < cb.eclipse.dur - 12) {
-          let e = t.capture.state;
-          if (e === `roaming` || e === `weakened` || e === `throwing` || ((this.shinyRolled = !0), t.endless))
-            return;
-          let n = this.pool();
-          n.length &&
-            F.chance(
-              Math.min(
-                0.9,
-                (Yn.eclipse + Math.min(Yn.zone, t.player.stats.luck / Yn.luckDiv)) * t.meta.shinyRate(),
-              ),
-            ) &&
-            t.capture.spawnShiny(n);
         }
       }
       spawnMeowth() {

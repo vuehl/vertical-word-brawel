@@ -4431,9 +4431,9 @@ export {zi as WorkshopStandardMaterial, Ha as WorkshopPointLight};
 
 // Public names used by the screen-effect module embedded in the device GLBs.
 export const DeviceFxThree = {
-  BufferAttribute: Dn, BufferGeometry: Hn, Camera: Pa, Color: J, DepthTexture: hi,
+  BufferAttribute: Dn, BufferGeometry: Hn, Camera: Pa, Color: J, DataTexture: kr, DepthTexture: hi,
   DoubleSide: 2, DynamicDrawUsage: ie, Float32BufferAttribute: An, HalfFloatType: p,
-  Matrix4: q, Mesh: hr, NearestFilter: r, RGBAFormat: _, Scene: Ht, ShaderMaterial: Li,
-  UnsignedIntType: d, Vector2: V, Vector3: U, Vector4: tt, WebGLRenderTarget: rt,
+  LinearFilter: o, Matrix4: q, Mesh: hr, NearestFilter: r, RedFormat: b, RGBAFormat: _, Scene: Ht, ShaderMaterial: Li,
+  UnsignedByteType: l, UnsignedIntType: d, Vector2: V, Vector3: U, Vector4: tt, WebGLRenderTarget: rt,
 };
 export {Nl as PostprocessingPass, b as RedFormat};

@@ -3,7 +3,7 @@ import path from 'node:path';
 import http from 'node:http';
 import sharp from 'sharp';
 import puppeteer from 'puppeteer-core';
-import {facilityNames} from '../source/src/active-content.js';
+import {facilityNames,facilityModelFile} from '../source/src/active-content.js';
 const root=path.resolve('source/public'),out=path.join(root,'assets/env/desk2d');
 const server=http.createServer((req,res)=>{
   if(req.url==='/')return res.end('<body></body>');
@@ -14,9 +14,10 @@ const server=http.createServer((req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const browser=await puppeteer.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{const page=await browser.newPage();await page.goto('http://127.0.0.1:'+server.address().port);const sizes={};
-for(const [kind,name] of Object.entries(facilityNames)){
- const {image,height,size}=await page.evaluate(async(name)=>{
-  const T=await import('/assets/three-DmSYIDKK.js'),gltf=await new T.t().loadAsync('/assets/models/devices/'+name+'.glb');
+for(const kind of Object.keys(facilityNames)){
+ const modelFile=facilityModelFile(kind)+'.glb';
+ const {image,height,size,footprintRadius}=await page.evaluate(async(modelFile)=>{
+  const T=await import('/assets/three-DmSYIDKK.js'),gltf=await new T.t().loadAsync('/assets/models/'+modelFile);
   const model=gltf.scene,scene=new T.st();scene.add(model,new T.R(0xffffff,0xb8c3d0,2));
   const light=new T.k(0xffefdd,2);light.position.set(-4,8,5);scene.add(light);
   const box=new T.g().setFromObject(model),extent=box.getSize(new T.ht()),size=Math.max(extent.length()*1.05,.2);
@@ -24,8 +25,9 @@ for(const [kind,name] of Object.entries(facilityNames)){
   camera.position.set(0,size*2*Math.sin(pitch),size*2*Math.cos(pitch));camera.lookAt(0,0,0);
   camera.projectionMatrix.makeOrthographic(-size/2,size/2,size*.80,-size*.20,.01,1000,camera.coordinateSystem);
   const renderer=new T.h({alpha:true,antialias:true,preserveDrawingBuffer:true});renderer.setClearColor(0,0);renderer.setSize(256,256);renderer.render(scene,camera);
-  const image=renderer.domElement.toDataURL().split(',')[1];renderer.dispose();renderer.forceContextLoss();return {image,size,height:extent.y};
- },name);
+  const image=renderer.domElement.toDataURL().split(',')[1];renderer.dispose();renderer.forceContextLoss();
+  return {image,size,height:extent.y,footprintRadius:Math.hypot(extent.x,extent.z)/2};
+ },modelFile);
  fs.writeFileSync(path.join(out,'device-'+kind+'.png'),Buffer.from(image,'base64'));// Raster silhouette strips let the existing shine and outline passes mask a sprite.
  const pixels=await sharp(Buffer.from(image,'base64')).resize(128,128).ensureAlpha().raw().toBuffer();
  const strips=[];for(let row=0;row<128;row++){
@@ -35,8 +37,8 @@ for(const [kind,name] of Object.entries(facilityNames)){
      if(!visible&&start>=0){strips.push([start,row,x]);start=-1;}
    }
  }
- const glb=fs.readFileSync(path.join(root,'assets/models/devices',name+'.glb'));
+ const glb=fs.readFileSync(path.join(root,'assets/models',modelFile));
  const cfg=JSON.parse(glb.subarray(20,20+glb.readUInt32LE(12))).scenes[0].extras.deviceScreenFx;
- sizes[kind]={size,height,strips,fx:cfg};
+ sizes[kind]={size,height,footprintRadius,strips,fx:cfg};
 }
 fs.writeFileSync('source/src/desk2d-devices.json',JSON.stringify(sizes));}finally{await browser.close();server.close();}

@@ -253,6 +253,15 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 .zx-toast-layer .zx-note-tab{flex:none;width:5px;height:13px;background:#c98f4b;border-radius:2px}
 .zx-toast-layer .zx-note-text{min-width:0;flex-shrink:1}
 .zx-toast-layer .toast img,.zx-toast-layer .toast canvas{width:21px;height:21px;flex:none}
+.zx-hint-slot{position:absolute;left:16px;top:193px;width:calc(100% - 76px);max-width:292px;height:100px;pointer-events:none}
+html.zixing .run-hint.zx-hint{position:relative;left:0;top:0;width:100%;max-width:100%;min-height:52px;display:flex;align-items:center;gap:10px;padding:6px 10px 6px 6px;border:1px solid #cdbfa7;border-radius:11px;background:#fffcf4;box-shadow:none;text-align:left;text-shadow:none;transform:none;animation:none;transition:opacity .25s;pointer-events:none}
+.zx-hint .zx-hint-art{flex:none;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:8px;background:#f6e7cc}
+.zx-hint[data-kind="altar"] .zx-hint-art,.zx-hint[data-kind="nest"] .zx-hint-art{background:#e2eee2}
+.zx-hint[data-kind="portal"] .zx-hint-art,.zx-hint[data-kind="freechest"] .zx-hint-art{background:#e1edf2}
+.zx-hint .zx-hint-art img,.zx-hint .zx-hint-art canvas{position:static;display:block;width:36px;height:36px;object-fit:contain;image-rendering:auto}
+.zx-hint .zx-hint-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.run-hint.zx-hint .zx-hint-title{display:block;font-family:inherit;font-size:14px;line-height:1.25;font-weight:700;color:#304841}
+.run-hint.zx-hint .zx-hint-text{display:block;font-size:12px;line-height:1.4;font-weight:500;color:#505d58}
 .zx-compass .zx-compass-dial{position:absolute;left:-32px;top:-32px;width:64px;height:64px;pointer-events:none}
 .zx-compass .cp-ic{left:-16px;top:-16px;width:32px;height:32px;transform:none;animation:none;filter:none}
 .zx-compass .mapbadge{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;background:transparent;box-shadow:none}
@@ -268,16 +277,9 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 html.zixing .zx-choice.fire.on{border-color:#d84840;border-width:2px;background:#fff1ed;box-shadow:0 3px 0 #d9988f}
 .zx-battle-map{align-items:center;padding:12px 16px;gap:8px;animation:none;transition:none;transform:none}
 .zx-battle-map-frame{position:relative;flex:none;align-self:center}
-html.zixing .zx-battle-map-art{position:absolute;inset:0;display:block;width:100%;height:100%}
+html.zixing .zx-battle-map-art{position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:auto;touch-action:none}
 .zx-battle-map>.zx-button{width:100%}
-.zx-map-filters{display:flex;flex-direction:column;width:100%;gap:6px}
-.zx-map-filter-row{display:flex;width:100%;gap:6px}
-.zx-map-filter-row>.zx-map-filter{flex:1;min-width:0;height:32px;min-height:0;padding:4px 2px;border:1px solid #cbd6d5;border-radius:8px;background:#f3f6f3;box-shadow:none;font-size:12px;line-height:20px;color:#52676d}
-.zx-map-filter-row>.zx-map-filter.on{background:#3d647a;border-color:#3d647a;color:#fff;font-weight:700}
-.zx-map-info{display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;text-align:center}
-.zx-map-status{font-size:13px;color:#315a70;line-height:18px}
-.zx-map-info>.zx-map-hint{font-size:10px;line-height:16px;color:#78847d}
-@media(max-width:350px){.zx-map-filter-row>.zx-map-filter{height:30px;font-size:11px}.zx-battle-map>h2{font-size:20px}.zx-battle-map>.zx-button{padding:8px 12px}}
+@media(max-width:350px){.zx-battle-map>h2{font-size:20px}.zx-battle-map>.zx-button{padding:8px 12px}}
 .zx-modal-wrap.zx-pause-screen{padding:0;align-items:stretch;background:var(--paper)}
 .zx-modal.zx-pause{width:100%;max-width:none;height:100%;max-height:100%;border:0;border-radius:0;box-shadow:none;padding:0;gap:0;overflow:hidden;background:var(--paper)}
 .zx-pause-body{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;gap:16px;padding:26px 24px 18px}.zx-pause-body>*{flex-shrink:0}

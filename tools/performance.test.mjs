@@ -1,12 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {performanceProfile} from '../source/src/performance-profile.js';
+import {performanceProfile,selectGraphicsQuality,setBatterySaver} from '../source/src/performance-profile.js';
 import {paperBox,hitsPaperBox,resolvePaperBox} from '../source/src/paper-collision.js';
 import {updatePaperVisibility} from '../source/src/paper-visibility.js';
 import {separateCrowd} from '../source/src/crowd-separation.js';
 import {FramePacer} from '../source/src/frame-pacing.js';
-import {warmCombatShaders} from '../source/src/combat-warmup.js';
+import {warmCombatShaders,warmCombatDraw} from '../source/src/combat-warmup.js';
 import {readRuntimeInfo} from '../platform/device.mjs';
+
+test('WeChat gets one native rate request per transition and can jitter or ignore a request',()=>{
+  const requests=[],pacer=new FramePacer(fps=>requests.push(fps));
+  for(const fps of [30,60]){
+    for(let frame=0;frame<120;frame++)
+      assert.equal(pacer.ready(5000+frame*1000/fps+(frame%2?4:0),1000/fps),true);
+  }
+  assert.deepEqual(requests,[30,60]);
+  pacer.reset();
+  let frames=0;
+  for(let i=0;i<600;i++)frames+=Number(pacer.ready(i*1000/60,1000/30));
+  assert.equal(frames,300);assert.deepEqual(requests,[30,60,30]);
+  const unavailable=new FramePacer(()=>{throw Error('unsupported');});
+  assert.equal(unavailable.ready(0,1000/30),true);
+  assert.equal(unavailable.ready(25,1000/30),false);
+});
 
 test('frame pacing retains 60 callbacks per second under alternating 5 ms delays',()=>{
   const pacer=new FramePacer();let drawn=0;
@@ -40,6 +56,27 @@ test('combat warmup uses the scene target and restores it before async work and 
   const pending=warmCombatShaders(graphics);assert.equal(target,screen);finish();await pending;
   graphics.renderer.compileAsync=()=>{throw Error('compile');};
   await assert.rejects(warmCombatShaders(graphics),/compile/);assert.equal(target,screen);
+});
+
+test('entry draws each combat batch once and restores its live count even on failure',()=>{
+  const batch=()=>({mesh:{visible:false,count:0}});
+  const run={projectiles:{pool:batch(),glow:batch()},pickups:{pool:batch(),glow:batch()},
+    orbitals:batch(),orbitalsGlow:batch(),vfx:Object.fromEntries(
+      ['rings','beams','text','add','norm','ground','groundN'].map(key=>[key,batch()]))};
+  const batches=[...Object.values(run.projectiles),...Object.values(run.pickups),...Object.values(run.vfx),run.orbitals,run.orbitalsGlow];
+  run.pickups.pool.mesh={visible:true,count:3};
+  const state=batches.map(({mesh})=>({...mesh}));
+  let draws=0;
+  run.r={render(dt){
+    assert.equal(dt,0);draws++;
+    assert.ok(batches.every(({mesh})=>mesh.visible&&mesh.count>=1));
+    assert.equal(run.pickups.pool.mesh.count,3);
+    if(draws===2)throw Error('draw failed');
+  }};
+  warmCombatDraw(run);
+  assert.deepEqual(batches.map(b=>b.mesh),state);
+  assert.throws(()=>warmCombatDraw(run),/draw failed/);
+  assert.deepEqual(batches.map(b=>b.mesh),state);assert.equal(draws,2);
 });
 
 test('iOS diagnostics distinguish actual mode, unavailable flags and configured quality',()=>{
@@ -87,14 +124,16 @@ test('dense crowd steering bounds work and rotates through every candidate witho
   assert.ok(Math.abs(sx/phases-exact[0])<1e-10&&Math.abs(sz/phases-exact[1])<1e-10);
 });
 
-test('performance presets preserve the selected quality when leaving battery saver',()=>{
+test('battery saver selects smooth quality and selecting fine quality switches saver off',()=>{
   const settings={quality:'high',batterySaver:false,touchScale:.85};
-  const high=performanceProfile(settings);settings.batterySaver=true;
-  const saver=performanceProfile(settings);settings.batterySaver=false;
-  assert.equal(performanceProfile(settings),high);assert.equal(settings.touchScale,.85);
+  const high=performanceProfile(settings);setBatterySaver(settings,true);
+  const saver=performanceProfile(settings);assert.equal(settings.quality,'low');
+  setBatterySaver(settings,false);assert.equal(performanceProfile(settings),saver);
+  setBatterySaver(settings,true);selectGraphicsQuality(settings,'high');
+  assert.equal(settings.batterySaver,false);assert.equal(performanceProfile(settings),high);assert.equal(settings.touchScale,.85);
   assert.equal(saver.bloom,false);assert.equal(saver.outline,false);
   assert.ok(high.pixelBudget>saver.pixelBudget&&high.maxPixelRatio>saver.maxPixelRatio);
-  assert.equal(performanceProfile().name,'流畅');
+  assert.equal(performanceProfile(),high);
 });
 test('rotated stationery blocks its footprint, permits rounded corner clearance and resolves embedded actors',()=>{
   for(const angle of [0,.4,Math.PI/2,-.7]){
@@ -117,6 +156,12 @@ test('camera culling restores immutable instance transforms and leaves unchanged
   const frustum=(left,right)=>({planes:[{normal:{x:1,y:0,z:0},constant:-left},{normal:{x:-1,y:0,z:0},constant:right}]});
   updatePaperVisibility(terrain,frustum(-10,10));assert.equal(mesh.count,1);assert.equal(attribute.array[12],0);
   const before=uploads;updatePaperVisibility(terrain,frustum(-10,10));assert.equal(uploads,before);
+    terrain.workshopBoundary={};
+    // Small walking steps reuse the guard band, but their total displacement still counts.
+    for(const dx of [.4,.8])assert.equal(updatePaperVisibility(terrain,frustum(-10+dx,10+dx)),false);
+    assert.equal(updatePaperVisibility(terrain,frustum(-8.8,11.2)),true);
+    const rotated=frustum(-8.8,11.2);rotated.planes[0].normal={x:0,y:1,z:0};
+    assert.equal(updatePaperVisibility(terrain,rotated),true);
   updatePaperVisibility(terrain,frustum(40,110));assert.equal(mesh.count,2);assert.equal(attribute.array[12],50);assert.equal(attribute.array[28],100);
   updatePaperVisibility(terrain,frustum(-10,110));assert.equal(mesh.count,3);assert.deepEqual(attribute.array,matrices);
   mesh.userData.paperInstances.shadow=true;updatePaperVisibility(terrain,frustum(-10,110),false);assert.equal(mesh.visible,false);

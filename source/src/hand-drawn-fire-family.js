@@ -217,10 +217,10 @@ export class HandDrawnFireFamily{
   if(zone.hideGroundVisual)return;
   // Overlapping persistent burns share a quiet ground drawing. Their actual
   // independent damage zones continue to tick in the combat system.
-  const existing=this.keys.get(zone);
-  const neighbor=!existing&&this.events.find(e=>e.clip==='crack'&&e.key&&e.key!==zone&&Math.hypot(e.x-zone.x,e.z-zone.z)<Math.min(zone.r,e.size/2)*.9);
+  const existing=this.keys.get(zone),artRadius=zone.artRadius??zone.r;
+  const neighbor=!existing&&this.events.find(e=>e.clip==='crack'&&e.key&&e.key!==zone&&Math.hypot(e.x-zone.x,e.z-zone.z)<Math.min(artRadius,e.size/2)*.9);
   if(neighbor&&this.clock-neighbor.seen<.08)return;
-  this.touch(zone,'crack',zone.x,zone.y+.10,zone.z,zone.r*2,{mode:1,height:zone.r*2,alpha:.52,clarity:1,cycleHz:.65,priority:0});
+  this.touch(zone,'crack',zone.x,zone.y+.10,zone.z,artRadius*2,{mode:1,height:artRadius*2,alpha:.52,clarity:1,cycleHz:.65,priority:0});
  }
  ring(x,y,z,radius,life=.6){
   this.play('ring',x,y+.14,z,radius*2.1,{life,loop:true,mode:1,height:radius*2.1,grow:true,alpha:.72,clarity:2,priority:2});
@@ -248,13 +248,13 @@ export class HandDrawnFireFamily{
  }
  ultimate(ctx){
   const {x,y,z,tier}=ctx;
-  this.play('seal',x,y+.22,z,8+tier,{life:.25,mode:1,height:11+tier,priority:2,scaleFrom:1.1,scaleTo:.45});
+  this.play('seal',x,y+.22,z,8,{life:.25,mode:1,height:11,priority:2,scaleFrom:1.1,scaleTo:.45});
   this.play('charge',x,y+.45,z,3.8,{life:.18,priority:2});
-  this.mushroom(x,y,z,1+tier*.12,1.25+tier*.14,.10);
-  this.play('sweepRing',x,y+.22,z,7.5+tier*1.2,{delay:.14,life:.55,mode:1,height:10+tier*1.5,spin:1.3,priority:2});
+  this.mushroom(x,y,z,1.25+tier*.14,.10);
+  this.play('sweepRing',x,y+.22,z,7.5,{delay:.14,life:.55,mode:1,height:10,spin:1.3,priority:2});
  }
- mushroom(x,y,z,scale=1,life=1.4,delay=0){
-  scale*=.60;
+ mushroom(x,y,z,life=1.4,delay=0){
+  const scale=.60;
   // A narrow rising stem and a broad rolling cap share the library drawing.
   // The dedicated last scene pass cannot be covered by actors or other VFX.
   this.play('pillar',x,y,z,7.6*scale,{height:23*scale,life,delay,anchorY:.14,cutUpper:.59,frameStart:.04,frameEnd:.46,mushroomPart:'stem',foreground:true,layer:0,priority:2,fadeIn:.08,fadeOut:.35,blend:true});
@@ -263,10 +263,10 @@ export class HandDrawnFireFamily{
  }
  heatWave(e){
   const beat=Math.floor(e.age/.42);if(e.heatBeat===beat)return;e.heatBeat=beat;
-  const dx=Math.cos(e.angle),dz=Math.sin(e.angle),length=e.length,life=.62;
+  const dx=Math.cos(e.angle),dz=Math.sin(e.angle),size=e.artLength*1.12,travel=e.length*.96,life=.62;
   // One complete authored flame front expands and travels from its cast point.
   // Its finite flight continues through the end of the original cone timer.
-  this.play('front',e.x+dx*.55,e.y+.55,e.z+dz*.55,length*1.12,{height:length*1.12,heatWave:true,mode:2,angle:e.angle,life,travelX:dx*length*.96,travelZ:dz*length*.96,scaleFrom:.40,scaleTo:1.12,alpha:.94,own:e.own,priority:2,fadeIn:.055,fadeOut:.23,blend:true});
+  this.play('front',e.x+dx*.55,e.y+.55,e.z+dz*.55,size,{height:size,heatWave:true,mode:2,angle:e.angle,life,travelX:dx*travel,travelZ:dz*travel,scaleFrom:.40,scaleTo:1.12,alpha:.94,own:e.own,priority:2,fadeIn:.055,fadeOut:.23,blend:true});
  }
  fusionVortex(key,x,y,z,radius,main){
   this.owner.touch(key,{x,y,z,radius:radius*(main?1.05:.95),height:radius*3,mode:3,type:'fire',handDrawn:true,own:true});
@@ -280,12 +280,12 @@ export class HandDrawnFireFamily{
   this.play('pillar',x,y,z,main?8:5,{height:main?12:8,life:.6,delay:.08,alpha:.7,anchorY:.18,priority:2});
   this.ultimateRing(x,y,z,radius*(main?1.25:1.1),.8);
  }
- sun(ctx,x,y,z,age){
+ sun(ctx,x,y,z,age,artScale=1){
   const continuing=ctx.sunArtStarted&&age>=ctx.sunArtAge;ctx.sunArtAge=age;
   if(continuing)return;ctx.sunArtStarted=true;
   const floor=this.owner.run.terrain.height(x,z);
   this.solarBlast(x,floor,z,3.2,.65);
-  this.play('ring',x,floor+.15,z,9.5*(ctx.R||1),{mode:1,height:9.5*(ctx.R||1),life:1.8*(ctx.D||1),loop:true,alpha:.30,clarity:2,fadeIn:.15,fadeOut:.35,blend:true});
+  this.play('ring',x,floor+.15,z,9.5*artScale,{mode:1,height:9.5*artScale,life:1.8*(ctx.D||1),loop:true,alpha:.30,clarity:2,fadeIn:.15,fadeOut:.35,blend:true});
  }
  sunRain(x,sky,z,floor,startX=x,startZ=z){
   this.play('meteor',startX,sky,startZ,2.3,{height:3.5,life:.30,travelX:x-startX,travelZ:z-startZ,fall:sky-floor,anchorY:.14,frameStart:.05,frameEnd:.64,priority:1,fadeIn:.05,fadeOut:.04,blend:true});
@@ -302,12 +302,12 @@ export class HandDrawnFireFamily{
   this.play('eruption',x,y,z,Math.max(8,radius*2.4),{life,anchorY:.22,priority:2,foreground:true,layer:1,fadeIn:.04,fadeOut:.28,blend:true});
   this.play('pillar',x,y,z,Math.max(5,radius*1.5),{height:Math.max(8,radius*2.5),life:life-.05,delay:.08,alpha:.65,anchorY:.18,foreground:true,layer:0,fadeIn:.06,fadeOut:.28,blend:true});
  }
- wildfire(ctx,x,y,z,dx,dz,length,age){
+ wildfire(ctx,x,y,z,dx,dz,length,age,artLength=length){
   ctx.wildfireArtKeys??=[{},{},{}];
   for(let j=0;j<3;j++){
    if(age<j*.075)continue;
    const key=ctx.wildfireArtKeys[j],distance=length*.28*(j+1),px=x+dx*distance,pz=z+dz*distance;
-   const entry=this.owner.touch(key,{x:px,y:this.owner.run.terrain.height(px,pz)+.1,z:pz,radius:length*.125,height:length*.30,mode:3,type:'fire',handDrawn:true,own:true});
+   const entry=this.owner.touch(key,{x:px,y:this.owner.run.terrain.height(px,pz)+.1,z:pz,radius:artLength*.125,height:artLength*.30,mode:3,type:'fire',handDrawn:true,own:true});
    if(entry)this.wildfireKeys.add(key);
   }
  }
@@ -371,9 +371,15 @@ export function installFireFamilyVFX(registry){
    cast(r,x,y,z){if(key==='inferno')fx(r).play('seal',x,y,z,5,{life:.3});else if(key==='fire-blast')fx(r).play('charge',x,y,z,3.2,{life:.2,fadeIn:.03,fadeOut:.1,blend:true});},
    strike:(r,x,y,z,dx,dz,radius)=>fx(r).strike(key,x,y,z,dx,dz,radius),
    hit:(r,x,y,z,size)=>fx(r).impact(key,x,y,z,size),
-   boom(r,x,y,z,radius=3){const f=fx(r),floor=r.terrain.height(x,z);if(key==='fire-blast'){f.completion.fireBlast(x,floor,z,radius);return;}f.play('eruption',x,floor,z,Math.max(8,radius*2.4),{life:.6,anchorY:.22,priority:2});f.play('pillar',x,floor,z,Math.max(5,radius*1.5),{height:Math.max(8,radius*2.5),life:.55,delay:.08,alpha:.65,anchorY:.18});f.ultimateRing(x,floor,z,radius*1.35,.55);},
-   dash(r,x,y,z,dx,dz,length){
-    fx(r).play('wake',x+dx*length*.35,y+.6,z+dz*length*.35,Math.min(16,length*1.7),{mode:2,angle:Math.atan2(-dz,-dx),life:.5});
+   boom(r,x,y,z,radius=3,color,artRadius=radius){
+    const f=fx(r),floor=r.terrain.height(x,z);
+    if(key==='fire-blast'){f.completion.fireBlast(x,floor,z,artRadius);return;}
+    f.play('eruption',x,floor,z,Math.max(8,artRadius*2.4),{life:.6,anchorY:.22,priority:2});
+    f.play('pillar',x,floor,z,Math.max(5,artRadius*1.5),{height:Math.max(8,artRadius*2.5),life:.55,delay:.08,alpha:.65,anchorY:.18});
+    f.ultimateRing(x,floor,z,artRadius*1.35,.55);
+   },
+   dash(r,x,y,z,dx,dz,length,color,artLength=length){
+    fx(r).play('wake',x+dx*length*.35,y+.6,z+dz*length*.35,Math.min(16,artLength*1.7),{mode:2,angle:Math.atan2(-dz,-dx),life:.5});
     fx(r).play('curl',x,y+.6,z,4.8,{life:.4});
    },
   };

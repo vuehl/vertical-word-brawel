@@ -51,10 +51,10 @@ export async function reviewFloatingControls({page,resize,dir,sleep}){
 
 export async function reviewBattleFeedback(context){
   const {page,tap,dir,sleep}=context,report={environment:'Compiled WeChat package in Chrome fixture; not iOS/Android hardware.'};
-  await tap('[data-action="journey"]');await tap('[data-species="132"]');await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
+  await tap('[data-action="journey"]');await tap('[data-species="16"]');await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.time>2&&app.run.state==='play',{timeout:90000});
   await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});
-  assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-element').textContent),'基');
+  assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-element').textContent),'风');
   report.controls=await reviewFloatingControls(context);
   // Freeze simulation while independently inspecting actual HUD canvas pixels.
   await sleep(700);
@@ -76,13 +76,34 @@ export async function reviewBattleFeedback(context){
   });
   assert.deepEqual(report.ultimateLayout.ring,report.ultimateLayout.button);assert.deepEqual(report.ultimateLayout.label,report.ultimateLayout.button);assert.equal(report.ultimateLayout.legacyVisible,false);
   report.maps=[];
+  await page.evaluate(()=>{
+    const r=app.run,p=r.player.pos;
+    r.enemies.clear();
+    for(const [flags,dx,dz] of [[2,3,4],[4096,-100,0],[8192,0,20]]){
+      const i=r.enemies.spawn(16,p.x+dx,p.z+dz,1,1,flags);
+      // Terrain can displace a spawn. Pin the frozen actors at known distances.
+      r.enemies.x[i]=p.x+dx;r.enemies.z[i]=p.z+dz;
+    }
+  });
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
-    await context.resize(width,height);await page.evaluate(()=>{const r=app.run;r.pause();r.ui.showMap(r);});await sleep(700);
+    await context.resize(width,height);
+    const labels=await page.evaluate(()=>{
+      const r=app.run,labels=[],proto=CanvasRenderingContext2D.prototype,fill=proto.fillText;
+      proto.fillText=function(text,...args){if(text.endsWith?.(' 厘米'))labels.push(text);return fill.call(this,text,...args);};
+      try{r.pause();r.ui.showMap(r);}finally{proto.fillText=fill;}
+      return labels;
+    });
+    assert.deepEqual(labels.sort(),['100 厘米','20 厘米','5 厘米']);
+    await sleep(700);
     const map=await page.evaluate(()=>{
       const panel=inspected.doc.querySelector('.zx-battle-map'),canvas=panel.querySelector('canvas'),b=panel.getBoundingClientRect(),scale=canvas.width/120;
-      return {text:panel.textContent,bottom:b.bottom,shadowPixel:Array.from(canvas.getContext('2d').getImageData(Math.floor(60*scale),Math.floor(116*scale),1,1).data)};
+      return {title:panel.querySelector('h2').textContent,back:panel.querySelector('[data-action="close-battle-map"]').textContent,
+        types:[...panel.querySelectorAll('[data-map-kind]')].map(el=>el.dataset.mapKind),bottom:b.bottom,
+        shadowPixel:Array.from(canvas.getContext('2d').getImageData(Math.floor(60*scale),Math.floor(116*scale),1,1).data)};
     });
-    assert.equal(map.text,'附近地图返回战斗');assert.equal(map.shadowPixel[3],0);assert.ok(map.bottom<=height);
+    assert.equal(map.title,'附近地图');assert.equal(map.back,'返回战斗');
+    assert.deepEqual(map.types,[]);
+    assert.equal(map.shadowPixel[3],0);assert.ok(map.bottom<=height);
     await page.screenshot({path:path.join(dir,'clean-map-'+width+'.png')});report.maps.push({width,...map});
     await tap('[data-action="close-battle-map"]');assert.equal(await page.evaluate(()=>app.run.state),'play');
   }

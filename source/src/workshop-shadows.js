@@ -3,15 +3,18 @@
 // player or the camera. Broadening and fading therefore stay fixed to props.
 export const WORKSHOP_SHADOW={span:48,near:1,far:300};
 
-// Evenly cover the same penumbra disk with eight fixed bilinear samples.
-// Build literal offsets once so the fragment shader only performs depth comparisons.
-const shadowTaps=Array.from({length:8},(_,i)=>{
-  const angle=i*2.39996323+.31,radius=Math.sqrt((i+.5)/8);
-  const x=(Math.cos(angle)*radius).toFixed(6),y=(Math.sin(angle)*radius).toFixed(6);
-  return `coverage+=workshopShadowTap(shadowMap,p.xy+vec2(${x},${y})*filterRadius,p,slope,mapSize).x;`;
-}).join('\n');
+// Build literal offsets once. Android uses four bilinear comparisons across
+// the same penumbra to reduce texture bandwidth on the receiving surfaces.
+function shadowTaps(count){
+  return Array.from({length:count},(_,i)=>{
+    const angle=i*2.39996323+.31,radius=Math.sqrt((i+.5)/count);
+    const x=(Math.cos(angle)*radius).toFixed(6),y=(Math.sin(angle)*radius).toFixed(6);
+    return `coverage+=workshopShadowTap(shadowMap,p.xy+vec2(${x},${y})*filterRadius,p,slope,mapSize).x;`;
+  }).join('\n');
+}
+const fullFilter=shadowTaps(8),androidFilter=shadowTaps(4);
 
-export function workshopShadowShader(shader){
+export function workshopShadowShader(shader,android=false){
   shader.uniforms.uWorkshopShadowWorld={value:WORKSHOP_SHADOW.span*2};
   shader.uniforms.uWorkshopShadowDepth={value:WORKSHOP_SHADOW.far-WORKSHOP_SHADOW.near};
   shader.fragmentShader=shader.fragmentShader.replace('#include <shadowmap_pars_fragment>',`
@@ -66,8 +69,8 @@ export function workshopShadowShader(shader){
         float pixel=max(length(dx.xy),length(dy.xy));
         vec2 filterRadius=max(vec2(spread/uWorkshopShadowWorld),max(texel*1.15,vec2(pixel*.9)));
         float coverage=0.;
-        ${shadowTaps}
-        workshopProjectedShadow=max(workshopProjectedShadow,coverage*.125*opacity*intensity);
+        ${android?androidFilter:fullFilter}
+        workshopProjectedShadow=max(workshopProjectedShadow,coverage*${android?'.25':'.125'}*opacity*intensity);
         // Pigment shading applies the continuous shadow tint separately from
         // the toon light bands; it must not collapse this gradient into steps.
         return 1.;

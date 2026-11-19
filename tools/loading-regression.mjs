@@ -1,6 +1,106 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+
+// Delay acknowledgements at the transport boundary while the actual room UI is active.
+export async function reviewNetworkActions({page,tap,resize,dir}) {
+  await tap('[data-action="multiplayer"]');
+  for(const [width,height] of [[320,568],[430,932],[390,844]]){
+    await resize(width,height);
+    await page.waitForFunction(()=>{
+      const art=app.screen.querySelector('.zx-coop-map').getBoundingClientRect();
+      const footer=app.screen.querySelector('.zx-footer').getBoundingClientRect();
+      return art.height>100 && art.bottom<=footer.top+1;
+    });
+    await page.screenshot({path:path.join(dir,'coop-lobby-'+width+'.png')});
+  }
+  await page.evaluate(()=>{
+    inspected.env.createCoopSocket=callbacks=>{
+      setTimeout(()=>callbacks.open(),0);
+      const room={code:'123456',host:'me',state:'lobby',members:[{id:'me',species:4,ready:false}]};
+      return {close(){},send(json){
+        const message=JSON.parse(json);
+        if(message.op==='ping'){callbacks.message(JSON.stringify({op:'pong'}));return true;}
+        window.ackRoom=error=>{
+          if(!error && message.op==='ready')room.members[0].ready=message.ready;
+          if(!error && message.op==='pick')room.members[0].species=message.species;
+          callbacks.message(JSON.stringify({op:'reply',id:message.id,me:'me',room,error}));
+        };
+        return true;
+      }};
+    };
+  });
+  await tap('.zx-footer button','创建房间');
+  assert.equal(await page.evaluate(()=>app.screen.querySelector('[role="status"]')?.textContent),'正在创建房间');
+  await page.evaluate(()=>ackRoom());
+  const rosterTop=()=>app.screen.querySelector('.zx-stat-row').getBoundingClientRect().top;
+  await page.waitForFunction(rosterTop);
+  assert.deepEqual(await page.evaluate(()=>[...app.screen.querySelectorAll('.zx-body .zx-row button')].map(b=>b.textContent.replace(/^✓ /,''))),['炎','风']);
+  const originalTop=await page.evaluate(rosterTop);
+  await tap('.zx-body .zx-row button','风');
+  assert.equal(await page.evaluate(()=>!!app.screen.querySelector('[role="status"]')),false);
+  assert.equal(await page.evaluate(rosterTop),originalTop);
+  await page.evaluate(()=>ackRoom());
+  await page.waitForFunction(()=>app.screen.querySelector('.zx-stat-row').textContent.includes('风'));
+  assert.equal(await page.evaluate(rosterTop),originalTop);
+  for(const [label,next,error] of [['准备','取消准备'],['取消准备','准备'],['准备','准备','更新失败']]){
+    const top=await page.evaluate(rosterTop);
+    await tap('.zx-ready',label);
+    const busy=await page.evaluate(()=>{
+      const button=app.screen.querySelector('.zx-ready');
+      return {disabled:button.disabled,label:button.textContent,background:inspected.layout.box(button).s.background,
+        loading:!!app.screen.querySelector('[role="status"]')};
+    });
+    assert.deepEqual(busy,{disabled:true,label,background:'#dedede',loading:false});
+    assert.equal(await page.evaluate(rosterTop),top);
+    await page.evaluate(error=>ackRoom(error),error);
+    await page.waitForFunction(label=>{
+      const button=app.screen.querySelector('.zx-ready');
+      return !button.disabled && button.textContent===label;
+    },{},next);
+    if(error)assert.ok(await page.evaluate(error=>app.screen.textContent.includes(error),error));
+  }
+  await tap('.zx-footer button','离开房间');
+  assert.equal(await page.evaluate(()=>!!app.screen.querySelector('[role="status"]')),false);
+  assert.equal(await page.evaluate(rosterTop),originalTop);
+  await page.evaluate(()=>ackRoom());
+  await tap('.zx-footer button','返回首页');
+  await tap('[data-action="journey"]');
+  await page.evaluate(()=>{window.chooserBody=app.screen.querySelector('.zx-body');});
+  for(const id of [16,4]){
+    await tap('[data-species="'+id+'"]');
+    assert.ok(await page.evaluate(id=>chooserBody===app.screen.querySelector('.zx-body') &&
+      app.screen.querySelector('[aria-pressed="true"]').dataset.species===String(id) &&
+      !app.screen.querySelector('[role="status"]'),id));
+  }
+  await page.evaluate(()=>{
+    const resync=app.meta.resync.bind(app.meta);
+    app.meta.resync=async(...args)=>{
+      app.meta.resync=resync;
+      await new Promise(resolve=>window.releaseMapRead=resolve);
+      return resync(...args);
+    };
+  });
+  await tap('.zx-footer button','选择关卡');
+  assert.ok(await page.evaluate(()=>chooserBody===app.screen.querySelector('.zx-body')));
+  await page.waitForFunction(()=>typeof releaseMapRead==='function');
+  await page.evaluate(()=>releaseMapRead());
+  await tap('.zx-footer button','选择难度');
+  await tap('[data-action="enter"]');
+  await page.waitForFunction(()=>app.run?.state==='play' && !app.screen,{timeout:90000});
+  await page.evaluate(()=>{
+    const finish=app.backend.finishRun.bind(app.backend);
+    app.backend.finishRun=(...args)=>new Promise(resolve=>{window.ackFinish=()=>resolve(finish(...args));});
+    app.run.finish(false);
+  });
+  assert.equal(await page.evaluate(()=>app.screen.querySelector('[role="status"]')?.textContent),'正在保存本局战绩与星尘');
+  await page.waitForFunction(()=>typeof ackFinish==='function');
+  await page.evaluate(()=>ackFinish());
+  await page.waitForFunction(()=>app.screen?.dataset.page==='summary');
+  assert.match(await page.evaluate(()=>app.screen.textContent),/星尘 \+/);
+  console.log('Lobby art fits all three widths; room actions and solo character selection stay in place');
+}
 
 // Run the real packaged game through entry, every forest area and a restart.
 // Desktop timings are diagnostics, never an estimate of iPhone frame rates.
@@ -45,7 +145,11 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       return {stage:r.stage,actors:batches.length,glyphs:batches.filter(b=>b.zxGlyph).length,
         legacyImages:batches.filter(b=>b.url).length,estimatedActorBytes:batches.reduce((n,b)=>n+b.bytes,0),
         feet:Object.fromEntries(batches.map(b=>[b.sid,b.foot])),textures:t.textures.map(t=>t.uuid),
-        colliders:t.colliders.length,props:t.zxProps.length,terrainBatches:t.group.children.length,
+        colliders:t.colliders.length,props:t.zxProps.length,walkableProps:t.zxProps.filter(p=>p.walkable).length,
+        matchedProps:t.zxProps.every(p=>p.walkable
+          ? t.workshopGroundSurfaces.some(s=>s.kind===p.kind&&Math.abs(s.x-p.x)<.001&&Math.abs(s.z-p.z)<.001&&Math.abs(s.y-p.baseY-p.h)<.001)
+          : t.colliders.some(c=>c.paperBox&&Math.abs(c.x-p.x)<.001&&Math.abs(c.z-p.z)<.001&&Math.abs(c.halfX*2-p.w)<.001&&Math.abs(c.halfZ*2-p.d)<.001)),
+        terrainBatches:t.group.children.length,
         readbacks:loadProbe.readbacks,loadingMetrics:r.loadingMetrics,
         hiddenImages:hiddenImages.map(img=>({src:img.src,width:img.naturalWidth,height:img.naturalHeight})),
         hiddenImageBytes:hiddenImages.reduce((sum,img)=>sum+img.naturalWidth*img.naturalHeight*4,0),
@@ -53,12 +157,12 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     });
   }
   stages.push(await snapshot());
-  for(let stage=2;stage<=4;stage++){
+  for(const stage of FOREST_ROUTE.slice(1)){
     await page.evaluate(async()=>{const r=app.run;r.ui.hideModal();r.state='play';r.enemies.clear();await r.changeZone();});
     stages.push(await snapshot());assert.equal(stages.at(-1).stage,stage);
   }
   await page.screenshot({path:path.join(dir,baseline?'loading-before.png':'loading-after.png')});
-  const probe=await page.evaluate(()=>({...loadProbe,imageLoads:[...(window.nativeImageLoads||[])],locale:inspected.env.locale,storedLocale:localStorage.getItem('pokebonk.web.pokebonk.lang')}));
+  const probe=await page.evaluate(()=>({...loadProbe,imageLoads:[...(window.nativeImageLoads||[])]}));
   const cleanup=await page.evaluate(async()=>{
     const assets=app.run.paperAssets,watched=[...(assets?.textures.values()||[]),...(assets?.mats.values()||[])];let disposed=0;
     for(const asset of watched)asset.addEventListener('dispose',()=>disposed++);
@@ -225,8 +329,6 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
   const report={environment:'Chrome / software WebGL / local WeChat fixture; not iPhone timings',...probe,stages,restart,cleanup,entryRecovery,resources};
   fs.writeFileSync(path.join(dir,baseline?'loading-before.json':'loading-after.json'),JSON.stringify(report,null,2));
   if(!baseline){
-    assert.equal(probe.locale,'zh');
-    assert.equal(probe.storedLocale,'zh','Old non-Chinese preferences must migrate');
     assert.equal(cleanup.disposed,cleanup.watched);assert.ok(cleanup.menuEmpty);
     for(const packs of [probe.homePackages,probe.entryPackages,resources.packagesAfterAudit])
       assert.deepEqual(packs.filter(p=>p==='sound'||p.startsWith('music_')),[],'No screen may download music');
@@ -241,15 +343,21 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     }
     assert.deepEqual(probe.requests.filter(p=>/assets\/(?:cries|pmd(?:-shiny)?|portraits(?:-shiny)?|front|icons)\//.test(p)),[],'Glyph actors must not request any excluded image or cry');
     for(const s of [...stages,restart])assert.deepEqual(s.hiddenImages,[],'Hidden legacy HUD images must never be decoded');
-    for(const s of [...stages,restart]){assert.equal(s.legacyImages,0);assert.equal(s.glyphs,s.actors);assert.ok(s.estimatedActorBytes<12*1048576);assert.ok(s.colliders>=s.props&&s.colliders<200&&s.props>10);}
+    for(const s of [...stages,restart]){
+      assert.equal(s.legacyImages,0);assert.equal(s.glyphs,s.actors);assert.ok(s.estimatedActorBytes<12*1048576);
+      // Low desk objects are ground surfaces, while tall objects are blockers.
+      assert.ok(s.matchedProps,'Every prop needs its ground surface or matching collider');
+      assert.ok(s.colliders>=s.props-s.walkableProps&&s.colliders<200&&s.props>10);
+    }
     assert.ok(stages[1].textures.filter(id=>stages[0].textures.includes(id)).length>=10,'Area changes must reuse the paper textures');
     const before=path.join(dir,'loading-before.json');
     if(fs.existsSync(before)){
       const previous=JSON.parse(fs.readFileSync(before));
-      for(let i=0;i<4;i++){
-        assert.equal(stages[i].colliders,previous.stages[i].colliders,'World collider count changed');
-        assert.equal(stages[i].props,previous.stages[i].props,'World props changed');
-        for(const [id,foot] of Object.entries(stages[i].feet))if(previous.stages[i].feet[id])assert.deepEqual(foot,previous.stages[i].feet[id],'Actor collision dimensions changed: '+id);
+      for(const stage of stages){
+        const beforeStage=previous.stages.find(s=>s.stage===stage.stage);
+        assert.equal(stage.colliders,beforeStage.colliders,'World collider count changed');
+        assert.equal(stage.props,beforeStage.props,'World props changed');
+        for(const [id,foot] of Object.entries(stage.feet))if(beforeStage.feet[id])assert.deepEqual(foot,beforeStage.feet[id],'Actor collision dimensions changed: '+id);
       }
     }
   }

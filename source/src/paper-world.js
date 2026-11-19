@@ -36,7 +36,7 @@ export function disposePaperWorld(terrain){
 export function buildPaperWorld(terrain){if(isDeskStage(terrain)){initDesk(terrain);return;}for(const _ of workshopWorldSteps(terrain)){} }
 export async function buildPaperWorldAsync(terrain,options){if(isDeskStage(terrain)){initDesk(terrain);await terrain.deskReady;options?.check?.();return {steps:terrain.group.children.length};}return runLoadingSteps(workshopWorldSteps(terrain),options);}
 export const applyPaperLight=applyWorkshopLight;
-const focus=new Vector3();
+const focus=new Vector3(), dragonFocus=new Vector3();
 export function updatePaperCamera(run,dt){
   if(run.terrain.desk2d)return deskCamera(run,dt);
   const p=run.player.pos,c=run.r.camera,k=1-Math.exp(-Math.max(0,dt)*12);
@@ -44,6 +44,11 @@ export function updatePaperCamera(run,dt){
   run.camTarget.lerp(p,k);run.camYaw=PAPER_CAMERA.yaw;run.camPitch=PAPER_CAMERA.pitch;run.camDist=PAPER_CAMERA.distance;
   const distance=PAPER_CAMERA.distance*Math.max(1,.46/Math.max(.25,c.aspect));
   focus.set(run.camTarget.x,run.camTarget.y+.5,run.camTarget.z-2.5);
+  if(run.dragonDuel && run.cine.blend>0 && run.cine.follow===run.boss.bossIndex && run.boss.alive){
+    const id=run.cine.follow, enemies=run.enemies, blend=run.cine.blend;
+    dragonFocus.set(enemies.x[id],enemies.y[id]+enemies.hgt[id]*.55,enemies.z[id]);
+    focus.lerp(dragonFocus,blend*blend*(3-2*blend));
+  }
   c.position.set(focus.x,focus.y+Math.sin(PAPER_CAMERA.pitch)*distance,focus.z+Math.cos(PAPER_CAMERA.pitch)*distance);
   // Keep the camera on the inside of the tall southern boundary. As the player
   // approaches it, the view naturally becomes more overhead, rather than

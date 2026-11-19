@@ -92,7 +92,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     m.uniforms.map.value.dispose();m.uniforms.map.value=t;
     m.uniforms.zxGlyph={value:t};m.uniforms.uLean.value=entry.animation?1:.65;
     m.uniforms.uTexel.value.set(1/(entry.frames?columns*size:1024),1/(entry.frames?rows*size:1024));
-    batch.ready=!!heroEntry;
+    batch.ready=!!heroEntry || (!!entry.frames && !!monsterTexture.image);
     if(!heroEntry)entry.ready.then(()=>{if(!disposed)batch.ready=true;},error=>{if(!disposed)batch.loadError=error;});
     m.fragmentShader=m.fragmentShader.replace('uniform sampler2D map;','uniform sampler2D map; uniform sampler2D zxGlyph;').replaceAll('texture2D(map,','texture2D(zxGlyph,');
     batch.zxOriginalGlyph=isOriginalHeroGlyph(word);

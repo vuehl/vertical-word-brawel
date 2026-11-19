@@ -1,7 +1,7 @@
 {
   "tile": 384,
   "columns": 8,
-  "rows": 6,
+  "rows": 5,
   "padding": 5,
   "clips": {
     "dragon": {
@@ -84,13 +84,6 @@
     },
     "star": {
       "first": 39,
-      "count": 1,
-      "source": "Existing game symbol, vector reconstruction",
-      "width": 512,
-      "height": 512
-    },
-    "heart": {
-      "first": 40,
       "count": 1,
       "source": "Existing game symbol, vector reconstruction",
       "width": 512,
