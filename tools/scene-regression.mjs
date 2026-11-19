@@ -316,7 +316,8 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       await page.waitForFunction(()=>app.run.ui.mapOpen());
       const mapText=await page.evaluate(()=>app.run.ui.modalEl.textContent);
       assert.match(mapText,/附近地图/);
-      assert.doesNotMatch(mapText,/点击类别|附近 \d+ 处|守护者祭坛|拍立得/);
+      assert.match(mapText,/守护者祭坛/);
+      assert.doesNotMatch(mapText,/拍立得/);
       assert.doesNotMatch(mapText,/Snorlax|Porygon|卡比兽|多边兽|诅咒雕像|诅咒祭坛|贪婪|笼子|金矿石|Altar maldito|Jaula|Roca de oro|Altar de Gengar/i);
       await shot('scene-full-map');
       await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});

@@ -1,4 +1,4 @@
-import {DeviceFxThree as T, dt as Texture, F as Frustum, lt as Sphere, PostprocessingPass, RedFormat} from '../assets/three-DmSYIDKK.js';
+import {DeviceFxThree as T, dt as Texture, F as Frustum, lt as Sphere, PostprocessingPass} from '../assets/three-DmSYIDKK.js';
 import {createDeviceScreenFx} from './DeviceScreenFx.mjs';
 import {attachPortalDock} from './PortalDock.mjs';
 import earcut, {flatten} from './vendor/earcut.js';
@@ -24,58 +24,27 @@ export function createFacilityEffects(host, focusWorld) {
   const source = {width: 0, height: 0, texture: null, depthTexture: null};
   const options = {focusWorld, matricesUpdated: true};
 
-  // PixelOutline runs before grading. Only that preset needs this one-channel
-  // exclusion mask. The supplied compositor handles its own outline after grading.
-  const exclusion = new T.WebGLRenderTarget(1, 1, {
-    format: RedFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false,
-  });
-  const maskScene = new T.Scene();
-  maskScene.matrixWorldAutoUpdate = false;
-  const maskMaterial = new T.ShaderMaterial({
-    side: T.DoubleSide, depthTest: false, depthWrite: false, toneMapped: false,
-    uniforms: {sceneDepth: {value: null}, size: {value: new T.Vector2()}, portalCut: {value: -1}, portalPhase: {value: -1}},
-    vertexShader: 'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform sampler2D sceneDepth; uniform vec2 size; uniform float portalCut, portalPhase;
-      void main(){
-        vec2 uv=gl_FragCoord.xy / size;
-        if(gl_FragCoord.z > texture2D(sceneDepth,uv).r + .000002) discard;
-        if(portalCut>=0. && (portalPhase<.5 ? 1.-uv.y>=portalCut : 1.-uv.y<portalCut)) discard;
-        gl_FragColor=vec4(1.);
-      }`,
-  });
-  const savedColour = new T.Color();
+  // The device ID mask already contains the visible silhouette (> .5).
+  // Prepare it before world outlines, then reuse it after colour grading.
+  // This avoids submitting every device mesh to a second full-size mask.
   const useMask = outline.uniforms.get('uHasDeviceMask');
   const worldMask = outline.uniforms.get('uDeviceMask');
-  worldMask.value = exclusion.texture;
+  worldMask.value = fx.maskTexture;
 
   function add(root) {
     if (meshesByRoot.has(root)) return;
     fx.add(root);
-    const pairs = [];
+    const meshes = [];
     root.traverse(mesh => {
       if (!mesh.isMesh) return;
-      const proxy = new T.Mesh(mesh.geometry, maskMaterial);
-      proxy.onBeforeRender = () => {
-        maskMaterial.uniforms.portalCut.value = root.userData.portalClip ?? -1;
-        maskMaterial.uniforms.portalPhase.value = mesh.userData.portalPhase ?? -1;
-        maskMaterial.uniformsNeedUpdate = true;
-      };
-      // RenderPass has already updated the real mesh, including its animated parents.
-      proxy.matrixWorld = mesh.matrixWorld;
-      proxy.matrixAutoUpdate = proxy.matrixWorldAutoUpdate = false;
-      proxy.frustumCulled = false;
-      proxy.layers.enableAll();
-      maskScene.add(proxy);
       if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
-      pairs.push([mesh, proxy]);
+      meshes.push(mesh);
     });
-    meshesByRoot.set(root, pairs);
+    meshesByRoot.set(root, meshes);
   }
   function remove(root) {
-    const pairs = meshesByRoot.get(root);
-    if (!pairs) return;
+    if (!meshesByRoot.has(root)) return;
     fx.remove(root);
-    for (const [, proxy] of pairs) maskScene.remove(proxy);
     meshesByRoot.delete(root);
   }
   function visible(mesh) {
@@ -92,27 +61,17 @@ export function createFacilityEffects(host, focusWorld) {
   visiblePass.render = (_, input) => {
     frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     let anyVisible = false;
-    for (const pairs of meshesByRoot.values()) for (const [mesh, proxy] of pairs) {
-      proxy.visible = visible(mesh);
-      if (proxy.visible) anyVisible = true;
+    for (const meshes of meshesByRoot.values()) {
+      if(meshes.some(visible)){anyVisible=true;break;}
     }
     colourPass.enabled = anyVisible;
-    useMask.value = anyVisible && outlinePass.enabled;
-    if (!useMask.value) return;
-    exclusion.setSize(input.width, input.height);
-    maskMaterial.uniforms.sceneDepth.value = composer.stableDepthTexture;
-    maskMaterial.uniforms.size.value.set(input.width, input.height);
-    const previous = renderer.getRenderTarget(), alpha = renderer.getClearAlpha();
-    renderer.getClearColor(savedColour);
-    try {
-      renderer.setRenderTarget(exclusion);
-      renderer.setClearColor(0, 0);
-      renderer.clear(true, false, false);
-      renderer.render(maskScene, camera);
-    } finally {
-      renderer.setClearColor(savedColour, alpha);
-      renderer.setRenderTarget(previous);
-    }
+    useMask.value = false;
+    options.preparedFrame=null;
+    if (!anyVisible) return;
+    source.width=input.width;source.height=input.height;
+    source.depthTexture=composer.stableDepthTexture;
+    options.preparedFrame=fx.prepareFrame(scene,camera,host.shared.uTime.value,source,options);
+    useMask.value=options.preparedFrame.active>0&&outlinePass.enabled;
   };
   colourPass.enabled = false;
   colourPass.render = (_, input, output) => {
@@ -126,16 +85,6 @@ export function createFacilityEffects(host, focusWorld) {
   composer.addPass(visiblePass, composer.passes.indexOf(outlinePass));
   composer.addPass(colourPass, composer.passes.indexOf(antiAliasPass));
   async function prepare() {
-    // The exclusion pass is also outside the main world scene, including
-    // devices which have not yet entered the starting camera's frustum.
-    const previous = renderer.getRenderTarget();
-    let pending;
-    exclusion.setSize(composer.inputBuffer.width, composer.inputBuffer.height);
-    try {
-      renderer.setRenderTarget(exclusion);
-      pending = renderer.compileAsync(maskScene, camera);
-    } finally {renderer.setRenderTarget(previous);}
-    await pending;
     await fx.prepare(camera, composer.inputBuffer);
   }
   function dispose() {
@@ -144,10 +93,8 @@ export function createFacilityEffects(host, focusWorld) {
     useMask.value = false;
     worldMask.value = null;
     fx.dispose();
-    maskScene.clear();
     meshesByRoot.clear();
-    maskMaterial.dispose();
-    exclusion.dispose();
+    options.preparedFrame=null;
   }
   return {add, remove, prepare, dispose, attachDock: (model, options) => attachPortalDock(dockThree, renderer, model, options)};
 }

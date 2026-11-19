@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {roster} from '../source/src/catalogs.js';
 import {constrainLiteProfile,isLiteFamily,validLiteRun} from '../source/src/lite-rules.js';
-import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff} from '../source/src/starter-characters.js';
+import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff,windSpeedDamageBonus} from '../source/src/starter-characters.js';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
 import {glyphCatalog} from '../source/src/glyph-catalog.js';
 import {restoreProgress} from '../source/src/coop-resume.js';
@@ -90,4 +90,11 @@ test('wind ultimates multiply only their designated speed by ten, refresh withou
     p.buffs.get(key).t=2;def.cast({run:{player:p}});assert.equal(p.stats[stat],17);assert.equal(p.buffs.size,1);assert.equal(p.buffs.get(key).t,5);
     clearStarterSpeed({player:p});assert.equal(p.stats[stat],1.7);assert.equal(p.buffs.size,0);
   }
+});
+
+test('movement branch converts all bonus speed to damage without a cap or a penalty for slows',()=>{
+  for(const id of [58,59])for(const [speed,bonus] of [[.8,0],[1,0],[1.02,.01],[1.2,.1],[10,4.5],[12,5.5]]){
+    assert.ok(Math.abs(windSpeedDamageBonus(id,speed*1.07,1.07)-bonus)<1e-10);
+  }
+  for(const id of [4,5,6,16,17,18,132])assert.equal(windSpeedDamageBonus(id,10,1),0);
 });

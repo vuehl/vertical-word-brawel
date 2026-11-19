@@ -8,7 +8,7 @@ export async function reviewDeviceEffects(page, dir) {
   const inventory = await page.evaluate(async () => {
     const account = await app.backend.guest();
     await app.meta.load(account);
-    Object.assign(app.meta.profile.settings, {quality: 'high', batterySaver: false, showBanners: false});
+    Object.assign(app.meta.profile.settings, {quality: 'high', showBanners: false});
     app.applySettings();
     if (!await app.startRun({species: 4, biome: 'forest', tier: 0, boosts: [], mode: 'standard'})) throw Error('Entry failed');
     app.halted = true;

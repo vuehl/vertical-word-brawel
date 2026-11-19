@@ -11,9 +11,11 @@ import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from './catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
-import {selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
+import {selectGraphicsQuality} from './performance-profile.js';
+import {setFrameRateLock,resetFrameRatePolicy,frameRateHelp} from './frame-policy.js';
+import {portalGuidance} from './portal-guidance.js';
 import {ExperienceRing} from './experience-ring.js';
-import {characters,characterForSpecies,starterEvolutionLevels,windRoutes} from './starter-characters.js';
+import {characters,characterForSpecies,starterEvolutionLevels,windRoutes,hasWindSpeedPassive,windSpeedPassive,windSpeedDamageBonus} from './starter-characters.js';
 import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,zoneDuration,remainingZoneSeconds} from './lite-rules.js';
 
 export {characters};
@@ -659,11 +661,8 @@ export function createZixingUI(app,api) {
     const toggle=(label,key,note='')=>{
       fields.push(key);const b=el('button','zx-switch'+(s[key]?' on':''),el('i'),{type:'button',role:'switch','aria-label':label,'aria-checked':!!s[key]});
       b.addEventListener('click',()=>{
-        if(key==='batterySaver'){
-          setBatterySaver(s,!s.batterySaver);
-          save();renderSettings();return;
-        }
-        s[key]=!s[key];b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();
+        if(key==='lock30Fps')setFrameRateLock(s,!s[key]);else s[key]=!s[key];
+        b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();
       });
       return el('div','zx-setting',[row(col(el('b','',label),note?small(note):null),b)]);
     };
@@ -692,7 +691,7 @@ export function createZixingUI(app,api) {
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音'))];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','默认关闭。手动开启后切换为流畅画质，最高 30 帧。选择均衡或精致会关闭省电。'))];
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('锁定 30 帧','lock30Fps',frameRateHelp))];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -711,7 +710,7 @@ export function createZixingUI(app,api) {
     screen('settings','设置','仅调整当前设备的体验',[
       tabs(['声音','画面','操作','界面'],settingsTab,i=>{settingsTab=i;settingsSub=0;renderSettings();},'main'),
       sublabels.length?el('div','zx-subtabs',sublabels.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),label,{onclick:()=>{settingsSub=i;renderSettings();}}))):null,
-      row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key];save();renderSettings();},'zx-plain')),
+      row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key];if(fields.includes('lock30Fps'))resetFrameRatePolicy(s,window.nativeDevice);save();renderSettings();},'zx-plain')),
       ...content,
     ],[button('返回',()=>loadPage('设置','正在保存设置',()=>app.meta.saveNow(),()=>{
       const back=returnTo;app.setScreen(null);back();
@@ -741,6 +740,7 @@ export function createZixingUI(app,api) {
       row(item('攻击速度',percent(s.attackSpeed),'含永久研究加成'),item('移动速度',percent(s.moveSpeed),'含永久研究加成')),
     ]),card(statRow('暴击率',percent(s.critChance)),statRow('攻击范围',percent(s.area)),statRow('护甲',Number(s.armor.toFixed(1))),statRow('生命回复',Number(s.regen.toFixed(2))+' / 秒')));
     else body.push(card(statRow('经验获取',percent(s.xpGain)),statRow('金币获取',percent(s.gold)),statRow('幸运',number(s.luck)),statRow('拾取范围',Number(s.pickupRange.toFixed(1))+' 厘米')));
+    if(run&&hasWindSpeedPassive(run.player.speciesId))body.push(card(el('b','','移速被动'),small(windSpeedPassive),statRow('当前伤害加成','+'+percent(windSpeedDamageBonus(run.player.speciesId,s.moveSpeed,run.player.baseSpeed)))));
     const subtitle=run?'查看时保持暂停 · 本局属性':profile().cloudSaveError?'开局预览 · 当前显示本机进度':'开局预览 · 基础与永久加成';
     screen('stats',run?'当前属性':'文字属性',subtitle,body,[button('返回',()=>{app.setScreen(null);back();})],'blue');
   }
@@ -934,7 +934,7 @@ export function createZixingUI(app,api) {
     const hud=run.ui;selected=character(run.startSpecies).id;
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
-    run.hints.show=(key,site)=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key,site);};
+    run.hints.show=(key,site)=>{if(run.state==='play'&&!run.stageCleared&&!app.screen&&!hud.hasModal())hint(key,site);};
     hud.showPause=pause;hud.showLevelUp=levelUp;
     hud.saving=active=>{
       if(active){hud.hideModal();pendingScreen('对局结算','正在保存本局战绩与星尘');}
@@ -956,17 +956,36 @@ export function createZixingUI(app,api) {
     };
     hud.showMap=(r,fromPause=false)=>{
       const close=fromPause?()=>pause(r):()=>r.resume();
-      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-190));
+      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-280));
       const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图，拖动查看建筑，轻点建筑图标追踪'});
       const frame=el('div','zx-battle-map-frame',canvas);
       frame.style.width=frame.style.height=side+'px';
       const hudSide=hud.minimap.getBoundingClientRect().width || (window.innerWidth<=350?84:96);
-      overlay('附近地图','',[frame],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
+      let selectedKind=null;
+      const filterButtons=new Map();
+      const filters=el('div','zx-map-filters',[],{'aria-label':'筛选建筑'});
+      const status=small('显示全部建筑 · 拖动地图查看');
+      status.classList.add('zx-map-status');
+      function selectKind(kind){
+        selectedKind=kind;hud.mapFacilityKind=kind;
+        for(const [key,node] of filterButtons){node.classList.toggle('on',key===kind);node.setAttribute('aria-pressed',String(key===kind));}
+        paint();hud.drawMinimap(r,true);window.invalidateUI?.();
+      }
+      let filterRow;
+      for(const [index,[kind,name]] of [[null,'全部'],...Object.entries(facilityNames)].entries()){
+        if(index%4===0){filterRow=el('div','zx-map-filter-row');filters.append(filterRow);}
+        const node=button(name,()=>selectKind(kind),'zx-map-filter'+(kind===null?' on':''),{'data-map-filter':kind??'all','aria-pressed':kind===null});
+        filterButtons.set(kind,node);filterRow.append(node);
+      }
+      overlay('附近地图','',[frame,filters,status],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
       const contentZoom=2.3;
       const viewRatio=(canvas.getBoundingClientRect().width || side)/(hudSide*contentZoom);
       let center=null,drag=null,groups=[];
       function paint(){
-        groups=drawBattleMinimap(canvas,r,{shadow:false,viewRatio,center:center??r.player.pos,facilityKind:null}).groups;
+        const result=drawBattleMinimap(canvas,r,{shadow:false,viewRatio,center:center??r.player.pos,facilityKind:selectedKind});
+        groups=result.groups;
+        canvas.dataset.filter=selectedKind??'all';
+        updateText(status,selectedKind?(result.count?facilityNames[selectedKind]+' · 当前视野 '+result.count+' 处':'当前视野暂无'+facilityNames[selectedKind]+'，可拖动查找'):'显示全部建筑 · 拖动地图查看');
       }
       canvas.addEventListener('pointerdown',event=>{
         if(drag||event.button!==0)return;
@@ -992,8 +1011,8 @@ export function createZixingUI(app,api) {
         if(!drag.moved){
           const rect=canvas.getBoundingClientRect();
           const x=(event.clientX-rect.left)*120/(rect.width || side),y=(event.clientY-rect.top)*120/(rect.height || side);
-          const hit=groups.slice().reverse().find(({box})=>x>=box.x&&x<=box.x+box.w&&y>=box.y&&y<=box.y+box.h);
-          if(hit){hud.mapFacilityKind=hit.kind;hud.drawMinimap(r,true);}
+          const hit=groups.slice().reverse().find(({box,hitBoxes})=>(hitBoxes??[box]).some(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h));
+          if(hit)selectKind(hit.kind);
         }
         drag=null;
       });
@@ -1025,6 +1044,9 @@ export function createZixingUI(app,api) {
     const introLayer=el('div','zx-intro-layer',[],{'data-ui-layer':'stage-intro'});
     introLayer.style.cssText='position:absolute;left:0;top:0;width:100%;height:0;overflow:visible;pointer-events:none;z-index:10';
     hud.root.append(introLayer);
+    const ultCutInLayer=el('div','zx-ultimate-layer',[],{'data-ui-layer':'ultimate-cutin'});
+    ultCutInLayer.style.cssText='position:absolute;left:0;top:26%;width:100%;height:0;overflow:visible;pointer-events:none;z-index:30';
+    hud.hudEl.append(ultCutInLayer);hud.ultCutInRoot=ultCutInLayer;
     function intro(title,subtitle){
       if(profile()?.settings.showBanners===false)return;
       const node=el('div','zx zx-intro',[el('b','',title),small(subtitle)]);
@@ -1074,6 +1096,9 @@ export function createZixingUI(app,api) {
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
     minimap.dataset.uiLayer='minimap';
     minimap.setAttribute('aria-label','附近地图，点击查看更大范围');
+    const portalCopy=small('');
+    const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 木门已开启'),portalCopy],{'aria-live':'polite'});
+    portalGuide.hidden=true;
     node.append(el('div','zx-hud-location',[icon('pin',13,'#5277a4'),area,stageLabel],{'data-ui-region':'hud-top'}),el('div','zx-hud-top',[
       el('div','zx-hud-counters',[
         el('div','zx-hud-counter',[icon('clock',14,'#637ca3'),clock],{'aria-label':'关卡时间'}),
@@ -1086,7 +1111,7 @@ export function createZixingUI(app,api) {
           supplies,
         ]),level,
       ]),minimap,button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),
-    ],{'data-ui-region':'hud-stack'}),el('div','zx-hint-slot',[],{'data-ui-region':'hud-hint'}),inventory,health);
+    ],{'data-ui-region':'hud-stack'}),el('div','zx-hint-slot',[portalGuide],{'data-ui-region':'hud-hint'}),inventory,health);
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
@@ -1121,7 +1146,7 @@ export function createZixingUI(app,api) {
     let mapAt=-Infinity,mapFrame=0;
     hud.drawMinimap=(r,force=false)=>{
       const now=performance.now();if(minimap.hidden||(!force&&now-mapAt<(run.performance?.mapInterval??120)))return;
-      mapAt=now;drawBattleMinimap(minimap,r);minimap.dataset.frame=String(++mapFrame);
+      mapAt=now;drawBattleMinimap(minimap,r,{facilityKind:r.stageCleared?'portal':hud.mapFacilityKind});minimap.dataset.frame=String(++mapFrame);
     };
     const ultimateRing=el('canvas','zx-ult-progress',[],{width:168,height:168,'data-static':'true'});
     hud.touch.ult.append(ultimateRing);
@@ -1158,6 +1183,13 @@ export function createZixingUI(app,api) {
     };
     hud.hud=function(...args){
       updateHealth();
+      const guideVisible=run.stageCleared&&!run.endless&&!run.tower&&run.state==='play'&&!app.screen&&!hud.hasModal();
+      if(portalGuide.hidden===guideVisible)portalGuide.hidden=!guideVisible;
+      toastLayer.classList.toggle('zx-exit-guidance',guideVisible);
+      if(guideVisible){
+        run.hints.el?.remove();
+        updateText(portalCopy,portalGuidance(run));
+      }
       const now=performance.now();
       updatePeers?.();
       if(expandedMap){

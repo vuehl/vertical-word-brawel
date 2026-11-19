@@ -136,7 +136,7 @@ export async function reviewBattleFeedback(context){
   });assert.ok(report.markers.cyan>100);assert.equal(report.markers.after,0);
   await sleep(200);await page.evaluate(()=>{app.run.ui.drawMinimap(app.run);app.run.ui.hud(app.run);});await sleep(200);await page.screenshot({path:path.join(dir,'special-markers.png')});
   report.quality=await page.evaluate(()=>{
-    const r=app.run,s=app.meta.profile.settings;s.quality='low';s.batterySaver=false;app.applySettings();app.r.setDynRes(.6);r.liveCap=60;
+    const r=app.run,s=app.meta.profile.settings;s.quality='low';app.applySettings();app.r.setDynRes(.6);r.liveCap=60;
     s.quality='high';app.applySettings();const cap=r.liveCap;
     for(let i=0;i<100;i++){app.r.setDynRes(.6);app.adaptRes(.1,.1,i*100);r.governHorde();}
     const pool=r.vfx.add,oldLimit=pool.limit,oldView=pool.view,random=Math.random;let emitted;

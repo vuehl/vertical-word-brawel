@@ -330,27 +330,48 @@ export function createDeviceScreenFx(T, renderer) {
       tilePixels.set(nextTiles);outlineTiles.needsUpdate=true;break;
     }
   }
-  function composite(scene,camera,time,source,destination=null,options={}){
-    if(!source?.texture||!source.depthTexture||source===destination)throw Error('Pass distinct colour/depth input and output targets');
+  let preparedFrame=null;
+  function prepareFrame(scene,camera,time,source,options={}){
+    preparedFrame=null;
     const w=source.width,h=source.height;
     const prev=renderer.getRenderTarget(),auto=renderer.autoClear,scissor=renderer.getScissorTest();
     renderer.getScissor(savedSC);renderer.getViewport(savedVP);renderer.getClearColor(savedColour);
     const alpha=renderer.getClearAlpha();mask.setSize(w,h);
     try{
-      const {active,count,refDepth}=update(scene,camera,time,source.depthTexture,w,h,options.matricesUpdated);
+      const frame=update(scene,camera,time,source.depthTexture,w,h,options.matricesUpdated);
+      const {active,refDepth}=frame;
       let z=refDepth;
       if(options.focusWorld){world.copy(options.focusWorld).applyMatrix4(camera.matrixWorldInverse);z=Math.max(camera.near,-world.z);}
       const magnification=camera.projectionMatrix.elements[5]*h*.5/(camera.isOrthographicCamera?1:z);
       const original=options.originalOutlineRadiusPx??clamp(.13*magnification,1,12);
-      starMat.uniforms.rim.value=pass.uniforms.radius.value=.5*original;pass.uniforms.beautyTex.value=source.texture;
+      starMat.uniforms.rim.value=pass.uniforms.radius.value=.5*original;
       updateOutlineTiles(w,h,pass.uniforms.radius.value);
       renderer.autoClear=false;renderer.setScissorTest(false);
       renderer.setRenderTarget(mask);renderer.setClearColor(0,0);renderer.clear(true,true,false);
       if(active)renderer.render(proxyScene,camera);
-      renderer.setRenderTarget(destination);renderer.render(screenScene,screenCam);
-      if(count)renderer.render(starScene,screenCam);
+      return preparedFrame={...frame,scene,camera,time,w,h,depth:source.depthTexture};
     }finally{
       renderer.setClearColor(savedColour,alpha);renderer.autoClear=auto;renderer.setRenderTarget(prev);
+      renderer.setViewport(savedVP);renderer.setScissor(savedSC);renderer.setScissorTest(scissor);
+    }
+  }
+  function composite(scene,camera,time,source,destination=null,options={}){
+    if(!source?.texture||!source.depthTexture||source===destination)throw Error('Pass distinct colour/depth input and output targets');
+    let frame=options.preparedFrame;
+    if(!frame||frame!==preparedFrame||frame.scene!==scene||frame.camera!==camera||frame.time!==time||
+      frame.w!==source.width||frame.h!==source.height||frame.depth!==source.depthTexture)
+      frame=prepareFrame(scene,camera,time,source,options);
+    // Consume the mask once; standalone callers cannot accidentally reuse it.
+    preparedFrame=null;
+    const prev=renderer.getRenderTarget(),auto=renderer.autoClear,scissor=renderer.getScissorTest();
+    renderer.getScissor(savedSC);renderer.getViewport(savedVP);
+    try{
+      pass.uniforms.beautyTex.value=source.texture;
+      renderer.autoClear=false;renderer.setScissorTest(false);
+      renderer.setRenderTarget(destination);renderer.render(screenScene,screenCam);
+      if(frame.count)renderer.render(starScene,screenCam);
+    }finally{
+      renderer.autoClear=auto;renderer.setRenderTarget(prev);
       renderer.setViewport(savedVP);renderer.setScissor(savedSC);renderer.setScissorTest(scissor);
     }
   }
@@ -385,11 +406,11 @@ export function createDeviceScreenFx(T, renderer) {
     await Promise.all(pending);
   }
   function dispose(){
-    disposed=true;
+    disposed=true;preparedFrame=null;
     for(const root of [...entries.keys()])remove(root);mask.dispose();
     if(beauty){beauty.depthTexture?.dispose();beauty.dispose();}
     atlas.dispose();outlineTiles.dispose();pass.dispose();starMat.dispose();quad.dispose();starGeometry.dispose();
   }
-  return {add,remove,render,composite,prepare,dispose};
+  return {add,remove,render,composite,prepareFrame,maskTexture:mask.texture,prepare,dispose};
 }
 

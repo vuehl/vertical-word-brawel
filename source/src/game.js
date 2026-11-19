@@ -7,7 +7,7 @@ import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {dragonChantSeconds,startDragonChant} from './dragon-chant.js';
-import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed} from './starter-characters.js';
+import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus} from './starter-characters.js';
 import {windMoveEffect} from './wind-move-art.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI,paperIcon} from './zixing-ui.js';
@@ -27,7 +27,7 @@ import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
 import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE,ENEMY_HEALTH_SCALE,ENEMY_DAMAGE_SCALE,ENEMY_XP_SCALE,SPECIAL_ACTORS} from './spawn-budget.js';
-import {ParticleBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
+import {ParticleBudget,CriticalImpactBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
 import {createStylizedEffectAtlas,EFFECT_CELL} from './stylized-effect-atlas.js';
 import {StylizedSkillFX} from './stylized-skill-vfx.js';
 import {actorMetrics} from './actor-metrics.js';
@@ -37,7 +37,9 @@ import {createSceneAntialias} from './scene-antialias.js';
 import {paperProp} from './paper-props.js';
 import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
 import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
-import {performanceProfile,batterySaverEnabled,selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
+import {performanceProfile,selectGraphicsQuality,targetFrameRate} from './performance-profile.js';
+import {deviceFramePolicy,applyFrameRatePolicy,setFrameRateLock,resetFrameRatePolicy,frameRateHelp} from './frame-policy.js';
+import {portalGuidance} from './portal-guidance.js';
 import {UpgradeTiming} from './upgrade-timing.js';
 import {updatePaperVisibility} from './paper-visibility.js';
 import {paperBox,hitsPaperBox,resolvePaperBox,moveEnemyPastProps,obstacleJumpSpeed} from './paper-collision.js';
@@ -4086,7 +4088,7 @@ var Ws = () =>
     dens = new Map();
     kv = 1;
     kp = 1;
-    vol = { master: 0.8, music: 0.5, sfx: 0.7, cries: 0.6 };
+    vol = { master: 1, music: 0.5, sfx: 1, cries: 0.6 };
     seqTimer = 0;
     nextNote = 0;
     step = 0;
@@ -5323,9 +5325,8 @@ var oc = (e, t) =>
       if (e < 2 || t < 2) return;
       const n = this.pixelScale > 1;
       const portrait = uo && t >= e && this.hires;
-      const density = portrait ? (this.quality.saver ? 1.75 : 2) :
-        this.quality.saver ? 1 : this.hires ? (uo ? 1.25 : 1.5) : 1;
-      const budget = portrait && this.quality.saver ? 1200000 : this.hires ? (uo ? 1600000 : 3700000) : 2200000;
+      const density = portrait ? 2 : this.hires ? (uo ? 1.25 : 1.5) : 1;
+      const budget = this.hires ? (uo ? 1600000 : 3700000) : 2200000;
       const nativeBudget = window.nativeGraphics?.pixelBudget ?? budget;
       const target = Math.min(window.devicePixelRatio, density, window.nativeGraphics?.maxPixelRatio ?? Infinity,
         Math.sqrt(nativeBudget / (e * t)));
@@ -7584,6 +7585,8 @@ var Gl = class {
       for(const pool of [this.add,this.norm,this.ground,this.groundN,this.beams])pool.lockVisualQuality=!!profile.lockVisualQuality;
       this.crafted.setPerformance(profile,view);
       this.particleBudget??=new ParticleBudget();this.particleBudget.limit=profile.particleCell;
+      this.criticalBudget??=new CriticalImpactBudget();
+      this.criticalBudget.limit=profile.name==='流畅'?4:profile.name==='均衡'?6:8;
       this.add.densityBudget=this.norm.densityBudget=this.particleBudget;
       this.add.view=this.norm.view=this.text.view=view;
       applyCrowdEffects(this,profile);
@@ -7599,7 +7602,7 @@ var Gl = class {
         this.text.update(e));
     }
     clear() {
-      this.damagePending?.clear();this.damageClock=0;this.crafted.clear();this.danger.clear();
+      this.damagePending?.clear();this.damageClock=0;this.criticalBudget?.clear();this.crafted.clear();this.danger.clear();
       (this.add.clear(),
         this.norm.clear(),
         this.ground.clear(),
@@ -7633,6 +7636,9 @@ var Gl = class {
           glow: 0.3,
         });
       }
+    }
+    criticalImpact(x,y,z) {
+      return (!this.text.view||this.text.view.visible(x,y,z,4))&&this.criticalBudget.allow(this.crafted.clock,x,z);
     }
     ring(e, t, n, r, i, a = 0.45, o = 0.15, s = Hl(i)) {
       ((i = Vl(i)),
@@ -16082,7 +16088,7 @@ var Pm = class {
     }
     join(e) {
       let t = this.run;
-      (this.list.push(e), t.sprites.get(e.species), t.player.recompute());
+      (this.list.push(e), t.sprites.getAllyGlyph(e.species, t.player.speciesId), t.player.recompute());
       let n = t.meta.skinMember(e.species),
         r = n
           ? t.meta.inLeague(n.id)
@@ -16110,7 +16116,7 @@ var Pm = class {
       let t = this.shinyAlly;
       (t && this.list.splice(this.list.indexOf(t), 1),
         this.list.push(e),
-        this.run.sprites.get(e.species),
+        this.run.sprites.getAllyGlyph(e.species, this.run.player.speciesId),
         this.run.player.recompute());
     }
     shinyLabel(e) {
@@ -16346,7 +16352,7 @@ var Pm = class {
       let e = this.run,
         t = e.sprites;
       for (let n of this.list) {
-        let r = t.get(n.species),
+        let r = t.getAllyGlyph(n.species, e.player.speciesId),
           i = n.hop > 0 || Math.hypot(n.x - e.player.pos.x, n.z - e.player.pos.z) > 3,
           a = n.shiny ? 5 + Math.min(0.99, Xc(n.species)) : 0;
         r.push(
@@ -27861,6 +27867,7 @@ var e_ = class {
         const authoredEmber=visualMove==='ember';
         const authoredBreath=['flamethrower','dragon-breath','heat-wave'].includes(visualMove);
         const authoredFamily=r.vfx.crafted.fireFamily.supports(visualMove)||n.slot===8&&[4,5,6].includes(r.player.speciesId);
+        const criticalFx=(u||m)&&r.vfx.criticalImpact(t,a,o);
         if(visualMove==='heat-wave')r.vfx.crafted.fireFamily.impact('heat-wave',t,a,o);
         else if(authoredBreath)r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),visualMove==='dragon-breath');
         else if(authoredFamily)r.vfx.crafted.fireFamily.impact(visualMove||'ultimate',t,a,o);
@@ -27870,14 +27877,14 @@ var e_ = class {
             (u || this.hitFxN++ < Yg) &&
             r.vfx.burst(t, a, o, d, u ? 9 : 4, u ? 7 : 4, am(n.type), u ? 0.55 : 0.4, 0.3),
           m
-            ? (r.vfx.flash(t, a, o, 16730762, 2.4, 0.14),
+            ? criticalFx && (r.vfx.flash(t, a, o, 16730762, 2.4, 0.14),
               r.vfx.ring(t, i.y[e], o, 2.1, 16730762, 0.28, 0.45),
               r.vfx.ring(t, i.y[e] + 0.1, o, 1.2, 16777215, 0.2, 0.4),
               r.vfx.burst(t, a, o, 16743088, 10, 9, I.Star, 0.5, 0.35),
               this.canReact(`mega`) &&
                 (r.ui.popup(i.x[e], i.y[e] + i.hgt[e] + 1.5, i.z[e], c(`¡Megacrítico!`), `#ff5a9a`, 0.9),
                 r.shake(0.05)))
-            : u &&
+            : u && criticalFx &&
               (r.vfx.flash(t, a, o, 16765498, 1.4, 0.1), r.vfx.ring(t, i.y[e], o, 1.3, 16765498, 0.2, 0.3)),
           x &&
             this.canReact(`guard`) &&
@@ -31845,6 +31852,7 @@ var mv = 30,
         av(e),
         this.run.endless && (e.moveSpeed = de(e.moveSpeed)));
       applyStarterSpeed(e,this.buffs);
+      e.damage *= 1 + windSpeedDamageBonus(this.speciesId,e.moveSpeed,this.baseSpeed);
       let u = this.maxHp;
       ((this.stats = e),
         (this.maxHp = Math.round(e.maxHp)),
@@ -45675,6 +45683,7 @@ var GS = class e {
     disposed = !1;
     static CHEST_BASE = 18;
     static CHESTS_PER_KIND = 6;
+    recentChestSites = [];
     chestCost() {
       let t = 1 - Math.min(0.4, 0.08 * (this.run.player.items.get(`big-nugget`) ?? 0)),
         n = this.run.endless?.curse.chest ?? 1;
@@ -46345,7 +46354,11 @@ var GS = class e {
     openChest(e, t, n = !1, r) {
       let i = this.run;
       if (e.used) return;
-      if (!i.sanctuary && (e.kind === 'chest' || e.kind === 'freechest')) e.respawnAt = i.time + 30;
+      if (!i.sanctuary && (e.kind === 'chest' || e.kind === 'freechest')) {
+        e.respawnAt = i.time + 30;
+        this.recentChestSites.push({x:e.x,z:e.z});
+        if(this.recentChestSites.length>24)this.recentChestSites.shift();
+      }
       if (
         ((e.used = !0),
         (this.run.chestsBought += t || n ? 0 : 1),
@@ -46369,7 +46382,9 @@ var GS = class e {
                 (e) => t.scale.setScalar(r * (1 - e)),
                 () => {
                   t.visible = !1;
-                  this.releaseDevice(e);
+                  // Keep this bounded slot's prepared model for its next site.
+                  // Hidden devices do not participate in the screen effects.
+                  if(e.respawnAt===undefined)this.releaseDevice(e);
                 },
               ),
             ),
@@ -46382,27 +46397,46 @@ var GS = class e {
     }
     respawnChest(chest) {
       const {terrain, player, time} = this.run;
-      const sites = this.chestSites;
-      const start = F.int(0,sites.length-1);
-      for (let i = 0; i < sites.length; i++) {
-        const {x,z} = sites[(start+i)%sites.length];
-        if (Math.hypot(x-chest.x,z-chest.z) < 14 || Math.hypot(x-player.pos.x,z-player.pos.z) < 10 ||
+      const sites = this.chestSites ?? [];
+      if(!sites.length){chest.respawnAt=time+1;return;}
+      chest.refillCursor ??= F.int(0,sites.length-1);
+      chest.refillChecked ??= 0;
+      // Bound collision queries even if the nearby map is completely occupied.
+      for (let i = 0; i < 24 && chest.refillChecked < sites.length; i++) {
+        const {x,z} = sites[chest.refillCursor++ % sites.length];
+        chest.refillChecked++;
+        if (Math.hypot(x-chest.x,z-chest.z) < 32 || Math.hypot(x-player.pos.x,z-player.pos.z) < 32 ||
+            this.recentChestSites.some(site=>Math.hypot(x-site.x,z-site.z)<24) ||
+            this.run.sprites.visible(x,terrain.height(x,z)+2,z,8) ||
             terrain.isReserved(x,z,3) || !this.fitsOnDesk(x,z,4.5) ||
             !this.hasBuildingSpace(x,z,2.6)) continue;
-        this.remove(chest);
-        this.add(BS(chest),x,z);
+        this.run.ui.removeWorldLabel(chest);
+        if(this.nearest===chest)this.updateDwell(null,0,0);
+        chest.kind=BS(chest);chest.data=undefined;
+        chest.x=x;chest.y=terrain.height(x,z);chest.z=z;
+        chest.used=false;delete chest.respawnAt;delete chest.refillCursor;delete chest.refillChecked;
+        Object.assign(chest.reservation,{x,z});
+        chest.group.position.set(x,chest.y,z);
+        chest.group.scale.setScalar(1);chest.group.visible=true;
+        if(chest.group.userData.lid)chest.group.userData.lid.rotation.x=0;
+        if(chest.halo)chest.halo.visible=true;
+        this.restoreDeviceColour(chest);
+        if(!chest.model)chest.modelReady=this.loadDevice(chest);
         return;
       }
-      chest.respawnAt = time + 1;
+      if(chest.refillChecked>=sites.length){
+        delete chest.refillCursor;delete chest.refillChecked;chest.respawnAt=time+1;
+      }
     }
     update(e, dwellSeconds = e) {
       let t = this.run,
         n = t.player.pos,
         r = null,
         i = 1e9;
+      let refillChecked = false;
       for (let a of this.list) {
         if (a.respawnAt !== undefined && t.time >= a.respawnAt && t.state === 'play') {
-          this.respawnChest(a);
+          if(!refillChecked){this.respawnChest(a);refillChecked=true;}
           continue;
         }
         const ready = this.hasVisual(a);
@@ -55322,11 +55356,7 @@ var GT = 15,
         this.hitstop(0.5),
         this.shake(0.8),
         (this.audio.intensity = 0.3));
-      let a = r || this.mode === SINGLE_STAGE
-        ? c(`Entra al portal para completar el mapa`)
-        : n && this.stage === FOREST_COMBAT_ZONES
-          ? `进入传送门，迎战最终 Boss ${finalBossWord}`
-          : c(`Se ha abierto un portal a la siguiente zona`);
+      let a = portalGuidance(this);
       (this.ui.banner(c(r ? `¡Legendario derrotado!` : `¡Guardián derrotado!`), a, `#ffd23a`, {
         species: t.species[e], glyph: t.glyphWords[e],
       }),
@@ -56349,7 +56379,7 @@ var GT = 15,
       }
     }
     setHordeQuality(e) {
-      const budget=crowdBudgets[batterySaverEnabled(this.meta.profile.settings.batterySaver)?"low":e]||crowdBudgets.high,previous=this.liveMax;
+      const budget=crowdBudgets[e]||crowdBudgets.high,previous=this.liveMax;
       this.liveMax=budget.max;this.liveMin=budget.min;
       this.liveCap=this.performance?.lockVisualQuality||this.liveCap>=previous?this.liveMax:Math.max(this.liveMin,Math.min(this.liveCap,this.liveMax));
     }
@@ -60126,12 +60156,12 @@ function yO(e, t = `btn small ghost gl-btn`) {
 var bO = [...LITE_SPECIES],
   xO = () => ({ idx: 0, ids: [], prog: [], claimed: [], rerolls: 0 }),
   SO = {
-    master: 0.8,
+    master: 1,
     music: 0.5,
-    sfx: 0.7,
+    sfx: 1,
     cries: 0.6,
     quality: `high`,
-    batterySaver: false,
+    lock30Fps: false,
     aimMode: `auto`,
     sensitivity: 1,
     invertY: !1,
@@ -79123,7 +79153,7 @@ var eI = () => Da || [...(navigator.getGamepads?.() ?? [])].some((e) => e?.conne
   tI = `sound`;
 function nI(e) {
   let t = e.meta.profile.settings,
-    n = SO,
+    n = {...SO,lock30Fps:deviceFramePolicy(window.nativeDevice).lock30Fps},
     r = () => {
       (e.applySettings(), e.meta.save(), y());
     },
@@ -79184,7 +79214,8 @@ function nI(e) {
         e,
         () => !!t[n],
         () => {
-          ((t[n] = !t[n]), r());
+          if(n==='lock30Fps')setFrameRateLock(t,!t[n]);else t[n]=!t[n];
+          r();
         },
         i,
       ),
@@ -79265,7 +79296,7 @@ function nI(e) {
         c: `var(--blue)`,
         keys: [
           `quality`,
-          `batterySaver`,
+          `lock30Fps`,
           `shakeOn`,
           `screenShake`,
           `fxOpacity`,
@@ -79288,14 +79319,7 @@ function nI(e) {
             ],
             c(`Baja da más rendimiento`),
           ),
-          s(
-            c(`Ahorro de batería`),
-            () => t.batterySaver,
-            () => {
-              setBatterySaver(t,!t.batterySaver);r();b(tI);
-            },
-            c(`Limita a 30 fps y baja la resolución: el móvil gasta menos batería`),
-          ),
+          l('锁定 30 帧', 'lock30Fps', frameRateHelp),
           l(c(`Temblor de pantalla`), `shakeOn`),
           a(c(`Intensidad del temblor`), `screenShake`, 0, 1.5, 0.1),
           a(
@@ -79692,6 +79716,7 @@ function nI(e) {
   _.onclick = () => {
     (N.click(), LN?.());
     for (let e of v().keys) t[e] = n[e];
+    if(v().keys.includes('lock30Fps'))resetFrameRatePolicy(t,window.nativeDevice);
     (r(), b(tI));
   };
   let b = (e) => {
@@ -81429,7 +81454,7 @@ var JI = class {
           X(`div`, { class: `uc-txt` }, X(`small`, {}, c(`¡Ultimate!`)), X(`b`, {}, t)),
         ),
       );
-      (r.style.setProperty(`--c`, YC(n)), this.hudEl.append(r), setTimeout(() => r.remove(), 1300));
+      (r.style.setProperty(`--c`, YC(n)), (this.ultCutInRoot??this.hudEl).append(r), setTimeout(() => r.remove(), 1300));
     }
     capEl = null;
     captureStart(e, t, n, r = !1, word = enemySpeciesWord(e)) {
@@ -87761,11 +87786,21 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       );
     }
     applySettings() {
+      if(!this.devicePolicyListener){
+        this.devicePolicyListener=()=>this.applySettings();
+        window.addEventListener('deviceperformancechange',this.devicePolicyListener);
+      }
       let e = this.meta.profile?.settings;
       if(e&&(window.nativeUI||this.zixing))e.aimMode='auto';
       if (e) {
-        const repaired = setBatterySaver(e,e.batterySaver);
-        if (window.repairVolumeSettings?.(e) || repaired) this.meta.save();
+        const repaired = Object.hasOwn(e,'batterySaver');
+        if (repaired) delete e.batterySaver;
+        const frameChanged=applyFrameRatePolicy(e,window.nativeDevice);
+        if(frameChanged){
+          const toggle=this.screen?.querySelector('[aria-label="锁定 30 帧"]');
+          toggle?.classList.toggle('on',!!e.lock30Fps);toggle?.setAttribute('aria-checked',!!e.lock30Fps);
+        }
+        if (window.repairVolumeSettings?.(e) || repaired || frameChanged) this.meta.save();
       }
       const profile=performanceProfile(e,window.nativeDevice);
       if(window.nativeGraphics)Object.assign(window.nativeGraphics,{pixelBudget:profile.pixelBudget,maxPixelRatio:profile.maxPixelRatio});
@@ -87774,7 +87809,6 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         (N.setVolumes({ master: e.master, music: e.music, sfx: e.sfx, cries: e.cries }),
         N.setHiddenMute(document.hidden && e.muteHidden),
         N.setSilentPlay(!!e.silentPlay),
-        (this.saver = e.batterySaver),
         this.r &&
           (this.r.setQuality({
             pixelScale: window.nativeUI||this.zixing ? 0 : e.pixel ?? 0,
@@ -87782,7 +87816,6 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
             outline: profile.outline,
             hires: e.quality !== `low`,
             dyn: profile.dynamicResolution,
-            saver: this.saver,
           }),
           this.r.setLook(!!e.reduceFlashes, e.fxGlow ?? 1)),
         document.documentElement.classList.toggle(`calm-fx`, !!e.reduceFlashes),
@@ -88044,18 +88077,13 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     }
     perf = { sim: 0, draw: 0, fps: 0, frames: 0, started: 0, last: 0, run: null };
     failing = 0;
-    saver = !1;
     frameGap() {
-      let e = this.run?.state;
-      if(window.nativeUI&&window.modalAnimating?.())return 1000/(this.fpsCap()||60);
-      if (window.nativeUI && (!e || e === `paused` || e === `modal` || e === `over` || this.run?.buildingStage || this.screen?.classList.contains('zx-loading-screen')))
-        return Math.max(1000 / (this.fpsCap() || 60), 1000 / 30);
-      if (this.saver) return e === `paused` || e === `modal` ? 50 : 1000/30;
-      let t = this.fpsCap();
-      return t ? 1e3 / t : 0;
+      // Keep one native cadence through home/loading/combat and modal changes.
+      // Static menus skip unchanged UI. The 30 FPS cap is a player choice.
+      return 1000 / this.fpsCap();
     }
     fpsCap() {
-      return this.saver ? 30 : 60;
+      return targetFrameRate(this.meta.profile?.settings);
     }
     dyn = { t: 0, frames: 0, js: 0, good: 0, wait: 8, lastUp: -1e9 };
     dynAt = 0;
@@ -88064,7 +88092,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         i = this.r;
       if (
         ((this.dynAt = n),
-        !i.quality.dyn || this.saver || this.run?.state !== `play` || document.hidden || !(t > 0 && Number.isFinite(t)))
+        !i.quality.dyn || this.run?.state !== `play` || document.hidden || !(t > 0 && Number.isFinite(t)))
       ) {
         r.t = r.frames = r.js = 0;
         return;

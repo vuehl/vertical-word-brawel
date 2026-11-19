@@ -28,7 +28,7 @@ import {createModalTransition} from './modal-transition.mjs';
 import {gameViewport} from './viewport.mjs';
 import {createMutationTargets} from './mutation-targets.mjs';
 import {uiScale} from './ui-resolution.mjs';
-import {readRuntimeInfo} from './device.mjs';
+import {readRuntimeInfo,readDevicePerformance} from './device.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -62,6 +62,7 @@ export async function setup(host) {
   const controls=createControlLayer(makeCanvas);
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
+  readDevicePerformance(wx,device).then(()=>win.dispatchEvent(new D.Event('deviceperformancechange')));
   const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true,uploadPixels:device.platform==='ios'});
   const peerTiles=['peer-health-0','peer-health-1','peer-tag-0','peer-tag-1'].map((id,i)=>
     createCanvasLayer(makeCanvas,id,{slot:14+i,movable:true,uploadPixels:device.platform==='ios'}));
@@ -72,6 +73,7 @@ export async function setup(host) {
   const skillLayer=soloLayers[2];
   soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
   soloLayers.push(createHUDLayer(makeCanvas,'stage-intro',20));
+  soloLayers.push(createHUDLayer(makeCanvas,'ultimate-cutin',21));
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;

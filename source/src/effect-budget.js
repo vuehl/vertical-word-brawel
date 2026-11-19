@@ -13,6 +13,21 @@ export class ParticleBudget {
     if(this.counts[key]>=this.limit)return false;this.counts[key]++;return true;
   }
 }
+
+// Extra critical flashes/rings are decoration. Keep their cost bounded even
+// when an ultimate crits the whole crowd; ordinary hit feedback stays intact.
+export class CriticalImpactBudget {
+  constructor(limit=8){this.limit=limit;this.cells=new Set();this.bucket=-1;}
+  allow(time,x,z){
+    const bucket=Math.floor(time/.12);
+    if(bucket!==this.bucket){this.bucket=bucket;this.cells.clear();}
+    if(this.cells.size>=this.limit)return false;
+    const cell=(Math.floor(x/3)+4096)*8192+Math.floor(z/3)+4096;
+    if(this.cells.has(cell))return false;
+    this.cells.add(cell);return true;
+  }
+  clear(){this.bucket=-1;this.cells.clear();}
+}
 export function accumulateDamage(vfx,target,x,y,z,value,color,critical){
   const pending=vfx.damagePending??=new Map(),key=target+'/'+color+'/'+critical;
   const entry=pending.get(key);

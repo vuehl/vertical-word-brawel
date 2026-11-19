@@ -156,9 +156,9 @@ function drawFacilityGuide(ctx,target){
 
 // Only neighbouring places of the same type share an icon. Keep every real
 // location as a dot, and anchor each group at its nearest member, not a new point.
-export function layoutBuildingIcons(markers,size,player={x:60,y:58}){
+export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0){
   const box=group=>{
-    const w=size,h=size;
+    const w=Math.max(size,group.labelWidth||0),h=size+(labelSize?labelSize+1.5:0);
     const limit=Math.sqrt(47**2-(w/2)**2)-h/2;
     let y=Math.max(58-limit,Math.min(58+limit,group.y));
     const fitX=()=>{
@@ -181,15 +181,57 @@ export function layoutBuildingIcons(markers,size,player={x:60,y:58}){
       a.count+=b.count;groups.splice(j,1);changed=true;break outer;
     }
   }
+  if(labelSize){
+    const parts=b=>[{x:b.x+(b.w-size)/2,y:b.y,w:size,h:size},
+      {x:b.x,y:b.y+size+1.5,w:b.w,h:labelSize}];
+    const overlaps=(a,b)=>a.x<b.x+b.w+.7&&a.x+a.w+.7>b.x&&a.y<b.y+b.h+.7&&a.y+a.h+.7>b.y;
+    const candidates=new Map();
+    for(const group of groups){
+      const {w,h}=group.box;
+      const choices=[];
+      // Keep different building names apart as well as their icons. The dot
+      // and leader line retain the true location when a label needs to move.
+      for(let y=12;y+h<=104;y+=2)for(let x=14;x+w<=106;x+=2){
+        if([[x,y],[x+w,y],[x,y+h],[x+w,y+h]].some(([a,b])=>Math.hypot(a-60,b-58)>47))continue;
+        if(x<player.x+7&&x+w>player.x-7&&y<player.y+8&&y+h>player.y-8)continue;
+        const score=(x+w/2-group.x)**2+(y+size/2-group.y)**2;
+        choices.push({box:{x,y,w,h},parts:parts({x,y,w,h}),score});
+      }
+      candidates.set(group,choices.sort((a,b)=>a.score-b.score));
+    }
+    let order=[...groups].sort((a,b)=>b.box.w-a.box.w||a.y-b.y),best=null;
+    // Give a crowded type first choice on a bounded retry instead of leaving
+    // its name hidden underneath an earlier icon.
+    for(let attempt=0;attempt<4;attempt++){
+      const placed=[],boxes=new Map(),blocked=[];
+      for(const group of order){
+        const fit=candidates.get(group).find(choice=>!placed.some(b=>choice.parts.some(a=>overlaps(a,b))));
+        if(!fit)blocked.push(group);
+        const next=fit?.box??group.box;boxes.set(group,next);placed.push(...parts(next));
+      }
+      if(!best||blocked.length<best.blocked)best={boxes,blocked:blocked.length};
+      if(!blocked.length)break;
+      order=[...blocked,...order.filter(group=>!blocked.includes(group))];
+    }
+    for(const [group,box] of best.boxes){group.box=box;group.hitBoxes=parts(box);}
+  }
   return groups;
 }
-function drawBuildingIcons(ctx,markers,size,iconFor,player){
-  const groups=layoutBuildingIcons(markers,size,player);
+function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0){
+  if(labelSize){
+    ctx.font='bold '+labelSize+'px "Ziling Swei", sans-serif';
+    markers=markers.map(marker=>({...marker,labelWidth:ctx.measureText(facilityNames[marker.kind]).width+2}));
+  }
+  const groups=layoutBuildingIcons(markers,size,player,labelSize);
   for(const marker of markers){
     ctx.beginPath();ctx.arc(marker.x,marker.y,1,0,Math.PI*2);ctx.fillStyle='#517589';ctx.fill();
   }
   for(const group of groups){
-    const {x,y}=group.box,icon=iconFor?.(group.kind);
+    const {y,w:boxWidth}=group.box,x=group.box.x+(boxWidth-size)/2,icon=iconFor?.(group.kind);
+    if(labelSize&&Math.hypot(x+size/2-group.x,y+size/2-group.y)>size*.6){
+      ctx.beginPath();ctx.moveTo(group.x,group.y);ctx.lineTo(x+size/2,y+size/2);
+      ctx.strokeStyle='#8fa9b2';ctx.lineWidth=.5;ctx.stroke();
+    }
     if(icon?.naturalWidth && icon.naturalHeight){
       const scale=size/Math.max(icon.naturalWidth,icon.naturalHeight);
       const w=icon.naturalWidth*scale,h=icon.naturalHeight*scale;
@@ -206,6 +248,12 @@ function drawBuildingIcons(ctx,markers,size,iconFor,player){
       ctx.lineWidth=.45;ctx.strokeStyle='#fffdf5';ctx.stroke();
       ctx.font='bold '+r*1.6+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillStyle='#fff';ctx.fillText(String(group.count),cx,cy,2*r-.5);
+    }
+    if(labelSize){
+      const name=facilityNames[group.kind],cx=group.box.x+boxWidth/2,cy=y+size+1.5+labelSize/2;
+      ctx.font='bold '+labelSize+'px "Ziling Swei", sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.lineJoin='round';ctx.lineWidth=1.6;ctx.strokeStyle='#fffdf7';ctx.strokeText(name,cx,cy);
+      ctx.fillStyle='#385365';ctx.fillText(name,cx,cy);
     }
   }
   return groups;
@@ -251,7 +299,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
     const [x,y]=point(marker.x,marker.z);if(!visible(x,y))continue;
     const portal=marker.kind==='portal'||marker.kind==='sanct_portal';
     const kind=buildingMapKind(marker),name=portal?facilityNames.portal:buildingMapName(marker);
-    if(facilityKind&&kind!==facilityKind&&kind!=='boss'&&!portal)continue;
+    if(facilityKind&&kind!==facilityKind&&(!shadow||(kind!=='boss'&&!portal)))continue;
     if(name){
       buildings.push({kind,x:60+(x-60)/viewRatio,y:58+(y-58)/viewRatio});
       continue;
@@ -260,7 +308,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
     ctx.strokeStyle='#fff';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(x-1.8,y);ctx.lineTo(x+1.8,y);ctx.moveTo(x,y-1.8);ctx.lineTo(x,y+1.8);ctx.stroke();
   }
   // Fog obscures combatants while landmarks and facility guidance stay visible.
-  if(!run.events?.blind){
+  if(!run.events?.blind&&(shadow||!facilityKind)){
     const enemies=run.enemies;
     // One fill for each dot class, rather than a Canvas draw call per monster.
     // Draw bosses last so ordinary dots cannot cover their actual character.
@@ -301,8 +349,10 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
   let groups=[];
   if(buildings.length){
     ctx.save();ctx.translate(60,58);ctx.scale(viewRatio,viewRatio);ctx.translate(-60,-58);
-    const size=shadow?17:Math.min(16,Math.max(9,5760/canvas.width));
-    groups=drawBuildingIcons(ctx,buildings,size,iconFor,playerOnDial);ctx.restore();
+    const compact=canvas.width<480;
+    const size=shadow?14:Math.min(16,Math.max(8,(compact?3840:4320)/canvas.width));
+    const labelSize=shadow?9:(compact?2400:2640)/canvas.width;
+    groups=drawBuildingIcons(ctx,buildings,size,iconFor,playerOnDial,labelSize);ctx.restore();
   }
   for(const peer of run.coop?.visiblePeers()||[]){
     const dx=(peer.x-center.x)*scale,dz=(peer.z-center.z)*scale;

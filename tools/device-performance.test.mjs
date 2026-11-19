@@ -26,8 +26,30 @@ function fixture(width=390,height=844){
   const source={width,height,texture:{},depthTexture:{}};
   const composite=options=>fx.composite(scene,camera,0,source,null,{matricesUpdated:true,...options});
   const tiles=()=>draws.find(s=>s.children[0]?.material?.uniforms.outlineTiles).children[0].material.uniforms.outlineTiles.value;
-  return {scene,camera,fx,left,right,source,renderer,composite,tiles};
+  return {scene,camera,fx,left,right,source,renderer,composite,tiles,draws};
 }
+
+test('world outlines and device effects share one mask, but stale frames redraw it',()=>{
+  const f=fixture(),options={matricesUpdated:true},previous={loading:true};
+  f.renderer.setRenderTarget(previous);
+  const frame=f.fx.prepareFrame(f.scene,f.camera,0,f.source,options);
+  assert.equal(frame.active,2);assert.equal(f.draws.length,1);
+  assert.equal(f.renderer.getRenderTarget(),previous);
+  // Colour grading may change the colour input; the stable depth remains valid.
+  const graded={...f.source,texture:{graded:true}};
+  f.fx.composite(f.scene,f.camera,0,graded,null,{...options,preparedFrame:frame});
+  assert.equal(f.draws.length,2,'Only mask + colour, without a second silhouette draw');
+  assert.equal(f.renderer.getRenderTarget(),previous);
+  assert.equal(f.draws[0].children[0].material.uniforms.worldDepth.value,f.source.depthTexture);
+  assert.equal(f.draws[1].children[0].material.uniforms.maskTex.value,f.fx.maskTexture);
+  assert.equal(f.draws[1].children[0].material.uniforms.beautyTex.value,graded.texture);
+  f.fx.composite(f.scene,f.camera,0,graded,null,{...options,preparedFrame:frame});
+  assert.equal(f.draws.length,4,'A consumed token must regenerate the mask');
+  const next=f.fx.prepareFrame(f.scene,f.camera,0,f.source,options);
+  f.fx.composite(f.scene,f.camera,1,graded,null,{...options,preparedFrame:next});
+  assert.equal(f.draws.length,7,'Time changes must invalidate prepared device animation');
+  f.fx.dispose();
+});
 
 test('device compositor reuses scene matrices but standalone callers still update them',()=>{
   const f=fixture();let updates=0;

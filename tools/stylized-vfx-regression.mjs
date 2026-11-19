@@ -8,7 +8,7 @@ export async function reviewStylizedVFX(page,dir){
   const report={environment:'Actual compiled WeChat bundle in Chrome SwiftShader; controlled inputs and enemies, original gameplay camera. Not phone FPS.',moves:[],ultimates:[],screens:[]};
   await page.evaluate(()=>{
     app.halted=true;inspected.doc.querySelector('[data-dev-action="close"]')?.click();
-    Object.assign(app.meta.profile.settings,{quality:'high',batterySaver:false,autoUlt:false,ultQuiet:true,damageNumbers:true});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:'high',autoUlt:false,ultQuiet:true,damageNumbers:true});app.applySettings();
     window.vfxSetup=()=>{
       const r=app.run,p=r.player;app.halted=true;r.state='play';r.ui.hideModal();r.godMode=true;r.pendingLevels=0;
       r.director.update=()=>{};r.events.update=()=>{};r.minibosses.update=()=>{};r.enemies.clear();r.ult.clear();r.projectiles.clear();r.zones.clear();r.vfx.clear();r.timers.length=0;r.anims.length=0;r.aimMode='auto';

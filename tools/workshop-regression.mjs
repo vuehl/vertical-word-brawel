@@ -10,7 +10,7 @@ export async function reviewWorkshop(page,dir){
     inspected.doc.querySelector('[data-dev-action="close"]')?.click();
     const run=app.run;app.halted=true;run.state='play';run.godMode=true;
     run.ui.hideModal();inspected.doc.querySelectorAll('.zx-intro,.run-hint,.banner').forEach(n=>n.remove());
-    Object.assign(app.meta.profile.settings,{quality:'high',batterySaver:false});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:'high'});app.applySettings();
     window.workshopFrame=()=>{const r=app.run;app.r.renderer.resetState();r.updateCamera(1);r.renderWorld(0);r.vfx.update(0);r.ui.hud(r);app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);};
     workshopFrame();
   });

@@ -39,7 +39,7 @@ function fixture() {
 
 test('synth raises effect output while retaining stored volume and explicit mute',()=>{
   const {audio}=fixture();audio.init();
-  assert.equal(audio.master.gain.value,.8);assert.equal(audio.sfxBus.gain.value,.7*1.8);
+  assert.equal(audio.master.gain.value,1);assert.equal(audio.sfxBus.gain.value,1.8);
   audio.setVolumes({master:.65,sfx:.4});audio.beginRun();
   assert.equal(audio.master.gain.value,.65);assert.equal(audio.sfxBus.gain.value,.4*1.8);
   audio.setVolumes({master:0});audio.click();assert.equal(audio.voices.size,0);

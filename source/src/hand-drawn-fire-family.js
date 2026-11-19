@@ -102,7 +102,8 @@ void main(){
 export class HandDrawnFireFamily{
  supports(key){return fireFamilyMoves.has(key);}
  constructor(owner,scene){
-  this.owner=owner;this.events=[];this.keys=new Map();this.wildfireKeys=new Set();this.hitTimes=new Map();this.clock=0;this.limit=128;this.played=0;
+  this.owner=owner;this.events=[];this.ordered=[];this.groups=[[],[],[],[]];this.keys=new Map();this.wildfireKeys=new Set();this.hitTimes=new Map();this.clock=0;this.limit=128;this.played=0;
+  this.impactBudget=Infinity;this.impactBucket=-1;this.impactCount=0;
   const atlasTexture=(file,flag)=>{
    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
    const texture=new CanvasTexture(canvas);texture.colorSpace=SRGB;texture.generateMipmaps=false;texture.minFilter=texture.magFilter=1006;
@@ -164,9 +165,14 @@ export class HandDrawnFireFamily{
   return Math.atan2(screenY,screenX)+Math.PI/2;
  }
  impact(key,x,y,z,size=1,own=true){
+  if(!this.owner.allowed(own)||this.owner.vfx.view&&!this.owner.vfx.view.visible(x,y,z,4))return;
   const cell=key==='fu-4'||key==='ultimate'||key==='inferno'||key==='heat-wave'?3:1;
   const id=key+'/'+Math.floor(x/cell)+'/'+Math.floor(z/cell);
   if(this.clock-(this.hitTimes.get(id)??-100)<.14)return;
+  const bucket=Math.floor(this.clock/.12);
+  if(bucket!==this.impactBucket){this.impactBucket=bucket;this.impactCount=0;}
+  if(this.impactCount>=this.impactBudget)return;
+  this.impactCount++;
   this.hitTimes.set(id,this.clock);
   if(key==='fire-fang'){
    this.play('charge',x,y,z,1.7,{own,life:.18,delay:.09,alpha:.9,fadeIn:.015,fadeOut:.12,blend:true});this.owner.impacts++;return;
@@ -319,23 +325,30 @@ export class HandDrawnFireFamily{
  update(dt){
   dt=Math.max(0,dt);this.clock+=dt;
   if(!this.events.length&&!this.hitTimes.size&&!this.wildfireKeys.size)return;
-  this.events=this.events.filter(e=>{
+  let liveCount=0;
+  for(const e of this.events){
    e.age+=dt;
    if(e.key&&e.releaseLife&&this.clock-e.seen>=.10){const overdue=this.clock-e.seen-.10;this.keys.delete(e.key);Object.assign(e,{key:null,phaseOffset:e.age-overdue,age:overdue,life:e.releaseLife,releasing:true,scaleFrom:1,scaleTo:1.16,fadeIn:0,fadeOut:e.releaseLife});}
    const live=this.owner.allowed(e.own)&&(e.key?this.clock-e.seen<.10:e.age<e.life);
-   if(!live&&e.key)this.keys.delete(e.key);return live;
-  });
+   if(!live&&e.key)this.keys.delete(e.key);
+   if(live)this.events[liveCount++]=e;
+  }
+  this.events.length=liveCount;
   for(const [key,t] of this.hitTimes)if(this.clock-t>1)this.hitTimes.delete(key);
   for(const key of this.wildfireKeys)if(!this.owner.keys.has(key))this.wildfireKeys.delete(key);
   const v=this.owner.vfx,camera=this.owner.run?.r.camera.position;
   const hero=this.owner.run?.player.pos;
   if(hero)for(const mesh of [this.mesh,this.topMesh,this.heatMesh,this.completionMesh])Object.assign(mesh.material.uniforms.heroPosition.value,{x:hero.x,y:hero.y+1,z:hero.z});
   // Transparent quads are sorted back to front within the batch.
-  const ordered=this.events.slice(0,this.limit);if(camera)ordered.sort((a,b)=>(b.x-camera.x)**2+(b.y-camera.y)**2+(b.z-camera.z)**2-((a.x-camera.x)**2+(a.y-camera.y)**2+(a.z-camera.z)**2));
+  const ordered=this.ordered;ordered.length=0;
+  for(let i=0;i<Math.min(this.events.length,this.limit);i++)ordered.push(this.events[i]);
+  if(camera)ordered.sort((a,b)=>(b.x-camera.x)**2+(b.y-camera.y)**2+(b.z-camera.z)**2-((a.x-camera.x)**2+(a.y-camera.y)**2+(a.z-camera.z)**2));
+  for(const group of this.groups)group.length=0;
+  for(const e of ordered)this.groups[e.foreground?1:e.heatWave?2:e.completion?3:0].push(e);
   for(const kind of [0,1,2,3]){
   const foreground=kind===1,heat=kind===2,completion=kind===3,mesh=foreground?this.topMesh:heat?this.heatMesh:completion?this.completionMesh:this.mesh,attributes=foreground?this.topAttributes:heat?this.heatAttributes:completion?this.completionAttributes:this.attributes;
-  const [origin,frame,style,pose,tween]=attributes.map(a=>a.array);let count=0;
-  const group=ordered.filter(e=>(e.foreground?1:e.heatWave?2:e.completion?3:0)===kind);if(foreground)group.sort((a,b)=>(a.layer||0)-(b.layer||0));
+  const origin=attributes[0].array,frame=attributes[1].array,style=attributes[2].array,pose=attributes[3].array,tween=attributes[4].array;let count=0;
+  const group=this.groups[kind];if(foreground)group.sort((a,b)=>(a.layer||0)-(b.layer||0));
   for(const e of group){
    if(e.age<0)continue;
    if(count>=(foreground||heat?16:completion?32:this.limit))break;
@@ -350,15 +363,17 @@ export class HandDrawnFireFamily{
    const birth=e.fadeIn?smooth(e.age/e.fadeIn):1,fade=e.fadeOut?smooth((e.life-e.age)/e.fadeOut):e.key||e.mushroomPart?1:Math.min(1,(1-t)*5);
    const alpha=e.alpha*(e.own?v.ownOpacity:1)*v.opacity*(v.calm?.76:1)*birth*fade;
    const o=count++*4;
-   origin.set([e.x+(e.travelX||0)*t+(e.releasing?(e.tailVX||0)*e.life*smooth(t):0),e.y-(e.fall||0)*t+(e.rise||0)*t,e.z+(e.travelZ||0)*t+(e.releasing?(e.tailVZ||0)*e.life*smooth(t):0),e.size*growth],o);frame.set([spec.first+index,alpha,e.clarity||0,e.own&&(e.palette===0||e.heroOpening)?1:0],o);
-   style.set([e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0)),e.mode,e.palette,(e.height||e.size)*vertical*(e.releasing&&e.clip==='wildfire'?1-t*.15:1)],o);pose.set([e.anchorX,e.anchorY,e.cutLower,e.cutUpper],o);tween.set([spec.first+next,e.blend?position-index:0,0,0],o);
+   origin[o]=e.x+(e.travelX||0)*t+(e.releasing?(e.tailVX||0)*e.life*smooth(t):0);origin[o+1]=e.y-(e.fall||0)*t+(e.rise||0)*t;origin[o+2]=e.z+(e.travelZ||0)*t+(e.releasing?(e.tailVZ||0)*e.life*smooth(t):0);origin[o+3]=e.size*growth;
+   frame[o]=spec.first+index;frame[o+1]=alpha;frame[o+2]=e.clarity||0;frame[o+3]=e.own&&(e.palette===0||e.heroOpening)?1:0;
+   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=(e.height||e.size)*vertical*(e.releasing&&e.clip==='wildfire'?1-t*.15:1);
+   pose[o]=e.anchorX;pose[o+1]=e.anchorY;pose[o+2]=e.cutLower;pose[o+3]=e.cutUpper;tween[o]=spec.first+next;tween[o+1]=e.blend?position-index:0;tween[o+2]=tween[o+3]=0;
   }
   mesh.count=(foreground?this.mushroomLoaded:heat?this.heatLoaded:completion?this.completionLoaded:this.loaded)?count:0;mesh.visible=mesh.count>0;
-  for(const a of attributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}
+  if(count)for(const a of attributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}
   }
  }
- setPerformance(profile){this.limit=profile.name==='流畅'?48:profile.name==='均衡'?80:128;}
- clear(){this.events.length=0;this.keys.clear();this.hitTimes.clear();if(this.wildfireKeys.size){const v=this.owner;v.entries=v.entries.filter(e=>!this.wildfireKeys.has(e.key));v.spinEmitters=v.spinEmitters.filter(e=>!this.wildfireKeys.has(e.key));for(const key of this.wildfireKeys)v.keys.delete(key);this.wildfireKeys.clear();if(!v.fireSpin.disposed)v.fireSpin.update(0,v.spinEmitters);}for(const mesh of [this.mesh,this.topMesh,this.heatMesh,this.completionMesh]){mesh.count=0;mesh.visible=false;}}
+ setPerformance(profile){this.limit=profile.name==='流畅'?48:profile.name==='均衡'?80:128;this.impactBudget=profile.fireImpactBudget??(profile.name==='流畅'?4:Infinity);}
+ clear(){this.events.length=this.ordered.length=0;for(const group of this.groups)group.length=0;this.impactBucket=-1;this.impactCount=0;this.keys.clear();this.hitTimes.clear();if(this.wildfireKeys.size){const v=this.owner;v.entries=v.entries.filter(e=>!this.wildfireKeys.has(e.key));v.spinEmitters=v.spinEmitters.filter(e=>!this.wildfireKeys.has(e.key));for(const key of this.wildfireKeys)v.keys.delete(key);this.wildfireKeys.clear();if(!v.fireSpin.disposed)v.fireSpin.update(0,v.spinEmitters);}for(const mesh of [this.mesh,this.topMesh,this.heatMesh,this.completionMesh]){mesh.count=0;mesh.visible=false;}}
  dispose(){this.disposed=true;this.clear();for(const mesh of [this.mesh,this.topMesh,this.heatMesh,this.completionMesh]){mesh.parent?.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh.dispose();}this.texture.dispose();this.mushroomTexture.dispose();this.heatTexture.dispose();this.completionTexture.dispose();}
 }
 

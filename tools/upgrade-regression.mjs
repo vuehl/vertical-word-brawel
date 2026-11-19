@@ -224,7 +224,7 @@ export async function reviewUpgrade({page,resize,dir}){
   const baseline=process.argv.includes('--baseline'),samples=[];let liveLoop=null;
   await page.evaluate(async()=>{
     const account=await app.backend.guest();await app.meta.load(account);
-    Object.assign(app.meta.profile.settings,{quality:'low',fpsLimit:30,batterySaver:false});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:'low',fpsLimit:30});app.applySettings();
     await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;app.run.godMode=true;app.run.update(1/60);
   });
@@ -353,7 +353,7 @@ export async function reviewUpgrade({page,resize,dir}){
     if(!baseline){
       liveLoop=await page.evaluate(async()=>{
         const r=app.run,renderer=app.r,originalGap=app.frameGap,originalRender=renderer.render,originalUpdate=r.update;
-        Object.assign(app.meta.profile.settings,{fpsLimit:60,batterySaver:false});app.applySettings();
+        Object.assign(app.meta.profile.settings,{fpsLimit:60});app.applySettings();
         r.pendingLevels=1;r.state='play';r.doLevelUp();r.ui.hud(r);
         renderer.render(0);inspected.env.drawUI(renderer.renderer);
         const time=r.time;let sceneRenders=0,updates=0,frames=0;

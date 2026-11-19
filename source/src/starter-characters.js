@@ -8,11 +8,16 @@ export const starterWords = Object.freeze(Object.fromEntries(
 ));
 export const windRoutes = [
   {middle:17, final:18, role:'A · 攻速', note:'「卷着打转」扩散风环。「刮倒一片」攻速十倍，持续5秒。'},
-  {middle:58, final:59, role:'B · 移速', note:'「叫完就冲」卷起旋风。「跑得没影」移速十倍，持续5秒。'},
+  {middle:58, final:59, role:'B · 移速', note:'「叫完就冲」卷起旋风。「跑得没影」移速十倍，持续5秒。飒、飙被动：移速每增加 2%，伤害 +1%，大招加速同样生效。'},
 ];
 export const attackSpeedBuff = 'ziling-wind-attack-speed';
 export const speedBuff = 'ziling-wind-speed';
 export const speedDuration = 5;
+export const windSpeedPassive = '移速每增加 2%，伤害 +1%（相对当前形态基础移速，含大招加速）。';
+export const hasWindSpeedPassive = id => id === 58 || id === 59;
+export function windSpeedDamageBonus(id,speed,baseSpeed){
+  return hasWindSpeedPassive(id)&&baseSpeed>0 ? Math.max(0,speed/baseSpeed-1)*.5 : 0;
+}
 const characterDefinitions = [
   {id:4,word:'炎',name:'炎',tone:'fire',color:'#bc3441',role:'火 · 爆发',motto:'二火成炎，三火成焱，四火成燚',move:moveCopy(4,'火花','ember'),ult:formCopy[4].ultimate[1],evolution:'炎 → 焱 → 燚'},
   {id:132,word:'摹',name:'摹',tone:'ink',color:'#77629e',role:'基础 · 复制',motto:'摹纸影写，照见谁便成为谁',move:moveCopy(132,'变身','transform'),ult:formCopy[132].ultimate[1],evolution:'单字定形 · 无进化'},
@@ -69,7 +74,7 @@ export function starterUltimate(id,original,castWindRing){
       type:'flying',cls:'special',dur:[0.8],tint:0xb8e8e0,cast:castWindRing};
   }else if(id===18||id===59){
     const attack=id===18,key=attack?attackSpeedBuff:speedBuff;
-    def={names:[name],descs:['使当前'+(attack?'攻击':'移动')+'速度变为 10 倍，持续 '+speedDuration+' 秒。重复释放刷新持续时间。'],
+    def={names:[name],descs:['使当前'+(attack?'攻击':'移动')+'速度变为 10 倍，持续 '+speedDuration+' 秒。重复释放刷新持续时间。'+(attack?'':'被动：'+windSpeedPassive)],
       type:'flying',cls:'physical',dur:[speedDuration],tint:0xb8e8e0,
       cast({run}){run.player.addBuff(key,speedDuration,name);run.player.zilingSpeedFx=0;}};
   }
