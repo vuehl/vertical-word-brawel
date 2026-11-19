@@ -9,6 +9,7 @@ import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWo
 import {dragonChantSeconds,startDragonChant} from './dragon-chant.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus} from './starter-characters.js';
 import {windMoveEffect} from './wind-move-art.js';
+import {retiredMoveIds,retiredFusionKeys,moveAvailableForSpecies,configureSkillLearnsets} from './skill-availability.js';
 import {mountLiteQA} from './lite-qa.js';
 import {createZixingUI,paperIcon} from './zixing-ui.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
@@ -416,6 +417,7 @@ var Ni = {
       );
       Object.assign(Pi,this.types.names);
       configureStarterSpecies(this.all);
+      configureSkillLearnsets(this.learnsets);
       configureGlyphNames(this.all);
       for (let e of this.all) {
         e.name=glyphWordForSpecies(e.id);
@@ -29555,8 +29557,6 @@ var S_ = [
   },
   w_ = new Map(),
   T_ = new Map();
-// Old resource packs and loadouts may still contain these move IDs.
-const retiredMoveIds = new Set([36, 44, 172, 179, 242, 245, 514, 583, 50104]);
 function E_(e) {
   let t = k.movesByKey.get(e)?.id;
   if (t != null) return O_(t);
@@ -29641,6 +29641,7 @@ function O_(e) {
   );
 }
 function formMove(id, species) {
+  if (!moveAvailableForSpecies(id, species)) return null;
   const def = O_(id);
   if (!def || def.fusion) return def;
   const name = moveCopy(species, def.name, def.key);
@@ -29942,7 +29943,7 @@ function J_(e, t, n, r) {
   let i = n.sub,
     a = !!i && (i.active > 0 || i.burst.length > 0 || i.charging);
   if (!i || (n.swapT <= 0 && (!a || n.swapT < -4))) {
-    let t = q_(),
+    let t = q_().filter(id => moveAvailableForSpecies(id, e.player.speciesId)),
       r = F.pick(t);
     if (i && t.length > 1) for (; r === i.def.id; ) r = F.pick(t);
     ((i = n.sub = new M_(formMove(r, e.player.speciesId))),
@@ -31793,7 +31794,11 @@ var mv = 30,
     setSpecies(e) {
       let t = this.hp / this.maxHp;
       this.ability=this.roster?.passive??this.ability;
-      for (const move of this.moves) if (move) move.def = formMove(move.def.id, e);
+      for (const [slot, move] of this.moves.entries()) if (move) {
+        const def = formMove(move.def.id, e);
+        if (def) move.def = def;
+        else this.forgetMove(slot);
+      }
       ((this.speciesId = e),
         (this.data = k.get(e)),
         (this.types = this.data.types),
@@ -35331,23 +35336,24 @@ function zb(e) {
 }
 var Bb = (e) => Math.max(1, Math.ceil((e - 10) / Lb));
 function Vb(e, t, n, r) {
+  const available = id => moveAvailableForSpecies(id, e) && O_(id);
   let i = new Set(),
     a = [];
   t?.kit.forEach((e, t) => {
     let n = k.movesByKey.get(e)?.id;
-    n != null && O_(n) && (i.add(n), a.push({ id: n, level: Math.max(1, Ye[t]) }));
+    n != null && available(n) && (i.add(n), a.push({ id: n, level: Math.max(1, Ye[t]) }));
   });
   let o = (e) => !!t?.kit.includes(k.moves.get(e).key),
     s = null,
     c = [];
   if (t?.passive === `mew`)
     s = [...k.moves.values()]
-      .filter((e) => e.cls !== `status` && (e.power ?? 0) >= 60 && O_(e.id) && !o(e.id))
+      .filter((e) => e.cls !== `status` && (e.power ?? 0) >= 60 && available(e.id) && !o(e.id))
       .map((e) => ({ id: e.id, level: 1 }));
   else {
     let t = zb(e);
     c = A_(e)
-      .filter((e) => !o(e))
+      .filter((e) => available(e) && !o(e))
       .map((e) => ({ id: e, level: Bb(t.get(e) ?? 0) }))
       .sort((e, t) => e.level - t.level);
   }
@@ -35358,7 +35364,7 @@ function Vb(e, t, n, r) {
       e.kit.forEach((t, i) => {
         let a = k.movesByKey.get(t)?.id,
           s = a == null ? void 0 : k.moves.get(a)?.type;
-        if (a == null || !s || (s !== `normal` && !n.includes(s)) || !O_(a) || o(a)) return;
+        if (a == null || !s || (s !== `normal` && !n.includes(s)) || !available(a) || o(a)) return;
         let c = l.get(a),
           u = Math.max(1, Ye[i]);
         c
@@ -45290,8 +45296,9 @@ var iS = {
   lS = [...jx, ...Nx, ...Ix, ...Wx, ...Xx, ...aS],
   uS = new Map();
 lS.forEach((e, t) => {
+  if (retiredFusionKeys.has(e.key)) return;
   if (e.kind === 'signature') e.name = specialNames.fusion.get(e.name) ?? e.name;
-  // Saved loadouts use numeric IDs. Keep the retired fusion slot vacant.
+  // Assign IDs before filtering so every retired fusion keeps its old slot.
   let n = Cx + t;
   if (n >= 50104) n++;
   if (((e.power = oS[e.key] ?? e.power), (e.cd *= sS), cS.has(e.key) && (e.repeats = !0), e.power > 4)) {
@@ -45301,6 +45308,7 @@ lS.forEach((e, t) => {
   if (uS.has(e.key)) throw Error(`fusion key repeated: ` + e.key);
   (uS.set(e.key, { r: e, id: n }), w_.set(n, Ax(e, n)));
 });
+lS = lS.filter(e => !retiredFusionKeys.has(e.key));
 var dS = (e) => uS.get(e)?.r,
   fS = (e) => uS.get(e)?.id ?? -1,
   pS = (e) => lS.find((t) => t.kind === `signature` && t.member === e),
@@ -45308,6 +45316,7 @@ var dS = (e) => uS.get(e)?.r,
   hS = 1.7 * mS,
   gS = (e) => e.arch !== `weather` && e.arch !== `buff` && e.arch !== `fusion`;
 function _S(e, t) {
+  if (!O_(e.id) || !O_(t.id) || e.id === t.id) return null;
   let n = lS.find(
     (n) =>
       n.kind === `signature` &&
@@ -45322,7 +45331,7 @@ function _S(e, t) {
     let t = lS.find((t) => t.kind === `type` && t.type === e.type);
     if (t) return t;
   }
-  return lS.find((e) => e.kind === `glitch`);
+  return null;
 }
 const fusionRequiredLevel = 4;
 var vS = (e, t) => c(`{name} Nv. {lv}/{max}`, { name: e, lv: t, max: fusionRequiredLevel });
@@ -45336,6 +45345,7 @@ function yS(e) {
         a = r[t],
         o = _S(i.m.def, a.m.def),
         s = [];
+      if (!o) continue;
       (i.m.level < fusionRequiredLevel && s.push(vS(i.m.def.name, i.m.level)),
         a.m.level < fusionRequiredLevel && s.push(vS(a.m.def.name, a.m.level)),
         n.push({
@@ -45384,7 +45394,7 @@ function bS(e, t) {
   let n = e.player,
     r = n.moves[t.a],
     i = n.moves[t.b];
-  if (!r || !i) return null;
+  if (!r || !i || _S(r.def, i.def) !== t.r) return null;
   let a = O_(fS(t.r.key));
   if (!a) return null;
   let o = new M_(a);
@@ -58643,10 +58653,7 @@ function HD(e, t, n) {
       `p`,
       { class: `mp-hint` },
       n ??
-        c(
-          `Dos movimientos al nivel {level} o superior se funden en la Máquina de Bill. La pareja decide la fusión: la de firma del Pokémon, la reacción de sus dos tipos, la de su tipo común o MissingNo. Pasa el ratón por una para ver su ficha.`,
-          { level: fusionRequiredLevel },
-        ),
+        `两项技能各达到 ${fusionRequiredLevel} 级后，可在订书机按指定配方、属性反应或已开放的同属性配方融合。没有对应配方的组合不能融合。`,
     ),
     e.length
       ? X(`div`, { class: `mp-grid fi-grid` }, ...e.map((e) => VD(e, t)))
@@ -59995,14 +60002,7 @@ function _O(e) {
                 `Un movimiento de cada lado de una reacción elemental: la fusión provoca esa reacción por sí sola.`,
               ),
             ),
-            gO(null, DD(`type`), c(`Dos movimientos del mismo tipo dan la fusión de ese tipo.`)),
-            gO(
-              null,
-              DD(`glitch`),
-              c(
-                `Cualquier otra pareja: MissingNo., que en cada lanzamiento hace la fusión de un tipo al azar.`,
-              ),
-            ),
+            gO(null, DD(`type`), `两项同属性技能可匹配已开放的同属性配方。没有对应配方的组合不能融合。`),
           ),
         ),
         t.append(

@@ -101,7 +101,8 @@ test('all supplied form and skill names resolve in the original catalogs',()=>{
       count++;
     }
   }
-  assert.equal(count,411);
+  assert.equal(count,410);
+  assert.equal(moveCopy(18,'空气斩','air-slash'),'空气斩');
   assert.equal(moveCopy(4,'火花','ember'),'火点拍');
   assert.equal(moveCopy(16,'电光一闪','quick-attack'),'连扇');
   assert.equal(moveCopy(132,'变身','transform'),'照影打');

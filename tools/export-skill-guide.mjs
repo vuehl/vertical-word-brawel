@@ -1,58 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import sharp from 'sharp';
-import {setChineseText, chineseText} from '../source/src/chinese-text.js';
-import {configureGlyphNames} from '../source/src/zixing-identity.js';
+import {loadSkillCatalog} from './skill-catalog.mjs';
 import {formCopy, moveCopy, specialNames} from '../source/src/form-copy.js';
-import {configureStarterSpecies, starterEvolutionLevels} from '../source/src/starter-characters.js';
+import {starterEvolutionLevels} from '../source/src/starter-characters.js';
 import {heroActionCatalog} from '../source/src/hero-action-catalog.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const read = name => fs.readFileSync(path.join(root, name), 'utf8');
 const json = name => JSON.parse(read(name));
-const source = read('source/src/game.js').replace(/\r\n/g, '\n');
-const moves = json('source/public/data/moves.json');
-const species = json('source/public/data/pokemon.json');
-const learnsets = json('source/public/data/learnsets.json');
-setChineseText(json('source/public/text/ui.json'));
-configureGlyphNames(species);
-configureStarterSpecies(species);
-const config = await import('../source/src/config.js');
-
-// Evaluate only the game's catalog definitions and pure selection functions.
-// Combat casts remain uncalled; no game, renderer, network, or save is started.
-function between(start, end) {
-  const a = source.indexOf(start);
-  assert.ok(a >= 0, `Missing catalog start: ${start}`);
-  const b = source.indexOf(end, a + start.length);
-  assert.ok(b > a, `Missing catalog end: ${end}`);
-  return source.slice(a, b);
-}
-const data = {
-  moves: new Map(moves.map(m => [m.id, m])),
-  movesByKey: new Map(moves.map(m => [m.key, m])),
-  byId: new Map(species.map(s => [s.id, s])),
-  get(id) { return this.byId.get(id); },
-  learnset(id) { return learnsets[id] ?? []; },
-};
-const ctx = vm.createContext({
-  c: chineseText, k: data, y: config.Bt, Ye: config.Rt,
-  Gs: (x, min, max) => Math.max(min, Math.min(max, x)),
-  ji: entries => Object.defineProperties({}, Object.fromEntries(
-    Object.entries(entries).map(([key, get]) => [key, {get, enumerable: true}]))),
-  moveCopy, specialNames, windMoveEffect: () => null,
-});
-const evaluate = code => vm.runInContext(code, ctx, {timeout: 5000});
-evaluate('var ' + between('Zg = {', 'var e_ = class'));
-evaluate('var ' + between('t_ = ji(', 'var M_ = class'));
-evaluate('var Cx = 5e4; ' + between('function Ax(e, t)', 'var jx ='));
-evaluate(between('var jx =', 'var dS ='));
-evaluate(between('var dS =', 'function yS('));
-evaluate('var ' + between('Lb = 5.2;', 'function Hb('));
+const {ctx, data, moves, config, source, evaluate} = await loadSkillCatalog();
 
 const clean = value => JSON.parse(JSON.stringify(value));
 const fireRoster = config.Bt.find(s => s.id === 4);
@@ -74,11 +34,13 @@ const fireMoves = fireIds.map(id => {
   };
 });
 const fusionGroups = new Map();
+let checkedPairs = 0;
 for (let a = 0; a < fireMoves.length; a++) for (let b = a + 1; b < fireMoves.length; b++) {
   const left = fireMoves[a], right = fireMoves[b];
   if (!ctx.gS(left) || !ctx.gS(right)) continue;
   const recipe = ctx._S(left, right);
-  assert.ok(recipe, `Missing fusion for ${left.key} + ${right.key}`);
+  checkedPairs++;
+  if (!recipe) continue;
   const possibleForms = forms.filter(f => left.forms.some(x => x.id === f.id) && right.forms.some(x => x.id === f.id));
   if (!possibleForms.length) continue;
   if (!fusionGroups.has(recipe.key)) fusionGroups.set(recipe.key, []);
@@ -96,7 +58,6 @@ for (const [i, form] of forms.entries()) {
   const picture = await sharp(file).extract({left: 0, top: 0, width: width / columns, height: height / rows}).png().toBuffer();
   form.portrait = 'data:image/png;base64,' + picture.toString('base64');
 }
-const fireById = new Map(fireMoves.map(m => [m.id, m]));
 const activeByKey = new Map(availableMoves.map(m => [m.key, m]));
 const windRoster = config.Bt.find(s => s.id === 16);
 const windSets = [16, 17, 18, 58, 59].map(id => {
@@ -105,7 +66,8 @@ const windSets = [16, 17, 18, 58, 59].map(id => {
 });
 const windKeys = new Set();
 for (const set of windSets) for (let a = 0; a < set.length; a++) for (let b = a + 1; b < set.length; b++) {
-  windKeys.add(ctx._S(set[a], set[b]).key);
+  const recipe = ctx._S(set[a], set[b]);
+  if (recipe) windKeys.add(recipe.key);
 }
 const originalNames = new Map();
 for (const [before, after] of specialNames.fusion) originalNames.set(after, before);
@@ -126,6 +88,7 @@ const sources = [
   ['source/src/game.js', '技能生成、候选池、融合判定、伤害与大招实现'],
   ['source/src/starter-characters.js', '当前出战名单与 10 / 20 级进阶配置'],
   ['source/src/form-copy.js', '各形态的技能显示名与融合名称'],
+  ['source/src/skill-availability.js', '技能移除规则、空气斩归属与融合停用清单'],
   ['source/src/config.js', '炎系固定技能组、入池等级与道具'],
   ['source/public/data/learnsets.json', '进化链学习表（需经运行时筛选）'],
   ['source/public/data/moves.json', '招式基础资料'],
@@ -133,7 +96,7 @@ const sources = [
 ].map(([file, note]) => ({file, note, sha256: crypto.createHash('sha256').update(read(file)).digest('hex').slice(0,12)}));
 const types = json('source/public/data/types.json').names;
 types.flying = '风';
-const report = {forms, fireMoves, fusionGroups: [...fusionGroups], fusionCount: allFusions.length,
+const report = {forms, fireMoves, checkedPairs, fusionGroups: [...fusionGroups], fusionCount: allFusions.length,
   fusionKinds: Object.fromEntries(['signature', 'type', 'reaction', 'glitch'].map(kind => [kind, allFusions.filter(r => r.kind === kind).length])),
   allFusions, availableMoves: availableMoves.filter(m => ctx.gS(m)).map(({id,key,name,type}) => ({id,key,name,type})),
   types, statuses: clean(ctx.Qg), sources,
@@ -145,8 +108,7 @@ assert.equal(new Set(allFusions.map(r => r.key)).size, allFusions.length);
 assert.equal(new Set(allFusions.map(r => r.id)).size, allFusions.length);
 assert.ok(allFusions.every(r => r.name && r.desc && Number.isFinite(r.cd)));
 assert.ok(fireMoves.every(m => m.forms.length && Number.isFinite(m.cd)));
-assert.equal([...fusionGroups.values()].reduce((n, pairs) => n + pairs.length, 0), fireMoves.length * (fireMoves.length - 1) / 2);
-assert.ok(allFusions.find(r => r.key === 'fu-58').firePairs.some(p => fireById.get(p.a).key === 'fire-fang' || fireById.get(p.b).key === 'fire-fang'));
+assert.equal(checkedPairs, fireMoves.length * (fireMoves.length - 1) / 2);
 if (process.argv.includes('--inspect')) {
   console.log(JSON.stringify({forms, fireMoves, fusionGroups: [...fusionGroups].map(([key, pairs]) => [key, pairs.length]),
     fusionKinds: report.fusionKinds, allFusions: allFusions.map(({key,name,kind,moves,pair,cd,member}) => ({key,name,kind,moves,pair,cd,member}))}, null, 2));

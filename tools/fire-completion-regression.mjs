@@ -7,11 +7,11 @@ export async function reviewFireCompletion(page,dir){
  const retired=await page.evaluate(()=>{
    vfxSetup();
    const player=app.run.player;
-   return [36,44,172,179,242,245,514,583,50104].filter(id=>player.addMove(id));
+   return [36,44,172,179,242,245,514,583,50104,10,163,225,257,337,394,424,50024,50079,50093,50105].filter(id=>player.addMove(id));
  });
  assert.deepEqual(retired,[],'Retired moves must remain unavailable, including their old save IDs');
  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));window.fusionRandom=Math.random;Math.random=()=>.43;const rng=Object.values(app.run).find(x=>x?.rng?.next)?.rng;window.fusionRngProto=Object.getPrototypeOf(rng);window.fusionRngNext=fusionRngProto.next;fusionRngProto.next=()=>.43;});
- for(const [key,id] of [['fire-blast',126],['fu-t-normal',50079],['fu-t-dragon',50093],['fu-missingno',50105]])for(const level of [1,5]){
+ for(const [key,id] of [['fire-blast',126]])for(const level of [1,5]){
   const sample=await page.evaluate(async({key,id,level})=>{
    const r=app.run,p=r.player;p.buffs.clear();p.setSpecies(4);vfxSetup();r.time=r.realTime=0;r.weather=r.baseWeather='clear';r.weatherT=0;
    p.level=1;p.evoStage=0;p.growth=0;p.recompute();p.stats.critChance=p.stats.megaCrit=0;p.kx=p.kz=0;
@@ -33,7 +33,7 @@ export async function reviewFireCompletion(page,dir){
  if(baseline)fs.writeFileSync(file,JSON.stringify({samples:report.samples.map(({key,level,trace})=>({key,level,trace}))})+'\n');
  else {
   const old=JSON.parse(fs.readFileSync(file));for(let i=0;i<report.samples.length;i++){
-   const s=report.samples[i];assert.deepEqual(s.trace,old.samples[i].trace,s.key+'/'+s.level);
+   const s=report.samples[i];assert.deepEqual(s.trace,old.samples.find(before=>before.key===s.key&&before.level===s.level).trace,s.key+'/'+s.level);
    const required={'fire-blast':['fireBlast'],'fu-t-normal':['starFall','starImpact','starShot'],'fu-t-dragon':['dragonStart','dragonFall','dragonImpact'],'fu-missingno':['glitch']}[s.key];
    for(const key of required)assert.ok(s.visual.calls[key]>0,s.key+' must render '+key);
    assert.equal(s.visual.projectileFxBytes,2,'Visual IDs must survive values above 255');

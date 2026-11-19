@@ -31,6 +31,9 @@ export async function reviewStylizedVFX(page,dir){
   });
   assert.equal(report.base.camera.distance,42);assert.equal(report.base.camera.fov,37);assert.ok(Math.abs(report.base.camera.pitch-Math.PI*.3)<1e-9);
   assert.equal(report.base.atlas.width,1024);assert.ok(report.base.atlas.partial>100);assert.ok(report.base.maps.every(p=>p==='painted-toy'));assert.equal(report.base.pointLights,4);assert.ok(report.base.volumeVertices>800);
+  if(process.argv.includes('--skill-availability')){
+    const {reviewSkillAvailability}=await import('./skill-availability-regression.mjs');return reviewSkillAvailability(page,dir);
+  }
   if(process.argv.includes('--fire-family')){
     const {reviewFireFamily}=await import('./fire-family-regression.mjs');return reviewFireFamily(page,dir,moves);
   }

@@ -36,11 +36,11 @@ export async function reviewFireFamilyMedia(page,dir,moves){
  assert.ok(report.claws.scratch[1].size<report.claws.scratch[0].size/2);
  assert.deepEqual(report.claws.scratch.map(({palette,...shape})=>shape),report.claws.dragon.map(({palette,...shape})=>shape));
  assert.ok(report.claws.dragon.every(e=>e.palette===3));
- const keys=['scratch','slash','dragon-claw','fire-fang','flare-blitz','air-slash','inferno','heat-wave','dragon-breath'];
+ const keys=['air-slash','inferno'];
  for(const key of keys){
   const id=moves.find(m=>m.key===key).id;
   const result=await page.evaluate(async({id,key})=>{
-   const r=app.run;r.player.setSpecies(4);vfxSetup();r.ghosts.length=0;r.enemies.x[1]=0;r.enemies.z[1]=key==='inferno'?-8:-2.4;r.enemies.update();r.lockTarget=1;r.player.pos.y=r.terrain.height(0,0);
+   const r=app.run;r.player.setSpecies(key==='air-slash'?16:4);vfxSetup();r.ghosts.length=0;r.enemies.x[1]=0;r.enemies.z[1]=key==='inferno'?-8:-2.4;r.enemies.update();r.lockTarget=1;r.player.pos.y=r.terrain.height(0,0);
    await Promise.all([...r.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));
    r.player.addMove(id);r.player.moves[0].timer=0;vfxAdvance(key.includes('breath')||key==='heat-wave'?15:4);vfxDraw();
    const f=r.vfx.crafted.fireFamily,j=r.vfx.crafted.fireJet;
@@ -62,7 +62,7 @@ export async function reviewFireFamilyMedia(page,dir,moves){
   return {count,finite,paused,expired,hidden,cleared:f.heatMesh.count===0&&f.events.length===0,texture:[f.heatTexture.image.width,f.heatTexture.image.height]};
  });assert.ok(report.heatWave.count>0);for(const k of ['finite','paused','expired','hidden','cleared'])assert.ok(report.heatWave[k],k);assert.deepEqual(report.heatWave.texture,[1536,1536]);
  report.airSlash=await page.evaluate(()=>{
-  const r=app.run,f=r.vfx.crafted.fireFamily;vfxSetup();r.player.setSpecies(4);r.player.pos.y=r.terrain.height(0,0);
+  const r=app.run,f=r.vfx.crafted.fireFamily;vfxSetup();r.player.setSpecies(16);r.player.pos.y=r.terrain.height(0,0);
   r.player.addMove(403);r.player.moves[0].timer=0;vfxAdvance(12,1/60);r.player.moves[0].timer=999;vfxDraw(false);
   const wake=f.events.filter(e=>e.clip==='windCut'&&!e.key),head=f.events.find(e=>e.clip==='windCut'&&e.key);
   const moving=!!head&&wake.length>0,shortWake=wake.every(e=>e.life<=.10);

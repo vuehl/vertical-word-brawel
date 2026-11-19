@@ -110,7 +110,11 @@ export class HandDrawnFireFamily{
    texture.userData.load=()=>new Promise(resolve=>{
     const image=new Image();
     const finish=ok=>{clearTimeout(timer);image.onload=image.onerror=null;resolve(ok);},timer=setTimeout(()=>finish(false),12000);
-    image.onload=()=>{if(!this.disposed){texture.image=image;texture.needsUpdate=true;this[flag]=true;}finish(true);};image.onerror=()=>finish(false);image.src=file;
+    image.onload=()=>{if(!this.disposed){
+     // Wind can learn Air Slash after shader warmup allocated the 1x1 fallback.
+     // Recreate GPU storage before uploading the full atlas into the same texture.
+     texture.dispose();texture.image=image;texture.needsUpdate=true;this[flag]=true;
+    }finish(true);};image.onerror=()=>finish(false);image.src=file;
    });
    return texture;
   };

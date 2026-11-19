@@ -15,7 +15,7 @@
     "analyze:package": "node tools/package-report.mjs",
     "analyze:code": "node tools/build.mjs --analyze",
     "layout": "node tools/layout-reference.mjs",
-    "test": "node --test source/tools/lite.test.mjs tools/cloud-progress.test.mjs tools/cloud-coop.test.mjs tools/peer-motion.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs tools/paper.test.mjs tools/loading.test.mjs tools/surfaces.test.mjs tools/performance.test.mjs tools/optimization.test.mjs tools/experience.test.mjs tools/runtime-data.test.mjs tools/characters.test.mjs tools/starter-characters.test.mjs tools/audio.test.mjs tools/device-performance.test.mjs tools/portal-screen.test.mjs tools/frame-policy.test.mjs",
+    "test": "node --test source/tools/lite.test.mjs tools/cloud-progress.test.mjs tools/cloud-coop.test.mjs tools/peer-motion.test.mjs tools/range.test.mjs tools/styles.test.mjs tools/layout.test.mjs tools/ui-cache.test.mjs tools/paper.test.mjs tools/loading.test.mjs tools/surfaces.test.mjs tools/performance.test.mjs tools/optimization.test.mjs tools/experience.test.mjs tools/runtime-data.test.mjs tools/characters.test.mjs tools/starter-characters.test.mjs tools/audio.test.mjs tools/device-performance.test.mjs tools/portal-screen.test.mjs tools/frame-policy.test.mjs tools/skill-availability.test.mjs",
     "test:frame-stability": "node tools/runtime-performance.mjs --android-performance --frame-stability && node tools/runtime-performance.mjs --ios-budget --frame-stability",
     "test:boss-performance": "node tools/runtime-performance.mjs --android-performance --boss-performance",
     "test:android-performance": "node tools/runtime-performance.mjs --android-performance --startup-soak",
@@ -42,6 +42,7 @@
     "test:ink": "node tools/runtime-performance.mjs --vfx --ink-style",
     "test:lighting": "node tools/runtime-performance.mjs --vfx --lighting",
     "test:fire": "node tools/runtime-performance.mjs --vfx --fire-breath",
-    "test:fire-skills": "node tools/runtime-performance.mjs --vfx --fire-family && node tools/runtime-performance.mjs --vfx --fire-fusions && node tools/runtime-performance.mjs --vfx --fire-completion && node tools/runtime-performance.mjs --vfx --fire-family-media"
+    "test:fire-skills": "node tools/runtime-performance.mjs --vfx --fire-family && node tools/runtime-performance.mjs --vfx --fire-fusions && node tools/runtime-performance.mjs --vfx --fire-completion && node tools/runtime-performance.mjs --vfx --fire-family-media",
+    "test:skills": "node --test tools/skill-availability.test.mjs && node tools/runtime-performance.mjs --vfx --skill-availability"
   }
 }
