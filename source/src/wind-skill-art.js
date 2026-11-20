@@ -17,7 +17,20 @@ export class WindSkillArt extends WindAtlasBatch {
     if(!old&&this.tracked.size>=32)return;
     this.tracked.set(key,{clip,x,y,z,size,start:old?.start??now,touched:now});
   }
+  featherRing(x,y,z,radius){
+    this.play('turningFeather',x,y,z,radius);
+  }
   drawPose(e,age,loop=false){
+    if(e.clip==='turningFeather'){
+      if(age>=1.05)return false;
+      const progress=Math.max(0,age/1.05),radius=e.size*(.22+.78*progress);
+      const alpha=this.owner.vfx.opacity*this.owner.vfx.ownOpacity*(1-progress)*(this.owner.vfx.calm?.8:1);
+      for(let i=0;i<24;i++){
+        const angle=i*Math.PI/12+age*.6,x=e.x+Math.cos(angle)*radius,z=e.z+Math.sin(angle)*radius;
+        this.push(x,this.owner.run.terrain.surface(x,z)+.65,z,.85,atlas.clips.turningFeather.first,alpha,.5,Math.cos(angle+.6),Math.sin(angle+.6));
+      }
+      return true;
+    }
     const c=atlas.clips[e.clip],frame=Math.floor(age*c.fps);
     if(!loop&&frame>=c.count)return false;
     const opacity=this.owner.vfx.opacity*this.owner.vfx.ownOpacity*(this.owner.vfx.calm?.8:1);
@@ -45,7 +58,8 @@ export function installWindSkillArt(registry){
   const art=run=>run.vfx.crafted.windSkillArt();
   for(const [key,clip] of [['gust','gust'],['hurricane','hurricane'],['wing-attack','wing'],['feather-dance','feather']]){
     const hit=clip==='wing'?'wingHit':clip==='feather'?'featherHit':null;
-    registry['wind-'+key]={...registry[key],sourceKey:key,trail(){},cast(){},
+    registry['wind-'+key]={...registry[key],sourceKey:key,trail(){},
+      cast(run,x,y,z){if(clip==='feather')art(run).play('featherCast',x,y,z,4.2);},
       draw:(pool,id,size)=>art(pool.run).projectile(pool,id,size,clip),
       hit:(run,x,y,z)=>{if(hit)art(run).play(hit,x,y,z,3.8);},hitCover:true,
       boom(){}};

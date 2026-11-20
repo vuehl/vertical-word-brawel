@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {roster} from '../source/src/catalogs.js';
 import {constrainLiteProfile,isLiteFamily,validLiteRun} from '../source/src/lite-rules.js';
-import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff,windSpeedDamageBonus} from '../source/src/starter-characters.js';
+import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff,windSpeedDamageBonus,updateStarterSpeed} from '../source/src/starter-characters.js';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
 import {glyphCatalog} from '../source/src/glyph-catalog.js';
 import {restoreProgress} from '../source/src/coop-resume.js';
@@ -97,4 +97,21 @@ test('movement branch converts all bonus speed to damage without a cap or a pena
     assert.ok(Math.abs(windSpeedDamageBonus(id,speed*1.07,1.07)-bonus)<1e-10);
   }
   for(const id of [4,5,6,16,17,18,132])assert.equal(windSpeedDamageBonus(id,10,1),0);
+});
+
+test('speed afterimages follow travelled positions, retain the casting glyph, stay bounded and clear',()=>{
+  let allowed=true;
+  const player={speciesId:59,renderScale:1.3,pos:{x:0,y:0,z:0},buffs:new Map([[speedBuff,{}]]),recompute(){}};
+  const run={player,time:0,ghosts:[],sprites:{dirRow:()=>2},vfx:{crafted:{allowed:()=>allowed}}};
+  updateStarterSpeed(run,1/60,0);assert.equal(run.ghosts.length,0);
+  for(let frame=0;frame<20;frame++){
+    player.pos.x+=1.4;run.time+=1/60;updateStarterSpeed(run,1/60,0);
+    assert.ok(run.ghosts.length<=5);
+    assert.ok(run.ghosts.every(g=>g.x<=player.pos.x&&g.species===59&&g.scale===1.3));
+  }
+  const count=run.ghosts.length;
+  updateStarterSpeed(run,1/60,0);assert.equal(run.ghosts.length,count,'Standing still emits nothing');
+  allowed=false;player.pos.x+=5;updateStarterSpeed(run,1/60,0);assert.equal(run.ghosts.length,count);
+  run.ghosts.push({fireGlyph:true});clearStarterSpeed(run);
+  assert.deepEqual(run.ghosts,[{fireGlyph:true}]);assert.equal(player.zilingSpeedPosition,null);
 });

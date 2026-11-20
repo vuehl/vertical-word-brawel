@@ -1,7 +1,7 @@
 {
   "tile": 256,
   "columns": 8,
-  "rows": 7,
+  "rows": 8,
   "clips": {
     "gust": {
       "first": 0,
@@ -67,7 +67,7 @@
       "first": 28,
       "count": 4,
       "fps": 20,
-      "source": "羽毛舞.gif",
+      "source": "wind-supplement/羽毛舞.gif",
       "pages": [
         9,
         10,
@@ -96,7 +96,7 @@
       "first": 41,
       "count": 9,
       "fps": 20,
-      "source": "羽毛舞.gif",
+      "source": "wind-supplement/羽毛舞.gif",
       "pages": [
         14,
         15,
@@ -119,6 +119,27 @@
         7,
         8,
         9,
+        10
+      ]
+    },
+    "featherCast": {
+      "first": 55,
+      "count": 4,
+      "fps": 20,
+      "source": "wind-supplement/羽毛舞.gif",
+      "pages": [
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    "turningFeather": {
+      "first": 59,
+      "count": 1,
+      "fps": 20,
+      "source": "wind-supplement/卷着打转.gif",
+      "pages": [
         10
       ]
     }

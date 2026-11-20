@@ -25943,6 +25943,9 @@ var Yh = {
 };
 function castWindRing(ctx) {
   const {run,x,y,z}=ctx, radius=9*ctx.R, duration=0.8, hit=new Set();
+  const heading=Math.atan2(ctx.az,ctx.ax);
+  for(const offset of [-.275,.275])Lh(ctx,Math.cos(heading+offset),Math.sin(heading+offset),16*ctx.R,2.2,.4,2.15,{status:'confusion',statusChance:.2},1.8);
+  run.vfx.crafted.windSkillArt().featherRing(x,y,z,radius);
   for(let i=0;i<3;i++)run.later(i*.13,()=>run.vfx.ring(x,y+.05,z,radius,0x92d8ff,duration,0,L.Plain));
   J.whoosh(run.audio,1,0.16,260);
   run.animate(duration,progress=>Oh(ctx,hit,x,z,radius*progress,1,{knock:4}));
@@ -45439,7 +45442,7 @@ var GT = 15,
         const kit=this.player.roster?.kit??[];
         const keys=new Set(this.coop||kit.includes('mimic')?['ember','fire-spin','flamethrower']:kit);
         if(this.coop||kit.includes('mimic')||[4,5,6].includes(this.player.speciesId))keys.add('fire-ultimate');
-        if(this.player.speciesId===16)keys.add('wind-ultimate');
+        if([16,17,18,58,59].includes(this.player.speciesId))keys.add('wind-ultimate');
         for(const move of this.player.moves)if(move)keys.add(move.def.effectKey ?? move.def.key);
         for(const key of keys){
           const uploaded=await this.vfx.crafted.prepareMoveTexture(key);
@@ -47867,6 +47870,14 @@ var GT = 15,
       let n = this.sprites.get(this.player.speciesId);
       for (let t = this.ghosts.length - 1; t >= 0; t--) {
         let r = this.ghosts[t];
+        if(r.windGlyph){
+          const age=this.time-r.start;
+          if(age>=r.life||!this.vfx.crafted.allowed()){this.ghosts.splice(t,1);continue;}
+          const glyph=this.sprites.getHeroGhostGlyph(r.species,'wind');
+          glyph?.push(r.x,r.y,r.z,'walk',.1,r.dir,r.scale*glyph.zxGhostScale,0,
+            .36*(1-age/r.life)*this.vfx.opacity*this.vfx.ownOpacity,0,0,1,1,1,0,false);
+          continue;
+        }
         if(r.fireGlyph){
           r.t-=e;
           if(r.t<=0||!this.vfx.crafted.allowed()){this.ghosts.splice(t,1);continue;}

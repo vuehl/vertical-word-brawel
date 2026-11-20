@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import {execFileSync} from 'node:child_process';
 
 // Combat recordings contain HUD, moving enemies and paper: only registered,
 // colour-isolated effect pixels are exported, never the recording background.
@@ -48,3 +49,6 @@ const rows=Math.ceil(frames.length/columns),output=path.resolve(import.meta.dirn
 await sharp({create:{width:columns*tile,height:rows*tile,channels:4,background:'#00000000'}}).composite(frames.map((input,i)=>({input,left:i%columns*tile,top:Math.floor(i/columns)*tile}))).png({palette:true,colours:256,dither:0}).toFile(path.join(output,'wind-skills.png'));
 fs.writeFileSync(path.join(output,'wind-skills.json'),JSON.stringify({tile,columns,rows,clips},null,2)+'\n');
 console.log('Wind effect frames:',frames.length);
+// The supplemental recordings supersede the original feather clips and add
+// the ring feather used by the current ultimate. Reapply after a base rebuild.
+execFileSync(process.execPath,[path.resolve(import.meta.dirname,'build-wind-supplement.mjs')],{stdio:'inherit',windowsHide:true});
