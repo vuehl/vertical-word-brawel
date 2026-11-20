@@ -38,10 +38,15 @@ export async function buildPaperWorldAsync(terrain,options){if(isDeskStage(terra
 export const applyPaperLight=applyWorkshopLight;
 const focus=new Vector3(), dragonFocus=new Vector3();
 export function updatePaperCamera(run,dt){
-  if(run.terrain.desk2d)return deskCamera(run,dt);
   const p=run.player.pos,c=run.r.camera,k=1-Math.exp(-Math.max(0,dt)*12);
   if(!Number.isFinite(run.camTarget.x+run.camTarget.y+run.camTarget.z))run.camTarget.copy(p);
-  run.camTarget.lerp(p,k);run.camYaw=PAPER_CAMERA.yaw;run.camPitch=PAPER_CAMERA.pitch;run.camDist=PAPER_CAMERA.distance;
+  if(run.ui?.touch?.floatingStick && run.ui.touch.stickId>=0){
+    run.camTarget.x=p.x;
+    run.camTarget.z=p.z;
+    run.camTarget.y+=(p.y-run.camTarget.y)*k;
+  }else run.camTarget.lerp(p,k);
+  if(run.terrain.desk2d)return deskCamera(run);
+  run.camYaw=PAPER_CAMERA.yaw;run.camPitch=PAPER_CAMERA.pitch;run.camDist=PAPER_CAMERA.distance;
   const distance=PAPER_CAMERA.distance*Math.max(1,.46/Math.max(.25,c.aspect));
   focus.set(run.camTarget.x,run.camTarget.y+.5,run.camTarget.z-2.5);
   if(run.dragonDuel && run.cine.blend>0 && run.cine.follow===run.boss.bossIndex && run.boss.alive){

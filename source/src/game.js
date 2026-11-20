@@ -31733,6 +31733,7 @@ var mv = 30,
     flash = 0;
     renderScale = 1;
     speedNow = 0;
+    stickHeldLastUpdate = false;
     animT = 0;
     attackT = 0;
     ultPoseT = 0;
@@ -33229,7 +33230,11 @@ var mv = 30,
         E = r.isLava ? -99 : r.waterAt(this.pos.x, this.pos.z),
         ee = r.frozen && T < E,
         D = !ee && T < E - 0.55;
-      if (y > 0 && t.ui.touch?.floatingStick && t.ui.touch.stickId >= 0) w *= Math.min(1, y);
+      const stickHeld = t.ui.touch?.floatingStick && t.ui.touch.stickId >= 0;
+      // Consume the release with the same movement rule as the drag.
+      const directSteering = stickHeld || this.stickHeldLastUpdate;
+      this.stickHeldLastUpdate = stickHeld;
+      if (stickHeld && y > 0) w *= Math.min(1, y);
       if (
         ((this.wading = !ee && !D && T < E - 0.04),
         (this.slip = Math.max(ee && this.pos.y < E + 0.3 ? 1 : 0, this.arenaSlip)),
@@ -33324,6 +33329,9 @@ var mv = 30,
             r = Math.min(o, n) / a;
           ((t.x *= r), (t.z *= r));
         }
+      } else if (directSteering && !this.diving) {
+        this.vel.x = _ * w;
+        this.vel.z = v * w;
       } else if (this.grounded) {
         let t = _ * w,
           n = v * w,
@@ -78559,7 +78567,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         }
         path.last=now;
       }
-      deskCamera(this,0,path?.progress??0,path?.bend??0);
+      deskCamera(this,path?.progress??0,path?.bend??0);
       const blend=cameraEase(path?.progress??0),scale=entryHeroScale+(1-entryHeroScale)*blend;
       this.entryShadow.scale.setScalar(scale);this.entryShadow.material.uniforms.fade.value=1-blend;
       this.entryShadow.visible=blend<1;

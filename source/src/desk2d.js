@@ -116,9 +116,8 @@ export function deskTexture(t,file){
   }));
   return t.deskTextures.get(file);
 }
-export function deskCamera(run,dt,progress=1,bend=0){
+export function deskCamera(run,progress=1,bend=0){
   const c=run.r.camera,t=run.terrain,p=run.player.pos;
-  run.camTarget.lerp(p,1-Math.exp(-12*Math.max(0,dt)));
   const {x,z:followZ,w,h,distance}=deskFrame(c.aspect,halfWidth,halfDepth,run.camTarget.x,run.camTarget.z,progress,bend);
   // A sprint can outrun the smoothed focus. Keep the feet inside the picture.
   const z=Math.max(followZ,Math.min(halfDepth,p.z+deskWalkInset)-h/tilt);

@@ -16,6 +16,42 @@ export async function verifyJoystick(page,dir){
     app.halted=true;const r=app.run;r.enemies.clear();r.state='play';
     r.ui.touch.update(r,'');inspected.env.drawUI(app.r.renderer);
   });
+  const response=await page.evaluate(()=>{
+    const r=app.run,p=r.player,env=inspected.env;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
+    const baseSpeed=p.stats.moveSpeed,results=[];
+    for(const fps of [30,60])for(const boost of [1,10])for(const airborne of [false,true]){
+      p.stats.moveSpeed=baseSpeed*boost;
+      p.pos.copy(r.terrain.spawn);
+      if(airborne)p.pos.y+=3;
+      p.grounded=!airborne;p.vel.set(0,0,0);p.kx=p.kz=p.crowdX=p.crowdZ=0;
+      r.updateCamera(1);r.realDt=1/fps;
+      const step=()=>{
+        const {x,z}=p.pos;
+        p.update(1/fps);r.updateCamera(1/fps);r.input.endFrame();
+        return [p.pos.x-x,p.pos.z-z];
+      };
+      window.tap(x,y,'down',11);window.tap(x+60,y,'move',11);
+      const start=step(),held=step();
+      window.tap(x-60,y,'move',11);const reverse=step();
+      window.tap(x,y+60,'move',11);const turn=step();
+      window.tap(x,y,'move',11);const center=step();
+      window.tap(x,y-60,'move',11);step();
+      const camera=r.r.camera.position.clone();
+      window.tap(x,y-60,'up',11);const release=step();
+      const cameraDrift=camera.distanceTo(r.r.camera.position);
+      results.push({fps,boost,airborne,start,held,reverse,turn,center,release,cameraDrift});
+    }
+    p.stats.moveSpeed=baseSpeed;
+    return results;
+  });
+  for(const s of response){
+    const stride=s.start[0],near=(a,b)=>Math.abs(a-b)<1e-6;
+    assert.ok(stride>0&&near(s.held[0],stride)&&near(s.reverse[0],-stride),JSON.stringify(s));
+    assert.ok(near(s.turn[0],0)&&near(s.turn[1],stride),JSON.stringify(s));
+    assert.ok(Math.hypot(...s.center,...s.release,s.cameraDrift)<1e-6,JSON.stringify(s));
+  }
   const southEdge=await page.evaluate(()=>{
     const r=app.run,p=r.player,env=inspected.env,c=r.r.camera;
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
@@ -198,18 +234,6 @@ export async function verifyJoystick(page,dir){
     if(t.stickId!==11||r.input.stickX<.99)throw Error('Ending the second contact released the stick');
     inspected.touches('cancel',{touches:[],changedTouches:[]});
     results.push({kind:'missing-changed-touches',stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
-    // Simulate the tenfold speed buff using the same ground movement update.
-    const p=r.player,baseSpeed=p.stats.moveSpeed;
-    p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.grounded=true;
-    p.stats.moveSpeed=baseSpeed*10;
-    const advance=frames=>{for(let i=0;i<frames;i++){r.realDt=1/60;p.update(1/60);r.input.endFrame();}};
-    window.tap(x,y,'down',11);window.tap(x+45,y,'move',11);advance(3);
-    const boostedSpeed=p.vel.x;
-    window.tap(x-45,y,'move',11);advance(3);
-    if(boostedSpeed<=0||p.vel.x>=-boostedSpeed*.8)throw Error('Speed boost delayed the reversal');
-    window.tap(x-45,y,'up',11);advance(10);
-    if(Math.abs(p.vel.x)>boostedSpeed*.01)throw Error('Speed boost delayed release');
-    p.stats.moveSpeed=baseSpeed;
     for(const kind of ['cancel','lostpointercapture','pause','hide']){
       r.state='play';t.update(r,'');env.drawUI(app.r.renderer);
       window.tap(x,y,'down',11);window.tap(x+100,y,'move',11);
@@ -241,6 +265,6 @@ export async function verifyJoystick(page,dir){
     return result;
   });
   assert.deepEqual(cast,{casts:1,held:true,heading:1});
-  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({southEdge,circles,controls:report,interruptions,cast},null,2));
+  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,southEdge,circles,controls:report,interruptions,cast},null,2));
   console.log('Joystick contact damage during clockwise/counterclockwise turns, short and full drags, reversals, multitouch and release passed:',report.length,'screen/scale combinations');
 }
