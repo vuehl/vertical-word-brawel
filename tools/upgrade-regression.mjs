@@ -319,8 +319,8 @@ export async function reviewUpgrade({page,resize,dir}){
               const b=inspected.layout.box(inspected.doc.querySelector(selector)),s=inspected.doc.getElementById('game').getBoundingClientRect();
               window.tap(b.x+b.w/2-s.left,b.y+b.h/2-s.top);
             };
-            const effects=[],effect=r.levelUpEffect;
-            r.levelUpEffect=function(){const result=effect.call(this);effects.push(this.vfx.upgrade.events.length);return result;};
+            const effects=[],effect=r.vfx.upgrade.play;
+            r.vfx.upgrade.play=function(...args){const result=effect.apply(this,args);effects.push(this.events.length);return result;};
             const finishExit=()=>{drawUpgradeFrame();a.clock+=150;drawUpgradeFrame();};
             click('.zx-reroll');const rerollsBeforeExit=r.rerolls;
             const rerollTransition=inspected.modalTransition.snapshot.phase==='exit';
@@ -335,11 +335,11 @@ export async function reviewUpgrade({page,resize,dir}){
             const sceneRenders=a.sceneRenders;
             a.clock+=260;drawUpgradeFrame();click('[data-offer]');finishExit();
             const restored=inspected.env.drawFrozenModal(app.r.renderer);
-            r.levelUpEffect=effect;
+            r.vfx.upgrade.play=effect;
             return {rerollsBeforeExit,rerolls,rerollTransition,beforeExit,chained,sceneRenders,restored,effects,pending:r.pendingLevels,state:r.state};
           });
           assert.deepEqual(actions,{rerollsBeforeExit:2,rerolls:1,rerollTransition:true,beforeExit:{pending:2,state:'modal'},
-            chained:{pending:1,state:'modal',phase:'enter'},sceneRenders:1,restored:false,effects:[1],pending:0,state:'play'});
+            chained:{pending:1,state:'modal',phase:'enter'},sceneRenders:1,restored:false,effects:[],pending:0,state:'play'});
         }
         samples.push({width,buildMs:build.buildMs,frames});
       }finally{

@@ -25,7 +25,7 @@ export function warmCombatDraw(run){
   const meshes=[...pools.map(pool=>pool.mesh),vfx.upgrade?.mesh,vfx.upgrade?.rearMesh,crafted?.mesh,crafted?.fireJet.mesh,crafted?.fireJet.hitMesh,
     crafted?.fireJet.legacy.mesh,crafted?.fireSpin.mesh,crafted?.fireball.mesh,
     family?.mesh,family?.topMesh,family?.heatMesh,
-    crafted?.windVortex?.mesh,crafted?.windMoves?.mesh].filter(Boolean);
+    crafted?.windVortex?.mesh,crafted?.windMoves?.mesh,crafted?.stampede?.mesh].filter(Boolean);
   const saved=meshes.map(mesh=>({mesh,visible:mesh.visible,count:mesh.count}));
   try{
     for(const {mesh} of saved){mesh.visible=true;mesh.count=Math.max(1,mesh.count);}

@@ -21629,8 +21629,8 @@ function W(e, t, n, r) {
     r,
   );
 }
-function _h(e, t, n, r, i, a, o, s, c, l = c * 0.35, u = 2, shape = I.PixFlame) {
-  e.vfx.norm.spawn({
+function _h(e, t, n, r, i, a, o, s, c, l = c * 0.35, u = 2, shape = I.PixFlame, fireSpecies=e.player?.speciesId) {
+  const particle={
     x: t,
     y: n,
     z: r,
@@ -21645,7 +21645,9 @@ function _h(e, t, n, r, i, a, o, s, c, l = c * 0.35, u = 2, shape = I.PixFlame) 
     shape,
     drag: u,
     rot: F.range(-0.15, 0.15),
-  });
+  };
+  if(shape===STAMPEDE_FLAME)e.vfx.crafted.stampedeArt().emit(particle,fireSpecies);
+  else e.vfx.norm.spawn(particle);
 }
 function vh(e, t, n, r, i, a = 9075316, o = 0.9) {
   e.vfx.norm.spawn({
@@ -29912,7 +29914,7 @@ var W_ = 0.45,
           let e = r.x + F.range(-r.r, r.r) * 0.6,
             n = r.z + F.range(-r.r, r.r) * 0.6;
           r.stampedeFire
-            ? _h(t,e,r.y+.3,n,0,1.5,0,.4,.65,.12,2,STAMPEDE_FLAME)
+            ? _h(t,e,r.y+.3,n,0,1.5,0,.4,.65,.12,2,STAMPEDE_FLAME,r.stampedeSpecies)
             : i?.zone
             ? i.zone(t, e, r.y, n, r.artRadius ?? r.r, r.life)
             : t.vfx.trail(e, r.y + 0.3, n, r.color, 0.5, am(r.type), 0.5);
@@ -36297,6 +36299,7 @@ const fireStampedeRecipe = {
                   0.4,
                   3,
                   STAMPEDE_FLAME,
+                  ghostForm.species,
                 );
               }
               (yh(t, a, n + 1, o, 10, 6),
@@ -36313,7 +36316,8 @@ const fireStampedeRecipe = {
               p = u / d,
               m = a,
               h = o,
-              g = Math.min(0.18, d / 50);
+              g = Math.min(0.18, d / 50),
+              flameDistance = 0;
             (t.ghostDash(m, U(t, m, h), h, f, p, d, 16747050, ghostForm),
               W(
                 t,
@@ -36323,21 +36327,8 @@ const fireStampedeRecipe = {
                     r = m + l * n,
                     i = h + u * n,
                     a = U(t, r, i);
-                  for (let e = 0; e < 2; e++)
-                    _h(
-                      t,
-                      r + F.range(-0.3, 0.3),
-                      a + 0.6,
-                      i + F.range(-0.3, 0.3),
-                      -f * 4,
-                      F.range(1, 3),
-                      -p * 4,
-                      0.35,
-                      1.1,
-                      1.1*.35,
-                      2,
-                      STAMPEDE_FLAME,
-                    );
+                  t.vfx.crafted.stampedeArt().trail(m,h,f,p,flameDistance,d*n,ghostForm.species);
+                  flameDistance=d*n;
                   t.vfx.add.spawn({
                     x: r,
                     y: a + 0.9,
@@ -36352,7 +36343,7 @@ const fireStampedeRecipe = {
                 },
                 () => {
                   (xx(e, m, h, n.x, n.z, 1.3 * e.R, 0.75, { status: `burn`, statusChance: 0.35, knock: 2 }),
-                    gx(e, (m + n.x) / 2, (h + n.z) / 2, 1.4 * e.R, 1.6, 0.1, `burn`, 0.3, `will-o-wisp`, e.type, {stampedeFire:true}),
+                    gx(e, (m + n.x) / 2, (h + n.z) / 2, 1.4 * e.R, 1.6, 0.1, `burn`, 0.3, `will-o-wisp`, e.type, {stampedeFire:true,stampedeSpecies:ghostForm.species,stampedeStart:t.time}),
                     ls(t.audio, 900, 0.08, 0.1),
                     (a = n.x),
                     (o = n.z),
@@ -45442,6 +45433,7 @@ var GT = 15,
         const kit=this.player.roster?.kit??[];
         const keys=new Set(this.coop||kit.includes('mimic')?['ember','fire-spin','flamethrower']:kit);
         if(this.coop||kit.includes('mimic')||[4,5,6].includes(this.player.speciesId))keys.add('fire-ultimate');
+        if([4,5,6].includes(this.player.speciesId))keys.add('flame-charge');
         if([16,17,18,58,59].includes(this.player.speciesId))keys.add('wind-ultimate');
         for(const move of this.player.moves)if(move)keys.add(move.def.effectKey ?? move.def.key);
         for(const key of keys){
@@ -46907,13 +46899,9 @@ var GT = 15,
           : (this.startEvolution(), !0)
         : !1;
     }
-    levelUpEffect() {
-      this.vfx.upgrade.play(this.player);
-    }
     doLevelUp() {
       if (this.state !== `play` || this.pendingLevels <= 0 || this.upgradeTiming.waiting(this.ult) || this.ui.experienceReady?.() === false || this.tryEvolve()) return;
       ((this.state = `modal`), this.audio.levelUp(), this.hints.show(`level`));
-      if(this.coop)this.levelUpEffect();
       const openingDraft = this.director.normalOpening && this.player.moves.filter(Boolean).length === 1;
       let offeredNewAttack = false;
       let t = this.meta.lab(`choice4`) ? 4 : 3,
@@ -46928,8 +46916,6 @@ var GT = 15,
             this.state='play';
             this.doLevelUp();
           }else{
-            // Solo combat is frozen between choices. Play once when it can animate.
-            if(!this.coop)this.levelUpEffect();
             this.resume();
           }
         },
@@ -47883,7 +47869,7 @@ var GT = 15,
           if(r.t<=0||!this.vfx.crafted.allowed()){this.ghosts.splice(t,1);continue;}
           const glyph=this.sprites.getHeroGhostGlyph(r.species);
           glyph?.push(r.x,r.y,r.z,'walk',.1,r.dir,r.scale*glyph.zxGhostScale,.25,
-            Math.min(.72,r.t/.5*.72)*this.vfx.opacity*this.vfx.ownOpacity,0,0,1,.65,.35,0,false);
+            Math.min(.46,r.t/.5*.46)*this.vfx.opacity*this.vfx.ownOpacity,0,0,1,.65,.35,0,false);
           continue;
         }
         ((r.t -= e),

@@ -8,6 +8,7 @@ import {waitForLoadingPaint} from './loading-work.js';
 import {WindVortex} from './wind-vortex.js';
 import {WindMoveArt,installWindMoveArt} from './wind-move-art.js';
 import {WindSkillArt} from './wind-skill-art.js';
+import {FireStampedeArt} from './fire-stampede-art.js';
 
 const TAU=Math.PI*2,clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),mix=(a,b,t)=>a+(b-a)*t;
 const color=new Color();
@@ -173,6 +174,7 @@ export class StylizedSkillFX{
   moveTextures(key){
     const family=this.fireFamily,base=family.texture,jet=this.fireJet.texture,spin=this.fireSpin.texture,ball=this.fireball.texture;
     switch(key){
+      case 'flame-charge':return [this.stampedeArt().texture];
       case 'wind-ultimate':return [this.windArt().texture,this.windSkillArt().texture];
       case 'wind-quick-attack':case 'wind-aerial-ace':case 'wind-twister':return [this.windMoveArt().texture];
       case 'wind-tackle':return [this.windMoveArt().texture,this.windSkillArt().texture];
@@ -218,6 +220,10 @@ export class StylizedSkillFX{
   }
   tornado(key,x,y,z,radius=2,height=7,type='flying',own=true){return this.touch(key,{x,y,z,radius,height,mode:type==='fire'?3:1,type,color:type==='flying'?0x36d99b:effectColors[type]||effectColors.flying,own});}
   windArt(){return this.windVortex??=new WindVortex(this.mesh.parent,this.mesh.instanceMatrix.count);}
+  stampedeArt(){
+    if(!this.stampede){this.stampede=new FireStampedeArt(this);this.fireFamily.loadTexture(this.stampede.texture);}
+    return this.stampede;
+  }
   windSkillArt(){
     if(!this.windSkills){this.windSkills=new WindSkillArt(this);this.fireFamily.loadTexture(this.windSkills.texture);}
     return this.windSkills;
@@ -414,10 +420,11 @@ export class StylizedSkillFX{
     this.windVortex?.draw(this.windEmitters,this.vfx.opacity*this.vfx.ownOpacity*(this.vfx.calm?.8:1));
     this.fireball.update(dt);
     this.fireFamily.update(dt);
+    this.stampede?.update();
   }
   setPerformance(profile,view){this.limit=profile.name==='流畅'?10:profile.name==='均衡'?18:28;this.vfx.view=view;this.fireJet.setPerformance(profile);this.fireSpin.setPerformance(profile);this.fireball.setPerformance(profile);this.fireFamily.setPerformance(profile);}
-  clear(){this.entries.length=0;this.keys.clear();this.lightSources.length=0;this.mesh.count=0;this.mesh.visible=false;this.paintClock=-1;this.paintCount=0;this.fireJet.clear();this.fireSpin.clear();this.fireball.clear();this.fireFamily.clear();this.windVortex?.clear();this.windMoves?.reset();this.windSkills?.reset();}
-  dispose(){this.clear();this.fireJet.dispose();this.fireSpin.dispose();this.fireball.dispose();this.fireFamily.dispose();this.windVortex?.dispose();this.windMoves?.dispose();this.windSkills?.dispose();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}
+  clear(){this.entries.length=0;this.keys.clear();this.lightSources.length=0;this.mesh.count=0;this.mesh.visible=false;this.paintClock=-1;this.paintCount=0;this.fireJet.clear();this.fireSpin.clear();this.fireball.clear();this.fireFamily.clear();this.windVortex?.clear();this.windMoves?.reset();this.windSkills?.reset();this.stampede?.reset();}
+  dispose(){this.clear();this.fireJet.dispose();this.fireSpin.dispose();this.fireball.dispose();this.fireFamily.dispose();this.windVortex?.dispose();this.windMoves?.dispose();this.windSkills?.dispose();this.stampede?.dispose();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}
 }
 
 // Existing move hooks are visual-only. Replacing them here covers ordinary
