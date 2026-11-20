@@ -1,6 +1,7 @@
+import {createCaptureGourd,gourdIcon} from './capture-gourd.js';
 import {deskCamera,deskDevice} from './desk2d.js';
 import {createBerryPickup} from './berry-pickup.js';
-import {entryHeroScale,entryFootOffset,deskTilt,cameraEase} from './desk-framing.js';
+import {entryHeroScale,entryFootOffset,deskTilt,deskFrame,cameraEase} from './desk-framing.js';
 import {MapSpawnError,mapRulesFor} from './map-rules.js';
 import {altarPalette} from './desk-altar-art.js';
 import {ALTAR_RING_EMISSIVE,altarRingFragment} from './altar-ring-vfx.js';
@@ -30,7 +31,7 @@ import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
 import {FramePacer} from './frame-pacing.js';
 import {warmCombatShaders,warmCombatDraw} from './combat-warmup.js';
-import {UpgradeEffects} from './upgrade-effects.js';
+import {UpgradeEffects,EVOLUTION_REVEAL,EVOLUTION_DURATION} from './upgrade-effects.js';
 import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
@@ -12673,6 +12674,10 @@ var Df = 0.4,
     sepOdd = 0;
     lodDt = new Float32Array(xf);
     propSide = new Int8Array(xf);
+    deskNavUntil = new Float32Array(xf);
+    deskNavActive = new Uint8Array(xf);
+    deskNavX = new Float32Array(xf);
+    deskNavZ = new Float32Array(xf);
     propPosition = {x:0, z:0, side:0};
     lodFrame = 0;
     gnd = new Float32Array(xf);
@@ -12764,6 +12769,7 @@ var Df = 0.4,
         (this.sized[s] = +!!l.ready));
       let S = a;
       this.propSide[s] = 0;
+      this.deskNavUntil[s] = this.deskNavActive[s] = 0;
       if (!(a & 32768)) {
         const pos = this.run.terrain.resolve(t, n, this.radius[s], this.y[s], this.propPosition);
         this.x[s] = pos.x;
@@ -13069,6 +13075,16 @@ var Df = 0.4,
             : e > 0 && e <= Of && (this.dirX[i] !== 0 || this.dirZ[i] !== 0)
               ? ((O = this.dirX[i]), (te = this.dirZ[i]), (b *= 2.4))
               : e <= 0 && (this.dirX[i] !== 0 || this.dirZ[i] !== 0) && (b *= 0.6);
+        }
+        if(x && O===w && te===E && r.steerDeskEnemy){
+          if(t.time>=this.deskNavUntil[i]){
+            this.deskNavUntil[i]=t.time+.18+(i%5)*.015;
+            this.deskNavActive[i]=+r.steerDeskEnemy(this.x[i],this.z[i],g,_,this.radius[i],this.propPosition);
+            this.deskNavX[i]=this.propPosition.x;this.deskNavZ[i]=this.propPosition.z;
+          }
+          if(this.deskNavActive[i]){O=this.deskNavX[i];te=this.deskNavZ[i];}
+        }else{
+          this.deskNavUntil[i]=0;
         }
         let ne = this.radius[i];
         (h || (i & 1) === f) &&
@@ -15611,14 +15627,10 @@ var Om = class {
     onBreak = () => {};
     constructor(e, t = !1) {
       ((this.run = e), (this.friend = t));
-      let n = (t) => (t.scale.setScalar(0.44), (t.visible = !1), e.r.scene.add(t), t);
-      (bu(`ball`).then((e) => {
-        e && !this.disposed && (t && Dm(e, `friend`), (this.ball = this.plain = n(e)));
-      }),
-        t ||
-          bu(`ball`).then((e) => {
-            e && !this.disposed && (Dm(e, `master`), (this.master = n(e)));
-          }));
+      this.plain=createCaptureGourd(t?'#73ad70':'#d99a38');
+      this.master=createCaptureGourd('#a878ce');
+      for(const gourd of [this.plain,this.master]){gourd.visible=false;e.r.scene.add(gourd);}
+      this.ball=this.plain;
     }
     start(e, t, n, r, i = !1) {
       let a = this.run,
@@ -15643,13 +15655,13 @@ var Om = class {
         l = s.z - this.z0,
         u = Math.hypot(c, l) || 1,
         d = Math.min(u * 0.5, 1.1 + o.radius[e] * 0.6);
-      ((this.hx = this.x0 + (c / u) * d),
-        (this.hz = this.z0 + (l / u) * d),
+      ((this.hx = s.x + (c / u) * .9),
+        (this.hz = s.z + (l / u) * .9),
         (this.gy = a.terrain.surface(this.hx, this.hz)),
         (this.hy = Math.max(this.gy + 1.4, this.y0 + o.hgt[e] * 0.6 + 0.6)),
         (this.onCaught = n),
         (this.onBreak = r),
-        a.audio.throwBall(),
+        a.audio.ballOpen(),
         a.beginCapture(this, e, o.species[e], (o.flags[e] & R.Shiny) !== 0, i, this.hx, this.hz, this.friend),
         a.captureCam(this.hx, this.gy, this.hz));
     }
@@ -15671,12 +15683,8 @@ var Om = class {
         p = 0,
         m = 0;
       if (s < _m) {
-        let e = s / _m;
-        ((l = this.bx + (this.hx - this.bx) * e),
-          (d = this.bz + (this.hz - this.bz) * e),
-          (u = this.by + (this.hy - this.by) * e + Math.sin(e * Math.PI) * 2.6),
-          (f = -s * 16),
-          Math.random() < 0.7 && i.trail(l, u, d, 16777215, 0.35, I.Soft, 0.25));
+        u=this.hy;
+        i.ring(l,u+.3,d,.5+s,0xffdc83,.15,.15);
       } else if (s < vm) {
         let e = (s - _m) / 0.6,
           o = Em(Math.min(1, e * 1.25));
@@ -15685,9 +15693,12 @@ var Om = class {
           c(_m) && (t.audio.ballOpen(), i.flash(l, u, d, this.friend ? 8056992 : 16738922, 2.2, 0.18)),
           (n.flash[r] = 1),
           (n.scale[r] = Math.max(0.01, this.scale0 * (1 - o))),
-          (n.x[r] = this.x0 + (this.hx - this.x0) * o * 0.85),
-          (n.z[r] = this.z0 + (this.hz - this.z0) * o * 0.85),
-          (n.y[r] = this.y0 + (this.hy - 0.4 - this.y0) * o),
+          (n.x[r] = this.x0 + (this.hx - this.x0) * o),
+          (n.z[r] = this.z0 + (this.hz - this.z0) * o),
+        (n.y[r] = this.y0 + (this.hy + .15 - this.y0) * o),
+          e < 0.85 && i.add.spawn({x:n.x[r],y:n.y[r]+.6,z:n.z[r],
+            vx:(l-n.x[r])*5,vy:(u+.4-n.y[r])*5,vz:(d-n.z[r])*5,
+            life:.2,size:.22,endSize:0,color:0xffdc83,shape:I.Spark,glow:.6}),
           e < 0.85 &&
             i.beams.spawn(
               l,
@@ -15702,16 +15713,9 @@ var Om = class {
             ));
       } else if (s < ym) {
         n.scale[r] = 0.01;
-        let e = (s - vm) / 0.44999999999999996;
-        ((u =
-          e < 0.6
-            ? this.hy - (this.hy - this.gy) * (e / 0.6) ** 2
-            : this.gy + Math.sin(((e - 0.6) / 0.4) * Math.PI) * 0.3),
-          !this.landed &&
-            e >= 0.6 &&
-            ((this.landed = !0), t.audio.land(), i.ring(l, this.gy, d, 1.6, 16777215, 0.35, 0.3)));
+        u=this.hy;
       } else if (this.ended < 0) {
-        u = this.gy;
+        u = this.hy;
         for (let e = 0; e < 3; e++) {
           let n = bm + e * xm;
           if (
@@ -15733,7 +15737,7 @@ var Om = class {
         }
         this.ended < 0 && this.breakAt === 0 && s >= Cm && this.click();
       } else {
-        u = this.gy;
+        u = this.hy;
         let e = this.breakAt ? Tm : wm;
         if (this.breakAt) {
           let e = Math.min(1, (s - this.ended) / 0.3);
@@ -15747,7 +15751,7 @@ var Om = class {
       t.captureFocus(Math.min(u, this.hy) + 0.1, e);
       let h = this.ball;
       if (h) {
-        ((h.visible = this.ended < 0 || !this.breakAt), h.position.set(l, u - (s < ym ? 0.3 : 0), d));
+        ((h.visible = this.ended < 0 || !this.breakAt), h.position.set(l, u - 1.37, d));
         let e = t.r.camera.position;
         h.rotation.set(f, s < _m ? 0 : Math.atan2(e.x - l, e.z - d), p);
         let n = h.getObjectByName(`Lid`);
@@ -15762,7 +15766,7 @@ var Om = class {
       let e = this.run,
         t = e.vfx,
         n = this.hx,
-        r = this.gy + 0.5,
+        r = this.hy + 0.5,
         i = this.hz;
       ((this.ended = this.t), e.audio.ballClick(), t.flash(n, r, i, 16774064, 2.4, 0.2));
       for (let e = 0; e < 3; e++) {
@@ -15797,8 +15801,8 @@ var Om = class {
         (t.x[n] = this.x0),
         (t.y[n] = this.y0),
         (t.z[n] = this.z0),
-        r.flash(this.hx, this.gy + 0.5, this.hz, 16777215, 3, 0.2),
-        r.burst(this.hx, this.gy + 0.5, this.hz, this.friend ? 8056992 : 16738922, 12, 5, I.Star, 0.45, 0.5),
+        r.flash(this.hx, this.hy + 0.5, this.hz, 16777215, 3, 0.2),
+        r.burst(this.hx, this.hy + 0.5, this.hz, this.friend ? 8056992 : 16738922, 12, 5, I.Star, 0.45, 0.5),
         e.audio.ballOpen(),
         e.ui.captureResult(!1));
     }
@@ -15825,7 +15829,7 @@ var Om = class {
     disposed = !1;
     dispose() {
       this.disposed = !0;
-      for (let e of [this.plain, this.master]) e?.parent?.remove(e);
+      for (const gourd of [this.plain,this.master]) { gourd?.parent?.remove(gourd); gourd?.traverse(mesh=>{mesh.geometry?.dispose();mesh.material?.dispose();}); }
       ((this.ball = this.plain = this.master = null), (this.active = !1));
     }
   },
@@ -33575,10 +33579,12 @@ var mv = 30,
     }
     render() {
       let e = this.run,
-        heroFrame = e.sprites.heroFrame(this,this.speciesId,playerHeroAction(this),(this.dead?e.realTime:e.time)*1000),
-        t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,this.heroPose??this.firePose,heroFrame),
-        n = this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
-        r = this.animT,
+        evolving = e.state === 'evolving',
+        // Evolution pauses combat time, but the old form must keep breathing.
+        heroFrame = e.sprites.heroFrame(this,this.speciesId,evolving?'idle':playerHeroAction(this),(this.dead||evolving?e.realTime:e.time)*1000),
+        t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,evolving?undefined:this.heroPose??this.firePose,heroFrame),
+        n = !evolving && this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
+        r = evolving ? e.realTime*.6 : this.animT,
         i = !1,
         a = this.gliding ? 0.18 + 0.12 * (this.skateT / 1.5) : 0;
       this.swimNow && (a += Math.sin(this.run.time * 5) * 0.06);
@@ -33586,18 +33592,18 @@ var mv = 30,
         s = this.facing.y,
         c = 0;
       if (
-        this.attackT > 0 &&
+        !evolving && this.attackT > 0 &&
         ((c = Math.sin((1 - this.attackT / 0.3) * Math.PI) * 0.12), this.speedNow < 0.6)
       ) {
         let t = e.lastAim;
         ((o = t.x), (s = t.z));
       }
-      if (this.ultPoseT > 0) {
+      if (!evolving && this.ultPoseT > 0) {
         ((n = `attack`), (r = 1 - this.ultPoseT / 0.6), (i = !0));
         let t = e.lastAim;
         ((o = t.x), (s = t.z));
       }
-      (this.hurtT > 0 && ((n = `hurt`), (r = 0.6), (i = !0)), this.dead && ((n = `hurt`), (r = 1), (i = !0)));
+      (!evolving && this.hurtT > 0 && ((n = `hurt`), (r = 0.6), (i = !0)), this.dead && ((n = `hurt`), (r = 1), (i = !0)));
       let l = e.sprites.dirRow(o, s),
         u = this.iframes > 0 && Math.floor(e.time * 20) % 2 == 0,
         d = this.invisT > 0 ? 0.5 : 0,
@@ -36763,7 +36769,7 @@ var GS = class e {
     }
     disposed = !1;
     static CHEST_BASE = 18;
-    static CHESTS_PER_KIND = 6;
+    static CHESTS_PER_KIND = 1;
     recentChestSites = [];
     chestCost() {
       let t = 1 - Math.min(0.4, 0.08 * (this.run.player.items.get(`big-nugget`) ?? 0)),
@@ -36813,16 +36819,19 @@ var GS = class e {
           : createAltarChargeRing(group,three,new Ei(RS[tier].color));
       } else if(facility.kind==='berry'){
         facility.berryPickup=createBerryPickup(model,this.run.r);
-      } else if(facility.kind!=='bill'){
-        ring = facility.halo = this.dwellRing.clone();
-        ring.material = this.idleRingMaterial;
-        ring.visible = !facility.used;
-        group.add(ring);
       }
       if(ring){
         ring.position.set(0, .12, 0);
         ring.scale.setScalar(facility.ringRadius);
       }
+      // Every available facility has the same grey ground track, including
+      // layered desk sprites. The altar swaps it for its active charge ring.
+      const halo = facility.halo = this.dwellRing.clone();
+      halo.material = this.idleRingMaterial;
+      halo.visible = !facility.used;
+      halo.position.set(0, .12, 0);
+      halo.scale.setScalar(facility.ringRadius);
+      group.add(halo);
       facility.model = model;
       if(artOwner)group.rotation.y=0;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
@@ -36940,8 +36949,8 @@ var GS = class e {
       const kinds = [];
       for (const [kind, amount] of [
         ['altar', 1], ['bill', 1], ['nest', 1],
-        ['magnet', endless ? 1 : 2], ['freechest', GS.CHESTS_PER_KIND],
-        ['berry', 4], ['chest', GS.CHESTS_PER_KIND],
+        ['magnet', 1], ['freechest', GS.CHESTS_PER_KIND],
+        ['berry', 2], ['chest', GS.CHESTS_PER_KIND],
       ]) {
         for (let i = 0; i < amount; i++) kinds.push(kind);
       }
@@ -36968,13 +36977,14 @@ var GS = class e {
       // splices out occupied sites; live facilities are checked again on refill.
       this.chestSites = sites;
       for (const kind of kinds) {
+        const accepts = (x,z) => !terrain.desk2d || !['chest','freechest'].includes(kind) || this.chestOutsideEntryView(x,z);
         const minDistance = kind === 'boss' ? limit * .55 : 14;
         const needsLargeSite = kind === 'boss' || kind === 'altar';
         const radius = needsLargeSite ? 6.5 : 4.5;
-        const designated = kind !== 'boss' && this.availableMapSite(radius);
+        const designated = kind !== 'boss' && this.availableMapSite(radius,accepts);
         let best = -1;
         for (let i = 0; !designated && i < sites.length; i++) {
-          if (sites[i].fromSpawn < minDistance || (needsLargeSite && !sites[i].fitsAltar)) continue;
+          if (!accepts(sites[i].x,sites[i].z) || sites[i].fromSpawn < minDistance || (needsLargeSite && !sites[i].fitsAltar) || !this.hasBuildingSpace(sites[i].x,sites[i].z,radius)) continue;
           if (best < 0 || sites[i].clearance > sites[best].clearance) best = i;
         }
         let site = designated || (best >= 0 ? sites.splice(best, 1)[0] : null);
@@ -36984,8 +36994,8 @@ var GS = class e {
           let clearance = -Infinity;
           for (let z = -terrain.deskBounds.z + 6; z <= terrain.deskBounds.z - 6; z += 1.5) {
             for (let x = -limit; x <= limit; x += 1.5) {
-              if (Math.hypot(x-terrain.spawn.x,z-terrain.spawn.z) < minDistance ||
-                  !terrain.inBounds(x,z,6) || !terrain.isFlatOpen(x,z) || !this.fitsOnDesk(x,z,radius)) continue;
+              if (!accepts(x,z) || Math.hypot(x-terrain.spawn.x,z-terrain.spawn.z) < minDistance ||
+                  !terrain.inBounds(x,z,6) || !terrain.isFlatOpen(x,z) || !this.fitsOnDesk(x,z,radius) || !this.hasBuildingSpace(x,z,radius)) continue;
               const gap = this.list.reduce((d,f)=>Math.min(d,Math.hypot(x-f.x,z-f.z)-f.r),Infinity);
               if (gap > clearance) { site = {x,z}; clearance = gap; }
             }
@@ -37000,15 +37010,21 @@ var GS = class e {
         yield;
       }
     }
+    chestOutsideEntryView(x,z) {
+      const t=this.run.terrain;
+      const frame=deskFrame(this.run.r?.camera?.aspect??390/844,t.deskBounds.x,t.deskBounds.z,t.spawn.x,t.spawn.z);
+      return Math.abs(x-frame.x)>frame.w+8 || Math.abs(z-frame.z)*deskTilt>frame.h+8;
+    }
     availableMapSite(radius, accepts = () => true) {
       const terrain = this.run.terrain;
       return terrain.facilitySites?.find(({x,z,surface}) =>
         Math.hypot(x-terrain.spawn.x,z-terrain.spawn.z) >= 14 &&
         terrain.inBounds(x,z,6) && Math.hypot(x,z) <= terrain.arenaR-6 && terrain.isFlatOpen(x,z) &&
-        this.fitsOnDesk(x,z,radius,surface) && this.hasBuildingSpace(x,z,2.6) && accepts(x,z));
+        this.fitsOnDesk(x,z,radius,surface) && this.hasBuildingSpace(x,z,radius) && accepts(x,z));
     }
     fitsOnDesk(x, z, radius, surface) {
       const terrain = this.run.terrain;
+      if (terrain.canReachDeskPoint && !terrain.canReachDeskPoint(x,z)) return false;
       if (terrain.fitsFacilitySurface && !terrain.fitsFacilitySurface(x,z,radius,surface)) return false;
       const floor = terrain.height(x, z);
       if (terrain.hitProp(x, floor + .1, z, radius) ||
@@ -37023,7 +37039,7 @@ var GS = class e {
     }
     hasBuildingSpace(x, z, radius) {
       return this.list.every(f => (f.used && !f.group.visible) ||
-        Math.hypot(x - f.x, z - f.z) >= f.r + radius + 5);
+        Math.hypot(x - f.x, z - f.z) >= Math.max(16, f.r + radius + 7));
     }
     spawnChest(e, t, n, r = !1, i = e, a = t) {
       let o = e,
@@ -37033,6 +37049,7 @@ var GS = class e {
         u = (e, t) => Math.abs(c.height(e, t) - l) > 1.8,
         d = (e, t) => this.list.some((n) => n.kind === `portal` && Math.hypot(n.x - e, n.z - t) < 13),
         f = (e, t) =>
+          this.run.sprites.visible(e,c.height(e,t)+2,t,8) ||
           d(e, t) ||
           u(e, t) ||
           !c.inBounds(e, t, 4) ||
@@ -37040,7 +37057,7 @@ var GS = class e {
           !c.isFlatOpen(e, t) ||
           !this.fitsOnDesk(e, t, 2.6) ||
           !this.hasBuildingSpace(e, t, 2.6);
-      const site = this.availableMapSite(4.5, (x,z)=>!d(x,z) && !u(x,z));
+      const site = this.availableMapSite(4.5, (x,z)=>!d(x,z) && !u(x,z) && !this.run.sprites.visible(x,c.height(x,z)+2,z,8));
       if (site) return this.add(n ? 'freechest' : 'chest', site.x, site.z, r ? {data:{gift:true}} : {});
       for (let n = 0; n < 40 && f(o, s); n++) {
         let r = this.run.terrain.randomPoint(F, e, t, 2, 4 + n);
@@ -37063,7 +37080,7 @@ var GS = class e {
           ((o = e.x), (s = e.z));
         }
       }
-      if (c.desk2d && f(o,s)) {
+      if (f(o,s)) {
         const free = this.chestSites?.find(p=>!f(p.x,p.z));
         if (!free) return null;
         o=free.x; s=free.z;
@@ -37530,8 +37547,10 @@ var GS = class e {
     }
     respawnChest(chest) {
       const {terrain, player, time} = this.run;
-      const canRefill = (x,z) => Math.hypot(x-chest.x,z-chest.z) >= 14 &&
-        Math.hypot(x-player.pos.x,z-player.pos.z) >= 10 && !terrain.isReserved(x,z,3);
+      const canRefill = (x,z) => Math.hypot(x-chest.x,z-chest.z) >= 32 &&
+        Math.hypot(x-player.pos.x,z-player.pos.z) >= 32 &&
+        !this.recentChestSites.some(site=>Math.hypot(x-site.x,z-site.z)<24) &&
+        !this.run.sprites.visible(x,terrain.height(x,z)+2,z,8) && !terrain.isReserved(x,z,3);
       const designated = this.availableMapSite(4.5,canRefill);
       if (designated) {
         this.remove(chest);
@@ -37546,9 +37565,7 @@ var GS = class e {
       for (let i = 0; i < 24 && chest.refillChecked < sites.length; i++) {
         const {x,z} = sites[chest.refillCursor++ % sites.length];
         chest.refillChecked++;
-        if (Math.hypot(x-chest.x,z-chest.z) < 32 || Math.hypot(x-player.pos.x,z-player.pos.z) < 32 ||
-            this.recentChestSites.some(site=>Math.hypot(x-site.x,z-site.z)<24) ||
-            this.run.sprites.visible(x,terrain.height(x,z)+2,z,8) ||
+        if (!canRefill(x,z) ||
             terrain.isReserved(x,z,3) || !this.fitsOnDesk(x,z,4.5) ||
             !this.hasBuildingSpace(x,z,2.6)) continue;
         this.run.ui.removeWorldLabel(chest);
@@ -37892,11 +37909,23 @@ var GS = class e {
       ring.visible = progress > 0 && target.kind!=='bill' && target.kind!=='berry' && !target.used && this.run.state === 'play' &&
         !this.run.player.dead && this.hasVisual(target);
       ring.material.uniforms.dwell.value = ring.visible ? progress : -1;
-      if (ring.visible) {
-        ring.position.set(target.x, target.y + .12, target.z);
-        ring.scale.setScalar(target.ringRadius);
-      }
       for (const facility of this.list) {
+        const anchor=facility.model?.userData.ringAnchor, halo=facility.halo;
+        if(anchor && halo){
+          // Project the artwork centre onto the ring's ground plane along the
+          // current view, so both orthographic desk and perspective views align.
+          const model=facility.model,camera=this.run.r.camera,p=halo.position;
+          model.updateWorldMatrix(true,false);
+          model.localToWorld(p.copy(anchor));
+          const m=camera.matrixWorld.elements, ortho=camera.projectionMatrix.elements[15]===1;
+          const dx=ortho?-m[8]:p.x-m[12],dy=ortho?-m[9]:p.y-m[13],dz=ortho?-m[10]:p.z-m[14];
+          if(Math.abs(dy)>1e-6){
+            const distance=(facility.y+.12-p.y)/dy;
+            p.x+=dx*distance;p.y=facility.y+.12;p.z+=dz*distance;
+          }
+          facility.group.worldToLocal(p);
+          facility.chargeRing?.position.copy(p);
+        }
         if (facility.dock) {
           if (facility.used || this.run.bossSpawned) facility.dock.open();
           const host = this.run.r;
@@ -37908,9 +37937,17 @@ var GS = class e {
         if (charge) {
           charge.visible = facility.charging && !facility.used && this.hasVisual(facility);
           charge.material.uniforms.dwell.value = facility.charge;
-        } else if (facility.halo) {
-          facility.halo.visible = !facility.used && !(ring.visible && target === facility) && this.hasVisual(facility);
         }
+        if (facility.halo) {
+          facility.halo.visible = !facility.used && !charge?.visible && !(ring.visible && target === facility) && this.hasVisual(facility);
+        }
+      }
+      if (ring.visible) {
+        if(target.halo){
+          target.group.localToWorld(ring.position.copy(target.halo.position));
+          this.group.worldToLocal(ring.position);
+        }else ring.position.set(target.x,target.y+.12,target.z);
+        ring.scale.setScalar(target.ringRadius);
       }
     }
     portalFx(e, t) {
@@ -47106,26 +47143,26 @@ var GT = 15,
       let e = this.player.speciesId,
         t = this.nextEvo.to,
         n = this.player,
-        r = 3.6,
+        r = EVOLUTION_REVEAL,
         o = Math.round(n.maxHp);
       ((this.state = `evolving`),
         this.sprites.get(t),
         this.audio.evolve(r),
-        this.audio.duck(0.2, 4.8),
+        this.audio.duck(0.2, EVOLUTION_DURATION),
         this.cry(e),
         this.ui.showEvolution(e, t, r));
       this.sprites.prepareHeroForm(t);
       let s = this.camYaw;
-      this.setCine({ follow: -2, dist: 3.6, pitch: 0.22, orbit: 0.35 });
+      this.setCine({ follow: -2, dist: 3.6, pitch: 0.22, orbit: 0 });
       this.vfx.upgrade.play(n,true,r);
       this.animate(
         r,
         (progress) => {
           // Keep the old form readable until the gold rings converge. The
           // reveal callback alone changes species, stats and unlocks.
-          const charge=Math.max(0,(progress-.76)/.24);
+          const charge=Math.max(0,(progress-.96)/.04);
           n.flash=this.hideOwnFx?0:charge*(this.vfx.calm?.18:.65);
-          n.renderScale=1+Math.sin(progress*Math.PI)*.045;
+          n.renderScale=1;
         },
         () => {
           ((n.speciesId = e),
@@ -47142,7 +47179,7 @@ var GT = 15,
           this.animate(
             0.55,
             (e) => {
-              n.renderScale = 1 + Math.sin(e * Math.PI) * 0.4 * (1 - e * 0.6);
+              n.renderScale = 1 + Math.sin(e * Math.PI) * 0.08 * (1 - e * 0.6);
             },
             () => {
               n.renderScale = 1;
@@ -47168,7 +47205,6 @@ var GT = 15,
           (this.cry(t),
             this.audio.evolveDone(),
             this.ui.evolutionReveal(e, t, o, Math.round(n.maxHp)),
-            this.shake(0.6),
             (this.state = `play`),
             (this.cine.want = 0),
             (this.yawBack = s),
@@ -48270,18 +48306,23 @@ var ME = class {
         let n = e.clientX - this.sx,
           r = e.clientY - this.sy,
           i = Math.hypot(n, r);
-        if (i > TE * this.k * DE && !this.fixed && !this.floatingStick) {
-          let e = (i - TE * this.k * DE) / i;
+        const radius=this.centeredStick||this.floatingStick
+          ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
+          : TE*this.k;
+        // Once the thumb reaches the rim, carry the floating base with it.
+        // Otherwise a long drag leaves the origin behind and a reverse swipe
+        // keeps steering the old way until it crosses the initial press.
+        const reach=this.floatingStick?radius:TE*this.k*DE;
+        if (i > reach && !this.fixed && !this.centeredStick) {
+          let e = (i - reach) / i;
           ((this.sx += n * e),
             (this.sy += r * e),
             (n -= n * e),
             (r -= r * e),
+            (i = reach),
             (this.stick.style.left = this.sx + `px`),
             (this.stick.style.top = this.sy + `px`));
         }
-        const radius=this.centeredStick||this.floatingStick
-          ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
-          : TE*this.k;
         let a = Math.min(1, Math.hypot(n, r) / radius),
           o = Math.atan2(r, n),
           // A smaller floating base must not turn finger jitter into movement.
@@ -72578,7 +72619,7 @@ var JI = class {
               X(
                 `p`,
                 {},
-                c(n ? `¡Adelante, Master Ball!` : r ? `¡Adelante, Amigo Ball!` : `¡Adelante, Poké Ball!`),
+                n ? `宝葫芦，收！` : r ? `葫芦引灵！` : `葫芦，收！`,
               ),
               X(
                 `h2`,
@@ -72587,7 +72628,7 @@ var JI = class {
                 t ? X(`i`, { class: `shiny-mark` }) : null,
                 r ? X(`small`, { class: `cap-tag` }, c(`Alfa de apoyo · solo esta partida`)) : null,
               ),
-              X(`div`, { class: `cap-pips` }, ...[0, 1, 2].map(() => X(`i`, {}, Q(o)))),
+              X(`div`, { class: `cap-pips` }, ...[0, 1, 2].map(() => X(`i`, {}, gourdIcon()))),
             ),
           ),
         );
@@ -72603,7 +72644,7 @@ var JI = class {
       let t = this.capEl?.querySelector(`.cap-plate`);
       t &&
         (t.classList.add(e ? `ok` : `fail`),
-        (t.querySelector(`.cap-info p`).textContent = c(e ? `¡Atrapado!` : `¡Oh, no! ¡Se ha escapado!`)));
+        (t.querySelector(`.cap-info p`).textContent = e ? `收服成功！` : `字灵挣脱了！`));
     }
     captureEnd() {
       let e = this.capEl;

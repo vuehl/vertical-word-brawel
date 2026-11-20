@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import {verifyBillGaze} from './bill-gaze-regression.mjs';
 import {verifyBerryPickup} from './berry-pickup-regression.mjs';
 import {verifyDeskShelf} from './desk-shelf-regression.mjs';
+import {verifyDeskNavigation} from './desk-navigation-regression.mjs';
 export async function verifyDesk(page,dir){
  await page.evaluate(()=>{window.holdHomeStatus=false;window.releaseHomeStatus?.();releaseOptionalDownloads();releaseTextDownload();});
  await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:35000});
@@ -12,6 +13,13 @@ export async function verifyDesk(page,dir){
  if(await page.evaluate(()=>!!app.screen.querySelector('.auth-body button')))await click('.auth-body button');
  await click('[data-action="journey"]');await click('[data-action="enter"]');
  await page.waitForFunction(()=>app.run?.terrain?.desk2d&&app.run.time>.1,{timeout:30000});
+ if(process.argv.includes('--bill-gaze-only')){
+   await page.evaluate(()=>{app.halted=true;app.run.state='paused';});
+   await verifyBillGaze(page,dir,'desk');
+   await page.evaluate(async()=>{await app.run.changeZone();app.run.state='paused';});
+   await verifyBillGaze(page,dir,'stage2');
+   return;
+ }
  const placement=await page.evaluate(()=>{
    const r=app.run,t=r.terrain,f=r.interactables;
    const spawn={x:Math.round((t.spawn.x/t.deskBounds.x+1)*5142/2),z:Math.round((t.spawn.z/t.deskBounds.z+1)*2892/2)};
@@ -26,8 +34,10 @@ export async function verifyDesk(page,dir){
  });
  assert.deepEqual(placement.spawn,{x:1820,z:1320});
  assert.equal(placement.sites.length,2);
- assert.ok(placement.bossDefault&&placement.sites.every(s=>s.kinds.length===1&&s.kinds[0]!=='boss'&&s.clear&&s.walkable&&s.spawnDistance>=14),JSON.stringify(placement));
+ assert.ok(placement.bossDefault&&placement.sites.every(s=>s.kinds.length<=1&&s.kinds[0]!=='boss'&&s.clear&&s.walkable&&s.spawnDistance>=14),JSON.stringify(placement));
  console.log('Desk placement',placement);
+ await verifyDeskNavigation(page);
+ if(process.argv.includes('--desk-navigation-only'))return;
  const seedChecks=await page.evaluate(()=>{
    const run=app.run,live=run.interactables,t=run.terrain;
    const terrain=Object.create(t),probe=Object.create(live);
@@ -39,9 +49,13 @@ export async function verifyDesk(page,dir){
      terrain.seed=seed;probe.list=[];probe.populate();
      for(const s of terrain.facilitySites){
        const match=probe.list.filter(f=>f.x===s.x&&f.z===s.z);
-       if(match.length!==1||match[0].kind==='boss')throw Error('指定点分配失败 '+seed+' / '+s.surface);
+       if(match.length>1||match[0]?.kind==='boss')throw Error('指定点分配失败 '+seed+' / '+s.surface);
      }
+     if(probe.list.filter(f=>f.kind==='chest'||f.kind==='freechest').length!==2)throw Error('Expected exactly two gacha machines');
      for(const f of probe.list){
+       if(['chest','freechest'].includes(f.kind)&&!probe.chestOutsideEntryView(f.x,f.z))throw Error('Initial gacha is in view '+seed);
+       if(!terrain.canReachDeskPoint(f.x,f.z))throw Error('Unreachable facility '+seed);
+       for(const other of probe.list)if(other!==f && Math.hypot(f.x-other.x,f.z-other.z)<16)throw Error('Crowded facilities '+seed);
        const surface=terrain.facilitySites.find(s=>s.x===f.x&&s.z===f.z)?.surface;
        if(!probe.fitsOnDesk(f.x,f.z,['boss','altar'].includes(f.kind)?6.5:4.5,surface))throw Error('设施轮廓越界 '+seed);
      }
@@ -69,16 +83,22 @@ export async function verifyDesk(page,dir){
      return Math.hypot(out.x-goal.x,out.z-goal.z);
    }
    const cableError=walk(4485,1720,4485,1880);
-   const mouseBlocked=walk(4200,2200,4160,1940);
+   const paperError=walk(800,2100,800,2300),penError=walk(3600,1450,3760,1450);
+   if(paperError>.001||penError>.001)throw Error('Low props block walking');
+   const mouseBlocked=walk(4200,2040,4160,1780);
+   const passageError=walk(3950,2010,4320,2010);
+   if(passageError>.001)throw Error('Mouse lower passage is blocked');
    return {cableError,mouseBlocked,stage:t.zxStage,layers:[...new Set(t.group.children.map(c=>c.name))],colliders:t.colliders.length,spawnFree:!t.hitProp(p.x,.3,p.z,1),edges:edges.every(Boolean),wireBlocked:t.colliders.some(c=>c.kind==='wires'),facilities:r.interactables.list.every(f=>f.kind==='boss'?!!f.dock&&f.model?.userData.portalDock?.version===1:f.model?.name.startsWith('desk2d/device-'))};
  });
  assert.equal(stats.layers.length,24);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.edges&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
  await page.screenshot({path:path.join(dir,'stage1.png')});
+ if(process.argv.includes('--desk-placement-only'))return;
+ if(process.argv.includes('--desk-layout-only'))return;
  await verifyDeskShelf(page,dir);
  const ringPixels=await page.evaluate(()=>{
    const r=app.run, facilities=r.interactables;
    for(const f of facilities.list){
-     if(f.kind==='bill'||f.kind==='berry'){if(f.halo||f.chargeRing)throw Error('Unexpected ring on '+f.kind);continue;}
+     if(!f.halo)throw Error('Missing grey ground ring on '+f.kind);
      if(!Number.isFinite(f.ringRadius)||f.ringRadius<f.r||(f.chargeRing??f.halo)?.scale.x!==f.ringRadius)
        throw Error('Invalid desk facility ring on '+f.kind+': '+f.ringRadius);
    }
@@ -117,7 +137,7 @@ export async function verifyDesk(page,dir){
      const layers=()=>a.model.children.filter(m=>m.visible).map(m=>m.name.split('/').pop()).sort();
      f.render();
      const idle=layers();
-     if(a.chargeRing.visible||a.halo)throw Error('Idle altar has a ground ring');
+     if(a.chargeRing.visible||!a.halo?.visible)throw Error('Idle altar must show its grey ground ring');
      let idleFrame;
      if(tier===1){
        r.r.render(0);
@@ -163,7 +183,7 @@ export async function verifyDesk(page,dir){
      }
      const compiled=r.r.renderer.info.programs.every(b=>b.diagnostics?.runnable!==false);
      f.altarUpdate(a,a.r+1,.1);f.render();
-     if(a.chargeRing.visible||a.charge<=0)throw Error('Leaving the altar should immediately hide its ring during charge decay');
+     if(a.chargeRing.visible||!a.halo.visible||a.charge<=0)throw Error('Leaving the altar should restore its grey ring during charge decay');
      result.push({tier,idle,active,exit:layers(),ring,radius,color:a.altarColor,interaction:a.r,compiled,error:gl.getError(),frame,idleFrame});
      f.altarUpdate(a,1,0);
      if(tint.opacity!==0)throw Error('Altar breath did not restart on re-entry');

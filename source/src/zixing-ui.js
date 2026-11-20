@@ -605,7 +605,7 @@ export function createZixingUI(app,api) {
         },entryControls.tiers[index],{'data-tier':option.tier,'data-mode':option.mode,'aria-pressed':option===selectedDifficulty,'aria-disabled':locked}];
       });
       const node=entryPage('map',[...choices,['返回',home,entryControls.back,{'data-action':'back'}],
-        ['开始游玩！',()=>start(),entryControls.enter,{'data-action':'enter'}]]);
+        ['开始游玩！',()=>start({species:4,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode}),entryControls.enter,{'data-action':'enter'}]]);
       node.dataset.tier=String(difficulties.indexOf(selectedDifficulty));
       node.setAttribute('aria-label','选择关卡，第一站 桌上世界。玩具阁楼、画室奇境、书架云端暂未开放。');
       return node;

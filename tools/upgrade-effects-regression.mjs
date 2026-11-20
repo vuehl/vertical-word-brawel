@@ -60,17 +60,32 @@ export async function reviewUpgradeEffects(page,dir){
       r.nextEvo={to,level:p.level};const before=r.stats.evolutions;
       r.startEvolution();
       [...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
-      for(let i=0;i<54;i++)r.update(1/30);
-      return {from,to,before,state:r.state,species:p.speciesId,count:r.vfx.upgrade.mesh.count,age:r.vfx.upgrade.events[0]?.age};
+      const frames=[],get=r.sprites.getPlayerGlyph,clock=r.time,position=p.pos.clone();
+      const speed=p.speedNow,hurt=p.hurtT;p.speedNow=4;p.hurtT=.2;
+      r.sprites.getPlayerGlyph=(...args)=>{
+        const frame=args[3];frames.push({action:frame?.action,index:frame?.index,species:frame?.species});
+        return get(...args);
+      };
+      try{for(let i=0;i<27;i++)r.update(1/30);}
+      finally{r.sprites.getPlayerGlyph=get;p.speedNow=speed;p.hurtT=hurt;}
+      return {from,to,before,state:r.state,species:p.speciesId,count:r.vfx.upgrade.mesh.count,age:r.vfx.upgrade.events[0]?.age,
+        frames,worldPaused:r.time===clock,stationary:p.pos.equals(position)};
     },{from,to});
     assert.equal(start.state,'evolving');assert.equal(start.species,from);assert.equal(start.count,1);
+    assert.ok(start.worldPaused&&start.stationary,'Idle animation must not resume combat or movement');
+    assert.ok(start.frames.length>1&&start.frames.every(f=>f.action==='idle'&&f.species===from));
+    assert.ok(new Set(start.frames.map(f=>f.index)).size>1,'Original form idle frames must advance during evolution');
     await draw(`evolution-${from}-${to}-orbit`);
-    await page.evaluate(()=>{for(let i=0;i<51;i++)app.run.update(1/30);});
+    await page.evaluate(()=>{for(let i=0;i<34;i++)app.run.update(1/30);});
+    const contracting=await page.evaluate(()=>({species:app.run.player.speciesId,
+      reveal:app.run.vfx.upgrade.events[0].reveal,duration:app.run.vfx.upgrade.events[0].duration}));
+    assert.equal(contracting.species,from,'The old glyph must remain until the reference flash');
+    assert.equal(contracting.reveal,2.2);assert.ok(Math.abs(contracting.duration-4.08)<1e-6);
     await draw(`evolution-${from}-${to}-contract`);
-    await page.evaluate(()=>{for(let i=0;i<4;i++)app.run.update(1/30);});
+    await page.evaluate(()=>{for(let i=0;i<6;i++)app.run.update(1/30);});
     await draw(`evolution-${from}-${to}-reveal`);
     const end=await page.evaluate(()=>{
-      const r=app.run;for(let i=0;i<33;i++)r.update(1/30);
+      const r=app.run;for(let i=0;i<66;i++)r.update(1/30);
       return {species:r.player.speciesId,state:r.state,evolutions:r.stats.evolutions,scale:r.player.renderScale,
         expired:r.vfx.upgrade.events.length===0,gl:app.r.renderer.getContext().getError()};
     });

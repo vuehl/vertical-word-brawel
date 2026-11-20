@@ -21,7 +21,7 @@ export async function verifyBillGaze(page,dir,stage){
       gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,data);return data;
     }
     function snapshot(){
-      r.renderWorld(0);host.render(0);
+      renderer.render(bill.model,camera);
       return gl.canvas.toDataURL('image/png').split(',')[1];
     }
     try{
@@ -44,7 +44,7 @@ export async function verifyBillGaze(page,dir,stage){
       const outside=pose(0,0);bill.group.position.copy(origin);
       const reenter=pose(0,0);
       r.state='play';f.nearest=bill;f.dwellTime=f.dwellDuration/2;f.render(.016);
-      const ring=Boolean(bill.halo||bill.chargeRing||f.dwellRing.visible);
+      const ring=Boolean(bill.halo?.visible&&!bill.chargeRing&&!f.dwellRing.visible);
       // Only the iris may change between these two frames. Project the
       // painted socket bounds to framebuffer pixels, including one AA pixel.
       const at=(x,y)=>player.clone().set(x/855-.5,.5-y/966,0).applyMatrix4(sprite.matrixWorld).project(camera);
@@ -68,7 +68,7 @@ export async function verifyBillGaze(page,dir,stage){
   assert.ok(!result.idle.active&&result.partial.active&&!result.outside.active&&result.reenter.active);
   assert.ok([result.left,result.right,result.up,result.down].every(v=>v.active));
   assert.ok(result.left.center[0]+15<result.right.center[0]&&result.up.center[1]+15<result.down.center[1]);
-  assert.ok(!result.ring&&result.moved>8&&result.leaked===0&&result.error===0);
+  assert.ok(result.ring&&result.moved>8&&result.leaked===0&&result.error===0);
   for(const [name,frame] of Object.entries({idle:idleFrame,active:activeFrame})){
     await fs.writeFile(path.join(dir,'stapler-'+stage+'-'+name+'.png'),Buffer.from(frame,'base64'));
   }

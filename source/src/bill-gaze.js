@@ -7,6 +7,12 @@ export function installBillGaze(sprite,textures,frame){
   const active={value:false},pupilCenter={value:[x+w/2,y+h/2]};
   const cx=x+w/2,cy=y+h/2,travelX=(w-pw)*.46,travelY=(h-ph)*.46;
   const material=sprite.material;
+  // Premultiply before filtering/mipmap generation: the artist's transparent
+  // pixels retain blue/black RGB, which must not bleed into the visible ink.
+  for(const texture of Object.values(textures)){
+    texture.premultiplyAlpha=true;
+    texture.needsUpdate=true;
+  }
   material.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,{
       billActive:active,billFace:{value:textures.face},billPupil:{value:textures.pupil},billGlint:{value:textures.highlight},
@@ -20,25 +26,29 @@ export function installBillGaze(sprite,textures,frame){
       uniform vec2 billSheet,pupilSize,pupilCenter;
       vec4 billLayer(sampler2D img,vec2 at,vec4 rect){
         vec2 uv=(at-rect.xy)/rect.zw;
-        if(any(lessThan(uv,vec2(0.)))||any(greaterThan(uv,vec2(1.))))return vec4(0.);
-        return texture2D(img,vec2(uv.x,1.-uv.y));
+        // Sample unconditionally so adjacent fragments keep valid mip derivatives
+        // at the rectangular layer boundary, including on mobile GPUs.
+        vec4 ink=texture2D(img,vec2(uv.x,1.-uv.y));
+        vec2 inside=step(vec2(0.),uv)*step(uv,vec2(1.));
+        return ink*inside.x*inside.y;
       }
       vec4 billOver(vec4 under,vec4 over){
-        return vec4(over.rgb*over.a,over.a)+under*(1.-over.a);
+        return over+under*(1.-over.a);
       }
     `+shader.fragmentShader.replace('#include <map_fragment>',`
       vec4 body=texture2D(map,vMapUv);
       if(billActive){
         vec2 at=vec2(vMapUv.x,1.-vMapUv.y)*billSheet;
         vec4 face=billLayer(billFace,at,faceRect);
-        vec4 layered=billOver(vec4(body.rgb*body.a,body.a),face);
+        vec4 layered=billOver(body,face);
         vec4 eye=billLayer(billPupil,at,vec4(pupilCenter-pupilSize*.5,pupilSize));
         // The cyan ink itself clips the pupil at the curved rim.
-        eye.a*=face.a*smoothstep(.10,.36,face.g-face.r)*smoothstep(.015,.075,face.g-face.b);
+        eye*=face.a*smoothstep(.10,.36,face.g-face.r)*smoothstep(.015,.075,face.g-face.b);
         layered=billOver(layered,eye);
         layered=billOver(layered,billLayer(billGlint,at,glintRect));
-        body=vec4(layered.rgb/max(layered.a,.00001),layered.a);
+        body=layered;
       }
+      body.rgb/=max(body.a,.00001);
       diffuseColor*=body;
     `);
   };

@@ -119,7 +119,13 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--countdown-dock')){
+  if(process.argv.includes('--gourd-offscreen')){
+    const {reviewGourdOffscreen}=await import('./gourd-offscreen-regression.mjs');
+    await reviewGourdOffscreen(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--facility-grey-rings')){
+    const {reviewFacilityGreyRings}=await import('./facility-grey-rings-regression.mjs');
+    await reviewFacilityGreyRings(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--countdown-dock')){
     const {reviewCountdownDock}=await import('./countdown-dock-regression.mjs');
     await reviewCountdownDock(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--upgrade-effects')){

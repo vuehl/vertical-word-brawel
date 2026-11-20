@@ -1,5 +1,10 @@
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw} from '../assets/three-DmSYIDKK.js';
 
+// Keep the reference's orbit poses, but compress the lead-in from 4.32s to 2.2s.
+// The 1.88s reveal tail retains its original timing.
+export const EVOLUTION_REVEAL=2.2;
+export const EVOLUTION_DURATION=EVOLUTION_REVEAL+1.88;
+
 // Reconstruct the supplied recording's gold orbit / contraction / reveal without
 // baking its desk or 炎 glyph into the effect. All forms share this one batch.
 function geometry(){
@@ -36,6 +41,21 @@ export class UpgradeEffects {
         varying vec2 vUv;
         varying float kind,alpha,head,depthSide;
         const float TAU=6.2831853;
+        // Traced screen-space poses: tilt, aspect, radius, second arc visibility.
+        vec4 orbitPose(float t){
+          vec4 a=vec4(-.22,.22,1.02,0.);
+          a=mix(a,vec4(-.48,.24,1.02,0.),smoothstep(.92,1.24,t));
+          a=mix(a,vec4(-.22,.30,1.,1.),smoothstep(1.24,1.52,t));
+          a=mix(a,vec4(-.64,.40,.86,1.),smoothstep(1.52,1.84,t));
+          a=mix(a,vec4(-1.08,.58,.70,1.),smoothstep(1.84,2.16,t));
+          a=mix(a,vec4(-2.05,.65,.68,1.),smoothstep(2.16,2.48,t));
+          a=mix(a,vec4(-2.30,.53,.74,1.),smoothstep(2.48,2.76,t));
+          a=mix(a,vec4(-3.52,.28,1.,1.),smoothstep(2.76,3.08,t));
+          a=mix(a,vec4(-3.57,.30,1.,1.),smoothstep(3.08,3.40,t));
+          a=mix(a,vec4(-4.35,.60,.78,1.),smoothstep(3.40,3.72,t));
+          a=mix(a,vec4(-4.70,.55,.27,1.),smoothstep(3.72,4.04,t));
+          return mix(a,vec4(-4.90,.60,.50,1.),smoothstep(4.16,4.32,t));
+        }
         void main(){
           vUv=uv;kind=part;
           float age=effectTime.x,reveal=effectTime.y,h=originSize.w;
@@ -46,35 +66,37 @@ export class UpgradeEffects {
           p.y+=h*.48;
           head=1.;depthSide=1.;
           if(part<1.5){
+            float t=min(age,reveal)*4.32/reveal+max(0.,age-reveal);
+            vec4 pose=orbitPose(t);
             float a=uv.x*TAU;
-            float tilt=age*.9+part*1.8;
-            float ellipse=.30+.48*abs(sin(age*.65+part*1.7));
-            float radius=h*(.93-part*.06)*(1.-.74*smoothstep(.76,1.,progress));
-            radius+=h*.92*smoothstep(reveal,reveal+.18,age);
+            float tilt=part<.5?pose.x:mix(.35,1.45,smoothstep(1.52,3.08,t));
+            float ellipse=part<.5?pose.y:mix(.33,.26,smoothstep(2.76,3.4,t));
+            float radius=h*pose.z*(part<.5?1.:.93);
             vec2 q=vec2(cos(a),sin(a)*ellipse);
             vec2 tangent=normalize(vec2(-sin(a),cos(a)*ellipse));
             vec2 normal=vec2(-tangent.y,tangent.x);
-            float trail=fract(uv.x-age*(1.1+progress*.5)+part*.5);
-            head=.25+.75*pow(trail,1.7);
-            float width=h*(.12+.12*head);
+            float trail=fract(uv.x-t*.88+part*.43);
+            head=smoothstep(.04,.84,trail)*(1.-smoothstep(.94,1.,trail));
+            float width=h*.22;
             q=q*radius+normal*(uv.y-.5)*width;
             p.xy+=mat2(cos(tilt),sin(tilt),-sin(tilt),cos(tilt))*q;
             depthSide=sin(a);
             p.z+=sin(a)*h*.48;
-            alpha*=1.-smoothstep(reveal+.05,reveal+.35,age);
-            if(part>.5)alpha*=smoothstep(.12,.35,progress);
+            alpha*=smoothstep(.68,.92,t)*(1.-smoothstep(4.32,4.56,t));
+            if(part>.5)alpha*=pose.w;
           }else if(part<17.5){
             float seed=part*2.39996;
             float life=fract(age*.65+part*.173);
-            float r=h*(.65+.7*fract(part*.618));
+            float r=h*(.85+.8*fract(part*.618));
             vec2 q=vec2(cos(seed)*r,sin(seed)*r*.65+(life-.5)*h*.65);
-            float size=h*(.045+.035*fract(part*.371));
+            float size=h*(.04+.035*fract(part*.371));
             p.xy+=q+(uv-.5)*size;
             p.z+=.2;
-            alpha*=sin(life*3.14159)*.75;
+            alpha*=sin(life*3.14159)*.65*smoothstep(.48,.8,age)*
+              (1.-.8*smoothstep(1.2,1.6,age)*(1.-smoothstep(reveal,reveal+.3,age)));
           }else{
-            float pulse=smoothstep(reveal-.08,reveal,age)*(1.-smoothstep(reveal,reveal+.32,age));
-            p.xy+=(uv-.5)*h*4.;p.z+=h*.65;
+            float pulse=smoothstep(reveal-.16,reveal,age)*(1.-smoothstep(reveal,reveal+.24,age));
+            p.xy+=(uv-.5)*h*4.8;p.z+=h*.65;
             alpha*=pulse*(1.-calm*.82);
           }
           gl_Position=projectionMatrix*p;
@@ -90,22 +112,25 @@ export class UpgradeEffects {
           float light,core;
           if(kind<1.5){
             float d=abs(vUv.y-.5)*2.;
-            core=exp(-d*d*70.);
+            core=exp(-d*d*50.);
             light=core+exp(-d*d*12.)*.65+exp(-d*d*3.)*.16;
             light*=head;
           }else if(kind<17.5){
             vec2 q=abs(vUv-.5)*2.;
-            core=pow(max(0.,1.-q.x-q.y),7.);
-            light=core+pow(max(0.,1.-min(q.x,q.y)*6.-max(q.x,q.y)),2.);
+            core=0.;
+            light=pow(max(0.,1.-min(q.x,q.y)*5.-max(q.x,q.y)),1.4);
           }else{
             vec2 q=(vUv-.5)*2.;
             float d=length(q);
             core=exp(-d*d*90.);
-            light=core+exp(-d*d*12.)*.28+exp(-q.y*q.y*2200.-q.x*q.x*4.)*.5;
+            light=core*3.+exp(-d*d*22.)*.8+exp(-q.y*q.y*4200.-q.x*q.x*3.)*2.;
           }
           float a=clamp(light*alpha,0.,1.);
           if(a<.003)discard;
-          gl_FragColor=vec4(mix(vec3(1.,.64,.12),vec3(1.,.98,.79),clamp(core,0.,1.)),a);
+          vec3 color=mix(vec3(1.,.75,.27),vec3(1.,1.,.88),clamp(core,0.,1.));
+          if(kind>1.5&&kind<17.5)color=vec3(.87,.39,.50);
+          if(kind>17.5)color=mix(vec3(1.,.83,.43),vec3(1.),clamp(light,0.,1.));
+          gl_FragColor=vec4(color,a);
           #include <colorspace_fragment>
         }`,
     });
@@ -116,14 +141,14 @@ export class UpgradeEffects {
     this.rearMesh.frustumCulled=false;this.rearMesh.renderOrder=.9;
     this.clear();scene.add(this.rearMesh,this.mesh);
   }
-  play(actor=this.run.player,evolution=false,reveal=3.6){
+  play(actor=this.run.player,evolution=false,reveal=EVOLUTION_REVEAL){
     if(this.disposed||this.run.hideOwnFx)return;
     // Consecutive levels coalesce, and an evolution replaces the short pulse.
     const previous=this.events.findIndex(e=>e.actor===actor);
     if(previous>=0)this.events.splice(previous,1);
     if(this.events.length>=this.origin.count)this.events.shift();
     const height=Math.max(1.9,Math.min(2.55,this.run.sprites.get(actor.speciesId).bodyHeight()*1.3));
-    this.events.push({actor,height,age:0,reveal:evolution?reveal:.9,duration:evolution?reveal+.65:1.45});
+    this.events.push({actor,height,age:0,reveal:evolution?reveal:.9,duration:evolution?reveal+EVOLUTION_DURATION-EVOLUTION_REVEAL:1.45});
     this.update(0);
   }
   update(dt){

@@ -31,12 +31,11 @@ export async function reviewDeviceEffects(page, dir) {
       const kind = f.data?.gift ? 'freechest' : f.kind, model = f.model;
       if (!facilities.hasVisual(f) || !model?.userData.deviceScreenFx) throw Error('Missing ' + kind);
       const expectedScale = kind === 'berry' ? .5 : 1;
-      const ring = f.chargeRing ?? f.halo;
-      if(kind==='bill'||kind==='berry'){if(ring)throw Error('Unexpected ground ring on '+kind);}
-      else if (!ring || ring.visible !== (kind !== 'altar') || ring.parent !== f.group || ring.position.y <= 0 ||
+      const ring = f.halo;
+      if (!ring || !ring.visible || ring.parent !== f.group || ring.position.y <= 0 ||
           ring.scale.x <= model.userData.footprintRadius * expectedScale) throw Error('Missing ground ring on ' + kind);
-      if (ring&&(ring.position.x || ring.position.z || (kind === 'altar' ? !!f.halo :
-          ring.geometry !== facilities.dwellRing.geometry || ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1)))
+      if (ring&&(ring.position.x || ring.position.z ||
+          ring.geometry !== facilities.dwellRing.geometry || ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1))
         throw Error('Idle building must show only the empty interaction track: ' + kind);
       if (['freechest','chest'].includes(kind) && f.beacon) throw Error('Unexpected gacha beam');
       if (model.scale.toArray().some(x => x !== expectedScale) || f.group.scale.toArray().some(x => x !== 1) ||
