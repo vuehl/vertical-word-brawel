@@ -96,13 +96,8 @@ export async function reviewFireFamilyMedia(page,dir,moves){
   const sun={};f.sun(sun,p.x,p.y+5,p.z,.8);v.update(.10);const opening=f.events.some(e=>e.clip==='eruption'&&e.foreground);const count=f.events.length;f.sun(sun,p.x,p.y+5,p.z,.9);const once=f.events.length===count;v.clear();
   f.sun(sun,p.x,p.y+5,p.z,.01);v.update(.10);const sunRecast=f.events.some(e=>e.clip==='eruption'&&e.foreground);v.clear();
   f.sunBurst(p.x,p.y,p.z,5);v.update(.10);const infernoSun=opening&&once&&f.events.some(e=>e.clip==='eruption'&&e.foreground)&&f.events.some(e=>e.clip==='pillar')&&!f.events.some(e=>e.clip==='sun');v.clear();
-  const wind={D:1};for(let i=0;i<6;i++){f.wildfire(wind,p.x,p.y,p.z,.6,-.8,12,.8);v.update(.03);}
-  const entries=wind.wildfireArtKeys.map(key=>v.keys.get(key));const column=entries.length===3&&entries.every(e=>e.handDrawn&&Math.abs((e.x-p.x)*-.8-(e.z-p.z)*.6)<1e-6);
-  const nativeProjection=v.fireSpin.mesh.userData.projection==='upright-spiral-with-isometric-crown';
-  const before=JSON.stringify(v.fireSpin.attributes.map(a=>[...a.array.slice(0,v.fireSpin.mesh.count*4)]));f.wildfireEnd(wind);v.update(0);const sameWind=before===JSON.stringify(v.fireSpin.attributes.map(a=>[...a.array.slice(0,v.fireSpin.mesh.count*4)]));
-  v.update(.14);const fading=entries.every(e=>e.life>0&&e.life<=.14);v.update(.20);const gone=v.fireSpin.mesh.count===0&&f.wildfireKeys.size===0;v.clear();
-  return {fangBorn,fangFull,fangTail,fangEnvelope:fangBorn<fangFull*.1&&fangTail<fangFull*.25,infernoSun,sunRecast,column,nativeProjection,sameWind,fading,gone};
- },JSON.parse(fs.readFileSync('source/public/assets/vfx/fire-family.json')).clips.fang);for(const k of ['fangEnvelope','infernoSun','sunRecast','column','nativeProjection','sameWind','fading','gone'])assert.ok(report.continuity[k],k);
+  return {fangBorn,fangFull,fangTail,fangEnvelope:fangBorn<fangFull*.1&&fangTail<fangFull*.25,infernoSun,sunRecast};
+ },JSON.parse(fs.readFileSync('source/public/assets/vfx/fire-family.json')).clips.fang);for(const k of ['fangEnvelope','infernoSun','sunRecast'])assert.ok(report.continuity[k],k);
  for(const quality of ['low','medium','high']){
   const sample=await page.evaluate(quality=>{
    app.meta.profile.settings.quality=quality;app.applySettings();vfxSetup();const r=app.run,f=r.vfx.crafted.fireFamily;

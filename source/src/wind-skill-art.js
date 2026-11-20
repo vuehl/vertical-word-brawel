@@ -1,0 +1,58 @@
+import {WindAtlasBatch} from './wind-vortex.js';
+import atlas from '../public/assets/vfx/wind-skills.json' with {type:'json'};
+
+export class WindSkillArt extends WindAtlasBatch {
+  constructor(owner){
+    super(owner.mesh.parent,128,'assets/vfx/wind-skills.png',atlas.columns,atlas.rows,atlas.tile,'wind-skill-frames');
+    this.owner=owner;this.events=[];this.tracked=new Map();
+  }
+  play(clip,x,y,z,size,dx=0,dz=0){
+    if(!this.owner.allowed())return;
+    if(this.events.length>=64)this.events.shift();
+    this.events.push({clip,x,y,z,size,dx,dz,start:this.owner.run.time});
+  }
+  track(key,clip,x,y,z,size){
+    if(!this.owner.allowed())return;
+    const now=this.owner.run.time,old=this.tracked.get(key);
+    if(!old&&this.tracked.size>=32)return;
+    this.tracked.set(key,{clip,x,y,z,size,start:old?.start??now,touched:now});
+  }
+  drawPose(e,age,loop=false){
+    const c=atlas.clips[e.clip],frame=Math.floor(age*c.fps);
+    if(!loop&&frame>=c.count)return false;
+    const opacity=this.owner.vfx.opacity*this.owner.vfx.ownOpacity*(this.owner.vfx.calm?.8:1);
+    if(!this.owner.vfx.view||this.owner.vfx.view.visible(e.x,e.y,e.z,e.size))
+      this.push(e.x,e.y,e.z,e.size,c.first+(loop?frame%c.count:frame),opacity,['gust','hurricane','typhoon'].includes(e.clip)?.08:.5,e.dx||0,e.dz||0);
+    return true;
+  }
+  begin(){
+    this.clear();
+    if(!this.owner.allowed()){this.reset();return;}
+    const now=this.owner.run.time;
+    for(let i=this.events.length-1;i>=0;i--)if(!this.drawPose(this.events[i],now-this.events[i].start))this.events.splice(i,1);
+    for(const [key,e] of this.tracked){if(now-e.touched>.16)this.tracked.delete(key);else this.drawPose(e,now-e.start,true);}
+  }
+  projectile(pool,id,size,clip){
+    if(!this.owner.allowed())return;
+    const vortex=['gust','hurricane'].includes(clip),age=pool.maxLife[id]-pool.life[id];
+    this.drawPose({clip,x:pool.x[id],y:vortex?pool.run.terrain.height(pool.x[id],pool.z[id])+.1:pool.y[id],z:pool.z[id],
+      size:vortex?Math.max(4,size*(clip==='gust'?2:3)):size*3.2,dx:vortex?0:pool.vx[id],dz:vortex?0:pool.vz[id]},age,true);
+  }
+  reset(){this.events.length=0;this.tracked.clear();this.clear();}
+}
+
+export function installWindSkillArt(registry){
+  const art=run=>run.vfx.crafted.windSkillArt();
+  for(const [key,clip] of [['gust','gust'],['hurricane','hurricane'],['wing-attack','wing'],['feather-dance','feather']]){
+    const hit=clip==='wing'?'wingHit':clip==='feather'?'featherHit':null;
+    registry['wind-'+key]={...registry[key],sourceKey:key,trail(){},cast(){},
+      draw:(pool,id,size)=>art(pool.run).projectile(pool,id,size,clip),
+      hit:(run,x,y,z)=>{if(hit)art(run).play(hit,x,y,z,3.8);},hitCover:true,
+      boom(){}};
+  }
+  registry['wind-tackle']={...registry.tackle,sourceKey:'tackle',replacesDash:true,
+    dash(run,x,y,z,dx,dz,length){
+      run.vfx.crafted.windMoveArt().dash(run,x,y,z,dx,dz,length);
+      for(let i=1;i<=3;i++){const xx=x+dx*length*i/3,zz=z+dz*length*i/3;art(run).play('tackleHit',xx,run.terrain.surface(xx,zz)+.9,zz,3);}
+    }};
+}

@@ -53,7 +53,10 @@ export async function reviewFireFamily(page,dir,moves){
  if(baseline)fs.writeFileSync(baselineFile,JSON.stringify(gameplay)+'\n');
  else {
   const previous=JSON.parse(fs.readFileSync(baselineFile));
-  for(const move of gameplay.moves)assert.deepEqual(move,previous.moves.find(old=>old.key===move.key),move.key+' gameplay');
+  for(const move of gameplay.moves){
+    if(move.key==='fu-4'){assert.ok(move.trace.at(-1).damage>0);assert.equal(report.moves.find(m=>m.key==='fu-4').visual.jet,0,'Vortex no longer feeds a flame jet');}
+    else assert.deepEqual(move,previous.moves.find(old=>old.key===move.key),move.key+' gameplay');
+  }
   assert.deepEqual(report.ultimates,previous.ultimates,'Ultimate gameplay');
   for(const m of report.moves)if(m.available)assert.equal(m.visual.gl,0,m.key+' shader');
  }

@@ -17,6 +17,20 @@ export async function reviewSkillAvailability(page, dir) {
     return results;
   });
   assert.ok(report.retired.every(r => !r.accepted), 'Retired skills and fire Air Slash must reject old IDs');
+  report.windRemovals = await page.evaluate(() => {
+    const p=app.run.player, results=[];
+    for (const species of [4,5,6,16,17,18,58,59]) {
+      vfxSetup();p.setSpecies(species);
+      for (const id of [52,53,50080,50099]) {
+        p.moves.fill(null);
+        results.push({species,id,accepted:p.addMove(id)});
+      }
+    }
+    return results;
+  });
+  for (const result of report.windRemovals) {
+    assert.equal(result.accepted,result.species<7&&result.id!==50099,`Scoped wind removal ${result.species}:${result.id}`);
+  }
   await page.evaluate(async () => {
     if (!await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'})) throw Error('Cannot start wind');
     app.halted=true;

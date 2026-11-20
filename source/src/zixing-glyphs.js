@@ -103,7 +103,10 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     m.fragmentShader=m.fragmentShader.replace('uniform sampler2D map;','uniform sampler2D map; uniform sampler2D zxGlyph;').replaceAll('texture2D(map,','texture2D(zxGlyph,');
     batch.zxOriginalGlyph=isOriginalHeroGlyph(word);
     batch.zxAlly=ally;
-    if(ally){
+    if(heroEntry?.ghost){
+      m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);c.a*=clamp(vFx.y,0.,1.);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.,.28,.04),.35);gl_FragColor=c;}';
+      m.transparent=true;m.depthWrite=false;
+    }else if(ally){
       // Keep the authored ink border and hit flash; allies share the hero's
       // palette without recoloring enemies that use the same atlas/word.
       m.uniforms.zxAllyColor=allyColor;
@@ -115,7 +118,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
       m.transparent=true;m.depthWrite=false;
     }
-    m.needsUpdate=true;batches.add(batch,t.uuid+(ally?'-ally':batch.zxOriginalGlyph?'-original':''),heroEntry?1:ally?8:1024);return batch;
+    m.needsUpdate=true;batches.add(batch,t.uuid+(heroEntry?.ghost?'-ghost':ally?'-ally':batch.zxOriginalGlyph?'-original':''),heroEntry?.ghost?96:heroEntry?1:ally?8:1024);return batch;
   }
   run.sprites.getAllyGlyph=(id,playerSpecies)=>{
     const word=glyphWordForSpecies(playerSpecies);
@@ -132,6 +135,12 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   };
   run.sprites.getAnimatedHeroGlyph=(id,frame)=>
     skin(get(id,false,'hero-animation'),glyphWordForSpecies(frame.species),animations.get(frame.species));
+  run.sprites.getHeroGhostGlyph=id=>{
+    const entry=animations.get(id);
+    if(!entry?.texture.image)return null;
+    const frame=heroActionFrame({},id,'walk',0);
+    return skin(get(id,false,'hero-ghost'),glyphWordForSpecies(id),{...entry,ghost:true,rect:frame.rect});
+  };
   let playerEntry;
   run.sprites.getPlayerGlyph=(id,speciesId,pose,frame)=>{
     if(frame)return run.sprites.getAnimatedHeroGlyph(id,frame);

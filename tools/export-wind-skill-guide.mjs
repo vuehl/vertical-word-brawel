@@ -56,10 +56,10 @@ const materials = windMoves.filter(m => m.material);
 for (let a = 0; a < materials.length; a++) for (let b = a + 1; b < materials.length; b++) {
   checkedWindPairs++;
   const left = materials[a], right = materials[b];
-  const possible = forms.filter(f => left.forms.some(m => m.id === f.id) && right.forms.some(m => m.id === f.id));
-  if (!possible.length) continue;
   const recipe = ctx._S(left, right);
   if (!recipe) continue;
+  const possible = forms.filter(f => left.forms.some(m => m.id === f.id) && right.forms.some(m => m.id === f.id) && ctx._S(left, right, f.id)?.key === recipe.key);
+  if (!possible.length) continue;
   if (!pairsByRecipe.has(recipe.key)) pairsByRecipe.set(recipe.key, []);
   pairsByRecipe.get(recipe.key).push({a: left.id, b: right.id, forms: possible.map(f => f.id)});
 }
@@ -68,7 +68,7 @@ for (const id of [4, 5, 6]) {
   const cat = ctx.Vb(id, rosterFor(id), ['fire'], () => true);
   const eligible = [...cat.kit, ...cat.line, ...cat.shared.filter(m => m.open)].map(m => ctx.O_(m.id)).filter(m => ctx.gS(m));
   for (let a = 0; a < eligible.length; a++) for (let b = a + 1; b < eligible.length; b++) {
-    const r = ctx._S(eligible[a], eligible[b]);
+    const r = ctx._S(eligible[a], eligible[b], id);
     if (!r) continue;
     if (!firePairs.has(r.key)) firePairs.set(r.key, new Map());
     const pair = [eligible[a].id, eligible[b].id].sort((a,b) => a-b);

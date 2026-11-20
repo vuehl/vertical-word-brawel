@@ -5,7 +5,7 @@ import {setChineseText, chineseText} from '../source/src/chinese-text.js';
 import {configureGlyphNames} from '../source/src/zixing-identity.js';
 import {moveCopy, specialNames} from '../source/src/form-copy.js';
 import {configureStarterSpecies} from '../source/src/starter-characters.js';
-import {retiredMoveIds, retiredFusionKeys, moveAvailableForSpecies, configureSkillLearnsets} from '../source/src/skill-availability.js';
+import {retiredMoveIds, moveAvailableForSpecies, configureSkillLearnsets} from '../source/src/skill-availability.js';
 
 export async function loadSkillCatalog() {
   const read = name => fs.readFileSync(new URL('../' + name, import.meta.url), 'utf8');
@@ -42,13 +42,13 @@ export async function loadSkillCatalog() {
     ji: entries => Object.defineProperties({}, Object.fromEntries(
       Object.entries(entries).map(([key, get]) => [key, {get, enumerable: true}]))),
     moveCopy, specialNames, windMoveEffect: () => null,
-    retiredMoveIds, retiredFusionKeys, moveAvailableForSpecies,
+    retiredMoveIds, moveAvailableForSpecies,
   });
   const evaluate = code => vm.runInContext(code, ctx, {timeout: 5000});
   evaluate('var ' + between('Zg = {', 'var e_ = class'));
   evaluate('var ' + between('t_ = ji(', 'var M_ = class'));
-  evaluate('var Cx = 5e4; ' + between('function Ax(e, t)', 'var jx ='));
-  evaluate(between('var jx =', 'var dS ='));
+  evaluate(between('function Ax(e, t)', 'var lS ='));
+  evaluate(between('var lS =', 'var dS ='));
   evaluate(between('var dS =', 'function yS('));
   evaluate(between('function yS(', 'function xS('));
   evaluate('var ' + between('Lb = 5.2;', 'function Hb('));

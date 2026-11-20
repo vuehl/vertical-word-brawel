@@ -5,7 +5,7 @@ export async function reviewFireFusions(page,dir){
  const baseline=process.argv.includes('--record-fire-fusions'),report={samples:[]};
  await page.setViewport({width:390,height:844,deviceScaleFactor:1});
  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));window.fusionRandom=Math.random;Math.random=()=>.43;const rng=Object.values(app.run).find(x=>x?.rng?.next)?.rng;window.fusionRngProto=Object.getPrototypeOf(rng);window.fusionRngNext=fusionRngProto.next;fusionRngProto.next=()=>.43;});
- for(const [key,id] of [['fu-t-fire',50080],['fu-r-wildfire',50099]])for(const level of [1,5]){
+ for(const [key,id] of [['fu-t-fire',50080]])for(const level of [1,5]){
   const sample=await page.evaluate(async({key,id,level})=>{
    const r=app.run,p=r.player;p.buffs.clear();p.setSpecies(4);vfxSetup();r.time=r.realTime=0;r.weather=r.baseWeather='clear';r.weatherT=0;
    p.level=1;p.evoStage=0;p.growth=0;p.recompute();p.stats.critChance=p.stats.megaCrit=0;p.kx=p.kz=0;
@@ -28,11 +28,11 @@ export async function reviewFireFusions(page,dir){
   const old=JSON.parse(fs.readFileSync(file));for(let i=0;i<report.samples.length;i++)assert.deepEqual(report.samples[i].trace,old.samples[i].trace,report.samples[i].key+'/'+report.samples[i].level);
   report.lifecycle=await page.evaluate(()=>{
    const r=app.run,v=r.vfx.crafted,f=v.fireFamily,p=r.player.pos;v.clear();
-   f.sun({},p.x,p.y+5,p.z,.6);f.wildfire({},p.x,p.y,p.z,0,-1,12,.4);f.sunRain(p.x,p.y+5,p.z,p.y);v.update(.04);
+   f.sun({},p.x,p.y+5,p.z,.6);f.sunRain(p.x,p.y+5,p.z,p.y);v.update(.04);
    const count=f.mesh.count+f.topMesh.count+v.fireSpin.mesh.count,finite=[...f.attributes,...f.topAttributes,...v.fireSpin.attributes].every(a=>[...a.array].every(Number.isFinite)),before=JSON.stringify([f.events,v.entries]);v.update(0);const paused=before===JSON.stringify([f.events,v.entries]);
-   r.hideOwnFx=true;v.update(0);const hidden=f.mesh.count+f.topMesh.count+v.fireSpin.mesh.count===0&&f.keys.size===0&&f.wildfireKeys.size===0;r.hideOwnFx=false;
-   f.sunBurst(p.x,p.y,p.z,5);v.update(3);const expired=f.events.length===0;v.clear();return {count,finite,paused,hidden,expired,cleared:f.keys.size===0&&f.events.length===0&&f.wildfireKeys.size===0};
-  });assert.ok(report.lifecycle.count>=3);for(const key of ['finite','paused','hidden','expired','cleared'])assert.ok(report.lifecycle[key],key);
+   r.hideOwnFx=true;v.update(0);const hidden=f.mesh.count+f.topMesh.count+v.fireSpin.mesh.count===0&&f.keys.size===0;r.hideOwnFx=false;
+   f.sunBurst(p.x,p.y,p.z,5);v.update(3);const expired=f.events.length===0;v.clear();return {count,finite,paused,hidden,expired,cleared:f.keys.size===0&&f.events.length===0};
+  });assert.ok(report.lifecycle.count>=2);for(const key of ['finite','paused','hidden','expired','cleared'])assert.ok(report.lifecycle[key],key);
  }
  fs.writeFileSync(path.join(dir,'fusion-gameplay.json'),JSON.stringify(report,null,2));console.log('Fusion traces verified:',report.samples.map(s=>s.key+'/'+s.level).join(', '));
 }

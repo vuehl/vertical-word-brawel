@@ -319,8 +319,8 @@ export async function reviewUpgrade({page,resize,dir}){
               const b=inspected.layout.box(inspected.doc.querySelector(selector)),s=inspected.doc.getElementById('game').getBoundingClientRect();
               window.tap(b.x+b.w/2-s.left,b.y+b.h/2-s.top);
             };
-            const stars=[],effect=r.levelUpEffect;
-            r.levelUpEffect=function(count){stars.push(count);return effect.call(this,count);};
+            const effects=[],effect=r.levelUpEffect;
+            r.levelUpEffect=function(){const result=effect.call(this);effects.push(this.vfx.upgrade.events.length);return result;};
             const finishExit=()=>{drawUpgradeFrame();a.clock+=150;drawUpgradeFrame();};
             click('.zx-reroll');const rerollsBeforeExit=r.rerolls;
             const rerollTransition=inspected.modalTransition.snapshot.phase==='exit';
@@ -336,10 +336,10 @@ export async function reviewUpgrade({page,resize,dir}){
             a.clock+=260;drawUpgradeFrame();click('[data-offer]');finishExit();
             const restored=inspected.env.drawFrozenModal(app.r.renderer);
             r.levelUpEffect=effect;
-            return {rerollsBeforeExit,rerolls,rerollTransition,beforeExit,chained,sceneRenders,restored,stars,pending:r.pendingLevels,state:r.state};
+            return {rerollsBeforeExit,rerolls,rerollTransition,beforeExit,chained,sceneRenders,restored,effects,pending:r.pendingLevels,state:r.state};
           });
           assert.deepEqual(actions,{rerollsBeforeExit:2,rerolls:1,rerollTransition:true,beforeExit:{pending:2,state:'modal'},
-            chained:{pending:1,state:'modal',phase:'enter'},sceneRenders:1,restored:false,stars:[10],pending:0,state:'play'});
+            chained:{pending:1,state:'modal',phase:'enter'},sceneRenders:1,restored:false,effects:[1],pending:0,state:'play'});
         }
         samples.push({width,buildMs:build.buildMs,frames});
       }finally{
@@ -373,7 +373,8 @@ export async function reviewUpgrade({page,resize,dir}){
       });
       assert.equal(liveLoop.sceneRenders,0);assert.equal(liveLoop.updates,0);assert.ok(liveLoop.frames>=6);
       assert.ok(liveLoop.unchangedTime);assert.equal(liveLoop.state,'modal');
-      assert.equal(liveLoop.openingGap,1000/60);assert.equal(liveLoop.settledGap,1000/30);
+      // The shared frame policy now preserves the selected 60 FPS in menus too.
+      assert.equal(liveLoop.openingGap,1000/60);assert.equal(liveLoop.settledGap,1000/60);
     }
   }finally{await page.evaluate(()=>{app.halted=false;app.toMenu();});}
   fs.writeFileSync(path.join(dir,baseline?'upgrade-before.json':'upgrade-after.json'),JSON.stringify({

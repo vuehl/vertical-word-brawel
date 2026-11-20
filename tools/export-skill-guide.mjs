@@ -24,8 +24,8 @@ const allFusions = clean(ctx.lS).map(r => ({...r, id: ctx.fS(r.key)}));
 const availableMoves = moves.map(m => ctx.O_(m.id)).filter(Boolean).map(clean);
 const fireIds = [...new Set(forms.flatMap(f => [...f.catalog.kit, ...f.catalog.line, ...f.catalog.shared].map(m => m.id)))];
 const fireMoves = fireIds.map(id => {
-  const def = clean(ctx.O_(id));
-  return {...def, names: Object.fromEntries(forms.map(f => [f.id, moveCopy(f.id, def.name, def.key)])),
+  const def = clean(ctx.formMove(id, 4));
+  return {...def, names: Object.fromEntries(forms.map(f => [f.id, ctx.formMove(id, f.id)?.name ?? def.name])),
     forms: forms.flatMap(f => {
       const offer = [...f.catalog.kit, ...f.catalog.line, ...f.catalog.shared].find(m => m.id === id);
       return offer ? [{id: f.id, level: offer.level, earliest: Math.max(f.level, offer.level)}] : [];

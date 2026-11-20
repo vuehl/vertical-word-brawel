@@ -27,7 +27,7 @@ import {fixtureSubpackage} from './fixture-subpackage.mjs';
 import {gameProject} from './project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
 const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development),'minigame');
-const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion'].some(arg=>process.argv.includes(arg));
+const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion','--fusion-cleanup'].some(arg=>process.argv.includes(arg));
 const dir=process.env.POKEBONK_QA||path.join(root,process.argv.includes('--summon-mode')?'验收/召唤门蓝红双版':process.argv.includes('--skill-availability')?'验收/技能移除与空气斩':fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
 const {default:puppeteer}=await import(pathToFileURL(path.join(root,'tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js')));
@@ -119,7 +119,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--summon-mode')){
+  if(process.argv.includes('--upgrade-effects')){
+    const {reviewUpgradeEffects}=await import('./upgrade-effects-regression.mjs');
+    await reviewUpgradeEffects(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--summon-mode')){
     const {reviewSummonModes}=await import('./summon-mode-regression.mjs');
     await reviewSummonModes(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--frame-stability')){

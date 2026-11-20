@@ -65,10 +65,10 @@ test('entry draws each combat batch once and restores its live count even on fai
       ['rings','beams','text','add','norm','ground','groundN'].map(key=>[key,batch()]))};
   const batches=[...Object.values(run.projectiles),...Object.values(run.pickups),...Object.values(run.vfx),run.orbitals,run.orbitalsGlow];
   const art={...batch(),fireJet:{...batch(),hitMesh:batch().mesh,legacy:batch()},fireSpin:batch(),fireball:batch(),
-    fireFamily:{...batch(),topMesh:batch().mesh,heatMesh:batch().mesh,completionMesh:batch().mesh},windVortex:batch(),windMoves:batch()};
+    fireFamily:{...batch(),topMesh:batch().mesh,heatMesh:batch().mesh},windVortex:batch(),windMoves:batch()};
   run.vfx.crafted=art;
   for(const mesh of [art.mesh,art.fireJet.mesh,art.fireJet.hitMesh,art.fireJet.legacy.mesh,art.fireSpin.mesh,art.fireball.mesh,
-    art.fireFamily.mesh,art.fireFamily.topMesh,art.fireFamily.heatMesh,art.fireFamily.completionMesh,art.windVortex.mesh,art.windMoves.mesh])batches.push({mesh});
+    art.fireFamily.mesh,art.fireFamily.topMesh,art.fireFamily.heatMesh,art.windVortex.mesh,art.windMoves.mesh])batches.push({mesh});
   run.pickups.pool.mesh={visible:true,count:3};
   const state=batches.map(({mesh})=>({...mesh}));
   let draws=0;

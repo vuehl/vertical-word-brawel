@@ -2,8 +2,6 @@ import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as Ins
 import atlas from '../public/assets/vfx/fire-family.json' with {type:'json'};
 import mushroomAtlas from '../public/assets/vfx/fire-mushroom.json' with {type:'json'};
 import heatAtlas from '../public/assets/vfx/heat-wave.json' with {type:'json'};
-import completionAtlas from '../public/assets/vfx/fire-completion.json' with {type:'json'};
-import {FireCompletionEffects} from './fire-completion-effects.js';
 
 export const fireFamilyMoves=new Set(['scratch','slash','dragon-claw','fire-fang','flare-blitz','air-slash','inferno','fire-blast','fu-4']);
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
@@ -102,7 +100,7 @@ void main(){
 export class HandDrawnFireFamily{
  supports(key){return fireFamilyMoves.has(key);}
  constructor(owner,scene){
-  this.owner=owner;this.events=[];this.ordered=[];this.groups=[[],[],[],[]];this.keys=new Map();this.wildfireKeys=new Set();this.hitTimes=new Map();this.clock=0;this.limit=128;this.played=0;
+  this.owner=owner;this.events=[];this.ordered=[];this.groups=[[],[],[]];this.keys=new Map();this.hitTimes=new Map();this.clock=0;this.limit=128;this.played=0;
   this.impactBudget=Infinity;this.impactBucket=-1;this.impactCount=0;
   const atlasTexture=(file,flag)=>{
    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
@@ -121,23 +119,21 @@ export class HandDrawnFireFamily{
   this.texture=atlasTexture('assets/vfx/fire-family.png','loaded');
   this.mushroomTexture=atlasTexture('assets/vfx/fire-mushroom.png','mushroomLoaded');
   this.heatTexture=atlasTexture('assets/vfx/heat-wave.png','heatLoaded');
-  this.completionTexture=atlasTexture('assets/vfx/fire-completion.png','completionLoaded');
   const batch=(capacity,kind)=>{
-   const foreground=kind===1,heat=kind===2,completion=kind===3,layout=foreground?mushroomAtlas:heat?heatAtlas:completion?completionAtlas:atlas;
+   const foreground=kind===1,heat=kind===2,layout=foreground?mushroomAtlas:heat?heatAtlas:atlas;
    const g=new BufferGeometry();g.setAttribute('position',new BufferAttribute(new Float32Array([0,0,0,1,0,0,1,1,0,0,1,0]),3));g.setAttribute('uv',new BufferAttribute(new Float32Array([0,0,1,0,1,1,0,1]),2));g.setIndex([0,1,2,0,2,3]);
    const attributes=['iOrigin','iFrame','iStyle','iPose','iTween'].map(name=>{const a=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);g.setAttribute(name,a);return a;});
-   const m=new ShaderMaterial({vertexShader:vertex(layout),fragmentShader:fragment,uniforms:{map:{value:foreground?this.mushroomTexture:heat?this.heatTexture:completion?this.completionTexture:this.texture},crispCloud:{value:foreground?1:0},heroPosition:{value:{x:0,y:0,z:0}}},transparent:true,depthWrite:false,depthTest:!foreground,side:2,toneMapped:false});m.forceSinglePass=true;
-   const mesh=new InstancedMesh(g,m,capacity);mesh.name=foreground?'fire-mushroom-foreground':heat?'library-heat-wave':completion?'library-fusion-completion':'authored-fire-family';mesh.count=0;mesh.visible=false;mesh.frustumCulled=false;mesh.renderOrder=foreground?1000:7.15;scene.add(mesh);return {mesh,attributes};
+   const m=new ShaderMaterial({vertexShader:vertex(layout),fragmentShader:fragment,uniforms:{map:{value:foreground?this.mushroomTexture:heat?this.heatTexture:this.texture},crispCloud:{value:foreground?1:0},heroPosition:{value:{x:0,y:0,z:0}}},transparent:true,depthWrite:false,depthTest:!foreground,side:2,toneMapped:false});m.forceSinglePass=true;
+   const mesh=new InstancedMesh(g,m,capacity);mesh.name=foreground?'fire-mushroom-foreground':heat?'library-heat-wave':'authored-fire-family';mesh.count=0;mesh.visible=false;mesh.frustumCulled=false;mesh.renderOrder=foreground?1000:7.15;scene.add(mesh);return {mesh,attributes};
   };
   const normal=batch(128,0),top=batch(16,1);this.mesh=normal.mesh;this.attributes=normal.attributes;this.topMesh=top.mesh;this.topAttributes=top.attributes;
   const heat=batch(16,2);this.heatMesh=heat.mesh;this.heatAttributes=heat.attributes;
-  const completion=batch(32,3);this.completionMesh=completion.mesh;this.completionAttributes=completion.attributes;this.completion=new FireCompletionEffects(this);
  }
  loadTexture(texture){
   return texture.userData.ready??=texture.userData.load();
  }
  get ready(){
-  return this.allReady??=Promise.all([this.texture,this.mushroomTexture,this.heatTexture,this.completionTexture].map(texture=>this.loadTexture(texture))).then(results=>results.every(Boolean));
+  return this.allReady??=Promise.all([this.texture,this.mushroomTexture,this.heatTexture].map(texture=>this.loadTexture(texture))).then(results=>results.every(Boolean));
  }
  play(clip,x,y,z,size,options={}){
   const own=options.own!==false;if(!this.owner.allowed(own))return null;
@@ -149,8 +145,8 @@ export class HandDrawnFireFamily{
    if(index<0)return null;
    const removed=this.events.splice(index,1)[0];if(removed.key)this.keys.delete(removed.key);
   }
-  this.loadTexture(options.foreground?this.mushroomTexture:options.heatWave?this.heatTexture:options.completion?this.completionTexture:this.texture);
-  const spec=(options.foreground?mushroomAtlas:options.heatWave?heatAtlas:options.completion?completionAtlas:atlas).clips[clip];
+  this.loadTexture(options.foreground?this.mushroomTexture:options.heatWave?this.heatTexture:this.texture);
+  const spec=(options.foreground?mushroomAtlas:options.heatWave?heatAtlas:atlas).clips[clip];
   const e={clip,x,y,z,size,age:-(options.delay||0),life:spec.count/30,own,alpha:1,angle:0,palette:0,mode:0,anchorX:.5,anchorY:.5,priority:1,cutLower:0,cutUpper:1,...options};
   this.events.push(e);this.played++;return e;
  }
@@ -290,6 +286,13 @@ export class HandDrawnFireFamily{
   this.play('pillar',x,y,z,main?8:5,{height:main?12:8,life:.6,delay:.08,alpha:.7,anchorY:.18,priority:2});
   this.ultimateRing(x,y,z,radius*(main?1.25:1.1),.8);
  }
+ fireBlast(x,y,z,radius){
+  const f=this,s=clamp(radius,2.8,5.5);
+  f.play('eruption',x,y,z,s*2.7,{foreground:true,life:.64,anchorY:.22,priority:2,fadeIn:.025,fadeOut:.28,blend:true});
+  // Five broad flame arms preserve the original star-shaped explosion.
+  for(const a of [Math.PI/2,Math.PI*.08,Math.PI*.92,Math.PI*1.27,Math.PI*1.73])f.play('wake',x,y+1.8,z,s*1.4,{height:s*.72,angle:a+Math.PI,mode:0,life:.48,delay:.055,alpha:.86,scaleFrom:.50,scaleTo:1.3,anchorX:.88,frameStart:.08,frameEnd:.46,fadeIn:.025,fadeOut:.22,blend:true,priority:2});
+  f.play('shockwave',x,y+.16,z,s*2.3,{mode:1,height:s*2.3,life:.42,alpha:.45,fadeIn:.025,fadeOut:.28,scaleFrom:.5,scaleTo:1.15,blend:true});
+ }
  sun(ctx,x,y,z,age,artScale=1){
   const continuing=ctx.sunArtStarted&&age>=ctx.sunArtAge;ctx.sunArtAge=age;
   if(continuing)return;ctx.sunArtStarted=true;
@@ -312,23 +315,9 @@ export class HandDrawnFireFamily{
   this.play('eruption',x,y,z,Math.max(8,radius*2.4),{life,anchorY:.22,priority:2,foreground:true,layer:1,fadeIn:.04,fadeOut:.28,blend:true});
   this.play('pillar',x,y,z,Math.max(5,radius*1.5),{height:Math.max(8,radius*2.5),life:life-.05,delay:.08,alpha:.65,anchorY:.18,foreground:true,layer:0,fadeIn:.06,fadeOut:.28,blend:true});
  }
- wildfire(ctx,x,y,z,dx,dz,length,age,artLength=length){
-  ctx.wildfireArtKeys??=[{},{},{}];
-  for(let j=0;j<3;j++){
-   if(age<j*.075)continue;
-   const key=ctx.wildfireArtKeys[j],distance=length*.28*(j+1),px=x+dx*distance,pz=z+dz*distance;
-   const entry=this.owner.touch(key,{x:px,y:this.owner.run.terrain.height(px,pz)+.1,z:pz,radius:artLength*.125,height:artLength*.30,mode:3,type:'fire',handDrawn:true,own:true});
-   if(entry)this.wildfireKeys.add(key);
-  }
- }
- wildfireEnd(ctx){
-  for(const key of ctx.wildfireArtKeys||[]){const e=this.owner.keys.get(key);if(!e)continue;
-   Object.assign(e,{finite:true,life:.28,total:.28,fadeOut:.28});
-  }
- }
  update(dt){
   dt=Math.max(0,dt);this.clock+=dt;
-  if(!this.events.length&&!this.hitTimes.size&&!this.wildfireKeys.size)return;
+  if(!this.events.length&&!this.hitTimes.size)return;
   let liveCount=0;
   for(const e of this.events){
    e.age+=dt;
@@ -339,24 +328,23 @@ export class HandDrawnFireFamily{
   }
   this.events.length=liveCount;
   for(const [key,t] of this.hitTimes)if(this.clock-t>1)this.hitTimes.delete(key);
-  for(const key of this.wildfireKeys)if(!this.owner.keys.has(key))this.wildfireKeys.delete(key);
   const v=this.owner.vfx,camera=this.owner.run?.r.camera.position;
   const hero=this.owner.run?.player.pos;
-  if(hero)for(const mesh of [this.mesh,this.topMesh,this.heatMesh,this.completionMesh])Object.assign(mesh.material.uniforms.heroPosition.value,{x:hero.x,y:hero.y+1,z:hero.z});
+  if(hero)for(const mesh of [this.mesh,this.topMesh,this.heatMesh])Object.assign(mesh.material.uniforms.heroPosition.value,{x:hero.x,y:hero.y+1,z:hero.z});
   // Transparent quads are sorted back to front within the batch.
   const ordered=this.ordered;ordered.length=0;
   for(let i=0;i<Math.min(this.events.length,this.limit);i++)ordered.push(this.events[i]);
   if(camera)ordered.sort((a,b)=>(b.x-camera.x)**2+(b.y-camera.y)**2+(b.z-camera.z)**2-((a.x-camera.x)**2+(a.y-camera.y)**2+(a.z-camera.z)**2));
   for(const group of this.groups)group.length=0;
-  for(const e of ordered)this.groups[e.foreground?1:e.heatWave?2:e.completion?3:0].push(e);
-  for(const kind of [0,1,2,3]){
-  const foreground=kind===1,heat=kind===2,completion=kind===3,mesh=foreground?this.topMesh:heat?this.heatMesh:completion?this.completionMesh:this.mesh,attributes=foreground?this.topAttributes:heat?this.heatAttributes:completion?this.completionAttributes:this.attributes;
+  for(const e of ordered)this.groups[e.foreground?1:e.heatWave?2:0].push(e);
+  for(const kind of [0,1,2]){
+  const foreground=kind===1,heat=kind===2,mesh=foreground?this.topMesh:heat?this.heatMesh:this.mesh,attributes=foreground?this.topAttributes:heat?this.heatAttributes:this.attributes;
   const origin=attributes[0].array,frame=attributes[1].array,style=attributes[2].array,pose=attributes[3].array,tween=attributes[4].array;let count=0;
   const group=this.groups[kind];if(foreground)group.sort((a,b)=>(a.layer||0)-(b.layer||0));
   for(const e of group){
    if(e.age<0)continue;
-   if(count>=(foreground||heat?16:completion?32:this.limit))break;
-   const spec=(foreground?mushroomAtlas:heat?heatAtlas:completion?completionAtlas:atlas).clips[e.clip],t=clamp(e.age/e.life),ease=1-(1-t)**2;
+   if(count>=(foreground||heat?16:this.limit))break;
+   const spec=(foreground?mushroomAtlas:heat?heatAtlas:atlas).clips[e.clip],t=clamp(e.age/e.life),ease=1-(1-t)**2;
    const biteHit=e.bite?Math.max(0,1-Math.abs(e.age-.14)/.06):0;
    const growth=e.bite?1.08-.13*smooth(e.age/.14)+biteHit*.07:e.mushroomPart==='stem'?.72+.28*clamp(e.age/.18):e.mushroomPart==='cap'?.30+.70*(1-(1-clamp(e.age/.28))**3):e.grow?.18+.82*Math.sin(Math.min(1,t*1.5)*Math.PI/2):e.scaleFrom!=null?e.scaleFrom+(e.scaleTo-e.scaleFrom)*ease:1;
    const vertical=e.bite?growth*(1-biteHit*.24):e.mushroomPart==='stem'?.16+.84*(1-(1-clamp(e.age/.30))**2):e.mushroomPart==='cap'?.50+.50*(1-(1-clamp(e.age/.32))**2):growth;
@@ -369,16 +357,16 @@ export class HandDrawnFireFamily{
    const o=count++*4;
    origin[o]=e.x+(e.travelX||0)*t+(e.releasing?(e.tailVX||0)*e.life*smooth(t):0);origin[o+1]=e.y-(e.fall||0)*t+(e.rise||0)*t;origin[o+2]=e.z+(e.travelZ||0)*t+(e.releasing?(e.tailVZ||0)*e.life*smooth(t):0);origin[o+3]=e.size*growth;
    frame[o]=spec.first+index;frame[o+1]=alpha;frame[o+2]=e.clarity||0;frame[o+3]=e.own&&(e.palette===0||e.heroOpening)?1:0;
-   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=(e.height||e.size)*vertical*(e.releasing&&e.clip==='wildfire'?1-t*.15:1);
+   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=(e.height||e.size)*vertical;
    pose[o]=e.anchorX;pose[o+1]=e.anchorY;pose[o+2]=e.cutLower;pose[o+3]=e.cutUpper;tween[o]=spec.first+next;tween[o+1]=e.blend?position-index:0;tween[o+2]=tween[o+3]=0;
   }
-  mesh.count=(foreground?this.mushroomLoaded:heat?this.heatLoaded:completion?this.completionLoaded:this.loaded)?count:0;mesh.visible=mesh.count>0;
+  mesh.count=(foreground?this.mushroomLoaded:heat?this.heatLoaded:this.loaded)?count:0;mesh.visible=mesh.count>0;
   if(count)for(const a of attributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}
   }
  }
  setPerformance(profile){this.limit=profile.name==='流畅'?48:profile.name==='均衡'?80:128;this.impactBudget=profile.fireImpactBudget??(profile.name==='流畅'?4:Infinity);}
- clear(){this.events.length=this.ordered.length=0;for(const group of this.groups)group.length=0;this.impactBucket=-1;this.impactCount=0;this.keys.clear();this.hitTimes.clear();if(this.wildfireKeys.size){const v=this.owner;v.entries=v.entries.filter(e=>!this.wildfireKeys.has(e.key));v.spinEmitters=v.spinEmitters.filter(e=>!this.wildfireKeys.has(e.key));for(const key of this.wildfireKeys)v.keys.delete(key);this.wildfireKeys.clear();if(!v.fireSpin.disposed)v.fireSpin.update(0,v.spinEmitters);}for(const mesh of [this.mesh,this.topMesh,this.heatMesh,this.completionMesh]){mesh.count=0;mesh.visible=false;}}
- dispose(){this.disposed=true;this.clear();for(const mesh of [this.mesh,this.topMesh,this.heatMesh,this.completionMesh]){mesh.parent?.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh.dispose();}this.texture.dispose();this.mushroomTexture.dispose();this.heatTexture.dispose();this.completionTexture.dispose();}
+ clear(){this.events.length=this.ordered.length=0;for(const group of this.groups)group.length=0;this.impactBucket=-1;this.impactCount=0;this.keys.clear();this.hitTimes.clear();for(const mesh of [this.mesh,this.topMesh,this.heatMesh]){mesh.count=0;mesh.visible=false;}}
+ dispose(){this.disposed=true;this.clear();for(const mesh of [this.mesh,this.topMesh,this.heatMesh]){mesh.parent?.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh.dispose();}this.texture.dispose();this.mushroomTexture.dispose();this.heatTexture.dispose();}
 }
 
 export function installFireFamilyVFX(registry){
@@ -392,7 +380,7 @@ export function installFireFamilyVFX(registry){
    hit:(r,x,y,z,size)=>fx(r).impact(key,x,y,z,size),
    boom(r,x,y,z,radius=3,color,artRadius=radius){
     const f=fx(r),floor=r.terrain.height(x,z);
-    if(key==='fire-blast'){f.completion.fireBlast(x,floor,z,artRadius);return;}
+    if(key==='fire-blast'){f.fireBlast(x,floor,z,artRadius);return;}
     f.play('eruption',x,floor,z,Math.max(8,artRadius*2.4),{life:.6,anchorY:.22,priority:2});
     f.play('pillar',x,floor,z,Math.max(5,artRadius*1.5),{height:Math.max(8,artRadius*2.5),life:.55,delay:.08,alpha:.65,anchorY:.18});
     f.ultimateRing(x,floor,z,artRadius*1.35,.55);
@@ -404,6 +392,4 @@ export function installFireFamilyVFX(registry){
   };
  }
  for(const key of ['dragon-breath','heat-wave'])if(registry[key])registry[key]={...registry[key],cast:()=>{},trail:()=>{},hit:(r,x,y,z)=>key==='heat-wave'?r.vfx.crafted.fireFamily.impact(key,x,y,z):r.vfx.crafted.fireJet.impact(x,y,z,true,false,true)};
- registry['completion-star']={draw:(p,id,size,alpha)=>p.run.vfx.crafted.fireFamily.completion.starShot(p,id,size,alpha),trail:()=>{},hit:(r,x,y,z)=>r.vfx.crafted.fireFamily.completion.starHit(x,y,z)};
- registry['completion-dragon-floor']={zone:(r,x,y,z,radius)=>r.vfx.crafted.fireFamily.completion.dragonFloor(x,y,z,radius)};
 }
