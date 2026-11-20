@@ -39,35 +39,44 @@ export class RelayRoom {
             const reason = '无法连接字灵联机服务。';
             session.end(reason + detail);
           },
-          close(event) { session.end('与联机服务的连接已断开，请重新组队。' + socketErrorDetail(event)); },
+          close(event) { session.end('连接中断，正在恢复原房间。' + socketErrorDetail(event)); },
         });
         if (!session.alive) session.socket?.close();
       });
       await session.request(code ? 'join' : 'create', {code, name, species, seat:resume?.seat, party:resume?.party, protocol: multiplayerConfig.protocol, build: multiplayerConfig.build});
-      session.pongAt = Date.now();
-      session.heartbeat = setInterval(() => {
-        if (Date.now() - session.pongAt > 45000) session.end('网络连接已超时，请重新组队');
-        else { session.pingAt = Date.now(); session.send({op: 'ping'}); }
-      }, 10000);
+      session.pongAt = session.lastHeartbeat = Date.now();
+      session.heartbeat = setInterval(() => session.checkHeartbeat(), 10000);
       return session;
     } catch (error) { session.end(error.message, false); throw error; }
   }
   get canStart() {
     const {members,state} = this.room;
-    return state === 'lobby' && this.isHost && members.length === COOP_ROOM_SIZE && members.every(m => !m.offline && m.ready);
+    return state === 'lobby' && this.isHost && members.length === COOP_ROOM_SIZE && members.every(m => !m.offline && !m.away && m.ready);
+  }
+  checkHeartbeat(now = Date.now()) {
+    if (!this.alive) return;
+    // WeChat suspends JS timers in the background. Give queued socket events a
+    // fresh response window after resuming instead of closing before they run.
+    if (now - this.lastHeartbeat > 20000) this.pongAt = now;
+    this.lastHeartbeat = now;
+    if (now - this.pongAt > 45000) this.end('网络连接超时，正在恢复原房间');
+    else { this.pingAt = now; this.send({op:'ping'}); }
   }
   get open() { return this.alive; }
   get code() { return this.room.code; }
   get mine() { return this.room.members.find(member => member.id === this.me); }
   get others() { return this.room.members.filter(member => member.id !== this.me); }
   get isHost() { return this.room.host === this.me; }
-  linkState(id) { return this.alive && this.room.members.some(member => member.id === id && !member.offline) ? 'open' : 'closed'; }
+  linkState(id) { return this.alive && this.room.members.some(member => member.id === id && !member.offline && !member.away) ? 'open' : 'closed'; }
   send(message) { return this.alive && this.socket?.send(JSON.stringify(message)); }
   request(op, data = {}) {
     return new Promise((resolve, reject) => {
       if (!this.alive) { reject(Error('连接已关闭，请重新组队')); return; }
       const id = ++this.sequence;
-      const timer = setTimeout(() => { this.end('服务器响应超时，请重新组队'); }, 10000);
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(Error('服务器响应超时，请重试'));
+      }, 15000);
       this.pending.set(id, {resolve, reject, timer});
       if (!this.send({...data, op, id})) this.end('联机消息发送失败，请重新组队');
     });
@@ -80,8 +89,8 @@ export class RelayRoom {
     for (const member of previous) if (!room.members.some(next => next.id === member.id)) this.ev.link?.(member.id, 'closed');
     for (const member of room.members) {
       const old = previous.find(m => m.id === member.id);
-      if (old && (old.offline !== member.offline || old.generation !== member.generation))
-        this.ev.link?.(member.id, member.offline ? 'closed' : 'open');
+      if (old && (old.offline !== member.offline || old.away !== member.away || old.generation !== member.generation))
+        this.ev.link?.(member.id, member.offline || member.away ? 'closed' : 'open');
     }
     this.ev.change?.();
     if (room.state === 'started' && !this.startedSeen) {
@@ -94,6 +103,7 @@ export class RelayRoom {
   }
   receive(raw) {
     if (!this.alive) return;
+    this.pongAt = Date.now();
     if (raw instanceof ArrayBuffer) {
       if (raw.byteLength < 2) return;
       const slot = new Uint8Array(raw,0,1)[0];
@@ -108,7 +118,8 @@ export class RelayRoom {
     if (message.op === 'closed') { this.end(message.reason); return; }
     const room=message.room;
     if (room && (room.members?.length > COOP_ROOM_SIZE ||
-        (room.state === 'started' && !this.startedSeen && room.members?.length !== COOP_ROOM_SIZE))) {
+        (room.state === 'started' && !this.startedSeen && room.members?.length !== COOP_ROOM_SIZE &&
+          !(this.resume?.party===room.party && room.running && room.members?.some(m=>m.id===this.resume.seat))))) {
       this.end('双人成行仅支持两人，请重新组队');
       return;
     }
@@ -130,7 +141,8 @@ export class RelayRoom {
     if (!pending) return;
     this.pending.delete(message.id); clearTimeout(pending.timer);
     if (message.error) { pending.reject(Error(message.error)); return; }
-    this.me = message.me; this.apply(message.room); pending.resolve(message);
+    if (message.me) this.me = message.me;
+    this.apply(message.room); pending.resolve(message);
   }
   control(to, data) {
     const sent=this.send({op:'ctl',to,data});
@@ -163,16 +175,27 @@ export class RelayRoom {
   }
   currentWorld() {
     return new Promise((resolve,reject)=>{
+      let settled=false, cached=null, fallbackReady=false;
+      const valid=world=>world && Number.isInteger(world.stage) && world.stage>=1 && world.stage<=4 &&
+        [world.time,world.stageTime,world.x,world.z].every(Number.isFinite);
       const finish=(world)=>{
-        clearInterval(retry);clearTimeout(timeout);this.worldReply=null;
+        if(settled)return;
+        settled=true;clearInterval(retry);clearTimeout(timeout);clearTimeout(fallback);this.worldReply=null;this.cancelWorld=null;
         if(world)resolve(world);else reject(Error('暂时无法同步队友所在区域，请重试'));
       };
       const ask=()=>this.control('',{t:'resume-query'});
-      const retry=setInterval(ask,500),timeout=setTimeout(()=>finish(null),12000);
+      const retry=setInterval(ask,500),timeout=setTimeout(()=>finish(cached),12000);
+      const fallback=setTimeout(()=>{fallbackReady=true;if(cached)finish(cached);},2000);
+      this.cancelWorld=()=>finish(null);
       this.worldReply=world=>{
-        if(Number.isInteger(world.stage) && world.stage>=1 && world.stage<=4 &&
-           [world.time,world.stageTime,world.x,world.z].every(Number.isFinite))finish(world);
+        if(valid(world))finish(world);
       };
+      // Both clients may be cold-starting, so neither can answer resume-query.
+      // The room checkpoint breaks that dependency; a live peer is preferred.
+      this.request('world',{party:this.room.party}).then(reply=>{
+        cached=valid(reply.world)?reply.world:null;
+        if(cached && (fallbackReady || this.others.every(m=>m.offline || m.away)))finish(cached);
+      }).catch(()=>{});
       ask();
     });
   }
@@ -194,6 +217,7 @@ export class RelayRoom {
     if (!this.alive) return;
     this.startGate?.cancel(reason);
     this.alive = false; clearInterval(this.heartbeat); clearTimeout(this.connectTimer);
+    this.cancelWorld?.();
     this.connectReject?.(Error(reason)); this.connectReject = null;
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(Error(reason)); }
     this.pending.clear(); this.socket?.close();

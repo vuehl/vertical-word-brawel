@@ -186,6 +186,60 @@ export function createZixingUI(app,api) {
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
   const goBack=()=>returnTo?returnTo():home();
+  let battleRecovery=null;
+  function recoverBattle(session,reason){
+    const current=app.run;
+    if(battleRecovery || current?.coop?.room!==session)return;
+    current.coop.reconnecting=true;
+    current.state='paused';current.input.releaseLock();
+    const seat={code:session.code,seat:session.me,party:current.coop.party};
+    let stopped=false,busy=false,unavailable=false,timer,next,attempts=0;
+    const stop=()=>{
+      stopped=true;clearTimeout(timer);window.removeEventListener('pageshow',attempt);
+      if(battleRecovery===stop)battleRecovery=null;
+    };
+    battleRecovery=stop;
+    const later=()=>{
+      stop();next?.end('稍后重连',false);app.coopRoom=null;app.toMenu();
+    };
+    function show(message){
+      const actions=[...(!unavailable?[button('重试连接',attempt,'primary')]:[]),button(unavailable?'返回首页':'稍后重连',later)];
+      const body=[text(message),small('房间 '+seat.code+(unavailable?' · 原对局已无法恢复。':' · 席位与进度已保留。在线队友可以继续战斗。'))];
+      if(app.run?.ui){
+        app.setScreen(null);
+        overlay('正在重连房间','网络暂时中断',body,actions,app.run.ui,'zx-reconnect');
+      }else screen('coop-reconnect','正在重连房间','房间 '+seat.code,body,actions);
+    }
+    async function attempt(){
+      if(stopped || busy || unavailable || document.hidden)return;
+      busy=true;clearTimeout(timer);show('正在恢复连接并同步队友进度…');
+      try{
+        next=await RelayRoom.connect({code:seat.code,resume:seat,species:session.mine.species,
+          name:app.meta.account?.name||'伙伴',factory:window.createCoopSocket});
+        if(stopped || document.hidden){next.end('等待返回游戏',false);return;}
+        if(!next.returning || next.room.party!==seat.party)throw Error('原对局已结束');
+        const world=await next.currentWorld();
+        if(stopped || document.hidden){next.end('等待返回游戏',false);return;}
+        next.onInterrupted=message=>recoverBattle(next,message);
+        app.coopRoom=next;rememberSeat(next);
+        const ok=await start({species:next.mine.species,biome:'forest',tier:next.room.tier,mode:'standard',boosts:[],
+          coop:{room:next,party:next.room.party,seed:next.room.seed,world,progress:savedProgress(next),reconnecting:true}});
+        if(!ok || !next.open)throw Error(ui.entryDiagnostics?.error||'暂时无法恢复对局，请重试');
+        stop();
+      }catch(error){
+        next?.end(error.message,false);
+        if(stopped)return;
+        const expired=/房间不存在|席位已失效|原对局已结束|房间已开局/.test(error.message);
+        unavailable=expired;
+        if(expired)forgetSeat(seat.seat);
+        show(expired?error.message:'连接暂未恢复，将自动重试。'+error.message);
+        if(!expired)timer=setTimeout(attempt,[2000,5000,10000,20000,30000][Math.min(attempts++,4)]);
+      }finally{busy=false;}
+    }
+    window.addEventListener('pageshow',attempt);
+    show(document.hidden?'返回游戏后将恢复原房间。':reason);
+    void attempt();
+  }
   function screen(name,title,subtitle,body,actions=[],color='') {
     const node=el('section','screen zx zx-'+name,[],{'data-page':name,'data-fullscreen':'true'});
     if(title)node.append(el('header','zx-header '+color,[el('h1','',title),subtitle?el('small','',subtitle):null]));
@@ -268,16 +322,24 @@ export function createZixingUI(app,api) {
   }
   function multiplayer(resume=savedSeat()) {
     let room=null, view=null, busy=false, starting=false, status='', pending='', joiningCode='';
+    let reconnectAttempts=0,reconnectTimer;
     let pick=selected;
     async function perform(fn) {
       if(busy || starting)return;
       busy=true;
+      clearTimeout(reconnectTimer);
       status='';render();
       try { await fn(); }
       catch(error) { status=error.message || error.errMsg || String(error); }
       finally {
         joiningCode='';busy=false;if(!starting)pending='';
         if(!starting && view.node===app.screen){render();joinInvite();}
+        if(!room && resume && !starting && view.node===app.screen && reconnectAttempts<4){
+          const delay=[2000,5000,10000,20000][reconnectAttempts++];
+          reconnectTimer=setTimeout(()=>{
+            if(view.node===app.screen && !room && !busy && !starting)perform(()=>connect(true,resume));
+          },delay);
+        }
       }
     }
     function action(label,fn,kind='') {
@@ -322,23 +384,22 @@ export function createZixingUI(app,api) {
       if(starting){await next.leave();return;}
       if(room?.open){room.ev={};room.leave();}
       room=next;
+      if(next.room.state==='lobby')reconnectAttempts=0;
       rememberSeat(room);
-      room.onInterrupted=()=>{
-        const current=app.run;
-        if(current?.coop?.room!==room)return;
-        saveProgress(current);
-        current.coop.ended=true;
-        app.toMenu();
-        const retry=()=>{
-          window.removeEventListener('pageshow',retry);
-          if(app.screen?.dataset.page!=='coop')multiplayer(savedSeat());
-        };
-        if(document.hidden)window.addEventListener('pageshow',retry);else retry();
-      };
+      room.onInterrupted=reason=>recoverBattle(next,reason);
       app.coopRoom=room; status='';
       room.ev={
         change:()=>{rememberSeat(room);if(!starting)render();},
-        closed:reason=>{if(/移出/.test(reason))forgetSeat(room.me);resume=savedSeat();app.coopRoom=null;room=null;status=reason;if(!starting)render();},
+        closed:reason=>{
+          if(/移出/.test(reason))forgetSeat(room.me);
+          resume=savedSeat();app.coopRoom=null;room=null;status=reason;
+          if(!starting){
+            render();
+            if(resume)reconnectTimer=setTimeout(()=>{
+              if(view.node===app.screen && !room)perform(()=>connect(true,resume));
+            },2000);
+          }
+        },
         start:async state=>{
           if(starting)return;
           starting=true;
@@ -350,6 +411,7 @@ export function createZixingUI(app,api) {
             const ok=await start({species:session.mine.species,biome:'forest',tier:state.tier,mode:'standard',boosts:[],
               coop:{room:session,party:state.party,seed:state.seed,world,progress:world?savedProgress(session):null}});
             if(!ok)throw Error(ui.entryDiagnostics?.error || '开局已取消，请重新组队');
+            reconnectAttempts=0;
           } catch(error) {
             if(session.returning){session.end(error.message,false);resume=savedSeat();}
             else {session.cancelStart(error.message);forgetSeat(session.me);await session.leave();}
@@ -380,7 +442,10 @@ export function createZixingUI(app,api) {
         startButton=action('开始冒险',()=>session.start(),'primary');
         actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;}));
       }else{
-        if(resume)actions.push(action('重连原房间',()=>connect(true,resume),'primary'));
+        if(resume){
+          body.push(card(el('b','','发现未结束的房间 '+resume.code),small('重连后继续上次对局。两人都掉线时，房间保留 10 分钟。')));
+          actions.push(action('重连原房间',()=>connect(true,resume),'primary'));
+        }
         actions.push(action('创建房间',()=>connect(false),'primary'),action('加入房间',()=>connect(true)),action('返回首页',home));
       }
       const note=text('','zx-note');

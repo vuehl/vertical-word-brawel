@@ -55,6 +55,8 @@ test('Flame Stampede is a selectable ordinary fire skill, upgrades normally and 
     assert.ok(ctx.canUpgradeMove(p,0));p.speciesId=16;assert.ok(!ctx.canUpgradeMove(p,0));
   }
   assert.equal(ctx.fS('fu-58'),-1,'The old fusion remains retired');
+  assert.ok(ctx.O_(488),'Species-independent catalog lookup still resolves');
+  for(const species of [1,7,25,132])assert.equal(ctx.formMove(488,species),null,'Stampede is fire-family only');
 });
 
 test('wind excludes fire skills while the removed cross-element fusion stays unavailable', () => {

@@ -1,7 +1,7 @@
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
 import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,facilityModelFile,facilityNames,isActiveFacility} from './active-content.js';
 import {createFacilityEffects} from './facility-effects.js';
-import {saveProgress,restoreProgress,forgetSeat,savedSeat} from './coop-resume.js';
+import {saveProgress,restoreProgress,forgetSeat,savedSeat,worldProgress} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './lite-rules.js';
@@ -30,7 +30,7 @@ import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from
 import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
 import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE,ENEMY_HEALTH_SCALE,ENEMY_DAMAGE_SCALE,ENEMY_XP_SCALE,SPECIAL_ACTORS} from './spawn-budget.js';
 import {ParticleBudget,CriticalImpactBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
-import {createStylizedEffectAtlas,EFFECT_CELL} from './stylized-effect-atlas.js';
+import {createStylizedEffectAtlas,EFFECT_CELL,STAMPEDE_FLAME} from './stylized-effect-atlas.js';
 import {StylizedSkillFX} from './stylized-skill-vfx.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera,updateWorkshopScene} from './paper-world.js';
@@ -21629,7 +21629,7 @@ function W(e, t, n, r) {
     r,
   );
 }
-function _h(e, t, n, r, i, a, o, s, c, l = c * 0.35, u = 2) {
+function _h(e, t, n, r, i, a, o, s, c, l = c * 0.35, u = 2, shape = I.PixFlame) {
   e.vfx.norm.spawn({
     x: t,
     y: n,
@@ -21642,7 +21642,7 @@ function _h(e, t, n, r, i, a, o, s, c, l = c * 0.35, u = 2) {
     endSize: l,
     color: 16777215,
     endColor: 14707274,
-    shape: I.PixFlame,
+    shape,
     drag: u,
     rot: F.range(-0.15, 0.15),
   });
@@ -29908,7 +29908,9 @@ var W_ = 0.45,
         if (Math.random() < e * 6 && !r.authoredFire) {
           let e = r.x + F.range(-r.r, r.r) * 0.6,
             n = r.z + F.range(-r.r, r.r) * 0.6;
-          i?.zone
+          r.stampedeFire
+            ? _h(t,e,r.y+.3,n,0,1.5,0,.4,.65,.12,2,STAMPEDE_FLAME)
+            : i?.zone
             ? i.zone(t, e, r.y, n, r.artRadius ?? r.r, r.life)
             : t.vfx.trail(e, r.y + 0.3, n, r.color, 0.5, am(r.type), 0.5);
         }
@@ -36263,6 +36265,7 @@ const fireStampedeRecipe = {
       },
   "cast": function cast(e) {
         let t = e.run;
+        const ghostForm={species:t.player.speciesId,scale:t.player.renderScale};
         t.enemies;
         let n = t.player.pos,
           r = 4 + mx(e, 1, 3),
@@ -36290,6 +36293,7 @@ const fireStampedeRecipe = {
                   1.2,
                   0.4,
                   3,
+                  STAMPEDE_FLAME,
                 );
               }
               (yh(t, a, n + 1, o, 10, 6),
@@ -36307,7 +36311,7 @@ const fireStampedeRecipe = {
               m = a,
               h = o,
               g = Math.min(0.18, d / 50);
-            (t.ghostDash(m, U(t, m, h), h, f, p, d, 16747050, true),
+            (t.ghostDash(m, U(t, m, h), h, f, p, d, 16747050, ghostForm),
               W(
                 t,
                 g,
@@ -36327,6 +36331,9 @@ const fireStampedeRecipe = {
                       -p * 4,
                       0.35,
                       1.1,
+                      1.1*.35,
+                      2,
+                      STAMPEDE_FLAME,
                     );
                   t.vfx.add.spawn({
                     x: r,
@@ -36342,7 +36349,7 @@ const fireStampedeRecipe = {
                 },
                 () => {
                   (xx(e, m, h, n.x, n.z, 1.3 * e.R, 0.75, { status: `burn`, statusChance: 0.35, knock: 2 }),
-                    gx(e, (m + n.x) / 2, (h + n.z) / 2, 1.4 * e.R, 1.6, 0.1, `burn`, 0.3, `will-o-wisp`),
+                    gx(e, (m + n.x) / 2, (h + n.z) / 2, 1.4 * e.R, 1.6, 0.1, `burn`, 0.3, `will-o-wisp`, e.type, {stampedeFire:true}),
                     ls(t.audio, 900, 0.08, 0.1),
                     (a = n.x),
                     (o = n.z),
@@ -43763,8 +43770,18 @@ var GT = 15,
         };
         (this.peers.set(e.id, t), this.bySlot.set(e.slot, t), this.known.set(e.id, new Map()));
       }
-      this.onHide=()=>{if(this.room.open && !this.ended)saveProgress(this.run);};
+      this.onHide=()=>{
+        if(this.ended || this.run.state==='over' || !this.room.inRun)return;
+        saveProgress(this.run);
+        this.suspended=true;
+        this.room.send({op:'background',party:this.party});
+      };
+      this.onShow=()=>{
+        if(this.suspended && !this.ended && this.room.open)
+          this.room.end('正在同步离开期间的房间进度');
+      };
       window.addEventListener('pagehide',this.onHide);
+      window.addEventListener('pageshow',this.onShow);
       ((this.room.inRun = !0),
         (this.room.ev = {
           monsters: frame => this.monsters?.frame(frame),
@@ -43773,9 +43790,9 @@ var GT = 15,
           snap: (id, bytes, offset) => this.onSnap(id, bytes, offset),
           link: (e, t) => this.onLink(e, t),
           closed: reason => {
-            for (let e of this.peers.values()) this.peerGone(e);
+            if(!this.suspended)saveProgress(this.run);
             if ((this.room.returning || (this.room.startGate?.done && !this.room.startGate.error)) && !this.ended && this.run.state !== 'over') {
-              if(this.room.onInterrupted){this.room.onInterrupted();return;}
+              if(this.room.onInterrupted){this.room.onInterrupted(reason);return;}
               this.run.ui.toast(reason, null);
               this.run.endHow = 'disconnect';
               void this.run.finish(false);
@@ -43843,6 +43860,14 @@ var GT = 15,
         ((this.pendingBoss = null), (this.remoteCall = !0));
         try {
           (this.wakeAltars(), t.spawnBoss(e.x, e.z, e.summonMode));
+          if(this.resumeBoss && t.boss.alive){
+            const saved=this.resumeBoss,index=t.boss.bossIndex;
+            if(Number.isFinite(saved.hp) && saved.hp>0 && Number.isFinite(saved.maxHp) && saved.maxHp>0){
+              t.enemies.maxHp[index]=saved.maxHp;
+              t.enemies.hp[index]=Math.min(saved.hp,saved.maxHp);
+            }
+            this.resumeBoss=null;
+          }
         } finally {
           this.remoteCall = !1;
         }
@@ -44561,6 +44586,12 @@ var GT = 15,
       }
       let r = !n.dead;
       for (let e of this.active()) e.last.flags & (FT.downed | FT.out) || (r = !0);
+      // An offline/away teammate has not been defeated. Keep the seat available
+      // for recovery instead of broadcasting a team loss on their behalf.
+      if(this.room.others.some(member=>{
+        const peer=this.peers.get(member.id);
+        return member.offline || member.away || !peer?.last || peer.gone || t.realTime-peer.lastAt>=12;
+      }))r=true;
       ((this.wipeT = r ? 0 : this.wipeT + e), this.wipeT > oE && this.isHost && this.end(!1));
     }
     revive(e, t = -1) {
@@ -44749,12 +44780,7 @@ var GT = 15,
       switch (t.t) {
         case 'resume-query': {
           if(!r.player || r.buildingStage || r.state==='transition' || this.ended)return;
-          const portal=r.interactables.list.find(i=>i.kind==='portal');
-          const index=r.boss.bossIndex;
-          this.room.mesh.sendCtl(e,{t:'resume-world',stage:r.stage,stageTime:r.stageTime,time:r.time,
-            x:r.player.pos.x,z:r.player.pos.z,
-            portal:portal && {x:portal.x,z:portal.z,sanct:!!portal.data?.sanct},
-            boss:this.bossShared && r.boss.alive ? {x:r.enemies.x[index],z:r.enemies.z[index],slot:this.bossAuth}:null});
+          this.room.mesh.sendCtl(e,{t:'resume-world',...worldProgress(r)});
           break;
         }
         case `en`:
@@ -44867,7 +44893,7 @@ var GT = 15,
       n &&
         ((n.link = t),
         (t === `closed` || t === `failed`) &&
-          (n.gone || this.run.ui.toast(c(`Se ha perdido la conexión con {name}`, { name: n.name }), null),
+          (n.gone || this.run.ui.toast(n.name+'暂离，当前对局继续，等待队友返回', null),
           this.peerGone(n)));
     }
     peerGone(e) {
@@ -45118,6 +45144,7 @@ var GT = 15,
     }
     dispose() {
       window.removeEventListener('pagehide',this.onHide);
+      window.removeEventListener('pageshow',this.onShow);
       ((this.ended = !0), this.room.open && (forgetSeat(this.room.me),this.broadcast({ t: `bye` }), this.room.leave()));
     }
   },
@@ -45745,13 +45772,16 @@ var GT = 15,
     ghostDash(e, t, n, r, i, a, o, fireGlyph=false) {
       if(fireGlyph&&!this.vfx.crafted.allowed())return;
       let s = this.sprites.dirRow(r, i);
+      // Keep the reference effect's five samples and original fade timing.
+      // The fire variant changes only the letter used by those samples.
       for (let t = 1; t <= 5; t++) {
         let o = t / 5,
           c = e + r * a * o,
           l = n + i * a * o;
         if(this.ghosts.length>=96)this.ghosts.shift();
-        this.ghosts.push({ x: c, y: this.terrain.surface(c, l), z: l, t: 0.35 + o * 0.15, dir: s,
-          ...(fireGlyph?{fireGlyph:true,species:[4,5,6].includes(this.player.speciesId)?this.player.speciesId:4}:{}) });
+        const life=.35+o*.15;
+        this.ghosts.push({ x: c, y: this.terrain.surface(c, l), z: l, t:life,life,dir:s,
+          ...(fireGlyph?{fireGlyph:true,species:fireGlyph.species,scale:fireGlyph.scale}:{}) });
       }
       for (let s of [0.45, 0.95, 1.45])
         this.vfx.beams.spawn(e, t + s, n, e + r * a, t + s, n + i * a, 0.16, o, 0.22, 0.75);
@@ -47052,6 +47082,7 @@ var GT = 15,
     noResumeGrace = !1;
     musicT = 0;
     resume() {
+      if(this.coop?.reconnecting || this.coop?.suspended)return;
       if (this.state !== `modal` && this.state !== `paused`) return;
       let e = this.state;
       (this.state === `modal` &&
@@ -47216,6 +47247,7 @@ var GT = 15,
       a(Qb(this, t, n, i), r);
     }
     update(e, dwellSeconds = e) {
+      if(this.coop && (this.coop.suspended || this.coop.reconnecting || !this.coop.room.open))return;
       let t = this.input;
       // Start after loading or restoring the room, so the boss intro owns its cinematic state.
       if (this.sanctuary && this.state === 'play' && !this.bossSpawned && !this.stageCleared && !this.coop?.pendingBoss) {
@@ -47839,7 +47871,7 @@ var GT = 15,
           r.t-=e;
           if(r.t<=0||!this.vfx.crafted.allowed()){this.ghosts.splice(t,1);continue;}
           const glyph=this.sprites.getHeroGhostGlyph(r.species);
-          glyph?.push(r.x,r.y,r.z,'walk',.1,r.dir,this.player.renderScale,.25,
+          glyph?.push(r.x,r.y,r.z,'walk',.1,r.dir,r.scale*glyph.zxGhostScale,.25,
             Math.min(.72,r.t/.5*.72)*this.vfx.opacity*this.vfx.ownOpacity,0,0,1,.65,.35,0,false);
           continue;
         }
@@ -78819,7 +78851,10 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       } catch (error) {
         this.lastStartError=error;
         console.error('[宝可梦] 森林初始化失败', error);
-        this.toMenu();
+        if(e.coop?.reconnecting){
+          e.coop.room.end(error.message,false);
+          this.run?.dispose();this.run=null;this.hud?.destroy();this.hud=null;
+        }else this.toMenu();
         if(!onLoadProgress)this.notice('森林未能打开：' + (error.message || error));
         return false;
       } finally {

@@ -12,12 +12,16 @@ import {loadSkillCatalog} from './skill-catalog.mjs';
 // Record the current native bundle using the same WeChat fixture as runtime QA.
 // Controlled enemies and one real cast per clip; no gameplay/save files change.
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
-const out=path.join(root,'资料','炎风融合技能GIF');
-const qa=path.join(root,'验收','炎风融合技能GIF');
+const stampede=process.argv.includes('--fire-stampede');
+const title=stampede?'烈焰狂奔三形态GIF':'炎风融合技能GIF';
+const out=process.env.SKILL_GIF_OUT||path.join(root,'资料',title);
+const qa=process.env.POKEBONK_QA||path.join(root,'验收',title);
 fs.mkdirSync(out,{recursive:true});fs.mkdirSync(qa,{recursive:true});
 const {ctx}=await loadSkillCatalog();
-const skills=[['炎',4,'fu-4'],['炎',4,'fu-t-fire'],['风',16,'fu-16'],['风',16,'fu-t-flying']]
-  .map(([family,species,key])=>({family,species,key,id:ctx.fS(key),name:ctx.dS(key).name}))
+const skills=(stampede?[['炎',4,'flame-charge'],['焱',5,'flame-charge'],['燚',6,'flame-charge']]:
+  [['炎',4,'fu-4'],['炎',4,'fu-t-fire'],['风',16,'fu-16'],['风',16,'fu-t-flying']])
+  .map(([family,species,key])=>({family,species,key,id:stampede?488:ctx.fS(key),name:stampede?ctx.formMove(488,species).name:ctx.dS(key).name}))
+  .filter(skill=>!process.env.SKILL_GIF_SPECIES||skill.species===Number(process.env.SKILL_GIF_SPECIES))
   .filter(skill=>!process.env.FUSION_GIF_KEY||skill.key===process.env.FUSION_GIF_KEY);
 const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
 const config=JSON.parse(fs.readFileSync(path.join(game,'game.json'),'utf8'));
@@ -47,13 +51,14 @@ try{
   const page=await browser.newPage(),errors=[];
   page.setDefaultTimeout(120000);
   page.on('pageerror',error=>{errors.push(String(error));console.error(String(error));});
+  page.on('console',message=>{if(message.type()==='error'&&/WebGLProgram|Shader Error|VALIDATE_STATUS/.test(message.text()))errors.push(message.text());});
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.evaluateOnNewDocument(()=>{window.fixturePlatform='devtools';window.phoneLayout=true;});
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
   await page.waitForFunction(()=>window.app?.zixing&&app.screen?.querySelector('button'));
-  console.log('Game loaded; preparing real fusion casts.');
+  console.log('Game loaded; preparing real skill casts.');
   await page.evaluate(async()=>{
     const account=await app.backend.guest();await app.meta.load(account);
     Object.assign(app.meta.profile.settings,{quality:'high',ultQuiet:true,damageNumbers:false});app.applySettings();
@@ -69,7 +74,7 @@ try{
     }
     throw Error('No clear lane for recording');
   });
-  await page.evaluate(()=>{
+  await page.evaluate(stampede=>{
     const title=document.createElement('div');title.id='clip-title';document.body.append(title);
     window.fusionSetup=()=>{
       const r=app.run,p=r.player;app.halted=true;r.state='play';r.ui.hideModal();r.godMode=true;r.pendingLevels=0;
@@ -80,7 +85,7 @@ try{
       const {x,z}=fusionLane;p.pos.set(x,r.terrain.surface(x,z),z);p.vel.set(0,0,0);p.facing.set(0,-1);r.camTarget.copy(p.pos);
       r.enemies.update=()=>{const e=r.enemies;e.grid.build(e.n,e.x,e.z,e.alive,e.radius,e.dying);};
       for(const [i,id] of [74,4,1,46].entries()){
-        const ex=x+(i%2?.5:-.5),ez=z-3-i*2,n=r.enemies.spawn(id,ex,ez,1,1,0);
+        const ex=x+(i%2?1:-1)*(stampede?2.2:.5),ez=z-3-i*2,n=r.enemies.spawn(id,ex,ez,1,1,0);
         r.enemies.hp[n]=r.enemies.maxHp[n]=1e7;r.enemies.y[n]=r.terrain.surface(ex,ez);r.enemies.kx[n]=r.enemies.kz[n]=0;
       }
       r.enemies.update();r.lockTarget=0;
@@ -88,10 +93,11 @@ try{
     };
     window.fusionDraw=()=>{const r=app.run;app.r.renderer.resetState();r.updateCamera(1/30);r.renderWorld(0);r.vfx.update(0);app.r.render(0);r.ui.hud(r);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);};
     window.fusionAdvance=()=>{const r=app.run;for(let i=0;i<4;i++){const dt=1/60;r.realTime+=dt;r.simulate(dt);r.updateCamera(dt);r.renderWorld(dt);r.vfx.update(dt);}fusionDraw();};
-  });
+  },stampede);
   for(const skill of skills){
     const def=await page.evaluate(async skill=>{
       fusionSetup();const r=app.run,p=r.player;p.setSpecies(skill.species);
+      p.evoStage=skill.species===5?1:skill.species===6?2:0;p.recompute();
       await r.sprites.prepareHeroForm(skill.species);
       if(!p.addMove(skill.id))throw Error('Missing fusion '+skill.key);
       const m=p.moves[0];m.level=1;m.timer=999;
@@ -101,7 +107,7 @@ try{
       for(let i=0;i<r.enemies.n;i++){const e=r.enemies,b=r.sprites.get(e.species[i],false,e.glyphWords[i]);e.radius[i]=Math.max(.45,Math.min(4,b.bodyWidth(e.scale[i])*.42));e.hgt[i]=Math.max(.8,b.bodyHeight(e.scale[i]));e.sized[i]=1;}
       r.enemies.update();
       document.querySelector('#clip-title').replaceChildren(document.createTextNode(skill.family+' · '+skill.name));
-      const subtitle=document.createElement('small');subtitle.textContent='当前游戏效果 · 1级融合技能 · 单次释放';document.querySelector('#clip-title').append(subtitle);
+      const subtitle=document.createElement('small');subtitle.textContent=skill.id===488?'局内实际释放 · '+skill.family+'字形残影 · 1级技能':'当前游戏效果 · 1级融合技能 · 单次释放';document.querySelector('#clip-title').append(subtitle);
       for(let i=0;i<25;i++)r.updateCamera(1/30);
       fusionDraw();return {name:m.def.name,key:m.def.key};
     },skill);
@@ -111,35 +117,72 @@ try{
       const state=await page.evaluate(frame=>{
         const m=app.run.player.moves[0];if(frame===5)m.timer=0;
         fusionAdvance();if(frame>=5)m.timer=999;
-        const v=app.run.vfx.crafted;
+        const r=app.run,v=r.vfx.crafted,ghosts=r.ghosts.filter(g=>g.fireGlyph);
+        const glyph=m.def.id===488?r.sprites.getHeroGhostGlyph(r.player.speciesId):null;
         return {frame,damage:m.damageDone||0,gl:app.r.renderer.getContext().getError(),
+          ghosts:ghosts.length,ghostSpecies:[...new Set(ghosts.map(g=>g.species))],glyph:glyph?.zxGlyph,
+          glyphCount:glyph?.zxGroup.mesh.count||0,
+          smallFlames:Array.from(r.vfx.norm.shape.subarray(0,r.vfx.norm.n)).filter(shape=>shape===139).length,
+          genericFireFields:v.entries.filter(effect=>effect.mode===7&&effect.type==='fire').length,
           jet:v.fireJet.mesh.count,
-          visible:v.fireFamily.mesh.count+v.fireFamily.topMesh.count+v.fireSpin.mesh.count+v.fireJet.mesh.count+(v.windSkills?.mesh.count||0)+v.mesh.count};
+          visible:v.fireFamily.mesh.count+v.fireFamily.topMesh.count+v.fireSpin.mesh.count+v.fireJet.mesh.count+(v.windSkills?.mesh.count||0)+v.mesh.count+(glyph?.zxGroup.mesh.count||0)};
       },frame);
       assert.equal(state.gl,0);samples.push(state);
       const png=await page.screenshot();
       frames.push(await sharp(png).ensureAlpha().raw().toBuffer());
-      if([12,24,45,65].includes(frame))fs.writeFileSync(path.join(qa,skill.key+'-'+frame+'.png'),png);
+      if([6,9,12,18,24,45,65].includes(frame))fs.writeFileSync(path.join(qa,skill.species+'-'+skill.key+'-'+frame+'.png'),png);
       if(frame%30===29)console.log(skill.name+': '+(frame+1)+'/90 frames');
     }
     assert.ok(samples.at(-1).damage>0,skill.name+' must actually hit');
     assert.ok(samples.some(s=>s.visible>0),skill.name+' must be visible');
+    if(stampede){
+      assert.ok(samples.some(s=>s.glyphCount>0),'Letter afterimages must render');
+      assert.ok(samples.every(s=>s.glyph===skill.family),'Afterimage must match the current fire form');
+      assert.ok(samples.every(s=>s.ghostSpecies.every(id=>id===skill.species)),'No other form in the trail');
+      assert.equal(samples.at(-1).ghosts,0,'Afterimages expire');
+      assert.ok(samples.some(s=>s.smallFlames>0),'Original small fire sprites must render');
+      assert.ok(samples.every(s=>s.genericFireFields===0),'Stampede must not use the generic large fire volumes');
+    }
     if(skill.key==='fu-4')assert.ok(samples.every(s=>s.jet===0),'Vortex recording must not contain the removed flame jet');
     const file=skill.family+'_'+skill.name+'.gif';
     // GIF delays are centiseconds: 70/60/70 ms preserves a 15 fps mean.
     const delays=frames.map((_,i)=>i%3===1?60:70);
     await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
-      .gif({delay:delays,loop:0,effort:7,dither:.5}).toFile(path.join(out,file));
+      .gif({delay:delays,loop:0,effort:4,dither:.5}).toFile(path.join(out,file));
     const meta=await sharp(path.join(out,file),{animated:true}).metadata();assert.equal(meta.pages,90);
     assert.equal(meta.delay.reduce((n,v)=>n+v,0),6000);
     report.files.push({...skill,file,frames:meta.pages,durationMs:6000,bytes:fs.statSync(path.join(out,file)).size,damage:samples.at(-1).damage,bundleSHA256:report.bundleSHA256});
-    fs.writeFileSync(path.join(qa,skill.key+'-frames.json'),JSON.stringify(samples,null,2));
+    if(stampede){
+      const lifecycle=await page.evaluate(async species=>{
+        const r=app.run,p=r.player,m=p.moves[0];m.timer=0;fusionAdvance();m.timer=999;
+        const batch=r.sprites.getHeroGhostGlyph(species),ghost=r.ghosts.find(g=>g.fireGlyph);
+        const fullAlpha=batch.zxGroup.aFx.getY(0),life=ghost.t;
+        fusionDraw();const paused=ghost.t===life;
+        const opacity=r.vfx.opacity,ownOpacity=r.vfx.ownOpacity;
+        r.vfx.opacity=opacity*.5;r.vfx.ownOpacity=ownOpacity*.4;fusionDraw();
+        const fadedAlpha=batch.zxGroup.aFx.getY(0);
+        r.vfx.opacity=opacity;r.vfx.ownOpacity=ownOpacity;
+        p.setSpecies(species===6?4:species+1);await r.sprites.prepareHeroForm(p.speciesId);
+        for(let i=0;i<3;i++)fusionAdvance();
+        const frozenForm=r.ghosts.filter(g=>g.fireGlyph).every(g=>g.species===species);
+        const correctScale=ghost.scale===1&&batch.zxGhostScale>1;
+        r.hideOwnFx=true;fusionDraw();for(let i=0;i<5;i++)fusionAdvance();
+        const hidden=r.ghosts.every(g=>!g.fireGlyph)&&batch.zxGroup.mesh.count===0;
+        r.hideOwnFx=false;
+        return {paused,fullAlpha,fadedAlpha,frozenForm,correctScale,hidden,renderOrder:batch.zxGroup.mesh.renderOrder,gl:app.r.renderer.getContext().getError()};
+      },skill.species);
+      assert.ok(lifecycle.paused&&lifecycle.frozenForm&&lifecycle.correctScale&&lifecycle.hidden);
+      assert.ok(lifecycle.fullAlpha>0&&Math.abs(lifecycle.fadedAlpha/lifecycle.fullAlpha-.2)<.001);
+      assert.equal(lifecycle.renderOrder,1);assert.equal(lifecycle.gl,0);
+      report.files.at(-1).lifecycle=lifecycle;
+    }
+    fs.writeFileSync(path.join(qa,skill.species+'-'+skill.key+'-frames.json'),JSON.stringify(samples,null,2));
     const recordFile=path.join(out,'导出记录.json');
     const previous=process.env.FUSION_GIF_KEY&&fs.existsSync(recordFile)?JSON.parse(fs.readFileSync(recordFile,'utf8')).files:[];
     fs.writeFileSync(recordFile,JSON.stringify({...report,files:[...previous.filter(f=>!report.files.some(current=>current.key===f.key)),...report.files]},null,2));
     console.log('Exported '+file);
   }
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(out,'说明.txt'),'当前炎、风可合成的四项融合技能。\r\n每个 GIF：390×844，15帧/秒，6秒，无限循环。\r\n来自当前微信构建包的桌面模拟环境，实际调用技能，固定靶怪，1级融合，单次释放；不是手机录屏。\r\n');
+  fs.writeFileSync(path.join(out,'说明.txt'),(stampede?'烈焰狂奔属于炎系普通技能，炎、焱、燚分别使用自己的字形残影。':'当前炎、风可合成的四项融合技能。')+'\r\n每个 GIF：390×844，15帧/秒，6秒，无限循环。\r\n来自当前微信构建包的桌面模拟环境，实际调用技能，固定靶怪，1级技能，单次释放；不是手机录屏。\r\n');
   console.log(JSON.stringify(report,null,2));
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

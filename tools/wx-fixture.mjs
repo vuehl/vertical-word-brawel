@@ -138,6 +138,7 @@ window.fixtureShow=options=>showCallbacks.forEach(fn=>fn(options));
 for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide'})){
   wx['on'+key]=fn=>{events[key]=fn;if(event.startsWith('touch'))document.addEventListener(event,fn,{passive:false});};
 }
+window.fixtureHide=()=>events.Hide?.();
 const fingers=new Map();
 window.tap=(x,y,kind='tap',id=1)=>{const t={identifier:id,clientX:x,clientY:y,pageX:x,pageY:y};
   const send=k=>{

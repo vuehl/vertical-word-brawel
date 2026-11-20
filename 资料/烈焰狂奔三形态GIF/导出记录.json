@@ -1,0 +1,78 @@
+{
+  "environment": "Current compiled WeChat bundle in desktop Chrome/SwiftShader; real casts, controlled enemies, level-one skill; not a phone recording.",
+  "width": 390,
+  "height": 844,
+  "fps": 15,
+  "files": [
+    {
+      "family": "炎",
+      "species": 4,
+      "key": "flame-charge",
+      "id": 488,
+      "name": "烈焰狂奔",
+      "file": "炎_烈焰狂奔.gif",
+      "frames": 90,
+      "durationMs": 6000,
+      "bytes": 523908,
+      "damage": 352.0434547310677,
+      "bundleSHA256": "b15c92c0c13cf3b6058595fb4e8ab56e4b797d1009b5edacb5c988b70e126126",
+      "lifecycle": {
+        "paused": true,
+        "fullAlpha": 0.6240000128746033,
+        "fadedAlpha": 0.12479999661445618,
+        "frozenForm": true,
+        "correctScale": true,
+        "hidden": true,
+        "renderOrder": 1,
+        "gl": 0
+      }
+    },
+    {
+      "family": "焱",
+      "species": 5,
+      "key": "flame-charge",
+      "id": 488,
+      "name": "烈焰狂奔",
+      "file": "焱_烈焰狂奔.gif",
+      "frames": 90,
+      "durationMs": 6000,
+      "bytes": 680615,
+      "damage": 482.3202088148889,
+      "bundleSHA256": "b15c92c0c13cf3b6058595fb4e8ab56e4b797d1009b5edacb5c988b70e126126",
+      "lifecycle": {
+        "paused": true,
+        "fullAlpha": 0.6240000128746033,
+        "fadedAlpha": 0.12479999661445618,
+        "frozenForm": true,
+        "correctScale": true,
+        "hidden": true,
+        "renderOrder": 1,
+        "gl": 0
+      }
+    },
+    {
+      "family": "燚",
+      "species": 6,
+      "key": "flame-charge",
+      "id": 488,
+      "name": "烈焰狂奔",
+      "file": "燚_烈焰狂奔.gif",
+      "frames": 90,
+      "durationMs": 6000,
+      "bytes": 730607,
+      "damage": 483.0708111185617,
+      "bundleSHA256": "b15c92c0c13cf3b6058595fb4e8ab56e4b797d1009b5edacb5c988b70e126126",
+      "lifecycle": {
+        "paused": true,
+        "fullAlpha": 0.6240000128746033,
+        "fadedAlpha": 0.12479999661445618,
+        "frozenForm": true,
+        "correctScale": true,
+        "hidden": true,
+        "renderOrder": 1,
+        "gl": 0
+      }
+    }
+  ],
+  "bundleSHA256": "b15c92c0c13cf3b6058595fb4e8ab56e4b797d1009b5edacb5c988b70e126126"
+}
