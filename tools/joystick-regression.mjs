@@ -31,6 +31,28 @@ export async function verifyJoystick(page,dir){
         const samples=[],saved=p.pos.clone();
         const input=()=>[r.input.stickX,r.input.stickY];
         const diagonal=Math.SQRT1_2;
+        const vertical=[];
+        for(const dy of [-1,1]){
+          p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.kx=p.kz=p.crowdX=p.crowdZ=0;
+          p.grounded=true;r.autoRun=false;
+          const start=p.pos.clone(),headings=[],knobs=[];
+          window.tap(x,y,'down',11);
+          for(const [offset,reach] of [[0,12],[2,5],[-2,11],[3,16],[-4,18],[1,36],[-2,70]]){
+            window.tap(x+offset,y+dy*reach,'move',11);
+            headings.push(input());
+            env.drawUI(app.r.renderer);
+            const knob=inspected.layout.box(t.knob);
+            knobs.push([knob.x+knob.w/2-t.sx,knob.y+knob.h/2-t.sy]);
+            for(let frame=0;frame<6;frame++){r.realDt=1/60;p.update(1/60);r.input.endFrame();}
+          }
+          const movement=[p.pos.x-start.x,p.pos.z-start.z];
+          window.tap(x+24,y+dy*30,'move',11);
+          const turn=input();
+          window.tap(x,y-dy*30,'move',11);
+          const reverse=input();
+          window.tap(x,y,'up',11);
+          vertical.push({dy,headings,knobs,movement,turn,reverse});
+        }
         for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[diagonal,-diagonal],[-diagonal,diagonal],[diagonal,diagonal],[-diagonal,-diagonal]]){
           window.tap(x,y,'down',11);
           window.tap(x+1,y+1,'move',11);const jitter=input();
@@ -61,11 +83,17 @@ export async function verifyJoystick(page,dir){
             origin:[x+screen.x,y+screen.y],inward,reverse,movement,held,secondFinger,centered,stopped,hidden});
         }
         p.pos.copy(saved);p.vel.set(0,0,0);
-        return {scale,samples};
+        return {scale,samples,vertical};
       },scale);
       report.push({width,...result});
       // Save the observations even on a failing build.
       await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify(report,null,2));
+      for(const s of result.vertical){
+        assert.ok(s.headings.every(([x,y])=>x===0&&y===-s.dy),'Vertical hold drifted: '+JSON.stringify(s));
+        assert.ok(s.knobs.every(([x,y])=>Math.abs(x)<.01&&y*s.dy>0),'Painted knob drifted: '+JSON.stringify(s));
+        assert.ok(Math.abs(s.movement[0])<.001&&s.dy*s.movement[1]>.5,'Vertical player path: '+JSON.stringify(s));
+        assert.ok(s.turn[0]>.5&&s.turn[1]*-s.dy>.5&&s.reverse[0]===0&&s.reverse[1]===s.dy,'Deliberate turn or reversal blocked');
+      }
       for(const s of result.samples){
         const near=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1])<.01;
         assert.ok(near(s.jitter,[0,0]),'A light touch must not move');

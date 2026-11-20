@@ -13,9 +13,17 @@ export async function reviewFacilityGreyRings(page,dir){
         const a=f.add(kind,pos.x,pos.z,{data:{tier:0}});await a.modelReady;
         f.nearest=null;f.dwellTime=0;r.renderWorld(0);f.render(0);
         const halo=a.halo;
-        if(!halo?.visible||halo.parent!==a.group||halo.scale.x!==a.ringRadius)throw Error('Missing grey ring: '+kind);
         const c=r.r.camera;c.position.set(a.x,a.y+16,a.z+22);c.lookAt(a.x,a.y+1,a.z);c.updateMatrixWorld();
         f.render(0);
+        if(kind==='bill'||kind==='berry'){
+          if(!a.model.visible||halo||a.group.getObjectByName('facility-dwell-ring')||f.dwellRing.visible)
+            throw Error('Expected an unmarked '+kind);
+          r.r.render(0);
+          const gl=r.r.renderer.getContext(),frame=gl.canvas.toDataURL('image/png').split(',')[1];
+          f.remove(a);
+          return {kind,error:gl.getError(),frame};
+        }
+        if(!halo?.visible||halo.parent!==a.group||halo.scale.x!==a.ringRadius)throw Error('Missing grey ring: '+kind);
         let centreError=0;
         if(a.model.userData.ringAnchor){
           const centre=a.model.localToWorld(halo.position.clone().copy(a.model.userData.ringAnchor)).project(c);
@@ -43,7 +51,8 @@ export async function reviewFacilityGreyRings(page,dir){
       },kind);
       const {frame,...stats}=result;
       console.log('Grey ring sample',stage,stats);
-      assert.ok(stats.changed>30,JSON.stringify(stats));assert.ok(stats.hidden&&stats.restored);assert.equal(stats.error,0);
+      if(kind==='altar'){assert.ok(stats.changed>30,JSON.stringify(stats));assert.ok(stats.hidden&&stats.restored);}
+      assert.equal(stats.error,0);
       fs.writeFileSync(path.join(dir,`grey-ring-${stage}-${kind}.png`),Buffer.from(frame,'base64'));
       results.push({stage,...stats});
     }

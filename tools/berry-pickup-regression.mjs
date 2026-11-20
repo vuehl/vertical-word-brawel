@@ -72,7 +72,7 @@ export async function verifyBerryPickup(page,dir){
       const outside=!berry.used&&p.hp===1;
       place(right,1,0,4.9);picture();f.update(.016,.016);
       f.render();
-      const hp=p.hp,started=berry.absorbing&&hp>1&&!berry.halo.visible&&!f.dwellRing.visible;
+      const hp=p.hp,started=berry.absorbing&&hp>1&&!berry.halo&&!f.dwellRing.visible;
       f.interact(berry);
       advance(.065);const kick1=model.position.distanceTo(basePos);
       advance(.065);const kick2=model.position.distanceTo(basePos);

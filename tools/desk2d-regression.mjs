@@ -107,6 +107,10 @@ export async function verifyDesk(page,dir){
  const ringPixels=await page.evaluate(()=>{
    const r=app.run, facilities=r.interactables;
    for(const f of facilities.list){
+     if(f.kind==='bill'||f.kind==='berry'){
+       if(f.halo)throw Error('Unexpected ground ring on '+f.kind);
+       continue;
+     }
      if(!f.halo)throw Error('Missing grey ground ring on '+f.kind);
      if(!Number.isFinite(f.ringRadius)||f.ringRadius<f.r||(f.chargeRing??f.halo)?.scale.x!==f.ringRadius)
        throw Error('Invalid desk facility ring on '+f.kind+': '+f.ringRadius);
@@ -155,11 +159,12 @@ export async function verifyDesk(page,dir){
      // Exercise the normal in-range and out-of-range update, including WebGL compilation.
      const tintMesh=a.model.getObjectByName('device-altar/color_alter.png'),tint=tintMesh.material;
      const ringOpacity=a.chargeRing.material.uniforms.breathOpacity;
-     f.altarUpdate(a,1,0);f.render();r.r.render(0);
+     const tickAltar=(distance,seconds)=>f.altarUpdate(a,distance,seconds,seconds);
+     tickAltar(1,0);f.render();r.r.render(0);
      if(tint.opacity!==0||tintMesh.visible||ringOpacity.value!==0)throw Error('Altar and ring must start transparent');
-     f.altarUpdate(a,1,.375);
+     tickAltar(1,.375);
      if(Math.abs(tint.opacity-.5)>.001||ringOpacity.value!==tint.opacity)throw Error('Altar and ring must rise together');
-     f.altarUpdate(a,1,.375);f.render();r.r.render(0);
+     tickAltar(1,.375);f.render();r.r.render(0);
      const active=layers(),radius=a.chargeRing.scale.x,ring=a.chargeRing.visible,gl=r.r.renderer.getContext();
      const frame=gl.canvas.toDataURL('image/png').split(',')[1];
      if(tint.opacity!==1||ringOpacity.value!==1||!tintMesh.visible||tint.color.getHex()!==0xffffff)throw Error('Expected full-opacity tint and ring at the peak');
@@ -175,13 +180,13 @@ export async function verifyDesk(page,dir){
        const peakWithoutRing=pixels();
        a.chargeRing.visible=true;
        if(!bright.some((v,i)=>Math.abs(v-peakWithoutRing[i])>10))throw Error('Ring missing at the breath peak');
-       f.altarUpdate(a,1,.75);
+       tickAltar(1,.75);
        if(tint.opacity!==0||tintMesh.visible||ringOpacity.value!==0)throw Error('Tint and ring did not disappear together after 1.5 seconds');
        const dim=pixels();
        a.chargeRing.visible=false;
        if(!pixels().every((v,i)=>v===dim[i]))throw Error('Ring still paints pixels at zero breath opacity');
        a.chargeRing.visible=true;
-       f.altarUpdate(a,1,.75);
+       tickAltar(1,.75);
        const next=pixels();
        let changed=0,repeatError=0;
        for(let i=0;i<dim.length;i+=4){
@@ -191,10 +196,10 @@ export async function verifyDesk(page,dir){
        if(changed<30 || repeatError>3)throw Error('Altar breath frame mismatch '+JSON.stringify({changed,repeatError}));
      }
      const compiled=r.r.renderer.info.programs.every(b=>b.diagnostics?.runnable!==false);
-     f.altarUpdate(a,a.r+1,.1);f.render();
+     tickAltar(a.r+1,.1);f.render();
      if(a.chargeRing.visible||!a.halo.visible||a.charge<=0)throw Error('Leaving the altar should restore its grey ring during charge decay');
      result.push({tier,idle,active,exit:layers(),ring,radius,color:a.altarColor,interaction:a.r,compiled,error:gl.getError(),frame,idleFrame});
-     f.altarUpdate(a,1,0);
+     tickAltar(1,0);
      if(tint.opacity!==0)throw Error('Altar breath did not restart on re-entry');
      const offer=r.offerBlessing;
      try{r.offerBlessing=()=>{};f.altarDone(a,tier,true);}finally{r.offerBlessing=offer;}

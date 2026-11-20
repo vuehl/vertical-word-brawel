@@ -32,7 +32,9 @@ export async function reviewDeviceEffects(page, dir) {
       if (!facilities.hasVisual(f) || !model?.userData.deviceScreenFx) throw Error('Missing ' + kind);
       const expectedScale = kind === 'berry' ? .5 : 1;
       const ring = f.halo;
-      if (!ring || !ring.visible || ring.parent !== f.group || ring.position.y <= 0 ||
+      if (kind === 'berry' || kind === 'bill') {
+        if (ring) throw Error('Unexpected ground ring on ' + kind);
+      } else if (!ring || !ring.visible || ring.parent !== f.group || ring.position.y <= 0 ||
           ring.scale.x <= model.userData.footprintRadius * expectedScale) throw Error('Missing ground ring on ' + kind);
       if (ring&&(ring.position.x || ring.position.z ||
           ring.geometry !== facilities.dwellRing.geometry || ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1))

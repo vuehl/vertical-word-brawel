@@ -36827,14 +36827,14 @@ var GS = class e {
         ring.position.set(0, .12, 0);
         ring.scale.setScalar(facility.ringRadius);
       }
-      // Every available facility has the same grey ground track, including
-      // layered desk sprites. The altar swaps it for its active charge ring.
-      const halo = facility.halo = this.dwellRing.clone();
-      halo.material = this.idleRingMaterial;
-      halo.visible = !facility.used;
-      halo.position.set(0, .12, 0);
-      halo.scale.setScalar(facility.ringRadius);
-      group.add(halo);
+      if (kind !== 'berry' && kind !== 'bill') {
+        const halo = facility.halo = this.dwellRing.clone();
+        halo.material = this.idleRingMaterial;
+        halo.visible = !facility.used;
+        halo.position.set(0, .12, 0);
+        halo.scale.setScalar(facility.ringRadius);
+        group.add(halo);
+      }
       facility.model = model;
       if(artOwner)group.rotation.y=0;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
@@ -48329,13 +48329,20 @@ var ME = class {
             (this.stick.style.left = this.sx + `px`),
             (this.stick.style.top = this.sy + `px`));
         }
-        let a = Math.min(1, Math.hypot(n, r) / radius),
-          o = Math.atan2(r, n),
-          // A smaller floating base must not turn finger jitter into movement.
-          s = (this.floatingStick ? i < Math.max(3, radius * EE) : a < EE) ? 0 : 1;
-        ((t.stickX = Math.cos(o) * s),
-          (t.stickY = -Math.sin(o) * s),
-          (this.knob.style.transform = `translate(${Math.cos(o) * a * radius}px, ${Math.sin(o) * a * radius}px)`));
+        if (this.floatingStick && r !== 0) {
+          // Ignore small sideways deviations on a vertical drag. Blend back
+          // to the finger angle so crossing the tolerance cannot cause a turn.
+          const vertical = Math.abs(r);
+          const tolerance = Math.min(vertical * 0.5, Math.max(3, vertical * 0.25));
+          n *= Math.max(0, Math.min(1, (Math.abs(n) - tolerance) / (vertical * 0.2)));
+        }
+        const length = Math.hypot(n, r) || 1;
+        const dx = n / length, dy = r / length;
+        const deadZone = this.floatingStick ? Math.max(3, radius * EE) : radius * EE;
+        t.stickX = i < deadZone ? 0 : dx;
+        t.stickY = i < deadZone ? 0 : -dy;
+        const knobTravel = Math.min(i, radius);
+        this.knob.style.transform = `translate(${dx * knobTravel}px, ${dy * knobTravel}px)`;
         return;
       }
       if(this.run.terrain?.zxPaper)return;
