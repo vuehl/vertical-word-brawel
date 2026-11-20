@@ -151,7 +151,9 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
 const modelKinds=Object.keys(facilityNames).filter(kind=>kind!=='bill');
 const deviceKeys=modelKinds.map(kind=>'assets/models/'+facilityModelFile(kind)+'.glb');
-assert.equal(deviceKeys.length,8);
+assert.equal(deviceKeys.length,9);
+assert.deepEqual(fs.readdirSync(path.join(pub,'assets/models/devices')).filter(name=>name.endsWith('.glb')).sort(),
+  Object.values(facilityNames).map(name=>name+'.glb').sort(),'Each building name must match its source model');
 assert.deepEqual(models.sort(),['assets/models/ball.glb',...deviceKeys].sort());
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
 const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/DeviceScreenFx.mjs')));

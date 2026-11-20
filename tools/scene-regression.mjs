@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 
-const removed=['ditto','cursed','greed','porygon','snorlax','cage','rock','challenge','fossil','rhydon','meowth','hypno','slots','cursedchest','shroom','shrine','tower'];
-const retained=['boss','altar','bill','nest','magnet','freechest','berry','chest'];
+const removed=['cursed','greed','porygon','snorlax','cage','rock','challenge','fossil','rhydon','meowth','hypno','slots','cursedchest','shroom','shrine','tower'];
+const retained=['boss','altar','bill','nest','ditto','magnet','freechest','berry','chest'];
 
 // Exercise the compiled game, including dynamic placement and real NPC callbacks.
 export async function reviewScenes({page,tap,dir,sleep}) {
@@ -316,8 +316,8 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       await page.waitForFunction(()=>app.run.ui.mapOpen());
       const mapText=await page.evaluate(()=>app.run.ui.modalEl.textContent);
       assert.match(mapText,/附近地图/);
-      assert.match(mapText,/守护者祭坛/);
-      assert.doesNotMatch(mapText,/拍立得/);
+      assert.match(mapText,/时尚小垃圾/);
+      assert.match(mapText,/拍立得/);
       assert.doesNotMatch(mapText,/Snorlax|Porygon|卡比兽|多边兽|诅咒雕像|诅咒祭坛|贪婪|笼子|金矿石|Altar maldito|Jaula|Roca de oro|Altar de Gengar/i);
       await shot('scene-full-map');
       await page.evaluate(()=>{app.run.ui.hideModal();app.run.state='paused';});
@@ -347,7 +347,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
       });
       const blessing=report.blessing;
       assert.ok([0,1,2,3].includes(blessing.tier)&&blessing.atPlant&&blessing.complete&&blessing.used&&!blessing.boss);
-      assert.equal(blessing.title,'守护者祭坛');assert.equal(blessing.orbitGlyphs,0);assert.equal(blessing.waveTimers,0);
+      assert.equal(blessing.title,'时尚小垃圾');assert.equal(blessing.orbitGlyphs,0);assert.equal(blessing.waveTimers,0);
       await checkBlessingArt();
       await shot('祭坛祝福角色图');
       for(let i=0;i<(blessing.tier===3?2:1);i++)await tap('[data-choice="showBlessing"] [data-offer="0"]');

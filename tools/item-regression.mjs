@@ -86,7 +86,7 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
   assert.match(visit.costLabel,/金币/);assert.ok(visit.switched>0&&visit.switched<.025);
   assert.equal(visit.ringCharge,visit.charge);assert.ok(visit.charge>0&&visit.charge<1);
   assert.equal(visit.freeHint,'freechest');assert.ok(visit.sameRing);assert.ok(visit.clear);
-  await checkHint('altar','守护者祭坛');
+  await checkHint('altar','时尚小垃圾');
   await snapshot('14-guardian-altar');
   const later=await page.evaluate(()=>{
     qaItemFrames(30);

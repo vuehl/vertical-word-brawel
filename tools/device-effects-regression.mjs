@@ -66,7 +66,7 @@ export async function reviewDeviceEffects(page, dir) {
     return inventory;
   });
   assert.deepEqual(Object.keys(inventory).sort(),
-    ['chest','freechest','altar','boss','portal','magnet','berry','nest','bill'].sort());
+    ['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'].sort());
   await page.screenshot({path: path.join(dir, 'devices-in-game.png')});
   await page.evaluate(() => {
     const {host, facilities, sample, run} = deviceProbe;

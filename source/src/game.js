@@ -13235,13 +13235,7 @@ var Df = 0.4,
             e,
             i,
             y & 4 ? { floor: 0.05 * (T.strike[t.tier] ?? 1) } : {ordinaryContact: !(y & (SPECIAL_ACTORS | R.Elite))},
-          ) &&
-            ((this.atkAnim[i] = 0.35),
-            n.shove(
-              v ? (a - this.x[i]) / D : w,
-              v ? (o - this.z[i]) / D : E,
-              y & 12294 ? 9 : 3 + Math.min(4, ne * 2.5),
-            ));
+          ) && this.pushOnContact(i);
         }
       }
     }
@@ -13348,7 +13342,22 @@ var Df = 0.4,
           n,
           e,
           s & R.Boss ? {floor:.05*(T.strike[a.tier]??1)} : {ordinaryContact: !(s & (SPECIAL_ACTORS | R.Elite))},
-        ) && ((this.atkAnim[e] = 0.35), o.shove(-l / p, -u / p, t ? 9 : 3 + Math.min(4, c * 2.5)));
+        ) && this.pushOnContact(e);
+      }
+    }
+    pushOnContact(id) {
+      this.atkAnim[id] = 0.35;
+      const player = this.run.player, flags = this.flags[id];
+      const dx = player.pos.x - this.x[id], dz = player.pos.z - this.z[id];
+      const distance = Math.hypot(dx, dz) || 1;
+      const heavy = flags & (Cf | R.Boss);
+      if (this.run.terrain.desk2d && !heavy && !(flags & R.Elite)) {
+        // Resolve the light hit with body separation in the same step.
+        // An independent knockback velocity used to shove the player twice.
+        player.crowdX += 0.1 * dx / distance;
+        player.crowdZ += 0.1 * dz / distance;
+      } else {
+        player.shove(dx / distance, dz / distance, heavy ? 9 : 3 + Math.min(4, this.radius[id] * 2.5));
       }
     }
     render() {
@@ -33220,6 +33229,7 @@ var mv = 30,
         E = r.isLava ? -99 : r.waterAt(this.pos.x, this.pos.z),
         ee = r.frozen && T < E,
         D = !ee && T < E - 0.55;
+      if (y > 0 && t.ui.touch?.floatingStick && t.ui.touch.stickId >= 0) w *= Math.min(1, y);
       if (
         ((this.wading = !ee && !D && T < E - 0.04),
         (this.slip = Math.max(ee && this.pos.y < E + 0.3 ? 1 : 0, this.arenaSlip)),
@@ -33317,11 +33327,13 @@ var mv = 30,
       } else if (this.grounded) {
         let t = _ * w,
           n = v * w,
-          r = Math.min(1, ((y > 0 ? 70 : 40) * e) / Math.max(1, w)) * (1 - (y > 0 ? 0.86 : 0.96) * this.slip);
+          // A speed buff should increase stride without making a turn or stop take longer.
+          responseSpeed = r.desk2d ? Math.min(yv, w) : w,
+          response = Math.min(1, ((y > 0 ? 70 : 40) * e) / Math.max(1, responseSpeed)) * (1 - (y > 0 ? 0.86 : 0.96) * this.slip);
         this.landBuffer > 0 && Math.hypot(this.vel.x, this.vel.z) > w
           ? ((this.vel.x *= 0.97), (this.vel.z *= 0.97))
-          : ((this.vel.x += (t - this.vel.x) * Math.min(1, r * 4)),
-            (this.vel.z += (n - this.vel.z) * Math.min(1, r * 4)));
+          : ((this.vel.x += (t - this.vel.x) * Math.min(1, response * 4)),
+            (this.vel.z += (n - this.vel.z) * Math.min(1, response * 4)));
       } else {
         let t = this.vel.x * _ + this.vel.z * v,
           n = Math.max(0, Math.min(w * 0.9 - t, (40 * e * w) / 8));
@@ -33389,7 +33401,7 @@ var mv = 30,
         };
       this.anchorT > 0 && ((this.crowdX *= Cv), (this.crowdZ *= Cv));
       let ae = Math.hypot(this.crowdX, this.crowdZ),
-        oe = Sv * e;
+        oe = (r.desk2d && y > 0 ? Math.min(Sv, w * 0.3) : Sv) * e;
       ae > oe && ((this.crowdX *= oe / ae), (this.crowdZ *= oe / ae));
       let se = Math.exp(-e * 9);
       ((this.kx *= se), (this.kz *= se));
@@ -36696,7 +36708,7 @@ var RS = [
   {color: 16765498, css: '#ffd23a', r: 4.5, drain: 3, min: 3, offers: 4, picks: 2},
 ];
 var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
-  VS = { altar: 200, challenge: 240, magnet: 150, berry: 60 };
+  VS = { altar: 200, challenge: 240, ditto: 150, magnet: 150, berry: 60 };
 function rollAltarTier(rng, poolSize, luckMult) {
   // Draw one blessing from the area's original tier distribution.
   const slot = rng.int(0, poolSize - 1);
@@ -36961,7 +36973,7 @@ var GS = class e {
       const altarTier = rollAltarTier(rng, count(endless ? 3 : 5) + bonus, player.stats.luckMult);
       const kinds = [];
       for (const [kind, amount] of [
-        ['altar', 1], ['bill', 1], ['nest', 1],
+        ['altar', 1], ['bill', 1], ['nest', 1], ['ditto', endless ? 2 : 1],
         ['magnet', 1], ['freechest', GS.CHESTS_PER_KIND],
         ['berry', 2], ['chest', GS.CHESTS_PER_KIND],
       ]) {
@@ -37202,6 +37214,8 @@ var GS = class e {
           return c(`Abrir Poké Ball maldita (gratis... ¿seguro?)`);
         case `meowth`:
           return c(`Hablar con Meowth (tienda)`);
+        case `ditto`:
+          return e.used ? c(`Ditto descansa`) : c(`Ditto: clona uno de tus objetos`);
         case `hypno`:
           return c(`Hypno: olvida un movimiento o vitamina`);
         case `magnet`:
@@ -37344,6 +37358,16 @@ var GS = class e {
             break;
           case `meowth`:
             t.openShop();
+            break;
+          case `ditto`:
+            if (!t.player.items.size) {
+              t.ui.toast(c(`Ditto no tiene nada que copiar...`), null);
+              break;
+            }
+            t.openDitto(() => {
+              e.used = true;
+              this.dim(e);
+            });
             break;
           case `hypno`:
             t.openForget();
@@ -47328,6 +47352,17 @@ var GT = 15,
           this.shopBuys.push(sn.get(e.key)?.rarity ?? 0),
           !0);
     }
+    openDitto(onCopy) {
+      this.state = 'modal';
+      this.ui.showDitto(this, key => {
+        if (this.state !== 'modal') return;
+        if (key && this.player.items.has(key) && this.player.addItem(key)) {
+          onCopy();
+          this.ui.toast(c(`¡Ditto se transforma en {item}!`, {item: Zb(key).name}), key);
+        }
+        this.resume();
+      });
+    }
     openFossil(e) {
       ((this.state = `modal`),
         this.ui.showTrade(
@@ -48329,18 +48364,24 @@ var ME = class {
             (this.stick.style.left = this.sx + `px`),
             (this.stick.style.top = this.sy + `px`));
         }
-        if (this.floatingStick && r !== 0) {
-          // Ignore small sideways deviations on a vertical drag. Blend back
-          // to the finger angle so crossing the tolerance cannot cause a turn.
-          const vertical = Math.abs(r);
-          const tolerance = Math.min(vertical * 0.5, Math.max(3, vertical * 0.25));
-          n *= Math.max(0, Math.min(1, (Math.abs(n) - tolerance) / (vertical * 0.2)));
+        if (this.floatingStick) {
+          // Filter a few pixels of cross-axis jitter. Keep the band narrow
+          // on long drags so the heading follows the thumb around a circle.
+          const vertical = Math.abs(r) > Math.abs(n);
+          const major = Math.abs(vertical ? r : n), minor = Math.abs(vertical ? n : r);
+          const tolerance = Math.min(4, major * 0.45);
+          const blend = Math.min(1, Math.max(0, (minor - tolerance) / Math.max(1, tolerance)));
+          if (vertical) n *= blend;
+          else r *= blend;
         }
         const length = Math.hypot(n, r) || 1;
         const dx = n / length, dy = r / length;
         const deadZone = this.floatingStick ? Math.max(3, radius * EE) : radius * EE;
-        t.stickX = i < deadZone ? 0 : dx;
-        t.stickY = i < deadZone ? 0 : -dy;
+        const strength = this.floatingStick
+          ? Math.max(0, Math.min(1, (i - deadZone) / (radius - deadZone)))
+          : +(i >= deadZone);
+        t.stickX = strength * dx;
+        t.stickY = -strength * dy;
         const knobTravel = Math.min(i, radius);
         this.knob.style.transform = `translate(${dx * knobTravel}px, ${dy * knobTravel}px)`;
         return;
@@ -71031,7 +71072,7 @@ function iI(e, t) {
 }
 const facilityMapArt = Object.fromEntries(Object.entries({
   chest:'#e8443a', freechest:'#3a7aff', altar:'#2ec8e0', portal:'#9a6aff', boss:'#e8243a',
-  magnet:'#8a8aa0', berry:'#3a7aff', nest:'#6ad05a', bill:'#ffb43a',
+  magnet:'#8a8aa0', berry:'#3a7aff', ditto:'#c88aff', nest:'#6ad05a', bill:'#ffb43a',
 }).map(([kind, ring]) => [kind, {src: facilityIconFile(kind), ring, name: facilityNames[kind]}]));
 var cI = {
     boss: `#ff2a4a`,
@@ -71151,6 +71192,7 @@ var yI = new Set([
   `challenge`,
   `meowth`,
   `hypno`,
+  `ditto`,
   `slots`,
   `fossil`,
   `nest`,
@@ -71979,7 +72021,7 @@ var OI = [
       c(`Letal`),
       c(`Imposible`),
     ][e],
-  RI = new Set([`meowth`, `hypno`]);
+  RI = new Set([`meowth`, `ditto`, `hypno`]);
 function zI(e, t, n) {
   let r = e.textContent ?? ``,
     i = 0;
@@ -73451,6 +73493,7 @@ var JI = class {
           hypno: c(`Hypno`),
           magnet: buildingMapName({kind:'magnet'}),
           berry: c(`Bayas`),
+          ditto: facilityNames.ditto,
           boss: facilityNames.boss,
           portal: facilityNames.portal,
           shrine: c(`Santuario`),
@@ -74536,6 +74579,45 @@ var JI = class {
             (e.preventDefault(), N.click(), removeEventListener(`keydown`, r), t());
       };
       (setTimeout(() => addEventListener(`keydown`, r), 250), e.cry(52));
+    }
+    showDitto(e, t) {
+      let n = X(`div`, { class: `cards scroll` });
+      for (let [r, i] of e.player.items) {
+        let a = Zb(r),
+          o = !e.player.canHold(r),
+          s = X(
+            `button`,
+            {
+              class: `card mini`,
+              onclick: () => {
+                o ? N.deny() : t(r);
+              },
+            },
+            X(
+              `div`,
+              { class: `top` },
+              o
+                ? X(`span`, { class: `kind` }, c(`Máx.`))
+                : i > 1
+                  ? X(`span`, { class: `kind` }, `×${i}`)
+                  : null,
+              Q(r),
+            ),
+            X(`div`, { class: `bd` }, X(`h3`, {}, a.name), X(`p`, {}, a.desc)),
+          );
+        (s.style.setProperty(`--rc`, aw[a.rarity]), o && (s.style.opacity = `0.45`), n.append(s));
+      }
+      let r = this.modal(
+        X(`h1`, { class: `small` }, c(`Ditto: ¿qué objeto copio?`)),
+        n,
+        X(
+          `div`,
+          { class: `actions` },
+          X(`button`, { class: `btn ghost`, onclick: () => t(null) }, c(`Ahora no`)),
+        ),
+        sO(e),
+      );
+      lO(e, () => r.isConnected);
     }
     showSlots(e, t, n) {
       let r = (e) =>

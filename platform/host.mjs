@@ -239,7 +239,18 @@ export async function setup(host) {
       const x=(t.clientX??t.pageX)-view.x,y=(t.clientY??t.pageY)-view.y;
       return {...t,identifier:t.identifier,clientX:x,clientY:y,pageX:x,pageY:y};
     };
-    const all=Array.from(event.touches||[],local),changed=Array.from(event.changedTouches||event.touches||[],local);
+    const all=Array.from(event.touches||[],local);
+    let changed=Array.from(event.changedTouches||[],local);
+    if(!changed.length){
+      if(kind==='up'||kind==='cancel'){
+        // A remaining contact still owns its control. Only cancel missing IDs
+        // when the platform omits the final coordinates; never synthesize a tap.
+        const live=new Set(all.map(t=>t.identifier??0));
+        changed=Array.from(pointers,([identifier,p])=>({identifier,clientX:p.x,clientY:p.lastY}))
+          .filter(t=>!live.has(t.identifier));
+        kind='cancel';
+      }else changed=kind==='down'?all.filter(t=>!pointers.has(t.identifier??0)):all;
+    }
     const touchType='touch'+({down:'start',move:'move',up:'end',cancel:'cancel'}[kind]);
     for(const t of changed){
       const id=t.identifier??0,x=t.clientX,y=t.clientY;

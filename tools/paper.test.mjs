@@ -52,7 +52,7 @@ test('dense same-type map icons preserve every location in counts without overla
   for(const size of [9,12,17]){
     const labels=Array.from({length:36},(_,i)=>({kind:'altar',
       x:60+Math.cos(i*Math.PI/18)*48,y:58+Math.sin(i*Math.PI/18)*48}));
-    labels.push({kind:'altar',text:'守护者祭坛',x:60,y:58});
+    labels.push({kind:'altar',text:'时尚小垃圾',x:60,y:58});
     const result=layoutBuildingIcons(labels,size);
     assert.equal(result.reduce((sum,g)=>sum+g.count,0),labels.length);
     assert.ok(result.length<labels.length);
@@ -88,7 +88,7 @@ test('map filters distinguish free gifts and keep buildings visible through fog 
   texts.length=0;run.events={blind:true};run.ui.mapFacilityIcon=()=>null;
   for(const shadow of [true,false]){
     result=drawBattleMinimap(canvas,run,{shadow,facilityKind:'freechest'});
-    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),(shadow?['免','免费扭蛋','传','传送门']:['免','免费扭蛋']).sort());
+    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),(shadow?['免','免费扭蛋','门','门？']:['免','免费扭蛋']).sort());
   }
 });
 
@@ -99,9 +99,9 @@ test('overlapping different facility types are never counted as one type',()=>{
 });
 
 test('expanded map keeps names below icons, clear of other names and inside the dial',()=>{
-  const kinds=['chest','freechest','altar','boss','portal','magnet','berry','nest','bill'];
-  const widths=[13,24,29.5,13,18.5,13,18.5,18.5,18.5];
-  const markers=kinds.map((kind,i)=>({kind,labelWidth:widths[i],x:60+Math.cos(i/9*Math.PI*2)*30,y:58+Math.sin(i/9*Math.PI*2)*30}));
+  const kinds=['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'];
+  const widths=[13,24,29.5,18.5,13,13,18.5,18.5,18.5,18.5];
+  const markers=kinds.map((kind,i)=>({kind,labelWidth:widths[i],x:60+Math.cos(i/kinds.length*Math.PI*2)*30,y:58+Math.sin(i/kinds.length*Math.PI*2)*30}));
   const groups=layoutBuildingIcons(markers,12,{x:60,y:58},5.5);
   for(let i=0;i<groups.length;i++){
     const a=groups[i].box;
@@ -113,13 +113,13 @@ test('expanded map keeps names below icons, clear of other names and inside the 
   }
 });
 
-test('compact map fits all nine types alongside a free chest near the player',()=>{
-  const kinds=['chest','freechest','altar','boss','portal','magnet','berry','nest','bill'],lengths=[2,4,5,2,3,2,3,3,3];
+test('compact map fits all ten types alongside a free chest near the player',()=>{
+  const kinds=['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'],lengths=[2,4,5,3,2,2,3,3,3,3];
   const size=3840/380,font=2400/380,ratio=190/(84*2.3);
-  const markers=kinds.map((kind,i)=>({kind,labelWidth:lengths[i]*font+2,x:60+Math.cos(i/9*Math.PI*2)*32.4/ratio,y:58+Math.sin(i/9*Math.PI*2)*32.4/ratio}));
+  const markers=kinds.map((kind,i)=>({kind,labelWidth:lengths[i]*font+2,x:60+Math.cos(i/kinds.length*Math.PI*2)*32.4/ratio,y:58+Math.sin(i/kinds.length*Math.PI*2)*32.4/ratio}));
   markers.push({kind:'freechest',labelWidth:4*font+2,x:60-4.5/ratio,y:58+6.3/ratio});
   const groups=layoutBuildingIcons(markers,size,{x:60,y:58},font);
-  assert.equal(groups.length,9);
+  assert.equal(groups.length,10);
   for(let i=0;i<groups.length;i++)for(let j=i+1;j<groups.length;j++)for(const a of groups[i].hitBoxes)for(const b of groups[j].hitBoxes)
     assert.ok(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y);
 });
