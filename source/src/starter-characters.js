@@ -7,7 +7,7 @@ export const starterWords = Object.freeze(Object.fromEntries(
   [4,5,6,132,16,17,18,58,59].map(id=>[id,formCopy[id].word])
 ));
 export const windRoutes = [
-  {middle:17, final:18, role:'A · 攻速', note:'「卷着打转」扩散风环。「刮倒一片」攻速十倍，持续5秒。'},
+  {middle:17, final:18, role:'A · 攻速', note:'「卷着打转」双龙卷伴随风环与羽毛扩散。「刮倒一片」攻速十倍，持续5秒。'},
   {middle:58, final:59, role:'B · 移速', note:'「叫完就冲」卷起旋风。「跑得没影」移速十倍，持续5秒。飒、飙被动：移速每增加 2%，伤害 +1%，大招加速同样生效。'},
 ];
 export const attackSpeedBuff = 'ziling-wind-attack-speed';
@@ -70,13 +70,13 @@ export function starterUltimate(id,original,castWindRing){
     const index=id===16?0:1;
     def=renamed(original[16],name,index,ctx=>original[16].cast({...ctx,tier:index,form:index}));
   }else if(id===17){
-    def={names:[name],descs:['从自身向四周扩散一道风环，对触及的敌人造成风系伤害。'],
-      type:'flying',cls:'special',dur:[0.8],tint:0xb8e8e0,cast:castWindRing};
+    def={names:[name],descs:['两道龙卷向前推进，牵引并持续击打敌人；周身风环和羽毛向外扩散。'],
+      type:'flying',cls:'special',dur:[2.2],tint:0xb8e8e0,cast:castWindRing};
   }else if(id===18||id===59){
     const attack=id===18,key=attack?attackSpeedBuff:speedBuff;
     def={names:[name],descs:['使当前'+(attack?'攻击':'移动')+'速度变为 10 倍，持续 '+speedDuration+' 秒。重复释放刷新持续时间。'+(attack?'':'被动：'+windSpeedPassive)],
       type:'flying',cls:'physical',dur:[speedDuration],tint:0xb8e8e0,
-      cast({run}){run.player.addBuff(key,speedDuration,name);run.player.zilingSpeedFx=0;}};
+      cast({run}){run.player.addBuff(key,speedDuration,name);run.player.zilingSpeedFx=0;run.player.zilingSpeedPosition=null;}};
   }
   if(def)ultCache.set(id,def);
   return def;
@@ -87,6 +87,27 @@ export function applyStarterSpeed(stats,buffs){
 }
 export function updateStarterSpeed(run,delta,shape){
   const p=run.player;
+  if(p.buffs.has(speedBuff)){
+    const previous=p.zilingSpeedPosition;
+    p.zilingSpeedPosition={x:p.pos.x,y:p.pos.y,z:p.pos.z};
+    if(!previous||p.dead||!run.vfx.crafted.allowed())return;
+    const dx=p.pos.x-previous.x,dz=p.pos.z-previous.z,distance=Math.hypot(dx,dz);
+    if(distance<.08)return;
+    const steps=Math.min(5,Math.max(1,Math.ceil(distance/.7)));
+    for(let i=0;i<steps;i++){
+      // Sample actual travelled positions. No afterimages beyond walls or
+      // ahead of the player, and no new samples while standing still.
+      const f=i/steps;
+      const old=run.ghosts.findIndex(g=>g.windGlyph);
+      if(run.ghosts.filter(g=>g.windGlyph).length>=5)run.ghosts.splice(old,1);
+      if(run.ghosts.length>=96)run.ghosts.shift();
+      run.ghosts.push({windGlyph:true,species:p.speciesId,scale:p.renderScale,x:previous.x+dx*f,
+        y:previous.y+(p.pos.y-previous.y)*f,z:previous.z+dz*f,dir:run.sprites.dirRow(dx,dz),
+        start:run.time,life:.24});
+    }
+    return;
+  }
+  p.zilingSpeedPosition=null;
   if(!p.buffs.has(speedBuff)&&!p.buffs.has(attackSpeedBuff))return;
   p.zilingSpeedFx=(p.zilingSpeedFx||0)-delta;
   if(p.zilingSpeedFx>0)return;
@@ -97,5 +118,7 @@ export function clearStarterSpeed(run){
   const p=run.player;
   if(!p)return;
   const movement=p.buffs.delete(speedBuff),attack=p.buffs.delete(attackSpeedBuff);
+  p.zilingSpeedPosition=null;
+  if(run.ghosts)for(let i=run.ghosts.length-1;i>=0;i--)if(run.ghosts[i].windGlyph)run.ghosts.splice(i,1);
   if(movement||attack)p.recompute();
 }

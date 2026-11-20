@@ -107,6 +107,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       // Preserve the reference's translucent orange silhouette, including its
       // tinted outline. Only the sampled character texture changes by form.
       m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);c.a*=clamp(vFx.y,0.,1.);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.,.28,.04),.35);gl_FragColor=c;}';
+      if(heroEntry.ghost==='wind')m.fragmentShader=m.fragmentShader.replace('vec3(1.,.28,.04),.35','vec3(.65,.92,1.),.85');
       m.transparent=true;m.depthWrite=false;
     }else if(ally){
       // Keep the authored ink border and hit flash; allies share the hero's
@@ -120,7 +121,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
       m.transparent=true;m.depthWrite=false;
     }
-    m.needsUpdate=true;batches.add(batch,t.uuid+(heroEntry?.ghost?'-ghost':ally?'-ally':batch.zxOriginalGlyph?'-original':''),heroEntry?.ghost?96:heroEntry?1:ally?8:1024);return batch;
+    m.needsUpdate=true;batches.add(batch,t.uuid+(heroEntry?.ghost?'-ghost-'+heroEntry.ghost:ally?'-ally':batch.zxOriginalGlyph?'-original':''),heroEntry?.ghost?96:heroEntry?1:ally?8:1024);return batch;
   }
   run.sprites.getAllyGlyph=(id,playerSpecies)=>{
     const word=glyphWordForSpecies(playerSpecies);
@@ -137,11 +138,11 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   };
   run.sprites.getAnimatedHeroGlyph=(id,frame)=>
     skin(get(id,false,'hero-animation'),glyphWordForSpecies(frame.species),animations.get(frame.species));
-  run.sprites.getHeroGhostGlyph=id=>{
+  run.sprites.getHeroGhostGlyph=(id,style='fire')=>{
     const entry=animations.get(id);
     if(!entry?.texture.image)return null;
     const frame=heroActionFrame({},id,'walk',0);
-    const batch=skin(get(id,false,'hero-ghost'),glyphWordForSpecies(id),{...entry,ghost:true,rect:frame.rect});
+    const batch=skin(get(id,false,'hero-ghost-'+style),glyphWordForSpecies(id),{...entry,ghost:style,rect:frame.rect});
     batch.zxGhostScale=frame.renderScale;
     return batch;
   };
