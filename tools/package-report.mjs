@@ -6,7 +6,7 @@ import {unpackStream} from './resource-stream.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const index=createRequire(import.meta.url)(path.join(game,'assets.js'));
-const category=file=>file.startsWith('play/')?'玩法与引擎代码':
+const category=file=>file==='play.js'?'玩法与引擎代码':
   /^packs\/(sound|music_[^/]+)\//.test(file)?'背景音乐':
   file.startsWith('packs/text/')?'字体、文字、数据与许可':
   file.startsWith('packs/world/')?'场景与界面资源':

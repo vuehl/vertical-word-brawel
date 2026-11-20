@@ -22,7 +22,7 @@ export function createFacilityEffects(host, focusWorld) {
   const visiblePass = new PostprocessingPass('Visible devices', null, null);
   const colourPass = new PostprocessingPass('Device screen effects', null, null);
   const source = {width: 0, height: 0, texture: null, depthTexture: null};
-  const options = {focusWorld, matricesUpdated: true};
+  const options = {focusWorld, matricesUpdated: true, originalOutlineRadiusPx: 0};
 
   // The device ID mask already contains the visible silhouette (> .5).
   // Prepare it before world outlines, then reuse it after colour grading.

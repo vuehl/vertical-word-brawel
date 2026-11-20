@@ -38,7 +38,7 @@ export async function reviewQuality(page,dir){
     for(const sample of samples){
       assert.deepEqual(sample.ui,high.ui);assert.deepEqual(sample.display,high.display);
       assert.deepEqual(sample.layers,high.layers);assert.equal(sample.headingHash,high.headingHash,'Heading pixels stay identical');
-      assert.doesNotMatch(sample.text,/各档界面文字|当前生效|对流畅度有多大帮助|场景像素预算|帧率上限/);
+      assert.doesNotMatch(sample.text,/各档界面文字|当前生效|对流畅度有多大帮助|场景像素预算/);
     }
     assert.ok(pixels(low)<pixels(medium)&&pixels(medium)<pixels(high));
     assert.deepEqual(locked.world,high.world);assert.deepEqual(restored.world,high.world);

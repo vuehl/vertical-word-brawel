@@ -1,3 +1,9 @@
+import {deskCamera,deskDevice} from './desk2d.js';
+import {createBerryPickup} from './berry-pickup.js';
+import {entryHeroScale,entryFootOffset,deskTilt,cameraEase} from './desk-framing.js';
+import {MapSpawnError,mapRulesFor} from './map-rules.js';
+import {altarPalette} from './desk-altar-art.js';
+import {ALTAR_RING_EMISSIVE,altarRingFragment} from './altar-ring-vfx.js';
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
 import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,facilityModelFile,facilityNames,isActiveFacility} from './active-content.js';
 import {createFacilityEffects} from './facility-effects.js';
@@ -15,10 +21,10 @@ import {createZixingUI,paperIcon} from './zixing-ui.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
 import {heroActionCatalog} from './hero-action-catalog.js';
-import {playerHeroAction} from './hero-actions.js';
+import {playerHeroAction,animatedPixelHeight,glyphBillboardSize} from './hero-actions.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
-import {createPlayerFootRing,createFacilityDwellRing} from './player-foot-ring.js';
+import {createPlayerFootRing,createFacilityDwellRing,createAltarChargeRing,createDeskAltarRing} from './player-foot-ring.js';
 import {EnemyTelegraphs} from './enemy-telegraphs.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
@@ -34,6 +40,7 @@ import {createStylizedEffectAtlas,EFFECT_CELL,STAMPEDE_FLAME} from './stylized-e
 import {StylizedSkillFX} from './stylized-skill-vfx.js';
 import {actorMetrics} from './actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera,updateWorkshopScene} from './paper-world.js';
+import {moveShelfAlly} from './desk-shelf.js';
 import {updateLooseMarbles} from './workshop-marbles.js';
 import {createSceneAntialias} from './scene-antialias.js';
 import {paperProp} from './paper-props.js';
@@ -5473,7 +5480,7 @@ async function Dc(e, t, n) {
       });
     }
 }
-var Oc = 0.074,
+var Oc = animatedPixelHeight,
   kc = 0.04,
   Ac = 4,
   jc = 12e3,
@@ -5935,7 +5942,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
       if(this.zxGlyph){
         const buffer=this.zxGroup||this;
         if(buffer===this&&this.count>=this.cap)this.grow();
-        const index=buffer===this?this.count++:buffer.reserve(),size=Math.max(1.9,Math.min(2.55,this.bodyHeight(1)*1.3))*o;
+        const index=buffer===this?this.count++:buffer.reserve(),size=glyphBillboardSize(this.bodyHeight(1))*o;
         if(buffer!==this)this.count++;
         const pos=buffer.aPos.array,dim=buffer.aSize.array,uv=buffer.aUV.array,fx=buffer.aFx.array,tint=buffer.aTint.array,look=buffer.aLook.array;
         pos[index*3]=e;pos[index*3+1]=t+.08;pos[index*3+2]=n;
@@ -6905,7 +6912,7 @@ var Rl = 20,
         depthWrite: !1,
         blending: 1, // Opaque pigment/ink silhouettes use normal alpha, never additive washout.
         uniforms: { map: { value: t }, uFogColor: a.uFogColor, uFogNear: a.uFogNear, uFogFar: a.uFogFar },
-        vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
+        vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; varying vec2 vUv; varying vec2 vLocalUv; varying vec4 vCol; varying float vGlow; varying float vD;
         void main(){
           float cs = cos(iC.y), sn = sin(iC.y);
           vec2 p2 = vec2(position.x*cs - ${i ? `position.z` : `position.y`}*sn, position.x*sn + ${i ? `position.z` : `position.y`}*cs) * iA.w;
@@ -6914,10 +6921,11 @@ var Rl = 20,
           gl_Position = projectionMatrix * mv;
           float idx = iC.x; vec2 cell = vec2(mod(idx,8.), 17. - floor(idx/8.));
           vUv = (cell + uv) / vec2(8., 18.);
-          vCol = iB; vGlow = iC.z;
+          vCol = iB; vGlow = iC.z; vLocalUv=uv;
         }`,
-        fragmentShader: `uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; varying vec2 vUv; varying vec4 vCol; varying float vGlow; varying float vD;
-        void main(){ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if (a < 0.01) discard;
+        fragmentShader: `uniform sampler2D map; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; varying vec2 vUv; varying vec2 vLocalUv; varying vec4 vCol; varying float vGlow; varying float vD;
+        void main(){ ${altarRingFragment}
+ vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if (a < 0.01) discard;
           vec3 c = vCol.rgb * t.rgb * (1. + min(vGlow,.15));
           ${r ? Ml : `c = min(c, vec3(0.93)); c = mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD));`}
           gl_FragColor = vec4(c, a); }`,
@@ -9171,6 +9179,8 @@ var qu = `
     arenaR;
     ringR = 1 / 0;
     constructor(e, t, n, r, paperAssets, deferred = false) {
+      this.mapRules = mapRulesFor(e, r);
+      this.facilitySites = this.mapRules.facilitySites;
       this.paperAssets=paperAssets;
       ((this.biome = e),
         (this.seed = t),
@@ -9599,7 +9609,8 @@ var qu = `
       let m = 1e9,
         h = -1e9;
       for (let e of this.heights) (e < m && (m = e), e > h && (h = e));
-      ((this.minH = m), (this.maxH = h), this.spawn.set(0, this.height(0, 0), 0));
+      const {x, z} = this.mapRules.spawn;
+      ((this.minH = m), (this.maxH = h), this.spawn.set(x, this.height(x, z), z));
     }
     massifs = [];
     landmarks = [];
@@ -13094,7 +13105,7 @@ var Df = 0.4,
         }
         if (
           ((this.x[i] = Math.max(-fe, Math.min(fe, ue))),
-          (this.z[i] = Math.max(-fe, Math.min(fe, de))),
+          (this.z[i] = Math.max(-(r.deskBounds?.z-2||fe), Math.min(r.deskBounds?.z-2||fe, de))),
           r.solidBoxes.length &&
             r.inSolid(this.x[i], this.z[i]) &&
             (r.inSolid(this.x[i], le)
@@ -16209,6 +16220,7 @@ var Pm = class {
       this.list.forEach((t, n) => this.updateAlly(t, n, e));
     }
     updateAlly(e, t, n) {
+      const fromX=e.x,fromZ=e.z;
       let r = this.run,
         i = r.player,
         a = r.terrain;
@@ -16219,6 +16231,7 @@ var Pm = class {
         let t = 1 - Math.max(0, e.hop) / 0.32;
         ((e.x = e.hx + (e.tx - e.hx) * t),
           (e.z = e.hz + (e.tz - e.hz) * t),
+          moveShelfAlly(a,e,fromX,fromZ),
           (e.y = a.surface(e.x, e.z) + Math.sin(t * Math.PI) * 1.8 + (o ? 1.1 : 0)),
           (e.anim += n * 3),
           e.hop <= 0 && this.land(e));
@@ -16250,6 +16263,7 @@ var Pm = class {
           (e.fz = _ / v),
           (e.anim += n * (0.6 + t / 4)));
       }
+      moveShelfAlly(a,e,fromX,fromZ);
       let y = a.surface(e.x, e.z) + (o ? 1.1 + Math.sin(r.time * 3 + t) * 0.2 : 0);
       if (((e.y += (y - e.y) * Math.min(1, n * 12)), (e.timer -= n), e.timer > 0)) return;
       let b = r.enemies,
@@ -33434,7 +33448,7 @@ var mv = 30,
       } else this.stuckT = Math.max(0, this.stuckT - e * 2);
       let _e = r.walkLim;
       if (
-        ((this.pos.x = Gs(this.pos.x, -_e, _e)), (this.pos.z = Gs(this.pos.z, -_e, _e)), r.arenaR < 1 / 0)
+        ((this.pos.x = Gs(this.pos.x, -_e, _e)), (this.pos.z = Gs(this.pos.z, -(r.deskBounds?.z-2||_e), r.deskBounds?.z-2||_e)), r.arenaR < 1 / 0)
       ) {
         let e = Math.hypot(this.pos.x, this.pos.z),
           t = r.arenaR - 0.3;
@@ -33651,7 +33665,7 @@ var mv = 30,
             spin: 4,
           }),
         !t.zxOriginalGlyph && e.sprites.shadows.push(this.pos.x, p, this.pos.z, 1.4),
-        e.playerFootRing ??= createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr}));
+        e.playerFootRing ??= e.sprites.clipFootRing(createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr})));
       e.playerFootRing.visible=!this.dead;
       e.playerFootRing.position.set(this.pos.x,p+.09,this.pos.z);
     }
@@ -36774,7 +36788,12 @@ var GS = class e {
     async loadDevice(facility) {
       const group = facility.group;
       if (this.disposed || group.parent !== this.group) return;
-      const model = await bu(facilityModelFile(BS(facility)));
+      const flat=this.run.terrain.desk2d;
+      const kind=BS(facility);
+      // The summon dock needs its live countdown screen and opening animation.
+      // Other desk facilities use the illustrated sprites.
+      const artOwner=kind==='bill'?(this.billArt??={deskOwned:[],deskTextures:new Map()}):flat&&kind!=='boss'?this.run.terrain:null;
+      const model = artOwner ? await deskDevice(artOwner,kind,facility.data?.tier) : await bu(facilityModelFile(kind));
       if (this.disposed || group.parent !== this.group) return;
       if (!model) {
         facility.retry = setTimeout(() => this.loadDevice(facility), 10000);
@@ -36785,22 +36804,27 @@ var GS = class e {
       group.add(model);
       group.userData.h = model.userData.displayHeight * scale;
       facility.ringRadius = Math.max(facility.r, model.userData.footprintRadius * scale + 0.7);
-      const ring = facility.halo = this.dwellRing.clone();
-      const isBerry = facility.kind === 'berry';
-      ring.material = isBerry ? this.idleRingMaterial.clone() : this.idleRingMaterial;
-      if (isBerry) ring.material.uniforms.berryCooldown.value = 0;
-      group.add(ring);
-      ring.position.set(0, .12, 0);
-      ring.scale.setScalar(facility.ringRadius);
-      ring.visible = isBerry || !facility.used;
+      let ring;
       if (facility.kind === 'altar') {
-        const charge = facility.chargeRing = this.dwellRing.clone();
-        charge.material = this.dwellRing.material.clone();
-        group.add(charge);
-        charge.position.copy(ring.position);
-        charge.scale.copy(ring.scale);
+        const tier = facility.data.tier, three = {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr};
+        const palette = altarPalette[tier];
+        ring = facility.chargeRing = flat
+          ? createDeskAltarRing(group,three,new Ei(palette.ring),new Ei(palette.dark),model.userData.breathOpacity)
+          : createAltarChargeRing(group,three,new Ei(RS[tier].color));
+      } else if(facility.kind==='berry'){
+        facility.berryPickup=createBerryPickup(model,this.run.r);
+      } else if(facility.kind!=='bill'){
+        ring = facility.halo = this.dwellRing.clone();
+        ring.material = this.idleRingMaterial;
+        ring.visible = !facility.used;
+        group.add(ring);
+      }
+      if(ring){
+        ring.position.set(0, .12, 0);
+        ring.scale.setScalar(facility.ringRadius);
       }
       facility.model = model;
+      if(artOwner)group.rotation.y=0;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
       this.deviceFx.add(model);
       if (model.userData.portalDock) {
@@ -36812,11 +36836,14 @@ var GS = class e {
         await facility.dock.ready;
         if (this.disposed || group.parent !== this.group) return;
       }
-      if (facility.used) this.dim(facility);
+      if (facility.used){
+        if(facility.berryPickup)model.visible=false;
+        else this.dim(facility);
+      }
     }
     releaseDevice(facility) {
       clearTimeout(facility.retry);
-      if (facility.kind === 'berry') facility.halo?.material.dispose();
+      facility.berryPickup=null;
       facility.halo?.removeFromParent();
       facility.halo = null;
       if (facility.chargeRing) {
@@ -36826,7 +36853,7 @@ var GS = class e {
         facility.chargeRing = null;
       }
       if (!facility.model) return;
-      this.deviceFx.remove(facility.model);
+      this.deviceFx?.remove(facility.model);
       facility.dock?.dispose();
       facility.dock = null;
       this.restoreDeviceColour(facility);
@@ -36855,7 +36882,10 @@ var GS = class e {
       if (kind === 'altar') {
         const tier = facility.data?.tier;
         facility.data = {tier: Number.isInteger(tier) && RS[tier] ? tier : 0};
+        facility.altarColor = this.run.terrain.desk2d ? altarPalette[facility.data.tier].dark : RS[facility.data.tier].color;
+        facility.altarCss = this.run.terrain.desk2d ? '#' + facility.altarColor.toString(16).padStart(6,'0') : RS[facility.data.tier].css;
         facility.charge = 0;
+        facility.charging = false;
         facility.r = RS[facility.data.tier].r;
         if (facility.data.tier >= 2) this.altarBeacon(facility);
       } else if (kind === 'boss') {
@@ -36881,8 +36911,7 @@ var GS = class e {
     }
     altarBeacon(e) {
       let t = e.data?.tier ?? 0,
-        n = RS[t],
-        r = fb(n.color, 0.9 + 0.3 * (t - 2), 4.2, t >= 3 ? 30 : 16);
+        r = fb(e.altarColor, 0.9 + 0.3 * (t - 2), 4.2, t >= 3 ? 30 : 16);
       (r.position.set(e.x, e.y, e.z), this.group.add(r), (e.beacon = r));
     }
     place(e, t, n, r = {}) {
@@ -36891,7 +36920,7 @@ var GS = class e {
     populate() {for(const _ of this.populationSteps()){} }
     async populateAsync() {
       // The first summoned portal must open immediately when the boss falls.
-      const portal = !this.run.sanctuary && loadModelTemplate(facilityModelFile('portal'));
+      const portal = !this.run.terrain.desk2d && !this.run.sanctuary && loadModelTemplate(facilityModelFile('portal'));
       const check = () => { if (this.disposed || this.run.disposed) throw Error('本局已结束'); };
       const stats = await runLoadingSteps(this.populationSteps(),{
         check,
@@ -36941,12 +36970,29 @@ var GS = class e {
       for (const kind of kinds) {
         const minDistance = kind === 'boss' ? limit * .55 : 14;
         const needsLargeSite = kind === 'boss' || kind === 'altar';
+        const radius = needsLargeSite ? 6.5 : 4.5;
+        const designated = kind !== 'boss' && this.availableMapSite(radius);
         let best = -1;
-        for (let i = 0; i < sites.length; i++) {
+        for (let i = 0; !designated && i < sites.length; i++) {
           if (sites[i].fromSpawn < minDistance || (needsLargeSite && !sites[i].fitsAltar)) continue;
           if (best < 0 || sites[i].clearance > sites[best].clearance) best = i;
         }
-        const site = best >= 0 ? sites.splice(best, 1)[0] : terrain.randomPoint(rng, 0, 0, minDistance, limit);
+        let site = designated || (best >= 0 ? sites.splice(best, 1)[0] : null);
+        if (!site && terrain.desk2d) {
+          // The coarse random grid may miss the final usable patches of desk.
+          // Keep the spawn, desk edge and prop checks on this path too.
+          let clearance = -Infinity;
+          for (let z = -terrain.deskBounds.z + 6; z <= terrain.deskBounds.z - 6; z += 1.5) {
+            for (let x = -limit; x <= limit; x += 1.5) {
+              if (Math.hypot(x-terrain.spawn.x,z-terrain.spawn.z) < minDistance ||
+                  !terrain.inBounds(x,z,6) || !terrain.isFlatOpen(x,z) || !this.fitsOnDesk(x,z,radius)) continue;
+              const gap = this.list.reduce((d,f)=>Math.min(d,Math.hypot(x-f.x,z-f.z)-f.r),Infinity);
+              if (gap > clearance) { site = {x,z}; clearance = gap; }
+            }
+          }
+          if (!site) throw Error('桌面没有符合避让规则的设施位置：' + kind);
+        }
+        site ??= terrain.randomPoint(rng, 0, 0, minDistance, limit);
         const facility = this.add(kind, site.x, site.z, kind === 'altar' ? {data: {tier: altarTier}} : {});
         for (const other of sites) {
           other.clearance = Math.min(other.clearance, Math.hypot(other.x - site.x, other.z - site.z) - facility.r);
@@ -36954,8 +37000,16 @@ var GS = class e {
         yield;
       }
     }
-    fitsOnDesk(x, z, radius) {
+    availableMapSite(radius, accepts = () => true) {
       const terrain = this.run.terrain;
+      return terrain.facilitySites?.find(({x,z,surface}) =>
+        Math.hypot(x-terrain.spawn.x,z-terrain.spawn.z) >= 14 &&
+        terrain.inBounds(x,z,6) && Math.hypot(x,z) <= terrain.arenaR-6 && terrain.isFlatOpen(x,z) &&
+        this.fitsOnDesk(x,z,radius,surface) && this.hasBuildingSpace(x,z,2.6) && accepts(x,z));
+    }
+    fitsOnDesk(x, z, radius, surface) {
+      const terrain = this.run.terrain;
+      if (terrain.fitsFacilitySurface && !terrain.fitsFacilitySurface(x,z,radius,surface)) return false;
       const floor = terrain.height(x, z);
       if (terrain.hitProp(x, floor + .1, z, radius) ||
           this.lowProps.some(prop => hitsPaperBox(prop, x, z, radius))) return false;
@@ -36986,6 +37040,8 @@ var GS = class e {
           !c.isFlatOpen(e, t) ||
           !this.fitsOnDesk(e, t, 2.6) ||
           !this.hasBuildingSpace(e, t, 2.6);
+      const site = this.availableMapSite(4.5, (x,z)=>!d(x,z) && !u(x,z));
+      if (site) return this.add(n ? 'freechest' : 'chest', site.x, site.z, r ? {data:{gift:true}} : {});
       for (let n = 0; n < 40 && f(o, s); n++) {
         let r = this.run.terrain.randomPoint(F, e, t, 2, 4 + n);
         ((o = r.x), (s = r.z));
@@ -37006,6 +37062,11 @@ var GS = class e {
           let e = this.run.player.pos;
           ((o = e.x), (s = e.z));
         }
+      }
+      if (c.desk2d && f(o,s)) {
+        const free = this.chestSites?.find(p=>!f(p.x,p.z));
+        if (!free) return null;
+        o=free.x; s=free.z;
       }
       return this.add(n ? `freechest` : `chest`, o, s, r ? { data: { gift: !0 } } : {});
     }
@@ -37281,14 +37342,14 @@ var GS = class e {
               t.audio.power());
             break;
           case `berry`:
-            ((e.used = !0),
-              ((e.data ??= {}).regenAt = t.time + VS.berry),
-              t.player.heal(t.player.maxHp * 0.5),
-              t.meta.count(`berries`, 1),
-              t.vfx.burst(e.x, e.y + 3, e.z, 5933823, 16, 4, I.Heart, 0.5),
-              t.ui.toast(c(`Recuperas PS con unas Bayas Aranja`), `oran-berry`),
-              t.audio.heal(),
-              this.dim(e));
+            if(t.state!=='play'||t.player.dead||t.coop?.lifting||t.capture.throwing||t.capture.canThrow()||
+                !this.hasVisual(e)||!e.berryPickup?.inReach(t.player))break;
+            e.used=true;e.absorbing=true;
+            (e.data??={}).regenAt=t.time+VS.berry;
+            e.berryPickup.begin(t.player);
+            e.model.userData.setVisualState?.('used');
+            t.player.heal(t.player.maxHp*.5);
+            t.meta.count(`berries`,1);
             break;
           case `boss`:
             if (t.stageTime < bossSummonUnlockSeconds(t) || this.nearest !== e || this.dwellTime < bossSummonSeconds) break;
@@ -37402,11 +37463,15 @@ var GS = class e {
         return;
       }
       if (!facility.model || facility.originalMaterials) return;
+      facility.model.userData.setVisualState?.('used');
       const originals = facility.originalMaterials = new Map();
       facility.model.traverse(mesh => {
         if (!mesh.isMesh) return;
-        originals.set(mesh, mesh.material);
-        mesh.material = mesh.material.clone();
+        const original = mesh.material;
+        originals.set(mesh, original);
+        mesh.material = original.clone();
+        // Three.js does not clone the shader hook used to composite layered desk art.
+        mesh.material.onBeforeCompile = original.onBeforeCompile;
         mesh.material.color.multiplyScalar(0.55);
       });
     }
@@ -37417,6 +37482,7 @@ var GS = class e {
         mesh.material = original;
       }
       facility.originalMaterials = null;
+      facility.model.userData.setVisualState?.('idle');
     }
     openChest(e, t, n = !1, r) {
       let i = this.run;
@@ -37464,6 +37530,14 @@ var GS = class e {
     }
     respawnChest(chest) {
       const {terrain, player, time} = this.run;
+      const canRefill = (x,z) => Math.hypot(x-chest.x,z-chest.z) >= 14 &&
+        Math.hypot(x-player.pos.x,z-player.pos.z) >= 10 && !terrain.isReserved(x,z,3);
+      const designated = this.availableMapSite(4.5,canRefill);
+      if (designated) {
+        this.remove(chest);
+        this.add(BS(chest),designated.x,designated.z);
+        return;
+      }
       const sites = this.chestSites ?? [];
       if(!sites.length){chest.respawnAt=time+1;return;}
       chest.refillCursor ??= F.int(0,sites.length-1);
@@ -37507,6 +37581,17 @@ var GS = class e {
           continue;
         }
         const ready = this.hasVisual(a);
+        if(a.kind==='berry'){
+          if(a.absorbing){
+            if(a.berryPickup.advance(e,t.player)){
+              a.absorbing=false;
+              t.vfx.burst(n.x,n.y+1,n.z,5933823,16,4,I.Heart,.5);
+              t.ui.toast(c(`Recuperas PS con unas Bayas Aranja`),`oran-berry`);t.audio.heal();
+            }
+          }else if(a.used)this.regen(a);
+          else if(ready)this.interact(a);
+          continue;
+        }
         if (a.beacon) a.beacon.visible = ready;
         if (!a.used && !ready) continue;
         let o = a.group;
@@ -37637,7 +37722,7 @@ var GS = class e {
               I.Twinkle,
               0.9,
             ),
-          (t.endless || a.kind === 'berry') && a.used && VS[a.kind] && this.regen(a),
+          t.endless && a.used && VS[a.kind] && this.regen(a),
           a.data?.comet && !a.used && (a.charge ?? 0) <= 0 && (a.data.life -= e) <= 0)
         ) {
           this.burnOut(a);
@@ -37801,10 +37886,10 @@ var GS = class e {
             }));
       }
     }
-    render() {
+    render(dt) {
       const progress = this.dwellProgress, target = this.nearest;
       const ring = this.dwellRing;
-      ring.visible = progress > 0 && !target.used && this.run.state === 'play' &&
+      ring.visible = progress > 0 && target.kind!=='bill' && target.kind!=='berry' && !target.used && this.run.state === 'play' &&
         !this.run.player.dead && this.hasVisual(target);
       ring.material.uniforms.dwell.value = ring.visible ? progress : -1;
       if (ring.visible) {
@@ -37812,27 +37897,20 @@ var GS = class e {
         ring.scale.setScalar(target.ringRadius);
       }
       for (const facility of this.list) {
-        if (!facility.halo) continue;
         if (facility.dock) {
           if (facility.used || this.run.bossSpawned) facility.dock.open();
           const host = this.run.r;
           facility.dock.update(host.camera, host.shared.uTime.value, remainingZoneSeconds(this.run), host.composer.inputBuffer.viewport);
         }
-        const visible = this.hasVisual(facility);
-        if (facility.kind === 'berry') {
-          const remaining = (facility.data?.regenAt ?? this.run.time) - this.run.time;
-          facility.halo.material.uniforms.berryCooldown.value = Math.min(1, Math.max(0, remaining / VS.berry));
-          facility.halo.visible = visible && !(ring.visible && target === facility);
-          continue;
-        }
+        if(facility.kind==='bill')facility.model?.userData.updateGaze?.(
+          this.run.r.camera,this.run.player,this.hasVisual(facility),dt??0);
         const charge = facility.chargeRing;
         if (charge) {
-          const opacity = facility.used ? Math.max(0, 1 - (this.run.time - (facility.completedAt ?? -Infinity)) / .6) : 1;
-          charge.visible = visible && facility.charge > 0 && opacity > 0;
+          charge.visible = facility.charging && !facility.used && this.hasVisual(facility);
           charge.material.uniforms.dwell.value = facility.charge;
-          charge.material.uniforms.ringOpacity.value = opacity;
+        } else if (facility.halo) {
+          facility.halo.visible = !facility.used && !(ring.visible && target === facility) && this.hasVisual(facility);
         }
-        facility.halo.visible = visible && !facility.used && !charge?.visible && !(ring.visible && target === facility);
       }
     }
     portalFx(e, t) {
@@ -37957,6 +38035,8 @@ var GS = class e {
       if (distance < 70) this.altarIdleFx(altar, tier, altar.charge, dt);
       const inside = distance < altar.r && !run.player.dead;
       const crew = (run.coop?.altarCrew(altar.x, altar.z, altar.r) ?? 0) + Number(inside);
+      altar.charging = crew > 0;
+      altar.model?.userData.setVisualState?.(altar.charging ? 'charging' : 'idle',dt);
       const keys = run.player.items.get('secret-key') ?? 0;
       if (crew > 0) {
         const chargeRate = (1 + .3 * keys) * (1 + .6 * (crew - 1)) / altarChargeSeconds;
@@ -37968,7 +38048,7 @@ var GS = class e {
         }
         if (Math.random() < .5 + tier * .15)
           run.vfx.trail(altar.x + F.range(-altar.r, altar.r), altar.y + .5,
-            altar.z + F.range(-altar.r, altar.r), blessing.color, .5, I.Spark, .6);
+            altar.z + F.range(-altar.r, altar.r), altar.altarColor, .5, I.Spark, .6);
         if (altar.charge + 1e-9 >= 1) this.altarDone(altar, tier);
       } else if (altar.charge > 0) {
         altar.data.outT = (altar.data.outT ?? 0) + dt;
@@ -37977,7 +38057,7 @@ var GS = class e {
     }
     altarIdleFx(e, t, n, r) {
       let i = this.run,
-        a = RS[t].color,
+        a = e.altarColor,
         o = e.y + 2.6;
       if (Math.random() < r * (1 + t * 3 + n * 10)) {
         let n = F.range(0, Math.PI * 2),
@@ -38030,10 +38110,10 @@ var GS = class e {
     altarDone(e, t, n = !1) {
       let r = this.run,
         i = RS[t],
-        a = i.color;
+        a = e.altarColor;
       e.charge = 1;
-      e.completedAt = r.time;
-      if (e.chargeRing) e.chargeRing.material.uniforms.dwell.value = 1;
+      e.charging = false;
+      if (e.chargeRing) e.chargeRing.visible = false;
       ((e.used = !0),
         this.dim(e),
         n || r.coop?.altarDone(e.x, e.z),
@@ -38081,10 +38161,11 @@ var GS = class e {
         return;
       ((e.used = !1), delete e.data.regenAt);
       if (e.group) e.group.visible = true;
+      if(e.berryPickup){e.absorbing=false;e.berryPickup.reset();e.model.userData.setVisualState?.('idle');}
       this.restoreDeviceColour(e);
       if (e.kind === `altar`) {
         let n = e.data.tier ?? 0,
-          r = RS[n].color;
+          r = e.altarColor;
         ((e.charge = 0),
           (e.data = { tier: n }),
           n >= 2 && !e.beacon && this.altarBeacon(e),
@@ -38111,6 +38192,11 @@ var GS = class e {
     dispose() {
       this.disposed = true;
       for (const facility of this.list) this.releaseDevice(facility);
+      if(this.billArt){
+        this.billArt.disposed=true;
+        for(const value of this.billArt.deskOwned)value.dispose();
+        this.billArt=null;
+      }
       this.idleRingMaterial.dispose();
       this.deviceFx?.dispose();
       this.deviceFx = null;
@@ -40310,7 +40396,11 @@ var nC = Math.PI / 180,
       (this.iceMat.dispose(), this.sectorMat.dispose());
     }
   },
-  OC = (e) => (e.arena === `desert` ? oC : e.arena === `coast` ? gC : e.arena === `glacier` ? TC : QS),
+  OC = (e) => {
+    const arena = {forest:QS, desert:oC, coast:gC, glacier:TC}[e.arena];
+    if (!arena) throw new MapSpawnError('竞技场 / ' + e.arena);
+    return arena;
+  },
   kC = (e, t) =>
     t.arena === `desert`
       ? new lC(e, t)
@@ -45384,7 +45474,7 @@ var GT = 15,
         (this.maxEnemies = this.coop ? 800 : yE),
         this.setHordeQuality(s.quality),
         (Fl.density = this.performance.particleDensity),
-        (this.sprites = new rl(e.scene, e.shared)),
+        (this.sprites = a.entryWorld?.sprites ?? new rl(e.scene, e.shared)),
         (this.vfx = new Kl(e.scene, e.shared, a.effectAtlas, this)),
         this.vfx.crafted.attach(this),
         this.vfx.setPerformance(this.performance,this.sprites),
@@ -45407,6 +45497,7 @@ var GT = 15,
         this.mode === `endless` && (this.endless = new Vw(this)),
         this.mode === `tower` && ((this.tower = new OT(this)), (this.stage = this.tower.curveStage)),
         (this.paperAssets=createPaperAssets()),
+        (this.entryTerrain=a.entryWorld?.terrain),
         (this.onLoadProgress=a.onLoadProgress),
         (this.loadingMetrics=[]),
         (this.initialized=this.initialize()));
@@ -45523,8 +45614,14 @@ var GT = 15,
     createStageTerrain(deferred = false) {
       const sanctuary=this.stage===4?(this.biome.sanctuary??null):null,tower=this.tower;
       const zone=this.zone=tower?tower.zoneLook():fe(this.biome,sanctuary||this.endless?1:this.stage);
-      return new cd({...this.biome,zxStage:this.stage,sun:zone.sun,light:zone.light},
-        (this.seed+this.stage*7919)>>>0,this.r.shared,sanctuary?OC(sanctuary):tower?tower.layout():void 0,this.paperAssets,deferred);
+      const biome={...this.biome,zxStage:this.stage,sun:zone.sun,light:zone.light},seed=(this.seed+this.stage*7919)>>>0;
+      if(this.entryTerrain){
+        const terrain=this.entryTerrain;this.entryTerrain=null;
+        terrain.biome=biome;terrain.seed=seed;terrain.noise=new iu(seed);terrain.noise2=new iu(seed ^ 1540483477);
+        terrain.paperAssets=this.paperAssets;
+        return terrain;
+      }
+      return new cd(biome,seed,this.r.shared,sanctuary?OC(sanctuary):tower?tower.layout():void 0,this.paperAssets,deferred);
     }
     async buildStageAsync(first) {
       this.buildingStage=true;
@@ -45726,7 +45823,7 @@ var GT = 15,
         endSize: r * 2,
         color: a,
         shape: I.Ring,
-        glow: 0.3,
+        glow: a === 5959935 ? ALTAR_RING_EMISSIVE : 0.3,
         rot: 0,
       }),
         this.vfx.ground.spawn({
@@ -46607,7 +46704,7 @@ var GT = 15,
           (console.error(`[pokebonk] No se pudo construir la zona`, e),
             await this.ui.fade(!1),
             this.ui.toast(
-              c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`),
+              e instanceof MapSpawnError ? e.message : c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`),
               null,
             ),
             (this.endHow = `error`),
@@ -46648,7 +46745,7 @@ var GT = 15,
           (console.error(`[pokebonk] No se pudo construir el piso`, e),
             await this.ui.fade(!1),
             this.ui.toast(
-              c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`),
+              e instanceof MapSpawnError ? e.message : c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`),
               null,
             ),
             (this.endHow = `error`),
@@ -46684,7 +46781,7 @@ var GT = 15,
           let e = this.r,
             t = (this.zone = fe(this.biome, 1 + (this.migrations % 3)));
           ((this.terrain = new cd(
-            { ...this.biome, sun: t.sun, light: t.light },
+            { ...this.biome, mapKey:'workshop-migration', sun: t.sun, light: t.light },
             (this.seed + (10 + this.migrations) * 7919) >>> 0,
             e.shared,
           )),
@@ -46707,7 +46804,7 @@ var GT = 15,
           (console.error(`[pokebonk] No se pudo construir el mapa nuevo`, e),
             await this.ui.fade(!1),
             this.ui.toast(
-              c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`),
+              e instanceof MapSpawnError ? e.message : c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`),
               null,
             ),
             (this.endHow = `error`),
@@ -47857,6 +47954,7 @@ var GT = 15,
     }
     renderWorld(e) {
       let t = this.r.camera;
+      this.sprites.setShelfDepth(this.terrain.shelfDepth);
       this.sprites.begin(t);
       updateWorkshopScene(this,e,this.sprites);
       (updatePaperVisibility(this.terrain,this.sprites.frustum,this.terrain.workshopBoundary?true:this.performance.worldShadows),
@@ -47891,7 +47989,7 @@ var GT = 15,
             ? this.ghosts.splice(t, 1)
             : n.push(r.x, r.y, r.z, `walk`, 0.1, r.dir, 1, 0.8, 1 - r.t / 0.5, 0, 0, 1, 1, 1, 0, !1));
       }
-      (this.interactables.render(),
+      (this.interactables.render(e),
         this.pickups.render(this.time),
         this.sprites.end(),
         this.projectiles.render(),
@@ -47915,6 +48013,7 @@ var GT = 15,
         this.capture?.dispose(),
         this.allies?.dispose(),
         this.terrain?.dispose(),
+        this.entryTerrain?.dispose(),
         this.interactables?.dispose(),
         this.sanctuary?.dispose(),
         this.tower?.dispose(),
@@ -71233,7 +71332,7 @@ function DI(e, t, n, r = [], i = !1) {
             c = hI.has(n.kind) || n.data?.comet ? b * 1.2 : b;
           (d.save(),
             d.translate(i, s),
-            dI(d, r.src, n.kind === `altar` ? RS[n.data?.tier ?? 0].css : r.ring, c, r.round),
+            dI(d, r.src, n.kind === `altar` ? n.altarCss : r.ring, c, r.round),
             d.restore(),
             o.push({ x: i, y: s, r: c, name: r.name, wx: n.x, wz: n.z, kind: e }),
             u(e, !1));
@@ -73516,7 +73615,7 @@ var JI = class {
           dI(
             n,
             e.src,
-            t.kind === `altar` ? RS[t.data?.tier ?? 0].css : e.ring,
+            t.kind === `altar` ? t.altarCss : e.ring,
             (r || t.data?.comet ? 25 : 19) * c,
             e.round,
           ),
@@ -78274,12 +78373,82 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     cur = { ...OL.main };
     target = OL.main;
     constructor(e, t = `forest`) {
-      if(window.nativeUI){this.r=e;this.biome=t;applyPaperLight({r:e});return;}
+      if(window.nativeUI){
+        this.r=e;this.biome='forest';
+        this.terrain=new cd({...lt('forest'),zxStage:1},0,e.shared);
+        this.player={pos:this.terrain.spawn};this.camTarget=this.player.pos.clone();
+        this.sprites=new rl(e.scene,e.shared);
+        const geometry=new Yr(1.05,.55);
+        const material=new Kr({transparent:true,depthWrite:false,uniforms:{fade:{value:1}},
+          vertexShader:'varying vec2 v;void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+          fragmentShader:'uniform float fade;varying vec2 v;void main(){float a=1.-smoothstep(.96,1.,length(v*2.-1.));gl_FragColor=vec4(.07,.05,.12,.72*a*fade);}'});
+        this.entryShadow=new Tr(geometry,material);this.entryShadow.rotation.x=-Math.PI/2;
+        this.entryShadow.position.copy(this.player.pos);this.entryShadow.position.y=.02;
+        e.scene.add(this.terrain.group,this.entryShadow);
+        applyPaperLight(this);
+        this.ready=Promise.all([this.terrain.deskReady,this.sprites.prepareHeroForm(4),window.entryHeroArt()]).then(([, ,art])=>{
+          if(this.closed)return;
+          this.entryInk=new Wr(art.image);this.entryInk.colorSpace=pi;this.entryInk.needsUpdate=true;
+          this.entryInk.generateMipmaps=false;this.entryInk.minFilter=this.entryInk.magFilter;this.entryIdle=art.idle;
+          this.canDraw=true;
+        });
+        return;
+      }
       ((this.r = e),
         (this.sprites = new rl(e.scene, e.shared)),
         (this.biome = t),
         (this.title = this.makeTitle(TL())),
         this.title.applySky());
+    }
+    beginDeparture(){
+      this.departure={progress:0,bend:(Math.random()<.5?-1:1)*(.35+.4*Math.random()),last:performance.now()};
+    }
+    drawEntry(){
+      if(!this.canDraw)return false;
+      const now=performance.now(),path=this.departure;
+      if(path){
+        if(!document.hidden){
+          const dt=Math.min(150,Math.max(0,now-path.last))/1000;
+          // Ease into the final section while the game prepares its shaders
+          // or waits for the session. Reserve the landing for the playable frame.
+          const next=path.progress+dt;
+          path.progress=path.ready||next<=.65?Math.min(1,next):
+            .85-(.85-Math.max(.65,path.progress))*Math.exp(-Math.min(dt,next-.65)/.2);
+        }
+        path.last=now;
+      }
+      deskCamera(this,0,path?.progress??0,path?.bend??0);
+      const blend=cameraEase(path?.progress??0),scale=entryHeroScale+(1-entryHeroScale)*blend;
+      this.entryShadow.scale.setScalar(scale);this.entryShadow.material.uniforms.fade.value=1-blend;
+      this.entryShadow.visible=blend<1;
+      const {x,y,z}=this.player.pos;
+      this.sprites.begin(this.r.camera);
+      const frame=this.sprites.heroFrame(this.player,4,'idle',now);
+      const hero=this.sprites.getPlayerGlyph(4,4,null,frame);
+      hero.push(x,y,z+entryFootOffset*(1-blend)/deskTilt,'idle',0,0,(frame?.renderScale??1)*scale,
+        0,0,0,0,1,1,1,0,false,0,frame?.rect);
+      this.sprites.end();
+      // Apply the illustrated entry ink to the live hero batch. Its authored
+      // idle frames share the battle registration; blend back during pullback.
+      if(frame){
+        const group=hero.zxGroup,{columns,rows}=this.entryIdle;
+        if(!this.entryMaterial){
+          const material=this.entryMaterial=group.material.clone();
+          material.uniforms={...group.material.uniforms,entryInk:{value:this.entryInk},entryRect:{value:new Float32Array(4)},entryMix:{value:1}};
+          material.fragmentShader=`uniform sampler2D zxGlyph,entryInk;uniform vec4 entryRect;uniform float entryMix;
+            varying vec2 vUv,vLocal;void main(){
+              vec4 a=texture2D(zxGlyph,vUv),b=texture2D(entryInk,mix(entryRect.xy,entryRect.zw,vLocal));
+              float alpha=mix(a.a,b.a,entryMix);if(alpha<.01)discard;
+              gl_FragColor=vec4(mix(a.rgb*a.a,b.rgb*b.a,entryMix)/alpha,alpha);
+            }`;
+        }
+        const col=frame.index%columns,row=Math.floor(frame.index/columns),uniforms=this.entryMaterial.uniforms;
+        uniforms.entryRect.value.set([col/columns,1-(row+1)/rows,(col+1)/columns,1-row/rows]);
+        uniforms.entryMix.value=1-blend;
+        group.mesh.material=this.entryMaterial;
+        try{this.r.render(0);}finally{group.mesh.material=group.material;}
+      }else this.r.render(0);
+      return true;
     }
     makeTitle(e) {
       const terrain=new cd({...fr[0],size:120,zxStage:1},1234,this.r.shared);
@@ -78290,7 +78459,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     build(e) {
       let t = fr.find((t) => t.id === e) ?? fr[0];
       this.biome = t.id;
-      let n = new cd(t, 1234, this.r.shared);
+      let n = new cd({...t, mapKey:'workshop-preview'}, 1234, this.r.shared);
       this.r.scene.add(n.group);
       let r = k.pokemon.filter(
         (e) =>
@@ -78474,8 +78643,13 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.sprites.end());
     }
     dispose() {
-      if(window.nativeUI)return;
-      (this.title.dispose(),
+      if(this.entryShadow){
+        this.closed=true;this.entryMaterial?.dispose();this.entryInk?.dispose();
+        this.r.scene.remove(this.entryShadow);this.entryShadow.geometry.dispose();this.entryShadow.material.dispose();
+        this.canDraw=false;
+        if(this.transferred)return;
+      }
+      (this.title?.dispose(),
         this.terrain?.dispose(),
         this.sprites.clear(),
         this.sprites.standIn.dispose(),
@@ -78511,6 +78685,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     setScreen(e, t = !1) {
       (this.endSwipe?.(), (this.endSwipe = null));
       let n = this.screenEl;
+      if(this.menuScene?.departure&&e&&e.dataset.entryPage!=='departure')this.menuScene.departure=null;
       ((this.screenEl = e),
         e && this.ui.append(e),
         t && n && e && !window.nativeUI && !matchMedia(`(prefers-reduced-motion: reduce)`).matches
@@ -78564,6 +78739,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         (this.pad = new Wa(this.input)),
         (this.menuScene = new kL(this.r)),
         N.preloadTrack(EL()));
+      await this.menuScene.ready;
       let i = !1,
         a = () => {
           // Waking audio uses the stored volumes. A gesture must not reconfigure the renderer.
@@ -78848,7 +79024,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         } catch {}
     }
     starting = !1;
-    async startRun(e, onLoadProgress) {
+    async startRun(e, onLoadProgress, opening=false) {
       if (this.starting) return !1;
       if(e&&!isLiteSpecies(e.species)){
         this.lastStartError=Error('当前可使用炎或风开启对局');
@@ -78858,7 +79034,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       this.lastStartError=null;
       (Oo(!0), (this.starting = !0));
       try {
-        return await this.openRun(e,onLoadProgress);
+        return await this.openRun(e,onLoadProgress,opening);
       } catch (error) {
         this.lastStartError=error;
         console.error('[宝可梦] 森林初始化失败', error);
@@ -78872,7 +79048,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.starting = !1;
       }
     }
-    async openRun(e, onLoadProgress) {
+    async openRun(e, onLoadProgress, opening) {
       this.lastCfg = e;
       let t;
       try {
@@ -78899,12 +79075,12 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.lastStartError=e;
         return (this.notice(e.message), N.deny(), !1);
       }
+      const entry=opening?this.menuScene:null;
+      if(!entry){this.menuScene?.dispose();this.menuScene=null;}
       return (
         (e = { ...e, seed: t.seed, boosts: t.boosts ?? [] }),
         fN(),
         (this.lastCfg = e.coop ? null : { ...e, boosts: [] }),
-        this.menuScene?.dispose(),
-        (this.menuScene = null),
         this.hud?.destroy(),
         this.run?.dispose(),
         (this.hud = new JI(this.ui)),
@@ -78929,7 +79105,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         N.beginRun(),
         onLoadProgress?.({phase:'准备对局',detail:'',progress:.45}),
         await waitForLoadingPaint(this.r.renderer),
-        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress,effectAtlas:await Nl()})),
+        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress,effectAtlas:await Nl(),entryWorld:entry})),
+        entry && (entry.transferred=true),
         await this.run.initialized,
         e.coop?.world && restoreProgress(this.run,e.coop.progress,e.coop.world),
         onLoadProgress?.({phase:'准备字灵',detail:'',progress:.8}),
@@ -78946,6 +79123,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
         await waitForLoadingPaint(this.r.renderer),
         await e.coop?.room.waitForBattleStart((title,teamReady)=>onLoadProgress?.({phase:title,teamStatus:title,teamReady,progress:1})),
+        entry && await this.finishDeparture(entry),
         this.setScreen(null),
         (this.run.onLoadProgress=null),
         (this.run.state='play'),
@@ -78966,6 +79144,18 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.trapBack(),
         !0
       );
+    }
+    async finishDeparture(entry){
+      const path=entry.departure;path.ready=true;
+      while(path.progress<1){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        if(this.menuScene!==entry||entry.departure!==path)throw Error('已退出开场镜头');
+      }
+      if(this.run.player.speciesId===4&&entry.player.heroPlayback){
+        this.run.player.heroPlayback={...entry.player.heroPlayback,last:this.run.time*1000};
+      }
+      entry.dispose();this.menuScene=null;
+      this.run.updateCamera(0);this.run.renderWorld(0);
     }
     askOffline() {
       return (
@@ -79068,7 +79258,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         setTimeout(() => n.remove(), 4200));
     }
     toMenu() {
-      (this.run?.dispose(),
+      (this.menuScene?.dispose(),
+        this.run?.dispose(),
         (this.run = null),
         Mo(!1),
         this.hud?.destroy(),

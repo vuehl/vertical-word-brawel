@@ -59,9 +59,17 @@ async function launchEngine(host, play, showProgress) {
       }
     };
     env.drawUI = (renderer,...args) => {
+      host.entryScene.handoff();
+      renderer.resetState();
+      const menu=env.__zixingApp && env.__zixingApp.menuScene;
       draw(renderer,...args);
-      showProgress(booted ? 100 : undefined, renderer);
-      if (!booted) return;
+      if (!booted) {
+        showProgress(undefined,renderer,menu && menu.drawEntry());
+        return;
+      }
+      // Complete the bar only after the real home frame succeeds.
+      showProgress(100,renderer);
+      draw(renderer,...args);
       env.drawUI = draw;
       if (env.invalidateUI) env.invalidateUI();
       env.onBootRenderError = undefined;
@@ -106,11 +114,11 @@ async function start() {
     host.bootDiagnostics.stages.push({stage:title,ms});
     console.info('[宝可梦启动]', title, ms, 'ms');
   }
-  function showProgress(value = shown, renderer) {
+  function showProgress(value = shown, renderer, live=false) {
     if (!splash || value < shown || (value === shown && !renderer)) return;
     shown = value;
     try {
-      splash.draw(value, !!renderer);
+      splash.draw(value, live);
     } catch (error) {
       console.warn('[宝可梦启动] 无法更新加载进度', error);
       splash.dispose();
@@ -133,12 +141,8 @@ async function start() {
     catch (error) { console.warn('[宝可梦启动] 尝试默认 WebGL 2 参数', error); }
     if (!gl) gl = canvas.getContext('webgl2');
     if (!gl) throw Error('当前微信环境无法创建 WebGL 2 画面，请更新微信后重新进入。');
-    try {
-      splash = await require('./boot-screen')(gl);
-      console.info('[宝可梦启动] 启动画面已提交', Date.now() - began, 'ms');
-    } catch (error) {
-      console.warn('[宝可梦启动] 启动画面不可用', error);
-    }
+    splash = host.entryScene = await require('./boot-screen')(gl);
+    console.info('[宝可梦启动] 启动画面已提交', Date.now() - began, 'ms');
     const files = require('./files');
     GameGlobal.pokebonk = Object.assign(host, {canvas, files});
     stage('准备游戏资源');
@@ -157,10 +161,20 @@ async function start() {
       }),
       files.init(p=>packageProgress('text',p)).then(()=>packageProgress('text',100))
     ]), 120000, '准备游戏数据超时，请重新进入。');
+    stage('准备桌面场景与角色');
+    const prepared={world:0,art:0};
+    await withTimeout(files.prepareForest(state=>{
+      const ratio=state.total?Math.min(1,state.completed/state.total):0;
+      const value=state.phase==='ready'?1:state.phase==='write'?.7+.3*ratio:state.phase==='unpack'?.6:.55*ratio;
+      prepared[state.name]=Math.max(prepared[state.name]||0,value);
+      showProgress(85+Math.floor(2.5*(prepared.world+prepared.art)));
+    }),120000,'桌面场景与角色资源准备超时，请重新进入。');
     stage('绘制游戏首页');
     showProgress(90);
     await withTimeout(launchEngine(host,play,showProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
     host.bootDiagnostics.completed=true;
+    splash.handoff();
+    splash=null;
     host.bootDiagnostics.totalMs=Date.now()-began;
     console.info('[宝可梦启动] 游戏首页已绘制', Date.now() - began, 'ms');
   } catch (error) {

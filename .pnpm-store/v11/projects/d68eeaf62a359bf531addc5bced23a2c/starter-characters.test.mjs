@@ -1,0 +1,93 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {roster} from '../source/src/catalogs.js';
+import {constrainLiteProfile,isLiteFamily,validLiteRun} from '../source/src/lite-rules.js';
+import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff} from '../source/src/starter-characters.js';
+import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
+import {glyphCatalog} from '../source/src/glyph-catalog.js';
+import {restoreProgress} from '../source/src/coop-resume.js';
+
+test('both wind paths follow the supplied design, and all nine supplied cutouts override old artwork',()=>{
+  const data=JSON.parse(fs.readFileSync(new URL('../source/public/data/pokemon.json',import.meta.url)));
+  configureStarterSpecies(data);
+  const actor=id=>data.find(p=>p.id===id),children=id=>data.filter(p=>p.evoFrom===id).map(p=>p.id);
+  assert.deepEqual(children(16),[17,58]);assert.deepEqual(children(17),[18]);assert.deepEqual(children(58),[59]);
+  assert.deepEqual(children(18),[]);assert.deepEqual(children(59),[]);assert.deepEqual(children(132),[]);
+  assert.deepEqual(children(4),[5]);assert.deepEqual(children(5),[6]);
+  for(const id of [4,5,6])assert.deepEqual(actor(id).types,['fire']);
+  for(const id of [16,17,18,58,59])assert.deepEqual(actor(id).types,['flying']);
+  for(const [id,word] of Object.entries(starterWords)){
+    assert.equal(glyphWordForSpecies(id),word);assert.ok(isLiteFamily(id));
+    assert.equal(glyphCatalog.words[word].index,glyphCatalog.heroes[id].index);
+  }
+  assert.deepEqual(characters.map(c=>c.word),['炎','风']);
+  assert.equal(glyphCatalog.heroes[132].preview,undefined);
+  assert.deepEqual(roster.find(p=>p.id===16).branch,[17,58]);
+});
+
+test('legacy starter selection migrates without losing currency, research, settings or records',()=>{
+  for(const [old,id] of [[1,4],[132,4],[7,16],[4,4]]){
+    const profile={starter:old,lastSpecies:old,team:[old],stardust:987,lab:{dmg:3},research:{59:20},settings:{quality:'high'},times:{'forest-0':321},forms:[4,5,6,9,18,59],classics:[132],captured:{132:123}};
+    constrainLiteProfile(profile);assert.equal(profile.starter,id);assert.equal(profile.lastSpecies,id);
+    assert.deepEqual(profile.league,[4,16]);assert.equal(profile.stardust,987);assert.deepEqual(profile.lab,{dmg:3});
+    assert.deepEqual(profile.research,{59:20});assert.deepEqual(profile.settings,{quality:'high'});assert.equal(profile.times['forest-0'].time,321);
+    assert.deepEqual(profile.forms,[4,5,6,18,59]);assert.ok(validLiteRun({species:id,biome:'forest'}));
+    assert.deepEqual(profile.classics,[132]);assert.equal(profile.captured[132],123);
+    assert.deepEqual(profile.team,[1,132].includes(old)?[]:[id]);
+  }
+  for(const species of [1,7,17,18,58,59,132])assert.equal(validLiteRun({species,biome:'forest'}),false);
+});
+
+test('rejoining restores wave time, keeps a wind branch and migrates only old evolution levels',()=>{
+  for(const [version,saved,expected] of [[undefined,26,10],[1,26,10],[2,8,10],[2,12,12],[3,12,12]]){
+    const cards=[],timeline=[{kind:'card',t:30},{kind:'card',t:60},{kind:'totem',t:145},
+      {kind:'guardian',t:250},{kind:'card',t:275}];
+    const player={speciesId:16,hp:10,maxHp:10,moves:[],pos:{set(){}},xpFor:()=>30,recompute(){}};
+    const run={player,coop:{},camTarget:{copy(){}},planEvolution:()=>({to:-1,level:10}),
+      director:{timeline,addCard:()=>cards.push(run.stageTime)}};
+    const data={v:version,stage:1,player:{speciesId:16,level:7,hp:10},pos:[1,0,1],
+      moves:[],run:{nextEvo:{to:58,level:saved}}};
+    restoreProgress(run,data,{stage:1,time:261,stageTime:253});
+    assert.deepEqual(run.nextEvo,{to:58,level:expected});
+    assert.deepEqual(cards,[30,60]);
+    assert.deepEqual(timeline.map(event=>!!event.done),[true,true,true,false,false]);
+    assert.deepEqual([run.time,run.stageTime],[261,253]);
+  }
+});
+
+test('rejoining remembers skipped spring shoes and caps pairs from older saves',()=>{
+  for(const [items,savedRun,expected] of [
+    [[], {springShoesSeen:true}, 0],
+    [[['air-balloon',3]], {}, 1],
+    [[], {}, 0],
+  ]){
+    const player={speciesId:4,moves:[],pos:{set(){}},xpFor:()=>30,recompute(){}};
+    const run={player,coop:{},camTarget:{copy(){}},director:{timeline:[]},springShoesSeen:false};
+    const data={stage:1,player:{speciesId:4},items,pos:[0,0,0],moves:[],run:{nextEvo:null,...savedRun}};
+    restoreProgress(run,data,{stage:1,time:60,stageTime:60});
+    assert.equal(player.items.get('air-balloon')??0,expected);
+    assert.equal(run.springShoesSeen,Boolean(expected||savedRun.springShoesSeen));
+  }
+});
+
+test('borrowed ultimates keep the original cast, while wind forms use the correct source stage',()=>{
+  const calls=[],original={};
+  for(const id of [4,16,58,132])original[id]={names:['a','b','c'],descs:['d0','d1','d2'],dur:[1.2,1.8,3],cast:ctx=>calls.push([id,ctx])};
+  for(const [id,name,source,index] of [[4,'一点火苗',4,0],[5,'火圈绕身',4,1],[6,'满屏是火',4,2],[132,'照着变',132,0],[16,'一阵刮来',16,0],[58,'叫完就冲',16,1]]){
+    const def=starterUltimate(id,original);assert.deepEqual(def.names,[name]);assert.equal(def.dur[0],original[source].dur[index]);
+    def.cast({tier:2,form:2});const [actual,ctx]=calls.at(-1);assert.equal(actual,source);
+    assert.equal(ctx.tier,[16,58].includes(id)?index:2);
+    if([4,5,6,132].includes(id))assert.equal(def.cast,original[source].cast);
+  }
+});
+
+test('wind ultimates multiply only their designated speed by ten, refresh without stacking, and clean up',()=>{
+  for(const [id,name,key,stat,other] of [[18,'刮倒一片',attackSpeedBuff,'attackSpeed','moveSpeed'],[59,'跑得没影',speedBuff,'moveSpeed','attackSpeed']]){
+    const p={buffs:new Map(),stats:{moveSpeed:1.7,attackSpeed:1.7},recompute(){this.stats.moveSpeed=this.stats.attackSpeed=1.7;applyStarterSpeed(this.stats,this.buffs);},addBuff(key,t,label){this.buffs.set(key,{t,label});this.recompute();}};
+    const def=starterUltimate(id,{});assert.deepEqual(def.names,[name]);assert.equal(def.dur[0],5);
+    def.cast({run:{player:p}});assert.equal(p.stats[stat],17);assert.equal(p.buffs.get(key).t,5);assert.equal(p.stats[other],1.7);
+    p.buffs.get(key).t=2;def.cast({run:{player:p}});assert.equal(p.stats[stat],17);assert.equal(p.buffs.size,1);assert.equal(p.buffs.get(key).t,5);
+    clearStarterSpeed({player:p});assert.equal(p.stats[stat],1.7);assert.equal(p.buffs.size,0);
+  }
+});

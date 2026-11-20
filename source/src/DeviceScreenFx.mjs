@@ -311,7 +311,7 @@ export function createDeviceScreenFx(T, renderer) {
     if(count){positions.needsUpdate=data.needsUpdate=anchors.needsUpdate=true;sprites.needsUpdate=true;}
     for(const u of [pu,su]){
       u.worldDepth.value=depth;u.resolution.value.set(w,h);u.planes.value.set(camera.near,camera.far);
-      u.orthographicView.value=camera.isOrthographicCamera?1:0;
+      u.orthographicView.value=camera.projectionMatrix.elements[15]===1?1:0;
     }
     pu.visibleBox.value.copy(union);
     return {active,count,refDepth};
@@ -342,7 +342,7 @@ export function createDeviceScreenFx(T, renderer) {
       const {active,refDepth}=frame;
       let z=refDepth;
       if(options.focusWorld){world.copy(options.focusWorld).applyMatrix4(camera.matrixWorldInverse);z=Math.max(camera.near,-world.z);}
-      const magnification=camera.projectionMatrix.elements[5]*h*.5/(camera.isOrthographicCamera?1:z);
+      const magnification=camera.projectionMatrix.elements[5]*h*.5/(camera.projectionMatrix.elements[15]===1?1:z);
       const original=options.originalOutlineRadiusPx??clamp(.13*magnification,1,12);
       starMat.uniforms.rim.value=pass.uniforms.radius.value=.5*original;
       updateOutlineTiles(w,h,pass.uniforms.radius.value);

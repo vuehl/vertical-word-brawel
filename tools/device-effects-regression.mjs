@@ -11,6 +11,8 @@ export async function reviewDeviceEffects(page, dir) {
     Object.assign(app.meta.profile.settings, {quality: 'high', showBanners: false});
     app.applySettings();
     if (!await app.startRun({species: 4, biome: 'forest', tier: 0, boosts: [], mode: 'standard'})) throw Error('Entry failed');
+    // Stage one uses PNGs. Stage two exercises the GLB path and world-outline mask.
+    await app.run.changeZone();
     app.halted = true;
     const run = app.run, facilities = run.interactables, host = app.r;
     const portal = facilities.spawnPortal(0, 0, false, true);
@@ -29,17 +31,19 @@ export async function reviewDeviceEffects(page, dir) {
       const kind = f.data?.gift ? 'freechest' : f.kind, model = f.model;
       if (!facilities.hasVisual(f) || !model?.userData.deviceScreenFx) throw Error('Missing ' + kind);
       const expectedScale = kind === 'berry' ? .5 : 1;
-      const ring = f.halo;
-      if (!ring?.visible || ring.parent !== f.group || ring.position.y <= 0 ||
+      const ring = f.chargeRing ?? f.halo;
+      if(kind==='bill'||kind==='berry'){if(ring)throw Error('Unexpected ground ring on '+kind);}
+      else if (!ring || ring.visible !== (kind !== 'altar') || ring.parent !== f.group || ring.position.y <= 0 ||
           ring.scale.x <= model.userData.footprintRadius * expectedScale) throw Error('Missing ground ring on ' + kind);
-      if (ring.position.x || ring.position.z || f.chargeRing?.visible || ring.geometry !== facilities.dwellRing.geometry ||
-          ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1)
+      if (ring&&(ring.position.x || ring.position.z || (kind === 'altar' ? !!f.halo :
+          ring.geometry !== facilities.dwellRing.geometry || ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1)))
         throw Error('Idle building must show only the empty interaction track: ' + kind);
       if (['freechest','chest'].includes(kind) && f.beacon) throw Error('Unexpected gacha beam');
       if (model.scale.toArray().some(x => x !== expectedScale) || f.group.scale.toArray().some(x => x !== 1) ||
           f.group.userData.h !== model.userData.displayHeight * expectedScale) throw Error('Wrong display scale for ' + kind);
-      const expectedModel = {bill:'billpc',boss:'portal',portal:'boss'}[kind] ?? kind;
-      if (model.userData.deviceModel !== expectedModel) throw Error('Wrong GLB for ' + kind);
+      if(kind==='bill'){
+        if(!model.userData.updateGaze)throw Error('Missing layered stapler');
+      }else if (model.userData.deviceModel !== ({boss:'portal',portal:'boss'}[kind]??kind))throw Error('Wrong GLB for ' + kind);
       model.traverse(m => {
         if (!m.isMesh || m.userData.portalTransient) return;
         if (m.material.name === 'MAT_DemonEyeEmission' && m.material.emissiveMap?.image?.width > 0) return;
@@ -154,32 +158,9 @@ export async function reviewDeviceEffects(page, dir) {
       assert.equal(report.oldOutlineOnDevice, 0, 'Legacy outline is still drawing on the GLB');
       await page.evaluate(() => {app.r.outlinePass.enabled = true;});
     }
-    await page.evaluate(() => {deviceProbe.sample.group.visible = false;});
-    const empty = await frame(0);
-    await page.evaluate(() => {deviceProbe.sample.group.visible = true;});
-    const [x0, y0, x1, y1] = bounds, view = {name, bands: [], stars: []};
+    const [x0, y0, x1, y1] = bounds, view = {name, stars: []};
     for (const time of [.8, 1.06]) {
-      const scan = await frame(time, name + '-sweep-' + time);
-      const u = (time-.22)/1.3, head = -.14 + 1.28*(.24*u + .76*u*u*(3-2*u));
-      let thick = 0, thin = 0, outsideBands = 0, spill = 0, inkPixels = 0;
-      for (let i = 0; i < scan.data.length; i += 3) {
-        if ([39,35,47].every((c,k) => Math.abs(base.data[i+k]-c) <= 2) && delta(base,empty,i) > 5) {
-          inkPixels++;
-          assert.ok(delta(scan,base,i) <= 5, 'Bloom painted over device ink');
-        }
-        if (delta(scan, base, i) < 10) continue;
-        if (delta(base, empty, i) < 3) spill++;
-        if ([239,234,208].some((c,k) => Math.abs(scan.data[i+k]-c) > 3)) continue;
-        const x = i/3 % scan.info.width+.5, y = Math.floor(i/3/scan.info.width)+.5;
-        const d = .55*(x-x0)/(x1-x0) + .45*(y-y0)/(y1-y0) - head;
-        if (Math.abs(d) <= .042) thick++;
-        else if (Math.abs(d+.079) <= .015) thin++;
-        else outsideBands++;
-      }
-      assert.ok(inkPixels > 100, 'Missing device ink');
-      view.bands.push({time, thick, thin, outsideBands, spill, inkPixels});
-      assert.ok(thick > thin && thin > 30 && outsideBands < (thick+thin)*.02, JSON.stringify(view));
-      assert.ok(spill < 15, 'Sweep outside the silhouette: ' + spill);
+      assert.equal(changedPixels(base,await frame(time)),0,'Facility sweep at '+time);
     }
     for (const [time, beat] of [[1.65,'ringed-star'],[1.87,'gap'],[2.20,'scatter'],[2.56,'rest']]) {
       const shot = await frame(time, name + '-' + beat);
@@ -262,7 +243,7 @@ export async function reviewDeviceEffects(page, dir) {
     }, kind);
     const body = await frame(0), sweep = await frame(.85), stars = await frame(2.12);
     const counts = report.devices[kind] = {sweep: changedPixels(body,sweep), stars: changedPixels(body,stars)};
-    assert.ok(counts.sweep > 100 && counts.stars > 10, title+' '+JSON.stringify(counts));
+    assert.ok(counts.sweep === 0 && counts.stars > 10, title+' '+JSON.stringify(counts));
     if (process.argv.includes('--device-preview')) {
       const {width,height,channels} = stars.info;
       const tile = await sharp(stars.data,{raw:{width,height,channels}})
@@ -282,7 +263,7 @@ export async function reviewDeviceEffects(page, dir) {
     }, quality);
     const body = await frame(0);
     const count = report.presets[quality] = changedPixels(body, await frame(.85));
-    assert.ok(count > 100, 'Device sweep missing at ' + quality);
+    assert.equal(count,0,'Device sweep visible at ' + quality);
   }
   report.dockClock = await page.evaluate(() => {
     const {host, facilities, run} = deviceProbe;

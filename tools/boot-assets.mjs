@@ -22,7 +22,13 @@ export async function writeBootHeroArt(root,out){
       .png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
     images[word]='data:image/png;base64,'+image.toString('base64');
   }
-  fs.writeFileSync(path.join(out,'boot-hero-art.js'),'module.exports = '+JSON.stringify(images)+';\n');
+  const file=path.join(out,'boot-hero-art.js'), code='module.exports = '+JSON.stringify(images)+';\n';
+  if(fs.existsSync(file)&&fs.readFileSync(file,'utf8')===code)return;
+  const pending=file+'.'+process.pid+'.tmp';
+  try{
+    fs.writeFileSync(pending,code);
+    fs.renameSync(pending,file);
+  }finally{fs.rmSync(pending,{force:true});}
 }
 
 export function bootAssets(root) {

@@ -4,6 +4,7 @@ import {glyphCatalog} from './glyph-catalog.js';
 import {createHeroPoseTexture,loadedHeroRig,prepareHeroStrokes} from './hero-poses.js';
 import {heroActionCatalog} from './hero-action-catalog.js';
 import {heroActionFrame} from './hero-actions.js';
+import {applyShelfMaterial} from './desk-shelf.js';
 const paintJobs=[];
 // Slightly lighter versions of the supplied hero colors, in texture linear space.
 const allyColors={
@@ -33,8 +34,18 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   run.sprites.begin=(...args)=>{begin(...args);batches.begin();};
   run.sprites.end=()=>{end();batches.flush();};
   const shadow=run.sprites.shadows.mesh.material;
+  const shelfUniforms={uShelfActive:{value:false},uShelfDepth:{value:null}};
+  run.sprites.setShelfDepth=texture=>{
+    shelfUniforms.uShelfActive.value=!!texture;
+    shelfUniforms.uShelfDepth.value=texture??null;
+  };
   shadow.transparent=true;shadow.blending=1;shadow.depthWrite=false;
   shadow.fragmentShader='varying vec2 vUv; void main(){float d=length((vUv-.5)*2.); float a=smoothstep(1.,.25,d)*.34;gl_FragColor=vec4(.07,.10,.12,a);}';shadow.needsUpdate=true;
+  applyShelfMaterial(shadow,shelfUniforms,'p','iS.xyz',false);
+  run.sprites.clipFootRing=ring=>{
+    applyShelfMaterial(ring.material,shelfUniforms,'(modelMatrix*vec4(position,1.)).xyz','modelMatrix[3].xyz',false);
+    return ring;
+  };
   let disposed=false;
   const allyColor={value:allyColors.fire};
   const animations=new Map();
@@ -121,6 +132,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
       m.transparent=true;m.depthWrite=false;
     }
+    applyShelfMaterial(m,shelfUniforms);
     m.needsUpdate=true;batches.add(batch,t.uuid+(heroEntry?.ghost?'-ghost-'+heroEntry.ghost:ally?'-ally':batch.zxOriginalGlyph?'-original':''),heroEntry?.ghost?96:heroEntry?1:ally?8:1024);return batch;
   }
   run.sprites.getAllyGlyph=(id,playerSpecies)=>{

@@ -1,3 +1,4 @@
+import {initDesk,isDeskStage,deskCamera} from './desk2d.js';
 // Indoor stationery theme park. Shared GPU assets survive area changes.
 import {ht as Vector3} from '../assets/three-DmSYIDKK.js';
 import {runLoadingSteps} from './loading-work.js';
@@ -16,6 +17,8 @@ export function disposePaperAssets(assets){
   assets.photos?.clear();if(assets.photoJobs)assets.photoJobs.length=0;
 }
 export function disposePaperWorld(terrain){
+  terrain.deskCamera?.updateProjectionMatrix();
+  for(const value of terrain.deskOwned||[])value.dispose();
   disposeForegroundLights(terrain);
   const sun=terrain.workshopShadowLight;
   if(sun){
@@ -30,11 +33,12 @@ export function disposePaperWorld(terrain){
   terrain.workshopPointLights=[];terrain.workshopLamps=[];terrain.workshopGlows=[];terrain.workshopMarbleRuns=[];terrain.workshopRollingMarbles=null;terrain.workshopFillLight=null;terrain.mats=[];terrain.textures=[];
   terrain.workshopLooseMarbles=[];terrain.workshopLooseMesh=null;terrain.workshopLooseCores=null;terrain.workshopMarblePlayer=null;
 }
-export function buildPaperWorld(terrain){for(const _ of workshopWorldSteps(terrain)){} }
-export function buildPaperWorldAsync(terrain,options){return runLoadingSteps(workshopWorldSteps(terrain),options);}
+export function buildPaperWorld(terrain){if(isDeskStage(terrain)){initDesk(terrain);return;}for(const _ of workshopWorldSteps(terrain)){} }
+export async function buildPaperWorldAsync(terrain,options){if(isDeskStage(terrain)){if(!terrain.deskReady)initDesk(terrain);await terrain.deskReady;options?.check?.();return {steps:terrain.group.children.length};}return runLoadingSteps(workshopWorldSteps(terrain),options);}
 export const applyPaperLight=applyWorkshopLight;
 const focus=new Vector3(), dragonFocus=new Vector3();
 export function updatePaperCamera(run,dt){
+  if(run.terrain.desk2d)return deskCamera(run,dt);
   const p=run.player.pos,c=run.r.camera,k=1-Math.exp(-Math.max(0,dt)*12);
   if(!Number.isFinite(run.camTarget.x+run.camTarget.y+run.camTarget.z))run.camTarget.copy(p);
   run.camTarget.lerp(p,k);run.camYaw=PAPER_CAMERA.yaw;run.camPitch=PAPER_CAMERA.pitch;run.camDist=PAPER_CAMERA.distance;

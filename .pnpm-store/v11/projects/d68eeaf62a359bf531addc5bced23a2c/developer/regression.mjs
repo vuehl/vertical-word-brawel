@@ -1,0 +1,368 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {reviewEncounters} from './encounters-regression.mjs';
+import {reviewDeveloperSkills} from './skills-regression.mjs';
+import {reviewDeveloperEvolution} from './evolution-regression.mjs';
+import {heroActionCatalog} from '../../source/src/hero-action-catalog.js';
+
+async function reviewDeathPreview(page,dir,tap){
+  for(const species of [4,16,17,18,58,59,5,6]){
+    const before=await page.evaluate(async species=>{
+      const r=app.run,p=r.player,dev=inspected.env.__zixingDeveloper;
+      dev.options.invincible=true;dev.options.hideScenery=false;
+      p.setSpecies(species);p.level=60;r.ui.developerSyncExperience();r.ui.hud(r);
+      await r.sprites.prepareHeroForm(species);
+      dev.open();
+      window.deathPreviewStats=()=>({species:p.speciesId,level:p.level,hp:p.hp,xp:p.xp,dead:p.dead,
+        revives:p.revives,kills:r.stats.kills,time:r.stageTime,invincible:dev.options.invincible});
+      const get=r.sprites.getPlayerGlyph;
+      r.sprites.getPlayerGlyph=(...args)=>{
+        window.previewFrame=args[3];return get(...args);
+      };
+      window.restorePreviewProbe=()=>{r.sprites.getPlayerGlyph=get;};
+      return deathPreviewStats();
+    },species);
+    await tap('preview-hero-death');
+    const clip=heroActionCatalog[species]?.clips.faint;
+    const result=await page.evaluate(()=>{
+      const r=app.run,seen=[];
+      for(let i=0;i<90;i++){
+        r.update(1/60);
+        if(previewFrame&&seen.at(-1)!==previewFrame.index)seen.push(previewFrame.index);
+      }
+      app.r.render(0);inspected.env.drawUI(app.r.renderer);
+      return {state:r.state,action:previewFrame?.action,seen,stats:deathPreviewStats(),
+        replay:!!inspected.doc.querySelector('[data-dev-action="replay-hero-death"]'),ring:r.playerFootRing.visible};
+    });
+    assert.equal(result.replay,true);assert.equal(result.state,'paused');assert.equal(result.ring,false);
+    assert.deepEqual(result.stats,before);
+    assert.equal(result.action,clip?'faint':undefined);
+    assert.deepEqual(result.seen,Array.from({length:clip?.count??0},(_,index)=>index));
+    if(species===4)await page.screenshot({path:path.join(dir,'主角死亡动作预览.png')});
+    await tap('replay-hero-death');
+    assert.equal(await page.evaluate(()=>previewFrame?.index),clip?0:undefined);
+    await tap('close-hero-death');
+    const after=await page.evaluate(()=>{
+      restorePreviewProbe();
+      return {stats:deathPreviewStats(),state:app.run.state,ring:app.run.playerFootRing.visible,action:previewFrame?.action};
+    });
+    assert.deepEqual(after.stats,before);assert.equal(after.state,'play');assert.equal(after.ring,true);
+    assert.notEqual(after.action,'faint');
+  }
+  console.log('Verified level 60 invincible death previews, replay and resume for both hero families.');
+}
+
+async function reviewUpgradeWave(page){
+  for(const mode of ['timed','stress']){
+    const result=await page.evaluate(async mode=>{
+      await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
+      app.halted=true;
+      const api=inspected.env.__zixingDeveloper,r=app.run,p=r.player;
+      // The late-game loadout is past both evolutions. Isolate the two upgrade choices.
+      p.setSpecies(6);p.evoStage=2;r.nextEvo=null;
+      api.apply({time:600,count:0,mode,boss:'none'});
+      api.options.lockCount=false;api.options.spawn=false;
+      const start=p.level,kills=r.stats.kills,uses=r.ult.uses;
+      let ultimateKills=0;
+      const tally=r.combat.tally.bind(r.combat);
+      r.combat.tally=(species,flags,slot,weight)=>{
+        if(slot===8)ultimateKills++;
+        return tally(species,flags,slot,weight);
+      };
+      const descriptor=Object.getOwnPropertyDescriptor(performance,'now');
+      let now=performance.now();
+      Object.defineProperty(performance,'now',{configurable:true,value:()=>now});
+      try{
+        inspected.doc.querySelector('[data-dev-action="ultimate-upgrade"]').click();
+        const atCast={state:r.state,level:p.level,pending:r.pendingLevels,uses:r.ult.uses-uses};
+        let frames=0;
+        while(r.state==='play'&&frames++<480){now+=1000/60;r.update(1/60);}
+        const first={level:p.level,kills:r.stats.kills-kills,ultimateKills,pending:r.pendingLevels,active:r.ult.active,frames};
+        const pending=[];
+        while(r.state==='modal'&&pending.length<3){
+          const card=inspected.doc.querySelector('[data-offer]');
+          if(!card)throw Error('Expected an upgrade card: '+r.ui.modalEl?.textContent);
+          pending.push(r.pendingLevels);
+          r.ui.hud(r);app.r.render(0);inspected.env.drawUI(app.r.renderer);
+          now+=500;inspected.env.drawFrozenModal(app.r.renderer);
+          card.click();inspected.env.drawFrozenModal(app.r.renderer);
+          now+=250;inspected.env.drawFrozenModal(app.r.renderer);
+        }
+        const end={state:r.state,pending:r.pendingLevels};
+        api.stopWorkload();
+        return {mode,start,atCast,first,pending,end,restored:p.level};
+      }finally{if(descriptor)Object.defineProperty(performance,'now',descriptor);else delete performance.now;}
+    },mode);
+    assert.equal(result.start,40);
+    assert.deepEqual(result.atCast,{state:'play',level:40,pending:0,uses:1});
+    assert.equal(result.first.kills,8);assert.equal(result.first.level,42);assert.equal(result.first.active,0);
+    assert.ok(result.first.ultimateKills>0,'The ultimate itself must kill practice targets');
+    assert.deepEqual(result.pending,[2,1]);assert.deepEqual(result.end,{state:'play',pending:0});
+    assert.equal(result.restored,1);
+    console.log('Ultimate upgrade wave:',result);
+  }
+}
+
+export async function enterDeveloperFromHome(page,dir){
+  // Use the user's native-touch route, not a direct app.startRun call.
+  for(const selector of ['[data-action="journey"]','.zx-choose .zx-footer .primary','.zx-map .zx-footer .primary','[data-action="enter"]']){
+    await page.waitForFunction(selector=>!!inspected.doc.querySelector(selector),{timeout:30000},selector);
+    const point=await page.evaluate(selector=>{
+      app.r.render(0);inspected.env.drawUI(app.r.renderer);
+      const box=inspected.doc.querySelector(selector).getBoundingClientRect();
+      const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+      if(box.width<=0||box.height<=0)throw Error('Entry control is not visible: '+selector);
+      return {x:box.x+box.width/2-screen.x,y:box.y+box.height/2-screen.y};
+    },selector);
+    await page.touchscreen.tap(point.x,point.y);
+  }
+  await page.waitForFunction(()=>app.run?.state==='paused'&&inspected.layout.box(inspected.doc.querySelector('#zx-dev-panel'))?.w>0,{timeout:90000});
+  await page.evaluate(()=>{app.halted=true;app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.update(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);});
+  await page.screenshot({path:path.join(dir,'dev-from-home-touch.png')});
+  console.log('Native home -> character -> map -> difficulty -> automatic developer panel passed.');
+}
+
+export async function reviewDeveloper(page,dir){
+  const report={environment:'Compiled isolated developer build / Chrome SwiftShader; NOT phone FPS.',widths:[],waves:[]};
+  const draw=()=>page.evaluate(()=>{app.run.update(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);});
+  const tap=async action=>{
+    await page.evaluate(action=>{
+      const el=inspected.doc.querySelector('[data-dev-action="'+action+'"]'),sc=el?.closest('[data-dev-scroll]');
+      if(sc){const b=el.getBoundingClientRect(),s=sc.getBoundingClientRect();
+        if(b.bottom>s.bottom)sc.scrollTop+=b.bottom-s.bottom+8;
+        else if(b.top<s.top)sc.scrollTop+=b.top-s.top-8;}
+    },action);
+    await draw();
+    const box=await page.evaluate(action=>{
+      const el=inspected.doc.querySelector('[data-dev-action="'+action+'"]');
+      const box=el?.getBoundingClientRect();if(!box)throw Error('Missing button: '+action);
+      const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+      return {x:box.x+box.width/2-screen.x,y:box.y+box.height/2-screen.y};
+    },action);
+    await page.touchscreen.tap(box.x,box.y);await draw();
+  };
+  report.firstEntry=await page.evaluate(()=>({state:app.run.state,panel:!!inspected.doc.querySelector('#zx-dev-panel')}));
+  assert.deepEqual(report.firstEntry,{state:'paused',panel:true},'First battle must display the minute/count panel automatically');
+  await draw();await page.screenshot({path:path.join(dir,'dev-first-entry.png')});
+  if(process.argv.includes('--death-only'))return reviewDeathPreview(page,dir,tap);
+  if(process.argv.includes('--scenery-only')){
+    await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({count:200,seek:false}));
+    const sample=()=>page.evaluate(()=>{
+      const run=app.run;
+      run.renderWorld(0);app.r.render(0);
+      const {ordinary,triangles}=inspected.env.__zixingDeveloper.snapshot();
+      return {visible:run.terrain.group.visible,ordinary,triangles};
+    });
+    const hidden=await sample();
+    await tap('toggle-scenery');
+    const shown=await sample();
+    await tap('toggle-scenery');
+    const hiddenAgain=await sample();
+    assert.deepEqual([hidden.visible,shown.visible,hiddenAgain.visible],[false,true,false]);
+    assert.deepEqual([hidden.ordinary,shown.ordinary,hiddenAgain.ordinary],[200,200,200]);
+    assert.ok(shown.triangles>hidden.triangles&&shown.triangles>hiddenAgain.triangles);
+    await tap('close');
+    assert.equal(await page.evaluate(()=>app.run.state),'play');
+    console.log('200 enemies, scenery toggle:',{hidden,shown,hiddenAgain});
+    return;
+  }
+  await tap('close');
+  if(process.argv.includes('--boss-only'))return reviewEncounters(page,dir,tap,draw);
+  if(process.argv.includes('--skills-only'))return reviewDeveloperSkills(page,dir);
+  if(process.argv.includes('--evolution-only'))return reviewDeveloperEvolution(page,dir);
+  if(process.argv.includes('--upgrade-only'))return reviewUpgradeWave(page);
+  await page.evaluate(()=>{
+    // Performance scenarios below use the fire hero; explicitly confirm its
+    // real evolution before measuring the continuing combat workload.
+    window.finishDeveloperFireEvolution=()=>{
+      const r=app.run;r.update(0);
+      if(r.state!=='modal')return;
+      if(inspected.doc.querySelector('[data-branch-id]'))throw Error('Performance fixture requires an explicit branch choice');
+      const button=[...inspected.doc.querySelectorAll('.zx-modal button')].find(n=>n.textContent.includes('确认进阶'));
+      if(!button)throw Error('Unexpected modal during workload setup');button.click();
+      for(let i=0;i<300;i++)r.update(1/60);
+    };
+  });
+  for(const [width,height] of [[320,568],[390,844],[430,932]]){
+    await page.setViewport({width,height,deviceScaleFactor:3});
+    await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
+    // Native pointer coordinates use the safe area, not the browser DOM.
+    await draw();
+    const layout=await page.evaluate(()=>{
+      const b=inspected.doc.querySelector('#zx-dev-button').getBoundingClientRect();
+      const p=inspected.doc.querySelector('.zx-hud-pause').getBoundingClientRect();
+      const entry=inspected.doc.querySelector('#zx-dev-button'),clip=inspected.layout.box(entry)?.clip;
+      return {button:{x:b.x,y:b.y,width:b.width,height:b.height},pause:{x:p.x,y:p.y,width:p.width,height:p.height},
+        rootLayer:entry.parentElement===app.run.ui.root,fullyVisible:!!clip&&b.x>=clip.x&&b.y>=clip.y&&b.right<=clip.r&&b.bottom<=clip.b};
+    });
+    assert.ok(layout.button.x+layout.button.width<=layout.pause.x,'Developer button overlaps pause');
+    assert.ok(layout.button.x>=0&&layout.button.y>=0);
+    assert.ok(layout.rootLayer&&layout.fullyVisible,'Entry must be on the root layer and wholly inside its clip');
+    await page.screenshot({path:path.join(dir,`dev-button-${width}.png`)});
+    await tap('open');
+    assert.equal(await page.evaluate(()=>app.run.state),'paused');
+    assert.ok(await page.evaluate(()=>!!inspected.doc.querySelector('#zx-dev-panel')),'Touch must open developer panel');
+    await page.screenshot({path:path.join(dir,`dev-panel-${width}.png`)});
+    await tap('minute-2');await tap('count-200');await tap('apply');
+    const state=await page.evaluate(()=>inspected.env.__zixingDeveloper.snapshot());
+    assert.equal(state.stageTime,120);assert.equal(state.ordinary,200);
+    await tap('close');assert.equal(await page.evaluate(()=>app.run.state),'play');
+    report.widths.push({width,height,...layout,state});
+  }
+  // Losing a HUD node must not permanently lose the only test entry.
+  await page.evaluate(()=>inspected.doc.querySelector('#zx-dev-button').remove());
+  await draw();
+  assert.equal(await page.evaluate(()=>inspected.doc.querySelectorAll('#zx-dev-button').length),1);
+  await page.evaluate(()=>app.run.pause());await draw();
+  await page.screenshot({path:path.join(dir,'dev-pause-entry.png')});
+  await tap('pause-open');
+  assert.ok(await page.evaluate(()=>!!inspected.doc.querySelector('#zx-dev-panel')),'Pause menu must open developer panel');
+  await tap('close');
+  report.entryRecovery={remount:true,pauseMenu:true};
+  for(const seconds of [0,120,300,480,600,120]){
+    const sample=await page.evaluate(seconds=>{
+      const api=inspected.env.__zixingDeveloper;
+      const before={kills:app.run.stats.kills,gold:app.run.gold,xp:app.run.player.xp};
+      const state=api.apply({time:seconds,count:600});
+      return {state,before,after:{kills:app.run.stats.kills,gold:app.run.gold,xp:app.run.player.xp},
+        pendingPast:app.run.director.timeline.filter(e=>e.t<=seconds&&!e.done).length,
+        finalSwarm:app.run.director.finalSwarm};
+    },seconds);
+    assert.equal(sample.state.stageTime,seconds);assert.equal(sample.state.ordinary,600);
+    assert.deepEqual(sample.before,sample.after,'Debug removal must not award rewards');
+    assert.equal(sample.pendingPast,0);assert.equal(sample.finalSwarm,seconds>=300);
+    report.waves.push(sample);
+  }
+  assert.ok(report.waves[3].state.hpMultiplier>report.waves[1].state.hpMultiplier,'Jump must change actual monster strength');
+  assert.ok(report.waves[3].state.cards.length>report.waves[1].state.cards.length,'Jump must advance the monster pool');
+  report.counts=await page.evaluate(()=>{
+    const api=inspected.env.__zixingDeveloper,e=app.run.enemies;
+    const special=e.spawn(app.run.director.cards[0].id,20,20,1,1,128);
+    const values=[0,100,1000].map(count=>api.apply({count,seek:false}));
+    const specialPreserved=e.isAlive(special);e.kill(special);
+    api.open();app.run.resume();
+    return {values,specialPreserved,resumeCloses:!inspected.doc.querySelector('#zx-dev-panel')};
+  });
+  assert.deepEqual(report.counts.values.map(s=>s.ordinary),[0,100,1000]);
+  assert.ok(report.counts.values.every(s=>s.stageTime===120),'Count-only must not change the clock');
+  assert.equal(report.counts.specialPreserved,true);assert.equal(report.counts.resumeCloses,true);
+  report.encounters=await reviewEncounters(page,dir,tap,draw);
+  report.persistence=await page.evaluate(async()=>{
+    await app.meta.saveNow();
+    const fs=wx.getFileSystemManager(),files=fs.readdirSync('/userdata');
+    const keys=Object.keys(localStorage);
+    return {files,keys};
+  });
+  assert.ok(report.persistence.files.includes('pokebonk-dev-save.json'),'Developer save missing');
+  assert.ok(!report.persistence.files.includes('pokebonk-save.json'),'Developer build touched production save');
+  assert.ok(report.persistence.keys.some(key=>key.startsWith('pokebonk.dev.web.')));
+  assert.ok(!report.persistence.keys.some(key=>key.startsWith('pokebonk.web.')));
+  report.workloads=await page.evaluate(async()=>{
+    // The portal scenario finishes in the sanctuary. Measure uninterrupted
+    // first-zone combat on a fresh fire hero; upgrade choices are tested separately.
+    await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    const api=inspected.env.__zixingDeveloper,r=app.run,p=r.player;
+    api.close();r.queueLevelUp=()=>{};
+    const original={level:p.level,moves:p.moves,items:p.items,vitamins:p.vitamins,addXp:p.addXp,gainLevel:p.gainLevel,xp:p.xp,slots:p.moveSlots};
+    const limits=()=>[r.vfx.add.limit,r.vfx.norm.limit,r.vfx.text.limit,r.performance.particleCell];
+    const beforeLimits=[r.performance.particles,r.performance.normalParticles,r.performance.damageTexts,r.performance.particleCell],samples=[];
+    api.options.lockCount=true;api.options.spawn=false;
+    for(const [mode,time] of [['timed',120],['timed',480],['stress',0]]){
+      const kills=r.stats.kills,gold=r.gold,ultimates=r.ult.uses;
+      const initial=api.apply({mode,time,count:200});
+      if(mode==='stress')p.gainLevel(); // Stress measurements keep a fixed level.
+      const displayedLevel=inspected.doc.querySelector('.zx-hud-level').textContent;
+      const appliedWithoutRewards=r.stats.kills===kills&&r.gold===gold&&p.xp===original.xp;
+      // Pause must hold all developer producers, not merely stop the monsters.
+      api.open();const elapsed=api.snapshot().workload.elapsed,loot=r.pickups.count;
+      r.update(.5);const paused=api.snapshot().workload.elapsed===elapsed&&r.pickups.count===loot;
+      api.close();finishDeveloperFireEvolution();r.ult.active=0;r.ult.castPending=false;
+      const peak={projectiles:0,zones:0,texts:0,particles:0,pickups:0},budgetViolations=[];
+      for(let frame=0;frame<360;frame++){
+        if(frame%60===0)api.apply({count:200,seek:false});
+        if(frame===30){r.ult.charge=1;r.input.touchKey('KeyR',true);}
+        r.update(1/30);
+        if(frame===30){r.input.touchKey('KeyR',false);r.input.endFrame();}
+        const s=api.snapshot();for(const key in peak)peak[key]=Math.max(peak[key],s[key]);
+        const current=limits();
+        if(s.texts>current[2]||s.particles>current[0]+current[1])budgetViolations.push({frame,texts:s.texts,particles:s.particles,limits:current});
+      }
+      samples.push({mode,time,initial,peak,paused,appliedWithoutRewards,displayedLevel,state:r.state,
+        damage:p.moves.filter(Boolean).reduce((n,m)=>n+m.damageDone,0),ultimates:r.ult.uses-ultimates,
+        limits:limits(),budgetViolations,levelStable:p.level===initial.workload.level});
+    }
+    const rewind=api.apply({mode:'timed',time:120,count:200});
+    api.stopWorkload();
+    return {samples,rewind,beforeLimits,restored:p.level===original.level&&p.moves===original.moves&&p.items===original.items&&p.vitamins===original.vitamins&&p.addXp===original.addXp&&p.gainLevel===original.gainLevel&&p.xp===original.xp&&p.moveSlots===original.slots,
+      stopped:api.snapshot().workload.mode==='none'};
+  });
+  for(const sample of report.workloads.samples){
+    assert.ok(sample.appliedWithoutRewards,'Preset application must not award gold/XP/kills');
+    assert.ok(sample.paused,'Paused developer panel must stop the load producers');
+    assert.equal(sample.state,'play');if(sample.mode==='stress')assert.ok(sample.levelStable);
+    assert.equal(sample.displayedLevel,'LV.'+sample.initial.workload.level,'HUD must immediately show the applied level');
+    assert.ok(sample.damage>0,'Real skills must damage real enemies');
+    assert.equal(sample.ultimates,1,'One button press must cast one ultimate');
+    for(const key of ['projectiles','texts','particles','pickups'])assert.ok(sample.peak[key]>0,`${sample.mode}: missing ${key}`);
+    // A legal character kit need not contain a persistent-area attack.
+    assert.ok(sample.limits.every((v,i)=>v<=report.workloads.beforeLimits[i]),'Crowd pressure must stay within production quality budgets');
+    // The crowd can cross a budget boundary as it dies. Compare each frame
+    // with its own limit, not an earlier peak against the final lower limit.
+    assert.deepEqual(sample.budgetViolations,[]);
+  }
+  assert.equal(report.workloads.rewind.workload.level,8);
+  assert.equal(report.workloads.rewind.workload.moves.length,3);
+  assert.ok(report.workloads.rewind.pickups<=35,'Rewind must not stack leftover loot');
+  assert.ok(report.workloads.restored&&report.workloads.stopped,'Restore original build and XP callback');
+  report.qualityWorkloads=[];
+  for(const quality of ['low','medium','high']){
+    const sample=await page.evaluate(quality=>{
+      const api=inspected.env.__zixingDeveloper,r=app.run;
+      app.meta.profile.settings.quality=quality;app.applySettings();
+      const limits=[r.vfx.add.limit,r.vfx.norm.limit,r.vfx.text.limit];
+      api.apply({mode:'stress',time:300,count:200});
+      finishDeveloperFireEvolution();
+      for(let i=0;i<90;i++)r.update(1/30);
+      api.open();api.close();
+      app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
+      const monitor=inspected.doc.querySelector('#zx-dev-monitor'),box=monitor.getBoundingClientRect();
+      return {quality,limits,after:[r.vfx.add.limit,r.vfx.norm.limit,r.vfx.text.limit],snapshot:api.snapshot(),monitor:{hidden:monitor.hidden,width:box.width,height:box.height,text:monitor.textContent}};
+    },quality);
+    assert.ok(sample.after.every((v,i)=>v<=sample.limits[i]),'Crowd effects may tighten the selected quality budget');
+    assert.equal(sample.snapshot.workload.mode,'stress');
+    assert.ok(sample.snapshot.texts<=sample.limits[2]);
+    assert.ok(!sample.monitor.hidden&&sample.monitor.width>0&&sample.monitor.height>0&&sample.monitor.text.includes('弹道'));
+    report.qualityWorkloads.push(sample);
+    await page.screenshot({path:path.join(dir,`dev-combat-${quality}.png`)});
+  }
+  // Exercise the mode and stop controls through actual native touch as well.
+  await tap('open');await tap('mode-stress');await tap('minute-5');await tap('apply');
+  assert.equal(await page.evaluate(()=>inspected.env.__zixingDeveloper.snapshot().workload.mode),'stress');
+  await tap('stop-workload');
+  assert.equal(await page.evaluate(()=>inspected.env.__zixingDeveloper.snapshot().workload.mode),'none');
+  await tap('close');
+  report.lifecycle=await page.evaluate(async()=>{
+    const api=inspected.env.__zixingDeveloper;
+    api.options.invincible=true;api.options.lockCount=true;api.apply({time:120,count:200});
+    const hp=app.run.player.hp;app.run.player.hurt(1e6,'normal',-1);
+    const invincible=app.run.player.hp===hp;
+    app.run.enemies.clear();
+    await new Promise(resolve=>setTimeout(resolve,1050));app.run.update(1/60);
+    const maintained=api.snapshot().ordinary;
+    api.options.monitor=true;app.run.update(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
+    api.open();app.run.dispose();
+    const removed=!inspected.doc.querySelector('#zx-dev-panel')&&!inspected.doc.querySelector('#zx-dev-button');
+    app.run=null;
+    await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    return {invincible,maintained,removed,buttons:inspected.doc.querySelectorAll('#zx-dev-button').length};
+  });
+  assert.equal(report.lifecycle.invincible,true);assert.equal(report.lifecycle.maintained,200);
+  assert.equal(report.lifecycle.removed,true);assert.equal(report.lifecycle.buttons,1);
+  await reviewDeveloperSkills(page,dir);
+  await reviewDeveloperEvolution(page,dir);
+  await reviewUpgradeWave(page);
+  await reviewDeathPreview(page,dir,tap);
+  fs.writeFileSync(path.join(dir,'developer-regression.json'),JSON.stringify(report,null,2)+'\n');
+  console.log('Developer checks passed:',report.widths.length,'viewport sizes,',report.waves.length,'time jumps; isolated save and lifecycle.');
+}

@@ -4,14 +4,13 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {verifyDeveloperPreview,writeDeveloperPreviewPage} from './developer/preview-support.mjs';
-import {gameProject} from './project-target.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
 const development=process.argv.includes('--dev');
-const projectRoot=gameProject(root,development);
-const cli=process.env.WECHAT_DEVTOOLS_CLI||'D:/微信工具/微信web开发者工具/cli.bat';
+const projectRoot=development?path.join(root,'验收','开发者工程'):root;
+const cli=process.env.WECHAT_DEVTOOLS_CLI||['D:/Program Files (x86)/微信web开发者工具/cli.bat','D:/微信工具/微信web开发者工具/cli.bat'].find(file=>fs.existsSync(file));
 const output=path.join(root,'验收',development?'开发者手机预览':'手机预览');
-if(!fs.existsSync(cli))throw Error('找不到微信开发者工具，请用 WECHAT_DEVTOOLS_CLI 指定 cli.bat 的完整路径。');
+if(!cli||!fs.existsSync(cli))throw Error('找不到微信开发者工具，请用 WECHAT_DEVTOOLS_CLI 指定 cli.bat 的完整路径。');
 
 function runCLI(args){
   if(process.platform==='win32'){
@@ -26,12 +25,8 @@ function runCLI(args){
 
 execFileSync(process.execPath,[path.join(import.meta.dirname,'build.mjs'),...(development?['--dev']:[])],{cwd:root,stdio:'inherit',windowsHide:true});
 fs.mkdirSync(output,{recursive:true});
-const game=path.join(projectRoot,'minigame');
-const buildHashes=()=>{
-  const play=fs.readdirSync(path.join(game,'play')).filter(name=>name.endsWith('.js')).sort().map(name=>'play/'+name);
-  return Object.fromEntries(['game.js','game.json',...play,'assets.js','packs/text/assets.br'].map(name=>
-    [name,createHash('sha256').update(fs.readFileSync(path.join(game,name))).digest('hex')]));
-};
+const buildHashes=()=>Object.fromEntries(['game.js','game.json','play/game.js','boot-screen.js','entry-data.js','assets.js','packs/text/assets.br'].map(name=>
+  [name,createHash('sha256').update(fs.readFileSync(path.join(projectRoot,'minigame',name))).digest('hex')]));
 const hashes=buildHashes();
 const developerBuild=development?verifyDeveloperPreview(projectRoot):null;
 if(development){

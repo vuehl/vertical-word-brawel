@@ -1,4 +1,3 @@
-import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -49,7 +48,7 @@ export async function reviewCrowdRender(page,dir){
   assert.ok(report.text.reused&&report.text.replacement);assert.equal(report.text.trimmed,48);assert.ok(report.text.free>=112);assert.deepEqual(report.text.glyphs,[9,9,10]);
   assert.equal(report.resolution,1);assert.equal(report.dynamic,false);
   report.zones=[];
-  for(const stage of FOREST_ROUTE.slice(1)){
+  for(let stage=2;stage<=4;stage++){
     const zone=await page.evaluate(async()=>{
       const r=app.run;await r.changeZone();r.updateCamera(1);r.renderWorld(0);app.r.render(0);
       return {stage:r.stage,state:r.state,ready:r.sprites.get(r.player.speciesId).ready,

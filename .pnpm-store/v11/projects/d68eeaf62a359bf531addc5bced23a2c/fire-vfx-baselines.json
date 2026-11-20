@@ -1,0 +1,28 @@
+{
+  "fireball": {
+    "flight": {
+      "shots": [
+        {
+          "x": -93,
+          "y": 0.8500038981437683,
+          "z": 89.00032806396484,
+          "vx": 0,
+          "vz": -23.998125076293945,
+          "size": 0.699999988079071,
+          "radius": 0.5,
+          "life": 0.6333332061767578,
+          "damage": 14.767999649047852
+        }
+      ]
+    },
+    "hit": {
+      "damage": 19.158643515192427,
+      "hitTargets": 1
+    }
+  },
+  "fireBreath": {
+    "qualities": "034e85a39e630c9ea7374aa44eb38eb0334aaba68fa912c828ae55de2c47108c",
+    "directions": "3a8cd4012e3e53cae6160290d5753bcb8cc675c7de4955d7493e5e951edad755",
+    "lifecycle": "a77952e224f525ed56113d793665923f293cdddd1fe3cd506c6039472fcbe104"
+  }
+}

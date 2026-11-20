@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import esbuild from 'esbuild';
-import {buildPlay} from './play-bundle.mjs';
+import {buildPlay} from './play-chunks.mjs';
 import {bindPortalZoneClock} from '../source/tools/portal-zone-clock.mjs';
 import {parse} from '../source/tools/vendor/acorn.mjs';
 import {addBootAssets,bootAssets,writeBootHeroArt} from './boot-assets.mjs';
+import {writeEntryAssets} from './entry-assets.mjs';
 import {lowerUnicodeRegexes} from './device-syntax.mjs';
 import {assetPolicyVersion,itemIconSelectionChanged} from './asset-policy.mjs';
 import {gameProject} from './project-target.mjs';
@@ -148,14 +149,25 @@ function checkScriptSize(file,bytes){
 for(const [name,code] of result.files)checkScriptSize('play/'+name,Buffer.byteLength(code));
 const playDir=path.join(out,'play');
 fs.mkdirSync(playDir,{recursive:true});
-for(const [name,code] of result.files)fs.writeFileSync(path.join(playDir,name),code);
+function writeScript(destination,code){
+  if(fs.existsSync(destination)&&fs.readFileSync(destination,'utf8')===code)return;
+  const pending=destination+'.'+process.pid+'.tmp';
+  try{
+    fs.writeFileSync(pending,code);
+    fs.renameSync(pending,destination);
+  }finally{fs.rmSync(pending,{force:true});}
+}
+for(const [name,code] of result.files)writeScript(path.join(playDir,name),code);
 for(const name of fs.readdirSync(playDir)){
   if(name.endsWith('.js')&&!result.files.has(name))fs.unlinkSync(path.join(playDir,name));
 }
 fs.rmSync(path.join(out,'play.js'),{force:true});
 for(const file of ['host.js','original.js'])fs.rmSync(path.join(out,file),{force:true});
 fs.copyFileSync(path.join(platform,'files.js'),path.join(out,'files.js'));
-fs.copyFileSync(path.join(platform,'boot-screen.js'),path.join(out,'boot-screen.js'));
+await writeEntryAssets(root,out);
+const bootScript=await esbuild.build({entryPoints:[path.join(platform,'entry-scene.js')],bundle:true,format:'cjs',target:'es2017',
+  external:['./entry-data'],write:false});
+writeScript(path.join(out,'boot-screen.js'),bootScript.outputFiles[0].text);
 await writeBootHeroArt(root,out);
 fs.copyFileSync(path.join(platform,'resource-codec.js'),path.join(out,'resource-codec.js'));
 addBootAssets(out,bootAssets(root));

@@ -23,7 +23,7 @@ import {reviewBattleLoad} from './battle-load-regression.mjs';
 import {reviewBattleVisual} from './battle-visual-regression.mjs';
 import {reviewIOSBudget,installNativePerformanceFixture,reviewNativePerformance} from './ios-budget-regression.mjs';
 import {reviewPhonePerformance} from './phone-performance-regression.mjs';
-import {fixtureSubpackage} from './fixture-subpackage.mjs';
+import {fixtureSubpackage} from './fixture-play-chunks.mjs';
 import {gameProject} from './project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
 const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development),'minigame');
@@ -119,7 +119,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--upgrade-effects')){
+  if(process.argv.includes('--countdown-dock')){
+    const {reviewCountdownDock}=await import('./countdown-dock-regression.mjs');
+    await reviewCountdownDock(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--upgrade-effects')){
     const {reviewUpgradeEffects}=await import('./upgrade-effects-regression.mjs');
     await reviewUpgradeEffects(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--summon-mode')){
