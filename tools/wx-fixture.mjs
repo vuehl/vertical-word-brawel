@@ -1,5 +1,6 @@
 // Local-only test adapter. Uses Chrome's real WebGL2, Canvas 2D, image decoder and touch events.
 import {strFromU8,strToU8} from 'fflate';
+import {toByteArray} from 'base64-js';
 const storage=new Map(),dirs=new Set(['/userdata']),data=new Map(),archives=new Map(),events={};
 // Simulate optional downloads stalling until the guest screen is usable.
 const optionalDownloadGate = new Promise(resolve => { window.releaseOptionalDownloads=resolve; });
@@ -27,7 +28,7 @@ const fs={
   mkdirSync(path){dirs.add(path);},rmdirSync(path){for(const f of [...data.keys()])if(f.startsWith(path+'/'))data.delete(f);dirs.delete(path);},
   readdirSync(path){return [...new Set([...dirs,...data.keys()].filter(k=>k.startsWith(path+'/')).map(k=>k.slice(path.length+1).split('/')[0]))];},
   readFileSync(path,encoding){const b=bytes(path);return encoding?strFromU8(b):b.slice().buffer;},
-  writeFileSync(path,b){data.set(path,typeof b==='string'?strToU8(b):new Uint8Array(b));},
+  writeFileSync(path,b,encoding){data.set(path,encoding==='base64'?toByteArray(b):typeof b==='string'?strToU8(b):new Uint8Array(b));},
   copyFileSync(from,to){data.set(to,bytes(from));},renameSync(from,to){data.set(to,bytes(from));data.delete(from);},unlinkSync(path){data.delete(path);},
   readFile({filePath,success,fail}){queueMicrotask(()=>{try{success({data:fs.readFileSync(filePath)});}catch(e){fail(e);}});},
   writeFile({filePath,data,success,fail}){queueMicrotask(()=>{try{fs.writeFileSync(filePath,data);success({});}catch(e){fail(e);}});}
@@ -96,7 +97,11 @@ globalThis.wx={
   getRandomValues({length,success}){success({randomValues:crypto.getRandomValues(new Uint8Array(length)).buffer});},
   createCanvas:canvas,createOffscreenCanvas:nativeCanvas,
   createImage(){const img=new Image();Object.defineProperty(img,'src',{get(){return imageSrc.get.call(img);},set(path){
-    const record={path,width:0,height:0};(window.nativeImageLoads??=[]).push(record);
+    const record={path:path.startsWith('data:image/')?path.slice(0,path.indexOf(',')):path,width:0,height:0};
+    (window.nativeImageLoads??=[]).push(record);
+    if(window.failEntryInline&&!window.__host&&path.startsWith('data:image/')){
+      queueMicrotask(()=>img.dispatchEvent(new Event('error')));return;
+    }
     img.addEventListener('load',()=>{record.width=img.naturalWidth;record.height=img.naturalHeight;},{once:true});
     if(data.has(path)){const url=URL.createObjectURL(new Blob([bytes(path)]));img.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});imageSrc.set.call(img,url);}
     else imageSrc.set.call(img,path);

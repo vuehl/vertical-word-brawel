@@ -94,7 +94,7 @@ export async function setup(host) {
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
   const uiAssets=await readUIAssets(host.files);
-  let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
+  let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets),entrySceneVisible=false,entryHitScreen=null,entryArtResident=true;
   let draw=null,active=null,captured=new Map(),pointers=new Map();
   const upgradeCue=run=>run?.state==='play'&&!run.coop&&run.pendingLevels>0&&run.evoHold<=0&&!run.upgradeTiming.waiting(run.ult)&&run.ui.experienceReady?.()===false;
   const frozenUpgradeKey=()=>{
@@ -244,6 +244,10 @@ export async function setup(host) {
       let p=pointers.get(id);
       if(kind==='down'){
         if(x<0||y<0||x>=view.w||y>=view.h)continue;
+        const entry=env.__zixingApp?.screen;
+        if(entry?.dataset.entryPage && entry!==entryHitScreen){
+          layout.refresh('entry');entryHitScreen=entry;
+        }
         const target=layout.hit(x,y);p={target,x,y,lastY:y,scrolled:false};pointers.set(id,p);
       }
       if(!p)continue;
@@ -295,6 +299,8 @@ export async function setup(host) {
     addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),dispatchEvent:win.dispatchEvent.bind(win),
     alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
+    entryViewport:()=>view,
+    entryHint:title=>wx.showToast?.({title,icon:'none'}),
     createCoopSocket:events=>cloudSocket(wx,events),
     roomInvites:host.roomInvites,
     shareRoomCode:host.shareRoomCode,
@@ -311,6 +317,7 @@ export async function setup(host) {
       layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
+    entryHeroArt:()=>host.entryScene.heroArt(),
     animateModal(wrap){modalTransition.begin(wrap,env.__pb?.run);},
     closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop,perf.now());},
     modalAnimating:()=>modalTransition.active,
@@ -333,6 +340,25 @@ export async function setup(host) {
       const now=perf.now();
       modalTransition.advance(now);
       mutations(observer.takeRecords());
+      const entry=env.__zixingApp?.screen;
+      if(host.entryScene&&entry?.dataset.entryPage){
+        // Native touch dispatch uses the same Yoga boxes as the other menus.
+        uiFrames.draw(now,'entry',layout,()=>{});
+        entryHitScreen=entry;
+        const mode=entry.dataset.entryPage,app=env.__zixingApp;
+        const live=app.menuScene?.drawEntry()||false;
+        if(mode!=='departure'||!live){
+          host.entryScene.page(mode,view,Number(entry.dataset.tier||0),Number(entry.dataset.progress||0),live);
+        }
+        renderer.resetState();entrySceneVisible=entryArtResident=true;
+        return;
+      }
+      if(entrySceneVisible){
+        host.entryScene.suspend();entrySceneVisible=false;entryHitScreen=null;uiFrames.invalidate(true,true);
+      }
+      if(env.__pb?.run?.state==='play'&&entryArtResident){
+        host.entryScene?.releaseArt();entryArtResident=false;
+      }
       const run=env.__pb?.run,state=run?.state;
       const overlay=modalTransition.element;
       layout.setOverlay(overlay);
@@ -372,6 +398,7 @@ export async function setup(host) {
     env.devicePixelRatio=view.dpr;
     scale=env.uiPixelRatio=uiScale(view);uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
     layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);modalTransition.invalidate();
+    entryHitScreen=null;
     for(const query of queries.values()){
       const matches=mediaMatches(query.media,view);
       if(matches!==query.matches){query.matches=matches;query.dispatchEvent(new InputEvent('change',{matches,media:query.media}));}

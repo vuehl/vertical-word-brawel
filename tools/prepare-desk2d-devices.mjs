@@ -4,6 +4,7 @@ import http from 'node:http';
 import sharp from 'sharp';
 import puppeteer from 'puppeteer-core';
 import {facilityNames,facilityModelFile} from '../source/src/active-content.js';
+import {updateDeskDeviceArt} from './desk-device-art.mjs';
 const root=path.resolve('source/public'),out=path.join(root,'assets/env/desk2d');
 const server=http.createServer((req,res)=>{
   if(req.url==='/')return res.end('<body></body>');
@@ -28,7 +29,7 @@ for(const kind of Object.keys(facilityNames)){
   const image=renderer.domElement.toDataURL().split(',')[1];renderer.dispose();renderer.forceContextLoss();
   return {image,size,height:extent.y,footprintRadius:Math.hypot(extent.x,extent.z)/2};
  },modelFile);
- fs.writeFileSync(path.join(out,'device-'+kind+'.png'),Buffer.from(image,'base64'));// Raster silhouette strips let the existing shine and outline passes mask a sprite.
+ if(!['altar','berry','bill'].includes(kind))fs.writeFileSync(path.join(out,'device-'+kind+'.png'),Buffer.from(image,'base64'));
  const pixels=await sharp(Buffer.from(image,'base64')).resize(128,128).ensureAlpha().raw().toBuffer();
  const strips=[];for(let row=0;row<128;row++){
    let start=-1;
@@ -41,4 +42,5 @@ for(const kind of Object.keys(facilityNames)){
  const cfg=JSON.parse(glb.subarray(20,20+glb.readUInt32LE(12))).scenes[0].extras.deviceScreenFx;
  sizes[kind]={size,height,footprintRadius,strips,fx:cfg};
 }
-fs.writeFileSync('source/src/desk2d-devices.json',JSON.stringify(sizes));}finally{await browser.close();server.close();}
+fs.writeFileSync('source/src/desk2d-devices.json',JSON.stringify(sizes));
+await updateDeskDeviceArt(path.resolve('source'));}finally{await browser.close();server.close();}

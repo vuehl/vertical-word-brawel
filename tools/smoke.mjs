@@ -1,4 +1,6 @@
 import {FOREST_ROUTE} from '../source/src/lite-rules.js';
+import {gameViewport} from '../platform/viewport.mjs';
+import {entryLayout} from '../source/src/entry-layout.js';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -65,7 +67,7 @@ page.on('console',async m=>{if(m.type()==='error'||m.type()==='warn'){const msg=
   console.log(m.type(),msg.slice(0,600));if(m.type()==='error')for(const arg of m.args())try{const stack=await arg.evaluate(a=>a?.stack);if(stack)console.log(stack.slice(0,1400));}catch{}
   if(m.type()==='error'&&!msg.includes('404 (Not Found)'))errors.push(msg);}}});
 page.on('pageerror',e=>{console.error(e.stack);errors.push(e.message);});
-await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+await page.setViewport(process.argv.includes('--entry-flow')?{width:382,height:826,deviceScaleFactor:1}:{width:390,height:844,deviceScaleFactor:1});
 // The phone runtime may omit internationalization and browser/Node Base64 globals.
 await page.evaluateOnNewDocument(()=>{
   for(const name of ['Intl','atob','btoa','Buffer'])delete window[name];
@@ -112,6 +114,7 @@ const phoneLayout=process.argv.includes('--phone-layout')||menusOnly;
 if(phoneLayout)await page.evaluateOnNewDocument(()=>{window.phoneLayout=true;});
 if(process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline'))await page.evaluateOnNewDocument(()=>{localStorage.setItem('pokebonk.web.pokebonk.lang','fr');});
 if(process.argv.includes('--eager-entry'))await page.evaluateOnNewDocument(()=>{window.eagerEntry=true;});
+if(process.argv.includes('--entry-file-fallback'))await page.evaluateOnNewDocument(()=>{window.failEntryInline=true;});
 if(failFrame)await page.evaluateOnNewDocument(()=>{window.failFirstFrame=true;});
 if(process.argv.includes('--retry-text'))await page.evaluateOnNewDocument(()=>{window.dropTextOnce=true;});
 if(process.argv.includes('--legacy-runtime'))await page.evaluateOnNewDocument(()=>{
@@ -136,13 +139,16 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
-  const sx=width/390,y=Math.floor(height*.79+4*sx),left=Math.round(61*sx),right=Math.round(329*sx);
+  const [info,capsule]=await page.evaluate(()=>[wx.getWindowInfo(),wx.getMenuButtonBoundingClientRect?.()]);
+  const v=gameViewport(info,capsule),layout=entryLayout(v),sx=layout.scale*width/v.width;
+  const y=Math.round((layout.y+733*layout.scale)*height/v.height);
+  const left=Math.round(layout.x*width/v.width+36*sx),right=Math.round(left+310*sx);
   let filled=0;
   for(let x=left;x<right;x++){
     const at=(y*width+x)*channels;
-    if(Math.abs(data[at]-130)<8&&Math.abs(data[at+1]-159)<8)filled++;
+    if(Math.abs(data[at]-53)<8&&Math.abs(data[at+1]-134)<8)filled++;
   }
-  assert.ok(Math.abs(filled-268*sx*percent/100)<=2,'Paper progress bar at '+percent+'%');
+  assert.ok(Math.abs(filled-310*sx*percent/100)<=2,'Desk progress bar at '+percent+'%');
   assert.ok(await page.evaluate(p=>window.bootLabels.includes(p+'%'),percent),'Readable percentage was painted');
   const {channels:rgb}=await sharp(image).removeAlpha().stats();
   assert.ok(rgb.some(channel=>channel.max-channel.min>100),'Stationery illustration is visible');
@@ -165,7 +171,7 @@ async function verifyStartup(){
       return resolve(url);
     };
   });
-  await page.evaluate(()=>window.releaseTextDownload());
+  await page.evaluate(()=>{window.releaseTextDownload();window.releaseOptionalDownloads();});
   if(checkGlyphGate){
     await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
     await page.evaluate(()=>releaseHomeStatus());
@@ -190,10 +196,6 @@ async function verifyStartup(){
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
   await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
-  // The first usable guest screen proves optional packages did not block boot.
-  // Release them now; lengthy software-rendered layout assertions must not
-  // turn the fixture's artificial download gate into a real 45-second timeout.
-  await page.evaluate(()=>window.releaseOptionalDownloads());
   if(process.argv.includes('--software-render')){
     await page.evaluate(()=>{window.productionFrameGap=app.frameGap.bind(app);app.frameGap=()=>250;app.r.setDynRes(.6);});
     console.log('Software rendering check: reduced 3D frame rate and adaptive scene resolution; native UI resolution unchanged');
@@ -248,8 +250,8 @@ async function verifyStartup(){
     // Explicitly deliver the fixture resize after CDP has applied the viewport;
     // background software-rendered tabs can defer the browser's resize event.
     await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
-    try{await page.waitForFunction((w,h)=>inspected.env.innerWidth===(w<=h?w:w-44)&&
-      inspected.env.innerHeight===(w<=h?h-98:h-44)&&inspected.env.matchMedia('(orientation: portrait)').matches===(w<=h),
+    try{await page.waitForFunction((w,h)=>inspected.env.innerWidth===(window.phoneLayout&&w>h?w-44:w)&&
+      inspected.env.innerHeight===(window.phoneLayout?(w<=h?h-98:h-44):h)&&inspected.env.matchMedia('(orientation: portrait)').matches===(w<=h),
       {timeout:10000,polling:100},width,height);}
     catch(error){console.error('Resize state',await page.evaluate(()=>({outer:[innerWidth,innerHeight],native:[inspected.env.innerWidth,inspected.env.innerHeight],portrait:inspected.env.matchMedia('(orientation: portrait)').matches,hidden:inspected.doc.hidden})));throw error;}
   }
@@ -275,6 +277,7 @@ async function verifyStartup(){
   if(await page.evaluate(()=>!!app.zixing)){
     if(process.argv.includes('--startup-latency'))await reviewStartupLatency({page,dir,baseline:process.argv.includes('--baseline')});
     else if(process.argv.includes('--run-settlement'))await reviewRunSettlement({page,dir});
+    else if(process.argv.includes('--entry-flow'))await (await import('./entry-regression.mjs')).verifyEntry({page,tap,dir});
     else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
     else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});

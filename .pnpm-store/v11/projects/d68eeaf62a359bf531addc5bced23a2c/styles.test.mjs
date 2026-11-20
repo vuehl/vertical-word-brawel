@@ -2,13 +2,12 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom/worker';
 import {styleEngine} from '../platform/styles.mjs';
-import {inflateSync} from 'node:zlib';
 import path from 'node:path';
 import {bootAssets} from './boot-assets.mjs';
 
 test('packaged portrait styles suppress a leftover desktop rotation overlay',()=>{
   const assets=bootAssets(path.resolve(import.meta.dirname,'..'));
-  const rules=JSON.parse(inflateSync(assets['engine/styles.bin']));
+  const rules=JSON.parse(assets['engine/styles.json']);
   const {document}=parseHTML('<html class="touch"><body><div class="rotate-hint" style="display:grid">请旋转手机</div></body></html>');
   for(const [w,h] of [[320,470],[390,746],[430,834],[768,926],[768,316]]){
     const s=styleEngine({w,h},rules).style(document.querySelector('.rotate-hint'));

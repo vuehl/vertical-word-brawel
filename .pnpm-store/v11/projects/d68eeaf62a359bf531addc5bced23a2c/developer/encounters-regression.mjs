@@ -30,7 +30,7 @@ export async function reviewEncounters(page,dir,tap,draw){
     if(sample.expected){assert.ok(sample.distance<=12.1&&sample.visible,'Boss should be near the player and inside view');assert.ok(sample.snapshot.encounter.current.hp>0);}
   }
   // Native touch covers the new scrollable controls and the exact next-wave shortcut.
-  await tap('open');await tap('minute-2');await tap('boss-timed');await tap('next-boss');await tap('apply');
+  await tap('open');await tap('minute-0');await tap('boss-timed');await tap('next-boss');await tap('apply');
   const next=await page.evaluate(()=>inspected.env.__zixingDeveloper.snapshot());
   assert.equal(next.encounter.current.kind,'alpha');assert.equal(next.stageTime,next.encounter.current.at);
   await tap('minute-5');await tap('boss-guardian');await tap('apply');
@@ -45,7 +45,8 @@ export async function reviewEncounters(page,dir,tap,draw){
     const savedMoves=p.moves;p.moves=[];
     const results=[];
     try{
-      for(const [boss,time] of [['timed',290],['timed',360],['guardian',300]]){
+      const waveAt=kind=>r.director.timeline.find(event=>event.kind===kind).t;
+      for(const [boss,time] of [['timed',waveAt('totem')],['timed',waveAt('summoner')],['guardian',300]]){
         const initial=api.apply({boss,time,count:0,mode:'none'}),actor=initial.encounter.current;
         let telegraphs=0;const telegraph=r.vfx.telegraph;
         r.vfx.telegraph=function(...args){telegraphs++;return telegraph.apply(this,args);};
@@ -85,7 +86,7 @@ export async function reviewEncounters(page,dir,tap,draw){
   // reduced runtime metadata. This changes selection inputs, not loaded terrain.
   const guardianPools=await page.evaluate(()=>{
     const api=inspected.env.__zixingDeveloper,r=app.run,stage=r.stage,seed=r.seed,results=[];
-    try{for(let zone=1;zone<=3;zone++)for(let pick=0;pick<r.biome.guardians[zone-1].length;pick++){
+    try{for(let zone=1;zone<=2;zone++)for(let pick=0;pick<r.biome.guardians[zone-1].length;pick++){
       r.stage=zone;r.seed=pick;
       const snapshot=api.apply({boss:'guardian',mode:'none',time:300,count:0}),actor=snapshot.encounter.current;
       const family=r.meta.family(actor.species),research=r.meta.research(family),goal=r.meta.researchGoal(family);
@@ -99,7 +100,7 @@ export async function reviewEncounters(page,dir,tap,draw){
   });
   for(const result of guardianPools){assert.equal(result.species,result.expected);assert.ok(!result.alive&&result.stageCleared&&result.researchCredited);assert.equal(result.portals,1);}
   const progression=await reviewPortalProgression(page,dir,draw);
-  console.log('Developer boss checks passed: timed waves, rewind, attacks, research, rewards and real portal transitions through all three zones.');
+  console.log('Developer boss checks passed: timed waves, rewind, attacks, research, rewards and real portal transitions through both combat zones.');
   const report={samples,next,guardian,combat,guardianPools,progression};
   fs.writeFileSync(path.join(dir,'developer-encounters.json'),JSON.stringify(report,null,2)+'\n');
   return report;
@@ -107,24 +108,29 @@ export async function reviewEncounters(page,dir,tap,draw){
 
 async function reviewPortalProgression(page,dir,draw){
   await page.evaluate(async()=>{
-    await app.startRun({species:132,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;
     const api=inspected.env.__zixingDeveloper;
     api.options.invincible=true;api.options.lockCount=true;
     api.close();
+    // The late-game preset should exercise the exit without stopping for
+    // either of the earlier level 10/20 evolution confirmations.
+    const r=app.run;
+    r.player.setSpecies(6);r.player.evoStage=2;r.nextEvo=null;
   });
   const results=[];
-  for(let zone=1;zone<=3;zone++){
+  for(let zone=1;zone<=2;zone++){
     const defeat=await page.evaluate(()=>{
       const api=inspected.env.__zixingDeveloper,r=app.run;
-      const snapshot=api.apply({boss:'guardian',mode:'timed',time:600,count:0}),actor=snapshot.encounter.current;
+      const snapshot=api.apply({boss:'guardian',mode:'stress',time:600,count:0}),actor=snapshot.encounter.current;
       // Advance past 10:00 with the ordinary fixed-build tools still active.
       for(let frame=0;frame<31;frame++)r.update(1/30);
       const stages=r.stats.stagesCleared,bosses=r.stats.bosses,splits=r.splits.length;
       const chests=r.interactables.list.filter(i=>i.kind==='freechest').length;
       r.combat.killEnemy(actor.index,{type:'normal'});
       const portals=r.interactables.list.filter(i=>i.kind==='portal'),portal=portals[0];
-      r.player.pos.set(portal.x,r.terrain.height(portal.x,portal.z),portal.z);
+      const x=portal.x+(portal.x>0?-6:6);
+      r.player.pos.set(x,r.terrain.height(x,portal.z),portal.z);
       r.camTarget.copy(r.player.pos);r.updateCamera(1);
       return {stage:r.stage,time:r.stageTime,stageCleared:r.stageCleared,stagesAdded:r.stats.stagesCleared-stages,
         bossesAdded:r.stats.bosses-bosses,splitsAdded:r.splits.length-splits,portals:portals.length,
@@ -134,7 +140,7 @@ async function reviewPortalProgression(page,dir,draw){
     assert.equal(defeat.stage,zone);assert.ok(defeat.time>600&&defeat.stageCleared);
     assert.equal(defeat.stagesAdded,1);assert.equal(defeat.bossesAdded,1);assert.equal(defeat.splitsAdded,1);
     assert.equal(defeat.portals,1);assert.ok(defeat.portalInBounds&&defeat.chestsAdded>=1);
-    assert.equal(defeat.sanctuaryExit,zone===3);
+    assert.equal(defeat.sanctuaryExit,zone===2);
     await page.evaluate(()=>{
       const r=app.run;inspected.env.__zixingDeveloper.options.monitor=false;
       for(let frame=0;frame<150;frame++)r.update(1/30);
@@ -144,23 +150,26 @@ async function reviewPortalProgression(page,dir,draw){
     // animation to finish before capturing the actual rendered exit.
     await new Promise(resolve=>setTimeout(resolve,300));
     await draw();await page.screenshot({path:path.join(dir,'dev-portal-zone-'+zone+'.png')});
-    const warning=await page.evaluate(()=>{
+    const warning=await page.evaluate(async()=>{
       const r=app.run,portal=r.interactables.list.find(i=>i.kind==='portal');
+      await portal.modelReady;
       const rewards=r.interactables.rewardsLeft();
-      r.interactables.interact(portal);
-      return {rewards,stage:r.stage,state:r.state,warnAt:r.rewardWarnAt,time:r.realTime};
+      r.player.pos.set(portal.x,portal.y,portal.z);r.player.vel.set(0,0,0);
+      for(let i=0;i<45;i++)r.interactables.update(0,1/30);
+      return {rewards,stage:r.stage,state:r.state,warned:r.interactables.warnedPortal===portal};
     });
     assert.ok(warning.rewards>0);assert.equal(warning.stage,zone);assert.equal(warning.state,'play');
-    assert.equal(warning.warnAt,warning.time,'The normal unclaimed-reward warning must still run');
-    await page.evaluate(()=>app.run.interactables.interact(app.run.interactables.list.find(i=>i.kind==='portal')));
-    await page.waitForFunction(zone=>app.run.stage===zone+1&&app.run.state==='play',{timeout:90000},zone);
+    assert.ok(warning.warned,'The normal unclaimed-reward warning must still run');
+    await page.evaluate(()=>{for(let i=0;i<45;i++)app.run.interactables.update(0,1/30);});
+    const nextStage=zone===1?2:4;
+    await page.waitForFunction(stage=>app.run.stage===stage&&app.run.state==='play',{timeout:90000},nextStage);
     const arrived=await page.evaluate(()=>{
       const r=app.run;r.update(0);
       return {stage:r.stage,stageTime:r.stageTime,stageCleared:r.stageCleared,bossSpawned:r.bossSpawned,
         sanctuary:!!r.sanctuary,testEntry:!!inspected.doc.querySelector('#zx-dev-button')?.isConnected};
     });
-    assert.equal(arrived.stage,zone+1);assert.equal(arrived.stageTime,0);assert.equal(arrived.stageCleared,false);
-    assert.ok(arrived.testEntry);assert.equal(arrived.sanctuary,zone===3);
+    assert.equal(arrived.stage,nextStage);assert.equal(arrived.stageTime,0);assert.equal(arrived.stageCleared,false);
+    assert.equal(arrived.bossSpawned,zone===2);assert.ok(arrived.testEntry);assert.equal(arrived.sanctuary,zone===2);
     results.push({defeat,warning,arrived});
   }
   return results;

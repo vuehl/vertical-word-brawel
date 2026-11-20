@@ -23,12 +23,12 @@ export function workloadMoves(run,preset,skills){
   return [...pool.kit,...pool.line,...pool.shared.filter(m=>m.open),...(pool.any||[])]
     .filter(m=>{
       if(m.level>preset.level||seen.has(m.id)||run.banished.has('m'+m.id))return false;
-      seen.add(m.id);return !!skills.move(m.id);
-    }).slice(0,Math.min(preset.skills,p.moveSlots)).map(m=>({...m,...skills.move(m.id)}));
+      seen.add(m.id);return !!skills.move(m.id,p.speciesId);
+    }).slice(0,Math.min(preset.skills,p.moveSlots)).map(m=>({...m,...skills.move(m.id,p.speciesId)}));
 }
 
 export function createWorkload(run,skills){
-  let saved=null,mode='none',preset=null,elapsed=0,refill=0,ultimate=0,serial=0,evolutionQueued=false;
+  let saved=null,mode='none',preset=null,elapsed=0,refill=0,serial=0,evolutionQueued=false;
   const p=run.player;
   function stop(){
     mode='none';preset=null;evolutionQueued=false;
@@ -59,17 +59,20 @@ export function createWorkload(run,skills){
     const moves=workloadMoves(run,next,skills);
     if(!moves.length)throw Error('当前形态没有已解锁的可用技能。');
     if(!saved){
-      saved={player:Object.fromEntries(['moves','moveSlots','vitamins','items','level','xp','xpNext','hp','addXp','gainLevel','speciesId','data','types','roster','ability','evoStage'].map(k=>[k,p[k]])),pendingLevels:run.pendingLevels,nextEvo:run.nextEvo&&{...run.nextEvo}};
+      saved={player:Object.fromEntries(['moves','moveSlots','vitamins','items','level','xp','xpNext','hp','addXp','gainLevel','speciesId','data','types','roster','ability','evoStage','growth'].map(k=>[k,p[k]])),pendingLevels:run.pendingLevels,nextEvo:run.nextEvo&&{...run.nextEvo}};
     }
     // Every application starts clean; rewinding does not stack old upgrades/loot.
     run.projectiles.clear();run.zones.clear();run.vfx.clear();run.pickups.clear();
-    mode=nextMode;preset=next;elapsed=refill=ultimate=serial=0;
+    mode=nextMode;preset=next;elapsed=refill=serial=0;
     p.moves=[null,null,null,null];p.vitamins=new Map();
-    p.items=new Map(next.items?[['leftovers',Math.min(3,next.items)],['muscle-band',Math.min(3,next.items)]]:[]);
+    p.items=new Map(next.items?[['razor-claw',Math.min(3,next.items)],['assault-vest',Math.min(3,next.items)]]:[]);
     p.level=next.level;p.xpNext=p.xpFor(p.level);
-    // Boss candy bypasses addXp; freeze both upgrade routes in a fixed build.
-    // Existing XP is preserved and restored with the original build.
-    p.addXp=()=>{};p.gainLevel=()=>{};run.pendingLevels=0;
+    p.xp=Math.min(saved.player.xp,p.xpNext-1);
+    p.growth=Math.max(0,p.growthStage()-p.evoStage);
+    // Only the fixed stress benchmark suppresses XP and rare candy.
+    p.addXp=mode==='stress'?()=>{}:saved.player.addXp;
+    p.gainLevel=mode==='stress'?()=>{}:saved.player.gainLevel;
+    run.pendingLevels=0;
     for(const {id} of moves){
       if(!p.addMove(id))throw Error('Developer move could not be equipped: '+id);
     }
@@ -88,7 +91,7 @@ export function createWorkload(run,skills){
   }
   function update(dt){
     if(!preset||run.state!=='play')return;
-    // Fixed presets freeze XP, so the normal pending-level path never runs.
+    // Jumping straight to a preset level doesn't enqueue upgrade choices.
     // Once the test panel closes, reuse the real branch choice, confirmation
     // and animation. Never pick a branch or evolve silently for the player.
     if(evolutionQueued){
@@ -97,16 +100,20 @@ export function createWorkload(run,skills){
       else if(run.tryEvolve()){evolutionQueued=false;return;}
     }
     if(!Number.isFinite(dt)||dt<=0)return;
-    elapsed+=dt;refill-=dt;ultimate-=dt;
+    elapsed+=dt;refill-=dt;
     if(refill<=0){refill=1;fillLoot(mode==='stress'?40:12);}
     // Normal attacks run in run.update. Stress shortens cooldowns within a
     // bounded four-slot build; no extra render loop or uncapped particle spam.
     if(mode==='stress')for(const m of p.moves)if(m)m.timer=Math.min(m.timer,.35);
-    if((mode==='stress'||preset.at>=120)&&ultimate<=0&&run.ult.active<=0&&!run.ult.castPending){
-      run.ult.charge=1;run.ult.fire();ultimate=mode==='stress'?8:25;
-    }
   }
-  return {apply,update,stop,advanceEvolution:()=>{
+  function prepareUltimateTest(){
+    if(mode==='stress'){
+      mode='timed';preset=workloadPreset(run.stageTime,mode,p.level);
+      p.addXp=saved.player.addXp;p.gainLevel=saved.player.gainLevel;
+    }
+    return mode;
+  }
+  return {apply,update,stop,prepareUltimateTest,advanceEvolution:()=>{
     if(!run.nextEvo)return false;
     apply(mode==='none'?'timed':mode,run.stageTime,Math.max(p.level,run.nextEvo.level));return true;
   },plan:(mode,seconds)=>{

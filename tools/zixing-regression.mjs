@@ -127,7 +127,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     app.r.render=render;layout.refresh=refresh;gl.texSubImage2D=upload;
     return {sampleMs:1500,sceneRenders:renders,layouts,textureUploads:uploads};
   });
-  assert.equal(perf.sceneRenders,0,'Opaque menus must not render a hidden 3D scene');
+  assert.ok(perf.sceneRenders>0,'The home screen must render the live spawn and its idle hero');
   assert.equal(perf.layouts,0,'An unchanged menu must not relayout');
   assert.equal(perf.textureUploads,0,'Static artwork must not trigger texture uploads');
   console.log('Zixing idle work',JSON.stringify(perf));
@@ -135,16 +135,8 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   if(perfOnly)return;
   if(!process.argv.includes('--battle-only')){
   await tap('[data-action="journey"]');
-  await snapshot('02-fire-390');
-  for(const id of [16,132,4]){await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-390');}
-  await tap('.zx-link','查看属性');await snapshot('29-preview-390');await tap('.zx-footer button','返回');
-  await tap('.zx-footer button','选择关卡');await snapshot('05-maps-390');
-  const locks=await page.evaluate(()=>[...inspected.doc.querySelectorAll('.zx-lock [data-icon="lock"]')].map(c=>{
-    const pixels=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
-    return {static:c.dataset.static,drawn:pixels.some((v,i)=>i%4===3&&v>0)};
-  }));assert.equal(locks.length,3);assert.ok(locks.every(i=>i.drawn&&i.static==='true'),'Locked maps need drawn lock icons');
-  await tap('.zx-footer button','选择难度');await snapshot('06-difficulty-390');
-  assert.equal(await page.evaluate(()=>inspected.doc.querySelectorAll('[data-tier]:disabled').length),2);
+  await snapshot('05-maps-390');
+  assert.equal(await page.evaluate(()=>app.screen.querySelectorAll('[data-mode][aria-disabled="true"]').length),2);
   await page.evaluate(()=>app.zixing.home());await sleep(350);
   await tap('[data-action="lab"]');
   await snapshot('30-lab-empty-390');await tap('[data-research="dmg"]');await snapshot('35-research-insufficient');
@@ -170,9 +162,8 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await resize(width,height);
     await page.evaluate(()=>app.zixing.home());await sleep(300);await snapshot('home-'+width);
-    await tap('[data-action="journey"]');await snapshot('choose-'+width);
-    await tap('.zx-footer button','选择关卡');await snapshot('maps-'+width);
-    await tap('.zx-footer button','返回');await tap('.zx-footer button','返回');await tap('[data-action="lab"]');
+    await tap('[data-action="journey"]');await snapshot('maps-'+width);
+    await tap('[data-action="back"]');await tap('[data-action="lab"]');
     if(width===320){
       const scroll=await page.evaluate(()=>{
         const e=inspected.doc.querySelector('.zx-body'),b=e.getBoundingClientRect(),s=inspected.doc.getElementById('game').getBoundingClientRect();
@@ -181,7 +172,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       });assert.ok(scroll>20,'Research content must respond to a native swipe');
     }
     for(const tab of ['战斗','生存','成长']){await tap('.zx-tabs button',tab);await snapshot('lab-'+tab+'-'+width);}
-    await tap('.zx-footer button','返回');await tap('[aria-label="设置"]');
+    await tap('.zx-footer button','返回');await page.evaluate(()=>app.zixing.settings());
     for(const tab of ['声音','画面','操作','界面']){
       await tap('.zx-tabs.main button',tab);
       const sub=await page.evaluate(()=>[...inspected.doc.querySelectorAll('.zx-subtab')].map(e=>e.textContent));
@@ -199,11 +190,11 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     assert.equal(saved,.65,'Settings saved to the actual local file');
   }
   await resize(390,844);
-  await tap('.zx-home-foot button','玩法说明');await snapshot('25-help');await tap('.zx-footer button','返回');
+  await page.evaluate(()=>app.zixing.help());await snapshot('25-help');await tap('.zx-footer button','返回');
   }
   if(!menusOnly){
     assert.ok(await page.evaluate(()=>app.pacer.next-performance.now()<1000),'Repeated menu changes must not postpone the next game frame');
-    await tap('[data-action="journey"]');await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
+    await tap('[data-action="journey"]');await tap('[data-mode="standard"][data-tier="0"]');await tap('[data-action="enter"]');
     await page.waitForFunction(()=>app.run?.player,{timeout:90000});
     await page.waitForFunction(()=>app.run.time>2&&!inspected.doc.querySelector('.run-loading,.stageintro'),{timeout:90000});
     await page.evaluate(()=>{app.run.godMode=true;app.run.queueLevelUp=()=>{};app.run.pendingLevels=0;});

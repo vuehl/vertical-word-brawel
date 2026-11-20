@@ -40,12 +40,12 @@ function layout(rig,frames){
   return {x,y,floor,factor:size*unit/scale,scale};
 }
 
-function rasterize(frame,layout,atlas){
+function rasterize(frame,layout,atlas,cell=size){
   const {sprite,inverse:[a,b,c,d]}=frame,{x,y,factor,floor}=layout;
   const lift=Math.max(0,frame.bottom-floor);
-  const fill=Buffer.alloc(size*size*4),source=atlas.data,width=atlas.info.width;
-  for(let row=0;row<size;row++)for(let col=0;col<size;col++){
-    const dx=x+(col+.5-size/2)/factor-frame.x,dy=y+lift+(row+.5-size)/factor-frame.y;
+  const fill=Buffer.alloc(cell*cell*4),source=atlas.data,width=atlas.info.width;
+  for(let row=0;row<cell;row++)for(let col=0;col<cell;col++){
+    const dx=x+(col+.5-cell/2)/factor-frame.x,dy=y+lift+(row+.5-cell)/factor-frame.y;
     const sx=a*dx+c*dy,sy=b*dx+d*dy;
     if(sx<0||sx>=sprite.w||sy<0||sy>=sprite.h)continue;
     const px=Math.max(0,sx-.5),py=Math.max(0,sy-.5),ix=Math.floor(px),iy=Math.floor(py);
@@ -56,7 +56,7 @@ function rasterize(frame,layout,atlas){
     const r=source[offset+nextY+3]*(1-rx)*ry,s=source[offset+nextY+nextX+3]*rx*ry;
     const alpha=p+q+r+s;
     if(alpha<.5)continue;
-    const target=(row*size+col)*4;
+    const target=(row*cell+col)*4;
     for(let channel=0;channel<3;channel++){
       const i=offset+channel;
       fill[target+channel]=Math.round((source[i]*p+source[i+nextX]*q+source[i+nextY]*r+source[i+nextY+nextX]*s)/alpha);
@@ -66,16 +66,15 @@ function rasterize(frame,layout,atlas){
   return fill;
 }
 
-function withInk(fill,radius){
+function withInk(fill,radius,ink=[39,35,47],cell=size){
   // Bake the same dark contour as the stroke renderer before packing frames.
   const offsets=[];
-  for(let y=-radius;y<=radius;y++)for(let x=-radius;x<=radius;x++)if(x*x+y*y<=radius*radius)offsets.push(y*size+x);
-  const mask=Buffer.alloc(size*size);
+  for(let y=-radius;y<=radius;y++)for(let x=-radius;x<=radius;x++)if(x*x+y*y<=radius*radius)offsets.push(y*cell+x);
+  const mask=Buffer.alloc(cell*cell);
   for(let i=0;i<mask.length;i++){
     const alpha=fill[i*4+3];
     if(alpha)for(const offset of offsets)mask[i+offset]=Math.max(mask[i+offset],alpha);
   }
-  const ink=[39,35,47];
   for(let i=0;i<mask.length;i++){
     const j=i*4,alpha=fill[j+3],border=mask[i]*(1-alpha/255),total=alpha+border;
     if(!border)continue;
@@ -83,6 +82,24 @@ function withInk(fill,radius){
     fill[j+3]=Math.round(total);
   }
   return fill;
+}
+
+// Reuse the authored poses and battle registration at menu resolution. The
+// art direction for the entry screens uses a fine warm edge on the orange ink.
+export async function makeEntryIdle(source){
+  const stem=path.join(source,'art/hero-actions/4',starterWords[4]+'_待机行走死亡_优化');
+  const data=JSON.parse(fs.readFileSync(stem+'.json','utf8'));
+  const atlas=await sharp(stem+'.png').ensureAlpha().raw().toBuffer({resolveWithObject:true});
+  const frames=actions.flatMap(action=>data.animations[action].frames.map(f=>pose(f,data.sprites[f.sprite])));
+  const framing=layout(rigs[4],frames),cell=256,columns=5;
+  framing.factor*=cell/size;
+  const {frameCount:count,fps}=data.animations.idle,rows=Math.ceil(count/columns);
+  const tiles=frames.slice(0,count).map((frame,i)=>({
+    input:withInk(rasterize(frame,framing,atlas,cell),5,[111,43,22],cell),raw:{width:cell,height:cell,channels:4},
+    left:i%columns*cell,top:Math.floor(i/columns)*cell,
+  }));
+  const image=await sharp({create:{width:columns*cell,height:rows*cell,channels:4,background:'#0000'}}).composite(tiles).png().toBuffer();
+  return {image,idle:{first:0,count,fps,columns,rows,tile:size}};
 }
 
 export async function writeHeroActions(source){

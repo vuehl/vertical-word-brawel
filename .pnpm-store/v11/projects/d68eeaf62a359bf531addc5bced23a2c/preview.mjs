@@ -8,9 +8,9 @@ import {verifyDeveloperPreview,writeDeveloperPreviewPage} from './developer/prev
 const root=path.resolve(import.meta.dirname,'..');
 const development=process.argv.includes('--dev');
 const projectRoot=development?path.join(root,'验收','开发者工程'):root;
-const cli=process.env.WECHAT_DEVTOOLS_CLI||'D:/微信工具/微信web开发者工具/cli.bat';
+const cli=process.env.WECHAT_DEVTOOLS_CLI||['D:/Program Files (x86)/微信web开发者工具/cli.bat','D:/微信工具/微信web开发者工具/cli.bat'].find(file=>fs.existsSync(file));
 const output=path.join(root,'验收',development?'开发者手机预览':'手机预览');
-if(!fs.existsSync(cli))throw Error('找不到微信开发者工具，请用 WECHAT_DEVTOOLS_CLI 指定 cli.bat 的完整路径。');
+if(!cli||!fs.existsSync(cli))throw Error('找不到微信开发者工具，请用 WECHAT_DEVTOOLS_CLI 指定 cli.bat 的完整路径。');
 
 function runCLI(args){
   if(process.platform==='win32'){
@@ -25,7 +25,7 @@ function runCLI(args){
 
 execFileSync(process.execPath,[path.join(import.meta.dirname,'build.mjs'),...(development?['--dev']:[])],{cwd:root,stdio:'inherit',windowsHide:true});
 fs.mkdirSync(output,{recursive:true});
-const buildHashes=()=>Object.fromEntries(['game.js','game.json','play.js','assets.js','packs/text/assets.br'].map(name=>
+const buildHashes=()=>Object.fromEntries(['game.js','game.json','play/game.js','boot-screen.js','entry-data.js','assets.js','packs/text/assets.br'].map(name=>
   [name,createHash('sha256').update(fs.readFileSync(path.join(projectRoot,'minigame',name))).digest('hex')]));
 const hashes=buildHashes();
 const developerBuild=development?verifyDeveloperPreview(projectRoot):null;

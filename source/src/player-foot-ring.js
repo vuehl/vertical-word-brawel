@@ -65,7 +65,7 @@ export function createAltarChargeRing(parent, three, baseColor) {
   // Both the core and its halo emit light in the shader, including on the low preset without bloom.
   return groundRing(parent, three, 'altar-charge-ring', 2 / .83, `
     uniform vec3 baseColor;
-    uniform float dwell, opacity;
+    uniform float dwell;
     varying vec2 vUv;
     void main(){
       const float tau=6.2831853;
@@ -87,7 +87,24 @@ export function createAltarChargeRing(parent, three, baseColor) {
       vec2 head=.83*vec2(sin(dwell*tau),cos(dwell*tau));
       float tip=(1.-smoothstep(.012,.075,length(p-head)))*smoothstep(0.,.015,dwell)*(1.-smoothstep(.985,1.,dwell));
       vec3 color=mix(baseColor,ink,filled)*(1.+.24*core+.27*filled)+vec3(.35,.35,.29)*tip;
-      float alpha=(mix(.30*track+.17*halo,.81*core+.34*halo,filled)+.18*tip)*opacity;
+      float alpha=mix(.30*track+.17*halo,.81*core+.34*halo,filled)+.18*tip;
       gl_FragColor=vec4(color,min(1.,alpha));
-    }`, {baseColor:{value:baseColor}, dwell:{value:0}, opacity:{value:1}});
+    }`, {baseColor:{value:baseColor}, dwell:{value:0}});
+}
+
+export function createDeskAltarRing(parent, three, core, glow, breathOpacity) {
+  return groundRing(parent, three, 'desk-altar-ring', 2 / .83, `
+    uniform vec3 core, glow;
+    uniform float dwell, breathOpacity;
+    varying vec2 vUv;
+    void main(){
+      float edge=abs(length((vUv-.5)*2.)-.83);
+      float aa=max(fwidth(edge),.001);
+      float band=1.-smoothstep(.052-aa,.052+aa,edge);
+      float falloff=max(0.,edge-.052)/.050;
+      float halo=exp(-falloff*falloff)*(.32+.10*dwell);
+      float alpha=max(band,halo)*breathOpacity;
+      if(alpha<.004)discard;
+      gl_FragColor=vec4(mix(glow,core,band),alpha);
+    }`, {core:{value:core},glow:{value:glow},dwell:{value:0},breathOpacity});
 }

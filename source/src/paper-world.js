@@ -34,7 +34,7 @@ export function disposePaperWorld(terrain){
   terrain.workshopLooseMarbles=[];terrain.workshopLooseMesh=null;terrain.workshopLooseCores=null;terrain.workshopMarblePlayer=null;
 }
 export function buildPaperWorld(terrain){if(isDeskStage(terrain)){initDesk(terrain);return;}for(const _ of workshopWorldSteps(terrain)){} }
-export async function buildPaperWorldAsync(terrain,options){if(isDeskStage(terrain)){initDesk(terrain);await terrain.deskReady;options?.check?.();return {steps:terrain.group.children.length};}return runLoadingSteps(workshopWorldSteps(terrain),options);}
+export async function buildPaperWorldAsync(terrain,options){if(isDeskStage(terrain)){if(!terrain.deskReady)initDesk(terrain);await terrain.deskReady;options?.check?.();return {steps:terrain.group.children.length};}return runLoadingSteps(workshopWorldSteps(terrain),options);}
 export const applyPaperLight=applyWorkshopLight;
 const focus=new Vector3(), dragonFocus=new Vector3();
 export function updatePaperCamera(run,dt){

@@ -9,6 +9,7 @@ import {drawPaperIllustration,drawCoopMap} from './paper-ui-art.js';
 import {mapWorldScale,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
+import {entryControls,entryLayout} from './entry-layout.js';
 import {laboratory} from './catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
@@ -178,12 +179,52 @@ export function createZixingUI(app,api) {
   document.documentElement.classList.add('zixing');
   if(!globalThis.__ZILING_COMPILED_STYLES__)document.head.append(el('style','',zixingStyle));
   window.__zixingApp=app;
-  let selected=defaultStarter,selectedDifficulty=difficulties[1],labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null,activeEntry=null;
+  let selected=defaultStarter,selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null,activeEntry=null;
   const ui=app.zixing={home,choose,map,difficulty,lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready};
   if(window.nativeUI)window.addEventListener('memorywarning',releaseGlyphCanvasCache);
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
+  let mapRefresh=null;
   const goBack=()=>returnTo?returnTo():home();
+  function entryPage(page,controls=[]){
+    const node=el('section','screen zx zx-entry-page',[],{'data-page':page,'data-entry-page':page,'data-fullscreen':'true'});
+    const targets=controls.map(([label,action,rect,attrs])=>{
+      const target=button(label,action,'zx-entry-hit',attrs);
+      node.append(target);return {target,rect};
+    });
+    node.positionControls=()=>{
+      const v=window.entryViewport(),{x,y,scale}=entryLayout(v);
+      for(const {target,rect:[left,top,w,h]} of targets){
+        const height=Math.max(44,h*scale);
+        Object.assign(target.style,{position:'absolute',left:(x-v.x+left*scale)+'px',top:(y-v.y+(top+h/2)*scale-height/2)+'px',
+          width:w*scale+'px',height:height+'px',minWidth:'0px',minHeight:'0px',padding:'0px',margin:'0px'});
+      }
+    };
+    node.positionControls();app.setScreen(node);return node;
+  }
+  window.addEventListener('resize',()=>app.screen?.positionControls?.());
+  async function openJourney(){
+    let origin=app.screen;
+    try{
+      if(!profile()){
+        origin=loadingScreen('entry').node;
+        await ready();
+        if(app.screen!==origin)return;
+        map();
+        return;
+      }
+      const currentMap=map();
+      const previousTier=app.meta.biomeTier('forest');
+      // The local profile already contains unlocks. Keep the map responsive
+      // while reconciling any progress made on another device.
+      const refresh=mapRefresh??(mapRefresh=app.meta.resync());
+      try{await refresh;}finally{if(mapRefresh===refresh)mapRefresh=null;}
+      if(app.screen===currentMap&&app.meta.biomeTier('forest')!==previousTier)map();
+    }catch(error){
+      if(app.screen===origin)screen('request-error','读取关卡失败','',[text(error.message||'读取失败')],[
+        button('重试',openJourney,'primary'),button('返回',home)]);
+    }
+  }
   function screen(name,title,subtitle,body,actions=[],color='') {
     const node=el('section','screen zx zx-'+name,[],{'data-page':name,'data-fullscreen':'true'});
     if(title)node.append(el('header','zx-header '+color,[el('h1','',title),subtitle?el('small','',subtitle):null]));
@@ -251,6 +292,11 @@ export function createZixingUI(app,api) {
     }
     returnTo=null;
     if(profile())selected=playableStarter(profile().lastSpecies||profile().starter);
+    if(window.entryViewport)return entryPage('home',[
+      ['开始旅程',openJourney,entryControls.journey,{'data-action':'journey'}],
+      ['多人联机',()=>multiplayer(),entryControls.multiplayer,{'data-action':'multiplayer'}],
+      ['研究所',openLab,entryControls.lab,{'data-action':'lab'}],
+    ]);
     const root=screen('home','','',[
       el('div','zx-home-copy',[el('h2','','从一个字开始'),text('走位避险，自动出招。'),text('在五行之间，写下你的这一局。')]),
       el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
@@ -479,6 +525,24 @@ export function createZixingUI(app,api) {
     ],[button('选择关卡  →',()=>nextPage(map),'primary'),button('返回',home)]);
   }
   function map() {
+    if(window.entryViewport){
+      const max=Math.min(2,Math.max(0,app.meta.biomeTier('forest')));
+      if(selectedDifficulty.tier>max)selectedDifficulty=difficulties[0];
+      const choices=['新手','简单','困难','噩梦'].map((name,index)=>{
+        const option=difficulties[index],locked=option.tier>max;
+        return [name,()=>{
+          if(locked){window.entryHint('通关上一难度后解锁');return;}
+          selectedDifficulty=option;
+          node.dataset.tier=String(index);
+          for(const [i,choice] of [...node.querySelectorAll('[data-mode]')].entries())choice.setAttribute('aria-pressed',String(i===index));
+        },entryControls.tiers[index],{'data-tier':option.tier,'data-mode':option.mode,'aria-pressed':option===selectedDifficulty,'aria-disabled':locked}];
+      });
+      const node=entryPage('map',[...choices,['返回',home,entryControls.back,{'data-action':'back'}],
+        ['开始游玩！',()=>start(),entryControls.enter,{'data-action':'enter'}]]);
+      node.dataset.tier=String(difficulties.indexOf(selectedDifficulty));
+      node.setAttribute('aria-label','选择关卡，第一站 桌上世界。玩具阁楼、画室奇境、书架云端暂未开放。');
+      return node;
+    }
     const stages=profile().stageUnlocks??{forest:profile().biomes?.forest??0};
     const hero=card(forestArt(),el('div','zx-row zx-map-caption',[col(small('第一站'),el('h2','','桌上世界')),icon('check',28)]));
     hero.classList.add('zx-map-card');
@@ -501,7 +565,23 @@ export function createZixingUI(app,api) {
       }),
     ],[button('进入桌上世界  →',start,'primary',{'data-action':'enter'}),button('返回',map)]);
   }
-  function loadingScreen(name,coop=false) {
+  function loadingScreen(name,coop=false,departure=false) {
+    if(name==='entry'&&!coop&&window.entryViewport){
+      if(departure){
+        const node=entryPage('departure');
+        node.dataset.page=name;node.classList.add('zx-loading-screen');
+        return {node,update:({progress=0})=>Math.floor(progress*100)};
+      }
+      const node=entryPage('loading');
+      node.dataset.page=name;node.classList.add('zx-loading-screen');
+      node.setAttribute('role','progressbar');node.setAttribute('aria-label','场景加载进度');
+      node.setAttribute('aria-valuemin','0');node.setAttribute('aria-valuemax','100');
+      const update=({progress=0})=>{
+        const value=Math.max(Number(node.dataset.progress||0),Math.min(100,Math.floor(progress*100)));
+        node.dataset.progress=String(value);node.setAttribute('aria-valuenow',String(value));return value;
+      };
+      update({});return {node,update};
+    }
     const status=el('div');
     status.hidden=true;
     const value=el('b','zx-loading-percent','0%');
@@ -535,7 +615,12 @@ export function createZixingUI(app,api) {
     if(activeEntry||app.starting)return false;
     let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
-    const view=loadingScreen('entry',!!config.coop),{node}=view;
+    const opening=app.screen?.dataset.entryPage==='map'&&!config.coop&&config.biome==='forest'&&!!app.menuScene?.terrain?.desk2d;
+    const view=loadingScreen('entry',!!config.coop,opening),{node}=view;
+    if(opening){
+      app.menuScene.beginDeparture();
+      window.drawUI(app.r.renderer);
+    }
     activeEntry=node;
     const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
     const update=({phase:title,detail:message='',progress=0,teamReady,teamStatus})=>{
@@ -554,6 +639,7 @@ export function createZixingUI(app,api) {
       // Give the loading screen a frame before disk/decoder work starts.
       await waitForLoadingPaint(app.r.renderer);
       if(abandoned())return false;
+      if(opening)await app.menuScene.ready;
       await window.prepareForest?.(state=>{
         packs.set(state.name,state);
         const pending=[...packs.values()].find(s=>s.phase!=='ready')||state;
@@ -567,16 +653,20 @@ export function createZixingUI(app,api) {
       });
       if(abandoned())return false;
       update({phase:'保存出发设置',progress:.4});
+      if(!config.coop&&mapRefresh)await mapRefresh;
+      if(abandoned())return false;
+      if(!profile().starter)await app.meta.chooseStarter(config.species);
+      if(abandoned())return false;
       profile().lastBiome=config.biome;profile().lastSpecies=config.species;await app.meta.saveNow();
       if(abandoned())return false;
-      const ok=await app.startRun(config,update);
+      const ok=await app.startRun(config,update,opening);
       if(!ok)throw app.lastStartError||Error('对局未能开始，请重试');
       diagnostics.status='ready';
       return true;
     }catch(error){
       diagnostics.status='error';diagnostics.error=error.message||String(error);
       if(!cancelled && !config.coop)screen('entry-error','暂时未能进入',lastPhase,[card(text(diagnostics.error,'zx-note'))],
-        [button('重试进入桌上世界',()=>start(config),'primary',{'data-action':'retry-entry'}),button('返回选择',difficulty)]);
+        [button('重试进入桌上世界',()=>start(config),'primary',{'data-action':'retry-entry'}),button('返回选择',window.entryViewport?map:difficulty)]);
       return false;
     }finally{
       diagnostics.totalMs=Math.round(performance.now()-began);

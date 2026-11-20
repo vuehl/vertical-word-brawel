@@ -83,7 +83,7 @@ export function* workshopWorldSteps(terrain){
   const root=terrain.group,stage=terrain.biome.zxStage||1;
   terrain.zxPaper=true;terrain.zxStage=stage;root.name='stationery-wonderland';terrain.hasWater=false;terrain.isLava=false;terrain.frozen=false;
   terrain.minH=terrain.maxH=0;terrain.heights.fill(0);terrain.pathMask.fill(0);
-  terrain.spawn.set(terrain.arena?.entry?.x||0,0,terrain.arena?.entry?.z||0);
+  terrain.spawn.set(terrain.mapRules.spawn.x,0,terrain.mapRules.spawn.z);
   terrain.landmarks=[];terrain.zxProps=[];terrain.workshopLamps=[];terrain.workshopGlows=[];terrain.workshopMarbleRuns=[];terrain.workshopMarbleSites=[];
   terrain.workshopLooseMarbles=[];
   terrain.ownsPaperAssets=!terrain.paperAssets;const assets=terrain.paperAssets??=createWorkshopAssets();

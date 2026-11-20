@@ -1,7 +1,7 @@
 import {DeviceFxThree as T, F as Frustum, lt as Sphere, PostprocessingPass, RedFormat} from '../assets/three-DmSYIDKK.js';
 import {createDeviceScreenFx} from './DeviceScreenFx.mjs';
 
-export function createFacilityEffects(host, focusWorld) {
+export function createFacilityEffects(host) {
   const {renderer, composer, scene, camera, outline, outlinePass, antiAliasPass} = host;
   const fx = createDeviceScreenFx(T, renderer);
   const meshesByRoot = new Map();
@@ -9,10 +9,10 @@ export function createFacilityEffects(host, focusWorld) {
   const visiblePass = new PostprocessingPass('Visible devices', null, null);
   const colourPass = new PostprocessingPass('Device screen effects', null, null);
   const source = {width: 0, height: 0, texture: null, depthTexture: null};
-  const options = {focusWorld};
+  const options = {originalOutlineRadiusPx: 0};
 
   // PixelOutline runs before grading. Only that preset needs this one-channel
-  // exclusion mask. The supplied compositor handles its own outline after grading.
+  // exclusion mask so the world outline never inks the facilities.
   const exclusion = new T.WebGLRenderTarget(1, 1, {
     format: RedFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false,
   });
@@ -76,7 +76,10 @@ export function createFacilityEffects(host, focusWorld) {
       proxy.visible = visible(mesh);
       if (proxy.visible) anyVisible = true;
     }
-    colourPass.enabled = anyVisible;
+    // The GLB adapter plays a sweep followed by two star bursts on a 3 s loop.
+    // Only composite during the star bursts. The world-outline mask stays active independently.
+    const phase = host.shared.uTime.value % 3;
+    colourPass.enabled = anyVisible && ((phase > 1.52 && phase < 1.82) || (phase >= 1.92 && phase < 2.52));
     useMask.value = anyVisible && outlinePass.enabled;
     if (!useMask.value) return;
     exclusion.setSize(input.width, input.height);

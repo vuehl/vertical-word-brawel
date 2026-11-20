@@ -175,13 +175,15 @@ export async function reviewMapPlay(page,dir){
   report.berry=await page.evaluate(()=>{
     const r=app.run,f=r.interactables,p=r.player,start=r.time;
     const berries=f.list.filter(b=>b.kind==='berry'),berry=berries[0];
+    const before=p.pos.clone();
+    p.pos.copy(berry.group.position);r.camTarget.copy(p.pos);r.updateCamera(0);
     const eat=()=>{p.hp=1;f.interact(berry);return p.hp>1;};
     if(!eat()||berries.slice(1).some(b=>b.used))throw Error('Berry heal or independent availability failed');
-    r.time=start+59.99;f.update(0,0);
+    f.update(.45,.45);r.time=start+59.99;f.update(0,0);
     if(eat()||f.markers().includes(berry))throw Error('Berry available before cooldown');
     r.time=start+60;f.update(0,0);
     if(berry.originalMaterials||!f.markers().includes(berry)||!eat())throw Error('Berry did not recharge');
-    const cooldown=berry.data.regenAt-r.time;r.time=start;
+    const cooldown=berry.data.regenAt-r.time;r.time=start;p.pos.copy(before);
     return {count:berries.length,cooldown};
   });
   assert.deepEqual(report.berry,{count:4,cooldown:60});

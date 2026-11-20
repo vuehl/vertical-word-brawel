@@ -1,5 +1,8 @@
 import {heroActionCatalog} from './hero-action-catalog.js';
 
+export const animatedPixelHeight=.074;
+export const glyphBillboardSize=bodyHeight=>Math.max(1.9,Math.min(2.55,bodyHeight*1.3));
+
 const clipsBySpecies=new Map();
 for(const [id,{columns,rows,scale,clips}] of Object.entries(heroActionCatalog)){
   const species=Number(id);

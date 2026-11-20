@@ -5,6 +5,8 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
 import {reviewCharacters} from './character-regression.mjs';
+import {reviewWorkshop} from './workshop-regression.mjs';
+import {reviewStylizedVFX} from './stylized-vfx-regression.mjs';
 import {reviewPaperBatching} from './paper-batching-regression.mjs';
 import {profileRuntime} from './runtime-profile.mjs';
 import {reviewLateCrowd} from './late-crowd-regression.mjs';
@@ -19,15 +21,20 @@ import {reviewOptimizations} from './optimization-regression.mjs';
 import {reviewCrowdRender} from './crowd-render-regression.mjs';
 import {reviewBattleLoad} from './battle-load-regression.mjs';
 import {reviewBattleVisual} from './battle-visual-regression.mjs';
-import {reviewIOSBudget} from './ios-budget-regression.mjs';
+import {reviewIOSBudget,installNativePerformanceFixture,reviewNativePerformance} from './ios-budget-regression.mjs';
 import {reviewPhonePerformance} from './phone-performance-regression.mjs';
+import {fixtureSubpackage} from './fixture-play-chunks.mjs';
+import {gameProject} from './project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
-const game=path.join(root,...(development?['验收','开发者工程']:[]),'minigame');
-const dir=process.env.POKEBONK_QA||path.join(root,'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
+const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development),'minigame');
+const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion'].some(arg=>process.argv.includes(arg));
+const dir=process.env.POKEBONK_QA||path.join(root,fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
 const {default:puppeteer}=await import(pathToFileURL(path.join(root,'tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js')));
 const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
 const config=JSON.parse(fs.readFileSync(path.join(game,'game.json'),'utf8'));
+assert.equal(config.iOSHighPerformance,true);assert.equal(config['iOSHighPerformance+'],true);
+assert.equal(config.plugins?.MiniGameCommon,undefined,'Build must not declare the removed power-mode plugin');
 const modules=[],packageData={main:[]},packageEntries={};
 for(const pkg of config.subpackages){packageData[pkg.name]=[];packageEntries[pkg.name]=pkg.root.endsWith('.js')?pkg.root:pkg.root+'/game.js';}
 for(const entry of fs.readdirSync(game,{recursive:true})){
@@ -42,26 +49,31 @@ const boot='const defs={},cache={};\n'+modules.map(p=>'defs['+JSON.stringify(p)+
 const srv=http.createServer((req,res)=>{
   if(req.url==='/'){res.setHeader('content-type','text/html;charset=utf-8');return res.end('<meta charset="utf-8"><style>*{margin:0}canvas{display:block;width:100vw;height:100vh}</style><body><script src="/fixture.js"></script><script src="/boot.js"></script>');}
   if(req.url==='/fixture.js'||req.url==='/boot.js'){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(req.url==='/boot.js'?boot:'window.packageData='+JSON.stringify(packageData)+';window.packageEntries='+JSON.stringify(packageEntries)+';'+fixture);}
-  if(urls.has(req.url)||Object.values(packageEntries).includes(req.url.slice(1)))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
+  if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(fixtureSubpackage(game,req.url.slice(1)));}
+  if(urls.has(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
   res.statusCode=404;res.end();
 });
 await new Promise(r=>srv.listen(0,'127.0.0.1',r));
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required']});
 try{
   const page=await browser.newPage(),errors=[];
-  page.on('pageerror',e=>errors.push(String(e)));
+  page.on('pageerror',e=>{errors.push(String(e));console.error('Runtime error:',String(e));});
+  page.on('console',m=>{if(m.type()==='error'&&/WebGLProgram|Shader Error|VALIDATE_STATUS/.test(m.text())){errors.push(m.text());if(process.argv.includes('--debug-shaders'))console.error(m.text().slice(0,1800));}});
   await page.setViewport({width:390,height:844,deviceScaleFactor:3});
+  if(process.argv.includes('--native-performance'))await page.evaluateOnNewDocument(installNativePerformanceFixture);
   await page.evaluateOnNewDocument(platform=>{
     window.fixturePlatform=platform;
     window.phoneLayout=true;window.auditUIUploads=0;window.auditControlUploads=0;window.auditUploadBytes=0;window.auditHealthBytes=0;window.auditPortraitBytes=0;
     const proto=WebGL2RenderingContext.prototype;
     for(const name of ['texImage2D','texSubImage2D']){
       const original=proto[name];proto[name]=function(...args){
-        const canvas=args.at(-1);if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas||window.inspected?.hudLayers?.some(layer=>layer.canvas===canvas))){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
+        const canvas=args.at(-1);
+        if(platform==='ios'&&canvas&&canvas===window.inspected?.health?.canvas)throw Error('Health must use the iOS pixel-buffer upload');
+        if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas||window.inspected?.hudLayers?.some(layer=>layer.canvas===canvas))){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
         return original.apply(this,args);
       };
     }
-  },process.argv.includes('--ios-budget')?'ios':'devtools');
+  },process.argv.includes('--android-performance')?'android':process.argv.some(arg=>['--ios-budget','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
@@ -72,14 +84,24 @@ try{
     assert.equal(await page.evaluate(()=>inspected.doc.querySelector('#zx-dev-version')?.textContent),'开发测试版 DEV 8');
     await page.screenshot({path:path.join(dir,'dev-home.png')});
   }
-  const initial=await page.evaluate(async development=>{
+  const fiveMinute=process.argv.includes('--five-minute');
+  const upgradeResume=process.argv.includes('--upgrade-resume');
+  const deskReview=process.argv.includes('--map-play')||process.argv.includes('--illustrated-desk');
+  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg))));
+  const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
     const initial={quality:app.meta.profile.settings.quality,saver:app.saver,fpsCap:app.fpsCap(),frameGap:app.frameGap()};
-    Object.assign(app.meta.profile.settings,{quality:'high',fpsLimit:60,batterySaver:false});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:upgradeResume?'low':'high',fpsLimit:60,batterySaver:false});app.applySettings();
     // Prevent the software rasterizer from monopolizing startup. Manual sample frames follow.
     window.realFrameGap=app.frameGap.bind(app);
     app.frameGap=()=>250;
+    if(repeatableMap){
+      const start=app.backend.startRun.bind(app.backend);
+      app.backend.startRun=async(...args)=>({...await start(...args),seed:53090});
+      let seed=53090;
+      Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+    }
     if(development)return initial;
     await inspected.env.prepareForest();
     if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Start failed');
@@ -88,10 +110,74 @@ try{
     // gameplay HUD once before freezing frames for deterministic measurements.
     app.run.update(1/60);
     return initial;
-  },development);
+  },{development,repeatableMap,upgradeResume});
+  assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
+  if(development&&(fireReview||process.argv.some(arg=>['--illustrated-desk','--hand-drawn-fire-spin','--fire-breath'].includes(arg)))){
+    // Art reviews must show the actual desktop, not the default developer
+    // dialog or its scenery-hidden workload preset.
+    await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
+  }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--phone-performance')){
+  if(process.argv.includes('--battle-pacing')){
+    const {reviewBattlePacing}=await import('./battle-pacing-regression.mjs');
+    await reviewBattlePacing(page);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--android-performance')){
+    const samples=await page.evaluate(()=>{
+      const samples=[];
+      for(const quality of ['low','medium','high']){
+        app.meta.profile.settings.quality=quality;app.applySettings();
+        app.run.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
+        const {renderer,composer,sun}=app.r,gl=renderer.getContext();
+        const shader=renderer.info.programs
+          .flatMap(p=>gl.getAttachedShaders(p.program))
+          .filter(s=>gl.getShaderParameter(s,gl.SHADER_TYPE)===gl.FRAGMENT_SHADER)
+          .map(s=>gl.getShaderSource(s)).find(src=>src.includes('coverage+=workshopShadowTap'));
+        samples.push({quality,world:[composer.inputBuffer.width,composer.inputBuffer.height],
+          ui:[inspected.uiCanvas.width,inspected.uiCanvas.height],shadow:sun.shadow.mapSize.x,
+          filterTaps:shader?.match(/coverage\+=workshopShadowTap/g)?.length,
+          platform:inspected.env.nativeDevice.platform,fps:app.fpsCap(),error:gl.getError()});
+      }
+      return samples;
+    });
+    const baseline=process.argv.includes('--baseline');
+    const worldSizes=baseline?[[390,844],[585,1266],[780,1688]]:[[390,844],[487,1055],[585,1266]];
+    const shadowSizes=baseline?[1024,1536,2048]:[1024,1024,1536];
+    console.log('Android WebGL workload',samples);
+    for(const [i,sample] of samples.entries()){
+      assert.equal(sample.platform,'android');assert.equal(sample.error,0);
+      assert.deepEqual(sample.world,worldSizes[i]);
+      assert.deepEqual(sample.ui,[780,1688]);assert.equal(sample.fps,60);
+      assert.equal(sample.shadow,shadowSizes[i]);assert.equal(sample.filterTaps,baseline?8:4);
+    }
+    assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--native-performance')){
+    await reviewNativePerformance(page,dir);assert.deepEqual(errors,[]);
+  }else if(upgradeResume){
+    const {reviewUpgradeResume}=await import('./upgrade-resume-regression.mjs');
+    await reviewUpgradeResume(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
+  }else if(fiveMinute){
+    const {reviewFiveMinute,playFiveMinutes}=await import('./five-minute-regression.mjs');
+    if(process.argv.includes('--soak'))await playFiveMinutes(page,dir);
+    else await reviewFiveMinute(page,dir,process.argv.includes('--baseline'));
+    assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--wind-animation')){
+    const {reviewWindAnimation}=await import('./wind-animation-regression.mjs');
+    await reviewWindAnimation(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--illustrated-desk')){
+    const {reviewIllustratedDesk}=await import('./illustrated-desk-regression.mjs');
+    await reviewIllustratedDesk(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--desktop-layout')){
+    const {reviewDesktopLayout}=await import('./desktop-layout-regression.mjs');
+    await reviewDesktopLayout(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--map-play')){
+    const {reviewMapPlay}=await import('./map-play-regression.mjs');
+    await reviewMapPlay(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--vfx')){
+    await reviewStylizedVFX(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--workshop')){
+    await reviewWorkshop(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--phone-performance')){
     await reviewPhonePerformance(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--ios-budget')){
     await reviewIOSBudget(page,dir);assert.deepEqual(errors,[]);
@@ -103,7 +189,7 @@ try{
     await reviewCrowdRender(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--characters')){
     await reviewCharacters(page,dir);assert.deepEqual(errors,[]);
-  }else if(process.argv.includes('--map-effects')){
+  }else if((process.argv.includes('--map-effects')||process.argv.includes('--minimap'))){
     await reviewMapEffects(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--clarity')){
     await reviewClarity(page,dir);assert.deepEqual(errors,[]);
@@ -111,6 +197,8 @@ try{
     await reviewQuality(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--optimize')){
     await reviewOptimizations(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--paper-batching')){
+    await reviewPaperBatching(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--rings')){
     await reviewRingShader(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--crowd')){
@@ -139,7 +227,7 @@ try{
     report.samples.push(await page.evaluate(quality=>{
       const run=app.run,r=app.r;app.meta.profile.settings.quality=quality;app.applySettings();r.setDynRes(1);
       run.updateCamera(1);run.renderWorld(0);run.vfx.update(0);r.scene.updateMatrixWorld(true);
-      let submitted=0;for(const mesh of run.terrain.group.children)mesh.onBeforeRender=()=>submitted+=mesh.count;
+      let submitted=0;for(const mesh of run.terrain.group.children)if(mesh.isInstancedMesh)mesh.onBeforeRender=()=>submitted+=mesh.count;
       const info=r.renderer.info;info.autoReset=false;r.render(0);info.reset();submitted=0;r.render(0);
       inspected.env.invalidateUI();inspected.env.drawUI(r.renderer);
       return {quality,calls:info.render.calls,triangles:info.render.triangles,submitted,
@@ -195,8 +283,13 @@ try{
       tileSize:[inspected.controls.canvas.width,inspected.controls.canvas.height],screenSize:[inspected.uiCanvas.width,inspected.uiCanvas.height]};
     window.tap(x+30,y-8,'up',77);inspected.env.drawUI(r.renderer);
     result.released=input.stickX===0&&input.stickY===0;
+    result.hiddenOnRelease=!stick.classList.contains('on');
+    // The floating stick is no longer drawn on release. Check its displayed
+    // center on the next contact, including when the touch origin changes.
+    window.tap(x+8,y+8,'down',78);inspected.env.drawUI(r.renderer);
     const b=inspected.layout.box(stick),k=inspected.layout.box(run.ui.touch.knob);
     result.centerError=Math.hypot(k.x+k.w/2-b.x-b.w/2,k.y+k.h/2-b.y-b.h/2);
+    window.tap(x+8,y+8,'up',78);inspected.env.drawUI(r.renderer);
     return result;
   });
   // Manual drawUI calls above intentionally isolate texture work. Repaint the
@@ -251,6 +344,7 @@ try{
     const first=colliders[0],resolved={x:0,z:0};terrain.resolve(first.x,first.z,.5,.3,resolved);
     const escaped=!terrain.hitProp(resolved.x,.3,resolved.z,.49);
     run.enemies.clear();run.director.update=()=>{};run.queueLevelUp=()=>{};run.pendingLevels=0;
+    run.stageTime=300; // Standard zones reach the full population at five minutes.
     const far=[];
     for(let i=0;i<200;i++){
       const a=i*2.39996,d=i<120?8+(i%15):30+(i%30),x=run.player.pos.x+Math.cos(a)*d,z=run.player.pos.z+Math.sin(a)*d;
@@ -312,8 +406,15 @@ try{
     // The fixture intentionally renders at 4 FPS. Actual-frame diagnostics must
     // not report the simulation clock's clamped minimum of 10 FPS.
     app.run.player.hp=app.run.player.maxHp;app.run.player.iframes=10;
-    app.halted=false;await new Promise(resolve=>setTimeout(resolve,2600));app.halted=true;
-    return {fps:app.perf.fps,state:app.run.state};
+    const start=performance.now();
+    app.halted=false;
+    try{
+      while(performance.now()-start<15000){
+        await new Promise(resolve=>setTimeout(resolve,120));
+        if(app.perf.active&&app.perf.fps>0&&app.perf.started>=start+1000)break;
+      }
+      return {fps:app.perf.fps,state:app.run.state};
+    }finally{app.halted=true;}
   });
   report.settings=await page.evaluate(async()=>{
     Object.assign(app.meta.profile.settings,{zxExtraControls:true,aimMode:'manual'});app.applySettings();
@@ -326,29 +427,30 @@ try{
       click('.zx-option',label);
       applied.push({label,actual:run.performance.name,uiPixels:inspected.uiCanvas.width*inspected.uiCanvas.height,
         worldPixels:app.r.composer.inputBuffer.width*app.r.composer.inputBuffer.height,
-        note:inspected.doc.querySelector('.zx-performance-status').textContent});
+        selected:inspected.doc.querySelector('.zx-options .zx-option.on').textContent});
     }
     app.meta.profile.settings.touchScale=.85;app.applySettings();await app.meta.saveNow();
     const saved=JSON.parse(wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8')).accounts[app.meta.account.id].profile.settings;
     run.state='play';
-    const toggle=inspected.doc.querySelector('[aria-label="省电模式"]');toggle.click();
-    const saver={quality:app.meta.profile.settings.quality,profile:run.performance.name,bloom:app.r.bloom.intensity,fpsCap:app.fpsCap(),frameGap:realFrameGap()};toggle.click();
+    const toggle=()=>inspected.doc.querySelector('[aria-label="省电模式"]').click();toggle();
+    const saver={quality:app.meta.profile.settings.quality,profile:run.performance.name,bloom:app.r.bloom.intensity,fpsCap:app.fpsCap(),frameGap:realFrameGap()};toggle();
     // Old web-only battery preferences must not override the native switch.
     inspected.env.localStorage.setItem('pb-battery','1');app.applySettings();
     const restoredFps={fpsCap:app.fpsCap(),frameGap:realFrameGap(),saver:app.saver};
     inspected.env.localStorage.removeItem('pb-battery');
-    click('.zx-option','30');const selected30={fpsCap:app.fpsCap(),frameGap:realFrameGap()};click('.zx-option','60');
-    const adaptive=(target,measured,busy=false)=>{
-      app.meta.profile.settings.quality='medium';app.meta.profile.settings.fpsLimit=target;app.applySettings();app.r.setDynRes(1);
+    app.meta.profile.settings.fpsLimit=30;app.applySettings();
+    const legacyFps=app.fpsCap();
+    const adaptive=(saver,measured,busy=false)=>{
+      Object.assign(app.meta.profile.settings,{quality:'medium',batterySaver:saver});app.applySettings();app.r.setDynRes(1);
       app.dyn={t:0,frames:0,js:0,good:0,wait:8,lastUp:-1e9};delete inspected.env.__dynFps;
       for(let i=0;i<125;i++)app.adaptRes(busy?1000/measured*.9:2,1/measured,100000+i*1000/measured);
       return app.r.dynRes;
     };
-    const dynamicResolution={atSelected30:adaptive(30,30),overloaded60:adaptive(60,30),busyNative:adaptive(60,11,true)};
+    const dynamicResolution={atSaver30:adaptive(true,30),overloaded60:adaptive(false,30),busyNative:adaptive(false,11,true)};
     delete inspected.env.__dynFps;app.meta.profile.settings.quality='high';app.applySettings();app.r.setDynRes(1);
     run.state='paused';
     inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
-    return {saved:{quality:saved.quality,touchScale:saved.touchScale},applied,removedControls,saver,restored:run.performance.name,restoredFps,selected30,dynamicResolution,options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
+    return {saved:{quality:saved.quality,touchScale:saved.touchScale},applied,removedControls,saver,restored:run.performance.name,restoredFps,legacyFps,dynamicResolution,options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
   });
   await page.screenshot({path:path.join(dir,'settings-quality.png')});
   if(report.glyphCrowd){
@@ -361,33 +463,37 @@ try{
   }
   fs.writeFileSync(path.join(dir,'runtime-performance.json'),JSON.stringify(report,null,2));
   assert.deepEqual(errors,[]);
-  assert.equal(initial.quality,'low');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
   assert.equal(report.touch.idleUploads,0);assert.equal(report.touch.fullUploads,0);
   assert.equal(report.touch.controlUploads,10);assert.ok(report.touch.uploadedBytes<10*5266560*.1);
-  assert.ok(report.touch.released&&report.touch.centerError<1);
+  assert.ok(report.touch.released&&report.touch.hiddenOnRelease&&report.touch.centerError<1);
   assert.ok(report.touch.directions.every(([x,y])=>x>0&&y>0));
   assert.ok(report.visibility.visibleFarDistance>18);assert.deepEqual(report.visibility.counts.map(c=>c.draws),[2,2,2]);
   assert.equal(report.visibility.revealedAfterMoving,1);assert.equal(report.visibility.alive,4);
   const [low,medium,high]=report.samples;
   assert.ok(low.worldPixels<medium.worldPixels&&medium.worldPixels<high.worldPixels);
   assert.equal(low.uiPixels,high.uiPixels);assert.equal(medium.uiPixels,high.uiPixels);
-  assert.equal(low.outline,false);assert.equal(low.bloom,0);assert.ok(high.outline&&high.bloom>0);
-  for(const sample of report.samples){assert.ok(sample.submitted<sample.authored*.4);assert.equal(sample.sky,false);assert.equal(sample.interactions,56);assert.ok(sample.colliders<200);}
+  assert.equal(low.profile.outline,false);assert.equal(low.profile.bloom,false);assert.ok(high.profile.outline&&high.profile.bloom);
+  for(const sample of report.samples){
+    // The illustrated desk enforces its ink outline and disables bloom on every preset.
+    assert.equal(sample.outline,true);assert.equal(sample.bloom,0);
+    assert.ok(sample.submitted<sample.authored*.4);assert.equal(sample.sky,false);
+    assert.equal(sample.interactions,26);assert.equal(sample.colliders,sample.props);
+  }
   assert.deepEqual(report.gameplay.loot.before.totals,report.gameplay.loot.after.totals);assert.ok(report.gameplay.loot.after.count<report.gameplay.loot.before.count);
   assert.equal(report.gameplay.misses,0);assert.ok(report.gameplay.escaped&&report.gameplay.stress.finite);assert.equal(report.gameplay.stress.state,'play');
   assert.ok(report.gameplay.stress.activeEnemies>=190&&report.gameplay.stress.farMoved>0,'Throttled distant enemies must continue simulating');
   assert.ok(report.gameplay.stress.particles<=report.gameplay.stress.particleLimit&&report.gameplay.stress.texts<=report.gameplay.stress.textLimit);
-  assert.deepEqual(report.settings.saved,{quality:'high',touchScale:.85});assert.equal(report.settings.saver.quality,'high');assert.equal(report.settings.saver.profile,'流畅');assert.equal(report.settings.restored,'精致');
+  assert.deepEqual(report.settings.saved,{quality:'high',touchScale:.85});assert.equal(report.settings.saver.quality,'low');assert.equal(report.settings.saver.profile,'流畅');assert.equal(report.settings.restored,'精致');
   assert.deepEqual(report.settings.removedControls,{count:0,aimMode:'auto'});
-  for(const result of report.settings.applied){assert.equal(result.actual,result.label);assert.ok(result.note.includes('当前生效：'+result.label));}
+  for(const result of report.settings.applied){assert.equal(result.actual,result.label);assert.equal(result.selected,result.label);}
   const [smooth,balanced,fine]=report.settings.applied;
   assert.ok(smooth.worldPixels<balanced.worldPixels&&balanced.worldPixels<fine.worldPixels);
   assert.equal(smooth.uiPixels,fine.uiPixels);assert.equal(balanced.uiPixels,fine.uiPixels);
-  assert.deepEqual(report.settings.options,['流畅','均衡','精致','30','60']);
+  assert.deepEqual(report.settings.options,['流畅','均衡','精致']);
   assert.equal(report.settings.saver.fpsCap,30);assert.ok(Math.abs(report.settings.saver.frameGap-1000/30)<.1);
   assert.equal(report.settings.restoredFps.fpsCap,60);assert.equal(report.settings.restoredFps.saver,false);assert.equal(report.settings.restoredFps.frameGap,1000/60);
-  assert.equal(report.settings.selected30.fpsCap,30);assert.equal(report.settings.selected30.frameGap,1000/30);
-  assert.equal(report.settings.dynamicResolution.atSelected30,1);assert.equal(report.settings.dynamicResolution.overloaded60,1);
+  assert.equal(report.settings.legacyFps,60);
+  assert.equal(report.settings.dynamicResolution.atSaver30,1);assert.equal(report.settings.dynamicResolution.overloaded60,1);
   assert.equal(report.settings.dynamicResolution.busyNative,1,'Low FPS must not override the selected resolution');
   assert.ok(report.hud.bytes<100000000,'Low quality must reduce full HUD and minimap upload bandwidth');
   assert.equal(report.minimap.fullUploads,0,'A minimap refresh must not upload the whole screen');

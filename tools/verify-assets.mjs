@@ -144,13 +144,36 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
   count[category]=(count[category]||0)+1;
 }
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
-const deviceKeys=Object.keys(facilityNames).map(kind=>'assets/models/'+facilityModelFile(kind)+'.glb');
-assert.equal(deviceKeys.length,9);
+const modelKinds=Object.keys(facilityNames).filter(kind=>kind!=='bill');
+const deviceKeys=modelKinds.map(kind=>'assets/models/'+facilityModelFile(kind)+'.glb');
+assert.equal(deviceKeys.length,8);
 assert.deepEqual(models.sort(),['assets/models/ball.glb',...deviceKeys].sort());
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
 const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/DeviceScreenFx.mjs')));
 const deskDevices=JSON.parse(fs.readFileSync(path.join(root,'source/src/desk2d-devices.json'),'utf8'));
-for(const kind of Object.keys(facilityNames)){
+const deskTiles=JSON.parse(fs.readFileSync(path.join(root,'source/src/desk2d-layout.json'),'utf8')).layers.find(layer=>layer.name==='desk').parts;
+for(const [name] of deskTiles){
+  const key='assets/env/desk2d/'+name;
+  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed desk tile '+name);
+}
+const entryData=(await import('../minigame/entry-data.js')).default;
+for(const [name,, ,w,h] of entryData.layers){
+  const image=await sharp(Buffer.from(entryData.images[name],'base64')).metadata();
+  assert.equal(image.format,'jpeg');
+  if(name==='spawn.jpg')assert.deepEqual([image.width,image.height],[w,h]);
+}
+for(const name of ['idle.png','home.png','stages.png','ribbon.png']){
+  const image=Buffer.from(entryData.images[name],'base64');
+  assert.equal((await sharp(image).metadata()).format,'png');
+  if(name!=='idle.png')assert.equal(digest(image),digest(fs.readFileSync(path.join(root,'source/art/entry',name))));
+}
+assert.ok(index.files['assets/env/desk2d/shelf-depth.png'],'Missing shelf occlusion texture');
+const billPrefix='assets/env/desk2d/device-bill/';
+assert.deepEqual(Object.keys(index.files).filter(key=>key.startsWith(billPrefix)).map(key=>key.slice(billPrefix.length)).sort(),
+  ['device-bill_default.png','eyeball.png','face.png','highlight_eye.png']);
+assert.ok(index.files['assets/'+facilityIconFile('bill')]);
+assert.ok(!index.files['assets/env/desk2d/device-bill.png']&&!index.files['assets/models/'+facilityModelFile('bill')+'.glb']);
+for(const kind of modelKinds){
   const key='assets/models/'+facilityModelFile(kind)+'.glb',glb=Buffer.from(bytes(key));
   const gltf=JSON.parse(glb.toString('utf8',20,20+glb.readUInt32LE(12)));
   const adapter=gltf.asset.extras.deviceScreenFxAdapter,scene=gltf.scenes[gltf.scene??0].extras;
@@ -166,7 +189,16 @@ for(const kind of Object.keys(facilityNames)){
   assert.equal(scene.deviceScreenFx.stars.scatter.tracks,8,key);
   assert.ok(scene.deviceScreenFx.supportXYZ.length>=12,key);
   assert.deepEqual(deskDevices[kind].fx,scene.deviceScreenFx,'Desk sprite effects for '+kind);
-  assert.ok(index.files['assets/env/desk2d/device-'+kind+'.png'],'Missing desk sprite for '+kind);
+  if(kind==='altar'){
+    const prefix='assets/env/desk2d/device-altar/';
+    assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)).sort(),
+      ['color_alter.png','device-altar_0.png','device-altar_active.png','device-altar_default.png']);
+  }else if(kind==='berry'){
+    const prefix='assets/env/desk2d/device-berry/';
+    assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)).sort(),
+      ['RGB_flash.png','device-berry_basic.png','fuzzy.png','fuzzy_flash.png']);
+    assert.ok(!index.files['assets/env/desk2d/device-berry.png']);
+  }else assert.ok(index.files['assets/env/desk2d/device-'+kind+'.png'],'Missing desk sprite for '+kind);
 }
 for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.startsWith('assets/env/'))) {
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
