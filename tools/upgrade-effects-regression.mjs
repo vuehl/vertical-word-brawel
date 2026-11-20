@@ -34,23 +34,14 @@ export async function reviewUpgradeEffects(page,dir){
       r.ui.showLevelUp=(run,offers,callback)=>{offered=offers;choose=callback;};
       try{r.doLevelUp();if(!choose)throw Error('Upgrade choices not shown');choose(offered[0]);}finally{r.ui.showLevelUp=show;}
       const fx=r.vfx.upgrade;
-      if(fx.events.length!==1)throw Error('Upgrade did not create exactly one effect');
+      if(fx.events.length!==0||fx.mesh.visible||fx.rearMesh.visible)throw Error('Ordinary upgrade must not create an orbit effect');
       for(let i=0;i<20;i++)r.update(1/60);
       return {species,word:r.sprites.get(species).zxGlyph,state:r.state,pending:r.pendingLevels,count:fx.mesh.count,
-        age:fx.events[0]?.age,height:fx.origin.getW(0),programs:app.r.renderer.info.programs.length};
+        events:fx.events.length,visible:fx.mesh.visible||fx.rearMesh.visible,programs:app.r.renderer.info.programs.length};
     },species);
-    assert.equal(result.state,'play');assert.equal(result.pending,0);assert.equal(result.count,1);assert.ok(result.age>.3);
+    assert.equal(result.state,'play');assert.equal(result.pending,0);assert.equal(result.count,0);assert.equal(result.events,0);assert.equal(result.visible,false);
     await draw('upgrade-'+species);
-    const lifecycle=await page.evaluate(()=>{
-      const r=app.run,fx=r.vfx.upgrade,age=fx.events[0].age;r.state='paused';r.update(.04);
-      const paused=fx.events[0].age===age;r.state='play';
-      const old=r.player.pos.x;r.player.pos.x+=1;r.renderWorld(0);fx.update(0);
-      const follows=Math.abs(fx.origin.getX(0)-r.player.pos.x)<1e-5;r.player.pos.x=old;
-      for(let i=0;i<100;i++)r.update(1/60);
-      return {paused,follows,expired:fx.events.length===0&&!fx.mesh.visible,gl:app.r.renderer.getContext().getError()};
-    });
-    assert.ok(lifecycle.paused&&lifecycle.follows&&lifecycle.expired);assert.equal(lifecycle.gl,0);
-    report.forms.push({...result,...lifecycle});console.log('Shared upgrade',result.word);
+    report.forms.push(result);console.log('Upgrade without orbit',result.word);
   }
   for(const [from,to] of [[4,5],[5,6],[16,17],[17,18],[16,58],[58,59]]){
     const start=await page.evaluate(async({from,to})=>{
@@ -94,20 +85,20 @@ export async function reviewUpgradeEffects(page,dir){
   }
   report.settings=await page.evaluate(()=>{
     const r=app.run,fx=r.vfx.upgrade;
-    r.levelUpEffect();r.levelUpEffect();const coalesced=fx.events.length===1;
-    r.hideOwnFx=true;fx.update(.1);r.levelUpEffect();const hidden=fx.events.length===0&&!fx.mesh.visible;
-    r.hideOwnFx=false;r.vfx.calm=true;r.vfx.ownFade=.4;r.vfx.fade=.5;r.levelUpEffect();fx.update(.2);
+    fx.play(r.player,true);fx.play(r.player,true);const coalesced=fx.events.length===1;
+    r.hideOwnFx=true;fx.update(.1);fx.play(r.player,true);const hidden=fx.events.length===0&&!fx.mesh.visible;
+    r.hideOwnFx=false;r.vfx.calm=true;r.vfx.ownFade=.4;r.vfx.fade=.5;fx.play(r.player,true);fx.update(.2);
     const calm=fx.mesh.material.uniforms.calm.value,opacity=fx.timing.getW(0);
     r.vfx.clear();const cleared=fx.events.length===0&&!fx.mesh.visible;
     r.vfx.calm=false;r.vfx.ownFade=1;r.vfx.fade=1;
-    // The coop upgrade entry uses the same effect before its choice callback.
+    // Ordinary upgrades must stay free of orbits in coop and chained choices.
     const coop=r.coop,show=r.ui.showLevelUp;r.coop={};r.nextEvo=null;r.state='play';r.pendingLevels=1;r.ui.showLevelUp=()=>{};
     try{r.doLevelUp();}finally{r.coop=coop;r.ui.showLevelUp=show;r.pendingLevels=0;r.state='play';}
-    const cooperative=fx.events.length===1;r.vfx.clear();
+    const cooperative=fx.events.length===0&&!fx.mesh.visible&&!fx.rearMesh.visible;r.vfx.clear();
     r.pendingLevels=3;let choices=0,earlyEffects=0;
     r.ui.showLevelUp=(run,offers,choose)=>{choices++;earlyEffects+=fx.events.length;choose(offers[0]);};
     try{r.doLevelUp();}finally{r.ui.showLevelUp=show;}
-    const chained=choices===3&&earlyEffects===0&&fx.events.length===1&&r.pendingLevels===0;r.vfx.clear();
+    const chained=choices===3&&earlyEffects===0&&fx.events.length===0&&r.pendingLevels===0;r.vfx.clear();
     return {coalesced,hidden,calm,opacity,cleared,cooperative,chained};
   });
   assert.ok(report.settings.coalesced&&report.settings.hidden&&report.settings.cleared&&report.settings.cooperative&&report.settings.chained);

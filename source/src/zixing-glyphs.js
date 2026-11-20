@@ -115,10 +115,14 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     batch.zxOriginalGlyph=isOriginalHeroGlyph(word);
     batch.zxAlly=ally;
     if(heroEntry?.ghost){
-      // Preserve the reference's translucent orange silhouette, including its
-      // tinted outline. Only the sampled character texture changes by form.
+      // Sample the casting form's own complete glyph; each trail style supplies
+      // its tint below and shares the same opacity controls.
       m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);c.a*=clamp(vFx.y,0.,1.);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.,.28,.04),.35);gl_FragColor=c;}';
       if(heroEntry.ghost==='wind')m.fragmentShader=m.fragmentShader.replace('vec3(1.,.28,.04),.35','vec3(.65,.92,1.),.85');
+      // 补1 uses a single coral-orange silhouette, without the actor's dark ink.
+      else m.fragmentShader=m.fragmentShader
+        .replace('c.a*=clamp','c.a*=smoothstep(.035,.10,max(c.r,max(c.g,c.b)));c.a*=clamp')
+        .replace('mix(c.rgb,vec3(1.,.28,.04),.35)','vec3(1.,.13,.06)');
       m.transparent=true;m.depthWrite=false;
     }else if(ally){
       // Keep the authored ink border and hit flash; allies share the hero's
