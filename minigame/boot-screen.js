@@ -57,6 +57,7 @@ var deskPitch = Math.PI * 0.3;
 var deskTilt = Math.sin(deskPitch);
 var normalHeight = 84 * Math.tan(37 * Math.PI / 360);
 var deskPixelsPerUnit = 2347 / 1.81 / normalHeight;
+var deskWalkInset = 2;
 var clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 var entryHeroScale = 2;
 var entryFootOffset = 0.3;
@@ -67,7 +68,12 @@ function deskFrame(aspect, halfWidth, halfDepth, focusX, focusZ, progress = 1, b
   const t = cameraEase(progress), h = near + (normal - near) * t, w = h * aspect;
   const curve = 4 * t * (1 - t) * bend;
   const x = clamp(focusX + w * ((1 - t) * (1 - 2 * 167 / 382) + t * 0.148) + curve, -halfWidth + w, halfWidth - w);
-  const z = clamp(focusZ + (h * ((1 - t) * (1 - 2 * 377 / 826) + t * 0.05) + curve * 0.24) / deskTilt, -halfDepth + h / deskTilt, halfDepth - h / deskTilt);
+  const viewDepth = h / deskTilt, limit = halfDepth - viewDepth;
+  const targetZ = focusZ + (h * ((1 - t) * (1 - 2 * 377 / 826) + t * 0.05) + curve * 0.24) / deskTilt;
+  const southZ = limit - 0.4 * Math.max(0, halfDepth - deskWalkInset - focusZ);
+  const blendWidth = viewDepth * 0.25;
+  const overlap = Math.max(0, blendWidth - Math.abs(targetZ - southZ));
+  const z = clamp(Math.min(targetZ, southZ) - overlap * overlap / (4 * blendWidth), -limit, limit);
   return { x, z, w, h, distance: 42 * h / normal };
 }
 

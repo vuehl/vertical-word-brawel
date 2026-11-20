@@ -16,6 +16,41 @@ export async function verifyJoystick(page,dir){
     app.halted=true;const r=app.run;r.enemies.clear();r.state='play';
     r.ui.touch.update(r,'');inspected.env.drawUI(app.r.renderer);
   });
+  const southEdge=await page.evaluate(()=>{
+    const r=app.run,p=r.player,env=inspected.env,c=r.r.camera;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
+    const results=[];
+    for(const fps of [30,60])for(const [lane,startX] of [['open',0],['tissue',-31],['bell',16]]){
+      const dt=1/fps,limit=r.terrain.deskBounds.z-2;
+      p.pos.set(startX,0,limit-2);p.vel.set(0,0,0);p.grounded=true;
+      p.kx=p.kz=p.crowdX=p.crowdZ=0;r.camTarget.copy(p.pos);
+      const advance=frames=>{
+        for(let frame=0;frame<frames;frame++){
+          r.realDt=dt;p.update(dt);r.updateCamera(dt);r.input.endFrame();
+          if(r.terrain.hitProp(p.pos.x,p.pos.y,p.pos.z,p.radius-.001))throw Error(lane+' collision penetration');
+        }
+      };
+      window.tap(x,y,'down',11);window.tap(x,y+60,'move',11);advance(fps);
+      const edge=p.pos.z,wallSpeed=p.speedNow,wallCamera=c.position.z;
+      window.tap(x,y-60,'move',11);advance(1);
+      const cameraReturn=wallCamera-c.position.z;
+      advance(fps*3-1);
+      r.renderWorld(0);
+      const at=p.pos.clone(),speed=p.speedNow,action=p.heroPlayback?.clip.frames[0].action;
+      window.tap(x+60,y-60,'move',11);advance(fps);
+      window.tap(x,y,'up',11);
+      results.push({lane,fps,reachedWall:Math.abs(edge-limit)<.001,wallSpeed,cameraReturn,
+        drift:at.x-startX,north:edge-at.z,speed,action,turn:p.pos.x-at.x});
+    }
+    return results;
+  });
+  for(const s of southEdge){
+    assert.ok(s.reachedWall&&s.wallSpeed<.01&&s.cameraReturn>0,JSON.stringify(s));
+    assert.ok(Math.abs(s.drift)<.001&&s.north>1&&s.turn>.5,JSON.stringify(s));
+    if(s.lane==='open')assert.ok(s.north>18&&s.action==='walk',JSON.stringify(s));
+    else assert.ok(s.speed<.01&&s.action==='idle',JSON.stringify(s));
+  }
   const circles=await page.evaluate(()=>{
     const r=app.run,p=r.player,t=r.ui.touch,env=inspected.env;
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
@@ -206,6 +241,6 @@ export async function verifyJoystick(page,dir){
     return result;
   });
   assert.deepEqual(cast,{casts:1,held:true,heading:1});
-  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({circles,controls:report,interruptions,cast},null,2));
+  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({southEdge,circles,controls:report,interruptions,cast},null,2));
   console.log('Joystick contact damage during clockwise/counterclockwise turns, short and full drags, reversals, multitouch and release passed:',report.length,'screen/scale combinations');
 }

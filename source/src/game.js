@@ -1,7 +1,7 @@
 import {createCaptureGourd,gourdIcon} from './capture-gourd.js';
 import {deskCamera,deskDevice} from './desk2d.js';
 import {createBerryPickup} from './berry-pickup.js';
-import {entryHeroScale,entryFootOffset,deskTilt,deskFrame,cameraEase} from './desk-framing.js';
+import {entryHeroScale,entryFootOffset,deskTilt,deskFrame,deskWalkInset,cameraEase} from './desk-framing.js';
 import {MapSpawnError,mapRulesFor} from './map-rules.js';
 import {altarPalette} from './desk-altar-art.js';
 import {ALTAR_RING_EMISSIVE,altarRingFragment} from './altar-ring-vfx.js';
@@ -52,7 +52,7 @@ import {deviceFramePolicy,applyFrameRatePolicy,setFrameRateLock,resetFrameRatePo
 import {portalGuidance} from './portal-guidance.js';
 import {UpgradeTiming} from './upgrade-timing.js';
 import {updatePaperVisibility} from './paper-visibility.js';
-import {paperBox,hitsPaperBox,resolvePaperBox,moveEnemyPastProps,obstacleJumpSpeed} from './paper-collision.js';
+import {paperBox,hitsPaperBox,resolvePaperBox,moveDeskPlayer,moveEnemyPastProps,obstacleJumpSpeed} from './paper-collision.js';
 import './customize.js';
 import {chineseMessage as t,formatChineseNumber as n,chineseText as c} from "./chinese-text.js";
 import {
@@ -33424,7 +33424,7 @@ var mv = 30,
           (this.climbing = !0),
           Math.random() < 0.3 && t.vfx.dust(this.pos.x, this.pos.y, this.pos.z, 13154464, 1, 1)));
       let he = Math.hypot(this.pos.x - fe, this.pos.z - pe);
-      if (he > 1.2) {
+      if (!r.desk2d && he > 1.2) {
         let e = Math.ceil(he),
           t = { x: 0, z: 0 },
           n = this.pos.x,
@@ -33438,10 +33438,9 @@ var mv = 30,
           }
         }
       }
-      let ge = r.resolve(this.pos.x, this.pos.z, this.radius, this.pos.y, { x: 0, z: 0 });
-      if(r.desk2d && (ge.x!==this.pos.x || ge.z!==this.pos.z) && r.hitProp(ge.x,this.pos.y,ge.z,this.radius)){
-        ge.x=fe;ge.z=pe;
-      }
+      const ge = r.desk2d
+        ? moveDeskPlayer(r,fe,pe,this.pos.x,this.pos.z,this.radius,this.pos.y,{x:0,z:0})
+        : r.resolve(this.pos.x,this.pos.z,this.radius,this.pos.y,{x:0,z:0});
       if (
         (r.height(ge.x, ge.z) <= this.pos.y + ne && ((this.pos.x = ge.x), (this.pos.z = ge.z)),
         y > 0 &&
@@ -33477,12 +33476,19 @@ var mv = 30,
         }
       } else this.stuckT = Math.max(0, this.stuckT - e * 2);
       let _e = r.walkLim;
+      const zLimit=r.deskBounds ? r.deskBounds.z-deskWalkInset : _e;
       if (
-        ((this.pos.x = Gs(this.pos.x, -_e, _e)), (this.pos.z = Gs(this.pos.z, -(r.deskBounds?.z-2||_e), r.deskBounds?.z-2||_e)), r.arenaR < 1 / 0)
+        ((this.pos.x = Gs(this.pos.x, -_e, _e)), (this.pos.z = Gs(this.pos.z, -zLimit, zLimit)), r.arenaR < 1 / 0)
       ) {
         let e = Math.hypot(this.pos.x, this.pos.z),
           t = r.arenaR - 0.3;
         e > t && ((this.pos.x *= t / e), (this.pos.z *= t / e));
+      }
+      if(r.desk2d){
+        // Clip only the blocked fraction of self-propelled velocity. External
+        // pushes must not become player momentum on the next frame.
+        if(ce && this.pos.x!==ue)this.vel.x*=Gs((this.pos.x-fe)/ce,0,1);
+        if(le && this.pos.z!==de)this.vel.z*=Gs((this.pos.z-pe)/le,0,1);
       }
       const platform=r.propTop(this.pos.x,this.pos.z,this.radius,this.pos.y+.0001);
       this.pos.y += this.vel.y * e;
