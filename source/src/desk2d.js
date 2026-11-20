@@ -7,7 +7,7 @@ import {billLayers} from './bill-layers.js';
 import {installBillGaze} from './bill-gaze.js';
 import {w as Color,y as BufferGeometry,v as Attribute,I as Group,et as PlaneGeometry,K as Mesh,q as BasicMaterial,dt as Texture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
 import {paperBox,hitsPaperBox} from './paper-collision.js';
-import {createDeskNavigation} from './desk-navigation.js';
+import {createDeskNavigation,createSpawnPlacement} from './desk-navigation.js';
 
 import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame} from './desk-framing.js';
 const xAt=px=>(px-layout.width/2)/pixelsPerUnit;
@@ -31,7 +31,7 @@ export function initDesk(t){
     const box=paperBox(xAt((l+r)/2),zAt((top+b)/2),(r-l)/pixelsPerUnit,(b-top)/(pixelsPerUnit*tilt),1000,0);
     box.kind=kind;
     if(surfaces.has(kind))surfaces.get(kind).push(box);
-    else if(!['pen','zhi','ID-card'].includes(kind)) t.addCollider(box);
+    else if(!['pen','ID-card'].includes(kind)) t.addCollider(box);
   }
   // Facility surfaces and flat paper props can be walked on; raised objects
   // lying on top of them remain in the ordinary collision grid.
@@ -78,32 +78,9 @@ export function initDesk(t){
     wall.kind='desk-rim';t.shelfBarriers.push(wall);t.addCollider(wall);
   }
   t.steerDeskEnemy=createDeskNavigation(t);
-  // Low paper, pens and the ID card are walkable. Only place devices in the entry's connected area.
-  // Build lazily after terrain collider indexing, with clearance for the player.
-  let reachable;
-  const step=.75, cols=Math.ceil(2*halfWidth/step), rows=Math.ceil(2*halfDepth/step);
-  const cellAt=(x,z)=>[Math.round((x+halfWidth)/step),Math.round((z+halfDepth)/step)];
-  t.canReachDeskPoint=(x,z)=>{
-    if(!reachable){
-      reachable=new Uint8Array(cols*rows);
-      const visited=new Uint8Array(cols*rows),queue=[];
-      const [sx,sz]=cellAt(t.spawn.x,t.spawn.z);
-      const visit=(cx,cz)=>{
-        if(cx<0||cz<0||cx>=cols||cz>=rows)return;
-        const i=cz*cols+cx;if(visited[i])return;visited[i]=1;
-        const px=cx*step-halfWidth,pz=cz*step-halfDepth;
-        if(!t.inBounds(px,pz,1)||t.hitProp(px,.1,pz,1))return;
-        reachable[i]=1;queue.push(i);
-      };
-      visit(sx,sz);
-      for(let head=0;head<queue.length;head++){
-        const i=queue[head],cx=i%cols,cz=Math.floor(i/cols);
-        visit(cx-1,cz);visit(cx+1,cz);visit(cx,cz-1);visit(cx,cz+1);
-      }
-    }
-    const [cx,cz]=cellAt(x,z);
-    return cx>=0&&cz>=0&&cx<cols&&cz<rows&&!!reachable[cz*cols+cx];
-  };
+  t.placeSpawn=createSpawnPlacement(t);
+  t.canReachDeskPoint=(x,z)=>t.placeSpawn(x,z,1);
+  t.deviceFootprint=kind=>kind==='boss'?6.5:deviceSizes[kind].footprintRadius;
   const geometry=new PlaneGeometry(1,1);geometry.rotateX(-Math.PI/2);t.deskOwned.push(geometry);
   t.deskReady=(async()=>{
     const jobs=layout.layers.flatMap(({name,parts},layer)=>parts.map(part=>({name,layer,part})));

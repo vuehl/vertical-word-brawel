@@ -27,6 +27,23 @@ export async function verifyDeskNavigation(page){
       r.input.stickX=dx/d;r.input.stickY=-dz/d;r.realDt=1/60;p.update(1/60);r.input.endFrame();
     }
     const cardError=Math.hypot(end[0]-p.pos.x,end[1]-p.pos.z);
+    const tissue=xy(800,2200),approach=xy(800,2600);
+    p.pos.set(approach[0],0,approach[1]);p.vel.set(0,0,0);
+    for(let i=0;i<180;i++){
+      r.input.stickX=0;r.input.stickY=1;r.realDt=1/60;p.update(1/60);r.input.endFrame();
+      if(t.hitProp(p.pos.x,0,p.pos.z,p.radius-.001))throw Error('Player entered the tissue pack');
+    }
+    if(p.pos.z>=approach[1]-.1||p.pos.z<tissue[1])throw Error('Expected movement up to the tissue pack');
+    if(!t.hitProp(tissue[0],0,tissue[1],1)||r.interactables.fitsOnDesk(...tissue,3))throw Error('Facility can occupy tissue');
+    const portal=r.interactables.spawnPortal(...tissue,false,true);
+    if(t.hitProp(portal.x,0,portal.z,t.deviceFootprint('portal')))throw Error('Forced portal overlaps tissue');
+    r.interactables.remove(portal);
+    const enemies=r.enemies;
+    for(const flags of [0,1,2,512]){
+      const id=enemies.spawn(19,...tissue,1,1,flags);
+      if(id<0||!t.placeSpawn(enemies.x[id],enemies.z[id],enemies.radius[id]))throw Error('Invalid monster spawn '+flags);
+      enemies.kill(id);
+    }
     p.pos.copy(saved);p.vel.set(0,0,0);r.input.releaseAll();r.state=was;
     return {routes,cardError,cardColliders:t.colliders.filter(c=>c.kind==='ID-card').length};
   });

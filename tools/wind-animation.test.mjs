@@ -13,9 +13,9 @@ const sourceMotion=id=>{
   return JSON.parse(fs.readFileSync(new URL('../source/art/hero-actions/'+id+'/'+name+'.json',import.meta.url)));
 };
 
-test('all playable authored frames are packed and the hidden clips stay in source',async()=>{
+test('all playable authored frames are packed and retired clips are absent',async()=>{
   assert.deepEqual(Object.keys(heroActionCatalog).map(Number),enabled);
-  assert.deepEqual(Object.keys(sourceMotion(132).animations),['idle','walk','faint']);
+  assert.throws(()=>sourceMotion(132),{code:'ENOENT'});
   assert.equal(loadedHeroRig(132),undefined);
   assert.equal(prepareHeroStrokes(132),undefined);
   for(const id of enabled){

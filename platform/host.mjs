@@ -349,9 +349,7 @@ export async function setup(host) {
         entryHitScreen=entry;
         const mode=entry.dataset.entryPage,app=env.__zixingApp;
         const live=app.menuScene?.drawEntry()||false;
-        if(mode!=='departure'||!live){
-          host.entryScene.page(mode,view,Number(entry.dataset.tier||0),Number(entry.dataset.progress||0),live);
-        }
+        host.entryScene.page(mode,view,Number(entry.dataset.tier||0),Number(entry.dataset.progress||0),live);
         renderer.resetState();entrySceneVisible=entryArtResident=true;
         return;
       }

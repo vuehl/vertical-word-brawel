@@ -90,7 +90,7 @@ const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
 const random=n=>{const x=Math.sin(n*127.1+43.7)*43758.5453;return x-Math.floor(x);};
 // Other fire cones share the original simulation and budget, but retain
 // their existing shader. Test/remote emitters without a move use the spray.
-const painted=emitter=>!emitter.key?.def||['flamethrower','dragon-breath','heat-wave'].includes(emitter.key.def.key);
+const painted=emitter=>!emitter.key?.def||['flamethrower','dragon-breath'].includes(emitter.key.def.key);
 
 export class HandDrawnFireJet{
   constructor(owner,scene){

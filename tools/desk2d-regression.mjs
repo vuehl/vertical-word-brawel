@@ -83,8 +83,8 @@ export async function verifyDesk(page,dir){
      return Math.hypot(out.x-goal.x,out.z-goal.z);
    }
    const cableError=walk(4485,1720,4485,1880);
-   const paperError=walk(800,2100,800,2300),penError=walk(3600,1450,3760,1450);
-   if(paperError>.001||penError>.001)throw Error('Low props block walking');
+   const paperError=walk(800,2700,800,2200),penError=walk(3600,1450,3760,1450);
+   if(paperError<1||penError>.001)throw Error('Tissue pack or pen collision mismatch');
    const mouseBlocked=walk(4200,2040,4160,1780);
    const passageError=walk(3950,2010,4320,2010);
    if(passageError>.001)throw Error('Mouse lower passage is blocked');
@@ -92,7 +92,16 @@ export async function verifyDesk(page,dir){
  });
  assert.equal(stats.layers.length,24);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.edges&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
  await page.screenshot({path:path.join(dir,'stage1.png')});
- if(process.argv.includes('--desk-placement-only'))return;
+ if(process.argv.includes('--desk-placement-only')){
+   await page.evaluate(async()=>{
+     const run=app.run;run.state='play';await run.changeZone();
+     const terrain=run.terrain,blocked=terrain.colliders.find(c=>c.paperBox&&!c.off);
+     if(run.stage!==2||!blocked)throw Error('Expected a workshop obstacle in zone two');
+     const id=run.enemies.spawn(19,blocked.x,blocked.z,1,1,2);
+     if(id<0||!terrain.placeSpawn(run.enemies.x[id],run.enemies.z[id],run.enemies.radius[id]))throw Error('Blocked workshop spawn');
+   });
+   return;
+ }
  if(process.argv.includes('--desk-layout-only'))return;
  await verifyDeskShelf(page,dir);
  const ringPixels=await page.evaluate(()=>{

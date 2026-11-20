@@ -183,7 +183,6 @@ export class StylizedSkillFX{
       case 'ember':return [ball];
       case 'fire-spin':return [spin];
       case 'flamethrower':case 'dragon-breath':return [jet];
-      case 'heat-wave':return [family.heatTexture,base];
       case 'inferno':return [ball,base];
       case 'fire-blast':return [ball,base,family.mushroomTexture];
       case 'fire-ultimate':case 'fu-t-fire':return [base,family.mushroomTexture];
@@ -377,7 +376,6 @@ export class StylizedSkillFX{
       if(e.windArt){this.windEmitters.push(e);continue;}
       const fade=e.finite?clamp(e.life/.25,0,1):clamp(e.life/.1,0,1),envelope=clamp(e.age/.12,0,1)*fade;
       if(e.mode===8&&(e.type==='fire'||e.key?.def?.key==='dragon-breath'||String(e.key).startsWith('enemy-cone-dragon-breath'))){
-        if(e.key?.def?.key==='heat-wave'){this.fireFamily.heatWave(e);continue;}
         this.fireEmitters.push(e);continue;
       }
       if(e.handDrawn){this.spinEmitters.push(e);continue;}

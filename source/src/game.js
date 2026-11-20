@@ -12714,13 +12714,9 @@ var Df = 0.4,
             );
         }
       }
-      let s;
-      if (this.free.length) s = this.free.pop();
-      else if (this.n < 2200) s = this.n++;
-      else return -1;
-      this.glyphWords[s] = enemyWord(e, a);
+      const word=enemyWord(e,a);
       let c = k.get(e),
-        l = this.run.sprites.get(e, false, this.glyphWords[s]),
+        l = this.run.sprites.get(e, false, word),
         u = a & 1,
         d = a & 2,
         f = a & 4,
@@ -12728,6 +12724,21 @@ var Df = 0.4,
         m = a & 8192,
         h = f ? 2.6 : p ? 2.2 : d ? 2 : m ? 1.9 : u ? 1.35 : 1;
       a & 128 && (h = 1.25);
+      // Glyph textures can finish loading after spawn. Their authored collision
+      // dimensions are already available during placement.
+      const measured=!!actorMetrics[e] || l.ready;
+      const width=measured ? l.bodyWidth(h) : 1.4*h;
+      const radius=Math.max(.45,Math.min(4,width*.42));
+      const terrain=this.run.terrain;
+      if(terrain.placeSpawn && !(a & (R.Object | R.Remote))){
+        if(!terrain.placeSpawn(t,n,radius,this.propPosition))return -1;
+        t=this.propPosition.x;n=this.propPosition.z;
+      }
+      let s;
+      if (this.free.length) s = this.free.pop();
+      else if (this.n < 2200) s = this.n++;
+      else return -1;
+      this.glyphWords[s]=word;
       let g = c.stats,
         _ = (12 + c.bst * 0.055) * r * ENEMY_HEALTH_SCALE,
         v = a & 28806 ? 1 : (this.run.director?.toughness() ?? 1);
@@ -12762,11 +12773,10 @@ var Df = 0.4,
         (this.dmg[s] =
           (5 + g.atk / 16 + g.spa / 24) * i * (f ? 2.2 : d ? 1.8 : p ? 1.6 : m ? 1.2 : u ? 1.4 : 1)),
         (this.scale[s] = h));
-      let b = l.ready ? l.bodyWidth(h) : 1.4 * h,
-        x = l.ready ? l.bodyHeight(h) : 1.6 * h;
-      ((this.radius[s] = Math.max(0.45, Math.min(4, b * 0.42))),
+      let x = measured ? l.bodyHeight(h) : 1.6 * h;
+      ((this.radius[s] = radius),
         (this.hgt[s] = Math.max(0.8, x)),
-        (this.sized[s] = +!!l.ready));
+        (this.sized[s] = +measured));
       let S = a;
       this.propSide[s] = 0;
       this.deskNavUntil[s] = this.deskNavActive[s] = 0;
@@ -27895,11 +27905,10 @@ var e_ = class {
         const continuousFire=n.type==='fire'&&n.slot!=null&&r.player.moves[n.slot]?.def.arch==='cone'&&r.player.moves[n.slot]?.active>0&&!u&&!m;
         const visualMove=n.slot!=null?r.player.moves[n.slot]?.def.key:null;
         const authoredEmber=visualMove==='ember';
-        const authoredBreath=['flamethrower','dragon-breath','heat-wave'].includes(visualMove);
+        const authoredBreath=['flamethrower','dragon-breath'].includes(visualMove);
         const authoredFamily=r.vfx.crafted.fireFamily.supports(visualMove)||n.slot===8&&[4,5,6].includes(r.player.speciesId);
         const criticalFx=(u||m)&&r.vfx.criticalImpact(t,a,o);
-        if(visualMove==='heat-wave')r.vfx.crafted.fireFamily.impact('heat-wave',t,a,o);
-        else if(authoredBreath)r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),visualMove==='dragon-breath');
+        if(authoredBreath)r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),visualMove==='dragon-breath');
         else if(authoredFamily)r.vfx.crafted.fireFamily.impact(visualMove||'ultimate',t,a,o);
         else if(!authoredEmber)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
@@ -33418,6 +33427,9 @@ var mv = 30,
         }
       }
       let ge = r.resolve(this.pos.x, this.pos.z, this.radius, this.pos.y, { x: 0, z: 0 });
+      if(r.desk2d && (ge.x!==this.pos.x || ge.z!==this.pos.z) && r.hitProp(ge.x,this.pos.y,ge.z,this.radius)){
+        ge.x=fe;ge.z=pe;
+      }
       if (
         (r.height(ge.x, ge.z) <= this.pos.y + ne && ((this.pos.x = ge.x), (this.pos.z = ge.z)),
         y > 0 &&
@@ -36863,6 +36875,16 @@ var GS = class e {
     }
     add(kind, x, z, options = {}) {
       if (!isActiveFacility(kind) || options.data?.comet) return null;
+      // Forced portals and event placements also need a clear physical footprint.
+      const terrain=this.run.terrain;
+      if(terrain.desk2d){
+        const radius=terrain.deviceFootprint(kind);
+        if(terrain.hitProp(x,.1,z,radius)){
+          const spot={};
+          if(!terrain.placeSpawn(x,z,radius,spot))throw Error('桌面缺少可用的设施位置');
+          x=spot.x;z=spot.z;
+        }
+      }
       if (kind === 'chest' || kind === 'freechest') {
         const category = BS({kind, data: options.data});
         const slots = this.list.filter(f => BS(f) === category);
@@ -47636,7 +47658,7 @@ var GT = 15,
           let t = Math.random() * Math.PI * 2,
             r = n.pos.x + Math.cos(t) * 32,
             i = n.pos.z + Math.sin(t) * 32;
-          this.terrain.inBounds(r, i, 5) &&
+          this.terrain.inBounds(r, i, 5) && (!this.terrain.placeSpawn || this.terrain.placeSpawn(r,i,u.radius[e])) &&
             ((u.x[e] = r), (u.z[e] = i), (u.y[e] = this.terrain.height(r, i)));
         }
       }
@@ -48248,6 +48270,7 @@ var ME = class {
       }
       if (this.stickId < 0 && inStick) {
         this.swipeActive=false;
+        this.run.autoRun=false;
         if (((this.stickId = e.pointerId), this.fixed)) {
           let t = this.stick.getBoundingClientRect();
           ((this.sx = t.left + t.width / 2),
@@ -48295,11 +48318,8 @@ var ME = class {
         const radius=this.centeredStick||this.floatingStick
           ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
           : TE*this.k;
-        // Once the thumb reaches the rim, carry the floating base with it.
-        // Otherwise a long drag leaves the origin behind and a reverse swipe
-        // keeps steering the old way until it crosses the initial press.
-        const reach=this.floatingStick?radius:TE*this.k*DE;
-        if (i > reach && !this.fixed && !this.centeredStick) {
+        const reach=TE*this.k*DE;
+        if (i > reach && !this.floatingStick && !this.fixed && !this.centeredStick) {
           let e = (i - reach) / i;
           ((this.sx += n * e),
             (this.sy += r * e),

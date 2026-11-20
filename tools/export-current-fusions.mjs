@@ -92,7 +92,7 @@ if (global.gc && unused.length) {
     scope:'孤立 V8 中配方、函数对象、融合技能对象与索引表；不含共享字符串、编译代码、普通技能、GPU、图片、微信环境。不是游戏实测。'};
 }
 const textures = [];
-for (const name of ['fire-breath','fire-spin','fireball','fire-family','fire-mushroom','heat-wave','wind-skills','wind-moves','wind-vortex']) {
+for (const name of ['fire-breath','fire-spin','fireball','fire-family','fire-mushroom','wind-skills','wind-moves','wind-vortex']) {
   const file = path.join(root, 'source/public/assets/vfx', name+'.png');
   const {width,height} = await sharp(file).metadata();
   textures.push({name, width, height, fileBytes:fs.statSync(file).size, rgbaBytes:width*height*4});

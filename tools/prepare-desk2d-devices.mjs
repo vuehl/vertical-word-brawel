@@ -14,8 +14,11 @@ const server=http.createServer((req,res)=>{
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const browser=await puppeteer.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-try{const page=await browser.newPage();await page.goto('http://127.0.0.1:'+server.address().port);const sizes={};
+try{const page=await browser.newPage();await page.goto('http://127.0.0.1:'+server.address().port);const existing=JSON.parse(fs.readFileSync('source/src/desk2d-devices.json','utf8'));
+const sizes={bill:existing.bill};
 for(const kind of Object.keys(facilityNames)){
+ // The dock uses its live model. The stapler is authored in layers by updateDeskDeviceArt.
+ if(kind==='boss'||kind==='bill')continue;
  const modelFile=facilityModelFile(kind)+'.glb';
  const {image,height,size,footprintRadius}=await page.evaluate(async(modelFile)=>{
   const T=await import('/assets/three-DmSYIDKK.js'),gltf=await new T.t().loadAsync('/assets/models/'+modelFile);
@@ -29,7 +32,7 @@ for(const kind of Object.keys(facilityNames)){
   const image=renderer.domElement.toDataURL().split(',')[1];renderer.dispose();renderer.forceContextLoss();
   return {image,size,height:extent.y,footprintRadius:Math.hypot(extent.x,extent.z)/2};
  },modelFile);
- if(!['altar','berry','bill'].includes(kind))fs.writeFileSync(path.join(out,'device-'+kind+'.png'),Buffer.from(image,'base64'));
+ if(!['altar','berry'].includes(kind))fs.writeFileSync(path.join(out,'device-'+kind+'.png'),Buffer.from(image,'base64'));
  const pixels=await sharp(Buffer.from(image,'base64')).resize(128,128).ensureAlpha().raw().toBuffer();
  const strips=[];for(let row=0;row<128;row++){
    let start=-1;

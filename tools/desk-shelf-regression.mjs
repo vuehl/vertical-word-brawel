@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export async function verifyDeskShelf(page,dir){
-  const report=await page.evaluate(()=>{
+  const report=await page.evaluate(async()=>{
     const r=app.run,t=r.terrain,p=r.player.pos,host=r.r,cam=host.camera,renderer=host.renderer;
     const gl=renderer.getContext(),w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
     const saved=p.clone(),savedFocus=r.camTarget.clone(),auto=renderer.autoClear,target=renderer.getRenderTarget();
@@ -86,13 +86,15 @@ export async function verifyDeskShelf(page,dir){
       sprites.begin(cam);batch.push(p.x,0,p.z,'idle',0,0,1);sprites.end();
       result.enemy=compare(batch.zxGroup.mesh);
       const ally=r.allies.make(19,p.x,0,p.z),team=Object.create(r.allies);
+      const allyBatch=sprites.getAllyGlyph(ally.species,r.player.speciesId);
+      await allyBatch.material.uniforms.map.value.userData.ready;
       team.list=[ally];sprites.begin(cam);team.render();sprites.end();
-      result.ally=compare(sprites.get(19).zxGroup.mesh);
+      result.ally=compare(allyBatch.zxGroup.mesh);
       pose(x,edge-48);ally.x=p.x;ally.z=p.z;
       sprites.begin(cam);batch.push(p.x,0,p.z,'idle',0,0,1);sprites.end();
       result.enemy.brightness=brightness(batch.zxGroup.mesh);
       sprites.begin(cam);team.render();sprites.end();
-      result.ally.brightness=brightness(sprites.get(19).zxGroup.mesh);
+      result.ally.brightness=brightness(allyBatch.zxGroup.mesh);
       const goal=world(2860,720),start=world(2470,720),facing=r.player.facing.clone();
       try{
         r.player.facing.set(0,1);p.copy(goal);p.z+=2.6;

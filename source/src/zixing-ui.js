@@ -634,12 +634,7 @@ export function createZixingUI(app,api) {
   }
   function loadingScreen(name,coop=false,departure=false) {
     if(name==='entry'&&!coop&&window.entryViewport){
-      if(departure){
-        const node=entryPage('departure');
-        node.dataset.page=name;node.classList.add('zx-loading-screen');
-        return {node,update:({progress=0})=>Math.floor(progress*100)};
-      }
-      const node=entryPage('loading');
+      const node=entryPage(departure?'departure':'loading');
       node.dataset.page=name;node.classList.add('zx-loading-screen');
       node.setAttribute('role','progressbar');node.setAttribute('aria-label','场景加载进度');
       node.setAttribute('aria-valuemin','0');node.setAttribute('aria-valuemax','100');

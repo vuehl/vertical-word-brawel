@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {createDeskNavigation} from '../source/src/desk-navigation.js';
+import {createDeskNavigation,createSpawnPlacement} from '../source/src/desk-navigation.js';
 import {paperBox,hitsPaperBox,resolvePaperBox,moveEnemyPastProps} from '../source/src/paper-collision.js';
 import {deskPixelsPerUnit as scale,deskTilt} from '../source/src/desk-framing.js';
 const layout=JSON.parse(fs.readFileSync(new URL('../source/src/desk2d-layout.json',import.meta.url)));
@@ -34,4 +34,19 @@ test('monsters traverse actual stepped prop silhouettes from both sides at 30/60
       assert.ok(Math.hypot(goalX-x,goalZ-z)<.3,`${kind} radius=${radius} fps=${fps} reverse=${reverse} stuck at ${x},${z}`);
     }
   }
+});
+
+test('spawn placement rejects sealed pockets and gaps too narrow for a monster',()=>{
+  const boxes=[paperBox(0,-6,2,8,100,0),paperBox(0,6,2,8,100,0)];
+  const terrain={play:10,desk2d:true,arenaR:Infinity,spawn:{x:-6,z:0},height:()=>0,
+    inBounds:(x,z,r)=>Math.abs(x)<10-r&&Math.abs(z)<10-r,
+    hitProp:(x,y,z,r)=>boxes.some(box=>hitsPaperBox(box,x,z,r))};
+  const place=createSpawnPlacement(terrain),out={};
+  assert.ok(place(6,0,.5));
+  assert.ok(!place(6,0,2));
+  assert.ok(place(6,0,2,out)&&out.x<0&&!terrain.hitProp(out.x,0,out.z,2));
+  boxes.push(paperBox(0,0,2,4,100,0));
+  const sealed=createSpawnPlacement(terrain);
+  assert.equal(sealed(6,0,.5),false);
+  assert.ok(sealed(6,0,.5,out)&&out.x<0);
 });

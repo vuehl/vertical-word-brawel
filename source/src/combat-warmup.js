@@ -24,7 +24,7 @@ export function warmCombatDraw(run){
   // prepared skill batches once under the loading cover, including ultimates.
   const meshes=[...pools.map(pool=>pool.mesh),vfx.upgrade?.mesh,vfx.upgrade?.rearMesh,crafted?.mesh,crafted?.fireJet.mesh,crafted?.fireJet.hitMesh,
     crafted?.fireJet.legacy.mesh,crafted?.fireSpin.mesh,crafted?.fireball.mesh,
-    family?.mesh,family?.topMesh,family?.heatMesh,
+    family?.mesh,family?.topMesh,
     crafted?.windVortex?.mesh,crafted?.windMoves?.mesh,crafted?.stampede?.mesh].filter(Boolean);
   const saved=meshes.map(mesh=>({mesh,visible:mesh.visible,count:mesh.count}));
   try{

@@ -40,8 +40,10 @@ export async function verifyJoystick(page,dir){
           const b=inspected.layout.box(t.stick),k=inspected.layout.box(t.knob);
           const paintedCenter=[b.x+b.w/2,b.y+b.h/2];
           const knobCenter=[k.x+k.w/2,k.y+k.h/2];
-          // Reverse while still on the original side of the initial press.
+          // Pulling inward on the same side must keep the heading. Cross the origin to reverse.
           window.tap(x+dx*45,y+dy*45,'move',11);
+          const inward=input();
+          window.tap(x-dx*45,y-dy*45,'move',11);
           const reverse=input();
           p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.kx=p.kz=p.crowdX=p.crowdZ=0;
           p.grounded=true;r.autoRun=false;
@@ -49,14 +51,14 @@ export async function verifyJoystick(page,dir){
           for(let frame=0;frame<12;frame++){r.realDt=1/60;p.update(1/60);r.input.endFrame();}
           const movement=[p.pos.x-start.x,p.pos.z-start.z];
           // A stationary finger and a second finger must not change the heading.
-          window.tap(x+dx*45,y+dy*45,'move',11);const held=input();
+          window.tap(x-dx*45,y-dy*45,'move',11);const held=input();
           window.tap(x-30,y,'down',12);window.tap(x+30,y+20,'move',12);
           window.tap(x+30,y+20,'up',12);const secondFinger=input();
           // Returning to the current disc center stops the character.
           window.tap(t.sx-screen.x,t.sy-screen.y,'move',11);const centered=input();
           window.tap(x,y,'up',11);const stopped=input(),hidden=!t.stick.classList.contains('on');
           samples.push({dx,dy,jitter,outward,center,paintedCenter,knobCenter,
-            finger:[x+dx*100+screen.x,y+dy*100+screen.y],reverse,movement,held,secondFinger,centered,stopped,hidden});
+            origin:[x+screen.x,y+screen.y],inward,reverse,movement,held,secondFinger,centered,stopped,hidden});
         }
         p.pos.copy(saved);p.vel.set(0,0,0);
         return {scale,samples};
@@ -71,7 +73,9 @@ export async function verifyJoystick(page,dir){
         assert.ok(near(s.reverse,[-s.dx,s.dy]),'Long-drag reversal must follow the finger: '+JSON.stringify(s));
         assert.ok(s.movement[0]*-s.dx+s.movement[1]*-s.dy>.1,'The actual player must reverse');
         assert.ok(near(s.center,s.paintedCenter),'Painted disc must match its input origin');
-        assert.ok(near(s.knobCenter,s.finger),'Thumb must stay under the finger during a long drag');
+        assert.ok(near(s.center,s.origin)&&near(s.inward,s.outward),'Origin and heading must stay stable during a long drag');
+        const vx=s.knobCenter[0]-s.center[0],vy=s.knobCenter[1]-s.center[1];
+        assert.ok(vx*s.dx+vy*s.dy>0&&Math.abs(vx*s.dy-vy*s.dx)<.02,'Knob and movement must point in the same direction');
         assert.ok(near(s.held,s.reverse)&&near(s.secondFinger,s.reverse),'Holding or a second finger must not steer');
         assert.ok(near(s.centered,[0,0])&&near(s.stopped,[0,0])&&s.hidden,'Center and release must stop');
       }

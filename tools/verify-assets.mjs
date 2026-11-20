@@ -185,14 +185,16 @@ for(const kind of modelKinds){
   assert.equal(digest(adapter.source),adapter.sha256,key);
   if(kind==='boss'){
     const dock=gltf.asset.extras.portalDockAdapter;
-    assert.equal(adapter.sha256,adapterHash,key);
-    assert.equal(dock.requiresDeviceScreenFxSha256,adapterHash,key);
+    // The model embeds its original adapter pair. The game imports the
+    // optimised compositor and animated-screen implementation from src.
+    assert.equal(adapter.sha256,'d0fbc0f794e316abc3c99c4fa0ace0c0a474bdcf0e8a8eb5bfa7a8b4f47fb905',key);
+    assert.equal(dock.requiresDeviceScreenFxSha256,adapter.sha256,key);
     assert.equal(digest(dock.source),dock.sha256,key);
-    assert.equal(digest(fs.readFileSync(path.join(root,'source/src/PortalDock.mjs'))),dock.sha256,key);
+    assert.equal(dock.sha256,'5c2a3ca204d395f2bbbb2ebfd1b999f51ec162fea6180582d9cb301e5289f726',key);
     assert.equal(scene.portalDock.version,1,key);
   }else{
     // These GLBs embed the original compatible v2 compositor.
-    assert.equal(adapter.sha256,'d511b9afb11135ee25e24f07efa6fdf24d37c3af0dae3ac8a308bd4c320c4fae',key);
+    assert.equal(adapter.sha256,'4eda06e489fe6ddc4e96e8d35716b72faecb4e0a3d6b20cffef999ab72488273',key);
   }
   assert.equal(scene.deviceModel,({bill:'billpc',boss:'portal',portal:'boss'})[kind]??kind,key);
   if(kind==='boss'||kind==='portal')assert.equal(facilityIconFile(kind),'ui/devices/'+scene.deviceModel+'.png');
@@ -203,6 +205,10 @@ for(const kind of modelKinds){
   assert.equal(scene.deviceScreenFx.stars.sharedOrigin,true,key);
   assert.equal(scene.deviceScreenFx.stars.scatter.tracks,8,key);
   assert.ok(scene.deviceScreenFx.supportXYZ.length>=12,key);
+  if(kind==='boss'){
+    assert.ok(!deskDevices.boss&&!index.files['assets/env/desk2d/device-boss.png']);
+    continue;
+  }
   assert.deepEqual(deskDevices[kind].fx,scene.deviceScreenFx,'Desk sprite effects for '+kind);
   if(kind==='altar'){
     const prefix='assets/env/desk2d/device-altar/';

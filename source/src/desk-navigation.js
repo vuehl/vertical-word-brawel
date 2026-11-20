@@ -69,3 +69,71 @@ export function createDeskNavigation(terrain) {
     out.x=dx/d;out.z=dz/d;return true;
   };
 }
+
+// Placement uses the entry-connected floor for each body size. A half-cell
+// diagonal of clearance keeps the corridor between adjacent cell centres open.
+export function createSpawnPlacement(terrain) {
+  const bounds=terrain.deskBounds || {x:terrain.play,z:terrain.play};
+  const step=terrain.desk2d ? .75 : 1.5;
+  const cols=Math.ceil(2*bounds.x/step)+1, rows=Math.ceil(2*bounds.z/step)+1;
+  const xAt=col=>col*step-bounds.x, zAt=row=>row*step-bounds.z;
+  const fields=new Map();
+  function fieldFor(radius) {
+    const size=Math.max(1,Math.ceil(radius*2)/2);
+    if(fields.has(size))return fields.get(size);
+    const open=new Uint8Array(cols*rows), queue=new Int32Array(open.length);
+    const clearance=size+step*Math.SQRT1_2;
+    let seed=-1,nearest=Infinity;
+    for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+      const x=xAt(col),z=zAt(row),id=row*cols+col;
+      if(!terrain.inBounds(x,z,clearance)||Math.hypot(x,z)+clearance>terrain.arenaR||
+          terrain.hitProp(x,terrain.height(x,z)+.01,z,clearance))continue;
+      open[id]=1;
+      const distance=(x-terrain.spawn.x)**2+(z-terrain.spawn.z)**2;
+      if(distance<nearest){nearest=distance;seed=id;}
+    }
+    let count=0;
+    function visit(id){
+      if(open[id]!==1)return;
+      open[id]=2;queue[count++]=id;
+    }
+    if(seed>=0)visit(seed);
+    for(let head=0;head<count;head++){
+      const id=queue[head],col=id%cols;
+      if(col>0)visit(id-1);
+      if(col+1<cols)visit(id+1);
+      visit(id-cols);visit(id+cols);
+    }
+    fields.set(size,open);return open;
+  }
+  return function place(x,z,radius,out){
+    const open=fieldFor(radius);
+    const col=Math.round((x+bounds.x)/step),row=Math.round((z+bounds.z)/step);
+    const clear=(px,pz)=>!terrain.hitProp(px,terrain.height(px,pz)+.01,pz,radius);
+    if(col>=0&&row>=0&&col<cols&&row<rows&&open[row*cols+col]===2&&clear(x,z)){
+      if(out){out.x=x;out.z=z;}
+      return true;
+    }
+    if(!out)return false;
+    // Search outwards around the requested point. Most rejected spawns only
+    // need to move a few cells to clear an edge.
+    const cx=Math.max(0,Math.min(cols-1,col)),cz=Math.max(0,Math.min(rows-1,row));
+    let best=Infinity;
+    function consider(ix,iz){
+      if(ix<0||iz<0||ix>=cols||iz>=rows||open[iz*cols+ix]!==2)return;
+      const px=xAt(ix),pz=zAt(iz),distance=(px-x)**2+(pz-z)**2;
+      if(distance<best&&clear(px,pz)){best=distance;out.x=px;out.z=pz;}
+    }
+    for(let ring=0;ring<Math.max(cols,rows);ring++){
+      for(let dx=-ring;dx<=ring;dx++){
+        consider(cx+dx,cz-ring);
+        if(ring)consider(cx+dx,cz+ring);
+      }
+      for(let dz=1-ring;dz<ring;dz++){
+        consider(cx-ring,cz+dz);consider(cx+ring,cz+dz);
+      }
+      if(best<=((ring+.5)*step)**2)return true;
+    }
+    return Number.isFinite(best);
+  };
+}

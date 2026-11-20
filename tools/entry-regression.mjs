@@ -54,15 +54,21 @@ export async function verifyEntry({page,tap,dir}){
   await hit(190,650);await screen('map');
   await page.evaluate(()=>{
     const menu=app.menuScene,draw=menu.drawEntry.bind(menu),overlay=GameGlobal.pokebonk.entryScene;
-    const page=overlay.page.bind(overlay),audit=window.departureAudit={frames:[],overlays:0};
-    overlay.page=(...args)=>{if(app.screen?.dataset.entryPage==='departure')audit.overlays++;return page(...args);};
+    const page=overlay.page.bind(overlay),audit=window.departureAudit={frames:[],overlays:[]};
+    overlay.page=(...args)=>{
+      const result=page(...args);
+      if(app.screen?.dataset.entryPage==='departure'){
+        audit.overlays.push(args[3]);
+        if(!audit.image&&args[3]>0&&args[3]<100)audit.image=GameGlobal.pokebonk.canvas.toDataURL();
+      }
+      return result;
+    };
     menu.drawEntry=()=>{
       const result=draw();
       if(menu.departure){
         const progress=menu.departure.progress;
         audit.frames.push({progress,distance:menu.camDist,buttons:app.screen.querySelectorAll('button').length,
           time:app.run?.time||0,stageTime:app.run?.stageTime||0,state:app.run?.state});
-        if(progress>=.4&&progress<.85&&!audit.image)audit.image=GameGlobal.pokebonk.canvas.toDataURL();
       }
       return result;
     };
@@ -83,7 +89,9 @@ export async function verifyEntry({page,tap,dir}){
   assert.equal(await page.evaluate(()=>app.lastCfg.mode),'standard');
   assert.equal(await page.evaluate(()=>app.lastCfg.species),4);
   const audit=await page.evaluate(()=>departureAudit);
-  assert.equal(audit.overlays,0);
+  assert.ok(audit.overlays.includes(0)&&audit.overlays.includes(100));
+  assert.ok(audit.overlays.some(value=>value>0&&value<100));
+  assert.ok(audit.overlays.every((v,i,a)=>!i||v>=a[i-1]));
   assert.ok(audit.frames.length>=3&&audit.image,'An intermediate live-camera frame was presented');
   for(const [i,f] of audit.frames.entries()){
     assert.ok(!f.buttons&&!f.time&&!f.stageTime&&f.state!=='play','No controls or simulation during departure');
@@ -91,7 +99,12 @@ export async function verifyEntry({page,tap,dir}){
   }
   assert.ok(audit.frames[0].distance<32&&audit.frames.at(-1).distance===42);
   assert.deepEqual(audit.finished,{sameTerrain:true,sameSprites:true,samePosition:true,sameProjection:true,distance:42,time:0,stageTime:0});
-  await writeFile(path.join(dir,'03-camera-departure.png'),Buffer.from(audit.image.split(',')[1],'base64'));
+  const frame=Buffer.from(audit.image.split(',')[1],'base64');
+  await writeFile(path.join(dir,'03-camera-departure.png'),frame);
+  const pixels=await sharp(frame).removeAlpha().raw().toBuffer();
+  let barPixels=0;
+  for(let i=0;i<pixels.length;i+=3)if(pixels[i]===53&&pixels[i+1]===134&&pixels[i+2]===185)barPixels++;
+  assert.ok(barPixels>20,'The blue progress fill must be visible in the live departure frame');
   await capture('04-entry-play');
   const loads=await page.evaluate(([w,h])=>nativeImageLoads.filter(i=>i.width===w&&i.height===h).length,idleSize);
   await page.evaluate(()=>app.toMenu());await screen('home');
