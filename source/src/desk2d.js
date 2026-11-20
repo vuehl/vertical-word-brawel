@@ -8,7 +8,7 @@ import {installBillGaze} from './bill-gaze.js';
 import {w as Color,y as BufferGeometry,v as Attribute,I as Group,et as PlaneGeometry,K as Mesh,q as BasicMaterial,dt as Texture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
 import {paperBox,hitsPaperBox} from './paper-collision.js';
 
-import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame} from './desk-framing.js';
+import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame,deskPlayFrame} from './desk-framing.js';
 const xAt=px=>(px-layout.width/2)/pixelsPerUnit;
 const zAt=py=>(py-layout.height/2)/(pixelsPerUnit*tilt);
 const halfWidth=xAt(layout.width),halfDepth=zAt(layout.height);
@@ -110,10 +110,13 @@ export function deskTexture(t,file){
   }));
   return t.deskTextures.get(file);
 }
-export function deskCamera(run,dt,progress=1,bend=0){
+export function deskCamera(run,dt,progress,bend=0){
   const c=run.r.camera,t=run.terrain,p=run.player.pos;
   run.camTarget.lerp(p,1-Math.exp(-12*Math.max(0,dt)));
-  const {x,z,w,h,distance}=deskFrame(c.aspect,halfWidth,halfDepth,run.camTarget.x,run.camTarget.z,progress,bend);
+  const {x:focusX,z:focusZ}=run.camTarget;
+  const {x,z,w,h,distance}=progress===undefined
+    ?deskPlayFrame(c.aspect,halfWidth,halfDepth,focusX,focusZ)
+    :deskFrame(c.aspect,halfWidth,halfDepth,focusX,focusZ,progress,bend);
   c.position.set(x,distance*tilt,z+distance*Math.cos(pitch));c.lookAt(x,0,z);
   c.projectionMatrix.makeOrthographic(-w,w,h,-h,c.near,c.far,c.coordinateSystem);
   c.projectionMatrixInverse.copy(c.projectionMatrix).invert();

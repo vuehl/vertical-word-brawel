@@ -18,3 +18,17 @@ export function deskFrame(aspect,halfWidth,halfDepth,focusX,focusZ,progress=1,be
   const z=clamp(focusZ+(h*((1-t)*(1-2*377/826)+t*.05)+curve*.24)/deskTilt,-halfDepth+h/deskTilt,halfDepth-h/deskTilt);
   return {x,z,w,h,distance:42*h/normal};
 }
+
+// In the 1170 x 2532 play reference, the view covers 2520 map pixels
+// vertically and the centre of the player's ground shadow is at (531,1356).
+export function deskPlayFrame(aspect,halfWidth,halfDepth,focusX,focusZ){
+  const referenceAspect=1170/2532;
+  const halfHeight=1260/deskPixelsPerUnit*Math.max(1,referenceAspect/aspect);
+  // The floor art lies just below the follow plane. Keep its outer texels in view.
+  const inset=2/deskPixelsPerUnit;
+  const limitX=halfWidth-inset,limitZ=halfDepth-inset/deskTilt;
+  const h=Math.min(halfHeight,limitX/aspect,limitZ*deskTilt),w=h*aspect;
+  const x=clamp(focusX+w*(1-2*531/1170),-limitX+w,limitX-w);
+  const z=clamp(focusZ+h*(1-2*1356/2532)/deskTilt,-limitZ+h/deskTilt,limitZ-h/deskTilt);
+  return {x,z,w,h,distance:84*h/normalHeight};
+}

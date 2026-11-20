@@ -87358,7 +87358,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     makeTitle(e) {
       const terrain=new cd({...fr[0],size:120,zxStage:1},1234,this.r.shared);
       const preview={r:this.r,terrain,player:{pos:new ti(0,0,0)},camTarget:new ti(0,0,0)};
-      const title={paper:true,group:terrain.group,applySky:()=>applyPaperLight(preview),update:dt=>updatePaperCamera(preview,dt),dispose:()=>terrain.dispose()};
+      const title={paper:true,group:terrain.group,applySky:()=>applyPaperLight(preview),update:dt=>deskCamera(preview,dt,1),dispose:()=>terrain.dispose()};
       this.r.scene.add(title.group);title.group.visible=this.mode===`title`;return title;
     }
     build(e) {

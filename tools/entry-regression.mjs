@@ -71,8 +71,10 @@ export async function verifyEntry({page,tap,dir}){
       if(!next&&app.screen?.dataset.entryPage==='departure'){
         const camera=app.r.camera,position=camera.position.clone(),projection=camera.projectionMatrix.clone();
         app.run.updateCamera(0);
+        const bounds=app.run.terrain.deskBounds,ppu=5142/(2*bounds.x);
         audit.finished={sameTerrain:entryWorld===app.run.terrain,sameSprites:entrySprites===app.run.sprites,
           samePosition:position.equals(camera.position),sameProjection:projection.equals(camera.projectionMatrix),
+          width:2*ppu/projection.elements[0],height:2*ppu/projection.elements[5],
           distance:app.run.camDist,time:app.run.time,stageTime:app.run.stageTime};
       }
       return set(next,...args);
@@ -90,9 +92,26 @@ export async function verifyEntry({page,tap,dir}){
     if(i)assert.ok(f.distance>=audit.frames[i-1].distance);
   }
   assert.ok(audit.frames[0].distance<32&&audit.frames.at(-1).distance===42);
-  assert.deepEqual(audit.finished,{sameTerrain:true,sameSprites:true,samePosition:true,sameProjection:true,distance:42,time:0,stageTime:0});
+  const {width,height,distance,...handoff}=audit.finished;
+  assert.deepEqual(handoff,{sameTerrain:true,sameSprites:true,samePosition:true,sameProjection:true,time:0,stageTime:0});
+  assert.ok(Math.abs(width-1165)<2&&Math.abs(height-2520)<2,'First combat frame covers the reference map area: '+[width,height]);
+  assert.ok(Math.abs(distance-81.63)<.1,'Use the wider combat camera after the cinematic endpoint');
   await writeFile(path.join(dir,'03-camera-departure.png'),Buffer.from(audit.image.split(',')[1],'base64'));
   await capture('04-entry-play');
+  const corners=await page.evaluate(()=>{
+    const r=app.run,b=r.terrain.deskBounds,c=r.r.camera,target=r.camTarget.clone();
+    const point=(x,y)=>target.clone().set((2*x/5142-1)*b.x,-.05,(2*y/2892-1)*b.z);
+    try{
+      // Compare the art at the same player location as the supplied reference.
+      r.camTarget.copy(point(1982,1379));r.updateCamera(0);c.updateMatrixWorld();
+      return [[1453,30],[2618,2549]].map(([x,y])=>{
+        const ndc=point(x,y).project(c);
+        return [(ndc.x+1)/2,(1-ndc.y)/2];
+      });
+    }finally{r.camTarget.copy(target);r.updateCamera(0);c.updateMatrixWorld();}
+  });
+  assert.ok(corners.every((point,i)=>point.every(value=>Math.abs(value-i)<.003)),
+    'The play camera frames the same map landmarks as the reference: '+JSON.stringify(corners));
   const loads=await page.evaluate(([w,h])=>nativeImageLoads.filter(i=>i.width===w&&i.height===h).length,idleSize);
   await page.evaluate(()=>app.toMenu());await screen('home');
   await page.waitForFunction((n,[w,h])=>nativeImageLoads.filter(i=>i.width===w&&i.height===h).length>n,{},loads,idleSize);
@@ -105,5 +124,5 @@ export async function verifyEntry({page,tap,dir}){
   }
   await hit(190,650);await screen('map');
   console.log('Entry UI, idle animation, touch targets, co-op/lab and return verified. Sampled '+audit.frames.length+
-    ' HUD-free departure frames with frozen combat clocks, shared terrain and sprites, and the exact gameplay camera endpoint.');
+    ' HUD-free departure frames, then switched to a '+width.toFixed(1)+' x '+height.toFixed(1)+' map-pixel combat view.');
 }
