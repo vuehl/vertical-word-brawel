@@ -9,7 +9,7 @@ export function createUIFrameCache(interval=80) {
       if(!paintDirty&&!animated)return false;
       if(layoutDirty){
         boxes=layout.refresh(nextState);
-        animated=boxes.some(b=>b.tag==='canvas'&&b.opacity>0&&b.w>0&&b.h>0&&
+        animated=boxes.some(b=>b.tag==='canvas'&&b.el?.dataset?.static!=='true'&&b.opacity>0&&b.w>0&&b.h>0&&
           b.x+b.w>b.clip.x&&b.y+b.h>b.clip.y&&b.x<b.clip.r&&b.y<b.clip.b);
         layoutDirty=false;
       }

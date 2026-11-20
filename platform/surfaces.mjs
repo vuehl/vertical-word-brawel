@@ -32,7 +32,7 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
     return el._surface;
   }
   for(const dim of ['width','height'])prop(D.HTMLCanvasElement.prototype,dim,function(){return surface(this)[dim];},
-    function(n){const dimValue=Math.max(1,Math.floor(Number(n)||1));this['_'+dim]=dimValue;surface(this)[dim]=dimValue;if(this.isConnected)invalidate();});
+    function(n){const dimValue=Math.max(1,Math.floor(Number(n)||1));this['_'+dim]=dimValue;surface(this)[dim]=dimValue;if(this.isConnected)invalidate(this);});
   function wrapContext(native,el,type) {
     const cache=Object.create(null);
     // A native context can lock its own canvas and methods. The game sees the
@@ -41,17 +41,21 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
     return new Proxy(facade,{
       get(_facade,k) {
         if(k==='canvas')return el;
+        if(cache[k])return cache[k];
         let v=native[k];
         if(type==='2d'&&typeof v!=='function'&&Object.hasOwn(pathFallbacks,k))v=pathFallbacks[k];
         if(typeof v!=='function')return v;
-        if(!cache[k]){
-          if(['drawImage','createPattern','texImage2D','texSubImage2D','texImage3D','texSubImage3D','copyImageSubData'].includes(k))
-            cache[k]=(...args)=>v.apply(native,args.map(a=>a?._surface||a));
-          else if(['fill','stroke','clip','isPointInPath'].includes(k))cache[k]=(...args)=>{
-            if(args[0] instanceof CanvasPath){args.shift().trace(native);}return v.apply(native,args);
-          };
-          else cache[k]=v.bind(native);
-        }
+        if(['drawImage','createPattern','texImage2D','texSubImage2D','texImage3D','texSubImage3D','copyImageSubData'].includes(k))
+          cache[k]=(...args)=>v.apply(native,args.map(a=>a?._surface||a));
+        // WeChat ignores this browser-only unpack setting and logs a warning
+        // for every texture upload. Keep all other native WebGL calls intact.
+        else if(type.startsWith('webgl')&&k==='pixelStorei')cache[k]=(parameter,value)=>{
+          if(parameter!==0x9243)return v.call(native,parameter,value);
+        };
+        else if(['fill','stroke','clip','isPointInPath'].includes(k))cache[k]=(...args)=>{
+          if(args[0] instanceof CanvasPath){args.shift().trace(native);}return v.apply(native,args);
+        };
+        else cache[k]=v.bind(native);
         return cache[k];
       },
       set(_facade,k,v){
@@ -60,7 +64,9 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
           const family=/bold|[6-9]00/i.test(v)?host.fonts.bold:host.fonts.regular;
           v=v.replace(/['"]?Ziling Swei['"]?/g,'"'+family+'"');
         }
-        return Reflect.set(native,k,v);
+        const written=Reflect.set(native,k,v);
+        if(written&&cache[k])delete cache[k];
+        return written;
       }
     });
   }
@@ -76,15 +82,26 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
   const ip=D.HTMLImageElement.prototype;
   function setImage(el,src) {
     src=String(src);if(el._src===src)return;el._src=src;el._ready=false;
-    const image=wx.createImage();el._surface=image;
-    const finish=ok=>{if(image!==el._surface)return;el._ready=ok;if(el.isConnected)invalidate();el.dispatchEvent(new D.Event(ok?'load':'error'));};
-    image.onload=()=>finish(true);image.onerror=()=>finish(false);
-    const embedded=LocalURL.objectFiles?.get(src);
-    if(embedded)image.src=embedded;
-    else host.files.resolvePath(src).then(path=>{
-      if(image!==el._surface)return;
-      if(path)image.src=path;else finish(false);
-    }).catch(error=>{console.warn('[宝可梦] 图片读取失败',src,error);finish(false);});
+    if(el._surface)el._surface.onload=el._surface.onerror=null;
+    el._surface=null;
+    // GLTFLoader creates detached HTML images for embedded textures and awaits their load.
+    const embedded=LocalURL.objectFiles?.get(src),eager=el._eagerImage||!!embedded;
+    // DOM pictures are decoded only when painted. Hidden legacy HUDs and
+    // cards replaced before their first frame must not allocate native images.
+    el._loadImage=()=>{
+      if(!eager&&!el.isConnected)return;
+      el._loadImage=null;if(!src)return;
+      const image=wx.createImage();el._surface=image;
+      const finish=ok=>{if(image!==el._surface)return;el._ready=ok;if(el.isConnected)invalidate(el);el.dispatchEvent(new D.Event(ok?'load':'error'));};
+      image.onload=()=>finish(true);image.onerror=()=>finish(false);
+      if(embedded)image.src=embedded;
+      else host.files.resolvePath(src).then(path=>{
+        if(image!==el._surface)return;
+        if(path)image.src=path;else finish(false);
+      }).catch(error=>{console.warn('[宝可梦] 图片读取失败',src,error);finish(false);});
+    };
+    if(eager)el._loadImage();
+    if(el.isConnected)invalidate(el);
   }
   ip.setAttribute=function(name,value){rawSet.call(this,name,value);if(name==='src')setImage(this,value);};
   prop(ip,'src',function(){return this._src||'';},function(v){this.setAttribute('src',v);});
@@ -94,6 +111,7 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
     prop(ip,'natural'+dim[0].toUpperCase()+dim.slice(1),function(){return this._ready?this._surface[dim]:0;});
     prop(ip,dim,function(){return Number(this.getAttribute(dim))||this._surface?.[dim]||0;},function(v){rawSet.call(this,dim,String(v));});
   }
-  function Image(w,h){const img=doc.createElement('img');if(w)img.width=w;if(h)img.height=h;return img;}
+  // Explicit Image objects also serve texture/atlas loading without a DOM node.
+  function Image(w,h){const img=doc.createElement('img');img._eagerImage=true;if(w)img.width=w;if(h)img.height=h;return img;}
   return {Image,makeCanvas,screen};
 }

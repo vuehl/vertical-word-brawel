@@ -110,10 +110,24 @@ export function styleEngine(view,rules) {
         for(const [k,v] of r[1])apply(k,v,important);
       }
       for(const decl of css.split(';')){
-        const at=decl.indexOf(':');if(at>0)apply(decl.slice(0,at).trim(),decl.slice(at+1).trim(),important);
+        const at=decl.indexOf(':');
+        if(at>0){
+          const key=decl.slice(0,at).trim(),value=decl.slice(at+1).trim();
+          // The lightweight DOM can retain "left:;" when a drag resets its
+          // inline position. Empty declarations must reveal the stylesheet.
+          if(value||key.startsWith('--'))apply(key,value,important);
+        }
       }
     }
-    for(const k of Object.keys(s))s[k]=resolveVars(s[k],vars,view);
+    for(const k of Object.keys(s)){
+      const value=resolveVars(s[k],vars,view);
+      // Canvas cannot use CSS inheritance keywords as paint values. Resolve
+      // explicit inheritance just like implicit inheritance before drawing.
+      if(value==='inherit'){
+        const valueFromParent=parent?.[k]??defaults[k];
+        if(valueFromParent===undefined)delete s[k];else s[k]=valueFromParent;
+      }else s[k]=value;
+    }
     const size=length(s['font-size'],parent?.font??16,view,parent?.font??16);
     s.font=Number.isFinite(size)?size:16;
     s['font-size']=s.font+'px';

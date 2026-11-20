@@ -13,6 +13,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
   const ctx=native.getContext('2d'),engine=styleEngine(view,uiAssets.rules);
   const ref=readReference(view,uiAssets.layout);
   let boxes=[],seen=new WeakMap(),metrics={},clampedScroll=false;
+  let overlay=null,overlayBoxes=[],overlaySeen=new WeakMap();
   const font=s=>(parseInt(s['font-weight'],10)>=600?'bold ':'')+s.font+'px "'+
     (parseInt(s['font-weight'],10)>=600?fonts.bold:fonts.regular)+'", sans-serif';
   const widths=new Map(),wrapped=new Map();
@@ -51,6 +52,8 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     set('Width',s.width);set('Height',s.height,view.h);
     if(s.width==='max-content'&&metric?.[6])node.setWidth(metric[6]*ref.sx);
     set('MaxWidth',s['max-width']);set('MaxHeight',s['max-height'],view.h);
+    const region=view.regions?.[el.dataset?.uiRegion];
+    if(region)node.setMaxWidth(region.w);
     set('MinWidth',s['min-width']);set('MinHeight',s['min-height'],view.h);
     let abs=/absolute|fixed/.test(s.position);
     if(abs)node.setPositionType(Y.POSITION_TYPE_ABSOLUTE);
@@ -98,7 +101,12 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       const row=gridDisplay||(flex?(s['flex-direction']||'row').startsWith('row'):inlineText);
       node.setFlexDirection(row?Y.FLEX_DIRECTION_ROW:Y.FLEX_DIRECTION_COLUMN);
       node.setAlignItems(align[s['align-items']||s['place-items']]??Y.ALIGN_STRETCH);
-      node.setJustifyContent(justify[(s['justify-content']||'').replace('safe ','')]??Y.JUSTIFY_FLEX_START);
+      // Native inline tags are represented as inline-flex containers. Their
+      // text must align within the full label, not its intrinsic text width.
+      // Explicit flex justification still takes precedence for real controls.
+      const textFlow=inlineText||row&&!gridDisplay&&!el.children.length;
+      const textJustify=textFlow?({'center':'center','right':'flex-end','end':'flex-end'}[s['text-align']]||'flex-start'):'';
+      node.setJustifyContent(justify[(s['justify-content']||textJustify).replace('safe ','')]??Y.JUSTIFY_FLEX_START);
       const columns=s['grid-template-columns']||'';
       let count=0;
       if(gridDisplay){const match=/repeat\(\s*(\d+)/.exec(columns);count=match?+match[1]:columns?(columns.match(/(?:minmax|repeat)\([^)]*\)|[^\s]+/g)||[]).length:1;}
@@ -107,6 +115,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       const gridMax=/minmax\(\s*0\s*,\s*([\d.]+)px\s*\)/.exec(columns);
       const counts={};
       for(const child of el.childNodes){
+        if(child===overlay)continue;
         if(child.nodeType!==1&&child.nodeType!==3||child.nodeType===3&&!child.textContent.trim())continue;
         const key=keyPart(child),index=counts[key]||0;counts[key]=index+1;
         const item2=make(child,item,count?{count,max:gridMax?+gridMax[1]:0}:null,keyHash(id,key,index));if(!item2)continue;
@@ -187,6 +196,14 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       if(sc){const extent=axis==='X'?w:h,k=+sc[1],ratio=/left|top/.test(ox)?0:/right|bottom/.test(ox)?1:(parseFloat(ox)||0)/100;
         if(axis==='X'){x+=w*(1-k)*ratio;w=extent*k;}else{y+=h*(1-k)*ratio;h=extent*k;}}
     }
+    // Only explicitly registered overlay regions may extend outside the
+    // common safe-area clip; menus and touch controls keep their usual bounds.
+    const region=view.regions?.[el.dataset?.uiRegion];
+    if(region){
+      x=region.x;y=region.y;
+      if(region.fill){w=region.w;h=region.h;}
+      parentClip={x,y,r:x+region.w,b:y+region.h};
+    }
     const alpha=parseFloat(s.opacity);
     const opacity=parentOpacity*(Number.isFinite(alpha)?Math.max(0,Math.min(1,alpha)):1);
     const box={...item,s:style,x,y,w,h,naturalW,naturalH,opacity,clip:parentClip,singleLine:single&&(!changedText||liveLabel)};seen.set(el,box);boxes.push(box);
@@ -214,7 +231,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     boxes=[];seen=new WeakMap();
     const screens=doc.querySelectorAll('#ui > .screen');
     const screen=screens[screens.length-1];
-    const name=screen?Array.from(screen.classList).find(c=>ref.screens[c]):(runState==='paused'?'paused':'play');
+    const name=screen?.classList.contains('zx')||doc.documentElement.classList.contains('zixing')?null:screen?Array.from(screen.classList).find(c=>ref.screens[c]):(runState==='paused'?'paused':'play');
     metrics=ref.screens[name]||{};
     // CSS variables on :root are inherited by the body.
     const parent={s:engine.style(doc.documentElement,null)};
@@ -226,7 +243,45 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     root.node.freeRecursive();
     return boxes;
   }
-  function hit(x,y){for(let i=boxes.length-1;i>=0;i--){const b=boxes[i],c=b.clip;if(b.tag==='#text'||b.s['pointer-events']==='none'||x<c.x||x>c.r||y<c.y||y>c.b)continue;
+  function setOverlay(el){
+    if(el===overlay)return;
+    overlay=el;overlayBoxes=[];overlaySeen=new WeakMap();
+  }
+  function refreshOverlay(){
+    if(!overlay)return [];
+    const parent=seen.get(overlay.parentElement);
+    const root=make(overlay,{s:parent?.s||engine.style(overlay.parentElement,null)});
+    const clip=parent?.clip||{x:0,y:0,r:view.w,b:view.h},w=parent?.w??view.w,h=parent?.h??view.h;
+    root.node.setWidth(w);root.node.setHeight(h);root.node.calculateLayout(w,h,Y.DIRECTION_LTR);
+    const base=boxes,baseSeen=seen;
+    try{
+      seen=overlaySeen=new WeakMap();boxes=[];
+      const collect=()=>record(root,parent?.x||0,parent?.y||0,clip,w,h,null,parent?.opacity??1);
+      clampedScroll=false;collect();
+      if(clampedScroll){boxes=[];collect();}
+      overlayBoxes=boxes;
+    }finally{boxes=base;seen=baseSeen;root.node.freeRecursive();}
+    return overlayBoxes;
+  }
+  function hit(x,y){const targets=overlay?.isConnected?overlayBoxes:boxes;for(let i=targets.length-1;i>=0;i--){const b=targets[i],c=b.clip;if(b.tag==='#text'||b.s['pointer-events']==='none'||x<c.x||x>c.r||y<c.y||y>c.b)continue;
     if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)return b.el;}return doc.body;}
-  return {refresh,hit,box:el=>seen.get(el),font,wrap,context:ctx};
+  function refreshSubtree(element,previous){
+    const bounds=seen.get(element),index=boxes.indexOf(bounds);
+    if(!bounds||index<0)return previous;
+    const all=boxes,parent={s:seen.get(element.parentElement)?.s||engine.style(element.parentElement,null)};
+    const root=make(element,parent);
+    root.node.setPositionType(Y.POSITION_TYPE_RELATIVE);
+    root.node.setPosition(Y.EDGE_LEFT,0);root.node.setPosition(Y.EDGE_TOP,0);
+    root.node.setMargin(Y.EDGE_ALL,0);
+    root.node.setWidth(bounds.w);root.node.setHeight(bounds.h);
+    root.node.calculateLayout(bounds.w,bounds.h,Y.DIRECTION_LTR);
+    // The tile's outer footprint stays fixed. Recompute only its contents;
+    // resize/settings and changed slot counts still use the complete layout.
+    root.s={...root.s,position:'relative',transform:'none',translate:'none'};
+    boxes=[];
+    record(root,bounds.x,bounds.y,bounds.clip,bounds.w,bounds.h,null,bounds.opacity/(parseFloat(root.s.opacity)||1));
+    const local=boxes;boxes=all;boxes.splice(index,previous.length,...local);
+    root.node.freeRecursive();return local;
+  }
+  return {refresh,refreshSubtree,setOverlay,refreshOverlay,hit,box:el=>overlaySeen.get(el)||seen.get(el),font,wrap,context:ctx};
 }

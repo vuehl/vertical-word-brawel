@@ -1,3 +1,4 @@
+import {cloudSocket} from './cloud-coop.mjs';
 import 'core-js/modules/es.array.at.js';
 import 'core-js/modules/es.array.flat.js';
 import 'core-js/modules/es.array.flat-map.js';
@@ -22,6 +23,12 @@ import {initCrypto,random} from './crypto.mjs';
 import {dispatchApi} from 'pokebonk:api';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
+import {createControlLayer,createCanvasLayer,createHUDLayer} from './control-layer.mjs';
+import {createModalTransition} from './modal-transition.mjs';
+import {gameViewport} from './viewport.mjs';
+import {createMutationTargets} from './mutation-targets.mjs';
+import {uiScale} from './ui-resolution.mjs';
+import {readRuntimeInfo,readDevicePerformance} from './device.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -37,41 +44,109 @@ function storage(prefix) {
 // DOM layout, hit testing and client coordinates share the usable rectangle.
 // The 3D canvas still covers the whole WeChat window behind the controls.
 function viewport(info) {
-  const width=info.windowWidth,height=info.windowHeight,screenTop=info.screenTop||0;
-  let left=0,top=0,right=width,bottom=height;
-  const safe=info.safeArea;
-  if(safe){
-    const x=Math.max(0,safe.left),y=Math.max(0,safe.top-screenTop);
-    const r=Math.min(width,safe.right),b=Math.min(height,safe.bottom-screenTop);
-    // Ignore empty or still-portrait coordinates during an orientation change.
-    if(r-x>width/2&&b-y>height/2){left=x;top=y;right=r;bottom=b;}
-  }
-  try{
-    const menu=wx.getMenuButtonBoundingClientRect?.();
-    if(menu&&menu.right>menu.left&&menu.right<=width+1&&menu.bottom>menu.top&&menu.bottom-screenTop<height/2)
-      top=Math.max(top,menu.bottom-screenTop+4);
-  }catch{} // Some runtimes do not expose a capsule rectangle.
-  return {w:right-left,h:bottom-top,x:left,y:top,width,height,dpr:info.pixelRatio||1};
+  let menu;try{menu=wx.getMenuButtonBoundingClientRect?.();}catch{}
+  return gameViewport(info,menu);
 }
-const uiScale=view=>Math.min(view.dpr,2,Math.sqrt(2000000/(view.width*view.height)));
 export async function setup(host) {
   await initCrypto();
+  host.bootStage?.('装载字体与界面',91);
   const {document:doc}=D.parseHTML('<!doctype html><html><head></head><body><canvas id="game"></canvas><div id="ui"></div></body></html>');
   const win=new D.EventTarget(),system=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();
   const view=viewport(system);
   const uiFrames=createUIFrameCache();
-  const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,()=>uiFrames.invalidate());
+  const {Image,makeCanvas,screen}=installSurfaces(D,doc,host,view,element=>{
+    if(modalTransition.owns(element)){modalTransition.invalidate();return;}
+    const tile=usingBattleHUD()&&fixedLayerFor(element);
+    if(tile)tile.invalidate();else uiFrames.invalidate();
+  });
+  const controls=createControlLayer(makeCanvas);
+  const minimap=createCanvasLayer(makeCanvas,'minimap');
+  const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
+  readDevicePerformance(wx,device).then(()=>win.dispatchEvent(new D.Event('deviceperformancechange')));
+  const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true,uploadPixels:device.platform==='ios'});
+  const peerTiles=['peer-health-0','peer-health-1','peer-tag-0','peer-tag-1'].map((id,i)=>
+    createCanvasLayer(makeCanvas,id,{slot:14+i,movable:true,uploadPixels:device.platform==='ios'}));
+  const healthLayer=element=>health.owns(element)?health:
+    element?.dataset?.uiLayer?.startsWith('peer-')?peerTiles.find(t=>t.owns(element)):null;
+  const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
+  const soloLayers=['counters','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
+  const skillLayer=soloLayers[2];
+  soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
+  soloLayers.push(createHUDLayer(makeCanvas,'stage-intro',20));
+  soloLayers.push(createHUDLayer(makeCanvas,'ultimate-cutin',21));
+  const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
+  const coopLayers=[teamLayer,...soloLayers];
+  const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
+  const fixedLayers=new Map(coopLayers.map(layer=>[layer.id,layer]));
+  const soloTiles=new Map([...soloLayers,minimap,health,portrait].map(layer=>[layer.id,layer]));
+  soloTiles.set('portrait-level',portrait);soloTiles.set('stick',controls);
+  const coopTiles=new Map(soloTiles);
+  for(const layer of [teamLayer,...peerTiles])coopTiles.set(layer.id,layer);
+  const allTiles=[controls,minimap,health,portrait,...coopLayers,...peerTiles];
+  const emptyBoxes=[];
+  const layerId=el=>el?.closest?.('[data-ui-layer]')?.getAttribute('data-ui-layer');
+  function fixedLayerFor(element){
+    const tile=fixedLayers.get(layerId(element));
+    return tile===teamLayer&&!win.__pb?.run?.coop?null:tile;
+  }
+  const modalTransition=createModalTransition(makeCanvas);
+  const usingBattleHUD=()=>win.__pb?.run?.state==='play'||(win.__pb?.run?.state==='modal'&&!!modalTransition.element);
   let scale=uiScale(view);const uiCanvas=makeCanvas();uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
-  const uiAssets=readUIAssets(host.files);
+  const uiAssets=await readUIAssets(host.files);
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
+  const upgradeCue=run=>run?.state==='play'&&!run.coop&&run.pendingLevels>0&&run.evoHold<=0&&!run.upgradeTiming.waiting(run.ult)&&run.ui.experienceReady?.()===false;
+  const frozenUpgradeKey=()=>{
+    const app=win.__pb,run=app?.run;
+    return !app?.screen&&(upgradeCue(run)||(!run?.coop&&run?.state==='modal'&&run.ui.modalEl?.querySelector('.zx-upgrade')))?run:null;
+  };
+  const mutationTarget=createMutationTargets(doc.documentElement);
   function mutations(records){
     for(const record of records){
       if(record.target===screen)continue;
+      const target=mutationTarget(record);
+      const element=target.nodeType===1?target:target.parentElement;
+      if(modalTransition.owns(element)){
+        modalTransition.invalidate();continue;
+      }
+      if(record.type==='childList'){
+        const nodes=[...record.addedNodes,...record.removedNodes];
+        if(nodes.length&&nodes.every(node=>modalTransition.owns(node.nodeType===1?node:node.parentElement)))continue;
+      }
+      if(element?.closest?.('[data-ui-hidden="true"]'))continue;
       if(record.type==='attributes'&&record.target.getAttribute(record.attributeName)===record.oldValue)continue;
+      if(record.type==='attributes'&&minimap.owns(element)&&record.attributeName==='data-frame'){
+        minimap.invalidate();continue;
+      }
+      if(usingBattleHUD()&&record.type==='attributes'&&element?.dataset?.uiLayer==='portrait'&&['data-frame','data-progress','data-word','aria-valuenow'].includes(record.attributeName)){
+        if(record.attributeName==='data-frame')portrait.invalidate();continue;
+      }
+      if(usingBattleHUD()&&record.type!=='attributes'&&element?.closest?.('[data-ui-layer="portrait-level"]')){
+        portrait.invalidateForeground();continue;
+      }
+      const movable=record.type==='attributes'&&healthLayer(element);
+      if(movable&&['style','data-frame','data-progress','aria-valuenow','aria-valuemax','aria-label'].includes(record.attributeName)){
+        if(record.attributeName==='data-frame')movable.invalidate();
+        continue;
+      }
+      if(record.type==='attributes'&&controls.owns(element)&&['style','class'].includes(record.attributeName)){
+        controls.invalidate();continue;
+      }
+      if(usingBattleHUD()){
+        if(record.type==='attributes'&&element?.classList?.contains('zx-skill-cooldown')&&['data-frame','data-progress'].includes(record.attributeName)){
+          if(record.attributeName==='data-frame')skillLayer.invalidatePixels();
+          continue;
+        }
+        // Adding or removing a slot moves the bottom-anchored column as a whole.
+        if(record.type==='childList'&&element?.dataset?.uiLayer==='skills'){
+          uiFrames.invalidate(true,true);continue;
+        }
+        const tile=fixedLayerFor(element);
+        if(tile){tile.invalidate();continue;}
+      }
       // Text/HUD updates may happen every game tick; coalesce them. A newly
       // mounted menu must replace the previous pixels on the very next draw.
       const structural=record.type==='childList'&&[...record.addedNodes,...record.removedNodes].some(n=>n.nodeType===1);
@@ -91,7 +166,10 @@ export async function setup(host) {
   property('offsetLeft',function(){return rect(this).left;});property('offsetTop',function(){return rect(this).top;});
   property('scrollHeight',function(){return this.clientHeight+(this._scrollMax||0);});
   property('scrollWidth',function(){return this.clientWidth;});
-  property('scrollTop',function(){return this._scroll||0;},function(n){this._scroll=Math.min(this._scrollMax||0,Math.max(0,n));uiFrames.invalidate(true,true);});
+  property('scrollTop',function(){return this._scroll||0;},function(n){
+    const next=Math.min(this._scrollMax||0,Math.max(0,n));if(next===(this._scroll||0))return;
+    this._scroll=next;if(modalTransition.owns(this))modalTransition.invalidate();else uiFrames.invalidate(true,true);
+  });
   D.Element.prototype.getBoundingClientRect=function(){return rect(this);};
   D.Element.prototype.getClientRects=function(){return this.offsetWidth?[rect(this)]:[];};
   D.Element.prototype.setPointerCapture=function(id){captured.set(id,this);};
@@ -118,9 +196,8 @@ export async function setup(host) {
   Object.defineProperty(doc,'activeElement',{get:()=>active||doc.body});
   doc.exitPointerLock=()=>{};
   const fs=wx.getFileSystemManager(),localStorage=storage('pokebonk.web.');
-  let locale=localStorage.getItem('pokebonk.lang')||'zh';
   const loc=new LocalURL('https://pokebonk.local/?touch=1');
-  loc.reload=()=>wx.restartMiniProgram?.({});loc.replace=value=>{const next=new LocalURL(value);const lang=next.searchParams.get('lang');if(lang)localStorage.setItem('pokebonk.lang',lang);loc.reload();};
+  loc.reload=()=>wx.restartMiniProgram?.({});loc.replace=loc.reload;
   const history={state:null,pushState(state){this.state=state;},replaceState(state){this.state=state;},back(){win.dispatchEvent(new D.Event('popstate'));}};
   const queries=new Map();
   function matchMedia(q){
@@ -131,9 +208,19 @@ export async function setup(host) {
     const key=String(k).replace(/[A-Z]/g,m=>'-'+m.toLowerCase());return layout.box(el)?.s[key]||t.getPropertyValue(key)||(k==='gridTemplateColumns'?'1fr':'');}});}
   function show(hide){
     doc.hidden=hide;doc.visibilityState=hide?'hidden':'visible';doc.dispatchEvent(new D.Event('visibilitychange'));win.dispatchEvent(new D.Event(hide?'pagehide':'pageshow'));
-    if(hide){for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
+    if(hide){draw?.releaseFrozen();for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
   }
   wx.onHide(()=>show(true));wx.onShow(()=>show(false));
+  let lastGC=-Infinity;
+  wx.onMemoryWarning?.(()=>{
+    draw?.releaseUnused();
+    win.dispatchEvent(new D.Event('memorywarning'));
+    const now=Date.now();
+    if(device.platform==='ios'&&now-lastGC>=5000){
+      lastGC=now;
+      try{wx.triggerGC?.();}catch{}
+    }
+  });
   function keyboard(el){
     if(!wx.showKeyboard)return;
     wx.showKeyboard({defaultValue:el.value||'',maxLength:Number(el.maxLength)>0?Number(el.maxLength):140,multiple:el.localName==='textarea',confirmType:'done'});
@@ -143,7 +230,11 @@ export async function setup(host) {
   wx.onKeyboardConfirm?.(r=>{if(active){active.value=r.value;active.dispatchEvent(new InputEvent('change'));active.blur();}wx.hideKeyboard?.({});});
   function setRange(el,x){const b=rect(el);if(b.width<=0)return;el.value=String(rangeValueAt(el,(x-b.x)/b.width));el.dispatchEvent(new InputEvent('input'));}
   function touches(kind,event){
-    uiFrames.invalidate(false,true);
+    // A press begun in combat must not select a card while it is appearing.
+    if(modalTransition.active){pointers.clear();captured.clear();return;}
+    // Menus still react immediately. In battle, DOM mutations invalidate the
+    // controls that actually changed; an empty-space swipe needs no UI upload.
+    if(kind!=='move'&&win.__pb?.run?.state!=='play'&&!modalTransition.element)uiFrames.invalidate(false,true);
     const local=t=>{
       const x=(t.clientX??t.pageX)-view.x,y=(t.clientY??t.pageY)-view.y;
       return {...t,identifier:t.identifier,clientX:x,clientY:y,pageX:x,pageY:y};
@@ -194,7 +285,8 @@ export async function setup(host) {
     Blob,URL:LocalURL,URLSearchParams:Params,fetch,Request,Headers,Response,AbortController,AbortSignal,TextDecoder,TextEncoder,createImageBitmap:undefined,ImageBitmap:undefined,OffscreenCanvas:undefined,
     ProgressEvent:InputEvent,MouseEvent:InputEvent,KeyboardEvent:InputEvent,PointerEvent:InputEvent,Path2D:CanvasPath,MutationObserver:doc.defaultView.MutationObserver,
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
-    nativeUI:true,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    nativeUI:true,nativeDevice:device,bootStage:host.bootStage,backgroundMusicEnabled:false,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
+    setNativeFrameRate:typeof wx.setPreferredFramesPerSecond==='function'?fps=>wx.setPreferredFramesPerSecond(fps):undefined,
     navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},
@@ -203,19 +295,76 @@ export async function setup(host) {
     setInterval:(...args)=>setInterval(...args),clearInterval:id=>clearInterval(id),performance:perf,requestAnimationFrame:raf,
     cancelAnimationFrame:typeof cancelAnimationFrame==='function'?cancelAnimationFrame:clearTimeout,
     addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),dispatchEvent:win.dispatchEvent.bind(win),
-    alert:msg=>wx.showModal({title:'宝可梦',content:String(msg),showCancel:false}),open:()=>null,
+    alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
     prepareForest:host.files.prepareForest,repairVolumeSettings,
-    onRunStartError(error){
-      const restart=typeof wx.restartMiniProgram==='function';
-      wx.showModal({title:'森林未能打开',content:String(error?.message||error),showCancel:false,
-        confirmText:restart?'重新进入':'退出游戏',success:()=>restart?wx.restartMiniProgram({}):wx.exitMiniProgram({})});
+    createCoopSocket:events=>cloudSocket(wx,events),
+    roomInvites:host.roomInvites,
+    shareRoomCode:host.shareRoomCode,
+    askRoomCode:()=>new Promise((resolve,reject)=>wx.showModal({title:'加入房间',editable:true,placeholderText:'请输入六位房间号',
+      success:result=>resolve(result.confirm ? (result.content||'').trim() : null),fail:reject})),
+    setUIPerformance(){
+      // Settings also change inherited CSS variables (e.g. button size).
+      // Refresh their hit boxes even when the pixel ratio stays the same.
+      uiFrames.invalidate(true,true);modalTransition.invalidate();
+      const next=uiScale(view);
+      if(Math.abs(next-scale)<.001)return;
+      scale=env.uiPixelRatio=next;
+      uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
+      layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
-    drawUI(renderer){
+    invalidateUI:()=>uiFrames.invalidate(false,true),
+    animateModal(wrap){modalTransition.begin(wrap,env.__pb?.run);},
+    closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop,perf.now());},
+    modalAnimating:()=>modalTransition.active,
+    hasFrozenUpgrade:run=>!env.__pb?.screen&&upgradeCue(run)&&draw?.hasFrozen(run),
+    drawFrozenModal(renderer){
+      return env.__pb?.run?.state==='modal'&&env.drawFrozenUpgrade(renderer);
+    },
+    drawFrozenUpgrade(renderer){
+      const key=frozenUpgradeKey();
+      if(!key||!draw?.hasFrozen(key))return false;
+      env.drawUI(renderer,false,key);return true;
+    },
+    drawUI(renderer,opaque=false,frozenFrame=null){
+      // The renderer floors fractional DPR sizes. Match the device-sized UI
+      // buffer while inspecting original pixels to avoid a final resample.
+      if(view.originalPixels&&(host.canvas.width!==uiCanvas.width||host.canvas.height!==uiCanvas.height)){
+        host.canvas.width=uiCanvas.width;host.canvas.height=uiCanvas.height;
+        uiFrames.invalidate(false,true);
+      }
+      const now=perf.now();
+      modalTransition.advance(now);
       mutations(observer.takeRecords());
-      const changed=uiFrames.draw(perf.now(),env.__pb?.run?.state,layout,boxes=>paint(layout,boxes,view,scale));
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);draw(renderer,changed);
+      const run=env.__pb?.run,state=run?.state;
+      const overlay=modalTransition.element;
+      layout.setOverlay(overlay);
+      const playing=usingBattleHUD()&&!opaque;
+      const changed=uiFrames.draw(now,opaque?'opaque':playing?'play':state,layout,boxes=>{
+        // Classify once in paint order. A full HUD refresh used to walk the
+        // ancestors of every box separately for every tile, then again for the base.
+        const groups=new Map(),base=[],tiles=run?.coop?coopTiles:soloTiles;
+        if(playing)for(const tile of activeHudLayers())tile.refreshIfDirty(layout);
+        for(const box of boxes){
+          const element=box.el.nodeType===1?box.el:box.el.parentElement;
+          const tile=playing?tiles.get(layerId(element)):null;
+          if(tile){
+            let parts=groups.get(tile);
+            if(!parts)groups.set(tile,parts=[]);
+            parts.push(box);
+          }else if(playing||!controls.owns(element))base.push(box);
+        }
+        for(const tile of allTiles)tile.capture(groups.get(tile)||emptyBoxes,layout);
+        paint(layout,base,view,scale);
+      });
+      if(opaque&&!changed)return;
+      modalTransition.prepare(layout,view,scale);
+      const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
+      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);
+      draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
+      if(overlay)modalTransition.presented(perf.now());
     },
-    locale,readLocale(lang){const p=host.files.pathFor('locale/'+lang+'.json');return p?JSON.parse(fs.readFileSync(p,'utf8')):{};},
+    readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},
   });
   env.window=env.self=env.globalThis=env;
   wx.onWindowResize?.(()=>{
@@ -224,13 +373,13 @@ export async function setup(host) {
     env.innerWidth=env.screen.width=view.w;env.innerHeight=env.screen.height=view.h;
     env.devicePixelRatio=view.dpr;
     scale=env.uiPixelRatio=uiScale(view);uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
-    layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
+    layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);modalTransition.invalidate();
     for(const query of queries.values()){
       const matches=mediaMatches(query.media,view);
       if(matches!==query.matches){query.matches=matches;query.dispatchEvent(new InputEvent('change',{matches,media:query.media}));}
     }
     env.dispatchEvent(new D.Event('resize'));
   });
-  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas});
+  if(host.inspect)host.inspect({env,doc,get layout(){return layout;},touches,uiCanvas,controls,minimap,health,portrait,get hudLayers(){return activeHudLayers();},modalTransition});
   return env;
 }

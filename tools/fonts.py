@@ -4,15 +4,21 @@ from pathlib import Path
 from fontTools import subset
 from fontTools.ttLib import TTFont
 
-source, dest = map(Path, sys.argv[1:])
+source, dest = map(Path, sys.argv[1:3])
 strings = set(chr(n) for n in range(32, 127))
-for file in [*source.joinpath("src").glob("*.js"), *source.joinpath("public/data").rglob("*.json"),
-             *source.joinpath("public/assets").glob("??-*.js"), *source.joinpath("public/assets").glob("zht-*.js")]:
+data = [Path(sys.argv[3])] if len(sys.argv) > 3 else [
+    *source.joinpath("public/data").glob("*.json"), source / "public/text/ui.json"]
+for file in [*source.joinpath("src").glob("*.js"), *data]:
     strings.update(file.read_text(encoding="utf-8"))
 dest.mkdir(exist_ok=True, parents=True)
 for weight in ("Regular", "Bold"):
-    font = TTFont(source / ("public/fonts/swei/SweiGothicCJKsc-" + weight + ".ttf"))
-    sub = subset.Subsetter()
-    sub.populate(text="".join(strings))
+    # Unchanged text must produce the same hash and reuse the phone's cache.
+    font = TTFont(source / ("public/fonts/swei/SweiGothicCJKsc-" + weight + ".ttf"), recalcTimestamp=False)
+    # All game labels use horizontal layout, including the portrait HUD.
+    options = subset.Options()
+    options.drop_tables.extend(["vhea", "vmtx"])
+    options.layout_features = [tag for tag in options.layout_features if tag not in ("vert", "vrt2")]
+    sub = subset.Subsetter(options=options)
+    sub.populate(text="".join(sorted(strings)))
     sub.subset(font)
     font.save(dest / (weight.lower() + ".ttf"))

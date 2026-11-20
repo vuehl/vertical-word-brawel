@@ -29,7 +29,8 @@ const fs={
   readFileSync(path,encoding){const b=bytes(path);return encoding?strFromU8(b):b.slice().buffer;},
   writeFileSync(path,b){data.set(path,typeof b==='string'?strToU8(b):new Uint8Array(b));},
   copyFileSync(from,to){data.set(to,bytes(from));},renameSync(from,to){data.set(to,bytes(from));data.delete(from);},unlinkSync(path){data.delete(path);},
-  readFile({filePath,success,fail}){queueMicrotask(()=>{try{success({data:fs.readFileSync(filePath)});}catch(e){fail(e);}});}
+  readFile({filePath,success,fail}){queueMicrotask(()=>{try{success({data:fs.readFileSync(filePath)});}catch(e){fail(e);}});},
+  writeFile({filePath,data,success,fail}){queueMicrotask(()=>{try{fs.writeFileSync(filePath,data);success({});}catch(e){fail(e);}});}
 };
 let first=true,screen=null;
 // WeChat exposes canvas as a fixed own data property on native rendering contexts.
@@ -63,8 +64,31 @@ Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(ho
   const resolveAsync=host.files.resolvePath;
   host.files.resolvePath=async url=>{const p=await resolveAsync(url);if(!p)window.missingAssets.add(String(url));return p;};
 }});
+let fixtureSave;
+const fixtureReceipts=new Set();
+const fixtureCloud={init(){},async callContainer(options){
+  if(window.fixtureProgress)return window.fixtureProgress(options);
+  if(options.path!=='/v1/progress')throw Error('Unknown fixture cloud route');
+  const {data,method}=options;
+  if(method==='POST' && !fixtureSave)fixtureSave={revision:1,owner:'fixture',progress:structuredClone(data.progress)};
+  if(method==='PUT' && !fixtureReceipts.has(data.mutation)){
+    if(data.revision!==fixtureSave.revision)return {statusCode:409};
+    fixtureSave={...fixtureSave,revision:fixtureSave.revision+1,progress:structuredClone(data.progress)};
+    fixtureReceipts.add(data.mutation);
+  }
+  return {statusCode:fixtureSave?200:404,data:structuredClone(fixtureSave)};
+}};
 globalThis.wx={
+    cloud:fixtureCloud,
+  getLaunchOptionsSync:()=>window.fixtureLaunchOptions || {query:{}},
+  shareAppMessage:options=>{window.sharedCard=options;},
+  onShareAppMessage:listener=>{window.fixtureMenuCard=listener;},
+  showShareMenu:({menus})=>{window.fixtureShareMenus=menus;},
   env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>fs,
+  getDeviceInfo:()=>({platform:window.fixturePlatform||'devtools',...window.fixtureDeviceInfo}),
+  // Existing render workload tests intentionally use a high-end device.
+  // Device-policy cases can inject a different tier or an unavailable API.
+  getDeviceBenchmarkInfo:({success,fail})=>window.fixtureBenchmark===null?fail({}):success(window.fixtureBenchmark??{modelLevel:1,benchmarkLevel:40}),
   getWindowInfo:()=>({windowWidth:innerWidth,windowHeight:innerHeight,pixelRatio:devicePixelRatio,
     safeArea:!window.phoneLayout?undefined:innerHeight>=innerWidth
       ?{left:0,top:36,right:innerWidth,bottom:innerHeight-34}
@@ -75,6 +99,8 @@ globalThis.wx={
   getRandomValues({length,success}){success({randomValues:crypto.getRandomValues(new Uint8Array(length)).buffer});},
   createCanvas:canvas,createOffscreenCanvas:nativeCanvas,
   createImage(){const img=new Image();Object.defineProperty(img,'src',{get(){return imageSrc.get.call(img);},set(path){
+    const record={path,width:0,height:0};(window.nativeImageLoads??=[]).push(record);
+    img.addEventListener('load',()=>{record.width=img.naturalWidth;record.height=img.naturalHeight;},{once:true});
     if(data.has(path)){const url=URL.createObjectURL(new Blob([bytes(path)]));img.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});imageSrc.set.call(img,url);}
     else imageSrc.set.call(img,path);
   }});return img;},
@@ -83,6 +109,7 @@ globalThis.wx={
   createWebAudioContext:()=>new AudioContext(),getStorageSync:k=>localStorage.getItem(k)||'',setStorageSync:(k,v)=>localStorage.setItem(k,v),removeStorageSync:k=>localStorage.removeItem(k),
   showLoading(o){window.loadingTitle=o.title;},hideLoading(){window.loadingTitle=null;},showModal(o){window.problem=o.content;console.error('WX MODAL',o.content);},
   loadSubpackage(o){
+    (window.requestedPackages??=[]).push(o.name);
     let notify;
     (async()=>{try{
       if(o.name==='text'){
@@ -92,7 +119,7 @@ globalThis.wx={
         window.reportTextProgress(10);
         if(window.dropTextOnce){window.dropTextOnce=false;throw Error('test: dropped download');}
       }
-      if(['art','world','sound'].includes(o.name))await optionalDownloadGate;
+      if(o.name!=='play'&&o.name!=='text')await optionalDownloadGate;
       await window.loadFixtureData(o.name);
       // Reproduce a device reporting package success before evaluating its entry.
       o.success();
@@ -102,7 +129,13 @@ globalThis.wx={
     return {onProgressUpdate(fn){notify=fn;}};
   }
 };
-for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide',Show:'pageshow'})){
+const showCallbacks=[];
+wx.setPreferredFramesPerSecond=fps=>{(window.fixtureFrameRates??=[]).push(fps);};
+wx.onMemoryWarning=listener=>{window.fixtureMemoryWarning=listener;};
+wx.triggerGC=()=>{window.fixtureGCs=(window.fixtureGCs||0)+1;};
+wx.onShow=fn=>showCallbacks.push(fn);
+window.fixtureShow=options=>showCallbacks.forEach(fn=>fn(options));
+for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide'})){
   wx['on'+key]=fn=>{events[key]=fn;if(event.startsWith('touch'))document.addEventListener(event,fn,{passive:false});};
 }
 const fingers=new Map();

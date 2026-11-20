@@ -1,3 +1,4 @@
+import {FOREST_ROUTE} from '../source/src/lite-rules.js';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,6 +9,15 @@ import puppeteer from 'puppeteer-core';
 import sharp from 'sharp';
 import {reviewMenus} from './menu-regression.mjs';
 import {reviewUIPerformance} from './ui-perf.mjs';
+import {reviewZixing} from './zixing-regression.mjs';
+import {reviewPaper} from './paper-regression.mjs';
+import {reviewLoading,reviewNetworkActions} from './loading-regression.mjs';
+import {reviewScenes} from './scene-regression.mjs';
+import {reviewStarters} from './starter-regression.mjs';
+import {reviewUpgrade} from './upgrade-regression.mjs';
+import {reviewBattleFeedback} from './battle-feedback-regression.mjs';
+import {fixtureSubpackage} from './fixture-subpackage.mjs';
+import {reviewRunSettlement,reviewStartupLatency} from './startup-regression.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
@@ -33,13 +43,20 @@ function script(){return 'const defs={}, cache={};\n'+modules.map(p=>'defs['+JSO
 const srv=http.createServer((req,res)=>{
   if(req.url==='/'){res.setHeader('content-type','text/html; charset=utf-8');return res.end('<meta charset=utf-8><style>*{margin:0}canvas{display:block;width:100vw;height:100vh}</style><body><script src="/fixture.js"></script><script src="/boot.js"></script>');}
   if(req.url==='/fixture.js'||req.url==='/boot.js'){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(req.url==='/fixture.js'?'window.packageData='+JSON.stringify(packageData)+';window.packageEntries='+JSON.stringify(packageEntries)+';\n'+fixture:script());}
-  if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);}
+  if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(fixtureSubpackage(game,req.url.slice(1)));}
   if(dataUrls.has(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
   if(req.url==='/favicon.ico'){res.statusCode=204;return res.end();}
   res.statusCode=404;res.end();
 });
 await new Promise(r=>srv.listen(0,'127.0.0.1',r));
 const b=await puppeteer.launch({executablePath:chrome,headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling']});
+if(process.argv.includes('--coop')){
+  try {
+    const {reviewCoop}=await import('./coop-regression.mjs');
+    await reviewCoop(b,srv.address().port);
+  } finally { await b.close();srv.close(); }
+  process.exit(0);
+}
 const page=await b.newPage(),errors=[];
 let homePainted=false;
 page.on('console',m=>{if(m.type()==='info'&&m.text().startsWith('[宝可梦启动] 游戏首页已绘制'))homePainted=true;});
@@ -59,11 +76,22 @@ await page.evaluateOnNewDocument(()=>{
       if(window.uiPerf&&args[args.length-1]===window.inspected?.uiCanvas){
         uiPerf.uploads++;if(method==='texImage2D')uiPerf.allocations++;
       }
+      if(window.upgradeAudit){
+        const canvas=args[args.length-1];
+        if(canvas===window.inspected?.uiCanvas)upgradeAudit.uploads++;
+        if(window.inspected?.modalTransition?.canvases.includes(canvas)&&++upgradeAudit.panelUploads===1)
+          upgradeAudit.clock+=upgradeAudit.firstUploadMs||0;
+      }
       return original.apply(this,args);
     };
   }
   const locations=new WeakMap(),bootLocations=new WeakSet();
-  window.bootPercentages=[];
+  window.bootPercentages=[];window.bootLabels=[];
+  const fillText=CanvasRenderingContext2D.prototype.fillText;
+  CanvasRenderingContext2D.prototype.fillText=function(label,...args){
+    if(/^\d+%$/.test(label))window.bootLabels.push(label);
+    return fillText.call(this,label,...args);
+  };
   window.holdHomeStatus=true;
   gl.getUniformLocation=function(program,name){
     const loc=lookup.call(this,program,name);
@@ -81,6 +109,7 @@ const menusOnly=process.argv.includes('--menus-only');
 const uiPerfOnly=process.argv.includes('--ui-perf');
 const phoneLayout=process.argv.includes('--phone-layout')||menusOnly;
 if(phoneLayout)await page.evaluateOnNewDocument(()=>{window.phoneLayout=true;});
+if(process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline'))await page.evaluateOnNewDocument(()=>{localStorage.setItem('pokebonk.web.pokebonk.lang','fr');});
 if(process.argv.includes('--eager-entry'))await page.evaluateOnNewDocument(()=>{window.eagerEntry=true;});
 if(failFrame)await page.evaluateOnNewDocument(()=>{window.failFirstFrame=true;});
 if(process.argv.includes('--retry-text'))await page.evaluateOnNewDocument(()=>{window.dropTextOnce=true;});
@@ -106,27 +135,16 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
-  const pixel=Math.max(1,Math.round(Math.min(width/185,height/110)));
-  const cx=Math.floor(width/2),cy=Math.floor(height*.12);
-  const half=Math.floor(Math.min(width*.27,height*.28));
-  const red=(x,y)=>data[((height-1-Math.floor(y))*width+Math.floor(x))*channels];
+  const sx=width/390,y=Math.floor(height*.79+4*sx),left=Math.round(61*sx),right=Math.round(329*sx);
   let filled=0;
-  for(let x=cx-half;x<cx+half;x++)if(red(x,cy-pixel)>140)filled++;
-  assert.ok(Math.abs(filled-2*half*percent/100)<=1,'Progress bar length at '+percent+'%');
-  const label=percent+'%', start=cx-(label.length*4-1)*pixel/2;
-  const expected={'0':0o75557,'5':0o74717,'6':0o74757,'7':0o71222,'9':0o75717,'%':0o51245};
-  for(let i=0;i<label.length;i++){
-    let bits=0;
-    for(let y=4;y>=0;y--)for(let x=0;x<3;x++)
-      bits=bits*2+Number(red(start+(4*i+x+.5)*pixel,cy+(2+y+.5)*pixel)>210);
-    assert.equal(bits,expected[label[i]],'Visible character '+label[i]+' in '+label);
+  for(let x=left;x<right;x++){
+    const at=(y*width+x)*channels;
+    if(Math.abs(data[at]-130)<8&&Math.abs(data[at+1]-159)<8)filled++;
   }
-  if(percent===95){
-    // At this stage the forest backdrop should be visible above the panel.
-    const upper=await sharp(image).extract({left:0,top:0,width,height:Math.floor(height/2)}).png().toBuffer();
-    const {channels:rgb}=await sharp(upper).removeAlpha().stats();
-    assert.ok(rgb.some(channel=>channel.max-channel.min>40),'Scene was covered by the loading panel');
-  }
+  assert.ok(Math.abs(filled-268*sx*percent/100)<=2,'Paper progress bar at '+percent+'%');
+  assert.ok(await page.evaluate(p=>window.bootLabels.includes(p+'%'),percent),'Readable percentage was painted');
+  const {channels:rgb}=await sharp(image).removeAlpha().stats();
+  assert.ok(rgb.some(channel=>channel.max-channel.min>100),'Stationery illustration is visible');
 }
 async function verifyStartup(){
   await page.waitForFunction(()=>window.textRequested&&window.playDownloaded||window.problem,{timeout:20000});
@@ -135,7 +153,25 @@ async function verifyStartup(){
   await page.evaluate(()=>window.reportTextProgress(50));
   await verifyProgressImage(67,'00-loading.png');
   console.log('Verified 50% and 67% labels and bar lengths during a stalled download');
+  const checkGlyphGate=process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline');
+  if(checkGlyphGate)await page.evaluate(()=>{
+    const files=GameGlobal.pokebonk.files,resolve=files.resolvePath.bind(files);
+    files.resolvePath=async function(url){
+      if(url==='assets/glyphs/atlas.png'){
+        await new Promise(done=>{window.releaseGlyphAtlas=done;});
+        files.resolvePath=resolve;
+      }
+      return resolve(url);
+    };
+  });
   await page.evaluate(()=>window.releaseTextDownload());
+  if(checkGlyphGate){
+    await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
+    await page.evaluate(()=>releaseHomeStatus());
+    await verifyProgressImage(95);
+    assert.equal(await page.evaluate(()=>!!app.screen?.querySelector('button')||bootPercentages.includes(100)),false);
+    await page.evaluate(()=>releaseGlyphAtlas());
+  }
   if(failFrame){
     await page.waitForFunction(()=>window.problem,{timeout:20000});
     const message=await page.evaluate(()=>window.problem);
@@ -144,13 +180,15 @@ async function verifyStartup(){
     console.log('First game frame error reached the native startup dialog');
     return;
   }
-  await page.waitForFunction(()=>window.bootPercentages.filter(n=>n===95).length>=2||window.problem,{timeout:60000});
-  if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-  await verifyProgressImage(95,'00-background.png');
-  await page.evaluate(()=>window.releaseHomeStatus());
+  if(!checkGlyphGate){
+    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n>=95).length>=2||window.problem,{timeout:60000});
+    if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
+    await verifyProgressImage(await page.evaluate(()=>bootPercentages.at(-1)),'00-background.png');
+    await page.evaluate(()=>window.releaseHomeStatus());
+  }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-  await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button'),{timeout:15000});
+  await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
   // The first usable guest screen proves optional packages did not block boot.
   // Release them now; lengthy software-rendered layout assertions must not
   // turn the fixture's artificial download gate into a real 45-second timeout.
@@ -217,6 +255,9 @@ async function verifyStartup(){
   async function tap(selector,match){
     const target=await page.waitForFunction((selector,match)=>{
       if(inspected.doc.querySelector('.wipe'))return false;
+      // Isolated combat tests halt the main loop. Late viewport events and
+      // modal changes still need a UI frame to rebuild the touch hit map.
+      if(app.halted)inspected.env.drawUI(app.r.renderer);
       for(const el of inspected.doc.querySelectorAll(selector)){
         if(match&&!el.textContent.includes(match)||el.offsetWidth<=2)continue;
         const r=el.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
@@ -229,6 +270,32 @@ async function verifyStartup(){
       return false;
     },{timeout:45000},selector,match);
     console.log('touch',await target.jsonValue());await target.dispose();await sleep(450);
+  }
+  if(await page.evaluate(()=>!!app.zixing)){
+    if(process.argv.includes('--startup-latency'))await reviewStartupLatency({page,dir,baseline:process.argv.includes('--baseline')});
+    else if(process.argv.includes('--run-settlement'))await reviewRunSettlement({page,dir});
+    else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
+    else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
+    else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
+    else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--device-effects')){
+      const {reviewDeviceEffects}=await import('./device-effects-regression.mjs');
+      await reviewDeviceEffects(page,dir);
+    }
+    else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--battle-feedback'))await reviewBattleFeedback({page,tap,resize,dir,sleep});
+    else await reviewZixing({page,tap,resize,dir,sleep,menusOnly,perfOnly:uiPerfOnly});
+    const missing=await page.evaluate(()=>[...missingAssets]);
+    assert.deepEqual(missing,[],'All requested local assets must be present');
+    assert.ok(homePainted,'Startup must complete its first home-frame handoff');
+    const values=await page.evaluate(()=>bootPercentages);
+    assert.equal(values[0],0);assert.equal(values.at(-1),100);
+    for(let i=1;i<values.length;i++)assert.ok(values[i]>=values[i-1],'Progress moved backwards');
+    assert.equal(values.filter(n=>n===100).length,1);
+    if(errors.length)throw Error(errors[0]);
+    return;
   }
   if(uiPerfOnly){
     await reviewUIPerformance({page,tap,dir,baseline:process.argv.includes('--baseline')});
@@ -384,7 +451,7 @@ async function verifyStartup(){
   }
   if(process.argv.includes('--forest-regression')){
     const report=[];
-    for(const species of [1,4,7]){
+    for(const species of [4,16]){
       await page.evaluate(async species=>{
         if(app.run&&app.run.state!=='over')await app.run.finish(false,true);
         app.toMenu();
@@ -394,7 +461,7 @@ async function verifyStartup(){
       },species);
       await page.waitForFunction(species=>app.run.player.speciesId===species&&app.run.time>1,{timeout:60000},species);
       const stages=[];
-      for(let stage=1;stage<=4;stage++){
+      for(const stage of FOREST_ROUTE){
         if(stage>1)await page.evaluate(async()=>{app.run.ui.hideModal();app.run.state='play';await app.run.changeZone();});
         await page.waitForFunction(stage=>app.run.stage===stage,{timeout:60000},stage);
         await sleep(1500);
@@ -413,7 +480,7 @@ async function verifyStartup(){
       report.push({species,stages,settlement});
     }
     fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
-    console.log('Three original partners, all four forest stages and native file settlement verified');
+    console.log('Three original partners, all forest stages and native file settlement verified');
   }
   const missing=await page.evaluate(()=>[...missingAssets]);if(missing.length)throw Error('Missing local assets: '+missing.join(', '));
   if(errors.length)throw Error(errors[0]);

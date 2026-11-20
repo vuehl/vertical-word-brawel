@@ -1,15 +1,16 @@
-import {constrainLiteProfile, validLiteRun} from './src/lite-rules.js';
+import {constrainLiteProfile, validLiteRun, isLiteSpecies, SINGLE_STAGE, runRecordKey} from './src/lite-rules.js';
 // PokéBonk — local server.
 // Serves editable client code and local assets without upstream fallback.
 // Implements the client's HTTP API against a local JSON store.
 import http from 'node:http';
 import { applyAction as applyProfileAction, refreshTasks, rerollTask, settleRun, claimEvent } from './local/progression.mjs';
-import { Zn as medalFor } from './src/config.js';
+import { Zn as medalFor, cn as bagItems } from './src/config.js';
 import { writeFileSync, mkdirSync, renameSync, copyFileSync } from 'node:fs';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {bindPortalZoneClock} from './tools/portal-zone-clock.mjs';
 import {
   now, token, newProfile, newAccount, hashPassword, checkPassword,
   SEASON, EVENTS, seasonPayload, boardFor, json, body,
@@ -200,7 +201,7 @@ route('POST', '/profile/starter', async (req, res) => {
   const p = acc.profile;
   const id = Number(b.id);
   if(p.starter && p.starter !== id)return json(res,409,{error:'Starter already chosen.'});
-  if (![1, 4, 7].includes(id)) return json(res, 400, { error: 'Invalid starter.' });
+  if (!isLiteSpecies(id)) return json(res, 400, { error: 'Invalid starter.' });
   p.starter = id;
   p.lastSpecies = id;
   if (!p.league.includes(id)) p.league.push(id);
@@ -214,7 +215,8 @@ route('POST', '/lab/buy', async (req, res) => {
   if (!acc) return;
   const b = await body(req) || {};
   const p = acc.profile;
-  applyProfileAction(p, { k: 'lab', id: b.id });
+  if (!applyProfileAction(p, { k: 'lab', id: b.id, lv: b.lv }))
+    return json(res, 409, {error:'星尘或研究等级已变化，请刷新后重试'});
   persist();
   json(res, 200, { profile: p });
 });
@@ -357,18 +359,15 @@ route('POST', '/runs', async (req, res) => {
   const acc = requireAccount(req, res);
   if (!acc) return;
   const b = await body(req) || {};
-  if(!validLiteRun(b))return json(res,400,{error:'Forest Lite supports three partners, forest, and single-player classic mode only.'});
+  if(!validLiteRun(b))return json(res,400,{error:'Invalid Forest Lite run configuration.'});
+  if(b.party){
+    const prior=Object.values(store.runs).find(r=>r.account===acc.id && r.cfg.party===b.party && r.seed===b.coopSeed && !r.finished);
+    if(prior)return json(res,200,{id:prior.id,seed:prior.seed,party:b.party,ranked:true,boosts:[]});
+  }
   const id = `run-${store.nextRun++}`;
   // Co-op: the seed belongs to the party so every member builds the same world.
-  let seed;
-  if (b.party) {
-    const key = String(b.party);
-    if (store.coopParties[key] === undefined) store.coopParties[key] = crypto.randomInt(1, 2 ** 31);
-    seed = store.coopParties[key];
-  } else {
-    seed = b.seed ?? crypto.randomInt(1, 2 ** 31);
-  }
-  const boosts=[...new Set(Array.isArray(b.boosts)?b.boosts:[])].filter(k=>(acc.profile.bag[k]??0)>0);
+  const seed = b.party ? b.coopSeed : (b.seed ?? crypto.randomInt(1, 2 ** 31));
+  const boosts=[...new Set(Array.isArray(b.boosts)?b.boosts:[])].filter(k=>bagItems.some(item=>item.id===k)&&(acc.profile.bag[k]??0)>0);
   for(const k of boosts){acc.profile.bag[k]--;if(!acc.profile.bag[k])delete acc.profile.bag[k];}
   store.runs[id] = { id, account: acc.id, cfg: b, seed, started: now() };
   persist();
@@ -398,9 +397,12 @@ route('POST', '/runs/:id/finish', async (req, res, url, params) => {
   const run = store.runs[params.id];
   if (!run || run.account !== acc.id) return json(res,404,{error:'Run not found.'});
   if(run.response)return json(res,200,{...run.response,profile:p});
-  if(!validLiteRun(result) || result.species!==run.cfg.species || result.biome!==run.cfg.biome || (result.tier??0)!==(run.cfg.tier??0))return json(res,400,{error:'Result does not match this forest run.'});
+  if(!validLiteRun(result) || result.species!==run.cfg.species || result.biome!==run.cfg.biome || (result.tier??0)!==(run.cfg.tier??0) ||
+    (result.mode===SINGLE_STAGE)!==(run.cfg.mode===SINGLE_STAGE))return json(res,400,{error:'Result does not match this forest run.'});
+  if ((result.coop?.party ?? null) !== (run.cfg.party ?? null))
+    return json(res,400,{error:'合作对局与房间不匹配'});
   run.finished=now();
-  const recordKey=result.biome+'-'+(result.tier??0);
+  const recordKey=runRecordKey(result);
   const prevKills=p.kills[recordKey]??null;
   const prevBest=p.times[recordKey]?.time??null;
   const medal=(!result.mode||['standard','classic'].includes(result.mode)) ? medalFor(result.biome,result.tier??0,result.time,!!result.victory) : 0;
@@ -521,6 +523,9 @@ async function serveStatic(req, res, pathname) {
 
   if (inside && existsSync(file)) {
     const ext = path.extname(file);
+    if (rel === 'src/PortalDock.mjs') {
+      return sendFile(res, file, Buffer.from(bindPortalZoneClock(await readFile(file, 'utf8'))));
+    }
     if (ext === '.html' && rel === 'index.html') {
       let src = await readFile(file, 'utf8');
       const before = src;

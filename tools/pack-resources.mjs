@@ -5,15 +5,15 @@ import {brotliCompressSync,constants} from 'node:zlib';
 const json = value => Buffer.from(JSON.stringify(value));
 
 // Group like files so Brotli can share repeated bytes across asset boundaries.
-export function packStream(entries) {
+export function packStream(entries,quality=10,windowBits=23) {
   const names=Object.keys(entries).sort((a,b)=>path.extname(a).localeCompare(path.extname(b))||a.localeCompare(b));
   const manifest=json(names.map(name=>[name,entries[name].length]));
   const header=Buffer.alloc(4);
   header.writeUInt32LE(manifest.length);
   const raw=Buffer.concat([header,manifest,...names.map(name=>entries[name])]);
   const bytes=brotliCompressSync(raw,{params:{
-    [constants.BROTLI_PARAM_QUALITY]:10,
-    [constants.BROTLI_PARAM_LGWIN]:23,
+    [constants.BROTLI_PARAM_QUALITY]:quality,
+    [constants.BROTLI_PARAM_LGWIN]:windowBits,
     [constants.BROTLI_PARAM_SIZE_HINT]:raw.length
   }});
   return {bytes,rawSize:raw.length};

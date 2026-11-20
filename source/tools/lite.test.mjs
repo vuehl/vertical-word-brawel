@@ -4,26 +4,39 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {roster,biomes,events} from '../src/catalogs.js';
+import {roster,biomes,events,heldItems,vitamins} from '../src/catalogs.js';
+import {Jn as itemInPool} from '../src/config.js';
 import {createProfile} from '../src/progression.js';
 import {settleRun,applyAction} from '../local/progression.mjs';
 import {constrainLiteProfile} from '../src/lite-rules.js';
 
-test('one full forest, original three guardian groups, sanctuary, three starter kits',()=>{
- assert.deepEqual(roster.map(p=>p.id),[1,4,7]);
+test('a new profile can roll every configured official item without a research purchase',()=>{
+ const profile=createProfile('test');
+ assert.equal(heldItems.length,29);
+ assert.equal(vitamins.length,26);
+ for(const item of heldItems)assert.ok(itemInPool(profile,item.key),item.key);
+ for(const key of ['leftovers','fairy-feather','water-stone'])assert.equal(itemInPool(profile,key),false);
+ for(const key of ['star-piece','lucky-punch'])assert.ok(itemInPool(profile,key));
+ profile.itemsOff.push('star-piece');
+ assert.equal(itemInPool(profile,'star-piece'),false);
+ assert.ok(itemInPool(profile,'lucky-punch'));
+});
+
+test('both forest summoning points and the sanctuary use the same final boss',()=>{
+ assert.deepEqual(roster.map(p=>p.id),[4,16]);
  assert.deepEqual(biomes.map(b=>b.id),['forest']);
  assert.equal(events.length,0);
- assert.deepEqual(biomes[0].guardians,[[123,26,55],[127,62,53],[34,76,59]]);
- assert.deepEqual(biomes[0].sanctuary.legendaries,[151]);
+ assert.deepEqual(biomes[0].guardians,[[149],[149]]);
+ assert.deepEqual(biomes[0].sanctuary.legendaries,[149]);
  assert.equal(biomes[0].zones.length,2);
  for(const p of roster)assert.equal(p.kit.length,4);
 });
 test('settlement preserves enemy research and evolution, excludes removed captures and maps',()=>{
  const p=constrainLiteProfile(createProfile('test'));
- const result={species:7,biome:'forest',mode:'standard',tier:0,stage:4,victory:true,kills:100,time:600,level:45,progress:{league:[10,25,7],shinies:[25,4],classics:[10,1],forms:[9,150],seen:[25,151],research:{25:10}}};
+ const result={species:16,biome:'forest',mode:'standard',tier:0,stage:4,victory:true,kills:100,time:600,level:45,progress:{league:[10,25,132,16],shinies:[25,4],classics:[10,132,16],forms:[59,150],seen:[25,151],research:{25:10}}};
  const dust=settleRun(p,result);
- assert.ok(dust>0);assert.deepEqual(p.league,[1,4,7]);assert.deepEqual(p.unlocked,[1,4,7]);
- assert.deepEqual(p.shinies,[4]);assert.deepEqual(p.classics,[1]);assert.deepEqual(p.forms,[9]);
+ assert.ok(dust>0);assert.deepEqual(p.league,[4,16]);assert.deepEqual(p.unlocked,[4,16]);
+ assert.deepEqual(p.shinies,[4]);assert.deepEqual(p.classics,[16]);assert.deepEqual(p.forms,[59]);
  assert.equal(p.research[25],10);assert.ok(p.seen.includes(151));assert.deepEqual(p.biomes,{forest:1});
  const before=p.stardust;assert.equal(applyAction(p,{k:'lab',id:'reroll',lv:99}),false);assert.equal(p.stardust,before);
 });
@@ -35,18 +48,27 @@ test('HTTP blocks removed content, saves valid play once, and restores progressi
  const call=async(route,data,status=200)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method:data===undefined?'GET':'POST',headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});assert.equal(r.status,status,route);return r.json();};
  try{
   await start();token=(await call('/auth/guest',{})).token;
-  assert.deepEqual((await call('/profile')).profile.league,[1,4,7]);await call('/profile/starter',{id:7});
+  assert.deepEqual((await call('/profile')).profile.league,[4,16]);await call('/profile/starter',{id:132},400);await call('/profile/starter',{id:16});
   assert.deepEqual(await call('/coop/access'),{show:false,play:false});
   for(const route of ['/coop/rooms','/clans/board','/events/halloween26','/seasons/awards'])await call(route,undefined,404);
-  const base={species:7,biome:'forest',tier:0,mode:'standard'};
-  for(const overrides of [{species:25},{biome:'desert'},{mode:'endless'},{mode:'tower'},{party:'abc'}])await call('/runs',{...base,...overrides},400);
+  const base={species:16,biome:'forest',tier:0,mode:'standard'};
+  for(const overrides of [{species:25},{species:132},{biome:'desert'},{mode:'endless'},{mode:'tower'},{mode:'single-stage',tier:1},{party:'abc'}])await call('/runs',{...base,...overrides},400);
   const run=await call('/runs',base);
   const result={...base,stage:4,kills:100,time:600,level:30,victory:true,progress:{league:[25],research:{25:5},seen:[25]}};
   await call('/runs/'+run.id+'/finish',{result:{...result,species:4}},400);
   const one=await call('/runs/'+run.id+'/finish',{result});const two=await call('/runs/'+run.id+'/finish',{result});
-  assert.equal(two.profile.counters.runs,1);assert.equal(two.profile.stardust,one.profile.stardust);assert.deepEqual(two.profile.league,[1,4,7]);assert.deepEqual(two.profile.biomes,{forest:1});
+  assert.equal(two.profile.counters.runs,1);assert.equal(two.profile.stardust,one.profile.stardust);assert.deepEqual(two.profile.league,[4,16]);assert.deepEqual(two.profile.biomes,{forest:1});
+  const short=await call('/runs',{...base,mode:'single-stage'});
+  const finishShort='/runs/'+short.id+'/finish';
+  await call(finishShort,{result},400);
+  const singleResult={...base,mode:'single-stage',stage:1,bosses:1,kills:40,time:100,splits:[100],victory:true};
+  const single=await call(finishShort,{result:singleResult});
+  const retry=await call(finishShort,{result:singleResult});
+  assert.ok(single.stardust>0);assert.equal(single.profile.stardust,retry.profile.stardust);
   await stop();await start();const saved=(await call('/profile')).profile;
-  assert.equal(saved.research[25],5);assert.equal(saved.stardust,one.profile.stardust);
+  assert.equal(saved.research[25],5);assert.equal(saved.stardust,single.profile.stardust);
+  assert.equal(saved.times['forest-0'].time,600);assert.equal(saved.times['forest-single-stage'].time,100);
+  assert.equal(saved.runs[0].mode,'single-stage');assert.equal(saved.counters.runs,2);
  }finally{if(proc&&proc.exitCode===null)await stop();assert.equal(path.dirname(path.resolve(dir)),path.resolve(os.tmpdir()));assert.ok(path.basename(dir).startsWith('pokebonk-lite-test-'));await fs.rm(dir,{recursive:true,force:true});}
 });
 
@@ -58,7 +80,7 @@ test('best-time records retain the client object schema and fastest splits',()=>
  settleRun(p,r);assert.equal(p.times['forest-0'].time,600);assert.deepEqual(p.times['forest-0'].splits,r.splits);
  settleRun(p,{...r,time:800,splits:[200,400,600,800]});assert.equal(p.times['forest-0'].time,600);assert.deepEqual(p.times['forest-0'].splits,r.splits);
 });
-test('all three dynamically referenced sanctuary models are packaged as valid GLB files',async()=>{
+test('the three original sanctuary GLBs remain intact in source art',async()=>{
  for(const name of ['sanct_pillar','sanct_gate','shrine']){
   const bytes=await fs.readFile(new URL('../public/assets/models/'+name+'.glb',import.meta.url));
   assert.equal(bytes.toString('ascii',0,4),'glTF');assert.equal(bytes.readUInt32LE(8),bytes.length);

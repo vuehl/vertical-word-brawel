@@ -1,0 +1,145 @@
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {build} from 'esbuild';
+import puppeteer from 'puppeteer-core';
+import sharp from 'sharp';
+import {fixtureSubpackage} from './fixture-subpackage.mjs';
+import {loadSkillCatalog} from './skill-catalog.mjs';
+
+// Record the current native bundle using the same WeChat fixture as runtime QA.
+// Controlled enemies and one real cast per clip; no gameplay/save files change.
+const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
+const out=path.join(root,'资料','炎风融合技能GIF');
+const qa=path.join(root,'验收','炎风融合技能GIF');
+fs.mkdirSync(out,{recursive:true});fs.mkdirSync(qa,{recursive:true});
+const {ctx}=await loadSkillCatalog();
+const skills=[['炎',4,'fu-4'],['炎',4,'fu-t-fire'],['风',16,'fu-16'],['风',16,'fu-t-flying']]
+  .map(([family,species,key])=>({family,species,key,id:ctx.fS(key),name:ctx.dS(key).name}))
+  .filter(skill=>!process.env.FUSION_GIF_KEY||skill.key===process.env.FUSION_GIF_KEY);
+const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
+const config=JSON.parse(fs.readFileSync(path.join(game,'game.json'),'utf8'));
+const modules=[],packageData={main:[]},packageEntries={};
+for(const pkg of config.subpackages){packageData[pkg.name]=[];packageEntries[pkg.name]=pkg.root.endsWith('.js')?pkg.root:pkg.root+'/game.js';}
+for(const entry of fs.readdirSync(game,{recursive:true})){
+  const file=entry.split(path.sep).join('/'),pkg=config.subpackages.find(({root})=>file===root||file.startsWith(root+'/'));
+  if(!pkg&&file.endsWith('.js'))modules.push(file);
+  if(/\.(br|bin)$/.test(file))packageData[pkg?.name||'main'].push(file);
+}
+const urls=new Set(Object.values(packageData).flat().map(file=>'/'+file));
+const boot='const defs={},cache={};\n'+modules.map(p=>'defs['+JSON.stringify(p)+']=function(require,module,exports){\n'+fs.readFileSync(path.join(game,p),'utf8')+'\n};').join('\n')+
+  '\nfunction load(p){if(!defs[p])throw Error(p);if(cache[p])return cache[p].exports;const m=cache[p]={exports:{}};defs[p](q=>load(p.slice(0,p.lastIndexOf("/")+1)+q.slice(2)+".js"),m,m.exports);return m.exports;}window.loadFixtureData("main").then(()=>load("game.js"));';
+const server=http.createServer((req,res)=>{
+  if(req.url==='/'){res.setHeader('content-type','text/html;charset=utf-8');return res.end('<meta charset="utf-8"><style>*{margin:0}canvas{display:block;width:100vw;height:100vh}#clip-title{position:fixed;top:10px;left:12px;right:12px;padding:9px 12px;background:#fff9ecf5;color:#273735;border:1px solid #bdb5a5;border-radius:8px;font:700 20px/1.35 "Microsoft YaHei",sans-serif;pointer-events:none}#clip-title small{display:block;font-size:11px;font-weight:400;margin-top:3px}</style><body><script src="/fixture.js"></script><script src="/boot.js"></script>');}
+  if(req.url==='/fixture.js'||req.url==='/boot.js'){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(req.url==='/boot.js'?boot:'window.packageData='+JSON.stringify(packageData)+';window.packageEntries='+JSON.stringify(packageEntries)+';'+fixture);}
+  if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(fixtureSubpackage(game,req.url.slice(1)));}
+  if(urls.has(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
+  res.statusCode=404;res.end();
+});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,
+  args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required']});
+const report={environment:'Current compiled WeChat bundle in desktop Chrome/SwiftShader; real casts, controlled enemies, level-one skill; not a phone recording.',
+  width:390,height:844,fps:15,files:[],bundleSHA256:createHash('sha256').update(fs.readFileSync(path.join(game,'play/gameplay.js'))).digest('hex')};
+try{
+  const page=await browser.newPage(),errors=[];
+  page.setDefaultTimeout(120000);
+  page.on('pageerror',error=>{errors.push(String(error));console.error(String(error));});
+  await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+  await page.evaluateOnNewDocument(()=>{window.fixturePlatform='devtools';window.phoneLayout=true;});
+  await page.goto('http://127.0.0.1:'+server.address().port);
+  await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
+  await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
+  await page.waitForFunction(()=>window.app?.zixing&&app.screen?.querySelector('button'));
+  console.log('Game loaded; preparing real fusion casts.');
+  await page.evaluate(async()=>{
+    const account=await app.backend.guest();await app.meta.load(account);
+    Object.assign(app.meta.profile.settings,{quality:'high',ultQuiet:true,damageNumbers:false});app.applySettings();
+    app.frameGap=()=>250;
+    const start=app.backend.startRun.bind(app.backend);app.backend.startRun=async(...args)=>({...await start(...args),seed:53090});
+    let seed=53090;Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+    await inspected.env.prepareForest();
+    if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Unable to start recording run');
+    app.halted=true;
+    const t=app.run.terrain;
+    for(let z=-24;z<=24;z+=3)for(let x=-24;x<=24;x+=3){
+      if(Array.from({length:28},(_,i)=>z-i*.4).every(zz=>t.inBounds(x,zz,2)&&t.isFlatOpen(x,zz)&&!t.hitProp(x,t.surface(x,zz)+.5,zz,2))){window.fusionLane={x,z};return;}
+    }
+    throw Error('No clear lane for recording');
+  });
+  await page.evaluate(()=>{
+    const title=document.createElement('div');title.id='clip-title';document.body.append(title);
+    window.fusionSetup=()=>{
+      const r=app.run,p=r.player;app.halted=true;r.state='play';r.ui.hideModal();r.godMode=true;r.pendingLevels=0;
+      r.director.update=()=>{};r.events.update=()=>{};r.minibosses.update=()=>{};r.queueLevelUp=()=>{};
+      r.enemies.clear();r.ult.clear();r.projectiles.clear();r.zones.clear();r.vfx.clear();r.timers.length=0;r.anims.length=0;r.ghosts.length=0;
+      r.aimMode='auto';r.time=r.realTime=0;r.weather=r.baseWeather='clear';r.weatherT=0;r.hitstopT=0;
+      p.moves=Array(4).fill(null);p.buffs.clear();p.level=1;p.evoStage=0;p.growth=0;p.recompute();p.stats.critChance=p.stats.megaCrit=0;p.kx=p.kz=0;
+      const {x,z}=fusionLane;p.pos.set(x,r.terrain.surface(x,z),z);p.vel.set(0,0,0);p.facing.set(0,-1);r.camTarget.copy(p.pos);
+      r.enemies.update=()=>{const e=r.enemies;e.grid.build(e.n,e.x,e.z,e.alive,e.radius,e.dying);};
+      for(const [i,id] of [74,4,1,46].entries()){
+        const ex=x+(i%2?.5:-.5),ez=z-3-i*2,n=r.enemies.spawn(id,ex,ez,1,1,0);
+        r.enemies.hp[n]=r.enemies.maxHp[n]=1e7;r.enemies.y[n]=r.terrain.surface(ex,ez);r.enemies.kx[n]=r.enemies.kz[n]=0;
+      }
+      r.enemies.update();r.lockTarget=0;
+      inspected.doc.querySelectorAll('.zx-intro,.run-hint,.banner').forEach(n=>n.remove());
+    };
+    window.fusionDraw=()=>{const r=app.run;app.r.renderer.resetState();r.updateCamera(1/30);r.renderWorld(0);r.vfx.update(0);app.r.render(0);r.ui.hud(r);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);};
+    window.fusionAdvance=()=>{const r=app.run;for(let i=0;i<4;i++){const dt=1/60;r.realTime+=dt;r.simulate(dt);r.updateCamera(dt);r.renderWorld(dt);r.vfx.update(dt);}fusionDraw();};
+  });
+  for(const skill of skills){
+    const def=await page.evaluate(async skill=>{
+      fusionSetup();const r=app.run,p=r.player;p.setSpecies(skill.species);
+      await r.sprites.prepareHeroForm(skill.species);
+      if(!p.addMove(skill.id))throw Error('Missing fusion '+skill.key);
+      const m=p.moves[0];m.level=1;m.timer=999;
+      await r.vfx.crafted.prepareMoveTexture(m.def.key);
+      await Promise.all([r.vfx.crafted.fireFamily.ready,r.vfx.crafted.fireJet.ready,r.vfx.crafted.fireSpin.ready,r.vfx.crafted.fireball.ready,
+        ...[...r.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready)]);
+      for(let i=0;i<r.enemies.n;i++){const e=r.enemies,b=r.sprites.get(e.species[i],false,e.glyphWords[i]);e.radius[i]=Math.max(.45,Math.min(4,b.bodyWidth(e.scale[i])*.42));e.hgt[i]=Math.max(.8,b.bodyHeight(e.scale[i]));e.sized[i]=1;}
+      r.enemies.update();
+      document.querySelector('#clip-title').replaceChildren(document.createTextNode(skill.family+' · '+skill.name));
+      const subtitle=document.createElement('small');subtitle.textContent='当前游戏效果 · 1级融合技能 · 单次释放';document.querySelector('#clip-title').append(subtitle);
+      for(let i=0;i<25;i++)r.updateCamera(1/30);
+      fusionDraw();return {name:m.def.name,key:m.def.key};
+    },skill);
+    assert.equal(def.key,skill.key);assert.equal(def.name,skill.name);
+    const frames=[],samples=[];
+    for(let frame=0;frame<90;frame++){
+      const state=await page.evaluate(frame=>{
+        const m=app.run.player.moves[0];if(frame===5)m.timer=0;
+        fusionAdvance();if(frame>=5)m.timer=999;
+        const v=app.run.vfx.crafted;
+        return {frame,damage:m.damageDone||0,gl:app.r.renderer.getContext().getError(),
+          jet:v.fireJet.mesh.count,
+          visible:v.fireFamily.mesh.count+v.fireFamily.topMesh.count+v.fireSpin.mesh.count+v.fireJet.mesh.count+(v.windSkills?.mesh.count||0)+v.mesh.count};
+      },frame);
+      assert.equal(state.gl,0);samples.push(state);
+      const png=await page.screenshot();
+      frames.push(await sharp(png).ensureAlpha().raw().toBuffer());
+      if([12,24,45,65].includes(frame))fs.writeFileSync(path.join(qa,skill.key+'-'+frame+'.png'),png);
+      if(frame%30===29)console.log(skill.name+': '+(frame+1)+'/90 frames');
+    }
+    assert.ok(samples.at(-1).damage>0,skill.name+' must actually hit');
+    assert.ok(samples.some(s=>s.visible>0),skill.name+' must be visible');
+    if(skill.key==='fu-4')assert.ok(samples.every(s=>s.jet===0),'Vortex recording must not contain the removed flame jet');
+    const file=skill.family+'_'+skill.name+'.gif';
+    // GIF delays are centiseconds: 70/60/70 ms preserves a 15 fps mean.
+    const delays=frames.map((_,i)=>i%3===1?60:70);
+    await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
+      .gif({delay:delays,loop:0,effort:7,dither:.5}).toFile(path.join(out,file));
+    const meta=await sharp(path.join(out,file),{animated:true}).metadata();assert.equal(meta.pages,90);
+    assert.equal(meta.delay.reduce((n,v)=>n+v,0),6000);
+    report.files.push({...skill,file,frames:meta.pages,durationMs:6000,bytes:fs.statSync(path.join(out,file)).size,damage:samples.at(-1).damage,bundleSHA256:report.bundleSHA256});
+    fs.writeFileSync(path.join(qa,skill.key+'-frames.json'),JSON.stringify(samples,null,2));
+    const recordFile=path.join(out,'导出记录.json');
+    const previous=process.env.FUSION_GIF_KEY&&fs.existsSync(recordFile)?JSON.parse(fs.readFileSync(recordFile,'utf8')).files:[];
+    fs.writeFileSync(recordFile,JSON.stringify({...report,files:[...previous.filter(f=>!report.files.some(current=>current.key===f.key)),...report.files]},null,2));
+    console.log('Exported '+file);
+  }
+  assert.deepEqual(errors,[]);
+  fs.writeFileSync(path.join(out,'说明.txt'),'当前炎、风可合成的四项融合技能。\r\n每个 GIF：390×844，15帧/秒，6秒，无限循环。\r\n来自当前微信构建包的桌面模拟环境，实际调用技能，固定靶怪，1级融合，单次释放；不是手机录屏。\r\n');
+  console.log(JSON.stringify(report,null,2));
+}finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
