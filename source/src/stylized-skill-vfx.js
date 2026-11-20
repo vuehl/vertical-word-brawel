@@ -315,6 +315,7 @@ export class StylizedSkillFX{
     this.paintSplash(type,x,this.run.terrain.height(x,z)+.24,z,radius*.55,false,angle);
   }
   field(zone){
+    if(zone.stampedeFire)return;
     if(!this.allowed()||!['fire','water','flying','poison','ice','electric','grass'].includes(zone.type))return;
     if(zone.type==='fire'&&zone.authoredFire){this.fireFamily.field(zone);return;}
     const artRadius=zone.artRadius??zone.r;

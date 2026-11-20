@@ -104,6 +104,8 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     batch.zxOriginalGlyph=isOriginalHeroGlyph(word);
     batch.zxAlly=ally;
     if(heroEntry?.ghost){
+      // Preserve the reference's translucent orange silhouette, including its
+      // tinted outline. Only the sampled character texture changes by form.
       m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);c.a*=clamp(vFx.y,0.,1.);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.,.28,.04),.35);gl_FragColor=c;}';
       m.transparent=true;m.depthWrite=false;
     }else if(ally){
@@ -139,7 +141,9 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     const entry=animations.get(id);
     if(!entry?.texture.image)return null;
     const frame=heroActionFrame({},id,'walk',0);
-    return skin(get(id,false,'hero-ghost'),glyphWordForSpecies(id),{...entry,ghost:true,rect:frame.rect});
+    const batch=skin(get(id,false,'hero-ghost'),glyphWordForSpecies(id),{...entry,ghost:true,rect:frame.rect});
+    batch.zxGhostScale=frame.renderScale;
+    return batch;
   };
   let playerEntry;
   run.sprites.getPlayerGlyph=(id,speciesId,pose,frame)=>{

@@ -14,6 +14,7 @@ const windForms = new Set([16, 17, 18, 58, 59]);
 const windExcludedMoves = new Set([52, 53, 488, 50080]);
 export function moveAvailableForSpecies(id, species) {
   return !retiredMoveIds.has(id) && !retiredFusionId(id) && !(id === 403 && fireForms.has(Number(species))) &&
+    !(id === 488 && species != null && !fireForms.has(Number(species))) &&
     !(windForms.has(Number(species)) && windExcludedMoves.has(id));
 }
 

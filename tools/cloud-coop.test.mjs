@@ -97,3 +97,69 @@ test('duo clients reject oversized rooms and solo start messages before loading 
     assert.equal(starts,0);assert.equal(session.open,false);
   }
 });
+
+test('traffic and suspended timers do not falsely time out an active room',()=>{
+  const s=new RelayRoom(),sent=[];
+  s.socket={send:data=>{sent.push(JSON.parse(data));return true;},close(){}};
+  s.lastHeartbeat=s.pongAt=1000;
+  s.checkHeartbeat(121000); // two minutes in the background
+  assert.equal(s.open,true);
+  assert.equal(sent.at(-1).op,'ping');
+  for(let now=131000;now<=161000;now+=10000)s.checkHeartbeat(now);
+  assert.equal(s.open,true);
+  s.checkHeartbeat(171000);
+  assert.equal(s.open,false);
+
+  const active=new RelayRoom();
+  active.socket={send:()=>true,close(){}};
+  active.pongAt=0;active.lastHeartbeat=Date.now()-10000;
+  active.receive(JSON.stringify({op:'monsters'}));
+  active.checkHeartbeat();
+  assert.equal(active.open,true);
+  active.end('',false);
+});
+
+test('a timed out request does not evict an otherwise healthy room',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const s=new RelayRoom();s.socket={send:()=>true,close(){}};
+  const pending=s.request('playing');
+  const rejected=assert.rejects(pending,/响应超时/);
+  t.mock.timers.tick(15000);
+  await rejected;
+  assert.equal(s.open,true);assert.equal(s.pending.size,0);
+  s.end('',false);
+});
+
+test('both offline players can recover world without a live peer response',async()=>{
+  const s=new RelayRoom();s.me='me';
+  s.room={party:'same-party',members:[{id:'me',slot:0},{id:'other',slot:1,offline:true}]};
+  const world={stage:2,stageTime:30,time:330,x:2,z:3};
+  s.socket={send(raw){
+    const m=JSON.parse(raw);
+    if(m.op==='world')queueMicrotask(()=>s.receive(JSON.stringify({op:'reply',id:m.id,world})));
+    return true;
+  },close(){}};
+  assert.deepEqual(await s.currentWorld(),world);
+  assert.equal(s.me,'me');
+  s.end('',false);
+});
+
+test('background presence closes only the away peer link and returning clears it',()=>{
+  const s=new RelayRoom();s.me='guest';s.startedSeen=true;
+  s.socket={send:()=>true,close(){}};
+  s.room={state:'started',members:[{id:'host',slot:0},{id:'guest',slot:1}]};
+  const links=[];s.ev.link=(...args)=>links.push(args);
+  s.receive(JSON.stringify({op:'room',room:{...s.room,members:[{id:'host',slot:0,away:true},{id:'guest',slot:1}]}}));
+  assert.equal(s.open,true);assert.equal(s.linkState('host'),'closed');assert.equal(s.linkState('guest'),'open');
+  s.receive(JSON.stringify({op:'room',room:{...s.room,members:[{id:'host',slot:0,generation:1},{id:'guest',slot:1}]}}));
+  assert.deepEqual(links,[['host','closed'],['host','open']]);
+  s.end('',false);
+});
+
+test('a retained running seat can resume after the other player explicitly leaves',async()=>{
+  const s=new RelayRoom();s.resume={seat:'me',party:'party'};s.socket={send:()=>true,close(){}};
+  const joined=s.request('join');
+  s.receive(JSON.stringify({op:'reply',id:1,me:'me',room:{state:'started',running:true,party:'party',members:[{id:'me',slot:0}]}}));
+  await joined;
+  assert.equal(s.open,true);assert.equal(s.returning,true);s.end('',false);
+});

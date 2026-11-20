@@ -1,9 +1,14 @@
 import {b as CanvasTexture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
 import {runLoadingSteps} from './loading-work.js';
 
-// Semantic cell numbers stay compatible with every combat script. All combat
-// silhouettes are now antialiased Bezier paths, never enlarged pixel drawings.
+// Semantic cell numbers stay compatible with every combat script. The shared
+// art uses antialiased paths; Stampede keeps its supplied reference's fire.
 export const EFFECT_CELL=128;
+// Original PixFlame palette/mask (pre-stylized Nl). Unused atlas slot keeps it local
+// to this move rather than replacing every other skill's authored fire art.
+export const STAMPEDE_FLAME=139;
+const stampedeFlameRows=['....D...','...DR...','...ROD..','..DROR..','.DROYOD.','.ROYYOR.','.ROYYOR.','..DRRD..'];
+const stampedeFlameColors={Y:'#fff1a8',O:'#ffaa2e',R:'#f0581e',D:'#a82a16'};
 export const PAINT_SHAPES=Object.freeze({splash:141,stroke:142,drop:143});
 const TAU=Math.PI*2;
 export const effectColors={fire:0xff641c,water:0x169bea,grass:0x63c848,electric:0xffcc20,ice:0x57cbe8,ground:0xc99560,rock:0xa88764,steel:0x9db6cc,poison:0xb55ae0,ghost:0x9b88ce,psychic:0xe46fdb,fairy:0xf782bd,bug:0xa7c665,flying:0x5dd7d6,dragon:0x8995da,dark:0x8a739e,fighting:0xe8a276,normal:0xffcf89};
@@ -78,6 +83,14 @@ export async function createStylizedEffectAtlas(){
   function* tiles(){
     let previousShape,previousColor;
     for(let i=0;i<144;i++){
+      if(i===STAMPEDE_FLAME){
+        const size=EFFECT_CELL/8,left=i%8*EFFECT_CELL,top=Math.floor(i/8)*EFFECT_CELL;
+        for(const [y,row] of stampedeFlameRows.entries())for(const [x,pixel] of [...row].entries()){
+          if(!stampedeFlameColors[pixel])continue;
+          out.fillStyle=stampedeFlameColors[pixel];out.fillRect(left+x*size,top+y*size,size,size);
+        }
+        previousShape=undefined;yield;continue;
+      }
       const coin=i>=52&&i<=55;
       const shape=i>=140?i:i===33||i===38?139:aliases[i]??(i<33?i:29);
       const color=tinted[i]||'#ffffff';
