@@ -1,6 +1,4 @@
 import {FOREST_ROUTE} from '../source/src/lite-rules.js';
-import {gameViewport} from '../platform/viewport.mjs';
-import {entryLayout} from '../source/src/entry-layout.js';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -21,7 +19,8 @@ import {reviewBattleFeedback} from './battle-feedback-regression.mjs';
 import {fixtureSubpackage} from './fixture-play-chunks.mjs';
 import {reviewAltarRing} from './altar-ring-regression.mjs';
 import {reviewRunSettlement,reviewStartupLatency} from './startup-regression.mjs';
-const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
+import {gameProject} from './project-target.mjs';
+const root=path.resolve(import.meta.dirname,'..'),game=path.join(gameProject(root,process.argv.includes('--dev')),'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
 const fixture=(await build({bundle:true,entryPoints:[path.join(import.meta.dirname,'wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
@@ -139,16 +138,24 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
-  const [info,capsule]=await page.evaluate(()=>[wx.getWindowInfo(),wx.getMenuButtonBoundingClientRect?.()]);
-  const v=gameViewport(info,capsule),layout=entryLayout(v),sx=layout.scale*width/v.width;
-  const y=Math.round((layout.y+733*layout.scale)*height/v.height);
-  const left=Math.round(layout.x*width/v.width+36*sx),right=Math.round(left+310*sx);
+  const sx=Math.min(width/390,height/550),left=Math.round((width-390*sx)/2+61*sx),right=Math.round((width-390*sx)/2+329*sx);
+  const y=Math.floor(height*.79+3*sx);
   let filled=0;
   for(let x=left;x<right;x++){
     const at=(y*width+x)*channels;
-    if(Math.abs(data[at]-53)<8&&Math.abs(data[at+1]-134)<8)filled++;
+    if(Math.abs(data[at]-80)<8&&Math.abs(data[at+1]-118)<8&&Math.abs(data[at+2]-174)<8)filled++;
   }
-  assert.ok(Math.abs(filled-310*sx*percent/100)<=2,'Desk progress bar at '+percent+'%');
+  assert.ok(Math.abs(filled-268*sx*percent/100)<=2,'Paper slip progress bar at '+percent+'%');
+  if(percent>=85){
+    for(const [word,from,to,r,g,b] of [['风',.18,.49,135,187,255],['炎',.51,.82,255,89,51]]){
+      let ink=0;
+      for(let y=Math.floor(height*.35);y<height*.68;y++)for(let x=Math.floor(width*from);x<width*to;x++){
+        const i=(y*width+x)*channels;
+        if(Math.abs(data[i]-r)<3&&Math.abs(data[i+1]-g)<3&&Math.abs(data[i+2]-b)<3)ink++;
+      }
+      assert.ok(ink>100*sx*sx,'The startup illustration must show '+word);
+    }
+  }
   assert.ok(await page.evaluate(p=>window.bootLabels.includes(p+'%'),percent),'Readable percentage was painted');
   const {channels:rgb}=await sharp(image).removeAlpha().stats();
   assert.ok(rgb.some(channel=>channel.max-channel.min>100),'Stationery illustration is visible');

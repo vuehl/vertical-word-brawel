@@ -1,3 +1,4 @@
+import {drawUiPaper} from './ui-paper.mjs';
 const colorTokens=/#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})\b|rgba?\([^)]*\)|hsla?\([^)]*\)|\b(?:white|black|transparent|red|blue|green|yellow|orange|gray|purple)\b/gi;
 import {rangeBounds} from './range.mjs';
 function colors(v=''){return v.match(colorTokens)||[];}
@@ -22,23 +23,61 @@ export function paint(layout,boxes,view,scale) {
   // keeping every control inside the usable rectangle.
   let fullPage;
   for(const b of boxes)if(b.el.dataset?.fullscreen==='true'&&b.opacity>0&&b.w>0&&b.h>0)fullPage=b;
-  if(fullPage){ctx.fillStyle=background(ctx,fullPage.s,{x:0,y:0,w:view.width,h:view.height})||'#fffdf6';ctx.fillRect(0,0,view.width,view.height);}
+  // Scenic menus animate only their composited opacity. Cached layout boxes
+  // and their hit geometry can stay valid while the camera moves at frame rate.
+  const scenic=fullPage?.el,fade=scenic?._journeyFade;
   ctx.translate(view.x,view.y);
   for(const b of boxes) {
     const {x,y,w,h,s,el,tag,clip}=b;
-    if(w<.1||h<.1||x+w<clip.x||y+h<clip.y||x>clip.r||y>clip.b||b.opacity===0)continue;
+    let alpha=b.opacity;
+    if(fade&&(b===fullPage||scenic.contains(el))){
+      alpha*=fade.scene;
+      if(b!==fullPage&&el.dataset?.journeyBackdrop!=='true')alpha*=fade.controls;
+    }
+    if(w<.1||h<.1||x+w<clip.x||y+h<clip.y||x>clip.r||y>clip.b||alpha===0)continue;
+    if(b===fullPage&&!el.classList.contains('journey-prep')){
+      const bounds={x:-view.x,y:-view.y,w:view.width,h:view.height};
+      ctx.fillStyle=background(ctx,s,bounds)||'#F3F1FA';ctx.fillRect(bounds.x,bounds.y,bounds.w,bounds.h);
+    }
+    // Extend just the desk artwork into platform insets; UI controls stay in the safe rectangle.
+    if(el.dataset?.journeyBackdrop==='true'&&el._surface){
+      const image=el._surface,iw=image.width,ih=image.height;
+      if(iw&&ih){
+        const margin=Number(el.dataset.sceneMargin)||0;
+        const dx=iw/(view.w+2*margin),dy=ih/(view.h+2*margin);
+        ctx.save();ctx.globalAlpha=alpha;
+        ctx.drawImage(image,(margin-view.x)*dx,(margin-view.y)*dy,view.width*dx,view.height*dy,-view.x,-view.y,view.width,view.height);ctx.restore();
+      }
+      continue;
+    }
     if(tag==='img')el._loadImage?.();
+    // A decorative header print may continue into the system area. Its
+    // layout box and all interactive elements keep the usual safe-area clip.
+    if(el.dataset?.paperBleed==='top'&&el._surface&&(tag==='canvas'||el.complete)){
+      const top=Math.min(y,-view.y);
+      ctx.save();ctx.globalAlpha=alpha;
+      ctx.drawImage(el._surface,x,top,w,y+h-top);ctx.restore();continue;
+    }
+    // Continue the capture vignette across the safe-area insets without a seam.
+    if(el.dataset?.captureBleed==='shade'){
+      const bounds={x:-view.x,y:-view.y,w:view.width,h:view.height};
+      const fill=background(ctx,s,bounds);
+      if(fill){ctx.save();ctx.globalAlpha=alpha;ctx.fillStyle=fill;ctx.fillRect(bounds.x,bounds.y,bounds.w,bounds.h);ctx.restore();}
+      continue;
+    }
     // Paint modal backdrops at their normal stacking position, but beyond the
     // safe-area clip. Keep dialog layout and hit targets in the usable area.
     const fullBackdrop=el.classList?.contains('zx-modal-wrap');
     if(fullBackdrop){
       const bounds={x:-view.x,y:-view.y,w:view.width,h:view.height},bg=background(ctx,s,bounds);
-      if(bg){ctx.save();ctx.globalAlpha=b.opacity;ctx.fillStyle=bg;ctx.fillRect(bounds.x,bounds.y,bounds.w,bounds.h);ctx.restore();}
+      if(bg){ctx.save();ctx.globalAlpha=alpha;ctx.fillStyle=bg;ctx.fillRect(bounds.x,bounds.y,bounds.w,bounds.h);ctx.restore();}
     }
-    ctx.save();ctx.beginPath();ctx.rect(clip.x,clip.y,clip.r-clip.x,clip.b-clip.y);ctx.clip();
-    ctx.globalAlpha=b.opacity;
+    const tail=tag==='footer'&&el.classList.contains('paper-screen-footer')&&!el.classList.contains('paper-single-back')
+      ?Math.min(parseFloat(s.vars['--paper-tail'])||0,Math.max(0,view.height-view.y-view.h-8)):0;
+    ctx.save();ctx.beginPath();ctx.rect(clip.x,clip.y,clip.r-clip.x,clip.b+tail-clip.y);ctx.clip();
+    ctx.globalAlpha=alpha;
     // Body sits behind the WebGL canvas in the desktop stacking order.
-    if(tag!=='body'&&tag!=='#text'){
+    if(tag!=='body'&&tag!=='#text'&&!drawUiPaper(ctx,tail?{...b,h:h+tail}:b)){
       const bg=fullBackdrop?null:background(ctx,s,b),border=s.border||'',line=parseFloat(border)||0;
       const radius=parseFloat(s['border-radius']||0);
       if(bg||line){
@@ -61,7 +100,7 @@ export function paint(layout,boxes,view,scale) {
         ctx.beginPath();ctx.moveTo(points[0],points[1]);ctx.lineTo(points[2],points[3]);
         ctx.strokeStyle=colors(s['border-'+side+'-color']||s['border-color']||edge)[0]||'#dedbe8';ctx.lineWidth=width;ctx.stroke();
       }
-      if(el._scrollMax>1&&h>20){
+      if(el._scrollMax>1&&h>20&&s['scrollbar-width']!=='none'){
         const thumb=Math.max(12,h*h/(h+el._scrollMax));
         ctx.fillStyle='rgba(70,65,92,.45)';
         ctx.fillRect(x+w-4,y+(h-thumb)*(el._scroll||0)/el._scrollMax,3,thumb);
@@ -73,12 +112,21 @@ export function paint(layout,boxes,view,scale) {
       const lines=b.singleLine?[text]:layout.wrap(text,w,s),lh=h/Math.max(1,lines.length);
       const side=s['text-align'];ctx.textAlign=side==='center'?'center':side==='right'?'right':'left';
       const tx=side==='center'?x+w/2:side==='right'?x+w:x;
-      lines.forEach((l,i)=>ctx.fillText(l,tx,y+(i+.5)*lh,w));
+      const outlined=el.parentNode?.dataset?.paperText==='outlined';
+      if(outlined){ctx.strokeStyle='#F3F1FA';ctx.lineJoin='round';ctx.lineWidth=3;}
+      lines.forEach((line,i)=>{
+        const ty=y+(i+.5)*lh;
+        if(outlined)ctx.strokeText(line,tx,ty,w);
+        ctx.fillText(line,tx,ty,w);
+      });
     } else if(tag==='img'||tag==='canvas'){
       const image=el._surface;
       if(image&&(tag==='canvas'||el.complete)&&image.width&&image.height){
         const fit=s['object-fit'],ratio=(fit==='cover'?Math.max:Math.min)(w/image.width,h/image.height);
         const dw=fit==='fill'?w:ratio*image.width,dh=fit==='fill'?h:ratio*image.height;
+        if(el.dataset?.paperTilt){
+          ctx.translate(x+w/2,y+h/2);ctx.rotate(Number(el.dataset.paperTilt)*Math.PI/180);ctx.translate(-x-w/2,-y-h/2);
+        }
         rounded(ctx,x,y,w,h,parseFloat(s['border-radius'])||0);ctx.clip();
         ctx.imageSmoothingEnabled=s['image-rendering']!=='pixelated';
         if(view.originalPixels&&el.hasAttribute('data-original-pixels')){
@@ -93,11 +141,13 @@ export function paint(layout,boxes,view,scale) {
       if(el.type==='range'){
         const {min,max}=rangeBounds(el),f=max>min?(+el.value-min)/(max-min):0;
         const zixing=el.classList.contains('zx-range'),progress=w*Math.max(0,Math.min(1,f));
-        ctx.fillStyle=zixing?'#ded6eb':'#bcb6c9';ctx.fillRect(x,y+h/2-3,w,6);
-        ctx.fillStyle=zixing?'#9b75d8':'#3a8cff';ctx.fillRect(x,y+h/2-3,progress,6);
-        ctx.beginPath();ctx.arc(x+progress,y+h/2,zixing?9:6,0,2*Math.PI);
-        ctx.fillStyle=zixing?'#fff':'#3a8cff';ctx.fill();
-        if(zixing){ctx.strokeStyle='#ad8cdb';ctx.lineWidth=2;ctx.stroke();}
+        ctx.fillStyle=zixing?'#CDD9F1':'#bcb6c9';ctx.fillRect(x,y+h/2-3,w,6);
+        ctx.fillStyle='#3a8cff';ctx.fillRect(x,y+h/2-3,progress,6);
+        ctx.beginPath();
+        if(zixing){const tx=x+Math.max(8,Math.min(w-8,progress)),ty=y+h/2;ctx.moveTo(tx-7,ty-8);ctx.lineTo(tx+8,ty-8);ctx.lineTo(tx+8,ty+4);ctx.lineTo(tx+4,ty+8);ctx.lineTo(tx-8,ty+8);ctx.lineTo(tx-8,ty-4);ctx.closePath();}
+        else ctx.arc(x+progress,y+h/2,6,0,2*Math.PI);
+        ctx.fillStyle=zixing?'#F3F1FA':'#3a8cff';ctx.fill();
+        if(zixing){ctx.strokeStyle='#326FE4';ctx.lineWidth=2;ctx.stroke();}
       }else if(el.type==='checkbox'){ctx.fillText(el.checked?'☑':'☐',x,y+h*.75);}
       else ctx.fillText(el.value||el.placeholder||'',x+3,y+h*.7);
     }

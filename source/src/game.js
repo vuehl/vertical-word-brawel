@@ -1,7 +1,9 @@
+import {choiceQuality as itemOfferQuality} from './choice-presentation.js';
+import {itemOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './battle-review-ui.js';
 import {createCaptureGourd,gourdIcon} from './capture-gourd.js';
-import {deskCamera,deskDevice} from './desk2d.js';
+import {deskDevice} from './desk2d.js';
 import {createBerryPickup} from './berry-pickup.js';
-import {entryHeroScale,entryFootOffset,deskTilt,deskFrame,deskWalkInset,cameraEase} from './desk-framing.js';
+import {deskTilt,deskFrame,deskWalkInset} from './desk-framing.js';
 import {MapSpawnError,mapRulesFor} from './map-rules.js';
 import {altarPalette} from './desk-altar-art.js';
 import {ALTAR_RING_EMISSIVE,altarRingFragment} from './altar-ring-vfx.js';
@@ -40829,7 +40831,8 @@ function pw(e, t, n = !1) {
         n.pointerType !== `mouse` && (i ? (i = !1) : cw === e ? uw() : dw(e, t));
       }),
     e.addEventListener(`focus`, () => {
-      e.matches(`:focus-visible`) && dw(e, t);
+      // Native touch controls open their own detail view. Keyboard focus can show a web tooltip.
+      if (typeof wx === "undefined" && globalThis.CSS?.supports?.("selector(:focus-visible)") && e.matches(":focus-visible")) dw(e, t);
     }),
     e.addEventListener(`blur`, () => {
       cw === e && uw();
@@ -45568,7 +45571,7 @@ var GT = 15,
         (this.maxEnemies = this.coop ? 800 : yE),
         this.setHordeQuality(s.quality),
         (Fl.density = this.performance.particleDensity),
-        (this.sprites = a.entryWorld?.sprites ?? new rl(e.scene, e.shared)),
+        (this.sprites = new rl(e.scene, e.shared)),
         (this.vfx = new Kl(e.scene, e.shared, a.effectAtlas, this)),
         this.vfx.crafted.attach(this),
         this.vfx.setPerformance(this.performance,this.sprites),
@@ -45591,7 +45594,6 @@ var GT = 15,
         this.mode === `endless` && (this.endless = new Vw(this)),
         this.mode === `tower` && ((this.tower = new OT(this)), (this.stage = this.tower.curveStage)),
         (this.paperAssets=createPaperAssets()),
-        (this.entryTerrain=a.entryWorld?.terrain),
         (this.onLoadProgress=a.onLoadProgress),
         (this.loadingMetrics=[]),
         (this.initialized=this.initialize()));
@@ -45711,12 +45713,6 @@ var GT = 15,
       const sanctuary=this.stage===4?(this.biome.sanctuary??null):null,tower=this.tower;
       const zone=this.zone=tower?tower.zoneLook():fe(this.biome,sanctuary||this.endless?1:this.stage);
       const biome={...this.biome,zxStage:this.stage,sun:zone.sun,light:zone.light},seed=(this.seed+this.stage*7919)>>>0;
-      if(this.entryTerrain){
-        const terrain=this.entryTerrain;this.entryTerrain=null;
-        terrain.biome=biome;terrain.seed=seed;terrain.noise=new iu(seed);terrain.noise2=new iu(seed ^ 1540483477);
-        terrain.paperAssets=this.paperAssets;
-        return terrain;
-      }
       return new cd(biome,seed,this.r.shared,sanctuary?OC(sanctuary):tower?tower.layout():void 0,this.paperAssets,deferred);
     }
     async buildStageAsync(first) {
@@ -47393,6 +47389,7 @@ var GT = 15,
         this.ui.showTrade(
           this,
           {
+            kind:'fossil',
             title: c(`Ruinas del Fósil`),
             help: c(
               `Revive un fósil: te dará poder, pero te costará PS máximos para el resto de la partida. Solo responde una vez.`,
@@ -48125,7 +48122,6 @@ var GT = 15,
         this.capture?.dispose(),
         this.allies?.dispose(),
         this.terrain?.dispose(),
-        this.entryTerrain?.dispose(),
         this.interactables?.dispose(),
         this.sanctuary?.dispose(),
         this.tower?.dispose(),
@@ -49414,18 +49410,21 @@ function fD(e, t, n = !1, r) {
     d
   );
 }
-function pD(e, t, n, r, i) {
+function pD(e, t, n, r, i, inspect) {
+  const open=()=>{
+    uw();
+    if(inspect)inspect(t,n(),i,e);
+    else mD(t,n(),r,i);
+  };
   return (
-    pw(e, () => fD(t, n(), !1, i), !1),
+    !inspect && pw(e, () => fD(t, n(), !1, i), !1),
     e.classList.add(`mv-clickable`),
     e.hasAttribute(`tabindex`) || (e.tabIndex = 0),
-    e.addEventListener(`click`, (e) => {
-      (uw(), mD(t, n(), r, i));
-    }),
+    e.addEventListener(`click`, open),
     e.addEventListener(`keydown`, (a) => {
       a.key === `Enter` &&
         a.target === e &&
-        (a.preventDefault(), a.stopPropagation(), uw(), mD(t, n(), r, i));
+        (a.preventDefault(), a.stopPropagation(), open());
     }),
     e
   );
@@ -49435,7 +49434,7 @@ function mD(e, t, n, r) {
     a,
     o = !1,
     s = () => {
-      o || ((o = !0), removeEventListener(`keydown`, l, !0), a?.(), u.remove(), i?.focus?.());
+      o || ((o = !0), removeEventListener(`keydown`, l, !0), a?.(), u.remove(), team?.classList.remove('zx-under-team'), i?.focus?.());
     },
     l = (e) => {
       (e.stopImmediatePropagation(), e.key === `Escape` && (e.preventDefault(), N.click(), s()));
@@ -49475,6 +49474,8 @@ function mD(e, t, n, r) {
         X(`div`, { class: `mv-scroll` }, fD(e, t, !0, r)),
       ),
     );
+  const team=document.querySelector('.zx-team-overlay');
+  if(team){teamDetail(u,e.name,u.querySelector('.mv-scroll'),s);team.classList.add('zx-under-team');}
   return (
     n ? (a = n(s)) : addEventListener(`keydown`, l, !0),
     document.body.append(u),
@@ -49744,6 +49745,17 @@ function ND(e, t = 30) {
     e.type2 && e.type2 !== e.type ? ZC(e.type2, t) : null,
   );
 }
+function catalogFusionIcon(def){
+  if(def.member)return rw(def.member);
+  const dual=def.type2 && def.type2!==def.type;
+  const art=ND(def,dual?22:32);
+  art.classList.add('zc-fusion-types');
+  return art;
+}
+function catalogMoveMeta(move){
+  const types=move.type2 && move.type2!==move.type ? Pi[move.type]+' / '+Pi[move.type2] : Pi[move.type];
+  return [types,ZE(move),g_[move.arch].label].join(' · ');
+}
 function PD(e) {
   let t = (e) => X(`span`, { class: `fi-type`, style: { "--tc": YC(Ni[e]) } }, ZC(e, 16), Pi[e]);
   return e.kind === `glitch`
@@ -49841,6 +49853,12 @@ function VD(e, t) {
           ? [ID(e.ta), X(`b`, {}, `+`), ID(e.tb)]
           : [X(`span`, { class: `fu-chip any` }, c(`Cualquier otra pareja`))],
     i = t.made?.has(n.key);
+  if(t.catalog){
+    const move=jD(n);
+    const recipe=X('div',{class:'fu-pair'},...r);
+    const art=catalogFusionIcon(n);
+    return KD(move,{text:DD(n.kind)},recipe,false,t.ctx,t,{fusion:true,art});
+  }
   return pD(
     X(
       `div`,
@@ -49869,6 +49887,8 @@ function VD(e, t) {
     jD(n),
     () => t.ctx,
     t.overlay,
+    undefined,
+    t.inspect,
   );
 }
 function HD(e, t, n) {
@@ -49879,8 +49899,8 @@ function HD(e, t, n) {
     X(
       `p`,
       { class: `mp-hint` },
-      n ??
-        `两项技能各达到 ${fusionRequiredLevel} 级后，可在订书机按指定配方、属性反应或已开放的同属性配方融合。没有对应配方的组合不能融合。`,
+      n ?? (t.catalog ? '两项技能达到融合等级后，可在订书机组合。' :
+        `两项技能各达到 ${fusionRequiredLevel} 级后，可在订书机按指定配方、属性反应或已开放的同属性配方融合。没有对应配方的组合不能融合。`),
     ),
     e.length
       ? X(`div`, { class: `mp-grid fi-grid` }, ...e.map((e) => VD(e, t)))
@@ -49944,6 +49964,19 @@ function KD(e, t, n, r, i, a, o = {}) {
   let s = dD(e.id),
     l = o.kit && s.length === 1,
     u = [];
+  if (a.catalog) {
+    const level=t?.text??'';
+    const badge=l?'专属':o.evo?'进阶':'';
+    const node=X('div',{class:'mp-move zc-move-row'+(o.fusion?' fi-card':'')+(r?' off':''),role:'button'},
+      X('div',{class:'zc-move-stamp','data-paper-surface':'move-stamp'},o.art??ZC(e.type,32)),
+      X('div',{class:'mp-tx'},
+        X('div',{class:'mp-top'},X('b',{},e.name),
+          X('span',{class:'zc-move-level '+(t?.cls??'')},level)),
+        X('div',{class:'zc-move-meta'},X('small',{},catalogMoveMeta(e)),
+          badge?X('small',{class:'zc-move-badge'},badge):null),
+        X('p',{class:'mp-desc'},e.desc),n??null));
+    return pD(node,e,()=>i,a.overlay,undefined,a.inspect);
+  }
   return (
     l &&
       u.push(
@@ -49992,6 +50025,8 @@ function KD(e, t, n, r, i, a, o = {}) {
       e,
       () => i,
       a.overlay,
+      undefined,
+      a.inspect,
     )
   );
 }
@@ -50166,7 +50201,12 @@ function ZD(e, t = {}) {
       w,
       p,
     );
-  d.append(E, f);
+  let group='kit';
+  const showGroup=key=>!t.catalog||key===group;
+  if(t.catalog){
+    f.style.display='flex';
+    d.append(...t.catalog({hasAny:!!e.any,bar:E,count:p,results:f,select:key=>{group=key;ie();}}));
+  }else d.append(E, f);
   let ee = (e) =>
       !(
         (u.type && e.type !== u.type) ||
@@ -50198,19 +50238,24 @@ function ZD(e, t = {}) {
       });
       return u.sort === "default" ? t : t.sort((e, t) => D(e, u.sort) - D(t, u.sort) || e.level - t.level);
     },
-    te = (e, t, ...n) =>
-      X(`section`, { class: `mp-sec` }, X(`div`, { class: `tag` }, e), X(`p`, { class: `mp-hint` }, t), ...n),
+    te = (title, hint, ...children) => {
+      const kit=t.catalog && group==='kit';
+      return X('section',{class:'mp-sec'},
+        kit?X('div',{class:'zc-move-section-title'},X('b',{},'专属招式'),X('small',{},'习得等级')):X('div',{class:'tag'},title),
+        X('p',{class:'mp-hint'},kit?'升级时更容易出现，达到对应等级后可习得。':hint),...children);
+    },
     ne = (e) => ({ text: t.level != null && o(e) ? c(`Desde Nv. {n}`, { n: e.level }) : qD(e.level) }),
     re = BD(XD(e, t)),
     ie = () => {
       $(f);
+      if(group==='kit' && t.kitIntro)f.append(t.kitIntro);
       let r = 0,
         i = (e) => {
           r += e;
         },
         d = O(e.kit.filter(a));
       if (
-        (d.length &&
+        (showGroup('kit') && d.length &&
           (i(d.length),
           f.append(
             te(
@@ -50226,7 +50271,7 @@ function ZD(e, t = {}) {
                     formMove(n.id, s),
                     t.level == null
                       ? {
-                          text: e.kit[0].id === n.id ? c(`Inicial`) : c(`Nv. {n}`, { n: n.level }),
+                          text: e.kit[0].id === n.id ? c(`Inicial`) : t.catalog?'Lv.'+n.level:c(`Nv. {n}`, { n: n.level }),
                           cls: e.kit[0].id === n.id ? `first` : ``,
                         }
                       : o(n)
@@ -50244,7 +50289,7 @@ function ZD(e, t = {}) {
           )),
         e.any)
       ) {
-        let n = O(e.any.filter(a));
+        let n = showGroup('any') ? O(e.any.filter(a)) : [];
         i(n.length);
         let r = new Map();
         for (let e of n) {
@@ -50275,14 +50320,14 @@ function ZD(e, t = {}) {
                       `div`,
                       { class: `mp-chips` },
                       ...(u.sort === "default" ? n.sort((e, t) => e.name.localeCompare(t.name)) : n).map(
-                        (e) => pD(X(`span`, {}, e.name), e, () => l, t.overlay),
+                        (e) => pD(X(`span`, {}, e.name), e, () => l, t.overlay, undefined, t.inspect),
                       ),
                     ),
                   ),
                 ),
             ),
           );
-      } else {
+      } else if(showGroup('line')) {
         let n = O(e.line.filter(a));
         (i(n.length),
           (n.length || (!u.type && u.cls === `all` && u.shape === `all`)) &&
@@ -50299,7 +50344,7 @@ function ZD(e, t = {}) {
       let m = new Set(
           [...e.kit, ...e.line, ...e.shared.filter((e) => e.open), ...(e.any ?? [])].map((e) => e.id),
         ),
-        h = YD(e, s, t, m);
+        h = showGroup('line') ? YD(e, s, t, m) : [];
       for (let r of h) {
         let a = O(r.moves);
         if (!a.length) continue;
@@ -50365,7 +50410,7 @@ function ZD(e, t = {}) {
       let g = e.shared.filter(a),
         _ = O(g.filter((e) => e.open)),
         v = g.length - g.filter((e) => e.open).length;
-      e.roster &&
+      showGroup('shared') && e.roster &&
         g.length &&
         (i(_.length),
         f.append(
@@ -50427,9 +50472,9 @@ function ZD(e, t = {}) {
         (e) =>
           (!u.type || e.r.type === u.type || e.r.type2 === u.type) && (u.cls === `all` || e.r.cls === u.cls),
       );
-      ((y.length || (!u.type && u.cls === `all`)) &&
-        f.append(HD(y, { ctx: l, overlay: t.overlay, owned: new Set(t.owned ?? []), made: t.made })),
-        r ||
+      (showGroup('fusion') && (y.length || (!u.type && u.cls === `all`)) &&
+        f.append(HD(y, { ctx: l, overlay: t.overlay, inspect:t.inspect, catalog:t.catalog, owned: new Set(t.owned ?? []), made: t.made })),
+        (t.catalog ? f.children.length-(group==='kit'&&t.kitIntro?1:0) : r) ||
           f.append(
             X(
               `p`,
@@ -50439,7 +50484,7 @@ function ZD(e, t = {}) {
                 : c(`No hay más movimientos por conseguir.`),
             ),
           ),
-        (p.textContent = c(`{n} movimientos`, { n: r })),
+        (p.textContent = t.catalog ? (group==='fusion' ? y.length+' 项融合' : r+' 项招式') : c(`{n} movimientos`, { n: r })),
         (w.style.display =
           u.type || u.cls !== `all` || u.shape !== `all` || u.sort !== "default" ? `` : `none`));
     };
@@ -50711,6 +50756,7 @@ function aO(e) {
                   `button`,
                   {
                     class: `pk-item`,
+                    onclick:event=>{uw();showTeamItem(event.currentTarget,iO(e,t));},
                     style: { "--rc": aw[r.rarity] },
                     title: Zb(t).name,
                     "aria-label": Zb(t).name,
@@ -50719,7 +50765,7 @@ function aO(e) {
                   n > 1 ? X(`b`, {}, `×${n}`) : null,
                 ),
                 () => iO(e, t),
-                !0,
+                !1,
               ),
             ),
           )
@@ -50736,64 +50782,18 @@ function oO(e) {
   if (eO) return (eO(), !1);
   let t = document.activeElement,
     n = () => {
-      (removeEventListener(`keydown`, r, !0), a.remove(), (eO = null), t?.focus?.());
+      (removeEventListener(`keydown`, r, !0), a.remove(), source?.classList.remove("zx-under-team"), (eO = null), t?.focus?.());
     },
     r = (e) => {
       document.querySelector(`.mv-ov`) ||
         (e.stopImmediatePropagation(),
         (e.code === `Tab` || e.key === `Escape`) && (e.preventDefault(), e.repeat || (N.click(), n())));
     },
-    i = k.get(e.player.speciesId),
-    a = X(
-      `div`,
-      {
-        class: `mp-ov pk-ov`,
-        onclick: (e) => {
-          e.target === a && n();
-        },
-      },
-      X(
-        `div`,
-        {
-          class: `mp-panel pk-panel`,
-          role: `dialog`,
-          "aria-label": c(`Tu equipo`),
-          style: { "--mc": YC(Ni[i.types[0]]) },
-        },
-        X(
-          `div`,
-          { class: `mp-head` },
-          X(
-            `div`,
-            {},
-            X(`b`, {}, c(`Tu equipo`)),
-            X(`small`, {}, `${i.name} · ${c(`Nv. {lvl}`, { lvl: e.player.level })}`),
-          ),
-          X(
-            `button`,
-            {
-              class: `btn small ghost`,
-              onclick: () => {
-                (N.click(), n());
-              },
-            },
-            Z(`check`, 16),
-            c(`Volver a la elección`),
-            uo ? null : X(`kbd`, {}, `Tab`),
-          ),
-        ),
-        aO(e),
-        X(
-          `div`,
-          { class: `pk-help` },
-          ...i.types.map((e) => XC(e)),
-          ` `,
-          c(`No se pierde nada: cuando cierres seguirás con la elección donde la dejaste.`),
-        ),
-      ),
-    );
+    source=e.ui.modalEl,
+    a=teamOverview(e,aO(e),k.get(e.player.speciesId).types.map(type=>XC(type)),()=>{N.click();n();});
   return (
     addEventListener(`keydown`, r, !0),
+    source?.classList.add("zx-under-team"),
     document.body.append(a),
     (eO = n),
     a.querySelector(`button`)?.focus(),
@@ -51740,6 +51740,7 @@ var KO = 300,
     adopt(e) {
       (this.profile &&
         ((e.settings = this.profile.settings),
+        (e.collection = this.profile.collection ?? e.collection),
         (e.lastSpecies = this.profile.lastSpecies),
         (e.lastBiome = this.profile.lastBiome),
         (e.skins = this.profile.skins.filter((t) => {
@@ -51978,8 +51979,8 @@ var KO = 300,
         this.snap &&
         this.backend.keepLive?.(this.account, this.ticket, this.report(e, t, this.snap));
     }
-    hasPending() {
-      return !!this.backend.hasPending?.(this.account);
+    hasPending(ticketId) {
+      return !!this.backend.hasPending?.(this.account,ticketId);
     }
     async retryPending() {
       let e = (await this.backend.retryNow?.(this.account)) ?? { left: 0, saved: 0 };
@@ -64070,10 +64071,65 @@ function ZX(app) {
   const itemIcon=id=>Zt(k.items[id]?.icon||`items/${id}.png`);
   return createZixingUI(app, {
     defaults: {...SO, zxBossHealth:'value'},
+    speciesInfo: id => k.get(id),
+    evolutionIds: id => k.evolutionsOf(id).map(actor=>actor.id),
+    evolutionLevel: (from,to) => k.runEvolution(from,k.get(to)).level,
+    collectionMoveBook(id,catalog,onInspect,kitIntro) {
+      const actor=pt.get(id),species=k.get(id);
+      const inLeague=other=>app.meta.inLeague(other);
+      return ZD(Vb(id,actor,species.types,inLeague),{species:id,inLeague,catalog,kitIntro,
+        ctx:zE(species,actor?.passive??'',app.meta.labStats()),
+        inspect(move,ctx,note,trigger){
+          const facts=tD(move,VE(move,ctx));
+          const keys=[c('Daño por golpe'),c('Recarga'),c('Cada'),c('Daño por segundo'),c('Duración')];
+          let featured=keys.map(key=>facts.find(([name])=>name===key)).filter(Boolean).slice(0,3);
+          if(!featured.length)featured=facts.slice(0,1);
+          const others=facts.filter(fact=>!featured.includes(fact));
+          const crit=others.findIndex(([name])=>name===c('Crítico'));
+          if(crit>1)others.splice(1,0,others.splice(crit,1)[0]);
+          const growth=['random','weather','buff'].includes(move.arch)?null:{
+            values:Array.from({length:move.fusion?5:8},(_,i)=>VE(move,ctx,i+1).real),
+            format:WE,ranges:g_[move.arch].stats.map(stat=>[nD[stat],rD(stat,E[0])+' → '+rD(stat,E[4])])
+          };
+          const level=trigger.querySelector('.zc-move-level')?.textContent??'';
+          const fusion=move.fusion && lS.find(def=>def.key===move.fusion.key);
+          onInspect({name:move.name,icon:fusion?catalogFusionIcon(fusion):ZC(move.type,32),meta:catalogMoveMeta(move),
+            desc:move.desc,level:level==='初始'?'初始习得':level,featured,others,growth,note,
+            related:()=>uD(move,ctx,true)},trigger);
+        }});
+    },
+    moveTitle: id => k.movesByKey.get(pt.get(id).kit[0])?.name || '自动攻击',
+    collectionUltimate(id){
+      const actor=pt.get(id),forms=[];
+      // The combat resolver selects by the current species and the number of evolutions in this run.
+      function visit(speciesId,depth,parent,level){
+        const form=k.get(speciesId),def=Xh(speciesId,form.types[0]);
+        forms.push({id:speciesId,word:form.name,parent,level,name:glyphText(Zh(def,depth)),
+          desc:glyphText(gh(def.descs,depth)),duration:Qh(def,depth),type:def.type,category:kD(def.cls)});
+        const next=depth===0&&actor?.branch ? actor.branch : k.evolutionsOf(speciesId).map(next=>next.id);
+        for(const child of next){
+          if(!k.hasSprite(child))continue;
+          const required=actor?.evoLevels?.[depth]??(depth===0?actor?.evoLevel:null)??k.runEvolution(speciesId,k.get(child)).level;
+          visit(child,depth+1,form.name,Math.max(level,required));
+        }
+      }
+      visit(id,0,null,0);
+      return {forms,typeIcon:ZC,details(formId){
+        const species=k.get(formId);
+        const {incoming,strong}=kitMatchups(species,actor?.kit??[]);
+        return {matchups:[
+          {label:'弱点',entries:incoming.filter(([,v])=>v>1.01).sort((a,b)=>b[1]-a[1])},
+          {label:'抵抗',entries:incoming.filter(([,v])=>v<.99).sort((a,b)=>a[1]-b[1])},
+          {label:'招式克制',entries:strong.map(type=>[type,null])},
+        ]};
+      }};
+    },
+    ultTitle: id => glyphText(Zh(Xh(id,k.get(id).types[0]),0)),
     moveDescription: id => O_(k.movesByKey.get(pt.get(id).kit[0]).id).desc,
     ultDescription: id => Xh(id, k.get(id).types[0]).descs[0] || '积蓄能量，释放专属大招。',
     baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
     typeName: type => Pi[type] || type,
+    speciesType: id => k.get(id).types[0],
     offer: (run, offer) => Wb(run, offer),
     moveName: move => move.name,
     moveIcon: move => Zt(`ui/types/${move.type}.png`),
@@ -64083,6 +64139,8 @@ function ZX(app) {
     itemName: id => Zb(id)?.name || id,
     facilityIcon: kind => Zt(facilityIconFile(kind)),
     itemIcon,
+    itemRarity: id => sn.get(id)?.rarity,
+    itemLimit: id => sn.get(id)?.max??10,
     credits: () => nPFull(() => rI(app)),
     glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
   });
@@ -65196,15 +65254,23 @@ function BP(e) {
     ? `${r >= 0 ? `+` : `-`}${Math.round(Math.abs(r) * 100)}% ${t}`
     : `${r >= 0 ? `+` : ``}${RP(r)} ${t}`;
 }
-function VP(e, t) {
-  let n = t
+function sharedKitPartners(id,exclude=id){
+  const types=NP(id);
+  return y.filter(other=>other.id!==exclude && NP(other.id).some(type=>types.includes(type)));
+}
+function kitMatchups(e,t){
+  const n=t
       .map((e) => {
         let t = k.movesByKey.get(e);
         return t ? O_(t.id) : null;
       })
-      .filter((e) => !!e && e.dmg > 0),
-    r = ON.map((t) => [t, k.effectiveness(t, e.types)]),
-    i = (e, t, n) =>
+      .filter((e) => !!e && e.dmg > 0);
+  return {moves:n,incoming:ON.map(type=>[type,k.effectiveness(type,e.types)]),
+    strong:ON.filter(type=>n.some(move=>k.effectiveness(move.type,[type])>1.01))};
+}
+function VP(e, t) {
+  const {moves:n,incoming:r,strong}=kitMatchups(e,t);
+  const i = (e, t, n) =>
       pw(
         X(
           `span`,
@@ -65247,7 +65313,7 @@ function VP(e, t) {
     a(
       c(`Eficaz contra`),
       `strong`,
-      ON.filter((e) => n.some((t) => k.effectiveness(t.type, [e]) > 1.01)).map((e) =>
+      strong.map((e) =>
         i(e, null, () =>
           X(
             `div`,
@@ -65673,10 +65739,7 @@ function KP(e, t = `standard`, n, r) {
     ie = (e, t = !0) => {
       o || ((e !== a || !t) && ((a = e), ce()), t && (i.inLeague(e) ? N.cry(e, 0.5) : N.hover()));
     },
-    ae = (e) => {
-      let t = NP(e);
-      return y.filter((n) => n.id !== e && NP(n.id).some((e) => t.includes(e)));
-    },
+    ae = sharedKitPartners,
     oe = (e, ...t) => X(`section`, { class: `ls-sec` }, X(`div`, { class: `tag` }, e), ...t),
     se = (e, t, ...n) =>
       X(
@@ -73216,6 +73279,7 @@ var JI = class {
         r = Math.max(0, t.hp / t.maxHp);
       let i = performance.now(),
         a = Math.min(0.1, (i - this.lagT) / 1e3);
+      this.streakHud(e.streak, e.streakT);
       if(this.compact){
         this.lagT=i;this.touch.update(e,this.promptText);this.ultHud(e);
         n.lowhp.style.display=r<.25&&!t.dead?``:`none`;
@@ -73271,7 +73335,6 @@ var JI = class {
             ))
           : ((n.evo.title = ``), $(n.evo).append(X(`span`, { class: `tl-final` }, c(`Forma final`))));
       }
-      this.streakHud(e.streak, e.streakT);
       let u = this.project(e, t.pos.x, t.pos.y - 0.15, t.pos.z);
       ((n.under.style.display = u.vis && !t.dead ? `` : `none`),
         (n.under.style.left = u.x + `px`),
@@ -73978,97 +74041,13 @@ var JI = class {
       return (r.style.setProperty(`--tc`, YC(Ni[e.types[0]])), r);
     }
     showParty(e, t, n) {
-      let r = (e, t, n) => {
-          let r = X(
-            `button`,
-            { class: `card`, style: { width: `200px`, minHeight: `250px` }, onclick: t },
-            X(
-              `div`,
-              { class: `top`, style: { height: `120px` } },
-              X(`span`, { class: `rar` }, n ? c(`NUEVO`) : c(`Vínculo {n}`, { n: e.bond })),
-              rw(e.species),
-            ),
-            X(
-              `div`,
-              { class: `bd` },
-              X(`h3`, {}, e.name),
-              X(
-                `div`,
-                { class: `row`, style: { flexWrap: `wrap`, gap: `4px` } },
-                ...e.types.map((e) => XC(e)),
-              ),
-              X(`p`, {}, jm[e.types[0]].label),
-              X(
-                `div`,
-                { class: `sub` },
-                n
-                  ? c(`Déjalo marchar`)
-                  : c(`{kills} bajas · {dmg} de daño`, { kills: P(e.kills), dmg: P(Math.round(e.damage)) }),
-              ),
-              X(`div`, { class: `key` }, c(n ? `Liberar al nuevo` : `Liberar`)),
-            ),
-          );
-          return (r.style.setProperty(`--rc`, YC(Ni[e.types[0]])), r);
-        },
-        i = X(
-          `div`,
-          { class: `cards` },
-          ...e.allies.list.map((e, t) => (e.shiny ? null : r(e, () => n(t), !1))),
-          r(t, () => n(-1), !0),
-        );
-      (this.modal(
-        X(`h1`, { class: `small` }, c(`¡{name} quiere unirse a tu equipo!`, { name: t.name })),
-        X(
-          `div`,
-          { class: `help`, style: { fontSize: `15px` } },
-          c(`Tu equipo está completo: elige a quién liberar (el Laboratorio da un hueco más)`),
-        ),
-        i,
-      ),
-        e.cry(t.species));
+      fullParty({hud:this,party:e.allies.list,incoming:t,choose:n,role:type=>jm[type].label});
+      e.cry(t.species);
     }
     showShinySwap(e, t, n, r, i) {
-      let a = (e, t) => {
-        let n = X(
-          `button`,
-          { class: `card`, style: { width: `200px`, minHeight: `250px` }, onclick: () => i(t) },
-          X(
-            `div`,
-            { class: `top`, style: { height: `120px` } },
-            X(`span`, { class: `rar` }, t ? c(`NUEVO`) : c(`Vínculo {n}`, { n: e.bond })),
-            ZI(e.species, !0),
-          ),
-          X(
-            `div`,
-            { class: `bd` },
-            X(`h3`, {}, e.name),
-            X(`div`, { class: `row`, style: { flexWrap: `wrap`, gap: `4px` } }, ...e.types.map((e) => XC(e))),
-            X(`p`, {}, Nm(e.types[0], !0)),
-            X(
-              `div`,
-              { class: `sub` },
-              t
-                ? c(`Recién atrapado`)
-                : c(`{kills} bajas · {dmg} de daño`, { kills: P(e.kills), dmg: P(Math.round(e.damage)) }),
-            ),
-            X(`div`, { class: `key` }, c(t ? `Quedarte con {name}` : `Mantener a {name}`, { name: e.name })),
-          ),
-        );
-        return (n.style.setProperty(`--rc`, YC(Ni[e.types[0]])), n);
-      };
-      (this.modal(
-        X(`h1`, { class: `small` }, c(`¡{name} variocolor quiere acompañarte!`, { name: n.name })),
-        X(
-          `div`,
-          { class: `help`, style: { fontSize: `15px` } },
-          c(
-            `Solo te acompaña un variocolor: elige con cuál sigues. El registro en la Pokédex y los {dust} de Polvo Estelar los consigues igualmente`,
-            { dust: r },
-          ),
-        ),
-        X(`div`, { class: `cards` }, a(t, !1), a(n, !0)),
-      ),
-        e.cry(n.species));
+      e.cry(n.species);
+      return showReviewCompanion({hud:this,current:t,incoming:n,dust:r,done:i,
+        portrait:species=>ZI(species,!0),typeBadge:XC,role:type=>Nm(type,!0)});
     }
     modal(...e) {
       this.touch.letGo();
@@ -74076,6 +74055,7 @@ var JI = class {
       let t = !!this.modalEl?.isConnected;
       if (
         (this.hideModal(),
+        (this.toastsEl.hidden=true),
         (this.modalEl = X(`div`, { class: `modal` }, ...e)),
         (HI.opened = performance.now()),
         (HI.lockMs = t ? 150 : NI),
@@ -74156,6 +74136,7 @@ var JI = class {
     }
     hideModal() {
       (nO(), this.modalEl?.remove(), (this.modalEl = null), (this.pauseBack = null));
+      this.toastsEl.hidden=false;
     }
     hasModal() {
       return !!this.modalEl?.isConnected;
@@ -74495,73 +74476,48 @@ var JI = class {
       let n = () => {
         let r = e.shop?.stock ?? [],
           i = X(`div`, { class: `cards` });
-        for (let t of r) {
-          let r = Zb(t.key),
-            a = X(
-              `button`,
-              {
-                class: `card`,
-                onclick: () => {
-                  t.sold || (e.buyShopItem(t) ? (N.coin(), n()) : N.deny());
-                },
-              },
-              X(`div`, { class: `top` }, X(`span`, { class: `rar` }, Le[r.rarity]), Q(t.key)),
-              X(
-                `div`,
-                { class: `bd` },
-                X(
-                  `span`,
-                  { class: `kind price` + (t.sold ? ` sold` : e.gold >= t.price ? ` ok` : ` no`) },
-                  t.sold ? c(`VENDIDO`) : `${P(t.price)} ₽`,
-                ),
-                X(`h3`, {}, r.name),
-                X(`p`, {}, r.desc),
-                this.affects(
-                  e,
-                  (sn.get(t.key)?.mods ?? []).map((e) => e.stat),
-                ),
-                X(
-                  `small`,
-                  { class: `cap` },
-                  c(`Tienes {n}/{max}`, { n: e.player.items.get(t.key) ?? 0, max: sn.get(t.key)?.max ?? 10 }),
-                ),
-              ),
-            );
-          (a.style.setProperty(`--rc`, aw[r.rarity]),
-            (t.sold || !e.player.canHold(t.key)) && (a.style.opacity = `0.45`),
-            i.append(a));
+        const addOffer=(list,key,count,action,status,selling=false)=>{
+          const item=Zb(key),def=sn.get(key),applies=selling?null:this.affects(e,(def?.mods??[]).map(m=>m.stat));
+          const row=itemOffer(X('article',{}),{key,name:item.name,picture:Q(key),quality:itemOfferQuality(item.rarity),
+            effects:selling?[]:[item.desc,...(applies?[applies.textContent]:[])],held:''});
+          row.classList.add('zx-shop-offer');
+          const copy=row.querySelector('.zx-pick-copy');
+          const owned=X('small',{class:'zx-shop-owned'},selling?'持有 ×'+count:'持有 '+count+'/'+(def?.max??10));
+          copy.append(X('div',{class:'zx-shop-deal'},X('div',{class:'zx-shop-inventory'},owned,status),action));
+          list.append(row);
+        };
+        for(const lot of r){
+          const full=!e.player.canHold(lot.key),short=e.gold<lot.price;
+          const state=lot.sold?'已售罄':full?'持有已满':short?'余额不足':'';
+          const status=X('small',{class:'zx-shop-status'},state);
+          const buy=X('button',{type:'button',class:'zx-review-button primary zx-shop-action',disabled:lot.sold||full||short?'true':null,
+            'data-shop-buy':lot.key,'aria-label':'购买'+Zb(lot.key).name+'，花费'+P(lot.price)+(state?'，'+state:''),
+            onclick:()=>{if(!buy.isConnected||lot.sold)return;e.buyShopItem(lot)?(N.coin(),n()):N.deny();}},shopAmount(P(lot.price)));
+          addOffer(i,lot.key,e.player.items.get(lot.key)??0,buy,status);
         }
-        let a = X(`div`, { class: `row shop-sell` });
-        for (let [t] of e.player.items) {
-          let r = PS(e, sn.get(t)?.rarity ?? 0),
-            i = X(`span`, {}, c(`Vender +{n}`, { n: r })),
-            o = 0,
-            s = X(
-              `button`,
-              {
-                class: `btn ghost small`,
-                "aria-label": Zb(t).name,
-                onclick: () => {
-                  s.classList.contains(`armed`)
-                    ? (clearTimeout(o), e.player.removeItem(t), e.addGold(r), e.econ.sold++, N.coin(), n())
-                    : (N.click(),
-                      a.querySelectorAll(`.armed`).forEach((e) => e.dispatchEvent(new Event(`disarm`))),
-                      s.classList.add(`armed`),
-                      (i.textContent = c(`¿Vender? Pulsa otra vez`)),
-                      (o = window.setTimeout(() => s.dispatchEvent(new Event(`disarm`)), 3e3)));
-                },
-              },
-              Q(t),
-              i,
-            );
-          (s.addEventListener(`disarm`, () => {
-            (clearTimeout(o), s.classList.remove(`armed`), (i.textContent = c(`Vender +{n}`, { n: r })));
-          }),
-            a.append(pw(s, () => this.itemTip(e, t))));
+        const a=X('div',{class:'zx-sale-list'});
+        for(const [key,count] of e.player.items){
+          if(count<1)continue;
+          const price=PS(e,sn.get(key)?.rarity??0);
+          let timer;
+          const status=X('small',{class:'zx-shop-status','aria-live':'polite'},'');
+          const saleLabel='出售一件'+Zb(key).name+'，获得'+P(price);
+          const disarm=()=>{clearTimeout(timer);sell.classList.remove('armed');status.textContent='';sell.setAttribute('aria-label',saleLabel);};
+          const sell=X('button',{type:'button',class:'zx-review-button zx-shop-action','data-shop-sell':key,
+            'aria-label':saleLabel,onclick:()=>{
+              if(!sell.isConnected||!(e.player.items.get(key)>0))return;
+              if(sell.classList.contains('armed')){
+                disarm();e.player.removeItem(key);e.addGold(price);e.econ.sold++;N.coin();n();return;
+              }
+              a.querySelectorAll('.armed').forEach(other=>other.dispatchEvent(new Event('disarm')));
+              N.click();sell.classList.add('armed');status.textContent='再次点击确认';sell.setAttribute('aria-label','确认'+saleLabel);
+              timer=window.setTimeout(disarm,3000);
+            }},shopAmount(P(price),{credit:true}));
+          sell.addEventListener('disarm',disarm);
+          addOffer(a,key,count,sell,status,true);
         }
-        let o = this.modalEl?.classList.contains(`shop-modal`) ? this.modalEl : null,
-          s = o?.scrollTop ?? 0,
-          l = o?.querySelector(`.shop-sell`)?.scrollTop ?? 0,
+        let o = this.modalEl?.classList.contains('shop-modal') ? this.modalEl : null,
+          s = o?.querySelector('.zx-review-content')?.scrollTop ?? 0,
           u = e.rerollCost(),
           d = X(
             `button`,
@@ -74572,13 +74528,12 @@ var JI = class {
                 e.rerollShop() ? (N.coin(), n()) : N.deny();
               },
             },
-            Z(`reroll`, 18),
-            c(`Renovar surtido · {n} ₽`, { n: P(u) }),
+            shopAmount(P(u),{caption:'刷新货品'}),
           );
         r.length ||
           i.append(X(`p`, { class: `help` }, c(`«Ya lo tienes todo, miau. Aquí no me queda nada para ti.»`)));
         let f = this.modal(
-          X(`h1`, { class: `small` }, `${c(`Meowth: «¿Tienes dinero, miau?»`)}  ·  ${P(e.gold)} ₽`),
+          X(`h1`, { class: `small` }, `道具商店 · ${P(e.gold)}`),
           d,
           i,
           e.endless
@@ -74596,12 +74551,10 @@ var JI = class {
                 a,
               )
             : null,
-          X(`button`, { class: `btn shop-exit`, onclick: t }, c(`Salir`), uo ? null : PN(`Esc`)),
+          cO(e),X(`button`, { class:'btn shop-exit primary', 'data-action':'leave-shop', onclick:t }, '离开商店'),
         );
-        (f.classList.add(`shop-modal`),
-          f.querySelector(`.shop-exit`)?.before(cO(e)),
-          (f.scrollTop = s),
-          (a.scrollTop = l));
+        (shopShelves(styleReviewDialog(f,`shop-modal`,`zx-review-shop`),o?.dataset.shopView),
+          (f.querySelector('.zx-review-content').scrollTop = s));
       };
       (n(), lO(e, () => !!this.modalEl?.isConnected && this.modalEl.classList.contains(`shop-modal`), !1));
       let r = (e) => {
@@ -74615,42 +74568,25 @@ var JI = class {
     }
     showDitto(e, t) {
       let n = X(`div`, { class: `cards scroll` });
-      for (let [r, i] of e.player.items) {
-        let a = Zb(r),
-          o = !e.player.canHold(r),
-          s = X(
-            `button`,
-            {
-              class: `card mini`,
-              onclick: () => {
-                o ? N.deny() : t(r);
-              },
-            },
-            X(
-              `div`,
-              { class: `top` },
-              o
-                ? X(`span`, { class: `kind` }, c(`Máx.`))
-                : i > 1
-                  ? X(`span`, { class: `kind` }, `×${i}`)
-                  : null,
-              Q(r),
-            ),
-            X(`div`, { class: `bd` }, X(`h3`, {}, a.name), X(`p`, {}, a.desc)),
-          );
-        (s.style.setProperty(`--rc`, aw[a.rarity]), o && (s.style.opacity = `0.45`), n.append(s));
+      for (const [key,count] of e.player.items) {
+        const item=Zb(key),limit=sn.get(key)?.max??10,full=!e.player.canHold(key);
+        const card=X('button',{type:'button',disabled:full?'true':null,
+          onclick:()=>{if(!card.isConnected)return;if(!e.player.canHold(key)){N.deny();return;}t(key);}});
+        n.append(itemOffer(card,{key,name:item.name,picture:Q(key),quality:itemOfferQuality(item.rarity),
+          effects:[item.desc],held:'持有 '+count+'/'+limit+(full?' · 已满':'')}));
       }
+      if (!n.children.length) n.append(X(`div`,{class:`zx-review-empty`},X(`b`,{},`暂无可复制道具`),X(`p`,{},`先在地图拾取或商店购买一个道具。`)));
       let r = this.modal(
-        X(`h1`, { class: `small` }, c(`Ditto: ¿qué objeto copio?`)),
+        X(`h1`, { class: `small` }, `道具复制`),
         n,
         X(
           `div`,
           { class: `actions` },
-          X(`button`, { class: `btn ghost`, onclick: () => t(null) }, c(`Ahora no`)),
+          X(`button`, { class: `btn ghost`, onclick: () => t(null) }, `返回`),
         ),
         sO(e),
       );
-      lO(e, () => r.isConnected);
+      (styleReviewDialog(r,`zx-review-copy`),lO(e, () => r.isConnected), e.cry(132));
     }
     showSlots(e, t, n) {
       let r = (e) =>
@@ -75002,6 +74938,7 @@ var JI = class {
                   class: `btn red small`,
                   disabled: o <= 1 ? `true` : null,
                   onclick: () => {
+                    if(r.moves.filter(Boolean).length<=1)return;
                     (r.forgetMove(a), e.addGold(t.level * 8 * e.stage), n());
                   },
                 },
@@ -75036,8 +74973,9 @@ var JI = class {
             ),
           );
         }
+        if(r.moves.filter(Boolean).length<=1)i.append(X(`p`,{class:`zx-review-empty`},`最后一个招式不可遗忘。`));
         let a = this.modal(
-          X(`h1`, { class: `small` }, c(`Hypno: «Mira el péndulo... y olvida»`)),
+          X(`h1`, { class: `small` }, `遗忘招式`),
           X(
             `div`,
             {
@@ -75046,9 +74984,9 @@ var JI = class {
             },
             i,
           ),
-          X(`button`, { class: `btn shop-exit`, onclick: t }, c(`Listo`)),
+          X(`button`, { class: `btn shop-exit`, onclick: t }, `返回`),
         );
-        (a.classList.add(`shop-modal`),
+        (styleReviewDialog(a,`shop-modal`,`zx-review-forget`),
           a.addEventListener(`click`, (e) => {
             e.target === a && t();
           }));
@@ -77513,116 +77451,8 @@ var JI = class {
       setTimeout(() => addEventListener(`keydown`, s), 350);
     }
     showFusion(e, t, n) {
-      let r = !1,
-        i = (e) => {
-          r || ((r = !0), n(e));
-        },
-        a = {
-          signature: c(`Fusión de firma`),
-          reaction: c(`Reacción`),
-          type: c(`Fusión de tipo`),
-          glitch: c(`Fallo de la máquina`),
-        },
-        o = t.map((e, t) => ({ o: e, i: t })).filter((e) => e.o.ready),
-        s = RE(e),
-        l = X(`div`, { class: `cards fu-cards` + (t.length > 3 ? ` scroll` : ``) });
-      t.forEach((t, n) => {
-        let r = o.findIndex((e) => e.i === n),
-          u = e.player.moves[t.a]?.def,
-          d = e.player.moves[t.b]?.def,
-          f = t.r,
-          p = f.member
-            ? rw(f.member)
-            : X(
-                `span`,
-                { class: `fu-types` },
-                ZC(f.type, 34),
-                f.type2 && f.type2 !== f.type ? ZC(f.type2, 34) : null,
-              ),
-          m = X(
-            `button`,
-            {
-              class: `card fusion` + (t.ready ? `` : ` locked`),
-              style: { "--rc": wx[f.kind], "--t1": YC(Ni[f.type]), "--t2": YC(Ni[f.type2 ?? f.type]) },
-              onclick: () => {
-                t.ready ? i(n) : N.deny();
-              },
-            },
-            X(`div`, { class: `top` }, X(`span`, { class: `rar` }, a[f.kind]), p),
-            X(
-              `div`,
-              { class: `bd` },
-              X(`h3`, {}, f.name),
-              X(
-                `div`,
-                { class: `fu-pair` },
-                FD(t.names[0], t.types[0], u?.cls),
-                X(`b`, {}, `+`),
-                FD(t.names[1], t.types[1], d?.cls),
-              ),
-              PD(f),
-              X(`p`, { class: `fu-desc` }, f.desc),
-              RD(f, u, d),
-              LD(f, s),
-              t.ready
-                ? X(
-                    `div`,
-                    { class: `pact-line boon` },
-                    X(`small`, {}, c(`Lista`)),
-                    X(`b`, {}, c(`Libera un hueco de movimiento`)),
-                  )
-                : X(
-                    `div`,
-                    { class: `pact-line bane` },
-                    X(`small`, {}, c(`Te falta`)),
-                    X(`b`, {}, t.need.join(` · `)),
-                  ),
-              r >= 0 && r < 9 ? X(`div`, { class: `key` }, `[${r + 1}]`) : null,
-            ),
-          );
-        l.append(m);
-      });
-      let u = t.length
-          ? c(
-              `Funde dos movimientos al nivel {level} o superior en uno nuevo: ocupa el hueco del primero y deja el otro libre para aprender otro ataque. La máquina solo funde una vez.`,
-              { level: fusionRequiredLevel },
-            )
-          : c(`Necesitas al menos dos movimientos para fusionarlos.`),
-        d = this.modal(
-          X(
-            `h1`,
-            { class: `small` },
-            X(`span`, { class: `trade-mon` }, Z(`map-bill`, 34)),
-            c(`Máquina de Bill`),
-          ),
-          X(`div`, { class: `help` }, u),
-          e.player.moves.some((e) => e && !gS(e.def))
-            ? X(
-                `div`,
-                { class: `help` },
-                c(
-                  `Los movimientos de clima y de potenciación, y las fusiones ya hechas, no se pueden fundir.`,
-                ),
-              )
-            : null,
-          l,
-          X(
-            `div`,
-            { class: `actions` },
-            X(`button`, { class: `btn ghost`, onclick: () => i(null) }, c(`Ahora no`), PN(`Esc`)),
-          ),
-        ),
-        f = (e) => {
-          if (!d.isConnected || r) {
-            removeEventListener(`keydown`, f);
-            return;
-          }
-          let t = VI(e);
-          t >= 1 && t <= o.length
-            ? (removeEventListener(`keydown`, f), i(o[t - 1].i))
-            : e.key === `Escape` && (e.stopPropagation(), removeEventListener(`keydown`, f), i(null));
-        };
-      setTimeout(() => addEventListener(`keydown`, f), 350);
+      return showReviewFusion({hud:this,run:e,offers:t,done:n,requiredLevel:fusionRequiredLevel,
+        typeIcon:ZC,details:recipe=>LD(recipe,RE(e)),warning:RD,tags:PD});
     }
   },
   YI = (e) => e.portrait.closest(`.hud-tl`),
@@ -77958,6 +77788,7 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
           title: t.title,
           skins: t.skins,
           team: t.team,
+          collection: t.collection,
         },
         e.token,
       ).catch(() => {});
@@ -78108,9 +77939,11 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
           Math.min(12e4, 1e4 * 2 ** Math.min(this.retryN++, 4)) * (0.5 + Math.random()),
         )));
     }
-    hasPending(e) {
+    hasPending(e, ticketId) {
+      const pending = sL.get(`pb.pending`) ?? [];
+      if (ticketId) return pending.some((t) => t.acc === e.id && t.ticket.id === ticketId);
       return (
-        (sL.get(`pb.pending`) ?? []).some((t) => t.acc === e.id) ||
+        pending.some((t) => t.acc === e.id) ||
         (sL.get(`pb.live`)?.acc === e.id && !this.live)
       );
     }
@@ -78144,16 +77977,16 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
       for (let t of sL.get(`pb.pending`) ?? [])
         if (t.acc === e.id)
           try {
-            (await this.req(
+            const receipt = await this.req(
               `/runs/${t.ticket.id}/finish`,
               `POST`,
               { result: t.result, cps: t.cps ?? [] },
               e.token,
-            ),
-              this.dropPending(t.ticket.id),
-              this.cache.clear(),
-              this.lastFlush.saved++,
-              this.onSaved?.({ result: t.result, rescued: !!t.rescued }));
+            );
+            this.dropPending(t.ticket.id);
+            this.cache.clear();
+            this.lastFlush.saved++;
+            this.onSaved?.({ result: t.result, rescued: !!t.rescued, ticketId: t.ticket.id, receipt });
           } catch (e) {
             if (hL(e)) {
               n++;
@@ -78163,7 +77996,7 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
               e.status === 409
                 ? (this.cache.clear(),
                   this.lastFlush.saved++,
-                  this.onSaved?.({ result: t.result, rescued: !!t.rescued }))
+                  this.onSaved?.({ result: t.result, rescued: !!t.rescued, ticketId: t.ticket.id }))
                 : (this.lastFlush.refused = e.message));
           }
       return n;
@@ -78542,82 +78375,12 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     cur = { ...OL.main };
     target = OL.main;
     constructor(e, t = `forest`) {
-      if(window.nativeUI){
-        this.r=e;this.biome='forest';
-        this.terrain=new cd({...lt('forest'),zxStage:1},0,e.shared);
-        this.player={pos:this.terrain.spawn};this.camTarget=this.player.pos.clone();
-        this.sprites=new rl(e.scene,e.shared);
-        const geometry=new Yr(1.05,.55);
-        const material=new Kr({transparent:true,depthWrite:false,uniforms:{fade:{value:1}},
-          vertexShader:'varying vec2 v;void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-          fragmentShader:'uniform float fade;varying vec2 v;void main(){float a=1.-smoothstep(.96,1.,length(v*2.-1.));gl_FragColor=vec4(.07,.05,.12,.72*a*fade);}'});
-        this.entryShadow=new Tr(geometry,material);this.entryShadow.rotation.x=-Math.PI/2;
-        this.entryShadow.position.copy(this.player.pos);this.entryShadow.position.y=.02;
-        e.scene.add(this.terrain.group,this.entryShadow);
-        applyPaperLight(this);
-        this.ready=Promise.all([this.terrain.deskReady,this.sprites.prepareHeroForm(4),window.entryHeroArt()]).then(([, ,art])=>{
-          if(this.closed)return;
-          this.entryInk=new Wr(art.image);this.entryInk.colorSpace=pi;this.entryInk.needsUpdate=true;
-          this.entryInk.generateMipmaps=false;this.entryInk.minFilter=this.entryInk.magFilter;this.entryIdle=art.idle;
-          this.canDraw=true;
-        });
-        return;
-      }
+      if(window.nativeUI){this.r=e;this.biome=t;applyPaperLight({r:e});return;}
       ((this.r = e),
         (this.sprites = new rl(e.scene, e.shared)),
         (this.biome = t),
         (this.title = this.makeTitle(TL())),
         this.title.applySky());
-    }
-    beginDeparture(){
-      this.departure={progress:0,bend:(Math.random()<.5?-1:1)*(.35+.4*Math.random()),last:performance.now()};
-    }
-    drawEntry(){
-      if(!this.canDraw)return false;
-      const now=performance.now(),path=this.departure;
-      if(path){
-        if(!document.hidden){
-          const dt=Math.min(150,Math.max(0,now-path.last))/1000;
-          // Ease into the final section while the game prepares its shaders
-          // or waits for the session. Reserve the landing for the playable frame.
-          const next=path.progress+dt;
-          path.progress=path.ready||next<=.65?Math.min(1,next):
-            .85-(.85-Math.max(.65,path.progress))*Math.exp(-Math.min(dt,next-.65)/.2);
-        }
-        path.last=now;
-      }
-      deskCamera(this,path?.progress??0,path?.bend??0);
-      const blend=cameraEase(path?.progress??0),scale=entryHeroScale+(1-entryHeroScale)*blend;
-      this.entryShadow.scale.setScalar(scale);this.entryShadow.material.uniforms.fade.value=1-blend;
-      this.entryShadow.visible=blend<1;
-      const {x,y,z}=this.player.pos;
-      this.sprites.begin(this.r.camera);
-      const frame=this.sprites.heroFrame(this.player,4,'idle',now);
-      const hero=this.sprites.getPlayerGlyph(4,4,null,frame);
-      hero.push(x,y,z+entryFootOffset*(1-blend)/deskTilt,'idle',0,0,(frame?.renderScale??1)*scale,
-        0,0,0,0,1,1,1,0,false,0,frame?.rect);
-      this.sprites.end();
-      // Apply the illustrated entry ink to the live hero batch. Its authored
-      // idle frames share the battle registration; blend back during pullback.
-      if(frame){
-        const group=hero.zxGroup,{columns,rows}=this.entryIdle;
-        if(!this.entryMaterial){
-          const material=this.entryMaterial=group.material.clone();
-          material.uniforms={...group.material.uniforms,entryInk:{value:this.entryInk},entryRect:{value:new Float32Array(4)},entryMix:{value:1}};
-          material.fragmentShader=`uniform sampler2D zxGlyph,entryInk;uniform vec4 entryRect;uniform float entryMix;
-            varying vec2 vUv,vLocal;void main(){
-              vec4 a=texture2D(zxGlyph,vUv),b=texture2D(entryInk,mix(entryRect.xy,entryRect.zw,vLocal));
-              float alpha=mix(a.a,b.a,entryMix);if(alpha<.01)discard;
-              gl_FragColor=vec4(mix(a.rgb*a.a,b.rgb*b.a,entryMix)/alpha,alpha);
-            }`;
-        }
-        const col=frame.index%columns,row=Math.floor(frame.index/columns),uniforms=this.entryMaterial.uniforms;
-        uniforms.entryRect.value.set([col/columns,1-(row+1)/rows,(col+1)/columns,1-row/rows]);
-        uniforms.entryMix.value=1-blend;
-        group.mesh.material=this.entryMaterial;
-        try{this.r.render(0);}finally{group.mesh.material=group.material;}
-      }else this.r.render(0);
-      return true;
     }
     makeTitle(e) {
       const terrain=new cd({...fr[0],size:120,zxStage:1},1234,this.r.shared);
@@ -78685,7 +78448,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         t === `title` ? this.title.applySky() : this.biomeSky());
     }
     setFocus(e, t = null) {
-      if(window.nativeUI)return;
+      if(window.nativeUI){this.focus=isLiteSpecies(e)?Number(e):defaultStarter;return;}
       ((this.focus = e),
         (this.look = t === !0 ? `shiny` : t || null),
         (this.focusShiny = this.look === `shiny`),
@@ -78812,12 +78575,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.sprites.end());
     }
     dispose() {
-      if(this.entryShadow){
-        this.closed=true;this.entryMaterial?.dispose();this.entryInk?.dispose();
-        this.r.scene.remove(this.entryShadow);this.entryShadow.geometry.dispose();this.entryShadow.material.dispose();
-        this.canDraw=false;
-        if(this.transferred)return;
-      }
+      if(window.nativeUI)return;
       (this.title?.dispose(),
         this.terrain?.dispose(),
         this.sprites.clear(),
@@ -78854,7 +78612,6 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     setScreen(e, t = !1) {
       (this.endSwipe?.(), (this.endSwipe = null));
       let n = this.screenEl;
-      if(this.menuScene?.departure&&e&&e.dataset.entryPage!=='departure')this.menuScene.departure=null;
       ((this.screenEl = e),
         e && this.ui.append(e),
         t && n && e && !window.nativeUI && !matchMedia(`(prefers-reduced-motion: reduce)`).matches
@@ -78908,7 +78665,6 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         (this.pad = new Wa(this.input)),
         (this.menuScene = new kL(this.r)),
         N.preloadTrack(EL()));
-      await this.menuScene.ready;
       let i = !1,
         a = () => {
           // Waking audio uses the stored volumes. A gesture must not reconfigure the renderer.
@@ -78954,7 +78710,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           let e = this.run?.state;
           e && e !== `over` && e !== `dead` && (this.trapBack(), e === `play` && this.run.pause());
         }),
-        (this.backend.onSaved = () => {
+        (this.backend.onSaved = ({ticketId,receipt}) => {
+          this.zixing?.settlementSaved(ticketId,receipt);
           document.dispatchEvent(new CustomEvent('pb-saved'));
           if ((!this.run || this.run.state === 'over') && this.meta.account) this.meta.resync();
         }),
@@ -79044,6 +78801,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         // The home screen does not need a cloud profile. Share this request
         // with menu actions, without a late response navigating the player.
         if(u)ui.prepareProfile(u).catch(error=>console.warn('[字行] 后台读取存档失败',error));
+        await ui.prepareHomeArt();
         ui.home();
         window.bootStage?.('首页内容已就绪',99);
         return;
@@ -79194,7 +78952,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         } catch {}
     }
     starting = !1;
-    async startRun(e, onLoadProgress, opening=false) {
+    async startRun(e, onLoadProgress) {
       if (this.starting) return !1;
       if(e&&!isLiteSpecies(e.species)){
         this.lastStartError=Error('当前可使用炎或风开启对局');
@@ -79204,7 +78962,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       this.lastStartError=null;
       (Oo(!0), (this.starting = !0));
       try {
-        return await this.openRun(e,onLoadProgress,opening);
+        return await this.openRun(e,onLoadProgress);
       } catch (error) {
         this.lastStartError=error;
         console.error('[宝可梦] 森林初始化失败', error);
@@ -79218,7 +78976,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.starting = !1;
       }
     }
-    async openRun(e, onLoadProgress, opening) {
+    async openRun(e, onLoadProgress) {
       this.lastCfg = e;
       let t;
       try {
@@ -79245,8 +79003,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.lastStartError=e;
         return (this.notice(e.message), N.deny(), !1);
       }
-      const entry=opening?this.menuScene:null;
-      if(!entry){this.menuScene?.dispose();this.menuScene=null;}
+      this.menuScene?.dispose();this.menuScene=null;
       return (
         (e = { ...e, seed: t.seed, boosts: t.boosts ?? [] }),
         fN(),
@@ -79275,8 +79032,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         N.beginRun(),
         onLoadProgress?.({phase:'准备对局',detail:'',progress:.45}),
         await waitForLoadingPaint(this.r.renderer),
-        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress,effectAtlas:await Nl(),entryWorld:entry})),
-        entry && (entry.transferred=true),
+        (this.run = new wE(this.r, this.input, N, this.hud, this.meta, {...e,onLoadProgress,effectAtlas:await Nl()})),
         await this.run.initialized,
         e.coop?.world && restoreProgress(this.run,e.coop.progress,e.coop.world),
         onLoadProgress?.({phase:'准备字灵',detail:'',progress:.8}),
@@ -79293,7 +79049,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
         await waitForLoadingPaint(this.r.renderer),
         await e.coop?.room.waitForBattleStart((title,teamReady)=>onLoadProgress?.({phase:title,teamStatus:title,teamReady,progress:1})),
-        entry && await this.finishDeparture(entry),
+        await onLoadProgress?.reveal?.(),
         this.setScreen(null),
         (this.run.onLoadProgress=null),
         (this.run.state='play'),
@@ -79314,18 +79070,6 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         this.trapBack(),
         !0
       );
-    }
-    async finishDeparture(entry){
-      const path=entry.departure;path.ready=true;
-      while(path.progress<1){
-        await new Promise(resolve=>requestAnimationFrame(resolve));
-        if(this.menuScene!==entry||entry.departure!==path)throw Error('已退出开场镜头');
-      }
-      if(this.run.player.speciesId===4&&entry.player.heroPlayback){
-        this.run.player.heroPlayback={...entry.player.heroPlayback,last:this.run.time*1000};
-      }
-      entry.dispose();this.menuScene=null;
-      this.run.updateCamera(0);this.run.renderWorld(0);
     }
     askOffline() {
       return (

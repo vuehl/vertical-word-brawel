@@ -24,7 +24,7 @@ export class RelayRoom {
     };
   }
   static async connect({code, name, species = 4, factory, resume}) {
-    if (typeof factory !== 'function') throw Error('请在微信小游戏内进入双人成行');
+    if (typeof factory !== 'function') throw Error('请在微信小游戏内进入双人前行');
     const session = new RelayRoom();
     session.resume = resume;
     try {
@@ -120,7 +120,7 @@ export class RelayRoom {
     if (room && (room.members?.length > COOP_ROOM_SIZE ||
         (room.state === 'started' && !this.startedSeen && room.members?.length !== COOP_ROOM_SIZE &&
           !(this.resume?.party===room.party && room.running && room.members?.some(m=>m.id===this.resume.seat))))) {
-      this.end('双人成行仅支持两人，请重新组队');
+      this.end('双人前行仅支持两人，请重新组队');
       return;
     }
     if (message.op === 'room') { this.apply(message.room); return; }

@@ -1,4 +1,5 @@
 'use strict';
+const {paintMenuScene,polygon,gradient}=require('../source/src/menu-scene.js');
 
 // Native stationery and splash-sized hero copies are bundled in the main pack.
 module.exports = async function presentBootFrame(gl) {
@@ -8,7 +9,17 @@ module.exports = async function presentBootFrame(gl) {
   for(const [word,src] of Object.entries(require('./boot-hero-art'))){
     const image=wx.createImage();
     image.onload=()=>{if(canvas){heroes[word]=image;last='';}};
-    image.src=src;
+    function loadLocal(){
+      image.onerror=null;
+      if(!canvas)return;
+      try{
+        const file=wx.env.USER_DATA_PATH+'/zixing-boot-'+word+'.png';
+        wx.getFileSystemManager().writeFileSync(file,src.slice(src.indexOf(',')+1),'base64');
+        image.src=file;
+      }catch(error){console.warn('[字行] 启动字灵图片读取失败',word,error);}
+    }
+    image.onerror=loadLocal;
+    try{image.src=src;}catch{loadLocal();}
   }
   function attach(type,source){
     const shader=gl.createShader(type);
@@ -22,65 +33,39 @@ module.exports = async function presentBootFrame(gl) {
   }
   function paint(value,w,h,full){
     if(full){canvas.width=w;canvas.height=h;}
-    const s=w/390,H=h/s,strip=H>=600;
-    let c=canvas.getContext('2d');
-    c.setTransform(s,0,0,s,0,0);
-    const ink='#343044',muted='#637e7e',paper='#fffdf5',hero=H*.43,track=H*.79;
-    function rect(x,y,w,h,fill,stroke){
-      c.fillStyle=fill;c.fillRect(x,y,w,h);
-      if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.strokeRect(x,y,w,h);}
-    }
-    function line(x,y,x2,y2,color,width=1){
-      c.strokeStyle=color;c.lineWidth=width;c.beginPath();c.moveTo(x,y);c.lineTo(x2,y2);c.stroke();
-    }
-    function text(label,x,y,size,color=ink,bold=false){
-      c.font=(bold?'bold ':'')+size+'px sans-serif';c.fillStyle=color;c.textAlign='center';c.textBaseline='middle';c.fillText(label,x,y);
-    }
-    function sheet(x,y,w,h,angle,fill){
-      c.save();c.translate(x,y);c.rotate(angle);
-      rect(-w/2+4,-h/2+6,w,h,'#cfdbd4');rect(-w/2,-h/2,w,h,fill,'#a8bcb4');
-    }
+    const s=Math.min(w/390,h/550),W=w/s,H=h/s,left=(W-390)/2,track=H*.79;
+    const strip=h/(w/390)>=600,navy='#21253F';
     if(full){
-    rect(0,0,390,H,'#f8f5ea');
-    // Cutting mat and notebook echo the game's home illustration.
-    rect(0,H*.24,390,H*.39,'#bdd9d9');
-    for(let x=10;x<390;x+=22)line(x,H*.24,x,H*.63,'#d4e7e2');
-    for(let y=H*.24;y<H*.63;y+=22)line(0,y,390,y,'#d4e7e2');
-    sheet(182,hero+8,274,205,-.085,'#f4f3df');
-    for(let y=-85;y<95;y+=16)for(let x=-120;x<130;x+=16){c.fillStyle='#c4cebb';c.beginPath();c.arc(x,y,.8,0,7);c.fill();}c.restore();
-    sheet(228,hero+40,230,148,.13,paper);
-    for(let y=-50;y<70;y+=18)line(-114,y,114,y,'#ccdfe0');line(-81,-74,-81,74,'#e4bdb4');c.restore();
-    c.save();c.translate(126,hero-96);c.rotate(-.15);rect(-38,-10,76,20,'#ddcf9e');
-    for(let x=-33;x<38;x+=10)line(x,-9,x+7,9,'#eee2bd',3);c.restore();
-    // Pencil and ruler frame the paper world.
-    c.save();c.translate(338,hero-15);c.rotate(.28);
-    rect(-6,-95,13,164,'#d0a25c');rect(-3,-95,5,164,'#f5d884');rect(-6,-105,13,15,'#c99498');
-    c.fillStyle='#e5cfaa';c.beginPath();c.moveTo(-6,69);c.lineTo(7,69);c.lineTo(.5,90);c.closePath();c.fill();
-    c.fillStyle=ink;c.beginPath();c.moveTo(-1.5,83);c.lineTo(2.5,83);c.lineTo(.5,90);c.closePath();c.fill();c.restore();
-    c.save();c.translate(78,hero+108);c.rotate(-.12);rect(-35,0,252,25,'#ecd396','#bb9c5c');
-    for(let x=-28;x<214;x+=9)line(x,1,x,(x+28)%27===0?13:8,'#a88c57');c.restore();
-    for(const [word,x,y] of [['风',145,hero+5],['炎',245,hero-9]]){
-      if(heroes[word])c.drawImage(heroes[word],x-36,y-36,72,72);
+      const ctx=canvas.getContext('2d');
+      ctx.setTransform(s,0,0,s,0,0);
+      // The title, waves, desk and three printed glyphs share the home painter.
+      const top=Math.min(18,H*.0185),height=Math.min(520,track-68-top),width=height*.75;
+      ctx.fillStyle=gradient(ctx,0,top,0,top+height,'#292943',navy);ctx.fillRect(0,0,W,H);
+      ctx.save();ctx.translate((W-width)/2,top);
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(width,0);ctx.lineTo(width,height-17);
+      ctx.lineTo(width*.22,height);ctx.lineTo(0,height-8);ctx.closePath();ctx.clip();
+      paintMenuScene(ctx,width,height,true,word=>heroes[word]);
+      ctx.restore();
     }
-    const titleY=Math.max(100,hero-169);
-    text('字  行',195,titleY+3,54,ink,true);
-    c.font='bold 54px sans-serif';c.lineJoin='round';c.lineWidth=3;c.strokeStyle=ink;c.strokeText('字  行',195,titleY);
-    text('字  行',195,titleY,54,'#f2d280',true);text('桌上有天地 · 落字即成灵',195,titleY+50,13,muted);
-    if(strip)text('一笔一画，启程纸上冒险',195,H-47,12,muted);
-    }
-    let y=0;
+    let y=0,ctx=canvas.getContext('2d');
     if(strip){
-      y=Math.floor(h*.79-50*s);
-      const height=Math.ceil(h*.79+50*s)-y;
+      y=Math.floor((track-53)*s);
+      const height=Math.ceil((track+32)*s)-y;
       if(patch.width!==w||patch.height!==height){patch.width=w;patch.height=height;}
-      c=patch.getContext('2d');c.setTransform(1,0,0,1,0,0);
-      c.fillStyle='#f8f5ea';c.fillRect(0,0,w,height);
-      c.setTransform(s,0,0,s,0,-y);
+      ctx=patch.getContext('2d');ctx.setTransform(1,0,0,1,0,0);
+      ctx.fillStyle=navy;ctx.fillRect(0,0,w,height);
     }
-    text(value>=95?'正在翻开第一页':value>=85?'正在整理纸上世界':'正在唤醒字灵',195,track-32,16,ink,true);
-    rect(61,track,268,8,'#dce5da');if(value>0)rect(61,track,268*value/100,8,'#829f94');
-    text(value+'%',195,track+31,18,ink,true);
-    if(!strip)text('一笔一画，启程纸上冒险',195,H-47,12,muted);
+    ctx.setTransform(s,0,0,s,left*s,-y);ctx.save();ctx.translate(0,track);
+    // The paper slip holds both the phase and the real download percentage.
+    polygon(ctx,[[34,-39],[345,-39],[355,-29],[355,16],[347,24],[41,24],[34,18]],'#607EA9');
+    polygon(ctx,[[34,-43],[345,-43],[353,-35],[353,12],[346,19],[39,19],[32,12],[32,-41]],'#EEF0F7');
+    polygon(ctx,[[48,-48],[65,-48],[65,-31],[56,-35],[48,-31]],'#C77683');
+    ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillStyle='#293651';ctx.font='bold 15px sans-serif';
+    ctx.fillText(value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源',61,-18);
+    ctx.textAlign='right';ctx.font='bold 19px sans-serif';ctx.fillStyle='#385A8A';ctx.fillText(value+'%',329,-18);
+    ctx.fillStyle='#D1DBEA';ctx.fillRect(61,0,268,7);
+    if(value){ctx.fillStyle='#5076AE';ctx.fillRect(61,0,268*value/100,7);}
+    ctx.restore();
     return strip?y:null;
   }
   try {

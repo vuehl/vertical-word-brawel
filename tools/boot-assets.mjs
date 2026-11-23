@@ -7,13 +7,15 @@ import postcss from 'postcss';
 import sharp from 'sharp';
 import {packStream} from './pack-resources.mjs';
 import {unpackStream} from './resource-stream.mjs';
-import {characters} from '../source/src/starter-characters.js';
+import {starterSpecies,starterWords} from '../source/src/starter-characters.js';
+import {zixingStyle} from '../source/src/zixing-style.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex').slice(0,16);
 
 export async function writeBootHeroArt(root,out){
   const images={};
-  for(const {id,word} of characters){
+  for(const id of starterSpecies){
+    const word=starterWords[id];
     // The splash draws these at 72 logical pixels (about 159 physical pixels
     // on a 430px phone at 2x). Keep extra detail without decoding 512px art.
     // Only the generated main-package copy changes; keep the supplied PNGs.
@@ -33,7 +35,7 @@ export async function writeBootHeroArt(root,out){
 
 export function bootAssets(root) {
   const read=file=>fs.readFileSync(path.join(root,'source',file),'utf8').replace(/\r\n/g,'\n');
-  const css=read('public/assets/main-BnZCGLop-mvlr7rzv.css')+'\n'+read('src/customize.js').split('style.textContent=').pop().split(String.fromCharCode(96))[1]+'\n'+read('src/zixing-style.js').split(String.fromCharCode(96))[1];
+  const css=read('public/assets/main-BnZCGLop-mvlr7rzv.css')+'\n'+read('src/customize.js').split('style.textContent=').pop().split(String.fromCharCode(96))[1]+'\n' + zixingStyle;
   const rules=[];
   postcss.parse(css).walkRules(rule=>{
     let media='';
@@ -47,9 +49,12 @@ export function bootAssets(root) {
       rules.push([sel,declarations,key,media,weight,rules.length]);
     }
   });
-  return {
-    'engine/styles.json':Buffer.from(JSON.stringify(rules))
-  };
+  const assets={'engine/styles.json':Buffer.from(JSON.stringify(rules))};
+  const directory=path.join(root,'source/public/assets/ui-paper');
+  for(const name of fs.readdirSync(directory)){
+    if(name.endsWith('.png'))assets['assets/ui-paper/'+name]=fs.readFileSync(path.join(directory,name));
+  }
+  return assets;
 }
 
 // Keep incremental builds in sync with the full asset build.

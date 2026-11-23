@@ -10,10 +10,11 @@ import sharp from 'sharp';
 const root=path.resolve(import.meta.dirname,'..'),require=createRequire(import.meta.url);
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-boot-loading');
 fs.mkdirSync(dir,{recursive:true});
-const source=fs.readFileSync(path.join(root,'platform/boot-screen.js'),'utf8');
+const source=fs.readFileSync(path.join(root,'minigame/boot-screen.js'),'utf8');
 const artFile=path.join(root,'minigame/boot-hero-art.js'),art=require(artFile);
 const report={art:[],scriptBytes:fs.statSync(artFile).size,samples:[]};
-for(const [id,word] of [[4,'炎'],[16,'风'],[132,'摹']]){
+assert.deepEqual(Object.keys(art).sort(),['炎','风'].sort());
+for(const [id,word] of [[4,'炎'],[16,'风']]){
   const file=path.join(root,'source/art/glyphs',`hero_${id}_${word}.png`),original=fs.readFileSync(file);
   const output=Buffer.from(art[word].split(',')[1],'base64'),m=await sharp(output).metadata();
   assert.equal(m.width,256);assert.equal(m.height,256);assert.equal(m.hasAlpha,true);
@@ -23,7 +24,7 @@ for(const [id,word] of [[4,'炎'],[16,'风'],[132,'摹']]){
     originalSHA256:createHash('sha256').update(original).digest('hex')});
 }
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,
-  args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox']});
+  args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-accelerated-2d-canvas','--no-sandbox']});
 try{
   const page=await browser.newPage();
   await page.setContent('<style>body{margin:0;background:#eee}canvas{display:block;width:100vw;height:100vh}</style><canvas id="screen"></canvas>');
@@ -47,7 +48,7 @@ try{
         const wx={createCanvas(){const c=document.createElement('canvas');canvases.push(c);return c;},createImage(){
           const image=new Image();images.push(image);
           loads.push(new Promise((resolve,reject)=>{image.addEventListener('load',()=>setTimeout(resolve,0),{once:true});image.addEventListener('error',reject,{once:true});}));
-          if(holdLast&&images.length===3){const set=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
+          if(holdLast&&images.length===Object.keys(art).length){const set=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
             Object.defineProperty(image,'src',{set(value){pending.push(()=>set.call(image,value));}});}
           return image;
         }};
@@ -80,7 +81,7 @@ try{
       // A viewport change must reallocate and rebuild the background once.
       screen.width+=2;bootUploads.length=0;reference.splash.draw(67);
       const resizedFull=bootUploads.some(u=>u.width===w+2&&u.height===h);
-      screen.width=w;reference.splash.draw(67);
+      screen.width=w;reference.splash.draw(95);
       window.lastBoot=reference.splash;
       const releasedCanvases=current.canvases.every(c=>c.width===1&&c.height===1);
       return {width,height,changedChannels,differences,lateChangedChannels,lateDifference,lateFull,resizedFull,releasedCanvases,unchangedUploads,

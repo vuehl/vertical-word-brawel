@@ -6,7 +6,6 @@ import {buildPlay} from './play-chunks.mjs';
 import {bindPortalZoneClock} from '../source/tools/portal-zone-clock.mjs';
 import {parse} from '../source/tools/vendor/acorn.mjs';
 import {addBootAssets,bootAssets,writeBootHeroArt} from './boot-assets.mjs';
-import {writeEntryAssets} from './entry-assets.mjs';
 import {lowerUnicodeRegexes} from './device-syntax.mjs';
 import {assetPolicyVersion,itemIconSelectionChanged} from './asset-policy.mjs';
 import {gameProject} from './project-target.mjs';
@@ -164,9 +163,9 @@ for(const name of fs.readdirSync(playDir)){
 fs.rmSync(path.join(out,'play.js'),{force:true});
 for(const file of ['host.js','original.js'])fs.rmSync(path.join(out,file),{force:true});
 fs.copyFileSync(path.join(platform,'files.js'),path.join(out,'files.js'));
-await writeEntryAssets(root,out);
-const bootScript=await esbuild.build({entryPoints:[path.join(platform,'entry-scene.js')],bundle:true,format:'cjs',target:'es2017',
-  external:['./entry-data'],write:false});
+fs.rmSync(path.join(out,'entry-data.js'),{force:true});
+const bootScript=await esbuild.build({entryPoints:[path.join(platform,'boot-screen.js')],bundle:true,format:'cjs',target:'es2017',
+  external:['./boot-hero-art'],write:false});
 writeScript(path.join(out,'boot-screen.js'),bootScript.outputFiles[0].text);
 await writeBootHeroArt(root,out);
 fs.copyFileSync(path.join(platform,'resource-codec.js'),path.join(out,'resource-codec.js'));

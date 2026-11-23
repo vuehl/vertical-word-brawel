@@ -187,7 +187,7 @@ route('PUT', '/profile/prefs', async (req, res) => {
   const b = await body(req) || {};
   const p = acc.profile;
   if (b.settings && typeof b.settings === 'object') p.settings = { ...p.settings, ...b.settings };
-  for (const k of ['lastSpecies', 'lastBiome', 'avatar', 'frame', 'title', 'skins', 'team']) {
+  for (const k of ['lastSpecies', 'lastBiome', 'avatar', 'frame', 'title', 'skins', 'team', 'collection']) {
     if (b[k] !== undefined) p[k] = b[k];
   }
   persist();

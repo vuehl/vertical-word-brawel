@@ -21,7 +21,7 @@ export async function reviewCoop(browser, gamePort) {
   const clients = [], errors = [];
   async function click(page, label) {
     await page.waitForFunction(label=>{
-      const target=[...app.screen.querySelectorAll('button')].find(b=>b.textContent===label && !b.disabled);
+      const target=[...app.screen.querySelectorAll('button')].find(b=>(b.textContent===label || b.getAttribute('aria-label')===label) && !b.disabled);
       if(!target)return false;
       const rect=target.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
       if(!target.contains(inspected.layout.hit(x,y))){target.scrollIntoView();return false;}
@@ -184,24 +184,24 @@ export async function reviewCoop(browser, gamePort) {
         }finally{await secondDevice.close();}
       }
       if(i===0){
-        await click(page,'双人成行');
+        await click(page,'双人前行');
         assert.deepEqual(await page.evaluate(()=>fixtureMenuCard()),defaultCard);
         await click(page,'创建房间');
         await page.waitForFunction(()=>app.coopRoom?.code);
         code=await page.evaluate(()=>app.coopRoom.code);
-        await click(page,'分享房间号');
-        const card=await page.evaluate(()=>window.sharedCard);
-        assert.deepEqual(card,{...defaultCard,query:'roomCode='+code});
-        assert.deepEqual(await page.evaluate(()=>fixtureMenuCard()),card);
-        cardQuery=Object.fromEntries(new URLSearchParams(card.query));
-        assert.deepEqual(cardQuery,{roomCode:code});
+        assert.equal(await page.evaluate(()=>app.screen.querySelector('[data-action="coop-copy"]').textContent),'');
+        await click(page,'复制房间号');
+        assert.equal(await page.evaluate(()=>window.fixtureClipboard),code);
+        assert.equal(await page.evaluate(()=>window.sharedCard),undefined);
+        assert.deepEqual(await page.evaluate(()=>fixtureMenuCard()),defaultCard);
+        cardQuery={roomCode:code}; // Previously sent invitations still open the room.
       }else{
         await page.waitForFunction(code=>window.app?.coopRoom?.code===code,{timeout:90000},code);
         await click(page,'离开房间');
         await click(page,'返回首页');
         await page.evaluate(()=>fixtureShow({query:{roomCode:'invalid'}}));
         assert.equal(await page.evaluate(()=>app.screen.dataset.page),'home');
-        await click(page,'双人成行');
+        await click(page,'双人前行');
         await page.evaluate(code=>{window.roomCode=code==='000000'?'000001':'000000';},code);
         await click(page,'加入房间');
         await page.waitForFunction(()=>app.screen.textContent.includes('房间不存在'));
@@ -248,7 +248,7 @@ export async function reviewCoop(browser, gamePort) {
     await click(host,'准备');
     await host.waitForFunction(()=>typeof releaseReady==='function');
     assert.ok(await host.evaluate(()=>checkLobby() &&
-      [...app.screen.querySelectorAll('button')].find(b=>b.textContent==='分享房间号').disabled===false));
+      app.screen.querySelector('[data-action="coop-copy"]').disabled===false));
     await host.evaluate(()=>releaseReady());
     async function checkHostReady(ready){
       await Promise.all(clients.map(page=>page.waitForFunction(ready=>

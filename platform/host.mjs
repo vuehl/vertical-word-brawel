@@ -96,7 +96,7 @@ export async function setup(host) {
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
   const uiAssets=await readUIAssets(host.files);
-  let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets),entrySceneVisible=false,entryArtResident=true;
+  let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
   const upgradeCue=run=>run?.state==='play'&&!run.coop&&run.pendingLevels>0&&run.evoHold<=0&&!run.upgradeTiming.waiting(run.ult)&&run.ui.experienceReady?.()===false;
   const frozenUpgradeKey=()=>{
@@ -167,7 +167,8 @@ export async function setup(host) {
   property('scrollHeight',function(){return this.clientHeight+(this._scrollMax||0);});
   property('scrollWidth',function(){return this.clientWidth;});
   property('scrollTop',function(){return this._scroll||0;},function(n){
-    const next=Math.min(this._scrollMax||0,Math.max(0,n));if(next===(this._scroll||0))return;
+    // Before the first layout, keep the requested offset so that layout can clamp it.
+    const next=Math.min(this._scrollMax??Infinity,Math.max(0,Number(n)||0));if(next===(this._scroll||0))return;
     this._scroll=next;if(modalTransition.owns(this))modalTransition.invalidate();else uiFrames.invalidate(true,true);
   });
   D.Element.prototype.getBoundingClientRect=function(){return rect(this);};
@@ -276,17 +277,22 @@ export async function setup(host) {
       if(kind==='down'){
         if(x<0||y<0||x>=view.w||y>=view.h)continue;
         const entry=env.__zixingApp?.screen;
-        const entryButton=entry?.entryTargetAt?.(x,y);
-        const target=entryButton||(entry?.entryTargetAt?entry:layout.hit(x,y));
+        const target=layout.hit(x,y);
+        const entryButton=entry?.dataset.page==='home'&&entry.contains(target)&&target.closest?.('button');
         p={target,entryButton,x,y,lastX:x,lastY:y,scrolled:false};pointers.set(id,p);
       }
       if(!p)continue;
       if(p.entryButton&&Math.hypot(x-p.x,y-p.y)>=15)p.scrolled=true;
       const target=captured.get(id)||p.target,options={pointerId:id,pointerType:'touch',clientX:x,clientY:y,pageX:x,pageY:y,button:0,buttons:kind==='up'?0:1,isPrimary:pointers.keys().next().value===id,bubbles:true};
-      if(kind==='move'&&target!==win.__pb?.run?.ui?.touch?.el&&p.target.type!=='range'){
-        for(let sc=p.target;sc;sc=sc.parentElement){
-          if(sc._scrollMax>0&&/auto|scroll/.test([layout.box(sc)?.s.overflow,layout.box(sc)?.s['overflow-y']].join(' '))&&Math.abs(y-p.y)>5){
-            sc.scrollTop+=p.lastY-y;p.scrolled=true;break;
+      if(kind==='move'&&target!==win.__pb?.run?.ui?.touch?.el&&p.target.type!=='range'&&Math.abs(y-p.y)>5){
+        let remaining=p.lastY-y;
+        for(let sc=p.target;sc&&remaining;sc=sc.parentElement){
+          const style=layout.box(sc)?.s;
+          if(sc._scrollMax>0&&/auto|scroll/.test([style?.overflow,style?.['overflow-y']].join(' '))){
+            const before=sc.scrollTop;
+            sc.scrollTop+=remaining;
+            remaining-=sc.scrollTop-before;
+            p.scrolled=true;
           }
         }
       }
@@ -301,7 +307,7 @@ export async function setup(host) {
       const input=p.target.closest?.('input,textarea');
       if(input?.type==='range'&&(kind==='down'||kind==='move'))setRange(input,x);
       if(kind==='up'||kind==='cancel'){
-        const releasedOnButton=!p.entryButton||env.__zixingApp?.screen?.entryTargetAt?.(x,y)===p.entryButton;
+        const releasedOnButton=!p.entryButton||layout.hit(x,y)?.closest?.('button')===p.entryButton;
         if(kind==='up'&&releasedOnButton&&!p.scrolled&&Math.hypot(x-p.x,y-p.y)<15&&!p.target.closest?.('[disabled]')){
           if(input){if(input.type==='checkbox'){input.checked=!input.checked;input.dispatchEvent(new InputEvent('change'));}
             else if(input.type==='range')input.dispatchEvent(new InputEvent('change'));else if(!['button','submit'].includes(input.type))keyboard(input);}
@@ -335,9 +341,10 @@ export async function setup(host) {
     entryHint:title=>wx.showToast?.({title,icon:'none'}),
     createCoopSocket:events=>cloudSocket(wx,events),
     roomInvites:host.roomInvites,
-    shareRoomCode:host.shareRoomCode,
     askRoomCode:()=>new Promise((resolve,reject)=>wx.showModal({title:'加入房间',editable:true,placeholderText:'请输入六位房间号',
       success:result=>resolve(result.confirm ? (result.content||'').trim() : null),fail:reject})),
+    copyRoomCode:code=>new Promise((resolve,reject)=>wx.setClipboardData({data:code,success:resolve,fail:reject})),
+    readRoomCode:()=>new Promise((resolve,reject)=>wx.getClipboardData({success:r=>resolve(r.data),fail:reject})),
     setUIPerformance(){
       // Settings also change inherited CSS variables (e.g. button size).
       // Refresh their hit boxes even when the pixel ratio stays the same.
@@ -349,7 +356,6 @@ export async function setup(host) {
       layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
-    entryHeroArt:()=>host.entryScene.heroArt(),
     animateModal(wrap){modalTransition.begin(wrap,env.__pb?.run);},
     closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop,perf.now());},
     modalAnimating:()=>modalTransition.active,
@@ -372,21 +378,6 @@ export async function setup(host) {
       const now=perf.now();
       modalTransition.advance(now);
       mutations(observer.takeRecords());
-      const entry=env.__zixingApp?.screen;
-      if(host.entryScene&&entry?.dataset.entryPage){
-        uiFrames.draw(now,'entry',layout,()=>{});
-        const mode=entry.dataset.entryPage,app=env.__zixingApp;
-        const live=app.menuScene?.drawEntry()||false;
-        host.entryScene.page(mode,view,Number(entry.dataset.tier||0),Number(entry.dataset.progress||0),live);
-        renderer.resetState();entrySceneVisible=entryArtResident=true;
-        return;
-      }
-      if(entrySceneVisible){
-        host.entryScene.suspend();entrySceneVisible=false;uiFrames.invalidate(true,true);
-      }
-      if(env.__pb?.run?.state==='play'&&entryArtResident){
-        host.entryScene?.releaseArt();entryArtResident=false;
-      }
       const run=env.__pb?.run,state=run?.state;
       const overlay=modalTransition.element;
       layout.setOverlay(overlay);

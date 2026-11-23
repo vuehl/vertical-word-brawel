@@ -54,6 +54,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     set('MaxWidth',s['max-width']);set('MaxHeight',s['max-height'],view.h);
     const region=view.regions?.[el.dataset?.uiRegion];
     if(region)node.setMaxWidth(region.w);
+    if(region?.full){node.setWidth(region.w);node.setHeight(region.h);}
     set('MinWidth',s['min-width']);set('MinHeight',s['min-height'],view.h);
     let abs=/absolute|fixed/.test(s.position);
     if(abs)node.setPositionType(Y.POSITION_TYPE_ABSOLUTE);

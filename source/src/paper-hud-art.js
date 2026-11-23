@@ -1,3 +1,4 @@
+import {appearanceGlyphCanvas} from './collection-art.js';
 import {facilityNames} from './active-content.js';
 import {glyphCanvas} from './paper-glyph-art.js';
 
@@ -71,13 +72,21 @@ export function drawBattleCooldown(canvas,progress,{ultimate=false,ready=false,a
     }
     return;
   }
-  const start=Math.PI/2;
-  ctx.lineWidth=4.5;ctx.lineCap='round';
-  ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);ctx.strokeStyle='#d3d8e3';ctx.stroke();
+  const start=Math.PI/2,ring=r-3;
+  const strokeRing=(radius,width,color,from=0,to=Math.PI*2)=>{
+    ctx.lineWidth=width;ctx.strokeStyle=color;
+    ctx.beginPath();ctx.arc(c,c,radius,from,to);ctx.stroke();
+  };
+  strokeRing(r,3,active?'#893F56':ready?'#934B60':'#455D85');
+  strokeRing(ring,4,'#C3D0E2');
   if(fraction>0){
-    const gradient=ctx.createLinearGradient(0,0,size,size);gradient.addColorStop(0,ready?'#fff3af':'#79e6ff');gradient.addColorStop(1,ready?'#b59aff':'#4587f3');
-    ctx.beginPath();ctx.arc(c,c,r,start,start+2*Math.PI*fraction);ctx.strokeStyle=active?'#ffd98a':gradient;ctx.stroke();
+    ctx.lineCap='round';
+    strokeRing(ring,4,active?'#BF647B':ready?'#CE7987':'#7097C5',start,start+2*Math.PI*fraction);
   }
+  // The folded ribbon sits inside the track so it never hides the charge arc.
+  ctx.beginPath();ctx.moveTo(c-4,8);ctx.lineTo(c+4,8);ctx.lineTo(c+4,15);
+  ctx.lineTo(c,12);ctx.lineTo(c-4,15);ctx.closePath();
+  ctx.fillStyle=ready||active?'#AA536B':'#8A9CB8';ctx.fill();
 }
 
 // Capture/rare/treasure targets need their own symbol, including beyond the
@@ -99,9 +108,14 @@ export function drawBattleHealth(canvas,fraction,current,bonus=0) {
     ctx.closePath();
   };
   const pill=(x,y,w,h,r,color)=>{ctx.fillStyle=color;capsule(x,y,w,h,r);ctx.fill();};
-  pill(1,3,86,16,8,'#38576c99');pill(1,1,86,16,8,'#fffef8');pill(3,3,82,12,6,'#3e5759');
+  const cut=(y,color)=>{
+    ctx.beginPath();ctx.moveTo(7,y);ctx.lineTo(81,y);ctx.lineTo(88,y+7);
+    ctx.lineTo(81,y+15);ctx.lineTo(7,y+15);ctx.lineTo(0,y+7);ctx.closePath();
+    ctx.fillStyle=color;ctx.fill();
+  };
+  cut(4,'#526785');cut(1,'#F3F1FA');pill(3,3,82,12,6,'#3e5759');
   const fill=ctx.createLinearGradient(0,3,0,15);
-  fill.addColorStop(0,fraction<.3?'#ffb071':'#a3f59b');fill.addColorStop(1,fraction<.3?'#ef5e4e':'#29cd56');
+  fill.addColorStop(0,fraction<.3?'#F1A2A0':'#ABD6BB');fill.addColorStop(1,fraction<.3?'#C96B76':'#75B697');
   ctx.save();capsule(3,3,82,12,6);ctx.clip();
   ctx.fillStyle=fill;ctx.fillRect(3,3,82*fraction,12);ctx.restore();
   const label=String(current)+(bonus?' +'+bonus:'');
@@ -260,7 +274,7 @@ function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0){
 }
 
 // Both map sizes use a north-up projection. In co-op the open map follows peer snapshots.
-export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKind=run.ui?.mapFacilityKind??null,iconFor=run.ui?.mapFacilityIcon,center=run.player.pos}={}) {
+export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=false,square=false,facilityKind=run.ui?.mapFacilityKind??null,iconFor=run.ui?.mapFacilityIcon,center=run.player.pos}={}) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=mapWorldScale;
   const distances=[],buildings=[];
   const markers=run.interactables.markers();
@@ -270,15 +284,30 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
   const point=(x,z)=>[60+(x-center.x)*scale,58+(z-center.z)*scale];
   const [px,py]=point(p.x,p.z);
   const playerOnDial={x:60+(px-60)/viewRatio,y:58+(py-58)/viewRatio};
-  const visible=(x,y)=>(x-60)**2+(y-58)**2<=radius**2;
+  const visible=(x,y)=>square?Math.max(Math.abs(x-60),Math.abs(y-58))<=radius:(x-60)**2+(y-58)**2<=radius**2;
   const dot=(x,y,r,color,outline='#fffdf2')=>{
     ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
     if(outline){ctx.lineWidth=1.1;ctx.strokeStyle=outline;ctx.stroke();}
   };
   ctx.setTransform(canvas.width/120,0,0,canvas.height/120,0,0);ctx.clearRect(0,0,120,120);
-  if(shadow)dot(60,62,56,'#527ab2',null);
-  dot(60,58,56,'#fffdf7',null);dot(60,58,52,'#c3daeb',null);dot(60,58,49,'#f4f6f2',null);
-  ctx.save();ctx.beginPath();ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
+  if(square){
+    ctx.fillStyle='#798DA9';ctx.fillRect(2,3,116,116);
+    ctx.fillStyle='#E5ECF6';ctx.fillRect(1,1,116,116);
+    ctx.fillStyle='#CEDBEA';ctx.fillRect(4,4,110,110);
+    ctx.fillStyle='#F3F1FA';ctx.fillRect(6,6,106,106);
+    ctx.fillStyle='#536E96';
+    for(let i=0;i<=10;i++){const a=11+i*9.8,t=i%5===0?2.4:1.2;ctx.fillRect(a,7.2,.45,t);ctx.fillRect(7.5,9+i*9.8,t,.45);}
+    ctx.beginPath();ctx.moveTo(104,110);ctx.lineTo(111,103);ctx.lineTo(111,110);ctx.closePath();ctx.fill();
+  }else{
+  if(shadow)dot(60,62,56,hanging?'#445D84':'#527ab2',null);
+  dot(60,58,56,hanging?'#7594BC':'#fffdf7',null);dot(60,58,52,hanging?'#F3F1FA':'#c3daeb',null);dot(60,58,49,'#eff5f4',null);
+  if(hanging){
+    ctx.fillStyle='#536E94';ctx.fillRect(52,0,16,12);
+    ctx.fillStyle='#86A4CA';ctx.fillRect(53,0,13,9);
+    dot(60,5,2.4,'#E8EEFA',null);
+  }
+  }
+  ctx.save();ctx.beginPath();if(square)ctx.rect(11,9,98,98);else ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
   // Scale map contents around the player within the fixed circular frame.
   ctx.translate(60,58);ctx.scale(1/viewRatio,1/viewRatio);ctx.translate(-60,-58);
   const left=60-radius,right=60+radius,top=58-radius,bottom=58+radius;
@@ -374,7 +403,116 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,facilityKi
   ctx.restore();
   ctx.restore();
   if(distances.length)drawBossDistances(ctx,distances,shadow?8:4.5,groups.map(group=>group.box),playerOnDial);
+  if(square)return {count:buildings.length,groups,guidance};
   // A quiet compass notch lives on the rim, outside the clipped map contents.
   ctx.beginPath();ctx.moveTo(60,3);ctx.lineTo(62.5,8);ctx.lineTo(57.5,8);ctx.closePath();ctx.fillStyle='#527ab2';ctx.fill();
   return {count:buildings.filter(marker=>!facilityKind||marker.kind===facilityKind).length,groups,guidance};
+}
+// Geometry is in logical pixels. One silhouette sits under both rows and the portrait.
+export function drawBattleStatus(canvas,{word,tone,look,level,progress,gold,kills},coin){
+  const g=canvas.getContext('2d'),w=canvas.width/2,h=52;
+  g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,w,h);
+  const shape=(pts,fill)=>{
+    g.beginPath();g.moveTo(...pts[0]);for(const p of pts.slice(1))g.lineTo(...p);
+    g.closePath();g.fillStyle=fill;g.fill();
+  };
+  const face=(x,y,size,fill)=>{
+    const k=4;shape([[x+k,y],[x+size,y],[x+size,y+size-k],[x+size-k,y+size],[x,y+size],[x,y+k]],fill);
+  };
+  const text=(s,x,y,size,color,align='left')=>{
+    g.font='bold '+size+'px sans-serif';g.textBaseline='middle';g.textAlign=align;
+    g.fillStyle=color;g.fillText(s,x,y);
+  };
+  const shade=g.createLinearGradient(0,0,w,52);
+  shade.addColorStop(0,'rgba(17,23,32,.83)');shade.addColorStop(1,'rgba(19,25,34,.67)');
+  shape([[24,1],[w,1],[w-9,50],[24,50]],shade);
+  g.fillStyle='rgba(216,231,240,.26)';g.fillRect(54,25,w-65,1);
+  const ink='#F3F1FA',left=56,percent=Math.floor(progress*100+.00001)+'%';
+  text('Lv.'+level,left,13,15,ink);
+  const trackX=left+Math.ceil(g.measureText('Lv.'+level).width)+7,trackEnd=w-42;
+  if(trackEnd>trackX){
+    g.fillStyle='rgba(221,234,243,.27)';g.fillRect(trackX,12,trackEnd-trackX,4);
+    g.fillStyle='#AED1E7';g.fillRect(trackX,12,(trackEnd-trackX)*progress,4);
+  }
+  text(percent,w-9,13,12,'#E0EBF3','right');
+  g.font='bold 13px sans-serif';
+  const firstEnd=left+19+g.measureText(gold).width+7;
+  const lastStart=w-14-23-g.measureText(kills).width;
+  const split=Math.min(lastStart,Math.max(firstEnd,Math.round(left+(w-left-12)/2)));
+  g.drawImage(coin,left-1,29,17,17);text(gold,left+19,38,13,ink);
+  g.fillStyle='rgba(216,231,240,.22)';g.fillRect(split-3,31,1,13);
+  for(const angle of [-.76,.76]){
+    g.save();g.translate(split+11,37);g.rotate(angle);
+    shape([[-1.65,2],[-1.65,-5],[0,-8.5],[1.65,-5],[1.65,2]],'#DBE6F1');
+    g.fillStyle='#9EADC1';g.fillRect(.3,-5,1.1,7);
+    g.fillStyle='#DEB189';g.fillRect(-3.4,1.7,6.8,1.8);g.fillRect(-.9,3,1.8,4);g.restore();
+  }
+  text(kills,split+23,38,13,ink);
+  face(.5,2,49,'#42556B');face(.5,.5,48.5,'#A0B7CD');face(1.7,1.7,46,'#F3F1FA');face(4,4,41.5,'#D8E6F1');
+  shape([[4,36],[17,32],[29,35],[45.5,29],[45.5,40.5],[40.5,45.5],[4,45.5]],'#C1D4E4');
+  shape([[4,43],[23,39],[45.5,34],[45.5,40.5],[40.5,45.5],[4,45.5]],'#98B5CC');
+  shape([[.5,5],[5,.5],[14,.5],[8,6]],'#C47E8A');
+  g.drawImage(appearanceGlyphCanvas(word,tone,look),3.5,2.5,42,44);
+  canvas.dataset.word=word;canvas.dataset.look=look||'normal';
+}
+
+export function drawStageCaption(canvas,stage,detail){
+  const g=canvas.getContext('2d');
+  g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,184,26);
+  g.lineJoin='round';g.textBaseline='middle';g.textAlign='left';
+  const titleFont='bold 13px sans-serif',detailFont='11px sans-serif';
+  g.font=titleFont;const titleWidth=g.measureText(stage).width;
+  g.font=detailFont;const inline=titleWidth+6+g.measureText(detail).width<=178;
+  const lines=[[stage,0,inline?13:7,titleFont],[detail,inline?titleWidth+6:0,inline?13:20,detailFont]];
+  for(const [text,x,y,font] of lines){
+    g.font=font;g.lineWidth=2;g.strokeStyle='rgba(243,241,250,.84)';g.strokeText(text,x+1,y);
+    g.fillStyle='#29394B';g.fillText(text,x+1,y);
+  }
+}
+
+// Cache the desaturated cutout by its source, so an evolved form or skin has its own seal.
+const mutedSeals=new WeakMap();
+function mutedSeal(source){
+  if(mutedSeals.has(source))return mutedSeals.get(source);
+  const tile=document.createElement('canvas');tile.width=source.width;tile.height=source.height;
+  const ctx=tile.getContext('2d');ctx.drawImage(source,0,0);
+  const pixels=ctx.getImageData(0,0,tile.width,tile.height),data=pixels.data;
+  for(let i=0;i<data.length;i+=4){
+    const value=Math.round(53+.59*(.299*data[i]+.587*data[i+1]+.114*data[i+2]));
+    data[i]=value;data[i+1]=value;data[i+2]=value;
+  }
+  ctx.putImageData(pixels,0,0);mutedSeals.set(source,tile);return tile;
+}
+export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame){
+  const ctx=canvas.getContext('2d'),ready=state==='ready',active=state==='active';
+  const wave=(1-Math.cos(frame*Math.PI/9))/2,turn=Math.PI*2,start=-Math.PI/2;
+  ctx.setTransform(canvas.width/84,0,0,canvas.height/84,0,0);ctx.clearRect(0,0,84,84);
+  const disk=(radius,color)=>{ctx.beginPath();ctx.arc(42,42,radius,0,turn);ctx.fillStyle=color;ctx.fill();};
+  const arc=(radius,width,color,from,to)=>{
+    ctx.beginPath();ctx.arc(42,42,radius,from,to);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();
+  };
+  ctx.lineCap='round';
+  disk(40,ready?'#293859':active?'#4C536F':'#606E86');
+  disk(37.6,ready?'#FFDC91':'#D4DAE5');
+  disk(34.7,ready?'#314971':active?'#D7DEEB':'#E1E4EB');
+  if(ready){
+    // A moving glint and breathing cutout are confined to the button's hit area.
+    const a=start+turn*frame/18;
+    arc(37.7,3.4,'#FFF3CC',a,a+.55);
+    arc(40.8,1.4,'rgba(255,216,139,'+(.28+.6*wave)+')',0,turn);
+  }else if(progress>0){
+    arc(37.1,3.4,active?'#B28394':'#668FC3',start,start+turn*progress);
+  }
+  const image=appearanceGlyphCanvas(word,tone,look),size=ready?53+2.6*wave:51;
+  if(ready){
+    for(const [x,y,r] of [[16,32,2.7],[67,46,2.2]]){
+      const reach=r*(.72+.42*wave);
+      ctx.beginPath();ctx.moveTo(x,y-reach*1.6);ctx.lineTo(x+reach*.54,y);
+      ctx.lineTo(x,y+reach*1.6);ctx.lineTo(x-reach*.54,y);ctx.closePath();ctx.fillStyle='#F8DBA0';ctx.fill();
+    }
+  }
+  ctx.drawImage(state==='charging'?mutedSeal(image):image,42-size/2,34.5-size/2,size,size);
+  ctx.fillStyle=ready?'#F8D694':active?'#58667B':'#52647C';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.font='bold 12px "Ziling Swei", sans-serif';
+  ctx.fillText(ready?'释放':active?'释放中':Math.floor(progress*100)+'%',42,62);
 }

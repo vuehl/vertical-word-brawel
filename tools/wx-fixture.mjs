@@ -83,6 +83,8 @@ globalThis.wx={
     cloud:fixtureCloud,
   getLaunchOptionsSync:()=>window.fixtureLaunchOptions || {query:{}},
   shareAppMessage:options=>{window.sharedCard=options;},
+  setClipboardData:({data,success})=>{window.fixtureClipboard=data;success({});},
+  getClipboardData:({success})=>success({data:window.fixtureClipboard||''}),
   onShareAppMessage:listener=>{window.fixtureMenuCard=listener;},
   showShareMenu:({menus})=>{window.fixtureShareMenus=menus;},
   env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>fs,

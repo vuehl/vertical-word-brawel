@@ -1,7 +1,6 @@
-import {entryLayout,entryControls} from '../source/src/entry-layout.js';
+import {polygon,paintWordmark} from '../source/src/menu-scene.js';
 import {gameViewport} from './viewport.mjs';
 import {deskFrame,deskPixelsPerUnit as ppu,deskTilt,entryHeroScale,entryFootOffset} from '../source/src/desk-framing.js';
-import pixels from '../source/art/entry/pixels.json';
 
 function decodeImage(src,name){
   return new Promise((resolve,reject)=>{
@@ -16,53 +15,28 @@ function decodeImage(src,name){
   });
 }
 
-const topStops=[[0,'rgba(201,217,245,.98)'],[15,'rgba(189,212,251,.83)'],[30,'rgba(182,208,253,.64)'],
-  [60,'rgba(169,199,250,.34)'],[85,'rgba(169,199,250,.19)'],[110,'rgba(169,199,250,.07)'],[165,'rgba(169,199,250,0)']];
-const bottomStops=[[580,0],[610,.045],[630,.12],[650,.22],[680,.42],[700,.56],[720,.71],[740,.86],[760,.95],[790,1],[826,1]];
-
-function paintProgress(c,value){
-  c.fillStyle='#205780';c.fillRect(34,722,314,23);
-  c.fillStyle='white';c.fillRect(36,724,310,19);
-  c.fillStyle='#3586b9';c.fillRect(36,724,310*value/100,19);
-  c.fillStyle='#205780';c.font='bold 24px sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText(value+'%',191,761);
-}
-
-function paintOverlay(c,w,h,v,mode,tier,value,art){
-  const {scale,x,y}=entryLayout(v),rx=w/v.width,ry=h/v.height;
-  c.setTransform(rx,0,0,ry,0,0);c.clearRect(0,0,v.width,v.height);
-  if(mode==='departure'){
-    c.setTransform(scale*rx,0,0,scale*ry,x*rx,y*ry);
-    c.fillStyle='rgba(248,244,233,.94)';c.fillRect(28,716,326,62);
-    paintProgress(c,value);return;
-  }
-  const gradient=c.createLinearGradient(0,0,0,v.height);
-  for(const [at,color] of topStops)gradient.addColorStop(at/826,color);
-  for(const [at,alpha] of bottomStops)gradient.addColorStop(at/826,'rgba(248,244,233,'+alpha+')');
-  c.fillStyle=gradient;c.fillRect(0,0,v.width,v.height);
-  // The reference supplies the cell locations and coverage. Keep them
-  // square and anchored to the nearest screen edge on other aspect ratios.
-  const pxScale=v.width/382;
-  c.fillStyle='#fff';
-  for(const [a,b,width,height,alpha] of pixels){
-    const py=b<413?b*pxScale:v.height-(826-b)*pxScale;
-    c.globalAlpha=alpha/255;c.fillRect(a*pxScale,py,width*pxScale,height*pxScale);
-  }
-  c.globalAlpha=1;c.setTransform(scale*rx,0,0,scale*ry,x*rx,y*ry);
-  if(mode==='home')c.drawImage(art.home,28,619);
-  else if(mode==='map'){
-    c.drawImage(art.stages,6,404);c.drawImage(art.ribbon,0,66);
-    const [left,,width]=entryControls.tiers[tier];
-    c.fillStyle='#344c9b';c.beginPath();c.moveTo(left,646);c.lineTo(left+5,651);
-    c.lineTo(left+width-5,651);c.lineTo(left+width,646);c.lineTo(left+width,650);
-    c.lineTo(left+width-5,654);c.lineTo(left+5,654);c.lineTo(left,650);c.fill();
-  }else{
-    paintProgress(c,value);
-  }
+// Keep the live desk visible behind the title and the download slip.
+function paintOverlay(ctx,w,h,v,value){
+  const rx=w/v.width,ry=h/v.height,s=Math.min(v.w/390,v.h/550);
+  const left=v.x+(v.w-390*s)/2,track=v.y+v.h*.79;
+  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);
+  ctx.setTransform(.47*s*rx,0,0,.47*s*ry,(v.x+v.w/2)*rx,(v.y+v.h*.12)*ry);
+  paintWordmark(ctx,0,0);
+  ctx.setTransform(s*rx,0,0,s*ry,left*rx,track*ry);
+  // The paper slip holds both the phase and the real download percentage.
+  polygon(ctx,[[34,-39],[345,-39],[355,-29],[355,16],[347,24],[41,24],[34,18]],'#607EA9');
+  polygon(ctx,[[34,-43],[345,-43],[353,-35],[353,12],[346,19],[39,19],[32,12],[32,-41]],'#EEF0F7');
+  polygon(ctx,[[48,-48],[65,-48],[65,-31],[56,-35],[48,-31]],'#C77683');
+  ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillStyle='#293651';ctx.font='bold 15px sans-serif';
+  ctx.fillText(value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源',61,-18);
+  ctx.textAlign='right';ctx.font='bold 19px sans-serif';ctx.fillStyle='#385A8A';ctx.fillText(value+'%',329,-18);
+  ctx.fillStyle='#D1DBEA';ctx.fillRect(61,0,268,7);
+  if(value){ctx.fillStyle='#5076AE';ctx.fillRect(61,0,268*value/100,7);}
 }
 
 module.exports=async function createEntryScene(gl){
   const data=require('./entry-data'),{spawn,idle}=data;
-  const files=[...data.layers.map(([name])=>name),'idle.png','home.png','stages.png','ribbon.png'];
+  const files=[...data.layers.map(([name])=>name),'idle.png'];
   let useLocalFiles=false;
   const materialized=new Set();
   async function loadImage(name){
@@ -87,26 +61,16 @@ module.exports=async function createEntryScene(gl){
       throw Error('无法读取启动图 '+name+'（'+(error.errMsg||error.message||'本地文件读取失败')+'）');
     }
   }
-  let images=null,art=null,reading=null,loadError=false;
-  function prepare(){
-    if(reading)return reading;
-    let next=0,failure=null;
-    const loaded=[];
-    async function worker(){
-      while(!failure&&next<files.length){
-        const i=next++;
-        try{loaded[i]=await loadImage(files[i]);}catch(error){failure=error;}
-      }
+  const images=[];
+  let next=0;
+  async function loadLayers(){
+    while(next<files.length){
+      const index=next++;
+      images[index]=await loadImage(files[index]);
     }
-    reading=Promise.all([worker(),worker()]).then(()=>{
-      reading=null;if(failure)throw failure;
-      images=loaded;
-      const [actor,home,stages,ribbon]=loaded.slice(data.layers.length);
-      art={actor,home,stages,ribbon};
-    });
-    return reading;
   }
-  await prepare();
+  await Promise.all([loadLayers(),loadLayers()]);
+  let actor=images.pop(),actorLoading=null;
   const scene=wx.createCanvas(),ui=wx.createCanvas();
   const program=gl.createProgram(),vao=gl.createVertexArray();
   function shader(type,source){
@@ -143,18 +107,13 @@ module.exports=async function createEntryScene(gl){
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);
   }
-  function page(mode,v,tier=0,value=0,over=false){
+  function draw(value,over=false){
     if(disposed)return;
-    if(!images){
-      if(!reading&&!loadError)prepare().catch(error=>{
-        loadError=true;wx.showModal({title:'启动场景读取失败',content:error.message,showCancel:false,
-          confirmText:'重试',success:()=>{loadError=false;}});
-      });
-      return;
-    }
+    bootValue=value;
+    const v=viewInfo();
     const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight,key=[w,h,v.width,v.height,v.x,v.y,v.w,v.h].join('/');
     if(!w||!h)return;
-    if(!textures.length){textures=[gl.createTexture(),gl.createTexture(),gl.createTexture()];upload(1,art.actor);}
+    if(!textures.length){textures=[gl.createTexture(),gl.createTexture(),gl.createTexture()];upload(1,actor);}
     if(key!==surfaceKey){
       scene.width=ui.width=w;scene.height=ui.height=h;
       const c=scene.getContext('2d');
@@ -172,9 +131,9 @@ module.exports=async function createEntryScene(gl){
       actorRect=[(footX-size*.5)/w,(footY+scale*(entryFootOffset-.08*Math.sqrt(1-deskTilt*deskTilt))-size)/h,size/w,size/h];
       upload(0,scene);surfaceKey=key;overlayKey='';
     }
-    const overlayState=mode+'/'+tier+'/'+value;
+    const overlayState=String(value);
     if(overlayKey!==overlayState){
-      paintOverlay(ui.getContext('2d'),w,h,v,mode,tier,value,art);
+      paintOverlay(ui.getContext('2d'),w,h,v,value);
       upload(2,ui);overlayKey=overlayState;
     }
     const frame=idle.first+Math.floor((Date.now()-epoch)*idle.fps/1000)%idle.count;
@@ -185,17 +144,15 @@ module.exports=async function createEntryScene(gl){
     ['desk','actorArt','overlay'].forEach((name,i)=>{gl.activeTexture(gl.TEXTURE0+i);gl.bindTexture(gl.TEXTURE_2D,textures[i]);gl.uniform1i(uniforms[name],i);});
     gl.uniform4fv(uniforms.actorRect,actorRect);
     gl.uniform4f(uniforms.frameRect,(frame%idle.columns)/idle.columns,Math.floor(frame/idle.columns)/idle.rows,1/idle.columns,1/idle.rows);
-    if(mode==='boot')gl.uniform1i(uniforms.percent,value);
+    gl.uniform1i(uniforms.percent,value);
     gl.uniform1i(uniforms.overScene,over?1:0);
     gl.drawArrays(gl.TRIANGLES,0,3);gl.bindVertexArray(null);gl.useProgram(null);return true;
   }
   function suspend(){
     for(const tex of textures)gl.deleteTexture(tex);
-    textures=[];surfaceKey=overlayKey='';scene.width=scene.height=ui.width=ui.height=1;
+    textures=[];images.length=0;surfaceKey=overlayKey='';scene.width=scene.height=ui.width=ui.height=1;
   }
-  function releaseArt(){images=art=null;}
-  const bootView=viewInfo();
-  function draw(value,over){bootValue=value;page('boot',bootView,0,value,over);}
+  function releaseArt(){actor=null;}
   function tick(){
     if(!auto||disposed)return;
     const frame=Math.floor((Date.now()-epoch)*idle.fps/1000);
@@ -207,6 +164,12 @@ module.exports=async function createEntryScene(gl){
   function handoff(){if(!auto)return;auto=false;wx.offHide?.(hide);wx.offShow?.(show);}
   draw(0);
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(tick);
-  async function heroArt(){if(!art)await prepare();return {image:art.actor,idle};}
-  return {draw,page,handoff,suspend,releaseArt,heroArt,dispose(){handoff();suspend();releaseArt();disposed=true;gl.deleteVertexArray(vao);gl.deleteProgram(program);}};
+  async function heroArt(){
+    if(!actor){
+      if(!actorLoading)actorLoading=loadImage('idle.png');
+      try{actor=await actorLoading;}finally{actorLoading=null;}
+    }
+    return {image:actor,idle};
+  }
+  return {draw,handoff,suspend,releaseArt,heroArt,dispose(){handoff();suspend();releaseArt();disposed=true;gl.deleteVertexArray(vao);gl.deleteProgram(program);}};
 };

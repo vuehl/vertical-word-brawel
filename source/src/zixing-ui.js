@@ -1,34 +1,57 @@
-import {displayedFormType} from './form-copy.js';
-import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityNames} from './active-content.js';
+import {journeyScene} from './journey-scene.js';
+import {headerCutout,titleRibbon,hudPaperIcon,paperIcon,upgradePrint,rewardPaper,arrivalPennant,settlementTicket,battleDialogHeading,battleDialogFrame,pausePagePrint,stagePortrait,choiceMark} from './first-batch-art.js';
+import {albumTab,setAlbumTabActive,dockDialogClose,mountMenuDialog,openPaperPrompt,paperDecisionPanel,paperDecisionActions,paperDialogTitle,standardButton,fitPaperActionLabels,standardFooter,freePaperActions} from './paper-system.js';
+import {choiceQuality,choiceModel,effectScope} from './choice-presentation.js';
+import {createCollectionUI} from './collection-ui.js';
+import {canDeploy,collectionRewards} from './collection-rules.js';
+import {installReviewBattle,itemOffer,qualityBadge} from './battle-review-ui.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
-import {COOP_ROOM_SIZE} from './multiplayer-config.js';
 import {RelayRoom} from './multiplayer.js';
+import {askCoopCode} from './coop-join-dialog.js';
 import {createPeerHud} from './coop-peer-hud.js';
 import {drawMenuGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from './paper-glyph-art.js';
-import {drawPaperIllustration,drawCoopMap} from './paper-ui-art.js';
-import {mapWorldScale,drawBattlePortrait,drawBattleMinimap,drawBattleHealth,drawBattleCooldown} from './paper-hud-art.js';
+import {homeWordmark,homeEntryFace,menuSymbol,itineraryStamp} from './menu-paper-art.js';
+import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,drawBattleStatus,drawStageCaption,drawUltimateSeal} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
 import {zixingStyle} from './zixing-style.js';
-import {entryControls,entryLayout} from './entry-layout.js';
 import {laboratory} from './catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {selectGraphicsQuality} from './performance-profile.js';
+import {ExperienceRing} from './experience-ring.js';
+import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus} from './starter-characters.js';
+import {SINGLE_STAGE,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,remainingZoneSeconds} from './lite-rules.js';
+import {sceneAction} from './scene-action.js';
+import {facilityDwellSeconds,facilityNames} from './active-content.js';
+import {COOP_ROOM_SIZE} from './multiplayer-config.js';
 import {setFrameRateLock,resetFrameRatePolicy,frameRateHelp} from './frame-policy.js';
 import {portalGuidance} from './portal-guidance.js';
-import {ExperienceRing} from './experience-ring.js';
-import {characters,characterForSpecies,starterEvolutionLevels,windRoutes,hasWindSpeedPassive,windSpeedPassive,windSpeedDamageBonus} from './starter-characters.js';
-import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,zoneDuration,remainingZoneSeconds} from './lite-rules.js';
 
-export {characters};
-const character=characterForSpecies;
+export {characters,icon as paperIcon};
+
+const destinations=[
+  {id:'forest',name:'桌上世界',art:'desk',station:'第一站',regions:FOREST_COMBAT_ZONES,released:true},
+  {id:'attic',name:'玩具阁楼',art:'attic',released:false},
+  {id:'studio',name:'画室奇境',art:'studio',released:false},
+  {id:'bookshelf',name:'书架云端',art:'bookshelf',released:false},
+];
 const difficulties=[
-  {name:'普通（单关）',glyph:'单',tier:0,mode:SINGLE_STAGE,note:'击败第一区镇守，进入木门「门？」即可通关。'},
-  {name:'普通',glyph:'壹',tier:0,mode:'standard',note:'熟悉走位与招式，完成旅程。'},
-  {name:'困难',glyph:'贰',tier:1,mode:'standard',note:'敌人更强，首领带来更多挑战。'},
-  {name:'噩梦',glyph:'叁',tier:2,mode:'standard',note:'更高强度的进阶挑战。'},
+  {name:'普通（单关）',art:'single',tier:0,mode:SINGLE_STAGE,note:['击败首区镇守后','进入传送门通关']},
+  {name:'普通',art:'normal',tier:0,mode:'standard',note:['完成全部区域','挑战圣地镇守']},
+  {name:'困难',art:'hard',tier:1,mode:'standard',note:['敌人更强，首领更具挑战'],locked:'完整通关普通后解锁'},
+  {name:'噩梦',art:'nightmare',tier:2,mode:'standard',note:['更高强度的进阶挑战'],locked:'通关困难后解锁'},
 ];
 const difficultyName=run=>run.mode===SINGLE_STAGE?difficulties[0].name:difficulties[1+run.tier].name;
 const number=n=>Math.round(Number(n)||0).toLocaleString('en-US');
+function compactCounter(value){
+  if(value>=1e16)return value.toExponential(1).replace('e+','e');
+  for(const [unit,suffix] of [[1e12,'万亿'],[1e8,'亿'],[1e4,'万']]){
+    if(value>=unit){
+      const scale=value<unit*100?10:1;
+      return Math.floor(value/unit*scale)/scale+suffix;
+    }
+  }
+  return String(value);
+}
 const percent=n=>Number(((Number(n)||0)*100).toFixed(1))+'%';
 const time=n=>Math.floor((n||0)/60).toString().padStart(2,'0')+':'+Math.floor((n||0)%60).toString().padStart(2,'0');
 function el(tag,cls='',children=[],attrs={}) {
@@ -58,46 +81,52 @@ export function itemDialog(title,body,actions,attrs={}){
 }
 const card=(...nodes)=>el('div','zx-card',nodes);
 function glyph(c,large=false){
-  const word=c.word||c,node=el('div','zx-glyph '+(c.tone||'')+(large?' large':''),[],{'aria-label':word});
+  const word=c.word||c,node=el('div','zx-glyph paper-portrait '+(c.tone||'')+(large?' large':''),[],{'aria-label':word});
   const canvas=el('canvas','zx-glyph-image');canvas.dataset.static='true';node.append(canvas);
   drawMenuGlyph(canvas,word,c.tone,large);
   canvas.dataset.glyphReady='true';return node;
 }
 const statRow=(label,value)=>el('div','zx-stat-row',[el('b','',label),el('span','',value)]);
-export {icon as paperIcon};
 // Paths keep icons independent of the device's font and emoji support.
 function icon(name,size=24,color='#766a88') {
+  if(name==='settings')return menuSymbol('settings',size);
   const canvas=el('canvas','zx-icon',[],{width:size*2,height:size*2,'data-icon':name,'aria-hidden':true});
   canvas.dataset.static='true';canvas.style.width=size+'px';canvas.style.height=size+'px';
   const ctx=canvas.getContext('2d');ctx.scale(size/12,size/12);ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1.7;ctx.lineCap='round';ctx.lineJoin='round';
-  if(name==='lock'){
+  if(name==='eye'){
+    ctx.beginPath();ctx.moveTo(2,12);ctx.bezierCurveTo(7,3,17,3,22,12);ctx.bezierCurveTo(17,21,7,21,2,12);ctx.stroke();ctx.beginPath();ctx.arc(12,12,3,0,Math.PI*2);ctx.stroke();
+  }else if(name==='spark'){
+    ctx.beginPath();ctx.moveTo(12,2);ctx.lineTo(15,9);ctx.lineTo(22,12);ctx.lineTo(15,15);ctx.lineTo(12,22);ctx.lineTo(9,15);ctx.lineTo(2,12);ctx.lineTo(9,9);ctx.closePath();ctx.stroke();
+  }else if(name==='search'){
+    ctx.beginPath();ctx.arc(10,10,6,0,Math.PI*2);ctx.moveTo(15,15);ctx.lineTo(21,21);ctx.stroke();
+  }else if(name==='fire'){
+    ctx.beginPath();ctx.moveTo(12,2);ctx.bezierCurveTo(13,8,21,9,19,16);ctx.bezierCurveTo(17,25,3,23,5,14);ctx.lineTo(8,8);ctx.lineTo(9,13);ctx.bezierCurveTo(12,11,12,6,12,2);ctx.stroke();
+  }else if(name==='lock'){
     ctx.beginPath();ctx.roundRect(5.5,10,13,11,2.5);ctx.stroke();
     ctx.beginPath();ctx.moveTo(8,10);ctx.lineTo(8,7);ctx.arc(12,7,4,Math.PI,Math.PI*2);ctx.lineTo(16,10);ctx.stroke();
   }else if(name==='radio-empty'){
     ctx.beginPath();ctx.arc(12,12,10,0,Math.PI*2);ctx.stroke();
+  }else if(name==='saved'){
+    ctx.beginPath();ctx.moveTo(5,12);ctx.lineTo(10,17);ctx.lineTo(20,7);ctx.stroke();
   }else if(name==='check'){
-    ctx.fillStyle='#326bd4';ctx.beginPath();ctx.arc(12,12,11,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(6.5,12);ctx.lineTo(10,15.5);ctx.lineTo(17,8.5);ctx.stroke();
+    ctx.fillStyle='#F04B60';ctx.beginPath();ctx.arc(12,12,11,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#F3F1FA';ctx.beginPath();ctx.moveTo(6.5,12);ctx.lineTo(10,15.5);ctx.lineTo(17,8.5);ctx.stroke();
   }else if(name==='target'){
     ctx.beginPath();ctx.arc(12,12,6,0,Math.PI*2);ctx.moveTo(12,3);ctx.lineTo(12,8);ctx.moveTo(12,16);ctx.lineTo(12,21);ctx.moveTo(3,12);ctx.lineTo(8,12);ctx.moveTo(16,12);ctx.lineTo(21,12);ctx.stroke();
   }else if(name==='jump'){
     ctx.beginPath();ctx.moveTo(6,12);ctx.lineTo(12,6);ctx.lineTo(18,12);ctx.moveTo(6,18);ctx.lineTo(12,12);ctx.lineTo(18,18);ctx.stroke();
   }else if(name==='dash'){
     ctx.beginPath();ctx.moveTo(4,7);ctx.lineTo(12,7);ctx.moveTo(2,12);ctx.lineTo(15,12);ctx.moveTo(4,17);ctx.lineTo(12,17);ctx.moveTo(15,6);ctx.lineTo(21,12);ctx.lineTo(15,18);ctx.stroke();
-  }else if(name==='settings'){
-    ctx.lineWidth=1.6;ctx.beginPath();
-    for(let i=0;i<48;i++){
-      const angle=-Math.PI/2+i*Math.PI/24,r=[8,8,9.7,9.7,8,8][i%6];
-      const x=12+Math.cos(angle)*r,y=12+Math.sin(angle)*r;
-      if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);
-    }
-    ctx.closePath();ctx.stroke();ctx.beginPath();ctx.arc(12,12,3.1,0,Math.PI*2);ctx.stroke();
   }else if(name==='book'){
     ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(12,5);ctx.quadraticCurveTo(7,2,2.5,4);ctx.lineTo(2.5,19);ctx.quadraticCurveTo(7,17,12,20);ctx.quadraticCurveTo(17,17,21.5,19);ctx.lineTo(21.5,4);ctx.quadraticCurveTo(17,2,12,5);ctx.lineTo(12,20);ctx.stroke();
   }else if(name==='stats'){
     ctx.beginPath();ctx.moveTo(5,20);ctx.lineTo(5,13);ctx.moveTo(12,20);ctx.lineTo(12,7);ctx.moveTo(19,20);ctx.lineTo(19,3);ctx.stroke();
   }else if(name==='refresh'){
     ctx.beginPath();ctx.arc(12,12,7.5,Math.PI*.2,Math.PI*1.85);ctx.stroke();ctx.beginPath();ctx.moveTo(19,3.5);ctx.lineTo(19,8.5);ctx.lineTo(14,8.5);ctx.stroke();
+  }else if(name==='interact'){
+    ctx.beginPath();ctx.roundRect(3,6,18,15,3);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(3,12);ctx.lineTo(21,12);ctx.moveTo(9,6);ctx.lineTo(9,3);ctx.lineTo(15,3);ctx.lineTo(15,6);ctx.stroke();
+    ctx.fillRect(10,10,4,5);
   }else if(name==='clock'){
     ctx.beginPath();ctx.arc(12,13,8,0,Math.PI*2);ctx.moveTo(12,8);ctx.lineTo(12,13);ctx.lineTo(16,15);ctx.moveTo(9,2);ctx.lineTo(15,2);ctx.stroke();
   }else if(name==='coin'){
@@ -114,9 +143,10 @@ function icon(name,size=24,color='#766a88') {
   }
   return canvas;
 }
-function mapThumbnail(index){return drawPaperIllustration(el('canvas','zx-map-thumb',[],{width:228,height:150}),false,index+1);}
+function stagePrint(name,style){return el('img',style,[],{src:'assets/ui-paper/'+name+'.png',alt:'','aria-hidden':true});}
 function button(label,action,kind='',attrs={}) {
   const node=el('button','zx-button '+kind,label,{type:'button',...attrs});
+  standardButton(node,label);
   node.addEventListener('click',async()=>{
     if(node.disabled||node._busy)return;
     node._busy=true;
@@ -126,7 +156,6 @@ function button(label,action,kind='',attrs={}) {
   return node;
 }
 const link=(label,action)=>button(label,action,'zx-link');
-// Paint the turning paper directly so the WeChat canvas and browser share the animation.
 function requestIndicator(message,compact=false) {
   const art=el('canvas','zx-request-art',[],{width:240,height:152,'aria-hidden':true});
   const status=el('div','zx-request-status'+(compact?' compact':''),[art,el('b','',message)],{role:'status'});
@@ -172,8 +201,15 @@ function tabs(labels,index,change,kind='') {
   return el('div','zx-tabs '+kind,labels.map((label,i)=>el('button','zx-tab'+(index===i?' on':''),label,
     {type:'button','aria-pressed':index===i,onclick:()=>change(i)})));
 }
-function forestArt(){return drawPaperIllustration(el('canvas','zx-forest',[],{width:780,height:300}));}
-function homeArt(){return drawPaperIllustration(el('canvas','zx-home-illustration',[],{width:780,height:600,'aria-label':'字行 · 纸上世界，字灵同行'}),true);}
+function albumRows(cards,columns,kind){
+  const rows=[];
+  for(let i=0;i<cards.length;i+=columns){
+    const children=cards.slice(i,i+columns);
+    while(children.length<columns)children.push(el('span','zx-album-spacer',[],{'aria-hidden':true}));
+    rows.push(el('div','zx-album-row',children));
+  }
+  return el('div',kind,rows);
+}
 const labNames={dmg:['攻','伤害'],atkspd:['速','攻击速度'],spd:['移','移动速度'],area:['域','攻击范围'],crit:['暴','暴击率'],hp:['生','最大生命'],armor:['甲','护甲'],regen:['复','生命回复'],magnet:['拾','拾取范围'],xp:['悟','经验获取'],gold:['财','金币获取'],luck:['运','幸运'],ult:['极','大招充能']};
 const labGroups=[['dmg','atkspd','spd','area','crit'],['hp','armor','regen','magnet'],['xp','gold','luck','ult']];
 export function createZixingUI(app,api) {
@@ -181,13 +217,13 @@ export function createZixingUI(app,api) {
   document.documentElement.classList.add('zixing');
   if(!globalThis.__ZILING_COMPILED_STYLES__)document.head.append(el('style','',zixingStyle));
   window.__zixingApp=app;
-  let selected=defaultStarter,selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,settingsTab=0,settingsSub=0,returnTo=null,authPromise=null,activeEntry=null;
-  const ui=app.zixing={home,choose,map,difficulty,lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready};
+  let selected=defaultStarter,selectedDestination=destinations[0],selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,settingsTab=0,settingsSub=0,authPromise=null,activeEntry=null;
+  const scene=journeyScene();
+  const ui=app.zixing={home,choose,map,difficulty:map,lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready,prepareHomeArt:scene.prepare,savedCard,settlementSaved};
+  const character=characterForSpecies;
   if(window.nativeUI)window.addEventListener('memorywarning',releaseGlyphCanvasCache);
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
-  let mapRefresh=null;
-  const goBack=()=>returnTo?returnTo():home();
   let battleRecovery=null;
   function recoverBattle(session,reason){
     const current=app.run;
@@ -242,55 +278,39 @@ export function createZixingUI(app,api) {
     show(document.hidden?'返回游戏后将恢复原房间。':reason);
     void attempt();
   }
-  function entryPage(page,controls=[]){
-    const node=el('section','screen zx zx-entry-page',[],{'data-page':page,'data-entry-page':page,'data-fullscreen':'true'});
-    const targets=controls.map(([label,action,rect,attrs])=>{
-      const target=button(label,action,'zx-entry-hit',attrs);
-      node.append(target);return {target,rect};
-    });
-    node.positionControls=()=>{
-      const v=window.entryViewport(),{x,y,scale}=entryLayout(v);
-      for(const item of targets){
-        const {target,rect:[left,top,w,h]}=item;
-        const height=Math.max(44,h*scale);
-        const bx=x-v.x+left*scale,by=y-v.y+(top+h/2)*scale-height/2,width=w*scale;
-        item.bounds={left:bx,top:by,right:bx+width,bottom:by+height};
-        Object.assign(target.style,{position:'absolute',left:bx+'px',top:by+'px',
-          width:width+'px',height:height+'px',minWidth:'0px',minHeight:'0px',padding:'0px',margin:'0px'});
-      }
-    };
-    node.entryTargetAt=(x,y)=>targets.find(({bounds:b})=>x>=b.left&&x<b.right&&y>=b.top&&y<b.bottom)?.target;
-    node.positionControls();app.setScreen(node);return node;
-  }
-  window.addEventListener('resize',()=>app.screen?.positionControls?.());
-  async function openJourney(){
-    let origin=app.screen;
-    try{
-      if(!profile()){
-        origin=loadingScreen('entry').node;
-        await ready();
-        if(app.screen!==origin)return;
-        map();
-        return;
-      }
-      const currentMap=map();
-      const previousTier=app.meta.biomeTier('forest');
-      // The local profile already contains unlocks. Keep the map responsive
-      // while reconciling any progress made on another device.
-      const refresh=mapRefresh??(mapRefresh=app.meta.resync());
-      try{await refresh;}finally{if(mapRefresh===refresh)mapRefresh=null;}
-      if(app.screen===currentMap&&app.meta.biomeTier('forest')!==previousTier)map();
-    }catch(error){
-      if(app.screen===origin)screen('request-error','读取关卡失败','',[text(error.message||'读取失败')],[
-        button('重试',openJourney,'primary'),button('返回',home)]);
-    }
-  }
   function screen(name,title,subtitle,body,actions=[],color='') {
-    const node=el('section','screen zx zx-'+name,[],{'data-page':name,'data-fullscreen':'true'});
-    if(title)node.append(el('header','zx-header '+color,[el('h1','',title),subtitle?el('small','',subtitle):null]));
-    node.append(el('div','zx-body',body));
-    if(actions.length)node.append(el('footer','zx-footer',actions));
-    app.setScreen(node);return node;
+    document.querySelectorAll('.run-hint,.zx-intro').forEach(node=>node.remove());
+    const previous=app.screen;
+    const shared=previous?.classList.contains('journey-prep')&&
+      (['home','choose','map'].includes(name)||(name==='entry'&&previous.dataset.page==='map'));
+    const node=shared?previous:el('section','',[],{'data-fullscreen':'true'});
+    if(shared){
+      for(const child of Array.from(node.children))if(!child.classList.contains('journey-scene'))child.remove();
+      node.style.opacity='';node.style.pointerEvents='';
+    }
+    node.className='screen zx zx-'+(name==='difficulty'?'difficulty-page':name);
+    node.dataset.page=name;
+    if(title){
+      const ribbon=titleRibbon(),textMetrics=ribbon.getContext('2d');
+      textMetrics.font='bold 32px "Ziling Swei", sans-serif';
+      const flag=el('div','paper-title-label',[ribbon,el('h1','',title)]);
+      flag.style.width=(Math.ceil(textMetrics.measureText(title).width)+65)+'px';
+      node.classList.add('paper-menu-page');
+      const family=['choose','map','difficulty','collection-moves','collection-move-detail','collection-looks'].includes(name)?'sail':'wave';
+      node.append(el('header','zx-header '+color,[headerCutout(family),flag,subtitle?el('small','',subtitle):null],{'data-paper-surface':'flat'}));
+    }
+    const content=el('div','zx-body',body);
+    if(content.firstElementChild?.matches('.paper-stage-slip,.zc-detail-hero,.zx-help-intro,.zx-wallet')){
+      content.classList.add('paper-mounted-body');node.classList.add('paper-masthead-page');
+    }
+    node.append(content);
+    if(actions.length){
+      const footer=standardFooter(el('footer','zx-footer',actions));
+      footer.classList.add('paper-screen-footer');
+      node.append(footer);
+      if(title&&!footer.classList.contains('paper-single-back'))freePaperActions(node);
+    }
+    if(!shared)app.setScreen(node);return node;
   }
   async function ready(account) {
     if(authPromise)return authPromise;
@@ -326,6 +346,7 @@ export function createZixingUI(app,api) {
   function openLab() {
     return loadPage('研究所','正在读取星尘与研究进度',()=>profile()?app.meta.resync(true):ready(),lab,home);
   }
+  const coopTitle='双人前行';
   const invites=window.roomInvites;
   let checkedSeat=false,joinLobbyInvite=null;
   function openInvite(){
@@ -338,7 +359,7 @@ export function createZixingUI(app,api) {
       joinLobbyInvite();
     }else{
       document.querySelector('.zx-dialog')?.remove();
-      multiplayer();
+      openProfilePage(coopTitle,()=>multiplayer());
     }
     return true;
   }
@@ -348,28 +369,32 @@ export function createZixingUI(app,api) {
     if(!checkedSeat){
       checkedSeat=true;
       const seat=savedSeat();
-      if(seat)return multiplayer(seat);
+      if(seat)return openProfilePage(coopTitle,()=>multiplayer(seat));
     }
-    returnTo=null;
-    if(profile())selected=playableStarter(profile().lastSpecies||profile().starter);
-    if(window.entryViewport)return entryPage('home',[
-      ['开始旅程',openJourney,entryControls.journey,{'data-action':'journey'}],
-      ['多人联机',()=>multiplayer(),entryControls.multiplayer,{'data-action':'multiplayer'}],
-      ['研究所',openLab,entryControls.lab,{'data-action':'lab'}],
-    ]);
-    const root=screen('home','','',[
-      el('div','zx-home-copy',[el('h2','','从一个字开始'),text('走位避险，自动出招。'),text('在五行之间，写下你的这一局。')]),
-      el('div','zx-home-types',characters.map(c=>row(glyph(c),el('span','',c.role)))),
-      button([el('span','','开始旅程'),el('span','','→')],()=>openProfilePage('开始旅程',choose),
-        'primary zx-home-start',{'data-action':'journey'}),
-      button('双人成行',()=>multiplayer(),'zx-home-coop',{'data-action':'multiplayer'}),
-      button(row(glyph('研'),col(el('b','','研究所'),el('small','','永久强化 · 每次出发更进一步')),el('span','','›')),openLab,'purple zx-home-lab',{'data-action':'lab'}),
-      el('div','zx-home-foot',button([icon('book',16,'#61567b'),el('span','','玩法说明')],()=>help(),'zx-plain')),
-    ]);
-    const body=root.querySelector('.zx-body');body.classList.add('zx-home-body');
-    const art=el('div','zx-home-art',homeArt());
-    root.replaceChildren(el('div','zx-home-top',row(button(icon('settings',21,'#382c4e'),()=>openProfilePage('设置',settings),'zx-gear',{'aria-label':'设置'}))),el('div','zx-home-scroll',[art,body]));
+    const p=profile();
+    const last=Number(p?.collection?.lastSelected??p?.lastSpecies??p?.starter??4);
+    selected=p&&canDeploy(p,last)?last:4;
+    const root=screen('home','','',[]);
+    root.classList.add('zx-home-fixed');
+    const startButton=button('开始旅程',()=>openProfilePage('开始旅程',()=>scene.travel('choose',choose)),'primary zx-home-start',{'data-action':'journey'});
+    const entry=(symbol,label,action,open)=>button([
+      homeEntryFace(),el('span','paper-entry-content',[menuSymbol(symbol),el('span','paper-button-divider',[],{'aria-hidden':true}),el('span','paper-entry-label',label)]),
+    ],open,'zx-home-entry zx-home-'+(action==='multiplayer'?'coop':action),{'data-action':action,'data-paper-surface':'flat'});
+    const coopButton=entry('duo',coopTitle,'multiplayer',()=>openProfilePage(coopTitle,()=>multiplayer()));
+    const labButton=entry('lab','研究所','lab',openLab);
+    const helpButton=button([icon('book',18,'#304764'),el('span','','玩法说明')],()=>help(),'zx-plain',{'data-action':'help','data-paper-surface':'flat'});
+    // Only artwork absorbs height changes. Navigation stays outside any scroll container.
+    root.querySelector('.zx-body').remove();
+    root.append(
+      el('div','zx-home-top',row(button(paperIcon('settings'),()=>openProfilePage('设置',settings),'zx-gear',{'aria-label':'设置','data-action':'settings','data-paper-surface':'flat'}))),
+      el('div','zx-home-visual',homeWordmark(),{role:'heading','aria-level':1,'aria-label':'字行'}),
+      el('footer','zx-home-dock',[
+        startButton,el('div','zx-home-secondary',[coopButton,labButton]),el('div','zx-home-foot',helpButton),
+      ],{'data-paper-surface':'flat'}),
+    );
+    scene.mount(root,current(),p?app.meta.skinFor(selected):null);
   }
+
   function multiplayer(resume=savedSeat()) {
     let room=null, view=null, busy=false, starting=false, status='', pending='', joiningCode='';
     let reconnectAttempts=0,reconnectTimer;
@@ -406,7 +431,7 @@ export function createZixingUI(app,api) {
       return true;
     }
     async function connect(join,restore=null,inviteCode='') {
-      const code=inviteCode || restore?.code || (join ? await window.askRoomCode() : undefined);
+      const code=inviteCode || restore?.code;
       if(code===null)return;
       if(join && !/^\d{6}$/.test(code))throw Error('请输入完整的六位房间号');
       joiningCode=code;
@@ -452,7 +477,7 @@ export function createZixingUI(app,api) {
         },
         start:async state=>{
           if(starting)return;
-          starting=true;
+          starting=true;view?.cancelLeave?.();
           const session=room;
           try {
             if(!profile().starter)await app.meta.chooseStarter(session.mine.species);
@@ -471,185 +496,243 @@ export function createZixingUI(app,api) {
       };
       if(room.room.state==='started')await room.ev.start(room.room);
     }
-    function mountLobby(session) {
-      const body=[];
-      let choices;
-      const actions=[];
-      let roster,readyButton,startButton;
-      if(session){
-        body.push(card(small('房间号'),el('h2','',session.code),action('分享房间号',()=>window.shareRoomCode(session.code))));
-        choices=characters.map(c=>action(c.word,async()=>{
-          await session.setPick(c.id);
-          pick=c.id;
-        }));
-        roster=card();
-        body.push(card(el('b','','选择字灵'),row(...choices)),roster);
-        readyButton=action('准备',async()=>{
-          readyButton.disabled=true;
-          try { await session.setReady(!session.mine.ready); }
-          finally { readyButton.disabled=false; }
-        },'primary zx-ready');
-        startButton=action('开始冒险',()=>session.start(),'primary');
-        actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;}));
-      }else{
-        if(resume){
-          body.push(card(el('b','','发现未结束的房间 '+resume.code),small('重连后继续上次对局。两人都掉线时，房间保留 10 分钟。')));
-          actions.push(action('重连原房间',()=>connect(true,resume),'primary'));
+    function mountLobby() {
+      const roomNumber=el('b','coop-number'),count=el('small','coop-count');
+      const note=el('p','coop-note',[],{'role':'status','aria-live':'polite'});
+      const copy=button(paperIcon('copy'),async()=>{
+        if(!room)return;
+        try {
+          if(window.copyRoomCode)await window.copyRoomCode(room.code);
+          else {
+            await navigator.clipboard.writeText(room.code);
+            app.notice('房间号已复制');
+          }
+        }catch{
+          app.notice('复制失败，请再试一次或手动输入房间号');
         }
-        actions.push(action('创建房间',()=>connect(false),'primary'),action('加入房间',()=>connect(true)),action('返回首页',home));
+      },'zx-plain coop-copy',{'data-action':'coop-copy','data-paper-surface':'flat','aria-label':'复制房间号'});
+      const roomTag=el('small','coop-room-tag','待组队');
+      const ticket=el('div','coop-ticket',[col(el('small','','房间号'),roomNumber),roomTag,copy],{'data-paper-surface':'album-page'});
+      const section=(title,extra=null)=>el('div','coop-section',[el('b','',title),el('i','',[],{'aria-hidden':true}),extra]);
+      function wordArt(c){
+        const canvas=el('canvas','coop-word',[],{'data-static':true,'aria-hidden':true});
+        drawMenuGlyph(canvas,c.word,c.tone,false);return canvas;
       }
-      const note=text('','zx-note');
-      const activity=session?null:el('div','zx-coop-art');
-      const illustration=activity && drawCoopMap(el('canvas','zx-coop-map',[],{width:720,height:720,'aria-hidden':true}));
-      if(activity)body.push(activity);
-      body.push(note);
-      const node=screen('coop',session?'队伍房间':'双人成行','桌上世界 · 双人合作',body,actions);
-      const subtitle=node.querySelector('.zx-header small');
-      let shownMessage;
+      const seats=Array.from({length:COOP_ROOM_SIZE},()=>{
+        const tag=el('small','coop-role'),art=el('div','coop-seat-art'),name=el('b','coop-name'),state=el('small','coop-state');
+        const tile=el('div','coop-seat zx-stat-row',[tag,art,name,state],{'data-paper-surface':'route-station'});
+        return {tag,art,name,state,tile};
+      });
+      const roster=el('div','coop-roster zx zx-collection zc-library');
+      let filter='all',shownPick=null,shownFilter=null;
+      function selectRoomCharacter(id){
+        return perform(async()=>{
+          if(!canDeploy(profile(),id)){
+            getCollection().unlock(id,()=>{
+              if(starting)return;
+              shownPick=null;app.setScreen(node);render();
+            });
+            return;
+          }
+          if(room && room.mine?.species!==id)await room.setPick(id);
+          pick=id;
+        });
+      }
+      function updatePicker(active){
+        if(active===shownPick&&filter===shownFilter)return;
+        const oldScroll=filter===shownFilter?roster.querySelector('.zc-library-scroll')?.scrollTop||0:0;
+        shownPick=active;shownFilter=filter;
+        roster.replaceChildren(getCollection().rosterPicker(active,filter,key=>{
+          filter=key;updatePicker(room?.mine?.species??pick);
+        },selectRoomCharacter));
+        if(oldScroll)roster.querySelector('.zc-library-scroll').scrollTop=oldScroll;
+      }
+      async function join(){
+        let code='',error='';
+        while(!room && app.screen===node){
+          code=await askCoopCode({el,button,parent:app.ui,screen:node,trigger:second,previous:code,error});
+          if(code===null)return;
+          try{await connect(true,null,code);return;}
+          catch(cause){error=cause.message||cause.errMsg||'加入失败，请重试';status='';render();}
+        }
+      }
+      let cancelLeave=null;
+      function confirmLeave(){
+        return new Promise(resolve=>{
+          const finish=value=>{prompt.close();cancelLeave=null;resolve(value);};
+          const confirm=button('确认离开',()=>finish(true),'primary',{'data-action':'coop-confirm-leave'});
+          const prompt=openPaperPrompt({el,button,parent:app.ui,screen:node,trigger:node.querySelector('.paper-back'),
+            title:'离开房间？',hint:el('p','paper-prompt-hint','离开后将释放你的席位，返回联机大厅。'),
+            confirm,onCancel:()=>finish(false),closeAction:'coop-leave-close',cancelLabel:'留在房间'});
+          cancelLeave=()=>finish(false);
+        });
+      }
+      async function back(){
+        if(!room){home();return;}
+        const session=room;
+        if(!await confirmLeave()||room!==session||starting)return;
+        session.ev={};forgetSeat(session.me);resume=null;
+        status='正在离开房间…';render();
+        await session.leave();
+        room=null;app.coopRoom=null;status='';
+      }
+      const reconnect=action('重连原房间',()=>connect(true,resume),'zx-plain coop-aux');
+      const first=action('',async()=>room?room.setReady(!room.mine.ready):connect(false),'primary');
+      const second=action('',async()=>room?room.start():join());
+      first.dataset.action='coop-first';second.dataset.action='coop-second';
+      const body=[ticket,section('队伍席位',count),el('div','coop-seats',seats.map(s=>s.tile)),
+        section('我的字灵'),roster,el('div','coop-status',[note,reconnect])];
+      const node=screen('coop',coopTitle,'和队友一起探索桌上世界',body,[action('返回',back),first,second]);
+      node.querySelector('.zx-footer').classList.add('coop-actions');
+      node.querySelector('.zx-body').dataset.paperSurface='flat';freePaperActions(node);
       function update(){
-        if(activity && shownMessage!==pending){
-          shownMessage=pending;
-          activity.replaceChildren(pending?requestIndicator(pending):illustration);
-        }
-        updateText(note,status);
-        if(note.hidden!==!status)note.hidden=!status;
-        if(!session)return;
-        const species=session.mine?.species ?? pick;
-        characters.forEach((c,i)=>{
-          const active=c.id===species, choice=choices[i];
-          updateText(choice,(active?'✓ ':'')+c.word);
-          if(choice.classList.contains('primary')!==active)choice.classList.toggle('primary',active);
+        const session=room,members=session?.room.members||[],mine=session?.mine;
+        if(!session)cancelLeave?.();
+        const active=mine?.species??pick;
+        const online=members.filter(m=>!m.offline);
+        const allReady=online.length>=2&&online.every(m=>m.ready);
+        node.querySelector('.paper-back').setAttribute('aria-label',session?'离开房间，返回大厅':'返回首页');
+        updateText(roomNumber,session?session.code.slice(0,3)+' '+session.code.slice(3):'尚未进入房间');
+        copy.hidden=!session;roomTag.hidden=!!session;
+        updateText(count,session?members.length+' / '+COOP_ROOM_SIZE+' 人':'组队前');
+        seats.forEach(({tag,art,name,state,tile},index)=>{
+          const member=members.find(m=>m.slot===index);
+          const preview=!session&&index===0;
+          const local=preview||!!member&&member.id===session.me;
+          const actor=member?character(member.species):preview?character(pick):null;
+          updateText(tag,preview?'自己':member?(member.id===session.room.host?'房主':'队员'):'');
+          if(art.dataset.word!==(actor?.word||'')){
+            art.replaceChildren(actor?wordArt(actor):el('span','coop-vacancy','＋',{'aria-hidden':true}));art.dataset.word=actor?.word||'';
+          }
+          updateText(name,local?'你':member?(member.name||'队友'):'等待队友');
+          updateText(state,member?(member.offline?'暂离':member.ready?'已准备':'未准备'):preview?'待入房':'');
+          tile.classList.toggle('empty',!actor);state.classList.toggle('ready',!!member?.ready&&!member.offline);
+          let kick=tile.querySelector('button');
+          if(session?.isHost&&member?.offline){
+            if(kick?.dataset.seat!==member.id){kick?.remove();kick=action('移出',()=>session.kick(member.id),'zx-plain coop-kick');kick.dataset.seat=member.id;tile.append(kick);}
+          }else kick?.remove();
         });
-        const {members,host}=session.room;
-        updateText(subtitle,members.length+' / '+COOP_ROOM_SIZE+' 人 · 普通难度');
-        members.forEach((member,i)=>{
-          const label=(member.id===host?'房主':'队员')+' · '+character(member.species).word+(member.id===session.me?'（你）':'');
-          const state=member.offline?'暂离':member.ready?'已准备':'未准备', memberRow=roster.children[i];
-          if(memberRow){
-            updateText(memberRow.firstElementChild,label);
-            updateText(memberRow.children[1],state);
-          }else roster.append(statRow(label,state));
-        });
-        while(roster.children.length>members.length)roster.lastElementChild.remove();
-        for(const [i,m] of members.entries()){
-          const memberRow=roster.children[i],kick=memberRow.querySelector('button');
-          if(session.isHost && m.offline){
-            if(kick?.dataset.seat!==m.id){
-              kick?.remove();
-              const remove=action('移出',()=>session.kick(m.id));
-              remove.dataset.seat=m.id;memberRow.append(remove);
-            }
-          }else if(kick)kick.remove();
-        }
-        updateText(readyButton,session.mine?.ready?'取消准备':'准备');
-        if(startButton.hidden!==!session.isHost)startButton.hidden=!session.isHost;
-        const canStart=session.canStart;
-        if(startButton.disabled!==!canStart)startButton.disabled=!canStart;
+        updatePicker(active);
+        reconnect.hidden=!!session||!resume;
+        const hint=!session?'创建房间，或输入六位房间号加入队友。':online.length<2?'把六位房间号发给队友，等对方加入。':allReady?(session.isHost?'队伍已就绪，可以出发。':'队伍已就绪，等待房主开始。'):'两人都准备好后，由房主开始冒险。';
+        updateText(note,pending||status||hint);
+        updateText(first,session?(mine?.ready?'取消准备':'准备'):'创建房间');
+        first.classList.toggle('primary',!session||!mine?.ready);
+        updateText(second,!session?'加入房间':session.isHost?'开始冒险':'等待房主开始');
+        second.disabled=!!session&&(!session.isHost||!allReady);
+        second.classList.toggle('primary',!!session&&!second.disabled);
+        second.dataset.paperSurface=second.disabled?'button-muted':'button';
       }
-      return {session,resume,node,update};
+      return {node,update,cancelLeave:()=>cancelLeave?.()};
     }
     function render() {
-      if(!view || view.session!==room || (!room && view.resume!==resume) || view.node!==app.screen)view=mountLobby(room);
-      view.update();
+      if(!view||view.node!==app.screen)view=mountLobby();
+      if(view.node===app.screen)view.update();
     }
     render();
     joinLobbyInvite=joinInvite;
-    if(!joinInvite() && resume)perform(()=>connect(true,resume));
+    if(!joinInvite()&&resume)perform(()=>connect(true,resume));
   }
-  function choose() {
-    let navigating=false;
-    const hero=el('div','zx-hero'),skills=card(),evolution=small('');
-    const choices=characters.map(ch=>button([glyph(ch),small(ch.role)],()=>{
-      if(navigating || selected===ch.id)return;
-      selected=ch.id;
-      updateCharacter();
-    },'zx-choice '+ch.tone,{'data-species':ch.id,'aria-label':ch.word+'，'+ch.role}));
-    function updateCharacter(){
-      const c=current();
-      hero.replaceChildren(small('字灵 · '+c.word),glyph(c,true),text(c.motto,'zx-note'));
-      skills.replaceChildren(row(glyph(c),col(el('b','',c.move+'  ·  自动攻击'),small(api.moveDescription(c.id)))),
-        row(glyph('极'),col(el('b','',c.ult+'  ·  大招'),small(api.ultDescription(c.id)))));
-      updateText(evolution,c.evolution+' · '+starterEvolutionLevels.join(' / ')+' 级进阶');
-      choices.forEach((choice,i)=>{
-        const active=characters[i].id===selected;
-        choice.classList.toggle('on',active);
-        choice.setAttribute('aria-pressed',String(active));
-      });
-    }
-    async function nextPage(show){
-      if(navigating)return;
-      navigating=true;
-      try{
-        if(show===map){
-          const id=current().id;
-          if(!profile().starter)await app.meta.chooseStarter(id);
-          profile().lastSpecies=id;app.meta.save();
-        }
-        await app.meta.resync(true);
-        if(app.screen===node)show();
-      }finally{navigating=false;}
-    }
-    updateCharacter();
-    const node=screen('choose','选择文字','01 / 03 · 选择你的起点',[
-      hero,el('div','zx-choices',choices),skills,evolution,
-      link('▥ 查看属性                         基础 + 研究加成 ›',()=>nextPage(stats)),
-    ],[button('选择关卡  →',()=>nextPage(map),'primary'),button('返回',home)]);
+  let collection;
+  function getCollection() {
+    collection??=createCollectionUI(app,api,{el,button,icon,screen,home,scene,confirm:async id=>{
+      if(!canDeploy(profile(),id))return;
+      if(!profile().starter)await app.meta.chooseStarter(id);
+      selected=id;profile().lastSpecies=id;await app.meta.saveNow();await app.meta.resync();
+      if(!canDeploy(profile(),id))throw Error('字灵状态已变化，请重新选择。');
+      await scene.travel('map',map);
+    }});
+    ui.collection=collection;return collection;
+  }
+  function choose(preserve=false) {
+    getCollection().open(!preserve);
   }
   function map() {
-    if(window.entryViewport){
-      const max=Math.min(2,Math.max(0,app.meta.biomeTier('forest')));
-      if(selectedDifficulty.tier>max)selectedDifficulty=difficulties[0];
-      const choices=['新手','简单','困难','噩梦'].map((name,index)=>{
-        const option=difficulties[index],locked=option.tier>max;
-        return [name,()=>{
-          if(locked){window.entryHint('通关上一难度后解锁');return;}
-          selectedDifficulty=option;
-          node.dataset.tier=String(index);
-          for(const [i,choice] of [...node.querySelectorAll('[data-mode]')].entries())choice.setAttribute('aria-pressed',String(i===index));
-        },entryControls.tiers[index],{'data-tier':option.tier,'data-mode':option.mode,'aria-pressed':option===selectedDifficulty,'aria-disabled':locked}];
+    const progress=profile().stageUnlocks??profile().biomes??{};
+    const tierLimit=()=>Math.max(0,Math.min(2,app.meta.biomeTier(selectedDestination.id)));
+    function stateMark(node,state){
+      const prev=node.querySelector('.paper-choice-mark');
+      if(prev?.dataset.icon!==state){prev?.remove();node.append(choiceMark(state));}
+    }
+    const itinerary=el('span','zx-route-distance');
+
+    const feature=el('div','zx-destination-feature'),otherStations=el('div','zx-destination-others');
+    const modeHint=el('small','zx-difficulty-hint');
+    const indexHeading=el('div','journey-station-key',el('b','','后续关卡'));
+
+    const stations=destinations.map(stage=>{
+      const status=stage.released?stage.station:stage.id in progress?'内容待开放':'暂未开放';
+      const hint=!stage.released&&stage.id in progress?'进度已解锁 · 内容待开放':status;
+      return el('button','zx-album-station',[stagePrint(stage.art,'zx-station-print'),
+        el('small','journey-station-label',status),el('div','zx-destination-caption',el('b','zx-destination-title',stage.name))],{type:'button','data-stage':stage.id,
+        'data-paper-surface':'route-station',disabled:!stage.released,'aria-label':stage.name+' · '+hint,
+        onclick:()=>{if(stage.released&&stage!==selectedDestination){selectedDestination=stage;refresh();}}});
+    });
+    const modes=difficulties.map(option=>el('button','zx-album-mode',[
+      el('h3','',option.name),
+    ],{type:'button','data-tier':option.tier,'data-mode':option.mode,
+      onclick:()=>{if(option.tier<=tierLimit()){selectedDifficulty=option;refresh();}}}));
+    let departing=false;
+    const enter=button('',async()=>{
+      if(departing)return;
+      if(!selectedDestination.released||selectedDifficulty.tier>tierLimit()){refresh();return;}
+      departing=true;
+      const page=app.screen,config={species:selected,biome:selectedDestination.id,tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode};
+      try{
+        await scene.travel('entry',()=>app.screen===page&&page.dataset.page==='map'?start(config):false);
+      }finally{departing=false;}
+    },'primary',{'data-action':'enter'});
+    let stamp,stampMode;
+    function refresh(){
+      const max=tierLimit();
+      if(selectedDifficulty.tier>max)selectedDifficulty=difficulties[1+max];
+      stations.forEach((node,i)=>{
+        const stage=destinations[i],chosen=stage===selectedDestination;
+        node.setAttribute('aria-pressed',String(chosen));
+        node.classList.toggle('zx-destination-hero',chosen);
+        node.dataset.paperSurface=chosen?'destination-cover':'station-index-row';
+        const parent=chosen?feature:otherStations;
+        if(node.parentNode!==parent)parent.append(node);
+        const stationTag=node.querySelector('.journey-station-label');
+        stationTag.dataset.paperSurface=chosen?'destination-ribbon':'flat';
+        stationTag.hidden=false;
+
+        if(chosen&&!node.contains(itinerary))node.querySelector('.zx-destination-caption').append(itinerary);
+        stateMark(node,chosen?'check':stage.released?'radio-empty':'lock');
       });
-      const node=entryPage('map',[...choices,['返回',home,entryControls.back,{'data-action':'back'}],
-        ['开始游玩！',()=>start({species:4,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode}),entryControls.enter,{'data-action':'enter'}]]);
-      node.dataset.tier=String(difficulties.indexOf(selectedDifficulty));
-      node.setAttribute('aria-label','选择关卡，第一站 桌上世界。玩具阁楼、画室奇境、书架云端暂未开放。');
-      return node;
+      modes.forEach((node,i)=>{
+        const option=difficulties[i],locked=option.tier>max,chosen=option===selectedDifficulty;
+        node.disabled=locked;
+        node.setAttribute('aria-pressed',String(chosen));
+        const description=locked?option.locked:option.note.join('，');
+        node.setAttribute('aria-label',option.name+'，'+description);
+        if(chosen)updateText(modeHint,description);
+        stateMark(node,locked?'lock':chosen?'check':'radio-empty');
+      });
+      const stampKey=selectedDestination.id+'/'+selectedDifficulty.mode;
+      if(stampMode!==stampKey){
+        stamp?.remove();stamp=itineraryStamp(selectedDestination.regions,selectedDifficulty.mode===SINGLE_STAGE);
+        const cover=feature.firstElementChild;
+        cover.insertBefore(stamp,cover.querySelector('.journey-station-label'));
+        stampMode=stampKey;
+      }
+      updateText(itinerary,selectedDifficulty.mode===SINGLE_STAGE?'1 个区域 / 传送门通关':selectedDestination.regions+' 个区域 / 圣地终战');
+      updateText(enter,'进入'+selectedDestination.name);
     }
-    const stages=profile().stageUnlocks??{forest:profile().biomes?.forest??0};
-    const hero=card(forestArt(),el('div','zx-row zx-map-caption',[col(small('第一站'),el('h2','','桌上世界')),icon('check',28)]));
-    hero.classList.add('zx-map-card');
-    screen('map','选择关卡','02 / 03 · 经典旅程',[
-      hero,
-      el('div','zx-map-summary',[text('裁切垫 · 手帐纸 · 巨型文具','zx-note'),text(`${FOREST_COMBAT_ZONES} 个区域 → 圣地终战`)]),
+    refresh();
+    const node=screen('map','选择关卡','',[
+      el('section','zx-station-list',[feature,el('div','journey-station-index',[indexHeading,otherStations],{'data-paper-surface':'journey-stations'})],{'aria-label':'出发地点'}),
+      el('section','zx-route-paper',[el('div','zx-difficulty-heading',[el('h2','zx-album-heading','挑战难度'),modeHint]),
+        albumRows(modes,4,'zx-mode-list')],{'aria-label':'挑战难度'}),
       profile().cloudSaveError?small('当前显示本机进度 · '+profile().cloudSaveError):null,
-      row(el('b','','后续关卡'),small('等待开放')),
-      el('div','zx-lock-list',[['attic','玩具阁楼'],['studio','画室奇境'],['bookshelf','书架云端']].map(([id,name],i)=>el('div','zx-lock',[mapThumbnail(i),col(small('第 0'+(i+2)+' 站'),el('b','',name),small(id in stages?'进度已解锁 · 内容待开放':'暂未开放')),icon(id in stages?'check':'lock',22)]))),
-    ],[button('选择难度  →',()=>difficulty(),'primary'),button('返回',choose)]);
+    ],[enter,button('返回',()=>scene.travel('choose',()=>choose(true)),'',{'data-action':'route-back'})]);
+    node.classList.add('zx-route-page');
+    scene.mount(node,current(),app.meta.skinFor(selected));
+    node.querySelector('.zx-body').dataset.paperSurface='flat';
+    freePaperActions(node);
   }
-  function difficulty() {
-    const max=Math.min(2,Math.max(0,app.meta.biomeTier('forest')));
-    if(selectedDifficulty.tier>max)selectedDifficulty=difficulties[1+max];
-    screen('difficulty','选择难度',current().word+' · 桌上世界 · 单人',[
-      ...difficulties.map(option=>{
-        const locked=option.tier>max,chosen=option===selectedDifficulty;
-        return button([glyph(option.glyph),col(el('h3','',option.name),small(option.note),locked?small('通关上一难度后解锁'):null),locked?icon('lock',22):chosen?icon('check',24):icon('radio-empty',24)],
-          ()=>{selectedDifficulty=option;difficulty();},'zx-difficulty'+(chosen?' on':''),{disabled:locked,'aria-pressed':chosen,'data-tier':option.tier,'data-mode':option.mode});
-      }),
-    ],[button('进入桌上世界  →',start,'primary',{'data-action':'enter'}),button('返回',map)]);
-  }
-  function loadingScreen(name,coop=false,departure=false) {
-    if(name==='entry'&&!coop&&window.entryViewport){
-      const node=entryPage(departure?'departure':'loading');
-      node.dataset.page=name;node.classList.add('zx-loading-screen');
-      node.setAttribute('role','progressbar');node.setAttribute('aria-label','场景加载进度');
-      node.setAttribute('aria-valuemin','0');node.setAttribute('aria-valuemax','100');
-      const update=({progress=0})=>{
-        const value=Math.max(Number(node.dataset.progress||0),Math.min(100,Math.floor(progress*100)));
-        node.dataset.progress=String(value);node.setAttribute('aria-valuenow',String(value));return value;
-      };
-      update({});return {node,update};
-    }
-    const status=el('div');
-    status.hidden=true;
+  function loadingScreen(name,coop=false) {
+    const status=small('');status.hidden=true;
     const value=el('b','zx-loading-percent','0%');
     const ring=el('canvas','zx-loading-ring',[],{width:400,height:400,'data-static':'true','aria-hidden':true});
     const progress=el('div','zx-loading-progress',[ring,value],{role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':0});
@@ -657,22 +740,20 @@ export function createZixingUI(app,api) {
       el('h1','zx-loading-title','正在布置场景'),progress,status,
     ])]);
     node.classList.add('zx-loading-screen');
-    let shown=-1,shownStatus='';
+    node.querySelector('.zx-body').dataset.paperSurface='flat';
+    let shown=-1;
     const update=({progress:fraction=0,teamReady=false,teamStatus='',phase=''})=>{
       if(coop)fraction=teamReady?1:Math.min(.9,fraction);
-      const message=teamStatus||(phase==='保存出发设置'?'正在同步出发设置':'');
-      if(message!==shownStatus){
-        shownStatus=message;status.hidden=!message;
-        status.replaceChildren(...(message?[requestIndicator(message,true)]:[]));
-      }
+      const message=teamStatus||(!node.classList.contains('journey-entry')&&phase==='保存出发设置'?'正在同步出发设置':'');
+      if(status.textContent!==message){status.textContent=message;status.hidden=!message;}
       const next=Math.max(shown,Math.min(100,Math.max(0,Math.floor(fraction*100))));
       if(next===shown)return shown;
       shown=next;value.textContent=shown+'%';progress.setAttribute('aria-valuenow',shown);
       const ctx=ring.getContext('2d'),start=-Math.PI/2;
       ctx.setTransform(2,0,0,2,0,0);ctx.clearRect(0,0,200,200);
-      ctx.lineWidth=9;ctx.lineCap='round';ctx.strokeStyle='#dfe7d9';
+      ctx.lineWidth=9;ctx.lineCap='round';ctx.strokeStyle='#D7DEED';
       ctx.beginPath();ctx.arc(100,100,86,0,Math.PI*2);ctx.stroke();
-      if(shown>0){ctx.strokeStyle='#7ca78e';ctx.beginPath();ctx.arc(100,100,86,start,start+Math.PI*2*shown/100);ctx.stroke();}
+      if(shown>0){ctx.strokeStyle='#557DB8';ctx.beginPath();ctx.arc(100,100,86,start,start+Math.PI*2*shown/100);ctx.stroke();}
       return shown;
     };
     update({progress:0});return {node,update};
@@ -681,11 +762,14 @@ export function createZixingUI(app,api) {
     if(activeEntry||app.starting)return false;
     let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
-    const opening=app.screen?.dataset.entryPage==='map'&&!config.coop&&config.biome==='forest'&&!!app.menuScene?.terrain?.desk2d;
-    const view=loadingScreen('entry',!!config.coop,opening),{node}=view;
-    if(opening){
-      app.menuScene.beginDeparture();
-      window.drawUI(app.r.renderer);
+    const scenic=!config.coop&&['map','entry-error'].includes(app.screen?.dataset.page);
+    const view=loadingScreen('entry',!!config.coop),{node}=view;
+    let showLoading;
+    if(scenic){
+      scene.mount(node,character(config.species),app.meta.skinFor(config.species));node.classList.add('journey-entry');
+      const status=node.querySelector('.zx-loading-content');
+      status.hidden=true;
+      showLoading=setTimeout(()=>{if(app.screen===node&&node.dataset.page==='entry')status.hidden=false;},650);
     }
     activeEntry=node;
     const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
@@ -700,12 +784,12 @@ export function createZixingUI(app,api) {
         if(value!==percentages[percentages.length-1])percentages.push(value);
       }
     };
+    if(scenic)update.reveal=()=>scene.reveal(app,node);
     const abandoned=()=>{if(app.screen===node)return false;cancelled=true;return true;};
     try {
       // Give the loading screen a frame before disk/decoder work starts.
       await waitForLoadingPaint(app.r.renderer);
       if(abandoned())return false;
-      if(opening)await app.menuScene.ready;
       await window.prepareForest?.(state=>{
         packs.set(state.name,state);
         const pending=[...packs.values()].find(s=>s.phase!=='ready')||state;
@@ -719,57 +803,82 @@ export function createZixingUI(app,api) {
       });
       if(abandoned())return false;
       update({phase:'保存出发设置',progress:.4});
-      if(!config.coop&&mapRefresh)await mapRefresh;
-      if(abandoned())return false;
       if(!profile().starter)await app.meta.chooseStarter(config.species);
       if(abandoned())return false;
       profile().lastBiome=config.biome;profile().lastSpecies=config.species;await app.meta.saveNow();
       if(abandoned())return false;
-      const ok=await app.startRun(config,update,opening);
+      const ok=await app.startRun(config,update);
       if(!ok)throw app.lastStartError||Error('对局未能开始，请重试');
       diagnostics.status='ready';
       return true;
     }catch(error){
       diagnostics.status='error';diagnostics.error=error.message||String(error);
-      if(!cancelled && !config.coop)screen('entry-error','暂时未能进入',lastPhase,[card(text(diagnostics.error,'zx-note'))],
-        [button('重试进入桌上世界',()=>start(config),'primary',{'data-action':'retry-entry'}),button('返回选择',window.entryViewport?map:difficulty)]);
+      if(!cancelled&&!config.coop){
+        const destination=destinations.find(stage=>stage.id===config.biome)?.name??selectedDestination.name;
+        const errorPage=screen('entry-error','暂时未能进入','',[
+          el('div','zx-entry-slip',[menuSymbol('disconnected',48),el('div','zc-copy',[
+            el('b','',destination),small(lastPhase||'准备场景')]),text(diagnostics.error,'zx-entry-message')],{'data-paper-surface':'album-page'}),
+        ],[button('返回选择',map),button('重新进入',()=>start(config),'primary',{'data-action':'retry-entry'})]);
+        errorPage.querySelector('.zx-body').dataset.paperSurface='flat';
+      }
       return false;
     }finally{
+      clearTimeout(showLoading);
       diagnostics.totalMs=Math.round(performance.now()-began);
       if(cancelled)diagnostics.status='cancelled';
       if(activeEntry===node)activeEntry=null;
     }
   }
   function wallet() {
-    return el('div','zx-wallet',[row(el('small','','星尘 · 永久研究资源'),button('如何获得 ⓘ',dustHelp,'zx-plain')),el('strong','',number(profile().stardust)),el('small','',profile().cloudSaveError?'当前显示本机进度 · '+profile().cloudSaveError:'对局结算获得 · 与金币独立')]);
+    return el('div','zx-wallet lab-balance',[menuSymbol('stardust',45),el('div','lab-funds',[
+      el('small','','持有星尘'),el('strong','',number(profile().stardust))]),
+      el('i','lab-help-rule',[],{'aria-hidden':true}),
+      button('如何获得  ›',dustHelp,'zx-plain',{'data-action':'dust-help','data-paper-surface':'flat'})],{'data-paper-surface':'lab-balance'});
   }
   function labValue(item,level) {
     const value=(item.per??(item.id==='ult'?.04:0))*level;
-    return '+ '+(['maxHp','armor','luck','pickupRange','regen'].includes(item.stat)?Number(value.toFixed(2))+(item.stat==='regen'?' / 秒':item.stat==='pickupRange'?' 厘米':''):percent(value));
+    return '+'+(['maxHp','armor','luck','pickupRange','regen'].includes(item.stat)?Number(value.toFixed(2))+(item.stat==='regen'?'/秒':item.stat==='pickupRange'?' 厘米':''):percent(value));
+  }
+  function researchRow(item) {
+    const [word,name]=labNames[item.id],level=app.meta.lab(item.id),full=level>=item.max;
+    const cost=full?0:item.cost(level),shortfall=Math.max(0,cost-profile().stardust);
+    const price=button(full?'已满级':[menuSymbol('star',16),el('b','',number(cost))],()=>research(item),'lab-price',
+      {disabled:full,'data-research':item.id,'data-paper-surface':full?'flat':'lab-price','data-poor':shortfall>0,
+        'aria-label':full?name+'已满级':name+'，升级消耗 '+number(cost)+' 星尘'+(shortfall?'，还差 '+number(shortfall):'')});
+    return el('div','lab-record',[stagePortrait({word}),
+      el('div','lab-item-copy',[
+        el('div','lab-item-head',[el('b','',name),el('small','','Lv.'+level+'/'+item.max)]),
+        el('div','lab-values',[el(full?'b':'span','lab-current',labValue(item,level)),
+          full?null:el('span','lab-arrow','→'),full?null:el('b','',labValue(item,level+1))]),
+        el('div','lab-pips',Array.from({length:item.max},(_,i)=>el('i',i<level?'on':'')),{'aria-hidden':true}),
+      ]),el('div','lab-price-slot',[price,shortfall?el('small','','差 '+number(shortfall)):null])]);
   }
   function lab(message='') {
-    const list=labGroups[labTab].map(id=>laboratory.find(item=>item.id===id));
-    screen('lab','研究所','永久强化 · 对所有文字生效',[
-      wallet(),tabs(['战斗','生存','成长'],labTab,i=>{labTab=i;lab();},'research'),
-      row(el('b','','训练 · '+['战斗','生存','成长'][labTab]+'强化'),small('当前 → 下一级')),
-      el('div','zx-card',list.map(item=>{
-        const level=app.meta.lab(item.id),max=level>=item.max,cost=max?0:item.cost(level),can=profile().stardust>=cost;
-        return el('div','zx-lab-row',[glyph(labNames[item.id][0]),col(row(el('b','',labNames[item.id][1]),small('Lv.'+level+'/'+item.max)),text(labValue(item,level)+(max?' · 已满级':' → '+labValue(item,level+1)),'zx-note'),el('div','zx-pips',Array.from({length:item.max},(_,i)=>el('i',i<level?'on':'')))),
-          button([el('b','',max?'满':number(cost)),el('small','','星尘')],()=>research(item),'zx-buy'+(can?'':' poor'),{disabled:max,'data-research':item.id})]);
-      })),
-      message?el('div','zx-success',message):null,
-    ],[button('返回',home)],'purple');
+    const names=['战斗','生存','成长'],list=labGroups[labTab].map(id=>laboratory.find(item=>item.id===id));
+    const node=screen('lab','研究所','永久强化 · 对所有字灵生效',[
+      wallet(),el('div','zx-lab-tabs zc-album-tabs',names.map((name,i)=>albumTab(el,button,name,i===labTab,()=>{labTab=i;lab();}))),
+      el('section','lab-register',[
+        el('div','lab-columns',[el('b','',names[labTab]+'研究'),el('small','','升级消耗')]),
+        el('div','lab-rows',list.map(researchRow)),
+        el('p','lab-footnote',message||(profile().cloudSaveError?'本机进度 · '+profile().cloudSaveError:'研究加成从下一局生效'),{role:'status'}),
+      ],{'data-paper-surface':'album-page'}),
+    ],[button('返回',home)]);
+    node.querySelector('.zx-body').dataset.paperSurface='flat';
+    freePaperActions(node);
   }
   function overlay(title,subtitle,body,actions=[],hud=null,kind='') {
     if(hud)document.querySelectorAll('.run-hint,.zx-intro').forEach(node=>node.remove());
-    const heading=[subtitle?small(subtitle):null,el('h2','',title)];
-    const content=el('section','zx zx-modal '+kind,kind==='zx-pause'?
-      [el('div','zx-pause-body',[...heading,...body]),el('footer','zx-pause-footer',actions)]:[...heading,...body,...actions]);
+    const titleNode=el('h2','',title);
+    const framed=!!hud&&!kind.includes('zx-first-batch-upgrade');
+    if(!framed&&!kind.includes('zx-first-batch-upgrade'))paperDialogTitle(titleNode);
+    const heading=framed?[]:[subtitle?small(subtitle):null,titleNode];
+    const content=el('section','zx zx-modal '+kind,[...heading,...body,...actions]);
     let wrap;
-    if(hud){wrap=hud.modal(content);wrap.className='zx zx-modal-wrap';}
-    else {document.querySelector('.zx-dialog')?.remove();wrap=el('div','zx zx-modal-wrap zx-dialog',content);app.ui.append(wrap);}
-    if(kind==='zx-pause'){wrap.classList.add('zx-pause-screen');wrap.dataset.fullscreen='true';}
-    if(kind==='zx-upgrade'){
+    if(hud){wrap=hud.modal(framed?battleDialogFrame(content,titleNode,subtitle):content);wrap.className='zx zx-modal-wrap';}
+    else {document.querySelector('.zx-dialog')?.remove();wrap=el('div','zx zx-modal-wrap zx-dialog',content);mountMenuDialog(app.ui,wrap,app.screen);}
+    const dismiss=actions.find(action=>action?.classList.contains('paper-back')||action?.dataset.action==='close-battle-map');
+    if(dismiss)dockDialogClose(wrap,dismiss);
+    if(kind.split(' ').includes('zx-upgrade')){
       if(window.animateModal)window.animateModal(wrap);
       else{
         wrap.animate([{opacity:0},{opacity:1}],{duration:200,easing:'ease-out'});
@@ -778,125 +887,222 @@ export function createZixingUI(app,api) {
     }
     return wrap;
   }
+  function savedCard(result={},rescued=false) {
+    // A delayed acknowledgement must not dismiss a new run or its current modal.
+    if(app.run&&!['over','dead'].includes(app.run.state)){
+      app.notice('上局结算已完成，奖励已保存。');return null;
+    }
+    document.querySelectorAll('.zx-saved-wrap').forEach(node=>node.remove());
+    const count=value=>Number.isFinite(Number(value))?Math.max(0,Math.floor(Number(value))):0;
+    const captures=new Set(result.progress?.league||[]).size,shinies=new Set(result.progress?.shinies||[]).size;
+    const metrics=[['时长',time(count(result.time))],['击败',number(count(result.kills))],['等级','Lv.'+Math.max(1,count(result.level))]];
+    const rewards=[];
+    if(captures)rewards.push(el('span','zx-saved-reward','新收录字灵 +'+captures));
+    if(shinies)rewards.push(el('span','zx-saved-reward shiny','异色字灵 +'+shinies));
+    const classics=new Set(result.progress?.classics||[]).size;
+    if(classics)rewards.push(el('span','zx-saved-reward','经典异色 +'+classics));
+    const homePage=app.screen?.dataset.page==='home';
+    let wrap;
+    const close=()=>wrap.remove();
+    const panel=el('section','zx zx-modal zx-saved-run',[
+      battleDialogHeading(el('h2','','上局结算')),
+      el('div','zx-saved-body',[
+        el('div','zx-receipt',[
+          settlementTicket(),el('div','zx-receipt-content',[
+            el('b','zx-receipt-status','旅程已归档'),
+            el('div','zx-receipt-metrics',metrics.map(([label,value])=>el('div','zx-receipt-stat',[
+              el('span','',label),el('b','',value),
+            ]))),
+            text(rescued?'按离开时的进度结算，奖励已保存。':'奖励与收录进度已保存。','zx-receipt-note'),
+          ]),
+        ]),
+        ...(rewards.length?[el('div','zx-saved-rewards',rewards)]:[]),
+      ]),
+    ],{role:'dialog','aria-modal':'true','aria-label':'上局结算已完成','data-paper-surface':'flat','data-saved-state':rescued?'recovered':'saved'});
+    wrap=el('div','zx zx-modal-wrap zx-saved-wrap',panel);
+    dockDialogClose(wrap,button([],close,'',{'data-action':'saved-return'}),homePage?'关闭结算并返回首页':'关闭结算');
+    mountMenuDialog(app.ui,wrap,app.screen);return wrap;
+  }
   function research(item) {
     const level=app.meta.lab(item.id),cost=item.cost(level),dust=profile().stardust,can=dust>=cost;
+    if(level>=item.max)return;
+    const [word,name]=labNames[item.id],title=can?'提升一级':'星尘不足';
     let popup;const close=()=>popup.remove();
-    const act=button(can?'确认研究 · '+cost+' 星尘  →':'星尘不足 · 无法研究',async()=>{
-      close();
-      const node=pendingScreen('研究所','正在保存研究升级');
+    const errorNote=el('p','lab-research-error','',{role:'alert'});
+    errorNote.hidden=true;
+    const dismiss=button('取消',close,'',{'data-action':'research-close'});
+    const act=can?button('确认研究',async()=>{
+      act.disabled=true;dismiss.disabled=true;errorNote.hidden=true;
       try {
         app.meta.flush();await app.meta.queue;
         app.meta.adopt(await app.backend.buyLab(app.meta.account,item.id,level+1));
-        if(app.screen===node)lab('升级成功 · '+labNames[item.id][1]+' '+labValue(item,level+1));
+        close();lab(name+'已升至 Lv.'+(level+1)+'，下一局加成 '+labValue(item,level+1));
       } catch(error) {
-        await app.meta.resync();
-        if(app.screen===node)lab(error.message||'研究未保存，请重试。');
+        try{await app.meta.resync();}catch{/* A failed refresh still leaves the purchase retryable. */}
+        if(!popup.isConnected)return;
+        if(app.meta.lab(item.id)>level){close();lab(name+'已升至 Lv.'+app.meta.lab(item.id));return;}
+        errorNote.textContent=error.message||'这次研究未保存，请重试。';errorNote.hidden=false;
+        act.textContent='重试研究';act.disabled=false;dismiss.disabled=false;
       }
-    },'primary',{disabled:!can,'data-action':'confirm-research'});
-    popup=overlay(can?'提升一级':'再积累一些星尘','永久研究 / '+labNames[item.id][1],[
-      el('div','zx-center',glyph(labNames[item.id][0],true)),
-      card(row(col(small('当前'),el('h2','',labValue(item,level))),el('b','','→'),col(small('升级后'),el('h2','',labValue(item,level+1))))),
-      statRow('持有星尘',number(dust)),statRow(can?'本次消耗':'升级需要',number(cost)),statRow(can?'升级后剩余':'还差',number(Math.abs(dust-cost))),
-    ],[act,...(!can?[button('去冒险获取星尘  →',()=>{close();choose();},'primary')]:[]),button('返回',close)]);
+    },'primary',{'data-action':'confirm-research'}):
+      button('去获取星尘',()=>{close();choose();},'primary',{'data-action':'research-adventure'});
+    const summary=(label,value,cls='')=>el('div','lab-total '+cls,[el('span','',label),el('b','',number(value))]);
+    const panel=el('section','zx lab-dialog',[
+      el('div','lab-dialog-head',[el('div','lab-dialog-heading',[el('small','','永久研究'),el('h2','',title)]),stagePortrait({word})]),
+      el('div','lab-preview',[el('b','',name+'   Lv.'+level+' → '+(level+1)),el('b','',labValue(item,level)+' → '+labValue(item,level+1))]),
+      summary('持有星尘',dust),summary(can?'本次消耗':'升级需要',cost),summary(can?'升级后剩余':'还差星尘',Math.abs(dust-cost),can?'':'shortfall'),
+      el('small','lab-dialog-note','对所有字灵生效，从下一局起应用。'),errorNote,paperDecisionActions(el,dismiss,act),
+    ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'album-page'});
+    document.querySelector('.zx-dialog')?.remove();
+    popup=el('div','zx zx-modal-wrap zx-dialog lab-overlay',panel);
+    mountMenuDialog(app.ui,popup,app.screen);
   }
   function dustHelp() {
-    screen('dust','星尘从哪里来','研究所资源',[
-      walletSimple(),card(el('h3','','完成一局冒险'),text('探索、击败敌人与区域镇守，在结算时获得星尘。'),small('最终收益以本局结算为准，每局只结算一次。')),
-      card(el('h3','','失败也保留已获收益'),text('按已完成的探索与挑战结算。'),small('未完成的关卡进度不会算作通关。')),
-    ],[button('返回',()=>lab())],'purple');
+    readingDialog(app.ui,app.screen,app.screen.querySelector('[data-action="dust-help"]'),'星尘从哪里来',[
+      ['stardust','旅程结算','探索、击败敌人和镇守可获得星尘。每局结算一次，可在研究所使用。'],
+      ['collect','挑战失败也有收益','按已完成的探索和挑战结算星尘。通关进度需击败关卡镇守。'],
+    ],[],'dust-close');
   }
-  function walletSimple(){return el('div','zx-wallet',[small('星尘 · 永久研究资源'),el('strong','',number(profile().stardust)),text('对局结算获得 · 与金币独立')]);}
   function settings(back=home) {
-    returnTo=back;renderSettings();
-  }
-  function renderSettings() {
-    const s=profile().settings,fields=[];
-    const save=()=>{app.applySettings();app.meta.save();};
-    const toggle=(label,key,note='')=>{
-      fields.push(key);const b=el('button','zx-switch'+(s[key]?' on':''),el('i'),{type:'button',role:'switch','aria-label':label,'aria-checked':!!s[key]});
-      b.addEventListener('click',()=>{
-        if(key==='lock30Fps')setFrameRateLock(s,!s[key]);else s[key]=!s[key];
-        b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();
-      });
-      return el('div','zx-setting',[row(col(el('b','',label),note?small(note):null),b)]);
-    };
-    const range=(label,key,min,max,step,format=percent,note='')=>{
-      fields.push(key);const v=s[key]??api.defaults[key]??min,labelNode=small(format(v));
-      const input=el('input','zx-range',[],{type:'range',min,max,step,value:v,'aria-label':label});
-      input.addEventListener('input',()=>{s[key]=Number(input.value);labelNode.textContent=format(s[key]);save();});
-      return el('div','zx-setting',[row(el('b','',label),labelNode),input,note?small(note):null]);
-    };
-    const options=(label,key,values,note='')=>{
-      fields.push(key);const group=el('div','zx-options');
-      const explanation=note?small(typeof note==='function'?note():note):null;
-      const fill=()=>group.replaceChildren(...values.map(([v,label])=>el('button','zx-option'+((s[key]??api.defaults[key])===v?' on':''),label,{type:'button',onclick:()=>{
-        if(key==='quality'){
-          selectGraphicsQuality(s,v);
-          save();renderSettings();return;
-        }
-        s[key]=v;
-        save();
-        fill();if(typeof note==='function')explanation.textContent=note();
-      }})));fill();
-      return el('div','zx-setting',[row(el('b','',label),group),explanation]);
-    };
-    const sublabels=settingsTab===1?['性能视野','震动闪光','特效强度','攻击拾取']:settingsTab===3?['显示设置','战斗提示','流程提示']:[];
-    let title='',content=[];
-    if(settingsTab===0) {
-      title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音'))];
-    }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('锁定 30 帧','lock30Fps',frameRateHelp))];
-    }else if(settingsTab===1&&settingsSub===1) {
-      title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
-    }else if(settingsTab===1&&settingsSub===2) {
-      title='攻击特效强度';content=[card(range('特效不透明度','fxOpacity',.2,1,.05,percent,'仅影响特效，不影响危险预警。'),range('我的攻击不透明度','ownFxOpacity',.1,1,.05),range('特效亮度','fxGlow',.2,1,.05))];
-    }else if(settingsTab===1) {
-      title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']]))];
-    }else if(settingsTab===2) {
-      title='触控设置';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'))];
-    }else if(settingsSub===0) {
-      title='界面外观';content=[card(range('界面大小','hudScale',.6,1.3,.05),range('界面不透明度','hudOpacity',.3,1,.05)),card(range('首领血条不透明度','bossBarOpacity',.2,1,.05),options('首领体力','zxBossHealth',[['value','数值'],['percent','百分比']]))];
-    }else if(settingsSub===1) {
-      title='战斗信息提示';content=[card(toggle('伤害数字','damageNumbers'),toggle('浮动文字','floatText','保留治疗等即时反馈。'),toggle('大幅提示','showBanners'),toggle('道具与事件提示','showToasts'))];
-    }else {
-      title='对局流程提示';content=[card(toggle('显示本局道具','showItems','暂停页仍保留本局道具。'),toggle('仅一项升级时自动选择','skipEmptyLevelUp'),toggle('前几局玩法提示','tips'))];
+    const scroll=el('div','zx-settings-scroll',[],{'aria-label':'设置选项'});
+    const sectionTitle=el('b','zx-settings-section-title','');
+    const reset=button('恢复本页默认',()=>{
+      const s=profile().settings;
+      for(const key of fields){if(key==='lock30Fps')resetFrameRatePolicy(s);else s[key]=api.defaults[key];}
+      app.applySettings();app.meta.save();refreshContent();
+    },'zx-plain');
+    const subTabs=el('div','zx-subtabs zx-settings-index',[],{'aria-label':'设置子分类'});
+    const subNames=[[],['性能视野','震动闪光','特效强度','攻击拾取'],[],['显示设置','战斗提示','流程提示']];
+    let fields=[];
+    function showSubtabs(){
+      const names=subNames[settingsTab];
+      subTabs.hidden=!names.length;
+      subTabs.replaceChildren(...names.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),[
+        el('span','',label),el('i','zx-subtab-mark',[],{'aria-hidden':true}),
+      ],{type:'button','aria-pressed':settingsSub===i,'data-paper-surface':'flat',onclick:()=>{
+        if(settingsSub===i)return;
+        const previous=subTabs.children[settingsSub],next=subTabs.children[i];
+        previous.classList.remove('on');previous.setAttribute('aria-pressed','false');
+        next.classList.add('on');next.setAttribute('aria-pressed','true');
+        settingsSub=i;refreshContent(true);
+      }})));
     }
+    const mainTabs=el('div','zx-tabs main zx-lab-tabs zc-album-tabs',['声音','画面','操作','界面'].map((name,i)=>
+      albumTab(el,button,name,i===settingsTab,()=>{
+        if(i===settingsTab)return;
+        setAlbumTabActive(mainTabs.children[settingsTab],false);
+        setAlbumTabActive(mainTabs.children[i],true);
+        settingsTab=i;settingsSub=0;showSubtabs();refreshContent(true);
+      })));
+    showSubtabs();refreshContent();
     screen('settings','设置','仅调整当前设备的体验',[
-      tabs(['声音','画面','操作','界面'],settingsTab,i=>{settingsTab=i;settingsSub=0;renderSettings();},'main'),
-      sublabels.length?el('div','zx-subtabs',sublabels.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),label,{onclick:()=>{settingsSub=i;renderSettings();}}))):null,
-      row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key];if(fields.includes('lock30Fps'))resetFrameRatePolicy(s,window.nativeDevice);save();renderSettings();},'zx-plain')),
-      ...content,
-    ],[button('返回',()=>loadPage('设置','正在保存设置',()=>app.meta.saveNow(),()=>{
-      const back=returnTo;app.setScreen(null);back();
-    },renderSettings))]);
+      mainTabs,subTabs,el('div','zx-settings-tools',[sectionTitle,reset]),scroll,
+    ],[small('调整即时生效'),button('返回',async()=>{await app.meta.saveNow();app.setScreen(null);back();})]);
+
+    function refreshContent(resetScroll=false){
+      const s=profile().settings;fields=[];
+      const save=()=>{app.applySettings();app.meta.save();};
+      const toggle=(label,key,note='')=>{
+        fields.push(key);const b=el('button','zx-switch'+(s[key]?' on':''),el('i'),{type:'button',role:'switch','aria-label':label,'aria-checked':!!s[key]});
+        b.addEventListener('click',()=>{if(key==='lock30Fps')setFrameRateLock(s,!s[key]);else s[key]=!s[key];b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();});
+        return el('div','zx-setting',[row(col(el('b','',label),note?small(note):null),b)]);
+      };
+      const range=(label,key,min,max,step,format=percent,note='')=>{
+        fields.push(key);const v=s[key]??api.defaults[key]??min,labelNode=small(format(v));
+        const input=el('input','zx-range',[],{type:'range',min,max,step,value:v,'aria-label':label});
+        input.addEventListener('input',()=>{s[key]=Number(input.value);labelNode.textContent=format(s[key]);save();});
+        return el('div','zx-setting',[row(el('b','',label),labelNode),input,note?small(note):null]);
+      };
+      const options=(label,key,values,note='')=>{
+        fields.push(key);const group=el('div','zx-options');
+        const explanation=note?small(typeof note==='function'?note():note):null;
+        const fill=()=>group.replaceChildren(...values.map(([v,label])=>el('button','zx-option'+((s[key]??api.defaults[key])===v?' on':''),label,{type:'button',onclick:()=>{
+          if(key==='quality'){selectGraphicsQuality(s,v);save();refreshContent();return;}
+          s[key]=v;save();
+          fill();if(typeof note==='function')explanation.textContent=note();
+        }})));fill();
+        return el('div','zx-setting',[row(el('b','',label),group),explanation]);
+      };
+      let title='',content=[];
+      if(settingsTab===0) {
+        title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
+      }else if(settingsTab===1&&settingsSub===0) {
+        title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('锁定 30 帧','lock30Fps',frameRateHelp))];
+      }else if(settingsTab===1&&settingsSub===1) {
+        title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
+      }else if(settingsTab===1&&settingsSub===2) {
+        title='攻击特效强度';content=[card(range('特效不透明度','fxOpacity',.2,1,.05,percent,'仅影响特效，不影响危险预警。'),range('我的攻击不透明度','ownFxOpacity',.1,1,.05),range('特效亮度','fxGlow',.2,1,.05)),small('战斗预警不受透明度和隐藏攻击设置影响。')];
+      }else if(settingsTab===1) {
+        title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']])),small('战斗预警不受透明度和隐藏攻击设置影响。')];
+      }else if(settingsTab===2) {
+        title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),small('固定俯视镜头 · 自动跟随字灵'))];
+      }else if(settingsSub===0) {
+        title='界面外观';content=[card(range('界面大小','hudScale',.6,1.3,.05),range('界面不透明度','hudOpacity',.3,1,.05)),card(range('首领血条不透明度','bossBarOpacity',.2,1,.05),options('首领体力','zxBossHealth',[['value','数值'],['percent','百分比']]))];
+      }else if(settingsSub===1) {
+        title='战斗信息提示';content=[card(toggle('伤害数字','damageNumbers'),toggle('浮动文字','floatText','保留治疗等即时反馈。'),toggle('大幅提示','showBanners'),toggle('道具与事件提示','showToasts')),small('危险范围提示等必要战斗信息始终保留。')];
+      }else {
+        title='对局流程提示';content=[card(toggle('显示本局道具','showItems','暂停页仍保留本局道具。'),toggle('仅一项升级时自动选择','skipEmptyLevelUp'),toggle('前几局玩法提示','tips')),small('危险范围提示等必要战斗信息始终保留。')];
+      }
+      sectionTitle.textContent=title;
+      scroll.replaceChildren(...content);
+      if(resetScroll)scroll.scrollTop=0;
+    }
   }
-  function help(back=home) {
-    const chart=el('canvas','zx-help-map',[],{width:680,height:470}),ctx=chart.getContext('2d');
-    ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 62px "Ziling Swei", sans-serif';
-    const symbols=['金','木','土','水','火'],colors=['#a58a2c','#28874e','#94703d','#3278ba','#bc3441'];
-    const coords=symbols.map((_,i)=>[340+180*Math.sin(i*Math.PI*2/5),230-175*Math.cos(i*Math.PI*2/5)]);
-    ctx.strokeStyle='#aaa3b7';ctx.lineWidth=2;ctx.beginPath();coords.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.stroke();
-    coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
-    ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
-    screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','按住战场空白处即可出现摇杆，轻推慢走，推到外圈全速移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等设施旁停留 ${facilityDwellSeconds} 秒可触发互动。桌上世界区域 1 开战满 ${bossSummonUnlockSeconds() / 60} 分钟、区域 2 开战满 ${bossSummonUnlockSeconds({biome:{id:'forest'},stage:2}) / 60} 分钟后，在倒计时装置「${facilityNames.boss}」的光圈内停留 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟仍未召唤时，龘会自动现身。击败镇守后，从木门前往下一区域或通关；区域 2 的木门通向圣地终战。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，在光圈内停留 ${altarChargeSeconds} 秒即可选择祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招充满后会保留能量。看到按钮显示「就绪」时，点击即可释放。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
-      button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
-    ],[button('返回',()=>{app.setScreen(null);back();})]);
+  function help() {
+    if(document.querySelector('.zx-guide-overlay'))return;
+    const pauseSheet=app.run?.ui?.modalEl;
+    const host=pauseSheet?.classList.contains('zx-pause-screen')?pauseSheet:app.ui;
+    const trigger=host.querySelector('[data-action="help"]');
+    const instructions=[
+      ['move','移动','按住空白处拖动，松手停下。移动时也能用另一只手点大招。'],
+      ['collect','攻击与拾取',`招式自动释放，靠近即可拾取经验、金币和道具。在扭蛋机旁停留 ${facilityDwellSeconds} 秒可触发互动。`],
+      ['burst','释放大招','大招就绪后，点大招按钮释放。'],
+    ];
+    const details=el('div','zx-guide-legal',[],{id:'zx-guide-legal'});details.hidden=true;
+    const legal=button('署名与法律声明',()=>{
+      if(!details.firstElementChild)details.append(api.credits());
+      details.hidden=!details.hidden;
+      legal.setAttribute('aria-expanded',String(!details.hidden));
+      if(!details.hidden)legal.scrollIntoView({block:'nearest'});
+    },'zx-plain',{'data-action':'guide-credits','data-paper-surface':'flat','aria-controls':'zx-guide-legal','aria-expanded':false});
+    readingDialog(host,host===pauseSheet?pauseSheet:app.screen,trigger,'玩法说明',instructions,[legal,details],'guide-close');
+  }
+  function readingDialog(host,screenNode,trigger,title,instructions,extra,action){
+    if(host.querySelector('.zx-guide-overlay'))return;
+    const panel=el('section','zx-guide-paper',[
+      el('h2','',title),
+      el('div','zx-guide-scroll',[
+        ...instructions.map(([symbol,title,desc])=>el('div','zx-guide-row',[
+          el('span','zx-guide-mark',menuSymbol(symbol,25)),el('div','zx-guide-copy',[el('b','',title),text(desc)])])),
+        ...extra,
+      ]),
+    ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'album-page'});
+    const wrap=el('div','zx zx-modal-wrap zx-guide-overlay',panel);
+    const close=()=>{wrap.remove();trigger?.focus?.({preventScroll:true});};
+    const dismiss=button([],close,'',{'data-action':action});
+    dockDialogClose(wrap,dismiss,'关闭'+title);
+    wrap.addEventListener('keydown',event=>{
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();return;}
+      if(event.key!=='Tab')return;
+      const focusable=[...wrap.querySelectorAll('button,a[href]')].filter(n=>!n.closest('[hidden]'));
+      const i=focusable.indexOf(document.activeElement);
+      event.preventDefault();focusable[(i+(event.shiftKey?-1:1)+focusable.length)%focusable.length]?.focus();
+    });
+    mountMenuDialog(host,wrap,screenNode);dismiss.focus();
   }
   function stats(run=null,back=choose,tab=0) {
     const c=run?character(run.player.speciesId):current(),s=run?run.player.stats:api.baseStats(selected,app.meta.labStats());
     const item=(label,value,note,click)=>{const a=card(small(label),el('strong','',value),small(note));if(click){a.setAttribute('role','button');a.addEventListener('click',click);}return a;};
     const preview=()=>stats(run,back,tab);
-    const body=[card(row(glyph(c),col(el('b','',c.word+' · '+(run?'Lv.'+run.player.level:'开局属性')),small(run?'桌上世界 · 已暂停':'基础 + 永久研究')))),
-      ...(run?[tabs(['战斗属性','成长属性'],tab,i=>stats(run,back,i))]:[])];
+    const body=[el('div','paper-info-hero',[glyph(c),col(el('b','',c.word+' · '+(run?'Lv.'+run.player.level:'开局属性')),small(run?'桌上世界 · 已暂停':'基础 + 永久研究'))]),
+      ...(run?[el('nav','zx-team-tabs zx-lab-tabs zc-album-tabs',['战斗属性','成长属性'].map((name,i)=>albumTab(el,button,name,i===tab,()=>stats(run,back,i),{'data-stat-tab':i})))]:[])];
     if(tab===0)body.push(el('div','zx-stat-grid',[
-      row(item('全局伤害倍率',percent(s.damage),'查看加成来源',()=>damageSources(run,preview)),item('最大生命',number(s.maxHp),run?'当前生命 '+Math.ceil(run.player.hp)+' / '+Math.round(run.player.maxHp):'含永久研究加成')),
+      row(item('全局伤害倍率',percent(s.damage),'查看加成来源',()=>damageSources(run,preview)),item('最大生命',number(s.maxHp),run?'当前生命 '+Math.ceil(run.player.hp)+' / '+Math.round(run.player.maxHp):'角色基础生命')),
       row(item('攻击速度',percent(s.attackSpeed),'含永久研究加成'),item('移动速度',percent(s.moveSpeed),'含永久研究加成')),
     ]),card(statRow('暴击率',percent(s.critChance)),statRow('攻击范围',percent(s.area)),statRow('护甲',Number(s.armor.toFixed(1))),statRow('生命回复',Number(s.regen.toFixed(2))+' / 秒')));
-    else body.push(card(statRow('经验获取',percent(s.xpGain)),statRow('金币获取',percent(s.gold)),statRow('幸运',number(s.luck)),statRow('拾取范围',Number(s.pickupRange.toFixed(1))+' 厘米')));
-    if(run&&hasWindSpeedPassive(run.player.speciesId))body.push(card(el('b','','移速被动'),small(windSpeedPassive),statRow('当前伤害加成','+'+percent(windSpeedDamageBonus(run.player.speciesId,s.moveSpeed,run.player.baseSpeed)))));
-    const subtitle=run?'查看时保持暂停 · 本局属性':profile().cloudSaveError?'开局预览 · 当前显示本机进度':'开局预览 · 基础与永久加成';
-    screen('stats',run?'当前属性':'文字属性',subtitle,body,[button('返回',()=>{app.setScreen(null);back();})],'blue');
+    else body.push(card(statRow('经验获取',percent(s.xpGain)),statRow('金币获取',percent(s.gold)),statRow('幸运',number(s.luck)),statRow('拾取范围',Number(s.pickupRange.toFixed(1))+' 厘米')),small('金币获取影响局内金币，与研究所星尘收益独立。'));
+    body.push(small(run?'查看时保持暂停，返回不改变本局强化。':'研究加成用于下一次新对局。'));
+    screen('stats',run?'当前属性':'文字属性',run?'查看时保持暂停 · 本局属性':'开局预览 · 不包含局内临时强化',body,[button('返回',()=>{app.setScreen(null);back();})],'blue');
   }
   function damageSources(run,back) {
     const total=run?run.player.stats.damage:api.baseStats(selected,app.meta.labStats()).damage;
@@ -906,37 +1112,112 @@ export function createZixingUI(app,api) {
       el('div','zx-hero',[el('h1','',percent(total)),small('当前全局伤害倍率')]),
       card(statRow('文字基础与成长',percent(base)),statRow('研究所 · 伤害',percent(research)),statRow('本局招式、道具与临时加成',run?'已计入当前倍率':'未计入')),
       el('div','zx-banner','基础与研究加成先合并，再由现有战斗规则计算道具、被动与临时效果。'),
+      small('倍率不等于最终伤害，还受招式、暴击、敌方防御与属性关系影响。'),
     ],[button('返回',back)],'blue');
   }
-  function pause(run) {
+  function pauseAttributes(run) {
+    const p=run.player,s=p.stats;
+    const pairs=[
+      ['全局伤害',percent(s.damage)],['当前生命',Math.ceil(p.hp)+' / '+Math.round(p.maxHp)],
+      ['攻击速度',percent(s.attackSpeed)],['移动速度',percent(s.moveSpeed)],
+      ['暴击率',percent(s.critChance)],['攻击范围',percent(s.area)],
+      ['护甲',Number(s.armor.toFixed(1))],['生命回复',Number(s.regen.toFixed(2))+' / 秒'],
+      ['经验获取',percent(s.xpGain)],['金币获取',percent(s.gold)],
+      ['幸运',number(s.luck)],['拾取范围',Number(s.pickupRange.toFixed(1))+' 厘米'],
+    ];
+    const pair=([name,value])=>el('div','zx-pause-stat-pair',[small(name),el('i','zx-pause-leader',[],{'aria-hidden':true}),el('b','',String(value))]);
+    const rows=[];
+    for(let i=0;i<pairs.length;i+=2)rows.push(el('div','zx-pause-stat-row',[pair(pairs[i]),pair(pairs[i+1])]));
+    const base=api.baseStats(p.speciesId,{},p.evoStage+p.growth).damage;
+    if(hasWindSpeedPassive(p.speciesId))rows.push(el('div','zx-pause-stat-row',[
+      pair(['移速被动伤害加成','+'+percent(windSpeedDamageBonus(p.speciesId,s.moveSpeed,p.baseSpeed))]),
+    ]));
+    const source=el('section','zx-pause-sources',[
+      el('b','zx-pause-index','伤害来源'),
+      el('div','zx-pause-stat-row',[pair(['字灵基础与成长',percent(base)]),pair(['研究加成',percent(app.meta.labStats().damage||0)])]),
+      small('全局伤害包含本局招式、道具与临时加成。'),
+    ]);
+    return el('section','zx-pause-attrs',[...rows,source]);
+  }
+  function pause(run,initialTab='attrs') {
     if(run.coop)saveProgress(run);
-    overlay('片刻休整',run.coop?'联机中 · 队友仍在战斗':'单人对局 · 已暂停',[
-      el('div','zx-row zx-pause-profile',[glyph(character(run.player.speciesId)),col(el('b','',character(run.player.speciesId).word+' · Lv.'+run.player.level),small('桌上世界 / '+difficultyName(run)))]),
-      el('div','zx-build-tags',buildLabels(run).map(label=>el('span','zx-build-tag',label))),
-      el('div','zx-pause-stats',[[time(run.time),'已用时间'],[number(run.stats.kills),'击败'],[number(run.gold),'本局金币']].map(([v,k])=>col(el('b','',v),small(k)))),
-      button([el('span','zx-pause-attribute-title',[icon('stats',16,'#2e6ddb'),el('span','','查看属性')]),el('span','zx-pause-attribute-note','当前数值 · 加成来源 ›')],()=>stats(run,()=>pause(run)),'zx-link zx-pause-attributes'),
-      el('div','zx-row zx-pause-actions',[
-        button([icon('settings',18,'#61577b'),el('span','','设置')],()=>settings(()=>pause(run)),'zx-pause-action'),
-        button([icon('book',18,'#61577b'),el('span','','玩法说明')],()=>help(()=>pause(run)),'zx-pause-action')
-      ]),
-    ],[...(run.coop?[button('暂离房间',()=>{
-      saveProgress(run);run.coop.room.end('已暂离',false);
-      app.coopRoom=null;app.toMenu();
-    })]:[]),button('结束本局',()=>confirmEnd(run),'danger'),button('返回',()=>run.resume())],run.ui,'zx-pause');
+    document.querySelectorAll('.run-hint,.zx-intro').forEach(node=>node.remove());
+    const p=run.player,c=character(p.speciesId);
+    const region=run.sanctuary?'圣地':'第'+run.stage+'区';
+    const identity=el('header','zx-pause-identity',[
+      stagePortrait(c,run.skinLook),
+      el('div','zx-pause-name',[el('b','',paperStages[Math.min(3,run.stage-1)]),small(region+' · '+difficultyName(run)+' · '+c.word+' Lv.'+p.level)]),
+      run.coop?small('队友仍在战斗'):null,
+    ]);
+    const metrics=el('div','zx-pause-metrics',[
+      ['clock','用时',time(run.time)],['score','击败',compactCounter(run.stats.kills)],['coin','金币',compactCounter(Math.round(run.gold))],
+    ].map(([symbol,label,value])=>el('div','zx-pause-metric',[hudPaperIcon(symbol,15),small(label),el('b','',value)])));
+    const entries=buildEntries(run);
+    function inventory(label,items,key){
+      const rows=items.map(item=>el('div','zx-pause-build-row',[loadoutIcon(item.src,item.name),el('span','',item.name),el('b','',item.move?'Lv.'+item.count:'×'+item.count)]));
+      return el('section','zx-pause-inventory',[el('b','zx-pause-index',label),...(rows.length?rows:[small('暂无')])],{'data-pause-section':key});
+    }
+    const pane=el('div','zx-pause-pane'),body=el('div','zx-pause-body',[pane]);
+    let active=initialTab;
+    const tabs=el('div','zc-album-tabs zx-pause-tabs',[['attrs','属性'],['build','本局构筑']].map(([key,label])=>
+      albumTab(el,button,label,key===active,()=>show(key),{'data-pause-tab':key})));
+    function show(key){
+      active=key;
+      for(const tab of tabs.children)setAlbumTabActive(tab,tab.dataset.pauseTab===key);
+      if(key==='attrs')pane.replaceChildren(pauseAttributes(run));
+      else pane.replaceChildren(inventory('招式',entries.filter(item=>item.move),'moves'),inventory('道具与强化',entries.filter(item=>!item.move),'supplies'));
+      body.scrollTop=0;
+    }
+    show(active);
+    const tools=el('div','zx-row zx-pause-actions',[
+      button([menuSymbol('settings',18),el('span','','设置')],()=>settings(()=>pause(run,active)),'zx-plain zx-pause-action',{'data-action':'pause-settings'}),
+      button([icon('book',18,'#485E82'),el('span','','玩法说明')],help,'zx-plain zx-pause-action',{'data-action':'help'}),
+    ]);
+    if(run.coop)tools.append(button('暂离房间',()=>{
+      saveProgress(run);run.coop.room.end('已暂离',false);app.coopRoom=null;app.toMenu();
+    },'zx-plain zx-pause-action',{'data-action':'pause-leave-room'}));
+    const footer=el('footer','zx-pause-footer',[
+      button('结束本局',()=>confirmEnd(run,active),'danger zx-pause-end',{'data-action':'pause-end'}),
+      button('继续战斗',()=>run.resume(),'primary',{'data-action':'pause-resume'}),
+    ]);
+    const paper=el('div','zx-pause-leaf',[pausePagePrint(),el('div','zx-pause-paper',[identity,metrics,tabs,body,tools,footer])]);
+    const sheet=el('section','zx-pause-sheet',[battleDialogHeading(el('h2','','片刻休整')),paper],{role:'dialog','aria-modal':true,'aria-label':'片刻休整'});
+    const wrap=run.ui.modal(el('div','zx zx-modal zx-pause',sheet,{'data-paper-surface':'flat'}));
+    wrap.className='zx zx-modal-wrap zx-pause-screen';
   }
-  function confirmEnd(run) {
-    const wrap=overlay('结束这次旅程？','',[
-      small('本局金币和临时强化将结束，未完成的关卡不会解锁下一难度。'),statRow('当前旅程',character(run.startSpecies).word+' · 桌上世界'),small(time(run.time)+' · Lv.'+run.player.level),
-    ],[button('确认结束本局',async()=>{run.endHow='quit';await run.finish(false);},'danger'),button('返回',()=>run.resume())],run.ui);
-    wrap.classList.add('zx-confirm-end');
+  function outcomeDialog(run,title,subtitle,body,actions=[]){
+    const panel=el('section','zx zx-outcome',[
+      battleDialogHeading(el('h2','',title),subtitle),body,
+      actions.length?el('footer','zx-outcome-actions',actions):null,
+    ],{role:'dialog','aria-modal':'true','aria-label':title,'data-paper-surface':'flat'});
+    const wrap=run.ui.modal(panel);
+    wrap.className='zx zx-modal-wrap zx-outcome-overlay';
+    run.ui.root.classList.add('zx-showing-outcome');
+    return wrap;
   }
-  function buildLabels(run) {
-    return [...run.player.moves.filter(Boolean).map(move=>api.moveName(move.def)+' Lv.'+move.level),
-      ...[...run.player.vitamins].map(([id,value])=>api.vitaminName(id)+' ×'+value.level),
-      ...[...run.player.items].map(([id,count])=>api.itemName(id)+' ×'+count)];
+  function confirmEnd(run,tab) {
+    const cancel=button('继续休整',()=>pause(run,tab),'',{'data-action':'end-cancel'});
+    const confirm=button('结束本局',()=>{run.endHow='quit';return run.finish(false);},'danger',{'data-action':'end-confirm'});
+    const hint=el('p','paper-prompt-hint','结束后将按当前进度结算，本局临时强化随旅程结束。');
+    const details=el('p','zx-end-state',character(run.startSpecies).word+' · Lv.'+run.player.level+'    '+time(run.time));
+    const wrap=run.ui.modal(paperDecisionPanel(el,'结束本局？',hint,[details],cancel,confirm));
+    wrap.className='zx zx-modal-wrap zx-dialog paper-prompt-overlay';
+    run.ui.pauseBack=()=>pause(run,tab);
   }
-  function build(run) {
-    return card(small('本局构筑'),...buildLabels(run).map(label=>text(label,'zx-note')));
+  function buildEntries(run) {
+    const moves=run.player.moves.filter(Boolean).map(move=>{
+      const name=api.moveName(move.def);
+      return {move:true,count:move.level,name,label:name+' Lv.'+move.level,src:api.moveIcon(move.def)};
+    });
+    const vitamins=[...run.player.vitamins].map(([id,value])=>{
+      const name=api.vitaminName(id);
+      return {vitamin:true,count:value.level,name,label:name+' ×'+value.level,src:api.vitaminIcon(id)};
+    });
+    const items=[...run.player.items].map(([id,count])=>{
+      const name=api.itemName(id);
+      return {count,name,label:name+' ×'+count,src:api.itemIcon(id)};
+    });
+    return [...moves,...vitamins,...items];
   }
   const loadoutIcon=(src,name)=>el('img','zx-loadout-icon',[],{src,alt:name,draggable:false});
   function updateSkillSlots(slots,run){
@@ -954,6 +1235,7 @@ export function createZixingUI(app,api) {
       if(slot.dataset.move!==key||slot.dataset.name!==name){
         slot.dataset.name=name;
         slot.dataset.move=key;slot.className='zx-skill-slot '+(locked?'locked':move?'filled':'empty');
+        slot.dataset.paperSurface='hud-cell';
         slot.replaceChildren(...(locked?[icon('lock',17)]:move?[
           loadoutIcon(api.moveIcon(move.def),api.moveName(move.def)),
           el('canvas','zx-skill-cooldown',[],{width:84,height:84,'data-static':'true'}),el('b','zx-slot-level',level),
@@ -965,30 +1247,44 @@ export function createZixingUI(app,api) {
   }
   function supplyIcons(run) {
     const p=run.player;
-    // Match the space beneath the name at each portrait/minimap breakpoint.
-    const narrow=innerWidth<=350,available=innerWidth-(narrow?200:232);
-    const capacity=Math.max(3,Math.min(6,Math.floor((available+4)/((narrow?24:26)+4))));
-    const entries=[...(profile().settings.showItems?[...p.items].map(([id,count])=>({id,count,kind:'item',name:api.itemName(id),src:api.itemIcon(id)})):[]),
-      ...[...p.vitamins].map(([id,value])=>({id,count:value.level,kind:'vitamin',name:api.vitaminName(id),src:api.vitaminIcon(id)}))];
+    const capacity=6;
+    const entries=Array.from(p.vitamins,([id,value])=>({
+      id,count:value.level,kind:'vitamin',name:api.vitaminName(id),src:api.vitaminIcon(id),
+    }));
+    if(profile().settings.showItems!==false)for(const [id,count] of p.items){
+      entries.push({id,count,kind:'item',name:api.itemName(id),src:api.itemIcon(id)});
+    }
     const visible=entries.length>capacity?capacity-1:capacity;
-    const items=el('div','zx-inventory-items',entries.slice(0,visible).map(({id,count,kind,name,src})=>el('div','zx-mini-slot filled',[
-      loadoutIcon(src,name),el('b','zx-slot-count',String(count)),
-    ],{['data-'+kind]:id,'data-count':count,title:name+' ×'+count,'aria-label':name+' ×'+count})));
-    if(entries.length>visible)items.append(button('+'+(entries.length-visible),()=>run.pause(),'zx-mini-slot zx-loadout-more',{'aria-label':'查看全部道具与强化','data-action':'inventory-more'}));
-    while(items.children.length<capacity)items.append(el('div','zx-mini-slot empty',[],{'aria-hidden':true}));
-    return items;
+    const cells=entries.slice(0,visible).map(({id,count,kind,name,src})=>el('div','zx-mini-slot filled',[
+      loadoutIcon(src,name),count>1?el('b','zx-slot-count',String(count)):null,
+    ],{'data-paper-surface':'hud-cell',['data-'+kind]:id,'data-count':count,'aria-label':name+' ×'+count}));
+    if(entries.length>visible)cells.push(button('+'+(entries.length-visible),()=>{
+      run.pause();
+      const modal=run.ui.modalEl;
+      modal?.querySelector('[data-pause-tab="build"]')?.click();
+      modal?.querySelector('[data-pause-section="supplies"]')?.scrollIntoView();
+    },'zx-mini-slot zx-loadout-more',{'data-paper-surface':'hud-cell','aria-label':'查看全部道具与强化','data-action':'inventory-more'}));
+    return el('div','zx-inventory-items',el('div','zx-supply-row vitamin-rail',cells));
   }
-  function offerContent(art,title,notes) {
-    return row(art,col(el('b','',title),...notes));
+  function effectRow(value,tone='neutral',scope='') {
+    const label=tone==='boon'?'增益':tone==='bane'?'代价':'效果';
+    const sign=tone==='boon'?'＋':tone==='bane'?'－':'·';
+    return el('div','zx-choice-effect '+tone,[
+      el('span','zx-effect-sign',sign,{'aria-hidden':true}),
+      el('span','zx-effect-value',value),
+      scope?el('span','zx-effect-scope',effectScope(scope)):null,
+    ],{'data-effect':tone,'aria-label':label+'：'+value+(scope?'，'+effectScope(scope):'')});
   }
-  function rewardPortrait(run) {
-    const id=run.player.speciesId??run.startSpecies;
-    return glyph({word:glyphWordForSpecies(id),tone:character(id).tone});
+  function paintQuality(node,quality){node.dataset.quality=quality.key;node.dataset.rarity=quality.label;}
+  function offerContent(art,title,meta,notes=[]) {
+    return [el('div','zx-choice-heading',[art,el('div','zx-choice-identity',[
+      el('b','zx-choice-title',title),el('div','zx-choice-tags',[qualityBadge(meta.quality),meta.kind?el('span','zx-choice-kind',meta.kind):null]),
+    ])]),...notes];
   }
   function offerBody(cards,onStats) {
     return [button([el('span','','查看当前属性'),icon('stats',15,'#65577b'),el('span','','›')],onStats,'zx-upgrade-stats',{'data-action':'upgrade-stats'}),...cards];
   }
-  function levelUp(run,offers,chooseOffer) {
+  function levelUp(run,offers,chooseOffer,art) {
     let choosing=false;
     const choose=(offer,action)=>{
       if(choosing)return;choosing=true;
@@ -997,103 +1293,250 @@ export function createZixingUI(app,api) {
       else done();
     };
     const cards=offers.map((offer,index)=>{
-      const desc=api.offer(run,offer);
-      const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):rewardPortrait(run);
-      const detail=offer.kind==='upMove'?'已学技能 · '+desc.sub:desc.sub;
-      return button(offerContent(picture,desc.title,[small(detail),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});
+      const desc=api.offer(run,offer),quality=choiceQuality(offer.rarity);
+      const level=desc.sub.match(/★?(\d+)\s*→\s*★?(\d+)/);
+      const cap=level?desc.sub.slice(level.index+level[0].length).match(/\d+/)?.[0]:null;
+      const meta=level?el('div','zx-offer-rank',[
+        el('small','',desc.sub.includes('★')?'融合':'等级'),el('span','',level[1]),el('i','','→'),el('b','',level[2]),
+        cap?el('small','zx-offer-cap','上限 '+cap):null,
+      ],{'aria-label':desc.sub}):el('span','zx-offer-kind',desc.sub);
+      const metrics=[],notes=[];
+      for(const line of desc.lines){
+        const label=line.replace(/₽/g,'金币');
+        const m=label.match(/^([+−-]\d+(?:[.,]\d+)?%?)\s*([A-Za-z\u3400-\u9fff\s]+)$/);
+        if(m)metrics.push(el('span','zx-offer-stat',m[1]+' '+m[2].trim()));
+        else notes.push(text(label,/^[+−-]\d/.test(label)?'zx-choice-description zx-offer-explanation':'zx-choice-description'));
+      }
+      const effects=[metrics.length?el('div','zx-offer-stats',metrics):null,...notes];
+      const src=desc.type?api.moveIcon({type:desc.type}):offer.vit?api.vitaminIcon(offer.vit):null;
+      const node=button([
+        el('div','zx-upgrade-art',[upgradePrint(quality.key),src?loadoutIcon(src,desc.title):art[index]]),
+        el('div','zx-upgrade-copy',[
+          el('div','zx-upgrade-title-row',[
+            el('b','zx-choice-title',desc.title),
+            qualityBadge(quality),
+          ]),
+          meta,el('div','zx-upgrade-effects',effects),
+        ]),
+      ],()=>choose(offer),'zx-offer zx-quality-card',{'data-offer':index,'data-paper-surface':'upgrade-card'});
+      paintQuality(node,quality);return node;
     });
-    overlay('择一而进','',cards,
-      [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
+    const popup=overlay('择一而进','',[],[],run.ui,'zx-upgrade zx-choice-dialog zx-first-batch-upgrade');
+    const dialog=popup.querySelector('.zx-modal'),title=dialog.querySelector('h2');
+    popup.classList.add('zx-upgrade-scrim');
+    const header=battleDialogHeading(title,'选择 1 项强化');
+    dialog.append(header,el('div','zx-choice-list',cards),el('footer','zx-choice-actions',[
+      button([paperIcon('reroll'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0}),
+    ]));
   }
-  function restyleChoice(run,method,args) {
-    const hud=run.ui,wrap=hud.modalEl,cards=[...wrap.querySelectorAll('.cards > .card')];
+  function restyleChoice(run,method,args,symbol) {
+    const hud=run.ui,wrap=hud.modalEl;
+    if(!wrap||wrap.querySelector('.zx-review-dialog'))return;
+    const cards=[...wrap.querySelectorAll('.cards > .card')];
     if(!cards.length)return;
     const title=wrap.querySelector('h1')?.textContent||'择一而进';
     const help=[...wrap.children].filter(node=>node.classList.contains('help')).map(node=>text(node.textContent,'zx-note zx-choice-help'));
     cards.forEach((node,index)=>{
       const body=node.querySelector('.bd'),heading=body.querySelector('h3'),tag=node.querySelector('.rar,.kind');
-      const notes=tag?[small(tag.textContent)]:[];
+      const art=node.querySelector('.top img,.top canvas')||glyph(symbol);
+      const meta=choiceModel(method,args,index,tag?.textContent||'');
+      if(method==='showTrade'&&args[1]?.kind==='fossil')meta.kind='';
+      const notes=[];
+      const hasBoon=!!body.querySelector('.pact-line.boon');
+      const cost=body.querySelector('.pact-line.bane b')?.textContent.trim()||'';
+      const splitEffects=hasBoon&&!!cost&&!/^(无代价|没有代价|无须担心|无需担心)/.test(cost);
       for(const detail of body.children){
         if(detail===heading||/^\[\d+\]$/.test(detail.textContent.trim()))continue;
-        const value=detail.classList.contains('pact-line')?[...detail.children].map(part=>part.textContent).join('：'):detail.textContent;
-        if(value.trim())notes.push(small(value));
+        if(detail.classList.contains('pact-line')){
+          const value=detail.querySelector('b')?.textContent||detail.textContent;
+          const noCost=/^(无代价|没有代价|无须担心|无需担心)/.test(value.trim());
+          const tone=noCost?'neutral':detail.classList.contains('boon')?'boon':detail.classList.contains('bane')?'bane':'neutral';
+          if(splitEffects)notes.push(effectRow(value,tone,tone==='bane'?(detail.querySelector('small')?.textContent||''):''));
+          else notes.push(text(value,'zx-choice-description'));
+        }else if(detail.textContent.trim())notes.push(text(detail.textContent,'zx-choice-note'));
       }
-      // Keep the original buttons: their reward callbacks and unavailable-choice
-      // guards also serve the original keyboard shortcuts.
+      // Preserve the original node and handlers, including unavailable-choice guards.
       const opacity=node.style.opacity,locked=node.classList.contains('locked');
-      node.removeAttribute('style');node.style.cssText='';
-      node.className='zx-button zx-offer';
-      if(opacity)node.style.opacity=opacity;
-      else if(locked)node.style.opacity='.45';
-      node.dataset.offer=String(index);
-      node.replaceChildren(offerContent(rewardPortrait(run),heading.textContent,notes));
+      node.removeAttribute('style');node.style.cssText='';node.className='zx-button zx-offer zx-quality-card';
+      if(opacity)node.style.opacity=opacity;else if(locked)node.style.opacity='.45';
+      node.dataset.offer=String(index);paintQuality(node,meta.quality);
+      if(meta.off){node.dataset.unavailable='true';node.setAttribute('aria-disabled','true');}
+      if(meta.blessing){
+        node.classList.add('zx-blessing-option');
+        const label=heading.textContent.trim();
+        const leading=label.match(/^([+−-]\d+(?:[.,]\d+)?%?)\s*(.+)$/);
+        const trailing=leading?null:label.match(/^(.+?)\s*([+−-]\d+(?:[.,]\d+)?%?)$/);
+        const stat=leading?leading[2]:trailing?trailing[1]:label;
+        const value=leading?leading[1]:trailing?.[2];
+        art.className='zx-loadout-icon';art.removeAttribute('style');
+        const badge=qualityBadge(meta.quality);
+        node.dataset.paperSurface='flat';
+        node.replaceChildren(rewardPaper('blessing',meta.quality.key),el('div','zx-blessing-row',[
+          el('div','zx-blessing-seal',art),el('div','zx-blessing-label',[badge,el('b','',stat)]),
+          value?el('b','zx-blessing-amount',value):el('span','zx-blessing-amount','✦',{'aria-hidden':'true'}),
+        ]));
+      }else node.replaceChildren(...offerContent(art,heading.textContent,meta,notes));
     });
     const actions=[...wrap.querySelectorAll('.actions > button')];
-    actions.forEach(node=>{node.className='zx-button zx-reroll';node.querySelectorAll('kbd').forEach(key=>key.remove());});
+    actions.forEach(node=>{node.className='zx-button zx-reroll';node.querySelectorAll('kbd').forEach(key=>key.remove());standardButton(node,node.textContent.trim());});
     const back=()=>{hud.hideModal();stats(run,()=>hud[method](...args));};
+    const statsButton=button(method==='showTrade'?'查看属性':[icon('stats',16,'#65577b'),el('span','','查看属性')],back,'zx-choice-stats',{'data-action':'upgrade-stats'});
     document.querySelectorAll('.run-hint').forEach(node=>node.remove());
     wrap.className='zx zx-modal-wrap';
-    wrap.replaceChildren(el('section','zx zx-modal zx-upgrade zx-choice-dialog',[
-      el('h2','',title),...help,...offerBody(cards,back),...actions,
-    ],{'data-choice':method}));
+    if(method==='showBlessing'){
+      wrap.classList.add('zx-upgrade-scrim');
+      statsButton.classList.add('zx-reroll');
+      const content=el('section','zx zx-modal zx-upgrade zx-choice-dialog zx-first-batch-upgrade zx-blessing-dialog',[
+        battleDialogHeading(el('h2','',title),help.map(n=>n.textContent).join(' ')),
+        el('div','zx-choice-list',cards),el('footer','zx-choice-actions',[...actions,statsButton]),
+      ],{role:'dialog','aria-label':title,'data-choice':method,'data-paper-surface':'flat'});
+      wrap.replaceChildren(content);return;
+    }
+    wrap.classList.add('zx-loot-scrim');
+    const content=el('section','zx zx-modal zx-upgrade zx-choice-dialog zx-scene-offers',[
+      ...(help.length?[el('div','zx-scene-caption',help)]:[]),el('div','zx-choice-list',cards),
+      el('footer','zx-choice-actions',[statsButton,...actions]),
+    ],{'data-choice':method,'data-paper-surface':'flat'});
+    if(method==='showTrade'&&args[1]?.kind==='fossil')content.classList.add('zx-fossil-offers');
+    wrap.replaceChildren(battleDialogFrame(content,el('h2','',title)));
   }
   function restyleItems(run,keys,choice=false) {
     const wrap=run.ui.modalEl;
     const cards=choice?[...wrap.querySelectorAll('.cards > .card')]:[...wrap.children].filter(node=>node.classList.contains('card'));
     if(!cards.length)return;
     const title=wrap.querySelector('h1')?.textContent||'发现一件道具';
-    const notes=[...wrap.children].filter(node=>node.classList.contains('help')).map(node=>text(node.textContent,'zx-item-note'));
+    const notes=[...wrap.children].filter(node=>node.classList.contains('help')&&!/^选择一项[。！!]?$/.test(node.textContent.trim())).map(node=>text(node.textContent,'zx-item-note'));
     cards.forEach((node,index)=>{
-      const body=node.querySelector('.bd'),heading=body.querySelector('h3'),rarity=node.querySelector('.rar');
-      const details=[...body.children].filter(detail=>detail!==heading&&!detail.classList.contains('key')&&detail.textContent.trim()).map(detail=>
-        text(detail.textContent,detail.classList.contains('cap')?'zx-item-description':'zx-item-effect'));
+      const body=node.querySelector('.bd'),heading=body.querySelector('h3');
+      const quality=choiceQuality(api.itemRarity(keys[index]));
       const picture=el('img','zx-item-image',[],{src:api.itemIcon(keys[index]),alt:heading.textContent,draggable:false});
       // Reuse the choice nodes and original action buttons to retain their
       // reward callbacks, keyboard bindings and protection against double taps.
-      node.removeAttribute('style');node.style.cssText='';node.className='zx-item-card'+(choice?' zx-item-option':'');
+      node.removeAttribute('style');node.style.cssText='';node.className='zx-item-card zx-quality-card'+(choice?' zx-item-option':'');paintQuality(node,quality);
       node.dataset.itemChoice=keys[index];
-      node.replaceChildren(...itemCardContent(picture,rarity?.textContent||'道具',heading.textContent,details));
+      if(!choice){
+        node.className='zx-loot-display';node.dataset.paperSurface='flat';
+        const badge=qualityBadge(quality);
+        const affects=body.querySelector('.affects'),unused=affects?.classList.contains('none');
+        const story=body.querySelector('.muted')?.textContent.trim();
+        const effect=body.querySelector('p')?.textContent.trim(),count=run.player.items.get(keys[index])??0;
+        const warning=unused?el('span','zx-loot-fit','当前招式用不到',{'aria-label':affects.textContent}):null;
+        const held=el('div','zx-loot-limit',[el('span','','持有 / 上限'),el('b','',count+' / '+api.itemLimit(keys[index]))]);
+        node.replaceChildren(rewardPaper('item',quality.key),el('div','zx-loot-stage',[picture,warning]),
+          el('div','zx-loot-leaf',[el('div','zx-loot-name',[el('h3','',heading.textContent),badge]),
+            el('div','zx-loot-copy',[effect?text(effect,'zx-choice-description zx-loot-effect'):null,
+              affects&&!unused?text(affects.textContent,'zx-loot-beneficiaries'):null,story?text(story,'zx-loot-story'):null]),held]));
+        return;
+      }
+      const held=body.querySelector('.cap');
+      const effects=[...body.children].filter(n=>n!==heading&&n!==held&&!n.classList.contains('key')&&n.textContent.trim()).map(n=>n.textContent);
+      itemOffer(node,{key:keys[index],name:heading.textContent,picture,quality,effects,held:held?.textContent.replace(/^你有\s*/,'持有 ')});
     });
     const actions=[...wrap.querySelectorAll('.actions > button')];
     actions.forEach((node,index)=>{
       node.querySelectorAll('kbd').forEach(key=>key.remove());
       const label=node.textContent.trim().replace(/₽/g,'金币').replace(/^无\s*[（(]/,'放弃拾取（');
       node.replaceChildren(label);node.className='zx-button'+(!choice&&index===0?' primary':' zx-item-sell');
+      standardButton(node,label);
       node.dataset.itemAction=!choice&&index===0?'take':'sell';
     });
     document.querySelectorAll('.run-hint').forEach(node=>node.remove());
     wrap.className='zx zx-modal-wrap';
-    wrap.replaceChildren(itemDialog(title,[...notes,...cards],actions,
-      {'data-choice':choice?'showItemChoice':'showItem'}));
+    const footer=el('footer','zx-item-actions',actions,{'data-paper-surface':'flat'});
+    const content=el('section','zx zx-modal zx-item-dialog '+(choice?'zx-item-pick':'zx-loot-dialog'),[
+      el('div','zx-item-body',cards),footer,
+    ],{'data-choice':choice?'showItemChoice':'showItem','data-paper-surface':'flat'});
+    wrap.classList.add('zx-loot-scrim');
+    wrap.replaceChildren(battleDialogFrame(content,el('h2','',choice?'选择道具':title),choice?(notes.map(n=>n.textContent).join(' ')||'选择 1 件拾取'):''));
+    fitPaperActionLabels(footer);
   }
-  function summary(run,result,reward,error) {
-    const win=result.victory,amount=reward?.stardust;
-    function leave(){
-      app.setScreen(null);
-      app.toMenu();
-      return app.screen?.dataset.page==='home';
+  function settlementSaved(ticketId,receipt){
+    const dialog=app.run?.ui.modalEl;
+    if(!ticketId||!dialog?.isConnected||dialog.dataset.pendingTicket!==ticketId)return false;
+    dialog.acceptReceipt(receipt);return true;
+  }
+  function summary(run,result,reward,error){
+    const leave=()=>{app.setScreen(null);app.toMenu();};
+    const win=result.victory,single=result.mode===SINGLE_STAGE,guardians=single?1:FOREST_COMBAT_ZONES;
+    const pending=!!(!reward&&result.id&&app.meta.hasPending(result.id));
+    const c=character(result.species);
+    const captured=reward?collectionRewards(reward.profile??profile(),run.collectionStart):[];
+    const entries=buildEntries(run);
+    const pendingMessage=small(error||'');
+    const retry=button('重试同步',async()=>{
+      retry.disabled=true;retry.textContent='正在同步';
+      try{
+        const state=await app.meta.retryPending();
+        if(run.ui.modalEl!==dialog||!dialog.isConnected)return;
+        if(!app.meta.hasPending(result.id)){summary(run,result,null,state.error||'这局的结算未能确认。');return;}
+        pendingMessage.textContent=state.error||'暂时无法同步，请稍后重试。';
+      }finally{
+        if(run.ui.modalEl===dialog&&dialog.isConnected){
+          retry.disabled=false;retry.textContent='重试同步';
+        }
+      }
+    },'zx-plain',{'data-action':'retry-settlement'});
+    const metrics=[[time(result.time),win?'通关时间':'生存时间'],[compactCounter(result.kills),'击败敌人'],[Math.min(guardians,result.bosses||0)+' / '+guardians,'区域镇守']];
+    const buildGroup=(name,items)=>{
+      if(!items.length)return null;
+      const rows=[];
+      for(let i=0;i<items.length;i+=2){
+        rows.push(el('div','zx-build-pair',items.slice(i,i+2).map(item=>
+          el('div','zx-build-entry',[
+            el('span','zx-build-stamp',loadoutIcon(item.src,item.name)),
+            el('span','zx-build-name',item.name),el('b','zx-build-quantity',(item.move?'Lv.':'×')+item.count),
+          ],{'aria-label':item.label}))));
+      }
+      return el('section','zx-build-group',[el('div','zx-build-index',[el('b','',name),el('i')]),...rows]);
+    };
+    const build=entries.length?el('section','zx-outcome-build',[
+      el('b','','本局构筑'),el('div','zx-outcome-stash',[
+        buildGroup('招式',entries.filter(i=>i.move)),buildGroup('维生素',entries.filter(i=>i.vitamin)),buildGroup('道具',entries.filter(i=>!i.move&&!i.vitamin)),
+      ]),
+    ]):null;
+    const receipt=el('div','zx-outcome-body',[
+      el('div','zx-outcome-metrics',metrics.map(([v,k])=>el('div','zx-outcome-stat',[el('b','',v),el('small','',k)]))),
+      el('div','zx-outcome-reward',[
+        el('b','',reward?(reward.stardust!=null?'星尘  +'+number(reward.stardust):'结算已保存'):(pending?'结算待同步':'结算未保存')),
+        reward?.profile?small('当前持有 '+number(reward.profile.stardust)):null,
+        !reward?pendingMessage:null,pending?retry:null,
+      ]),
+      win?text(single?'完整通关普通模式可解锁困难。':(app.meta.biomeTier('forest')>result.tier?'桌上世界下一难度已开放。':'已完成当前桌面挑战。'),'zx-outcome-note'):null,
+      captured.length?text('新收录 · '+captured.map(entry=>glyphWordForSpecies(entry.id)+(entry.look==='shiny'?'（异色）':entry.look==='classic'?'（经典异色）':'')).join('、'),'zx-outcome-note'):null,
+      build,
+    ]);
+    const playAgain=run.coop?()=>{leave();multiplayer();}:()=>app.startRun(app.lastCfg);
+    const subtitle=(win?(single?'单关通关':'旅程通关'):'止步于第 '+result.stage+' 区')+'  ·  '+c.word+' Lv.'+result.level+'  ·  '+difficultyName(result);
+    const dialog=outcomeDialog(run,'最终结算',subtitle,receipt,[
+      button('回到首页',leave,'',{'data-action':'report-home'}),
+      button(run.coop?'重新组队':win?'再来一局':'再试一次',playAgain,'primary',{'data-action':'report-again'}),
+    ]);
+    dialog.dataset.result='summary';
+    if(pending){
+      dialog.dataset.pendingTicket=result.id;
+      dialog.acceptReceipt=ack=>summary(run,ack?.record??result,ack??{},'');
     }
-    const single=result.mode===SINGLE_STAGE,guardians=single?1:FOREST_COMBAT_ZONES;
-    run.ui.hideModal();
-    screen('summary','','',[
-      el('div','zx-hero',[small('桌上世界 · '+difficultyName(result)),el('div',win?'zx-banner':'zx-card',win?'破境':'未竟'),el('h2','',win?'这一程，已写成':'落字未成，再来一程'),small(win?(single?'第一区镇守已被击败':'圣地镇守已被击败'):run.sanctuary?'止步于圣地终战':'止步于区域 '+result.stage),row(glyph(character(result.species)),small(character(result.species).word+' · Lv.'+result.level))]),
-      el('div','zx-summary-grid',[[time(result.time),win?'通关时间':'生存时间'],[number(result.kills),'击败敌人'],[Math.min(guardians,result.bosses||0)+' / '+guardians,'区域镇守']].map(([v,k])=>col(el('b','',v),small(k)))),
-      win&&single?card(el('b','','单关通关'),small('完整通关普通模式可解锁困难。')):
-        card(el('b','',win?'新的挑战已开放':'避其锋芒'),small(win?(app.meta.biomeTier('forest')>result.tier?'桌上世界下一难度已开放。':'已完成当前桌面挑战。'):'调整走位与强化，寻找更好的出手机会。')),
-      button(row(col(el('b','',amount!==undefined?'星尘 +'+number(amount):'结算尚未保存'),small('当前 '+number(profile().stardust))),el('span','','去研究所 ›')),()=>{if(leave())return openLab();},'zx-banner'),
-      error?small(error):null,build(run),
-    ],[row(run.coop?button('重新组队',()=>{if(leave())multiplayer();},'primary'):button(win?'再来一局':'再试一次',()=>app.startRun(app.lastCfg),'primary'),button('调整文字与关卡',()=>{if(leave())choose();})),button('返回',leave)]);
   }
   function attachRun(run) {
+    run.collectionStart={league:[...profile().league],shinies:[...profile().shinies],classics:[...(profile().classics??[])]};
     const hud=run.ui;selected=character(run.startSpecies).id;
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
     run.hints.show=(key,site)=>{if(run.state==='play'&&!run.stageCleared&&!app.screen&&!hud.hasModal())hint(key,site);};
-    hud.showPause=pause;hud.showLevelUp=levelUp;
-    hud.saving=active=>{
-      if(active){hud.hideModal();pendingScreen('对局结算','正在保存本局战绩与星尘');}
-    };
+    // Offers reuse these four glyph canvases throughout the run. Paint them on the loading screen.
+    const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
+    hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
     hud.showSummary=summary;hud.showSlots=slots;
+    const hideBattleModal=hud.hideModal.bind(hud);
+    hud.hideModal=(...args)=>{
+      hud.root.classList.remove('zx-showing-outcome');
+      return hideBattleModal(...args);
+    };
+    hud.saving=active=>{
+      hud.savingEl?.remove();hud.savingEl=null;
+      if(!active)return;
+      hud.savingEl=outcomeDialog(run,'旅程结束','',el('div','zx-outcome-confirm',el('b','','正在保存本局结算'),{role:'status'}));
+    };
     let expandedMap=null;
     hud.mapFacilityKind='chest';
     const mapIcons=new Map();
@@ -1110,16 +1553,16 @@ export function createZixingUI(app,api) {
     };
     hud.showMap=(r,fromPause=false)=>{
       const close=fromPause?()=>pause(r):()=>r.resume();
-      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-280));
+      const side=Math.max(120,Math.min(352,window.innerWidth-38,window.innerHeight-170));
       const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图，拖动查看建筑，轻点建筑图标追踪'});
       const frame=el('div','zx-battle-map-frame',canvas);
       frame.style.width=frame.style.height=side+'px';
-      const hudSide=hud.minimap.getBoundingClientRect().width || (window.innerWidth<=350?84:96);
       let selectedKind=null;
       const filterButtons=new Map();
       const filters=el('div','zx-map-filters',[],{'aria-label':'筛选建筑'});
       const status=small('显示全部建筑 · 拖动地图查看');
       status.classList.add('zx-map-status');
+      filters.hidden=status.hidden=true;
       function selectKind(kind){
         selectedKind=kind;hud.mapFacilityKind=kind;
         for(const [key,node] of filterButtons){node.classList.toggle('on',key===kind);node.setAttribute('aria-pressed',String(key===kind));}
@@ -1131,12 +1574,27 @@ export function createZixingUI(app,api) {
         const node=button(name,()=>selectKind(kind),'zx-map-filter'+(kind===null?' on':''),{'data-map-filter':kind??'all','aria-pressed':kind===null});
         filterButtons.set(kind,node);filterRow.append(node);
       }
-      overlay('附近地图','',[frame,filters,status],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
-      const contentZoom=2.3;
-      const viewRatio=(canvas.getBoundingClientRect().width || side)/(hudSide*contentZoom);
-      let center=null,drag=null,groups=[];
+      const panel=el('section','zx zx-battle-map zx-atlas',[
+        el('header','zx-atlas-key',[el('b','','区域地图'),el('span','',paperStages[Math.min(3,r.stage-1)]+' · 第 '+r.stage+' 区')]),
+        frame,el('div','zx-atlas-legend',[['#657FB7','自己'],['#D4A64B','设施'],['#C76978','敌人']].map(([color,label])=>{
+          const mark=el('i');mark.style.background=color;
+          if(label!=='设施')return el('span','',[mark,label]);
+          const toggle=button([mark,label],()=>{
+            filters.hidden=status.hidden=!filters.hidden;
+            toggle.setAttribute('aria-expanded',String(!filters.hidden));
+            const size=filters.hidden?side:Math.max(100,Math.min(side,innerHeight-170-filters.children.length*36-20));
+            frame.style.width=frame.style.height=size+'px';
+          },'zx-atlas-filter-toggle zx-plain',{'data-paper-surface':'flat','aria-label':'筛选建筑','aria-expanded':false});
+          return toggle;
+        })),
+        filters,status,
+      ],{role:'dialog','aria-label':'区域地图','data-paper-surface':'flat'});
+      const wrap=hud.modal(panel);wrap.className='zx zx-modal-wrap zx-atlas-overlay';
+      dockDialogClose(wrap,button('返回',close,'',{'data-action':'close-battle-map'}),'关闭区域地图');
+      const viewRatio=Math.max(1,r.terrain.world*mapWorldScale/98);
+      let center={x:0,z:0},drag=null,groups=[];
       function paint(){
-        const result=drawBattleMinimap(canvas,r,{shadow:false,viewRatio,center:center??r.player.pos,facilityKind:selectedKind});
+        const result=drawBattleMinimap(canvas,r,{shadow:false,square:true,viewRatio,center,facilityKind:selectedKind});
         groups=result.groups;
         canvas.dataset.filter=selectedKind??'all';
         updateText(status,selectedKind?(result.count?facilityNames[selectedKind]+' · 当前视野 '+result.count+' 处':'当前视野暂无'+facilityNames[selectedKind]+'，可拖动查找'):'显示全部建筑 · 拖动地图查看');
@@ -1182,100 +1640,113 @@ export function createZixingUI(app,api) {
       const render=hud[method].bind(hud);
       hud[method]=(r,items,...args)=>{const result=render(r,items,...args);restyleItems(r,method==='showItem'?[items]:items,method==='showItemChoice');return result;};
     }
-    for(const method of ['showBlessing','showTrade','showPact','showFusion','showDitto','showParty','showShinySwap']){
+    for(const [method,symbol] of Object.entries({showBlessing:'祝',showTrade:'易',showPact:'契'})){
       const render=hud[method].bind(hud);
-      hud[method]=(...args)=>{const result=render(...args);restyleChoice(run,method,args);return result;};
+      hud[method]=(...args)=>{const result=render(...args);restyleChoice(run,method,args,symbol);return result;};
     }
+    function routePrint(ids){
+      const nodes=[];
+      for(const id of ids){
+        if(nodes.length)nodes.push(el('span','zx-evo-arrow','→'));
+        const actor=character(id);
+        nodes.push(el('span','zx-evo-form',glyph(actor),{'aria-label':actor.word}));
+      }
+      return el('div','zx-evo-line',nodes);
+    }
+    const routeHeading=route=>route.role.split(' · ')[1];
     hud.showBranch=(r,ids,choose)=>{
       let chosen=false;
-      overlay('风起两路','选择进化分支',[
-        small('本局只能选择一条路线，确认后沿该路线继续进化。'),
-        ...windRoutes.filter(route=>ids.includes(route.middle)).map(route=>button([row(glyph(character(route.middle)),col(el('h3','','风 → '+character(route.middle).word+' → '+character(route.final).word),small(route.role))),text(route.note,'zx-note')],()=>{
-          if(chosen)return;chosen=true;choose(route.middle);
-        },'zx-branch-choice',{'data-branch-id':route.middle})),
-      ],[],hud);
+      overlay('风起两路','为本局选择一条进阶路线',windRoutes.filter(route=>ids.includes(route.middle)).map(route=>{
+        const trait=routeHeading(route);
+        return button([el('div','zx-evo-choice-head',[el('b','',trait+'路线'),routePrint([16,route.middle,route.final])]),
+          el('div','zx-evo-benefit',[el('b','',trait+' ×10'),el('small','','终阶大招 · 持续 5 秒')]),
+          el('small','zx-evo-note','首次进阶  ·  '+character(route.middle).word+'  ·  '+(route.middle===17?'环形扩散':'卷着打转')),
+        ],()=>{if(chosen)return;chosen=true;choose(route.middle);},'zx-branch-choice',{'data-branch-id':route.middle,'data-paper-surface':'info-slip'});
+      }),[],hud,'zx-evo-dialog');
     };
-    const introLayer=el('div','zx-intro-layer',[],{'data-ui-layer':'stage-intro'});
-    introLayer.style.cssText='position:absolute;left:0;top:0;width:100%;height:0;overflow:visible;pointer-events:none;z-index:10';
-    hud.root.append(introLayer);
-    const ultCutInLayer=el('div','zx-ultimate-layer',[],{'data-ui-layer':'ultimate-cutin'});
-    ultCutInLayer.style.cssText='position:absolute;left:0;top:26%;width:100%;height:0;overflow:visible;pointer-events:none;z-index:30';
-    hud.hudEl.append(ultCutInLayer);hud.ultCutInRoot=ultCutInLayer;
-    function intro(title,subtitle){
+    function intro(title,subtitle) {
       if(profile()?.settings.showBanners===false)return;
-      const node=el('div','zx zx-intro',[el('b','',title),small(subtitle)]);
-      introLayer.append(node);setTimeout(()=>node.remove(),1800);
+      const feed=app.ui.querySelector('.zx-combat-feed');
+      if(!feed)return;
+      feed.querySelector('.zx-intro')?.remove();
+      const banner=el('div','zx zx-intro zx-arrival',[arrivalPennant(),el('div','zx-arrival-copy',[el('small','',subtitle),el('b','',title)])],
+        {role:'status','aria-live':'polite','data-ui-layer':'stage-intro'});
+      feed.append(banner);
+      setTimeout(()=>banner.remove(),1800);
     }
-    hud.stageIntro=r=>{
-      if(!r.sanctuary)intro(paperStages[r.stage-1],'小小字灵，漫游桌上世界。');
-    };
+    hud.stageIntro=r=>{if(!r.sanctuary)intro(paperStages[r.stage-1],'桌上世界 · 第 '+r.stage+' 区');};
     hud.showEvolution=()=>intro('字意更进一步','进阶中 · 保留当前招式与强化');
     const evolve=run.startEvolution.bind(run);
     run.startEvolution=()=>{
       run.state='modal';
-      overlay('字意更进一步','文字进阶',[
-        el('div','zx-hero',[row(glyph(character(run.player.speciesId)),el('b','','→'),glyph(character(run.nextEvo.to),true)),el('b','',character(run.player.speciesId).word+' → '+character(run.nextEvo.to).word)]),
+      const route=windRoutes.find(route=>[route.middle,route.final].includes(run.nextEvo.to));
+      overlay('字意更进一步',route?routeHeading(route)+'路线':'文字进阶',[
+        routePrint([run.player.speciesId,run.nextEvo.to]),
+        el('b','zx-evo-confirm-name',character(run.player.speciesId).word+' → '+character(run.nextEvo.to).word),
         small('保留当前招式与已有强化。'),card(statRow('基础成长','提升伤害与生命'),statRow('进阶次数',String(run.player.evoStage+1))),
-      ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary')],hud);
+      ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary')],hud,'zx-evo-dialog');
     };
     hud.compact=true;
     const node=el('div','zx zx-hud');node.dataset.hud='true';
-    // Separate Latin prefix glyphs: the bundled Swei font has overly tight LV.
-    // kerning, which otherwise merges the reference label into a single mark.
-    const levelValue=el('span','','');
-    const level=el('b','zx-hud-level',[...['L','V','.'].map(ch=>el('span','',ch)),levelValue]);
-    level.dataset.uiLayer='portrait-level';
-    const area=el('b','zx-hud-area',''),clock=el('b','zx-hud-clock',''),gold=el('b','zx-hud-gold',''),inventory=el('div','zx-loadout');
-    const skillSlots=el('div','zx-skill-slots',[],{'data-ui-layer':'skills'});inventory.append(skillSlots);
-    const stageLabel=el('small','zx-hud-stage',''),c=character(run.startSpecies);
-    const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化'});
-    supplies.dataset.uiLayer='items';
+    const levelValue=el('b','zx-hud-level'),gold=el('b','zx-hud-gold'),score=el('b','zx-hud-score');
+    const clock=el('b','zx-hud-clock'),inventory=el('div','zx-loadout');
+    const skillSlots=el('div','zx-skill-slots',[],{'data-ui-layer':'skills','aria-label':'本局技能'});
+    const c=character(run.startSpecies),coin=hudPaperIcon('coin',18);
+    const stageCaption=el('canvas','zx-stage-caption',[],{width:368,height:52,role:'img','data-ui-region':'hud-top','data-static':'true'});
+    const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化','data-ui-layer':'items'});
+    inventory.append(skillSlots,supplies);
     const health=el('canvas','zx-player-health',[],{width:176,height:40,'data-static':'true','data-ui-layer':'health',role:'progressbar','aria-label':'角色生命','aria-valuemin':0});
-    node.classList.add('zx-hud-'+c.tone);
-    const portrait=el('canvas','zx-profile-art',[],{width:160,height:168,role:'progressbar','aria-label':c.name+' · 升级经验','aria-valuemin':0,'aria-valuemax':100});
+    node.classList.add('zx-hud-'+c.tone,'zx-hud-paper','zx-square-hud');
+    const portrait=el('canvas','zx-profile-art',[],{width:420,height:104,role:'progressbar','aria-label':c.name+' · 升级经验','aria-valuemin':0,'aria-valuemax':100});
     portrait.dataset.static='true';
     portrait.dataset.uiLayer='portrait';
     const xpRing=new ExperienceRing(run.player,performance.now());
     const experience=()=>xpRing.progress;
     hud.experienceReady=()=>xpRing.ready;
-    let portraitFrame=0;
+    let portraitFrame=0,statusKey='',stageKey='';
     const refreshPortrait=()=>{
-      const progress=experience();
-      drawBattlePortrait(portrait,glyphWordForSpecies(run.player.speciesId??run.startSpecies),character(run.player.speciesId).tone,progress);
+      const progress=experience(),word=glyphWordForSpecies(run.player.speciesId??run.startSpecies);
+      const level=compactCounter(xpRing.level),coins=compactCounter(Math.round(run.gold)),kills=compactCounter(run.stats.kills);
+      const key=[progress,level,coins,kills,word,run.skinLook].join('|');
+      if(key===statusKey)return;
+      statusKey=key;
+      drawBattleStatus(portrait,{word,tone:character(run.player.speciesId).tone,look:run.skinLook,level,progress,gold:coins,kills},coin);
       portrait.dataset.progress=String(progress);portrait.dataset.frame=String(++portraitFrame);
-      portrait.setAttribute('aria-valuenow',Math.round(progress*100));
+      portrait.setAttribute('aria-valuenow',Math.floor(progress*100+1e-7));
+      updateText(levelValue,'Lv.'+xpRing.level);
+      updateText(gold,coins);updateText(score,kills);
+      gold.dataset.total=String(Math.round(run.gold));score.dataset.total=String(run.stats.kills);
     };
     refreshPortrait();
-    const identityName=el('b','zx-hud-name',c.word),identityType=el('span','zx-hud-element',api.typeName(displayedFormType(run.player)));
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
     minimap.dataset.uiLayer='minimap';
     minimap.setAttribute('aria-label','附近地图，点击查看更大范围');
+    const clockDock=el('div','zx-map-clock',[clock],{'data-ui-layer':'counters','aria-label':'关卡时间'});
+    const pauseButton=button(el('span','zx-pause-bars',[el('i'),el('i')]),()=>run.pause(),'zx-hud-pause zx-plain',{'data-paper-surface':'flat','aria-label':'暂停'});
+    node.append(stageCaption,el('div','zx-hud-top',[
+      el('div','zx-hud-profile',[portrait,
+        el('div','zx-status-values',[levelValue,gold,score],{'data-ui-hidden':'true'})]),
+      inventory,minimap,clockDock,pauseButton,
+    ],{'data-ui-region':'hud-stack'}),health);
+    // Touch controls live beside #hud. Place the new bar above their gesture
+    // surface so the pause button receives an actual native pointer event.
     const portalCopy=small('');
     const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 木门已开启'),portalCopy],{'aria-live':'polite'});
     portalGuide.hidden=true;
-    node.append(el('div','zx-hud-location',[icon('pin',13,'#5277a4'),area,stageLabel],{'data-ui-region':'hud-top'}),el('div','zx-hud-top',[
-      el('div','zx-hud-counters',[
-        el('div','zx-hud-counter',[icon('clock',14,'#637ca3'),clock],{'aria-label':'关卡时间'}),
-        el('div','zx-hud-counter',[icon('coin',15,'#b68a37'),gold],{'aria-label':'本局金币'}),
-      ]),
-      el('div','zx-hud-profile',[
-        el('div','zx-hud-card-back'),el('div','zx-hud-card'),portrait,
-        el('div','zx-hud-identity',[
-          el('div','zx-hud-name-row',[identityName,identityType]),
-          supplies,
-        ]),level,
-      ]),minimap,button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),
-    ],{'data-ui-region':'hud-stack'}),el('div','zx-hint-slot',[portalGuide],{'data-ui-region':'hud-hint'}),inventory,health);
-    // Touch controls live beside #hud. Place the new bar above their gesture
-    // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
+    const combo=hud.els.streak;
+    combo.classList.add('zx-combo');combo.firstElementChild.textContent='连击';
+    combo.firstElementChild.dataset.paperText=combo.children[1].dataset.paperText='outlined';
+    hud.hudEl.append(combo);
     const updatePeers=run.coop?createPeerHud(run,node,el):null;
     hud.prepareEntryIcons=()=>Promise.all(Array.from(node.querySelectorAll('.zx-loadout-icon'),prepareHudImage));
-    node.querySelector('.zx-hud-counters').dataset.uiLayer='counters';
+    const combatFeed=installReviewBattle(hud,run,node.querySelector('.zx-hud-top'),{wordFor:glyphWordForSpecies,typeName:api.typeName,typeOf:api.speciesType});
     hud.touch.ult.dataset.uiLayer='ultimate';
+    // Feedback follows the persistent status, health bars and team instead of sharing their screen coordinates.
     const toastLayer=el('div','zx-toast-layer',[],{'data-ui-layer':'toasts'});
-    toastLayer.style.cssText='position:absolute;left:0;top:0;width:100%;height:0;overflow:visible;pointer-events:none';
-    hud.toastsEl.replaceWith(toastLayer);toastLayer.append(hud.toastsEl);
+    combatFeed.lane.append(toastLayer);toastLayer.append(hud.toastsEl);
+    combatFeed.lane.append(el('div','zx-hint-slot',[portalGuide]));
+    hud.placeToasts=()=>{};
     // Preserve absolute HUD coordinates, but refresh only the visible overlay.
     for(const id of ['markers','notices']){
       const layer=el('div','zx-combat-overlay',[],{'data-ui-layer':id});
@@ -1285,7 +1756,7 @@ export function createZixingUI(app,api) {
       else hud.popupRoot=layer;
     }
     const look=hud.look.bind(hud);
-    hud.touch.swipeMove=false;hud.touch.centeredStick=false;hud.touch.floatingStick=true;hud.touch.el.classList.add('zx-touch');
+    hud.touch.swipeMove=false;hud.touch.centeredStick=false;hud.touch.floatingStick=true;hud.touch.el.classList.add('zx-touch','zx-paper-touch');
     hud.touch.el.setAttribute('aria-label','拖动摇杆或滑动空白处移动，松手停止');
     hud.touch.stick.setAttribute('aria-label','移动摇杆');
     hud.touch.stick.dataset.uiLayer='stick';
@@ -1295,28 +1766,69 @@ export function createZixingUI(app,api) {
       node.style.opacity=String(s.hudOpacity??1);node.style.fontSize=(13*(s.hudScale??1))+'px';
     };
     hud.look(profile().settings);
+    const controls=el('div','zx-field-controls');
+    const prompts=el('div','zx-field-prompts'),release=hud.releaseEl,releaseHome=release.parentElement;
+    hud.touch.ult.parentElement.append(controls);controls.append(hud.touch.ult,prompts);prompts.append(hud.touch.act);
+    const actionButton=hud.touch.act;
+    actionButton.dataset.paperSurface='scene-action';
+    actionButton.setAttribute('role','button');
+    const actionMark=icon('interact',17,'#516A8D');
+    const touchUpdate=hud.touch.update.bind(hud.touch);let lastInteraction='';
+    hud.touch.update=(r,prompt)=>{
+      touchUpdate(r,prompt);
+      if(hud.touch.shown&&release.parentElement!==prompts){
+        release.dataset.paperSurface='scene-action';release.setAttribute('aria-label','放生伙伴');
+        release.replaceChildren(icon('interact',17,'#516A8D'),el('b','zx-act-title','放生伙伴'));
+        prompts.append(release);
+      }else if(!hud.touch.shown&&r.state==='play'&&release.parentElement===prompts){
+        delete release.dataset.paperSurface;release.replaceChildren(el('kbd','', 'G',{'data-nokbd':'1'}),'放生伙伴');
+        releaseHome.append(release);
+      }
+      if(!hud.touch.shown||!prompt){lastInteraction='';return;}
+      const raw=hud.touch.actText,action=sceneAction(r,r.interactables.nearest,raw);
+      if(!action)return;
+      const {title,detail,unavailable}=action,key=[raw,title,detail,unavailable].join('|');
+      if(key===lastInteraction)return;
+      lastInteraction=key;
+      actionButton.firstChild.replaceChildren(actionMark);
+      actionButton.lastChild.replaceChildren(el('b','zx-act-title',title),...(detail?[el('small','zx-act-detail',detail)]:[]));
+      actionButton.classList.toggle('zx-act-poor',unavailable);
+      actionButton.setAttribute('aria-label',raw.replace(/₽/g,'金币'));
+    };
     for(const element of hud.hudEl.querySelectorAll('.hud-tl,.under,.hud-party,.hud-top,.hud-tr,.hud-bl,.hud-br,.lock-hint'))element.dataset.uiHidden='true';
     hud.fitTop=()=>{};
     let mapAt=-Infinity,mapFrame=0;
     hud.drawMinimap=(r,force=false)=>{
       const now=performance.now();if(minimap.hidden||(!force&&now-mapAt<(run.performance?.mapInterval??120)))return;
-      mapAt=now;drawBattleMinimap(minimap,r,{facilityKind:r.stageCleared?'portal':hud.mapFacilityKind});minimap.dataset.frame=String(++mapFrame);
+      mapAt=now;drawBattleMinimap(minimap,r,{hanging:true,facilityKind:r.stageCleared?'portal':hud.mapFacilityKind});minimap.dataset.frame=String(++mapFrame);
     };
     const ultimateRing=el('canvas','zx-ult-progress',[],{width:168,height:168,'data-static':'true'});
     hud.touch.ult.append(ultimateRing);
+    hud.touch.ult.setAttribute('role','button');
+    const stillMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    let lastSeal='',lastActionLabel='';
     hud.ultHud=r=>{
-      const ready=r.ult.ready&&r.ult.active<=0&&!r.player.dead,active=r.ult.active>0;
+      const active=r.ult.active>0,ready=r.ult.ready&&!active&&!r.player.dead;
       for(const [name,on] of [['ready',ready],['active',active],['deny',r.ult.denyT>0]])hud.touch.ult.classList.toggle(name,on);
-      hud.touch.ult.setAttribute('aria-disabled',String(!ready));
-      const progress=Math.round(Math.max(0,Math.min(1,r.ult.charge))*1000)/1000,key=[progress,ready,active].join('/');
-      if(ultimateRing.dataset.frame!==key){drawBattleCooldown(ultimateRing,progress,{ultimate:true,ready,active});ultimateRing.dataset.frame=key;ultimateRing.dataset.progress=String(progress);}
-      const core=hud.touch.ult.children[1];
-      if(!core.querySelector('.zx-ult-label'))core.replaceChildren(el('div','zx-ult-label',[el('span','','✧'),el('span','','大招'),el('small','','蓄能')]));
-      const label=core.querySelector('small'),value=active?'释放中':ready?'就绪':Math.floor(progress*100)+'%';
-      if(label.textContent!==value)label.textContent=value;
+      const progress=Math.round(Math.max(0,Math.min(1,r.ult.charge))*1000)/1000;
+      const word=glyphWordForSpecies(r.player.speciesId??r.startSpecies);
+      const pulse=ready&&!stillMotion?.matches?Math.floor(performance.now()/85)%18:0;
+      const state=active?'active':ready?'ready':'charging',look=r.skinLook;
+      const key=[word,look,state,progress,pulse].join('/');
+      if(lastSeal!==key){
+        lastSeal=key;
+        drawUltimateSeal(ultimateRing,word,character(r.player.speciesId).tone,look,progress,state,pulse);
+        ultimateRing.dataset.frame=key;ultimateRing.dataset.progress=String(progress);
+      }
+      const label=word+'的大招，'+(ready?'可释放':active?'释放中':Math.floor(progress*100)+'%');
+      if(lastActionLabel!==label){
+        lastActionLabel=label;hud.touch.ult.setAttribute('aria-label',label);
+        hud.touch.ult.setAttribute('aria-disabled',String(!ready));
+      }
     };
     const original=hud.hud.bind(hud);
     let last=-Infinity,lastState='',lastSupplies='',lastHealth='',healthFrame=0;
+    let previousArrangement='';
     const updateHealth=()=>{
       const p=run.player,point=hud.project(run,p.pos.x,p.pos.y-.15,p.pos.z);
       health.hidden=!point.vis||p.dead;
@@ -1354,23 +1866,26 @@ export function createZixingUI(app,api) {
         }
       }
       xpRing.update(run.player,now,run.state==='play');
-      updateText(levelValue,String(xpRing.level));
-      const evolved=glyphWordForSpecies(run.player.speciesId??run.startSpecies);
-      updateText(identityName,evolved);
-      const element=displayedFormType(run.player);
-      updateText(identityType,api.typeName(element));
-      if(identityType.dataset.element!==element)identityType.dataset.element=element;
-      if(portrait.dataset.word!==evolved||Number(portrait.dataset.progress)!==experience())refreshPortrait();
+      refreshPortrait();
       const remaining=remainingZoneSeconds(run);
       updateText(clock,run.sanctuary?time(run.stageTime):run.endless||run.tower?time(run.time):remaining>=0?time(remaining):'+'+time(-remaining));
       if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
       last=now;lastState=run.state;
       original(...args);
-      if(profile().settings.zxBossHealth==='percent'&&run.boss.alive){const index=run.boss.bossIndex;hud.els.bossBar.children[4].textContent=percent(Math.max(0,run.enemies.hp[index]/run.enemies.maxHp[index]));}
+      combatFeed.syncEvent();
+      combatFeed.placeTeam(hud.coopHud);
+      combatFeed.placeMarkers();
+      if(run.boss.alive){
+        const i=run.boss.bossIndex,hp=Math.max(0,run.enemies.hp[i]);
+        const value=profile().settings.zxBossHealth==='percent'?percent(hp/Math.max(1,run.enemies.maxHp[i])):number(Math.ceil(hp));
+        updateText(hud.els.bossBar.children[4],value);
+      }
       const p=run.player;
-      updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'/'+(run.mode===SINGLE_STAGE?1:FOREST_COMBAT_ZONES)+'区'));updateText(stageLabel,difficultyName(run));
-      stageLabel.dataset.tier=String(run.tier);
-      updateText(gold,number(run.gold));
+      const stage=paperStages[Math.min(3,run.stage-1)],region=run.sanctuary?'圣地':run.stage+(run.mode===SINGLE_STAGE?'/1区':'/'+FOREST_COMBAT_ZONES+'区');
+      const detail=region+' · '+difficultyName(run)+'难度';
+      if(stageKey!==stage+detail){
+        stageKey=stage+detail;drawStageCaption(stageCaption,stage,detail);stageCaption.setAttribute('aria-label',stage+' · '+detail);
+      }
       updateSkillSlots(skillSlots,run);
       const supplyKey=JSON.stringify([[...p.vitamins].map(([id,v])=>[id,v.level]),[...p.items],profile().settings.showItems,innerWidth]);
       if(supplyKey!==lastSupplies){
@@ -1379,7 +1894,20 @@ export function createZixingUI(app,api) {
         for(const image of items.querySelectorAll('img')){const reused=images.get(image.getAttribute('src'))?.shift();if(reused){reused.alt=image.alt;image.replaceWith(reused);}}
         supplies.replaceChildren(items);
       }
-      for(const slot of inventory.querySelectorAll('.zx-skill-slot')){
+      const vitaminSlots=supplies.querySelectorAll('.zx-mini-slot').length,skillCount=skillSlots.children.length;
+      const compact=window.innerWidth<=350;
+      const arrangement=vitaminSlots+'/'+skillCount+'/'+compact;
+      if(arrangement!==previousArrangement){
+        const groupWidth=count=>Math.max(0,count*27-2); // 25px cells separated by 2px.
+        const vitaminWidth=groupWidth(vitaminSlots),skillWidth=groupWidth(skillCount);
+        supplies.style.width=vitaminWidth+'px';supplies.hidden=vitaminSlots===0;
+        skillSlots.style.width=skillWidth+'px';
+        node.classList.toggle('hud-loadout-wrap',vitaminWidth+skillWidth+(vitaminSlots?6:0)>(compact?195:211));
+        // Both native tiles share this row. Invalidate the parent when either changes width.
+        inventory.dataset.arrangement=arrangement;
+        previousArrangement=arrangement;
+      }
+      for(const slot of skillSlots.children){
         const move=p.moves[Number(slot.dataset.skillSlot)],canvas=slot.querySelector('.zx-skill-cooldown');
         if(!move||!canvas)continue;
         const m=move.def.arch==='random'&&move.sub?move.sub:move;
@@ -1410,10 +1938,23 @@ export function createZixingUI(app,api) {
     const symbols={seven:'极',pikachu:'攻',berry:'生',meowth:'财',voltorb:'震',gengar:'厄',magikarp:'空'};
     const prizes={seven:'获得三个道具，包含高品质奖励。',pikachu:'获得稀有或更高品质的道具。',berry:'恢复 25% 生命，并获得道具。',meowth:'获得本次投入 2.5 倍的金币。',voltorb:'触发伏击，准备迎战。',gengar:'本局敌人数量与难度提升。',none:'这次未中奖，可以继续挑战。'};
     const spin=()=>{const next=machine.spin();if(!next)return;const exit=machine.pay(next);slots(run,machine,resume,next,exit);};
-    overlay(result?(result.prize==='none'?'字运未至':'好运入字'):'老虎机',result?'结果已生效':'场景设施 · 已暂停',[
-      small('◎ 本局金币 '+number(run.gold)),el('div','zx-slot',(result?.reels||['pikachu','meowth','berry']).map(s=>el('b','',symbols[s]))),
-      text('字 运 当 头','zx-note'),el('b','',result?prizes[result.prize]:'本次投入 '+machine.cost()+' 金币'),
-    ],[mustResume?button('继续旅程  →',resume,'primary'):button((result?'继续 · ':'')+'投入 '+machine.cost()+' 金币  →',spin,'primary',{disabled:run.gold<machine.cost()}),button('返回',resume)],run.ui);
+    const reelWords=result?.reels||['pikachu','meowth','berry'];
+    const machineFace=el('section','zx zx-arcade',[
+      el('header','zx-arcade-header',[el('h2','','老虎机'),el('span','',[hudPaperIcon('coin',19),el('b','',compactCounter(run.gold))])]),
+      el('div','zx-arcade-window',reelWords.map(key=>el('div','zx-arcade-reel',[
+        el('i','zx-arcade-notch'),el('b','',symbols[key]),el('i','zx-arcade-notch'),
+      ]))),
+      el('div','zx-arcade-tray',[
+        el('b','',result?(result.prize==='none'?'字运未至':'好运入字'):'字运当头'),
+        text(result?prizes[result.prize]:'本次投入 '+machine.cost()+' 金币','zx-arcade-caption'),
+      ]),
+      el('footer','zx-arcade-controls',[
+        button('返回',resume,'',{'data-action':'slot-back'}),
+        mustResume?button('继续旅程',resume,'primary'):button((result?'继续 · ':'')+'投入 '+machine.cost()+' 金币',spin,'primary',{disabled:run.gold<machine.cost(),'data-action':'slot-spin'}),
+      ]),
+    ],{role:'dialog','aria-label':'老虎机','data-paper-surface':'arcade'});
+    const wrap=run.ui.modal(machineFace);wrap.className='zx zx-modal-wrap zx-arcade-overlay';
+
   }
   return ui;
 }

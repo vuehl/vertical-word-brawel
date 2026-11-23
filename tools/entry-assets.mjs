@@ -30,7 +30,6 @@ export async function writeEntryAssets(root,out){
   add('idle.png',image);
   const {foot,top:head}=actorMetrics[4];
   idle.worldSize=glyphBillboardSize((foot-head)*animatedPixelHeight)*heroActionCatalog[4].scale;
-  for(const name of ['home.png','stages.png','ribbon.png'])add(name,await fs.readFile(path.join(source,'art/entry',name)));
   await fs.writeFile(path.join(out,'entry-data.js'),'module.exports='+JSON.stringify({spawn,layers,mapSize:[width,height],idle,images})+';\n');
   // Remove only loose copies produced by the previous entry packer.
   const oldDir=path.join(out,'entry');

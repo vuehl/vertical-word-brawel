@@ -75,7 +75,8 @@ export function styleEngine(view,rules) {
     const id=isText?'':el.id;
     const classes=isText?'':el.getAttribute('class')||'';
     const css=isText?'':el.getAttribute('style')||'';
-    const signature=[parent?.serial||0,id,classes,css,el.hidden,el.disabled,el.checked,el.type,el.parentNode?.childNodes.length].join('|');
+    const pressed=isText?'':el.getAttribute('aria-pressed');
+    const signature=[parent?.serial||0,id,classes,css,pressed,el.hidden,el.disabled,el.checked,el.type,el.parentNode?.childNodes.length].join('|');
     const previous=cache.get(el);
     if(previous?.signature===signature)return previous;
     const s={...defaults};
