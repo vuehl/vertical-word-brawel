@@ -3,15 +3,15 @@ import {appearanceGlyphCanvas,drawAppearanceGlyph} from './collection-art.js';
 import {qualityPaper} from './choice-presentation.js';
 const {paper,ink}=paperPalette;
 
-function canvas(width,height,className){
+function canvas(width,height,className,pixelRatio=2){
   const node=document.createElement('canvas');
   node.className=className;
-  node.width=width*2;
-  node.height=height*2;
+  node.width=width*pixelRatio;
+  node.height=height*pixelRatio;
   node.dataset.static='true';
   node.setAttribute('aria-hidden','true');
   const ctx=node.getContext('2d');
-  ctx.scale(2,2);
+  ctx.scale(pixelRatio,pixelRatio);
   return {node,ctx};
 }
 
@@ -220,6 +220,59 @@ export function upgradeRibbons(width=202){
   }
   for(const x of [12,width-12])polygon(ctx,[[x-9,16],[x-2,14],[x,11],[x+2,14],[x+9,16],[x+2,18],[x,21],[x-2,18]],'#F4F3F8');
   return node;
+}
+
+function drawEvolutionStamp(ctx,progress){
+  ctx.clearRect(0,0,100,100);
+  const fall=Math.min(1,progress/.72);
+  const press=Math.sin(Math.PI*Math.max(0,(progress-.72)/.28));
+  const size=.80+.06*(1-fall);
+  ctx.save();ctx.translate(50,51-3*(1-fall));ctx.rotate(-.12-.06*(1-fall));
+  ctx.scale(size*(1+.04*press),size*(1-.08*press));ctx.globalAlpha*=fall;
+  polygon(ctx,[[-49,-48],[-43,-52],[44,-51],[49,-46],[48,43],[43,49],[-46,48]],'#fff2d7');
+  ctx.lineJoin='round';ctx.lineWidth=3;
+  polygon(ctx,[[-42,-43],[39,-44],[42,-40],[41,39],[-40,41],[-43,38]],null,'#943b29');
+  ctx.lineWidth=.85;ctx.strokeRect(-39,-40,77,77);
+  ctx.fillStyle='#9c3323';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.font='bold 32px "Ziling Swei",sans-serif';ctx.fillText('进阶',0,-18);ctx.fillText('完成',0,16);
+  ctx.restore();
+}
+
+export function evolutionResult(from,to,look,before,after){
+  const {node:face,ctx}=canvas(320,66,'');
+  const edge=[[1,2],[289,2],[301,9],[301,45],[286,60],[0,60]];
+  ctx.save();ctx.translate(1,4);polygon(ctx,edge,'#557aa7');ctx.restore();
+  const paper=ctx.createLinearGradient(0,0,300,61);
+  paper.addColorStop(0,'#dce9f6');paper.addColorStop(.6,'#f6f7f8');paper.addColorStop(1,'#e6edf6');
+  polygon(ctx,edge,paper);polygon(ctx,[[0,2],[15,2],[9,60],[0,60]],'#537cad');
+  polygon(ctx,[[307,49],[320,48],[299,65]],'#6489b8');
+  ctx.drawImage(appearanceGlyphCanvas(to.word,to.tone,look),12,6,48,48);
+  ctx.textBaseline='middle';ctx.fillStyle='#233a59';ctx.font='bold 21px "Ziling Swei",sans-serif';
+  const route=from.word+' → '+to.word;
+  ctx.fillText(route,65,21);
+  const detail='最大生命 '+before+' → ';
+  ctx.font='16px "Ziling Swei",sans-serif';const detailWidth=ctx.measureText(detail).width;
+  ctx.font='bold 20px "Ziling Swei",sans-serif';const valueWidth=ctx.measureText(String(after)).width;
+  ctx.save();ctx.translate(65,0);ctx.scale(Math.min(1,218/(detailWidth+valueWidth)),1);
+  ctx.font='16px "Ziling Swei",sans-serif';ctx.fillStyle='#374f70';ctx.fillText(detail,0,46);
+  ctx.font='bold 20px "Ziling Swei",sans-serif';ctx.fillStyle='#3d6395';ctx.fillText(String(after),detailWidth,45);ctx.restore();
+  const {node,ctx:print}=canvas(320,66,'zx-evolution-result');
+  const {node:stamp,ctx:seal}=canvas(100,100,'zx-evolution-stamp',3);
+  stamp.dataset.uiLayer='evolution-stamp';
+  node.dataset.uiLayer='evolution-result';
+  node.removeAttribute('aria-hidden');node.setAttribute('role','status');
+  node.setAttribute('aria-label','进阶完成，'+route+'，最大生命 '+before+' → '+after);
+  function paint(progress){
+    print.clearRect(0,0,320,66);
+    const enter=Math.min(1,.35+progress*2.6);
+    print.save();print.translate(-6*(1-enter),0);print.globalAlpha=enter;
+    print.drawImage(face,0,0,320,66);
+    print.restore();
+    drawEvolutionStamp(seal,progress);
+    stamp.dataset.frame=String(progress);
+    node.dataset.frame=String(progress);
+  }
+  return {node,stamp,paint};
 }
 
 export function arrivalPennant(){

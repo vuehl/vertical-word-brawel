@@ -49,13 +49,21 @@ export function createDeskNavigation(terrain) {
       }
       return true;
     };
-    if(clear(x,z,targetX,targetZ))return false;
     const [gx,gz]=cell(targetX,targetZ);
-    let goal=inside(gx,gz)&&open[gz*cols+gx]?gz*cols+gx:-1,best=Infinity;
-    // A player can stand closer to a prop than a large monster can.
-    if(goal<0)for(let dz=-6;dz<=6;dz++)for(let dx=-6;dx<=6;dx++){
-      const cx=gx+dx,cz=gz+dz,d=dx*dx+dz*dz;
-      if(inside(cx,cz)&&open[cz*cols+cx]&&d<best){goal=cz*cols+cx;best=d;}
+    const targetOpen=inside(gx,gz)&&open[gz*cols+gx];
+    if(targetOpen&&clear(x,z,targetX,targetZ))return false;
+    let goal=gz*cols+gx;
+    if(!targetOpen){
+      // All pursuers of this size see the same clearance grid at the wall.
+      if(field.blockedX!==gx||field.blockedZ!==gz){
+        let best=Infinity;
+        field.blockedX=gx;field.blockedZ=gz;field.nearestGoal=-1;
+        for(let dz=-6;dz<=6;dz++)for(let dx=-6;dx<=6;dx++){
+          const cx=gx+dx,cz=gz+dz,d=dx*dx+dz*dz;
+          if(inside(cx,cz)&&open[cz*cols+cx]&&d<best){field.nearestGoal=cz*cols+cx;best=d;}
+        }
+      }
+      goal=field.nearestGoal;
     }
     if(goal<0)return false;
     let target=field.targets.get(targetSlot);

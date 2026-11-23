@@ -586,4 +586,7 @@ html.zixing .toasts .toast{display:flex;flex-direction:row;align-items:center;wi
 html.zixing .toasts .toast[data-priority="urgent"]{border-left-color:#DF969E}
 html.zixing .toasts .toast img{width:19px;height:19px;flex:none}
 html.zixing .toasts .toast-copy{min-width:0;flex:0 1 auto;white-space:normal;line-height:18px}
+html.zixing .zx-battle-lane>.zx-evolution-result{position:relative;inset:auto;width:100%;max-width:320px;height:65px;flex:none;margin:2px 0 3px;pointer-events:none}
+html.zixing .zx-square-hud>.zx-evolution-stamp{position:absolute;left:0;top:0;right:auto;bottom:auto;pointer-events:none}
+@media(max-width:350px){html.zixing .zx-battle-lane>.zx-evolution-result{height:54px}}
 `;

@@ -75,6 +75,8 @@ export async function setup(host) {
   soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
   soloLayers.push(createHUDLayer(makeCanvas,'stage-intro',20));
   soloLayers.push(createHUDLayer(makeCanvas,'ultimate-cutin',21));
+  soloLayers.push(createHUDLayer(makeCanvas,'evolution-result',23));
+  soloLayers.push(createHUDLayer(makeCanvas,'evolution-stamp',24));
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;

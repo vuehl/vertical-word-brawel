@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {reviewUltimateUpgrade} from './ultimate-upgrade-regression.mjs';
+import {vitamins} from '../source/src/catalogs.js';
 
 async function reviewRetiredOffers(page){
-  const count=await page.evaluate(async()=>{
+  const count=await page.evaluate(async vitaminKeys=>{
     const retired=[36,44,172,179,242,245,514,583,50104];
     const settings=app.meta.profile.settings,skip=settings.skipEmptyLevelUp;
     let scenario=0,pages=0;
@@ -13,7 +14,7 @@ async function reviewRetiredOffers(page){
       for(const forms of [[4,5,6],[16,17,18,58,59,59]]){
         await app.startRun({species:forms[0],biome:'forest',tier:0,boosts:[],mode:'standard'});
         const r=app.run,p=r.player;
-        r.nextEvo=null;p.level=100;p.vitaminSlots=0;
+        r.nextEvo=null;p.level=100;
         r.ui.experienceReady=()=>true;
         let card,choose;
         r.ui.showLevelUp=(_run,items,pick)=>{[card]=items;choose=pick;};
@@ -22,7 +23,7 @@ async function reviewRetiredOffers(page){
           // Keep a free slot so the same draw covers both new and equipped moves.
           const starter=p.moves[0],id=retired[scenario++];
           p.moves[1]={...starter,def:{...starter.def,id}};
-          r.banished.clear();r.rerolls=1;r.pendingLevels=1;r.state='play';card=null;
+          r.banished=new Set(vitaminKeys.map(key=>'v'+key));r.rerolls=1;r.pendingLevels=1;r.state='play';card=null;
           r.doLevelUp();
           const seen=new Set();
           while(card){
@@ -41,7 +42,7 @@ async function reviewRetiredOffers(page){
       }
     }finally{settings.skipEmptyLevelUp=skip;}
     return pages;
-  });
+  },vitamins.map(v=>v.key));
   console.log('Retired move IDs absent from all playable forms across',count,'upgrade draws.');
 }
 
@@ -63,16 +64,18 @@ async function reviewRandomOffers(page){
       p.addMove(488);p.addVitamin('hp-up',1);
       profile.collection={...savedCollection,plans:{[r.startSpecies]:{moves:['m488'],vitamins:['vhp-up']}}};
       p.level=3;r.stageTime=0;r.state='play';r.pendingLevels=1;r.rerolls=800;r.doLevelUp();
-      let multiSkillPages=0, lockedOffers=0, unlockedOffers=0;
-      const positions=new Set(), levelFiveSkills=new Set();
+      let multiSkillPages=0, vitaminOnlyPages=0, lockedOffers=0, unlockedOffers=0;
+      const positions=new Set(), levelFiveSkills=new Set(), vitaminKeys=new Set();
       for(let draw=0;draw<800;draw++){
         const previous=new Set(offers.map(o=>o.key));
         p.level=draw<300?3:draw<600?4:5;
         pick(null,'reroll');
-        if(offers.length!==3 || !offers.some(o=>o.kind==='newMove') || !offers.some(o=>o.vit) || new Set(offers.map(o=>o.key)).size!==3)
+        if(offers.length!==3 || new Set(offers.map(o=>o.key)).size!==3)
           throw Error('Invalid mixed offer: '+JSON.stringify(offers));
         if(offers.filter(o=>!o.vit).length>1)multiSkillPages++;
+        if(offers.every(o=>o.vit))vitaminOnlyPages++;
         offers.forEach((offer,index)=>{
+          if(offer.vit)vitaminKeys.add(offer.vit);
           if(offer.kind==='newMove'){
             positions.add(index);
             if(p.level===5)levelFiveSkills.add(offer.id);
@@ -84,20 +87,21 @@ async function reviewRandomOffers(page){
         }
       }
       const exhausted=offers;pick(null,'reroll');
-      return {recharge,multiSkillPages,lockedOffers,unlockedOffers,levelFiveSkills:[...levelFiveSkills].sort((a,b)=>a-b),positions:[...positions].sort(),
+      return {recharge,multiSkillPages,vitaminOnlyPages,vitaminCount:vitaminKeys.size,lockedOffers,unlockedOffers,levelFiveSkills:[...levelFiveSkills].sort((a,b)=>a-b),positions:[...positions].sort(),
         zero:r.rerolls,blocked:exhausted===offers};
     }finally{profile.collection=savedCollection;Math.random=originalRandom;r.ui.showLevelUp=show;r.ui.experienceReady=ready;}
   });
   assert.deepEqual(result.recharge,[1,0,1,2]);
   assert.deepEqual(result.positions,[0,1,2]);
   assert.deepEqual(result.levelFiveSkills,[53,83,126,517]);
-  assert.ok(result.multiSkillPages>0 && result.unlockedOffers>0 && result.blocked);
+  assert.ok(result.multiSkillPages>0 && result.vitaminOnlyPages>0 && result.unlockedOffers>0 && result.blocked);
+  assert.equal(result.vitaminCount,vitamins.length);
   assert.equal(result.lockedOffers,0);assert.equal(result.zero,0);
   console.log('Mixed draft and empty-reroll checks:',result);
 }
 
 async function reviewMoveCapacity(page){
-  const result=await page.evaluate(async()=>{
+  const result=await page.evaluate(async vitaminKeys=>{
     await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
     const r=app.run,p=r.player,ui=r.ui;
     const {showLevelUp,showFusion,experienceReady}=ui,random=Math.random;
@@ -190,29 +194,27 @@ async function reviewMoveCapacity(page){
       p.addItem('tm-case');
       trainToCap(ordinary,10);
       trainToCap(fused,6);
-      for(const slots of [3,4]){
-        p.vitaminSlots=slots;
-        open();
-        while(p.vitamins.size<slots){
-          for(let draw=0;draw<20&&!offers.some(offer=>offer.kind==='newVit');draw++)choose(null,'reroll');
-          const fresh=offers.find(offer=>offer.kind==='newVit');
-          if(!fresh)throw Error('Missing new vitamin with free slots');
-          choose(fresh);
-          open();
-        }
-        const seen=new Set();
-        for(let draw=0;draw<20;draw++){
-          for(const offer of offers.filter(o=>o.vit)){
-            if(offer.kind!=='upVit'||!p.vitamins.has(offer.vit))throw Error('Unexpected vitamin at capacity');
-            seen.add(offer.vit);
-          }
+      r.rerolls=1000;
+      open();
+      while(p.vitamins.size<vitaminKeys.length){
+        const fresh=offers.find(offer=>offer.kind==='newVit');
+        if(!fresh){
+          if(!r.rerolls)throw Error('Could not collect every vitamin');
           choose(null,'reroll');
+          continue;
         }
-        if(seen.size!==slots)throw Error('Missing equipped vitamin at capacity');
+        const before=p.vitamins.size;
+        choose(fresh);
+        if(p.vitamins.size!==before+1||p.vitamins.get(fresh.vit)?.level!==1)throw Error('Vitamin did not stack with previous kinds');
+        open();
       }
+      for(let draw=0;draw<20&&!offers.some(o=>o.kind==='upVit');draw++)choose(null,'reroll');
+      const upgrade=offers.find(o=>o.kind==='upVit');
+      choose(upgrade);
+      if(p.vitamins.get(upgrade.vit).level!==2||!vitaminKeys.every(key=>p.vitamins.has(key)))throw Error('Vitamin upgrade lost inventory');
       return {rejected,learned:r.stats.movesLearned-learned,slots:p.moves.filter(Boolean).length};
     }finally{Object.assign(ui,{showLevelUp,showFusion,experienceReady});Math.random=random;}
-  });
+  },vitamins.map(v=>v.key));
   assert.deepEqual(result,{rejected:true,learned:2,slots:4});
   console.log('Skill capacity, stale choice and fusion checks passed');
 }
@@ -301,8 +303,6 @@ export async function reviewUpgrade({page,resize,dir}){
       if(!baseline){
         assert.equal(build.icons.length,3);
         assert.ok(build.icons.every(Boolean));
-        assert.ok(build.icons.some(src=>src.includes('/types/')));
-        assert.ok(build.icons.some(src=>!src.includes('/types/')));
       }
       const frames=[];
       try{

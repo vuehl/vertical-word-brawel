@@ -380,9 +380,9 @@ export function installDeveloperMode(app,{skills,speciesName}){
     const govern=run.governHorde.bind(run);
     run.governHorde=()=>{if(options.lockCount)run.crowdSample=null;else govern();};
     const update=run.update.bind(run);
-    run.update=dt=>{
+    run.update=(...args)=>{
       if(run.director!==wiredDirector){wireDirector();wiredDirector=run.director;}
-      const before=run.time,beforeState=run.state,result=update(dt),now=performance.now();
+      const before=run.time,beforeState=run.state,result=update(...args),now=performance.now();
       if(showOnEntry)open();
       workload.update(Math.max(0,run.time-before));
       // Evolution returns to play without calling resume(). Restore the test

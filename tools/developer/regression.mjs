@@ -106,7 +106,7 @@ async function reviewUpgradeWave(page){
 
 export async function enterDeveloperFromHome(page,dir){
   // Use the user's native-touch route, not a direct app.startRun call.
-  for(const selector of ['[data-action="journey"]','.zx-choose .zx-footer .primary','.zx-map .zx-footer .primary','[data-action="enter"]']){
+  for(const selector of ['[data-action="journey"]','[data-action="collection-next"]','[data-action="enter"]']){
     await page.waitForFunction(selector=>!!inspected.doc.querySelector(selector),{timeout:30000},selector);
     const point=await page.evaluate(selector=>{
       app.r.render(0);inspected.env.drawUI(app.r.renderer);

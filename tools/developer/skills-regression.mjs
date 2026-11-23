@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {vitamins} from '../../source/src/catalogs.js';
 
 export async function reviewDeveloperSkills(page,dir){
   const report=[];
@@ -42,19 +43,19 @@ export async function reviewDeveloperSkills(page,dir){
   }
   // Compare the preset's first skill against two selections in the actual
   // level-up callback. A fixed RNG makes both common-rarity upgrades identical.
-  const upgrade=await page.evaluate(async()=>{
+  const upgrade=await page.evaluate(async vitaminKeys=>{
     await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;const r=app.run,p=r.player,api=inspected.env.__zixingDeveloper;
     api.close();api.options.spawn=false;
     const random=Math.random,show=r.ui.showLevelUp,ready=r.ui.experienceReady;
-    const slots=p.moveSlots,vitaminSlots=p.vitaminSlots,skip=app.meta.profile.settings.skipEmptyLevelUp;
+    const slots=p.moveSlots,banished=r.banished,skip=app.meta.profile.settings.skipEmptyLevelUp;
     Math.random=()=>0;
     try{
       const preset=api.apply({mode:'timed',time:120,count:0,boss:'none'}).workload.moves[0];
       api.stopWorkload();p.level=r.nextEvo.level-1;p.recompute();r.ui.experienceReady=()=>true;
       // Restrict this comparison to the one existing skill so randomized
       // three-card selection cannot hide it behind new moves or vitamins.
-      p.moveSlots=1;p.vitaminSlots=0;app.meta.profile.settings.skipEmptyLevelUp=false;
+      p.moveSlots=1;r.banished=new Set(vitaminKeys.map(key=>'v'+key));app.meta.profile.settings.skipEmptyLevelUp=false;
       let selected=0;
       r.ui.showLevelUp=(run,offers,choose)=>{
         const offer=offers.find(o=>o.kind==='upMove'&&o.slot===0);
@@ -62,8 +63,8 @@ export async function reviewDeveloperSkills(page,dir){
       };
       for(let i=0;i<2;i++){r.pendingLevels=1;r.state='play';r.doLevelUp();}
       const m=p.moves[0];return {selected,preset,normal:{key:m.def.key,level:m.level,mods:{...m.mods}}};
-    }finally{Math.random=random;r.ui.showLevelUp=show;r.ui.experienceReady=ready;p.moveSlots=slots;p.vitaminSlots=vitaminSlots;app.meta.profile.settings.skipEmptyLevelUp=skip;}
-  });
+    }finally{Math.random=random;r.ui.showLevelUp=show;r.ui.experienceReady=ready;p.moveSlots=slots;r.banished=banished;app.meta.profile.settings.skipEmptyLevelUp=skip;}
+  },vitamins.map(v=>v.key));
   assert.equal(upgrade.selected,2);
   const {key,level,mods}=upgrade.preset;assert.deepEqual({key,level,mods},upgrade.normal,'Preset must use the actual release upgrade rules');
   await page.evaluate(()=>{

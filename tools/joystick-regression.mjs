@@ -13,11 +13,19 @@ export async function verifyJoystick(page,dir){
   await click('[data-action="journey"]');
   await click('[data-action="collection-next"]');
   await click('[data-action="enter"]');
+  if(process.argv.includes('--dev')){
+    await page.waitForFunction(()=>inspected.doc.getElementById('zx-dev-panel'),{timeout:30000});
+    await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();});
+  }
   await page.waitForFunction(()=>app.run?.terrain?.desk2d&&app.run.time>.1,{timeout:30000});
   await page.evaluate(()=>{
     app.halted=true;const r=app.run;r.enemies.clear();r.state='play';
     r.ui.touch.update(r,'');inspected.env.drawUI(app.r.renderer);
   });
+  if(process.argv.includes('--joystick-soak')){
+    const {verifyCombatSteering}=await import('./joystick-soak.mjs');
+    return verifyCombatSteering(page,dir);
+  }
   const response=await page.evaluate(()=>{
     const r=app.run,p=r.player,env=inspected.env;
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
@@ -315,6 +323,22 @@ export async function verifyJoystick(page,dir){
     return result;
   });
   assert.deepEqual(cast,{casts:1,held:true,heading:1});
+  const facility=await page.evaluate(()=>{
+    const r=app.run,facilities=r.interactables,t=r.ui.touch,env=inspected.env;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
+    const chest={kind:'freechest'},interact=facilities.interact;
+    let opens=0;facilities.interact=()=>opens++;
+    try{
+      window.tap(x,y,'down',11);window.tap(x+8,y,'move',11);
+      for(let i=0;i<100;i++)facilities.updateDwell(chest,1/30,1/30);
+      const held=t.stickId===11&&r.input.stickX>0,whileMoving=opens;
+      window.tap(x,y,'up',11);
+      for(let i=0;i<60;i++)facilities.updateDwell(chest,1/30,1/30);
+      return {held,whileMoving,afterRelease:opens};
+    }finally{facilities.interact=interact;facilities.updateDwell(null,0,0);}
+  });
+  assert.deepEqual(facility,{held:true,whileMoving:0,afterRelease:1});
   const stall=await page.evaluate(()=>{
     const r=app.run,p=r.player,env=inspected.env,screen=inspected.doc.getElementById('game').getBoundingClientRect();
     const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
@@ -353,10 +377,53 @@ export async function verifyJoystick(page,dir){
     r.enemies.clear();r.ui.touch.update(r,'');inspected.env.drawUI(app.r.renderer);
   });
   closeCrowd.push(...await testCloseCrowd());
+  const walls=await page.evaluate(()=>{
+    const r=app.run,p=r.player,t=r.terrain,env=inspected.env;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y,results=[];
+    // Push straight into off-centre faces and corners of real second-area props.
+    // A rotated face may stop the stride but must not move an unrequested axis.
+    for(const prop of t.colliders){
+      if(results.length>=12)break;
+      const startZ=prop.z+prop.r*.28,radius=p.radius;
+      if(!t.inBounds(prop.x,startZ,4))continue;
+      let startX=prop.x-prop.r-radius-1;
+      const feet=t.height(startX,startZ);
+      if(t.hitProp(startX,feet,startZ,radius))continue;
+      while(startX<prop.x&&!t.hitProp(startX+.1,feet,startZ,radius))startX+=.1;
+      if(startX>=prop.x)continue;
+      p.pos.set(startX,feet,startZ);p.vel.set(0,0,0);p.grounded=true;
+      p.kx=p.kz=p.crowdX=p.crowdZ=0;
+      window.tap(x,y,'down',11);window.tap(x+45,y,'move',11);
+      let side=0,back=0;
+      for(let i=0;i<60;i++){
+        const px=p.pos.x;r.realDt=1/30;p.update(1/30);
+        side=Math.max(side,Math.abs(p.pos.z-startZ));back=Math.max(back,px-p.pos.x);
+      }
+      const endX=p.pos.x;
+      window.tap(x-45,y,'move',11);p.update(1/30);
+      window.tap(x-45,y,'up',11);
+      results.push({side,back,reverse:endX-p.pos.x});
+    }
+    return results;
+  });
+  assert.ok(walls.length>=3&&walls.every(w=>w.side<1e-6&&w.back<1e-6&&w.reverse>0),JSON.stringify(walls));
+  const retiredCalls=await page.evaluate(()=>{
+    const env=inspected.env,Touch=app.run.ui.touch.constructor;
+    let calls=0;
+    for(let i=0;i<3;i++){
+      const retired=new Touch(inspected.doc.createElement('div'));
+      retired.destroy();retired.letGo=retired.releaseStick=()=>calls++;
+    }
+    env.dispatchEvent(new env.Event('resize'));
+    const end=new env.Event('touchend');end.touches=[];env.dispatchEvent(end);
+    return calls;
+  });
+  assert.equal(retiredCalls,0,'Retired HUDs still handle global input');
   for(const sample of closeCrowd){
     assert.ok(sample.hits>0&&sample.loadedSteps>4,JSON.stringify(sample));
     assert.ok(sample.maxDrift<1e-6&&sample.maxSideways<1e-6&&sample.minForward>0,JSON.stringify(sample));
   }
-  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,southEdge,circles,closeCrowd,controls:report,interruptions,cast,stall},null,2));
+  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,southEdge,circles,closeCrowd,walls,controls:report,interruptions,cast,stall},null,2));
   console.log('Joystick contact damage during clockwise/counterclockwise turns, short and full drags, reversals, multitouch and release passed:',report.length,'screen/scale combinations');
 }

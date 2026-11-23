@@ -20,7 +20,7 @@ import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterS
 import {windMoveEffect} from './wind-move-art.js';
 import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './skill-availability.js';
 import {mountLiteQA} from './lite-qa.js';
-import {runPlan, planIncludes, plannedUpgrade} from './battle-plan.js';
+import {runPlan, planIncludes} from './battle-plan.js';
 import {createZixingUI,paperIcon} from './zixing-ui.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
@@ -13363,7 +13363,7 @@ var Df = 0.4,
       const dx = player.pos.x - this.x[id], dz = player.pos.z - this.z[id];
       const distance = Math.hypot(dx, dz) || 1;
       const heavy = flags & (Cf | R.Boss);
-      if (this.run.terrain.zxPaper && !heavy && !(flags & R.Elite)) {
+      if (this.run.terrain.zxPaper && !heavy) {
         // Light contact contributes to crowd resistance on every portrait stage.
         player.crowdX += 0.1 * dx / distance;
         player.crowdZ += 0.1 * dz / distance;
@@ -14849,6 +14849,9 @@ var Yp = 3e3,
             let e = Math.hypot(this.vx[c], this.vz[c]) || 1,
               n = this.vx[c] / e,
               i = this.vz[c] / e;
+            const source = this.src[c];
+            const lightShot = t.terrain.zxPaper && !(l & (1024 | 2048)) &&
+              (source?.kind === 'common' || source?.kind === 'swarm' || source?.kind === 'stampede' || source?.kind === 'elite');
             (r.hurt(
               this.dmg[c] * t.diff.enemyDamage,
               this.types[c],
@@ -14857,9 +14860,9 @@ var Yp = 3e3,
               r.pos.z - i * 3,
               !1,
               l & 1024 ? 0.15 : l & 2048 ? Tf(t) : 0,
-              this.src[c] ?? -1,
+              source ?? -1,
               l & 1024 ? { floor: 0.02 * (T.strike[t.tier] ?? 1) } : {},
-            ) && r.shove(n, i, 3.5),
+            ) && !lightShot && r.shove(n, i, 3.5),
               t.vfx.burst(this.x[c], this.y[c], this.z[c], this.color[c], 8, 4),
               this.remove(c));
           }
@@ -31727,7 +31730,6 @@ var mv = 30,
     moves = [null, null, null, null];
     moveSlots = 3;
     vitamins = new Map();
-    vitaminSlots = 3;
     items = new Map();
     buffs = new Map();
     ability;
@@ -31966,8 +31968,8 @@ var mv = 30,
       return e;
     }
     addVitamin(e, t) {
-      if (!Ne.has(e)) return;
       let n = this.vitamins.get(e);
+      if (!Ne.has(e) || n?.level >= this.vitCap) return false;
       if (
         ((this.run.vitTaken = !0),
         n
@@ -31992,6 +31994,7 @@ var mv = 30,
           o.vfx.ring(s.x, s.y + 0.1, s.z, 2.4, 16765498, 0.35, 0.3));
       }
       this.recompute();
+      return true;
     }
     get moveCap() {
       return 8 + (this.items.has(`tm-case`) ? 2 : 0);
@@ -33460,7 +33463,7 @@ var mv = 30,
           (this.climbing = !0),
           Math.random() < 0.3 && t.vfx.dust(this.pos.x, this.pos.y, this.pos.z, 13154464, 1, 1)));
       let he = Math.hypot(this.pos.x - fe, this.pos.z - pe);
-      if (!r.desk2d && he > 1.2) {
+      if (!r.zxPaper && he > 1.2) {
         let e = Math.ceil(he),
           t = { x: 0, z: 0 },
           n = this.pos.x,
@@ -33474,7 +33477,7 @@ var mv = 30,
           }
         }
       }
-      const ge = r.desk2d
+      const ge = r.zxPaper
         ? moveDeskPlayer(r,fe,pe,this.pos.x,this.pos.z,this.radius,this.pos.y,{x:0,z:0})
         : r.resolve(this.pos.x,this.pos.z,this.radius,this.pos.y,{x:0,z:0});
       if (
@@ -33497,7 +33500,8 @@ var mv = 30,
               this.radius,
             );
           let n =
-            e || Ev.some((e) => this.types.includes(e)) || this.floats
+            e || (r.zxPaper && !r.hitProp(this.pos.x,this.pos.y,this.pos.z,this.radius)) ||
+            Ev.some((e) => this.types.includes(e)) || this.floats
               ? null
               : r.freeSpot(this.pos.x, this.pos.z, this.pos.y, this.radius, { x: 0, z: 0 });
           n &&
@@ -33520,7 +33524,7 @@ var mv = 30,
           t = r.arenaR - 0.3;
         e > t && ((this.pos.x *= t / e), (this.pos.z *= t / e));
       }
-      if(r.desk2d){
+      if(r.zxPaper){
         // Clip only the blocked fraction of self-propelled velocity. External
         // pushes must not become player momentum on the next frame.
         if(ce && this.pos.x!==ue)this.vel.x*=Gs((this.pos.x-fe)/ce,0,1);
@@ -35495,8 +35499,20 @@ function Hb(e, t = 0, n = 0, r) {
   for (let e = 0; e < 5; e++) if (((u -= c[e]), u <= 0)) return e;
   return 0;
 }
-function isNewAttackOffer(offer) {
-  return offer.kind === 'newMove' && O_(offer.id)?.dmg > 0;
+function drawOfferPage(pool, count, history) {
+  const shuffled = F.shuffle(pool).sort((a,b) => Number(history.previous.has(a.key)) - Number(history.previous.has(b.key)));
+  const size = Math.min(count, shuffled.length);
+  const page = shuffled.filter(offer => !history.seen.has(offer.key)).slice(0, size);
+  let nextInCycle = page;
+  if (page.length < size) {
+    // Finish the old cycle before drawing the rest of this page from the next one.
+    history.seen.clear();
+    nextInCycle = shuffled.filter(offer => !page.includes(offer)).slice(0, size - page.length);
+    page.push(...nextInCycle);
+  }
+  for (const offer of nextInCycle) history.seen.add(offer.key);
+  history.previous = new Set(page.map(offer => offer.key));
+  return F.shuffle(page);
 }
 function canUpgradeMove(player, slot) {
   const move = player.moves[slot];
@@ -35525,33 +35541,16 @@ function Ub(run, count) {
   for (const vitamin of m) {
     const key = 'v'+vitamin.key, current = player.vitamins.get(vitamin.key);
     if (run.banished.has(key)) continue;
-    if (current ? current.level >= player.vitCap : player.vitamins.size >= player.vitaminSlots) continue;
+    if (current?.level >= player.vitCap) continue;
     pool.push({kind:current?'upVit':'newVit', vit:vitamin.key, key});
   }
-  // Each group gets a fresh shuffle once all its currently eligible cards have appeared.
   const history = run.upgradeOfferHistory ??= {seen:new Set(), previous:new Set()};
-  for (const group of [pool.filter(o => o.kind === 'newMove'), pool.filter(o => o.kind === 'upMove'), pool.filter(o => o.vit)]) {
-    if (group.every(o => history.seen.has(o.key))) {
-      for (const offer of group) history.seen.delete(offer.key);
-    }
-  }
-  const plan = runPlan(run);
-  const priority = offer => Number(history.previous.has(offer.key)) * 4 +
-    Number(history.seen.has(offer.key)) * 2 + Number(!plannedUpgrade(plan, offer));
-  const ranked = F.shuffle(pool).sort((a,b) => priority(a) - priority(b));
-  const openingAttack = run.director.normalOpening && run.openingDraftMisses >= 2 &&
-    player.moves.filter(Boolean).length === 1 && ranked.find(isNewAttackOffer);
-  const skill = openingAttack || ranked.find(o => o.kind === 'newMove') || ranked.find(o => !o.vit);
-  const vitamin = ranked.find(o => o.vit);
-  const offers = [...new Set([skill, vitamin, ...ranked].filter(Boolean))].slice(0, count);
-  history.previous.clear();
+  const offers = drawOfferPage(pool, count, history);
   for (const offer of offers) {
-    history.seen.add(offer.key);
-    history.previous.add(offer.key);
     if (offer.kind !== 'newMove') offer.rarity = Hb(run);
     if (offer.kind === 'upMove') offer.ups = P_(player.moves[offer.slot], E[offer.rarity]);
   }
-  return F.shuffle(offers);
+  return offers;
 }
 function Wb(e, t) {
   let r = e.player;
@@ -35622,8 +35621,7 @@ function Gb(e, t) {
     }
     case `newVit`:
     case `upVit`:
-      n.addVitamin(t.vit, E[t.rarity]);
-      return true;
+      return n.addVitamin(t.vit, E[t.rarity]);
   }
   n.recompute();
   return true;
@@ -35632,30 +35630,23 @@ function canOfferItem(run, key) {
   return run.player.canHold(key) && run.meta.itemInPool(key) && !run.banished.has('i' + key) &&
     !(run.tower && key === 'dowsing-machine') && !(run.springShoesSeen && key === 'air-balloon');
 }
-function plannedItemKeys(run, count, minimumRarity = 0) {
-  const keys = runPlan(run)?.items;
-  if (!Array.isArray(keys)) return [];
-  return F.shuffle(keys.filter(key => sn.has(key) && sn.get(key).rarity >= minimumRarity && canOfferItem(run,key))).slice(0,count);
-}
-function qb(e, t = 0) {
-  let n = e.player,
-    r = tt.filter(item => canOfferItem(e, item.key)),
-    i = [0, 1, 2, 3, 4].map((t) => r.some((n) => n.rarity === t)),
-    a = Math.max(t, Hb(e, t, 10, i)),
-    o = r.filter((t) => t.rarity === a);
-  for (let t = a - 1; !o.length && t >= 0; t--)
-    o = r.filter((n) => n.rarity === t);
-  return (
-    o.length || (o = r),
-    o.length
-      ? (F.weighted(o, (e) => (e.tags?.some((e) => n.types.includes(e.slice(5))) ? 4 : e.tags ? 0.35 : 1))
-          ?.key ?? null)
-      : null
-  );
-}
-function Jb(e, t, n) {
-  let i = tt.filter(item => !n.includes(item.key) && canOfferItem(e, item.key));
-  return [...i.filter((e) => e.rarity >= t), ...i.filter((e) => e.rarity < t)].map((e) => e.key);
+function drawItemKeys(run, count, minimumRarity = 0) {
+  const eligible = tt.filter(item => canOfferItem(run, item.key));
+  const preferred = eligible.filter(item => item.rarity >= minimumRarity);
+  const history = run.itemOfferHistory ??= {seen:new Set(), previous:new Set()};
+  let page;
+  if (preferred.length >= count) {
+    page = drawOfferPage(preferred, count, history);
+  } else {
+    const fallback = eligible.filter(item => item.rarity < minimumRarity);
+    page = F.shuffle([...preferred, ...drawOfferPage(fallback, count - preferred.length, history)]);
+    for (const item of preferred) {
+      history.seen.add(item.key);
+      history.previous.add(item.key);
+    }
+  }
+  if (page.some(item => item.key === 'air-balloon')) run.springShoesSeen = true;
+  return page.map(item => item.key);
 }
 var Yb = {
   physical: (e) => e.cls === `physical`,
@@ -35748,16 +35739,7 @@ function Qb(e, t = 0, n = 3, r = 1) {
     });
 }
 function $b(e) {
-  let t = plannedItemKeys(e,4).map(key => ({key,price:nx(e,key)}));
-  if (t.some(item => item.key === 'air-balloon')) e.springShoesSeen = true;
-  for (let n = 0; n < 16 && t.length < 4; n++) {
-    let n = qb(e);
-    if (n && !t.some(item => item.key === n)) {
-      t.push({key: n, price: nx(e, n)});
-      if (n === 'air-balloon') e.springShoesSeen = true;
-    }
-  }
-  return t;
+  return drawItemKeys(e, 4).map(key => ({key, price:nx(e,key)}));
 }
 var ex = [80, 130, 220, 400, 750],
   tx = [1.15, 1.25, 1.4, 1.6, 2];
@@ -36803,6 +36785,14 @@ var GS = class e {
       this.waitingForGold = false;
       const duration = this.dwellDuration;
       if (this.dwellTime >= duration) return;
+      // A slow drag or a blocked stride is still an active move. Starting a
+      // shop/choice here would cancel the thumb that brought the player past it.
+      const touch = run.ui.touch;
+      if (touch?.floatingStick && touch.stickId >= 0 && (run.input.stickX || run.input.stickY) &&
+          ['chest','freechest','cursedchest','meowth','ditto','hypno','fossil','bill','slots'].includes(target.kind)) {
+        this.dwellTime = 0;
+        return;
+      }
       if (run.coop?.lifting || run.capture.throwing || run.capture.canThrow()) {
         this.dwellTime = 0;
         return;
@@ -41455,18 +41445,6 @@ var kw = class {
         );
       },
     },
-    {
-      id: `thorn`,
-      name: c(`Pacto Espinoso`),
-      boon: c(`Un hueco de vitamina más`),
-      bane: c(`Te curas un 30 % menos`),
-      icon: `focus-sash`,
-      color: `#7aff8a`,
-      max: 1,
-      take: (e) => {
-        (e.player.vitaminSlots++, Lw(e, { stat: `healing`, mul: 0.7 }));
-      },
-    },
   ],
   zw = new Map(Rw.map((e) => [e.id, e])),
   Bw = {
@@ -45458,7 +45436,6 @@ var GT = 15,
     skips = 0;
     banishes = 0;
     pendingLevels = 0;
-    openingDraftMisses = 0;
     openingXpChecked = false;
     upgradeTiming = new UpgradeTiming();
     bossSpawned = !1;
@@ -45792,7 +45769,6 @@ var GT = 15,
           (this.allies = new Pm(this)),
           (this.ult = new NT(this)),
           this.sprites.preload(this.ult.def.preload ?? []),
-          (this.player.vitaminSlots = 3 + this.meta.lab(`slot-vit`)),
           this.meta.lab(`revive`) && this.player.addItem(`max-revive`));
         let e = this.player.roster ? k.movesByKey.get(this.player.roster.kit[0])?.id : void 0;
         (this.player.addMove(e ?? j_(this.startSpecies)),
@@ -47129,13 +47105,8 @@ var GT = 15,
     doLevelUp() {
       if (this.state !== `play` || this.pendingLevels <= 0 || this.upgradeTiming.waiting(this.ult) || this.ui.experienceReady?.() === false || this.tryEvolve()) return;
       ((this.state = `modal`), this.audio.levelUp(), this.hints.show(`level`));
-      const openingDraft = this.director.normalOpening && this.player.moves.filter(Boolean).length === 1;
-      let offeredNewAttack = false;
       let t = this.meta.lab(`choice4`) ? 4 : 3,
         n = (e = !0) => {
-          // Count completed levels. Rerolls and banishes share the same draft.
-          if (openingDraft && offeredNewAttack) this.openingDraftMisses = 0;
-          else if (openingDraft && this.stageTime <= 90) this.openingDraftMisses++;
           this.pendingLevels = Math.max(0, this.pendingLevels - 1);
           this.noResumeGrace = !e;
           if(this.pendingLevels>0){
@@ -47177,7 +47148,6 @@ var GT = 15,
           n(!automatic);
         },
         showOffers = (e) => {
-          if (openingDraft && e.some(isNewAttackOffer)) offeredNewAttack = true;
           e.length
             ? e.length === 1 && this.meta.profile.settings.skipEmptyLevelUp
               ? resolveChoice(e[0], null, true)
@@ -47237,8 +47207,7 @@ var GT = 15,
       this.animate(
         r,
         (progress) => {
-          // Keep the old form readable until the gold rings converge. The
-          // reveal callback alone changes species, stats and unlocks.
+          // Only the reveal callback changes species, stats and unlocks.
           const charge=Math.max(0,(progress-.96)/.04);
           n.flash=this.hideOwnFx?0:charge*(this.vfx.calm?.18:.65);
           n.renderScale=1;
@@ -47255,16 +47224,17 @@ var GT = 15,
             this.meta.unlockForm(t));
           let r = n.pos.x,
             c = n.pos.z;
+          const evolvedMaxHp=Math.round(n.maxHp);
           this.animate(
             0.46,
             (e) => {
               const lift = Math.sin(e * Math.PI);
               n.evolutionLift = this.hideOwnFx ? 0 : lift * 0.52;
-              n.renderScale = 1 + lift * 0.08 * (1 - e * 0.6);
             },
             () => {
               n.renderScale = 1;
               n.evolutionLift = 0;
+              this.ui.evolutionReveal(e,t,o,evolvedMaxHp);
             },
           );
           for (let e of this.enemies.within(r, c, 18))
@@ -47286,7 +47256,6 @@ var GT = 15,
                   }));
           (this.cry(t),
             this.audio.evolveDone(),
-            this.ui.evolutionReveal(e, t, o, Math.round(n.maxHp)),
             (this.state = `play`),
             (this.cine.want = 0),
             (this.yawBack = s),
@@ -47330,29 +47299,23 @@ var GT = 15,
         this.whenFree(() => this.rollChestItem(e, t, n));
         return;
       }
-      const planned = plannedItemKeys(this,n,t ?? +!!e);
-      let r = planned[0] ?? qb(this, t ?? +!!e);
+      const i = drawItemKeys(this, n, t ?? +!!e);
+      const r = i[0];
       if (r) {
-        if (n > 1) {
-          let i = planned.length ? planned : [r];
-          for (let r = 0; r < 16 && i.length < n; r++) {
-            let n = qb(this, t ?? +!!e);
-            n && !i.includes(n) && i.push(n);
-          }
-          if ((i.length < n && i.push(...Jb(this, t ?? +!!e, i).slice(0, n - i.length)), i.length > 1)) {
-            if (i.includes('air-balloon')) this.springShoesSeen = true;
-            ((this.state = `modal`),
-              this.ui.showItemChoice(this, i, (e) => {
-                (e
-                  ? (this.player.addItem(e),
-                    this.ui.toast(c(`Obtienes {item}`, { item: k.items[e]?.name ?? e }), e))
-                  : (this.addGold(Math.min(...i.map((e) => PS(this, sn.get(e).rarity)))), this.econ.sold++),
-                  this.resume());
-              }));
-            return;
-          }
+        if (i.length > 1) {
+          this.state = `modal`;
+          this.ui.showItemChoice(this, i, (key) => {
+            if (key) {
+              this.player.addItem(key);
+              this.ui.toast(c(`Obtienes {item}`, { item: k.items[key]?.name ?? key }), key);
+            } else {
+              this.addGold(Math.min(...i.map(key => PS(this, sn.get(key).rarity))));
+              this.econ.sold++;
+            }
+            this.resume();
+          });
+          return;
         }
-        if (r === 'air-balloon') this.springShoesSeen = true;
         ((this.state = `modal`),
           this.ui.showItem(this, r, (e) => {
             (e
@@ -48274,31 +48237,35 @@ var ME = class {
         (e.pointerId === this.stickId || this.looks.has(e.pointerId) || e.pointerId === this.mapTap?.id) &&
           this.up(e);
       };
-      (addEventListener(`pointerup`, o, !0), addEventListener(`pointercancel`, o, !0));
+      const listeners = [];
+      const listen = (target,type,handler,options) => {
+        target.addEventListener(type,handler,options);
+        listeners.push(() => target.removeEventListener(type,handler,options));
+      };
+      listen(window,'pointerup',o,true);
+      listen(window,'pointercancel',o,true);
       let s = (e) => {
         e.touches.length
           ? this.looks.size + +(this.stickId >= 0) > e.touches.length &&
             (this.looks.clear(), (this.pinch = 0))
           : (this.releaseStick(), this.looks.clear(), (this.pinch = 0));
       };
-      (addEventListener(`touchend`, s, !0), addEventListener(`touchcancel`, s, !0));
+      listen(window,'touchend',s,true);
+      listen(window,'touchcancel',s,true);
       let l = (e) => {
         this.touches = e.touches.length;
       };
       for (let e of [`touchstart`, `touchmove`, `touchend`, `touchcancel`])
-        addEventListener(e, l, { capture: !0, passive: !0 });
-      (addEventListener(`blur`, () => {
+        listen(window,e,l,{capture:true,passive:true});
+      listen(window,'blur',() => {
         (this.letGo(), this.show(!1));
-      }),
-        addEventListener(`pagehide`, () => this.letGo()),
-        addEventListener(`resize`, () => this.letGo()),
-        document.addEventListener(`visibilitychange`, () => {
-          document.hidden && this.show(!1);
-        }),
-        e.append(this.el),
-        (this.off = po(() => {
-          uo || this.show(!1);
-        })));
+      });
+      listen(window,'pagehide',() => this.letGo());
+      listen(window,'resize',() => this.letGo());
+      listen(document,'visibilitychange',() => {if(document.hidden)this.show(false);});
+      e.append(this.el);
+      listeners.push(po(() => {if(!uo)this.show(false);}));
+      this.off = () => {for(const remove of listeners)remove();};
     }
     button(e, t, n) {
       if(!e)return;
@@ -48527,7 +48494,7 @@ var ME = class {
         this.el.classList.toggle(`locking`, e.lockTarget >= 0));
     }
     destroy() {
-      (this.off(), this.show(!1), this.el.remove());
+      (this.off(), this.show(!1), this.el.remove(), this.run=null);
     }
   },
   NE = (e) => Math.round(e * 10) / 10,
@@ -50800,7 +50767,7 @@ function aO(e) {
             ),
           )
         : X(`p`, { class: `mp-none` }, c(`Aún no llevas objetos.`)),
-      X(`div`, { class: `tag` }, c(`Vitaminas · {n}/{max}`, { n: t.vitamins.size, max: t.vitaminSlots })),
+      X(`div`, { class: `tag` }, c(`{n} vitaminas`, { n: t.vitamins.size })),
       s.length
         ? X(`div`, { class: `pk-vits` }, ...s)
         : X(`p`, { class: `mp-none` }, c(`Aún no llevas vitaminas.`)),
@@ -73450,8 +73417,7 @@ var JI = class {
         t.moveCap +
         `:` +
         +!!t.items.has(`tm-case`) +
-        [...t.vitamins].map(([e, t]) => e + t.level).join(`,`) +
-        t.vitaminSlots;
+        [...t.vitamins].map(([e, t]) => e + t.level).join(`,`);
       (h !== this.lastSlots && ((this.lastSlots = h), this.buildSlots(e)),
         t.moves.forEach((e, r) => {
           let i = n.slots.children[r]?.querySelector(`.cd`);
@@ -73753,19 +73719,14 @@ var JI = class {
         );
       }
       $(n.vits);
-      for (let e = 0; e < t.vitaminSlots; e++) {
-        let r = [...t.vitamins][e];
-        if (!r) {
-          n.vits.append(X(`div`, { class: `slot mini empty` }));
-          continue;
-        }
-        let i = Ne.get(r[0]);
+      for (const [id, vitamin] of t.vitamins) {
+        let i = Ne.get(id);
         n.vits.append(
           X(
             `div`,
             { class: `slot mini`, title: `${i.name}: ${i.desc}` },
             Q(i.icon),
-            X(`div`, { class: `lvl` }, String(r[1].level)),
+            X(`div`, { class: `lvl` }, String(vitamin.level)),
           ),
         );
       }
@@ -75498,7 +75459,7 @@ var JI = class {
           `pz-centre`,
           v.length ? b : null,
           y,
-          X(`div`, { class: `tag` }, c(`Vitaminas · {n}/{max}`, { n: t.vitamins.size, max: t.vitaminSlots })),
+          X(`div`, { class: `tag` }, c(`{n} vitaminas`, { n: t.vitamins.size })),
           t.vitamins.size
             ? S
             : X(`p`, { class: `pz-empty` }, c(`Las vitaminas se eligen al subir de nivel.`)),

@@ -4,7 +4,7 @@ import {loadSkillCatalog} from './skill-catalog.mjs';
 import {restoreProgress} from '../source/src/coop-resume.js';
 
 const {ctx, config, evaluate, between} = await loadSkillCatalog();
-evaluate(between('function isNewAttackOffer(', 'function Gb('));
+evaluate(between('function drawOfferPage(', 'function Gb('));
 const removed = [10, 163, 225, 257, 337, 394, 424, 50024, 50079, 50093, 50105];
 const windRemoved = [52, 53, 50080, 50099];
 const catalog = species => {
@@ -48,7 +48,7 @@ test('Flame Stampede is a selectable ordinary fire skill, upgrades normally and 
     assert.equal(def.name,'烈焰狂奔');assert.equal(def.type,'fire');assert.equal(def.fusion,undefined);
     assert.equal(typeof def.castRecipe.cast,'function');assert.ok(def.dmg>0);
     const p={speciesId:species,types:['fire'],roster:config.Bt.find(s=>s.id===4),level:1,
-      freeMoveSlot:()=>0,ownedMoveIds:()=>new Set(),moves:[],vitamins:new Map(),vitaminSlots:4};
+      freeMoveSlot:()=>0,ownedMoveIds:()=>new Set(),moves:[],vitamins:new Map()};
     const run={player:p,director:{normalOpening:false},meta:{inLeague:()=>true},banished:new Set(catalog(species).filter(m=>m.id!==488).map(m=>'m'+m.id))};
     assert.ok(ctx.Ub(run,3).some(o=>o.id===488));
     Object.assign(p,{moveSlots:4,capOf:()=>8,moves:[{def,level:1}]});
@@ -131,7 +131,7 @@ test('level-up and reroll selection can offer Air Slash only to wind', () => {
   for (const species of [4, 5, 6, 16, 17, 18, 58, 59]) {
     const p = {speciesId:species, types:[species < 7 ? 'fire' : 'flying'],
       roster:config.Bt.find(s => s.id === (species < 7 ? 4 : 16)), level:1,
-      freeMoveSlot:() => 0, ownedMoveIds:() => new Set(), moves:[], vitamins:new Map(), vitaminSlots:4};
+      freeMoveSlot:() => 0, ownedMoveIds:() => new Set(), moves:[], vitamins:new Map()};
     const run = {player:p, director:{normalOpening:false}, meta:{inLeague:() => true}, banished:new Set(catalog(species).filter(m => m.id !== 403).map(m => 'm'+m.id))};
     for (let reroll = 0; reroll < 3; reroll++) {
       const offers = ctx.Ub(run, 3);

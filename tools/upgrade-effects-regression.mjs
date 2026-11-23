@@ -19,8 +19,10 @@ export async function reviewUpgradeEffects(page,dir){
   const draw=async name=>{
     await page.evaluate(()=>{
       const r=app.run;
-      inspected.doc.querySelectorAll('.zx-intro,.banner,.run-hint,.evo-reveal').forEach(n=>n.remove());
+      inspected.doc.querySelectorAll('.zx-intro').forEach(n=>n.remove());
       r.updateCamera(1/60);r.renderWorld(0);r.ui.hud(r);app.r.render(0);inspected.env.drawUI(app.r.renderer);
+      // Give projected HUD elements the card and button bounds from the first layout.
+      r.ui.hud(r);app.r.render(0);inspected.env.drawUI(app.r.renderer);
     });
     await page.screenshot({path:path.join(dir,name+'.png')});
   };
@@ -44,11 +46,13 @@ export async function reviewUpgradeEffects(page,dir){
     report.forms.push(result);console.log('Upgrade without orbit',result.word);
   }
   for(const [from,to] of [[4,5],[5,6],[16,17],[17,18],[16,58],[58,59]]){
+    const [width,height]=to===58?[320,568]:to===6?[430,932]:[390,844];
+    await page.setViewport({width,height,deviceScaleFactor:1});
     const start=await page.evaluate(async({from,to})=>{
       const r=app.run,p=r.player;r.state='play';r.pendingLevels=0;r.anims.length=0;r.vfx.clear();p.setSpecies(from);p.renderScale=1;p.iframes=0;p.flash=0;
       await r.sprites.prepareHeroForm(from);await r.sprites.prepareHeroForm(to);
       p.moves.forEach(m=>{if(m)m.timer=999;});
-      r.nextEvo={to,level:p.level};const before=r.stats.evolutions;
+      r.nextEvo={to,level:p.level};const before=r.stats.evolutions,oldHp=Math.round(p.maxHp);
       r.startEvolution();
       [...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
       const frames=[],get=r.sprites.getPlayerGlyph,clock=r.time,position=p.pos.clone();
@@ -59,26 +63,68 @@ export async function reviewUpgradeEffects(page,dir){
       };
       try{for(let i=0;i<27;i++)r.update(1/30);}
       finally{r.sprites.getPlayerGlyph=get;p.speedNow=speed;p.hurtT=hurt;}
-      return {from,to,before,state:r.state,species:p.speciesId,count:r.vfx.upgrade.mesh.count,age:r.vfx.upgrade.events[0]?.age,
+      return {from,to,before,oldHp,state:r.state,species:p.speciesId,count:r.vfx.upgrade.mesh.count,
+        front:r.vfx.upgrade.mesh.visible,rear:r.vfx.upgrade.rearMesh.visible,
+        overlay:!!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-cutin,.zx-evolution-result'),
         frames,worldPaused:r.time===clock,stationary:p.pos.equals(position)};
     },{from,to});
-    assert.equal(start.state,'evolving');assert.equal(start.species,from);assert.equal(start.count,1);
+    assert.equal(start.state,'evolving');assert.equal(start.species,from);assert.equal(start.count,1);assert.ok(start.front&&start.rear);assert.equal(start.overlay,false);
+    await draw(`evolution-${from}-${to}-orbit`);
     assert.ok(start.worldPaused&&start.stationary,'Idle animation must not resume combat or movement');
     assert.ok(start.frames.length>1&&start.frames.every(f=>f.action==='idle'&&f.species===from));
     assert.ok(new Set(start.frames.map(f=>f.index)).size>1,'Original form idle frames must advance during evolution');
-    await draw(`evolution-${from}-${to}-orbit`);
-    await page.evaluate(()=>{for(let i=0;i<24;i++)app.run.update(1/30);});
-    const contracting=await page.evaluate(()=>({species:app.run.player.speciesId,
-      reveal:app.run.vfx.upgrade.events[0].reveal,duration:app.run.vfx.upgrade.events[0].duration}));
-    assert.equal(contracting.species,from,'The old glyph must remain until the reference flash');
-    assert.equal(contracting.reveal,1.8);assert.ok(Math.abs(contracting.duration-3.3)<1e-6);
-    await draw(`evolution-${from}-${to}-contract`);
-    await page.evaluate(()=>{for(let i=0;i<6;i++)app.run.update(1/30);});
-    await draw(`evolution-${from}-${to}-reveal`);
+    const landing=await page.evaluate(()=>{
+      const r=app.run;for(let i=0;i<31;i++)r.update(1/30);
+      return {species:r.player.speciesId,lift:r.player.evolutionLift,scale:r.player.renderScale,
+        overlay:!!r.ui.root.querySelector('.zx-evolution-cutin,.zx-evolution-result')};
+    });
+    assert.equal(landing.species,to);assert.equal(landing.scale,1);assert.ok(landing.lift>0&&!landing.overlay,'Let the character finish its animation');
+    const stamped=await page.evaluate(()=>{
+      const r=app.run,root=r.ui.root,frames=new Set();
+      let card;
+      for(let i=0;i<150;i++){
+        r.update(1/30);
+        if(r.player.renderScale!==1||root.querySelector('.zx-evolution-cutin'))throw Error('Unexpected enlarged evolution glyph');
+        card=root.querySelector('.zx-evolution-result');
+        if(!card)continue;
+        if(r.vfx.upgrade.events.length)throw Error('Result appeared before the evolution animation finished');
+        if(!frames.size){app.r.render(0);inspected.env.drawUI(app.r.renderer);}
+        frames.add(card.dataset.frame);
+        if(card.dataset.frame==='1')break;
+      }
+      const seal=root.querySelector('.zx-evolution-stamp');
+      function inkCount(image){
+        let count=0;
+        for(let i=0;i<image.length;i+=4)if(image[i]===156&&image[i+1]===51&&image[i+2]===35)count++;
+        return count;
+      }
+      const sealInk=inkCount(seal.getContext('2d').getImageData(0,0,seal.width,seal.height).data);
+      const cardInk=inkCount(card.getContext('2d').getImageData(238*2,0,58*2,64*2).data);
+      return {lift:r.player.evolutionLift,sealInk,cardInk,frames:frames.size,cards:root.querySelectorAll('.zx-evolution-result').length,
+        healthHidden:root.querySelector('.zx-player-health').hidden};
+    });
+    assert.equal(stamped.lift,0);assert.equal(stamped.cards,1);assert.equal(stamped.cardInk,0);assert.ok(!stamped.healthHidden&&stamped.sealInk>100&&stamped.frames>1);
+    await page.evaluate(()=>app.run.ui.toast('终极技已就绪！',null));
+    await draw(`evolution-${from}-${to}-result`);
+    const result=await page.evaluate(()=>{
+      const r=app.run,slip=r.ui.root.querySelector('.zx-evolution-result');
+      const bounds=slip.getBoundingClientRect(),toast=r.ui.toastsEl.getBoundingClientRect();
+      const pause=r.ui.root.querySelector('.zx-hud-pause').getBoundingClientRect();
+      const stamp=r.ui.root.querySelector('.zx-evolution-stamp').getBoundingClientRect(),button=r.ui.touch.ult.getBoundingClientRect();
+      const hp=r.ui.root.querySelector('.zx-player-health').getBoundingClientRect();
+      const separate=b=>stamp.left>=b.right||stamp.right<=b.left||stamp.top>=b.bottom||stamp.bottom<=b.top;
+      return {label:slip.getAttribute('aria-label'),hp:Math.round(r.player.maxHp),width:bounds.width,
+        stamp,button,card:bounds,placed:stamp.top>=bounds.bottom&&stamp.width>=100&&stamp.right<=inspected.env.innerWidth&&stamp.left>hp.x+hp.width/2&&separate(button)&&separate(hp),
+        stacked:toast.top>=bounds.bottom-1,clearOfPause:bounds.right<=pause.left||bounds.top>=pause.bottom,
+        legacy:!!r.ui.root.querySelector('.evo-reveal,.zx-evolution-cutin,.zx-evolution-stage')};
+    });
+    assert.ok(result.label.endsWith('最大生命 '+start.oldHp+' → '+result.hp));
+    assert.ok(result.label.startsWith('进阶完成，'));
+    assert.ok(result.width>190&&result.stacked&&result.clearOfPause&&result.placed&&!result.legacy,JSON.stringify(result));
     const end=await page.evaluate(()=>{
-      const r=app.run;for(let i=0;i<66;i++)r.update(1/30);
+      const r=app.run;for(let i=0;i<78;i++)r.update(1/30);
       return {species:r.player.speciesId,state:r.state,evolutions:r.stats.evolutions,scale:r.player.renderScale,
-        expired:r.vfx.upgrade.events.length===0,gl:app.r.renderer.getContext().getError()};
+        expired:!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-result'),gl:app.r.renderer.getContext().getError()};
     });
     assert.equal(end.species,to);assert.equal(end.state,'play');assert.equal(end.evolutions,start.before+1);assert.equal(end.scale,1);assert.ok(end.expired);assert.equal(end.gl,0);
     report.evolutions.push({...start,end});console.log('Shared evolution',from,to);

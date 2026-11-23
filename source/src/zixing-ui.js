@@ -1,6 +1,6 @@
 import {journeyScene} from './journey-scene.js';
 import {paintLoadingSlip} from './menu-scene.js';
-import {headerCutout,titleRibbon,hudPaperIcon,paperIcon,upgradePrint,rewardPaper,arrivalPennant,settlementTicket,battleDialogHeading,battleDialogFrame,pausePagePrint,stagePortrait,choiceMark} from './first-batch-art.js';
+import {headerCutout,titleRibbon,hudPaperIcon,paperIcon,upgradePrint,rewardPaper,arrivalPennant,evolutionResult,settlementTicket,battleDialogHeading,battleDialogFrame,pausePagePrint,stagePortrait,choiceMark} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,dockDialogClose,mountMenuDialog,openPaperPrompt,paperDecisionPanel,paperDecisionActions,paperDialogTitle,standardButton,fitPaperActionLabels,standardFooter,freePaperActions} from './paper-system.js';
 import {choiceQuality,choiceModel,effectScope} from './choice-presentation.js';
 import {createCollectionUI} from './collection-ui.js';
@@ -1669,7 +1669,6 @@ export function createZixingUI(app,api) {
       setTimeout(()=>banner.remove(),1800);
     }
     hud.stageIntro=r=>{if(!r.sanctuary)intro(paperStages[r.stage-1],'桌上世界 · 第 '+r.stage+' 区');};
-    hud.showEvolution=()=>intro('字意更进一步','进阶中 · 保留当前招式与强化');
     const evolve=run.startEvolution.bind(run);
     run.startEvolution=()=>{
       run.state='modal';
@@ -1736,6 +1735,52 @@ export function createZixingUI(app,api) {
     const updatePeers=run.coop?createPeerHud(run,node,el):null;
     hud.prepareEntryIcons=()=>Promise.all(Array.from(node.querySelectorAll('.zx-loadout-icon'),prepareHudImage));
     const combatFeed=installReviewBattle(hud,run,node.querySelector('.zx-hud-top'),{wordFor:glyphWordForSpecies,typeName:api.typeName,typeOf:api.speciesType});
+    let resultSlip=null;
+    function clearEvolution(){
+      resultSlip?.node.remove();resultSlip?.stamp.remove();resultSlip=null;
+    }
+    hud.showEvolution=clearEvolution;
+    hud.evolutionReveal=(from,to,before,after)=>{
+      clearEvolution();
+      const card=evolutionResult(character(from),character(to),run.skinLook,before,after);
+      const animate=!run.hideOwnFx&&profile()?.settings.showBanners!==false&&!run.vfx.calm&&!stillMotion?.matches;
+      resultSlip={...card,start:null,settled:!animate};
+    };
+    function placeEvolutionStamp(feet){
+      const {node:card,stamp}=resultSlip;
+      const size=Math.min(132,Math.round(window.innerWidth*.33));
+      const x=Math.min(window.innerWidth-size-8,Math.max(feet.x+50,window.innerWidth*.80-size/2));
+      const bounds=card.getBoundingClientRect();
+      // The native HUD measures a newly mounted card on its first draw.
+      if(!bounds.height)return;
+      const minY=bounds.bottom+8,maxY=window.innerHeight-size-8;
+      let y=Math.max(minY,Math.min(maxY,feet.y-36-size/2));
+      // Short screens can put the ultimate button level with the hero.
+      // Prefer the marked spot above the button whenever the card leaves room.
+      const button=hud.touch.ult.getBoundingClientRect();
+      if(button.width&&x+size>button.left-6&&x<button.right+6&&y+size>button.top-6&&y<button.bottom+6){
+        y=button.top-size-6>=minY?button.top-size-6:Math.min(maxY,button.bottom+6);
+      }
+      if(stamp.style.width!==size+'px')stamp.style.width=stamp.style.height=size+'px';
+      const position='translate('+Math.round(x)+'px, '+Math.round(y)+'px)';
+      if(stamp.style.transform!==position)stamp.style.transform=position;
+      if(!stamp.parentElement)node.append(stamp);
+    }
+    function updateEvolution(feet){
+      if(resultSlip.start===null){
+        if(run.vfx.upgrade.events.some(event=>event.actor===run.player))return;
+        resultSlip.start=run.realTime;
+        combatFeed.lane.insertBefore(resultSlip.node,toastLayer);
+        if(resultSlip.settled)resultSlip.paint(1);
+      }
+      const elapsed=run.realTime-resultSlip.start;
+      if(elapsed>=2.4){clearEvolution();return;}
+      placeEvolutionStamp(feet);
+      if(resultSlip.settled)return;
+      const progress=Math.min(1,elapsed/.28);
+      resultSlip.paint(progress);
+      resultSlip.settled=progress===1;
+    }
     hud.touch.ult.dataset.uiLayer='ultimate';
     // Feedback follows the persistent status, health bars and team instead of sharing their screen coordinates.
     const toastLayer=el('div','zx-toast-layer',[],{'data-ui-layer':'toasts'});
@@ -1824,8 +1869,8 @@ export function createZixingUI(app,api) {
     const original=hud.hud.bind(hud);
     let last=-Infinity,lastState='',lastSupplies='',lastHealth='',healthFrame=0;
     let previousArrangement='';
-    const updateHealth=()=>{
-      const p=run.player,point=hud.project(run,p.pos.x,p.pos.y-.15,p.pos.z);
+    const updateHealth=(point)=>{
+      const p=run.player;
       health.hidden=!point.vis||p.dead;
       if(health.hidden)return;
       // Project after the camera update on every frame, independent of the
@@ -1843,7 +1888,9 @@ export function createZixingUI(app,api) {
       health.setAttribute('aria-label','生命 '+current+' / '+maximum+(bonus?'，护盾与额外生命 '+bonus:''));
     };
     hud.hud=function(...args){
-      updateHealth();
+      const pos=run.player.pos,feet=hud.project(run,pos.x,pos.y-.15,pos.z);
+      if(resultSlip)updateEvolution(feet);
+      updateHealth(feet);
       const guideVisible=run.stageCleared&&!run.endless&&!run.tower&&run.state==='play'&&!app.screen&&!hud.hasModal();
       if(portalGuide.hidden===guideVisible)portalGuide.hidden=!guideVisible;
       toastLayer.classList.toggle('zx-exit-guidance',guideVisible);
