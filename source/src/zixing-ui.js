@@ -1,5 +1,5 @@
 import {displayedFormType} from './form-copy.js';
-import {bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityNames} from './active-content.js';
+import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityNames} from './active-content.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
 import {COOP_ROOM_SIZE} from './multiplayer-config.js';
 import {RelayRoom} from './multiplayer.js';
@@ -12,15 +12,17 @@ import {zixingStyle} from './zixing-style.js';
 import {entryControls,entryLayout} from './entry-layout.js';
 import {laboratory} from './catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
-import {selectGraphicsQuality,setBatterySaver} from './performance-profile.js';
+import {selectGraphicsQuality} from './performance-profile.js';
+import {setFrameRateLock,resetFrameRatePolicy,frameRateHelp} from './frame-policy.js';
+import {portalGuidance} from './portal-guidance.js';
 import {ExperienceRing} from './experience-ring.js';
-import {characters,characterForSpecies,starterEvolutionLevels,windRoutes} from './starter-characters.js';
+import {characters,characterForSpecies,starterEvolutionLevels,windRoutes,hasWindSpeedPassive,windSpeedPassive,windSpeedDamageBonus} from './starter-characters.js';
 import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,zoneDuration,remainingZoneSeconds} from './lite-rules.js';
 
 export {characters};
 const character=characterForSpecies;
 const difficulties=[
-  {name:'普通（单关）',glyph:'单',tier:0,mode:SINGLE_STAGE,note:'击败第一区镇守，进入传送门即可通关。'},
+  {name:'普通（单关）',glyph:'单',tier:0,mode:SINGLE_STAGE,note:'击败第一区镇守，进入木门「门？」即可通关。'},
   {name:'普通',glyph:'壹',tier:0,mode:'standard',note:'熟悉走位与招式，完成旅程。'},
   {name:'困难',glyph:'贰',tier:1,mode:'standard',note:'敌人更强，首领带来更多挑战。'},
   {name:'噩梦',glyph:'叁',tier:2,mode:'standard',note:'更高强度的进阶挑战。'},
@@ -186,6 +188,60 @@ export function createZixingUI(app,api) {
   const profile=()=>app.meta.profile;
   let mapRefresh=null;
   const goBack=()=>returnTo?returnTo():home();
+  let battleRecovery=null;
+  function recoverBattle(session,reason){
+    const current=app.run;
+    if(battleRecovery || current?.coop?.room!==session)return;
+    current.coop.reconnecting=true;
+    current.state='paused';current.input.releaseLock();
+    const seat={code:session.code,seat:session.me,party:current.coop.party};
+    let stopped=false,busy=false,unavailable=false,timer,next,attempts=0;
+    const stop=()=>{
+      stopped=true;clearTimeout(timer);window.removeEventListener('pageshow',attempt);
+      if(battleRecovery===stop)battleRecovery=null;
+    };
+    battleRecovery=stop;
+    const later=()=>{
+      stop();next?.end('稍后重连',false);app.coopRoom=null;app.toMenu();
+    };
+    function show(message){
+      const actions=[...(!unavailable?[button('重试连接',attempt,'primary')]:[]),button(unavailable?'返回首页':'稍后重连',later)];
+      const body=[text(message),small('房间 '+seat.code+(unavailable?' · 原对局已无法恢复。':' · 席位与进度已保留。在线队友可以继续战斗。'))];
+      if(app.run?.ui){
+        app.setScreen(null);
+        overlay('正在重连房间','网络暂时中断',body,actions,app.run.ui,'zx-reconnect');
+      }else screen('coop-reconnect','正在重连房间','房间 '+seat.code,body,actions);
+    }
+    async function attempt(){
+      if(stopped || busy || unavailable || document.hidden)return;
+      busy=true;clearTimeout(timer);show('正在恢复连接并同步队友进度…');
+      try{
+        next=await RelayRoom.connect({code:seat.code,resume:seat,species:session.mine.species,
+          name:app.meta.account?.name||'伙伴',factory:window.createCoopSocket});
+        if(stopped || document.hidden){next.end('等待返回游戏',false);return;}
+        if(!next.returning || next.room.party!==seat.party)throw Error('原对局已结束');
+        const world=await next.currentWorld();
+        if(stopped || document.hidden){next.end('等待返回游戏',false);return;}
+        next.onInterrupted=message=>recoverBattle(next,message);
+        app.coopRoom=next;rememberSeat(next);
+        const ok=await start({species:next.mine.species,biome:'forest',tier:next.room.tier,mode:'standard',boosts:[],
+          coop:{room:next,party:next.room.party,seed:next.room.seed,world,progress:savedProgress(next),reconnecting:true}});
+        if(!ok || !next.open)throw Error(ui.entryDiagnostics?.error||'暂时无法恢复对局，请重试');
+        stop();
+      }catch(error){
+        next?.end(error.message,false);
+        if(stopped)return;
+        const expired=/房间不存在|席位已失效|原对局已结束|房间已开局/.test(error.message);
+        unavailable=expired;
+        if(expired)forgetSeat(seat.seat);
+        show(expired?error.message:'连接暂未恢复，将自动重试。'+error.message);
+        if(!expired)timer=setTimeout(attempt,[2000,5000,10000,20000,30000][Math.min(attempts++,4)]);
+      }finally{busy=false;}
+    }
+    window.addEventListener('pageshow',attempt);
+    show(document.hidden?'返回游戏后将恢复原房间。':reason);
+    void attempt();
+  }
   function entryPage(page,controls=[]){
     const node=el('section','screen zx zx-entry-page',[],{'data-page':page,'data-entry-page':page,'data-fullscreen':'true'});
     const targets=controls.map(([label,action,rect,attrs])=>{
@@ -312,16 +368,24 @@ export function createZixingUI(app,api) {
   }
   function multiplayer(resume=savedSeat()) {
     let room=null, view=null, busy=false, starting=false, status='', pending='', joiningCode='';
+    let reconnectAttempts=0,reconnectTimer;
     let pick=selected;
     async function perform(fn) {
       if(busy || starting)return;
       busy=true;
+      clearTimeout(reconnectTimer);
       status='';render();
       try { await fn(); }
       catch(error) { status=error.message || error.errMsg || String(error); }
       finally {
         joiningCode='';busy=false;if(!starting)pending='';
         if(!starting && view.node===app.screen){render();joinInvite();}
+        if(!room && resume && !starting && view.node===app.screen && reconnectAttempts<4){
+          const delay=[2000,5000,10000,20000][reconnectAttempts++];
+          reconnectTimer=setTimeout(()=>{
+            if(view.node===app.screen && !room && !busy && !starting)perform(()=>connect(true,resume));
+          },delay);
+        }
       }
     }
     function action(label,fn,kind='') {
@@ -366,23 +430,22 @@ export function createZixingUI(app,api) {
       if(starting){await next.leave();return;}
       if(room?.open){room.ev={};room.leave();}
       room=next;
+      if(next.room.state==='lobby')reconnectAttempts=0;
       rememberSeat(room);
-      room.onInterrupted=()=>{
-        const current=app.run;
-        if(current?.coop?.room!==room)return;
-        saveProgress(current);
-        current.coop.ended=true;
-        app.toMenu();
-        const retry=()=>{
-          window.removeEventListener('pageshow',retry);
-          if(app.screen?.dataset.page!=='coop')multiplayer(savedSeat());
-        };
-        if(document.hidden)window.addEventListener('pageshow',retry);else retry();
-      };
+      room.onInterrupted=reason=>recoverBattle(next,reason);
       app.coopRoom=room; status='';
       room.ev={
         change:()=>{rememberSeat(room);if(!starting)render();},
-        closed:reason=>{if(/移出/.test(reason))forgetSeat(room.me);resume=savedSeat();app.coopRoom=null;room=null;status=reason;if(!starting)render();},
+        closed:reason=>{
+          if(/移出/.test(reason))forgetSeat(room.me);
+          resume=savedSeat();app.coopRoom=null;room=null;status=reason;
+          if(!starting){
+            render();
+            if(resume)reconnectTimer=setTimeout(()=>{
+              if(view.node===app.screen && !room)perform(()=>connect(true,resume));
+            },2000);
+          }
+        },
         start:async state=>{
           if(starting)return;
           starting=true;
@@ -394,6 +457,7 @@ export function createZixingUI(app,api) {
             const ok=await start({species:session.mine.species,biome:'forest',tier:state.tier,mode:'standard',boosts:[],
               coop:{room:session,party:state.party,seed:state.seed,world,progress:world?savedProgress(session):null}});
             if(!ok)throw Error(ui.entryDiagnostics?.error || '开局已取消，请重新组队');
+            reconnectAttempts=0;
           } catch(error) {
             if(session.returning){session.end(error.message,false);resume=savedSeat();}
             else {session.cancelStart(error.message);forgetSeat(session.me);await session.leave();}
@@ -424,7 +488,10 @@ export function createZixingUI(app,api) {
         startButton=action('开始冒险',()=>session.start(),'primary');
         actions.push(readyButton,startButton,action('离开房间',async()=>{forgetSeat(session.me);await session.leave();room=null;resume=null;app.coopRoom=null;}));
       }else{
-        if(resume)actions.push(action('重连原房间',()=>connect(true,resume),'primary'));
+        if(resume){
+          body.push(card(el('b','','发现未结束的房间 '+resume.code),small('重连后继续上次对局。两人都掉线时，房间保留 10 分钟。')));
+          actions.push(action('重连原房间',()=>connect(true,resume),'primary'));
+        }
         actions.push(action('创建房间',()=>connect(false),'primary'),action('加入房间',()=>connect(true)),action('返回首页',home));
       }
       const note=text('','zx-note');
@@ -538,7 +605,7 @@ export function createZixingUI(app,api) {
         },entryControls.tiers[index],{'data-tier':option.tier,'data-mode':option.mode,'aria-pressed':option===selectedDifficulty,'aria-disabled':locked}];
       });
       const node=entryPage('map',[...choices,['返回',home,entryControls.back,{'data-action':'back'}],
-        ['开始游玩！',()=>start(),entryControls.enter,{'data-action':'enter'}]]);
+        ['开始游玩！',()=>start({species:4,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode}),entryControls.enter,{'data-action':'enter'}]]);
       node.dataset.tier=String(difficulties.indexOf(selectedDifficulty));
       node.setAttribute('aria-label','选择关卡，第一站 桌上世界。玩具阁楼、画室奇境、书架云端暂未开放。');
       return node;
@@ -567,12 +634,7 @@ export function createZixingUI(app,api) {
   }
   function loadingScreen(name,coop=false,departure=false) {
     if(name==='entry'&&!coop&&window.entryViewport){
-      if(departure){
-        const node=entryPage('departure');
-        node.dataset.page=name;node.classList.add('zx-loading-screen');
-        return {node,update:({progress=0})=>Math.floor(progress*100)};
-      }
-      const node=entryPage('loading');
+      const node=entryPage(departure?'departure':'loading');
       node.dataset.page=name;node.classList.add('zx-loading-screen');
       node.setAttribute('role','progressbar');node.setAttribute('aria-label','场景加载进度');
       node.setAttribute('aria-valuemin','0');node.setAttribute('aria-valuemax','100');
@@ -749,11 +811,8 @@ export function createZixingUI(app,api) {
     const toggle=(label,key,note='')=>{
       fields.push(key);const b=el('button','zx-switch'+(s[key]?' on':''),el('i'),{type:'button',role:'switch','aria-label':label,'aria-checked':!!s[key]});
       b.addEventListener('click',()=>{
-        if(key==='batterySaver'){
-          setBatterySaver(s,!s.batterySaver);
-          save();renderSettings();return;
-        }
-        s[key]=!s[key];b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();
+        if(key==='lock30Fps')setFrameRateLock(s,!s[key]);else s[key]=!s[key];
+        b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();
       });
       return el('div','zx-setting',[row(col(el('b','',label),note?small(note):null),b)]);
     };
@@ -782,7 +841,7 @@ export function createZixingUI(app,api) {
     if(settingsTab===0) {
       title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音'))];
     }else if(settingsTab===1&&settingsSub===0) {
-      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('省电模式','batterySaver','默认关闭。手动开启后切换为流畅画质，最高 30 帧。选择均衡或精致会关闭省电。'))];
+      title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('锁定 30 帧','lock30Fps',frameRateHelp))];
     }else if(settingsTab===1&&settingsSub===1) {
       title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
     }else if(settingsTab===1&&settingsSub===2) {
@@ -801,7 +860,7 @@ export function createZixingUI(app,api) {
     screen('settings','设置','仅调整当前设备的体验',[
       tabs(['声音','画面','操作','界面'],settingsTab,i=>{settingsTab=i;settingsSub=0;renderSettings();},'main'),
       sublabels.length?el('div','zx-subtabs',sublabels.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),label,{onclick:()=>{settingsSub=i;renderSettings();}}))):null,
-      row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key];save();renderSettings();},'zx-plain')),
+      row(small(title),button('恢复本页默认',()=>{for(const key of fields)s[key]=api.defaults[key];if(fields.includes('lock30Fps'))resetFrameRatePolicy(s,window.nativeDevice);save();renderSettings();},'zx-plain')),
       ...content,
     ],[button('返回',()=>loadPage('设置','正在保存设置',()=>app.meta.saveNow(),()=>{
       const back=returnTo;app.setScreen(null);back();
@@ -816,7 +875,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','按住战场空白处即可出现摇杆，向任意方向拖动移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等设施旁停留 ${facilityDwellSeconds} 秒可触发互动。每个战斗区开战满 ${bossSummonUnlockSeconds / 60} 分钟后，站进青色漩涡「${facilityNames.boss}」${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟仍未召唤时，龘会自动现身。击败镇守后，从木门前往下一区域或通关。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，蓄满可选祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招充满后会保留能量。看到按钮显示「就绪」时，点击即可释放。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','按住战场空白处即可出现摇杆，轻推慢走，推到外圈全速移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等设施旁停留 ${facilityDwellSeconds} 秒可触发互动。桌上世界区域 1 开战满 ${bossSummonUnlockSeconds() / 60} 分钟、区域 2 开战满 ${bossSummonUnlockSeconds({biome:{id:'forest'},stage:2}) / 60} 分钟后，在倒计时装置「${facilityNames.boss}」的光圈内停留 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟仍未召唤时，龘会自动现身。击败镇守后，从木门前往下一区域或通关；区域 2 的木门通向圣地终战。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，在光圈内停留 ${altarChargeSeconds} 秒即可选择祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招充满后会保留能量。看到按钮显示「就绪」时，点击即可释放。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -831,6 +890,7 @@ export function createZixingUI(app,api) {
       row(item('攻击速度',percent(s.attackSpeed),'含永久研究加成'),item('移动速度',percent(s.moveSpeed),'含永久研究加成')),
     ]),card(statRow('暴击率',percent(s.critChance)),statRow('攻击范围',percent(s.area)),statRow('护甲',Number(s.armor.toFixed(1))),statRow('生命回复',Number(s.regen.toFixed(2))+' / 秒')));
     else body.push(card(statRow('经验获取',percent(s.xpGain)),statRow('金币获取',percent(s.gold)),statRow('幸运',number(s.luck)),statRow('拾取范围',Number(s.pickupRange.toFixed(1))+' 厘米')));
+    if(run&&hasWindSpeedPassive(run.player.speciesId))body.push(card(el('b','','移速被动'),small(windSpeedPassive),statRow('当前伤害加成','+'+percent(windSpeedDamageBonus(run.player.speciesId,s.moveSpeed,run.player.baseSpeed)))));
     const subtitle=run?'查看时保持暂停 · 本局属性':profile().cloudSaveError?'开局预览 · 当前显示本机进度':'开局预览 · 基础与永久加成';
     screen('stats',run?'当前属性':'文字属性',subtitle,body,[button('返回',()=>{app.setScreen(null);back();})],'blue');
   }
@@ -917,10 +977,14 @@ export function createZixingUI(app,api) {
   function offerContent(art,title,notes) {
     return row(art,col(el('b','',title),...notes));
   }
+  function rewardPortrait(run) {
+    const id=run.player.speciesId??run.startSpecies;
+    return glyph({word:glyphWordForSpecies(id),tone:character(id).tone});
+  }
   function offerBody(cards,onStats) {
     return [button([el('span','','查看当前属性'),icon('stats',15,'#65577b'),el('span','','›')],onStats,'zx-upgrade-stats',{'data-action':'upgrade-stats'}),...cards];
   }
-  function levelUp(run,offers,chooseOffer,heroArt) {
+  function levelUp(run,offers,chooseOffer) {
     let choosing=false;
     const choose=(offer,action)=>{
       if(choosing)return;choosing=true;
@@ -930,14 +994,14 @@ export function createZixingUI(app,api) {
     };
     const cards=offers.map((offer,index)=>{
       const desc=api.offer(run,offer);
-      const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):heroArt;
+      const picture=offer.vit?loadoutIcon(api.vitaminIcon(offer.vit),desc.title):rewardPortrait(run);
       const detail=offer.kind==='upMove'?'已学技能 · '+desc.sub:desc.sub;
       return button(offerContent(picture,desc.title,[small(detail),...desc.lines.map(small)]),()=>choose(offer),'zx-offer',{'data-offer':index});
     });
     overlay('择一而进','',cards,
       [button([icon('refresh',17,'#65577b'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{disabled:run.rerolls<=0})],run.ui,'zx-upgrade');
   }
-  function restyleChoice(run,method,args,symbol) {
+  function restyleChoice(run,method,args) {
     const hud=run.ui,wrap=hud.modalEl,cards=[...wrap.querySelectorAll('.cards > .card')];
     if(!cards.length)return;
     const title=wrap.querySelector('h1')?.textContent||'择一而进';
@@ -958,7 +1022,7 @@ export function createZixingUI(app,api) {
       if(opacity)node.style.opacity=opacity;
       else if(locked)node.style.opacity='.45';
       node.dataset.offer=String(index);
-      node.replaceChildren(offerContent(glyph(symbol),heading.textContent,notes));
+      node.replaceChildren(offerContent(rewardPortrait(run),heading.textContent,notes));
     });
     const actions=[...wrap.querySelectorAll('.actions > button')];
     actions.forEach(node=>{node.className='zx-button zx-reroll';node.querySelectorAll('kbd').forEach(key=>key.remove());});
@@ -1020,12 +1084,8 @@ export function createZixingUI(app,api) {
     const hud=run.ui;selected=character(run.startSpecies).id;
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
-    run.hints.show=(key,site)=>{if(run.state==='play'&&!app.screen&&!hud.hasModal())hint(key,site);};
-    let form=run.player.speciesId, heroArt=glyph(character(form));
-    hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>{
-      if(form!==r.player.speciesId){form=r.player.speciesId;heroArt=glyph(character(form));}
-      levelUp(r,offers,choose,heroArt);
-    };
+    run.hints.show=(key,site)=>{if(run.state==='play'&&!run.stageCleared&&!app.screen&&!hud.hasModal())hint(key,site);};
+    hud.showPause=pause;hud.showLevelUp=levelUp;
     hud.saving=active=>{
       if(active){hud.hideModal();pendingScreen('对局结算','正在保存本局战绩与星尘');}
     };
@@ -1046,17 +1106,36 @@ export function createZixingUI(app,api) {
     };
     hud.showMap=(r,fromPause=false)=>{
       const close=fromPause?()=>pause(r):()=>r.resume();
-      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-190));
+      const side=Math.max(150,Math.min(352,window.innerWidth-80,window.innerHeight-280));
       const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图，拖动查看建筑，轻点建筑图标追踪'});
       const frame=el('div','zx-battle-map-frame',canvas);
       frame.style.width=frame.style.height=side+'px';
       const hudSide=hud.minimap.getBoundingClientRect().width || (window.innerWidth<=350?84:96);
-      overlay('附近地图','',[frame],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
+      let selectedKind=null;
+      const filterButtons=new Map();
+      const filters=el('div','zx-map-filters',[],{'aria-label':'筛选建筑'});
+      const status=small('显示全部建筑 · 拖动地图查看');
+      status.classList.add('zx-map-status');
+      function selectKind(kind){
+        selectedKind=kind;hud.mapFacilityKind=kind;
+        for(const [key,node] of filterButtons){node.classList.toggle('on',key===kind);node.setAttribute('aria-pressed',String(key===kind));}
+        paint();hud.drawMinimap(r,true);window.invalidateUI?.();
+      }
+      let filterRow;
+      for(const [index,[kind,name]] of [[null,'全部'],...Object.entries(facilityNames)].entries()){
+        if(index%4===0){filterRow=el('div','zx-map-filter-row');filters.append(filterRow);}
+        const node=button(name,()=>selectKind(kind),'zx-map-filter'+(kind===null?' on':''),{'data-map-filter':kind??'all','aria-pressed':kind===null});
+        filterButtons.set(kind,node);filterRow.append(node);
+      }
+      overlay('附近地图','',[frame,filters,status],[button(fromPause?'返回暂停':'返回战斗',close,'primary',{'data-action':'close-battle-map'})],hud,'zx-battle-map');
       const contentZoom=2.3;
       const viewRatio=(canvas.getBoundingClientRect().width || side)/(hudSide*contentZoom);
       let center=null,drag=null,groups=[];
       function paint(){
-        groups=drawBattleMinimap(canvas,r,{shadow:false,viewRatio,center:center??r.player.pos,facilityKind:null}).groups;
+        const result=drawBattleMinimap(canvas,r,{shadow:false,viewRatio,center:center??r.player.pos,facilityKind:selectedKind});
+        groups=result.groups;
+        canvas.dataset.filter=selectedKind??'all';
+        updateText(status,selectedKind?(result.count?facilityNames[selectedKind]+' · 当前视野 '+result.count+' 处':'当前视野暂无'+facilityNames[selectedKind]+'，可拖动查找'):'显示全部建筑 · 拖动地图查看');
       }
       canvas.addEventListener('pointerdown',event=>{
         if(drag||event.button!==0)return;
@@ -1082,8 +1161,8 @@ export function createZixingUI(app,api) {
         if(!drag.moved){
           const rect=canvas.getBoundingClientRect();
           const x=(event.clientX-rect.left)*120/(rect.width || side),y=(event.clientY-rect.top)*120/(rect.height || side);
-          const hit=groups.slice().reverse().find(({box})=>x>=box.x&&x<=box.x+box.w&&y>=box.y&&y<=box.y+box.h);
-          if(hit){hud.mapFacilityKind=hit.kind;hud.drawMinimap(r,true);}
+          const hit=groups.slice().reverse().find(({box,hitBoxes})=>(hitBoxes??[box]).some(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h));
+          if(hit)selectKind(hit.kind);
         }
         drag=null;
       });
@@ -1099,9 +1178,9 @@ export function createZixingUI(app,api) {
       const render=hud[method].bind(hud);
       hud[method]=(r,items,...args)=>{const result=render(r,items,...args);restyleItems(r,method==='showItem'?[items]:items,method==='showItemChoice');return result;};
     }
-    for(const [method,symbol] of Object.entries({showBlessing:'祝',showTrade:'易',showPact:'契',showFusion:'合',showParty:'伴',showShinySwap:'伴'})){
+    for(const method of ['showBlessing','showTrade','showPact','showFusion','showDitto','showParty','showShinySwap']){
       const render=hud[method].bind(hud);
-      hud[method]=(...args)=>{const result=render(...args);restyleChoice(run,method,args,symbol);return result;};
+      hud[method]=(...args)=>{const result=render(...args);restyleChoice(run,method,args);return result;};
     }
     hud.showBranch=(r,ids,choose)=>{
       let chosen=false;
@@ -1115,6 +1194,9 @@ export function createZixingUI(app,api) {
     const introLayer=el('div','zx-intro-layer',[],{'data-ui-layer':'stage-intro'});
     introLayer.style.cssText='position:absolute;left:0;top:0;width:100%;height:0;overflow:visible;pointer-events:none;z-index:10';
     hud.root.append(introLayer);
+    const ultCutInLayer=el('div','zx-ultimate-layer',[],{'data-ui-layer':'ultimate-cutin'});
+    ultCutInLayer.style.cssText='position:absolute;left:0;top:26%;width:100%;height:0;overflow:visible;pointer-events:none;z-index:30';
+    hud.hudEl.append(ultCutInLayer);hud.ultCutInRoot=ultCutInLayer;
     function intro(title,subtitle){
       if(profile()?.settings.showBanners===false)return;
       const node=el('div','zx zx-intro',[el('b','',title),small(subtitle)]);
@@ -1164,6 +1246,9 @@ export function createZixingUI(app,api) {
     const minimap=hud.minimap;minimap.classList.add('zx-minimap');minimap.width=minimap.height=240;minimap.dataset.static='true';
     minimap.dataset.uiLayer='minimap';
     minimap.setAttribute('aria-label','附近地图，点击查看更大范围');
+    const portalCopy=small('');
+    const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 木门已开启'),portalCopy],{'aria-live':'polite'});
+    portalGuide.hidden=true;
     node.append(el('div','zx-hud-location',[icon('pin',13,'#5277a4'),area,stageLabel],{'data-ui-region':'hud-top'}),el('div','zx-hud-top',[
       el('div','zx-hud-counters',[
         el('div','zx-hud-counter',[icon('clock',14,'#637ca3'),clock],{'aria-label':'关卡时间'}),
@@ -1176,7 +1261,7 @@ export function createZixingUI(app,api) {
           supplies,
         ]),level,
       ]),minimap,button(icon('pause',22,'#6176a3'),()=>run.pause(),'zx-hud-pause',{'aria-label':'暂停'}),
-    ],{'data-ui-region':'hud-stack'}),el('div','zx-hint-slot',[],{'data-ui-region':'hud-hint'}),inventory,health);
+    ],{'data-ui-region':'hud-stack'}),el('div','zx-hint-slot',[portalGuide],{'data-ui-region':'hud-hint'}),inventory,health);
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     hud.root.append(node);
@@ -1211,7 +1296,7 @@ export function createZixingUI(app,api) {
     let mapAt=-Infinity,mapFrame=0;
     hud.drawMinimap=(r,force=false)=>{
       const now=performance.now();if(minimap.hidden||(!force&&now-mapAt<(run.performance?.mapInterval??120)))return;
-      mapAt=now;drawBattleMinimap(minimap,r);minimap.dataset.frame=String(++mapFrame);
+      mapAt=now;drawBattleMinimap(minimap,r,{facilityKind:r.stageCleared?'portal':hud.mapFacilityKind});minimap.dataset.frame=String(++mapFrame);
     };
     const ultimateRing=el('canvas','zx-ult-progress',[],{width:168,height:168,'data-static':'true'});
     hud.touch.ult.append(ultimateRing);
@@ -1248,6 +1333,13 @@ export function createZixingUI(app,api) {
     };
     hud.hud=function(...args){
       updateHealth();
+      const guideVisible=run.stageCleared&&!run.endless&&!run.tower&&run.state==='play'&&!app.screen&&!hud.hasModal();
+      if(portalGuide.hidden===guideVisible)portalGuide.hidden=!guideVisible;
+      toastLayer.classList.toggle('zx-exit-guidance',guideVisible);
+      if(guideVisible){
+        run.hints.el?.remove();
+        updateText(portalCopy,portalGuidance(run));
+      }
       const now=performance.now();
       updatePeers?.();
       if(expandedMap){
@@ -1265,6 +1357,8 @@ export function createZixingUI(app,api) {
       updateText(identityType,api.typeName(element));
       if(identityType.dataset.element!==element)identityType.dataset.element=element;
       if(portrait.dataset.word!==evolved||Number(portrait.dataset.progress)!==experience())refreshPortrait();
+      const remaining=remainingZoneSeconds(run);
+      updateText(clock,run.sanctuary?time(run.stageTime):run.endless||run.tower?time(run.time):remaining>=0?time(remaining):'+'+time(-remaining));
       if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
       last=now;lastState=run.state;
       original(...args);
@@ -1272,8 +1366,6 @@ export function createZixingUI(app,api) {
       const p=run.player;
       updateText(area,paperStages[Math.min(3,run.stage-1)]+' · '+(run.sanctuary?'圣地':run.stage+'/'+(run.mode===SINGLE_STAGE?1:FOREST_COMBAT_ZONES)+'区'));updateText(stageLabel,difficultyName(run));
       stageLabel.dataset.tier=String(run.tier);
-      const remaining=remainingZoneSeconds(run);
-      updateText(clock,run.sanctuary?time(run.stageTime):run.endless||run.tower?time(run.time):remaining>=0?time(remaining):'+'+time(-remaining));
       updateText(gold,number(run.gold));
       updateSkillSlots(skillSlots,run);
       const supplyKey=JSON.stringify([[...p.vitamins].map(([id,v])=>[id,v.level]),[...p.items],profile().settings.showItems,innerWidth]);

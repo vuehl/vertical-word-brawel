@@ -18,8 +18,8 @@ export async function reviewNativePerformance(page,dir){
     const frame=()=>app.pacer.ready(performance.now(),realFrameGap());
     app.pacer.reset();app.run.state='play';frame();frame();
     app.run.state='paused';frame();app.run.state='play';frame();
-    settings.batterySaver=true;app.applySettings();frame();
-    settings.batterySaver=false;app.applySettings();frame();
+    settings.frameRateMode='manual';settings.lock30Fps=true;app.applySettings();frame();
+    settings.lock30Fps=false;app.applySettings();frame();
     const requestedFrameRates=fixtureFrameRates.slice(firstRequest);
     app.run.ui.hud(app.run);r.render(0);env.drawUI(renderer);
     app.run.state='paused';app.zixing.settings(()=>{});
@@ -40,7 +40,7 @@ export async function reviewNativePerformance(page,dir){
   });
   assert.equal(report.platform,'ios');assert.deepEqual(report.pluginLoads,[]);
   assert.equal(report.hasPowerSetting,false);assert.equal(report.hasPowerControl,false);
-  assert.deepEqual(report.requestedFrameRates,[60,30,60,30,60]);
+  assert.deepEqual(report.requestedFrameRates,[60,30,60]);
   assert.equal(report.gc,1);assert.ok(report.released>0&&report.recreated>0);assert.equal(report.glError,0);
   fs.writeFileSync(path.join(dir,'native-performance.json'),JSON.stringify(report,null,2));console.log(report);
 }
@@ -67,7 +67,7 @@ export async function reviewIOSBudget(page,dir){
     const state=()=>({quality:s.quality,dyn:r.dynRes,world:[r.composer.inputBuffer.width,r.composer.inputBuffer.height],
       bloom:r.bloom.intensity,outline:r.outlinePass.enabled,particles:[run.vfx.add.limit,run.vfx.norm.limit],texts:run.vfx.text.limit,cap:run.liveCap});
     for(const platform of ['ios','android'])for(const quality of ['low','medium','high']){
-      inspected.env.nativeDevice.platform=platform;Object.assign(s,{quality,batterySaver:false});app.applySettings();r.render(0);
+      inspected.env.nativeDevice.platform=platform;Object.assign(s,{quality});app.applySettings();r.render(0);
       const before=state();app.dyn={t:0,frames:0,js:0,good:0,wait:8,lastUp:-1e9};
       for(let frame=0;frame<60;frame++)app.adaptRes(2200,2.2,10000+frame*2200);
       for(const count of [0,200,600,1000])r.setCombatLoad(count);
@@ -79,15 +79,15 @@ export async function reviewIOSBudget(page,dir){
   });
   for(const sample of report.qualityLock){assert.deepEqual(sample.after,sample.before);assert.equal(sample.after.dyn,1);}
   assert.deepEqual(report.qualityLock.slice(0,3).map(s=>s.before),report.qualityLock.slice(3).map(s=>s.before));
-  report.saverShadows=await page.evaluate(()=>{
+  report.capShadows=await page.evaluate(()=>{
     const run=app.run,s=app.meta.profile.settings;
-    return ['high','saver','off','high'].map(action=>{
-      s.batterySaver=action==='saver';if(action==='high')s.quality='high';
+    return ['high','locked','off','high'].map(action=>{
+      s.frameRateMode='manual';s.lock30Fps=action==='locked';if(action==='high')s.quality='high';
       app.applySettings();run.renderWorld(0);app.r.render(0);
       return {quality:s.quality,size:app.r.sun.shadow.map.width};
     });
   });
-  assert.deepEqual(report.saverShadows,[{quality:'high',size:2048},{quality:'low',size:1024},{quality:'low',size:1024},{quality:'high',size:2048}]);
+  assert.deepEqual(report.capShadows,[{quality:'high',size:2048},{quality:'high',size:2048},{quality:'high',size:2048},{quality:'high',size:2048}]);
   report.panel=await page.evaluate(()=>{
     const api=inspected.env.__zixingDeveloper,doc=inspected.doc;
     api.open();

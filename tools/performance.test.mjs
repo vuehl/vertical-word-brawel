@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {performanceProfile,selectGraphicsQuality,setBatterySaver} from '../source/src/performance-profile.js';
+import {performanceProfile,selectGraphicsQuality,targetFrameRate} from '../source/src/performance-profile.js';
 import {paperBox,hitsPaperBox,resolvePaperBox} from '../source/src/paper-collision.js';
 import {updatePaperVisibility} from '../source/src/paper-visibility.js';
 import {separateCrowd} from '../source/src/crowd-separation.js';
@@ -64,6 +64,11 @@ test('entry draws each combat batch once and restores its live count even on fai
     orbitals:batch(),orbitalsGlow:batch(),vfx:Object.fromEntries(
       ['rings','beams','text','add','norm','ground','groundN'].map(key=>[key,batch()]))};
   const batches=[...Object.values(run.projectiles),...Object.values(run.pickups),...Object.values(run.vfx),run.orbitals,run.orbitalsGlow];
+  const art={...batch(),fireJet:{...batch(),hitMesh:batch().mesh,legacy:batch()},fireSpin:batch(),fireball:batch(),
+    fireFamily:{...batch(),topMesh:batch().mesh},windVortex:batch(),windMoves:batch()};
+  run.vfx.crafted=art;
+  for(const mesh of [art.mesh,art.fireJet.mesh,art.fireJet.hitMesh,art.fireJet.legacy.mesh,art.fireSpin.mesh,art.fireball.mesh,
+    art.fireFamily.mesh,art.fireFamily.topMesh,art.windVortex.mesh,art.windMoves.mesh])batches.push({mesh});
   run.pickups.pool.mesh={visible:true,count:3};
   const state=batches.map(({mesh})=>({...mesh}));
   let draws=0;
@@ -124,16 +129,32 @@ test('dense crowd steering bounds work and rotates through every candidate witho
   assert.ok(Math.abs(sx/phases-exact[0])<1e-10&&Math.abs(sz/phases-exact[1])<1e-10);
 });
 
-test('battery saver selects smooth quality and selecting fine quality switches saver off',()=>{
-  const settings={quality:'high',batterySaver:false,touchScale:.85};
-  const high=performanceProfile(settings);setBatterySaver(settings,true);
-  const saver=performanceProfile(settings);assert.equal(settings.quality,'low');
-  setBatterySaver(settings,false);assert.equal(performanceProfile(settings),saver);
-  setBatterySaver(settings,true);selectGraphicsQuality(settings,'high');
-  assert.equal(settings.batterySaver,false);assert.equal(performanceProfile(settings),high);assert.equal(settings.touchScale,.85);
-  assert.equal(saver.bloom,false);assert.equal(saver.outline,false);
-  assert.ok(high.pixelBudget>saver.pixelBudget&&high.maxPixelRatio>saver.maxPixelRatio);
-  assert.equal(performanceProfile(),high);
+test('frame cap preserves selected quality and ignores removed power preferences',()=>{
+  assert.equal(targetFrameRate(),60);
+  assert.equal(targetFrameRate({fpsLimit:30,batterySaver:true}),60);
+  for(const quality of ['low','medium','high']){
+    const settings={quality,lock30Fps:false};
+    const profile=performanceProfile(settings,{platform:'android'});
+    assert.equal(targetFrameRate(settings),60);
+    settings.lock30Fps=true;
+    assert.equal(targetFrameRate(settings),30);
+    assert.equal(performanceProfile(settings,{platform:'android'}),profile);
+    selectGraphicsQuality(settings,'high');assert.equal(targetFrameRate(settings),30);
+    settings.lock30Fps=false;assert.equal(targetFrameRate(settings),60);
+  }
+  for(const value of [true,'true',1])assert.equal(targetFrameRate({lock30Fps:value}),30);
+});
+
+test('native 30 FPS pacing remains bounded at high refresh rates and through background resume',()=>{
+  for(const hz of [30,60,90,120,144]){
+    const requests=[],pacer=new FramePacer(fps=>requests.push(fps));let drawn=0;
+    for(let i=0;i<hz*10;i++)drawn+=+pacer.ready(i*1000/hz,1000/30);
+    assert.ok(Math.abs(drawn-300)<=1,`${hz} Hz: ${drawn} frames`);
+    pacer.reset();assert.equal(pacer.ready(30000,1000/30),true);
+    assert.equal(pacer.ready(30001,1000/30),false);
+    assert.equal(pacer.ready(30033,1000/30),true);
+    assert.deepEqual(requests,[30,30]);
+  }
 });
 test('rotated stationery blocks its footprint, permits rounded corner clearance and resolves embedded actors',()=>{
   for(const angle of [0,.4,Math.PI/2,-.7]){

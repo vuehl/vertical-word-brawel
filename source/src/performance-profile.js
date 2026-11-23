@@ -13,27 +13,21 @@ export const performanceProfiles=Object.freeze({
     worldShadows:true,workshopShadowSize:2048,pickupSimple:false,mergeXp:240,mergeCoins:100,mergeInterval:1.2,
     enemyMidStep:2,enemyFarStep:3,enemySeparation:128,hudInterval:80,mapInterval:120}),
 });
-export const batterySaverEnabled=value=>value===true||value==='true'||value===1;
-export function setBatterySaver(settings,value){
-  const enabled=batterySaverEnabled(value);
-  const changed=settings.batterySaver!==enabled || (enabled && settings.quality!=='low');
-  settings.batterySaver=enabled;
-  if(enabled)settings.quality='low';
-  return changed;
+export function targetFrameRate(settings={}){
+  const value=settings.lock30Fps;
+  return value===true||value==='true'||value===1?30:60;
 }
 export function selectGraphicsQuality(settings,quality){
   settings.quality=quality;
-  if(quality!=='low')settings.batterySaver=false;
 }
-// Every device follows the player's preset. Battery saver is also an explicit
-// player setting; neither FPS, crowd size nor OS may select a lower preset.
+// Every device follows the player's preset; neither FPS nor crowd size may
+// select a lower preset. The frame cap is independent of visual quality.
 const androidProfiles=Object.freeze({
   low:performanceProfiles.low,
-  medium:Object.freeze({...performanceProfiles.medium,pixelBudget:600000,maxPixelRatio:1.25,workshopShadowSize:1024}),
-  high:Object.freeze({...performanceProfiles.high,pixelBudget:1000000,maxPixelRatio:1.5,workshopShadowSize:1536}),
+  medium:Object.freeze({...performanceProfiles.medium,pixelBudget:600000,maxPixelRatio:1.25,workshopShadowSize:1024,fireImpactBudget:6}),
+  high:Object.freeze({...performanceProfiles.high,pixelBudget:1000000,maxPixelRatio:1.5,workshopShadowSize:1536,fireImpactBudget:8}),
 });
 export function performanceProfile(settings={},device){
-  if(batterySaverEnabled(settings.batterySaver))return performanceProfiles.low;
   const profiles=device?.platform==='android'?androidProfiles:performanceProfiles;
   return profiles[settings.quality]||profiles.high;
 }

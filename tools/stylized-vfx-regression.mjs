@@ -8,7 +8,7 @@ export async function reviewStylizedVFX(page,dir){
   const report={environment:'Actual compiled WeChat bundle in Chrome SwiftShader; controlled inputs and enemies, original gameplay camera. Not phone FPS.',moves:[],ultimates:[],screens:[]};
   await page.evaluate(()=>{
     app.halted=true;inspected.doc.querySelector('[data-dev-action="close"]')?.click();
-    Object.assign(app.meta.profile.settings,{quality:'high',batterySaver:false,autoUlt:false,ultQuiet:true,damageNumbers:true});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:'high',autoUlt:false,ultQuiet:true,damageNumbers:true});app.applySettings();
     window.vfxSetup=()=>{
       const r=app.run,p=r.player;app.halted=true;r.state='play';r.ui.hideModal();r.godMode=true;r.pendingLevels=0;
       r.director.update=()=>{};r.events.update=()=>{};r.minibosses.update=()=>{};r.enemies.clear();r.ult.clear();r.projectiles.clear();r.zones.clear();r.vfx.clear();r.timers.length=0;r.anims.length=0;r.aimMode='auto';
@@ -31,6 +31,15 @@ export async function reviewStylizedVFX(page,dir){
   });
   assert.equal(report.base.camera.distance,42);assert.equal(report.base.camera.fov,37);assert.ok(Math.abs(report.base.camera.pitch-Math.PI*.3)<1e-9);
   assert.equal(report.base.atlas.width,1024);assert.ok(report.base.atlas.partial>100);assert.ok(report.base.maps.every(p=>p==='painted-toy'));assert.equal(report.base.pointLights,4);assert.ok(report.base.volumeVertices>800);
+  if(process.argv.includes('--fusion-cleanup')){
+    const {reviewFusionCleanup}=await import('./fusion-cleanup-regression.mjs');return reviewFusionCleanup(page,dir);
+  }
+  if(process.argv.includes('--skill-availability')){
+    const {reviewSkillAvailability}=await import('./skill-availability-regression.mjs');return reviewSkillAvailability(page,dir);
+  }
+  if(process.argv.includes('--wind-skills')){
+    const {reviewWindSkills}=await import('./wind-skills-regression.mjs');return reviewWindSkills(page,dir);
+  }
   if(process.argv.includes('--fire-family')){
     const {reviewFireFamily}=await import('./fire-family-regression.mjs');return reviewFireFamily(page,dir,moves);
   }

@@ -19,7 +19,14 @@ export function warmCombatDraw(run){
   const {projectiles,pickups,vfx}=run;
   const pools=[projectiles.pool,projectiles.glow,pickups.pool,pickups.glow,run.orbitals,run.orbitalsGlow,
     vfx.rings,vfx.beams,vfx.text,vfx.add,vfx.norm,vfx.ground,vfx.groundN];
-  const saved=pools.map(({mesh})=>({mesh,visible:mesh.visible,count:mesh.count}));
+  const crafted=vfx.crafted,family=crafted?.fireFamily;
+  // compileAsync links programs but does not allocate instancing buffers. Draw
+  // prepared skill batches once under the loading cover, including ultimates.
+  const meshes=[...pools.map(pool=>pool.mesh),vfx.upgrade?.mesh,vfx.upgrade?.rearMesh,crafted?.mesh,crafted?.fireJet.mesh,crafted?.fireJet.hitMesh,
+    crafted?.fireJet.legacy.mesh,crafted?.fireSpin.mesh,crafted?.fireball.mesh,
+    family?.mesh,family?.topMesh,
+    crafted?.windVortex?.mesh,crafted?.windMoves?.mesh,crafted?.stampede?.mesh].filter(Boolean);
+  const saved=meshes.map(mesh=>({mesh,visible:mesh.visible,count:mesh.count}));
   try{
     for(const {mesh} of saved){mesh.visible=true;mesh.count=Math.max(1,mesh.count);}
     run.r.render(0);

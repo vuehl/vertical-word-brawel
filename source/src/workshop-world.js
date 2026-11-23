@@ -1,3 +1,4 @@
+import {createSpawnPlacement} from './desk-navigation.js';
 import {I as Group,H as InstancedMesh,_ as BoxGeometry,E as CylinderGeometry,T as ConeGeometry,ut as SphereGeometry,et as PlaneGeometry,y as BufferGeometry,v as BufferAttribute,b as CanvasTexture,ot as SRGB,w as Color,ht as Vector3,k as DirectionalLight,WorkshopStandardMaterial as StandardMaterial,WorkshopPointLight as PointLight} from '../assets/three-DmSYIDKK.js';
 import {preparePaperBatch} from './paper-visibility.js';
 import {paperBox} from './paper-collision.js';
@@ -84,6 +85,7 @@ export function* workshopWorldSteps(terrain){
   terrain.zxPaper=true;terrain.zxStage=stage;root.name='stationery-wonderland';terrain.hasWater=false;terrain.isLava=false;terrain.frozen=false;
   terrain.minH=terrain.maxH=0;terrain.heights.fill(0);terrain.pathMask.fill(0);
   terrain.spawn.set(terrain.mapRules.spawn.x,0,terrain.mapRules.spawn.z);
+  terrain.placeSpawn=createSpawnPlacement(terrain);
   terrain.landmarks=[];terrain.zxProps=[];terrain.workshopLamps=[];terrain.workshopGlows=[];terrain.workshopMarbleRuns=[];terrain.workshopMarbleSites=[];
   terrain.workshopLooseMarbles=[];
   terrain.ownsPaperAssets=!terrain.paperAssets;const assets=terrain.paperAssets??=createWorkshopAssets();

@@ -12,7 +12,7 @@ export async function reviewMarbleFactories(page,dir){
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.evaluate(async()=>{
     window.dispatchEvent(new Event('resize'));
-    Object.assign(app.meta.profile.settings,{quality:'high',batterySaver:false});app.applySettings();vfxSetup();app.run.enemies.clear();
+    Object.assign(app.meta.profile.settings,{quality:'high'});app.applySettings();vfxSetup();app.run.enemies.clear();
     await Promise.all(app.run.terrain.paperAssets.photoJobs);
     vfxDraw(false);
     window.marbleFactoryKind=kind=>kind==='marble-factory'||kind==='factory'||!kind?'helix':kind.replace(/^marble-/,'');

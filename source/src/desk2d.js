@@ -7,8 +7,9 @@ import {billLayers} from './bill-layers.js';
 import {installBillGaze} from './bill-gaze.js';
 import {w as Color,y as BufferGeometry,v as Attribute,I as Group,et as PlaneGeometry,K as Mesh,q as BasicMaterial,dt as Texture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
 import {paperBox,hitsPaperBox} from './paper-collision.js';
+import {createDeskNavigation,createSpawnPlacement} from './desk-navigation.js';
 
-import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame,deskPlayFrame} from './desk-framing.js';
+import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskWalkInset,deskFrame,deskPlayFrame} from './desk-framing.js';
 const xAt=px=>(px-layout.width/2)/pixelsPerUnit;
 const zAt=py=>(py-layout.height/2)/(pixelsPerUnit*tilt);
 const halfWidth=xAt(layout.width),halfDepth=zAt(layout.height);
@@ -25,14 +26,15 @@ export function initDesk(t){
   t.inBounds=(x,z,n=0)=>Math.abs(x)<halfWidth-n&&Math.abs(z)<halfDepth-n;
   t.isFlatOpen=(x,z)=>t.inBounds(x,z,1)&&!t.hitProp(x,.3,z,1);
   t.deskOwned=[];t.deskTextures=new Map();
-  for(const [kind,l,top,r,b] of layout.rects){
+  for(const [kind,l,rawTop,r,rawBottom] of layout.rects){
+    const offset=kind==='mouse'?-160:0,top=rawTop+offset,b=rawBottom+offset;
     const box=paperBox(xAt((l+r)/2),zAt((top+b)/2),(r-l)/pixelsPerUnit,(b-top)/(pixelsPerUnit*tilt),1000,0);
     box.kind=kind;
     if(surfaces.has(kind))surfaces.get(kind).push(box);
-    else t.addCollider(box);
+    else if(!['pen','ID-card'].includes(kind)) t.addCollider(box);
   }
-  // These two low surfaces can be walked on. Keep the rest of the artwork,
-  // including things lying on top of them, in the ordinary collision grid.
+  // Facility surfaces and flat paper props can be walked on; raised objects
+  // lying on top of them remain in the ordinary collision grid.
   t.fitsFacilitySurface=(x,z,radius,surface)=>{
     for(const [name,boxes] of surfaces){
       if(name!==surface && boxes.some(box=>hitsPaperBox(box,x,z,radius)))return false;
@@ -75,6 +77,10 @@ export function initDesk(t){
     const wall=paperBox(-uz*mid,ux*mid,2*along,edge+normal,1000,-angle);
     wall.kind='desk-rim';t.shelfBarriers.push(wall);t.addCollider(wall);
   }
+  t.steerDeskEnemy=createDeskNavigation(t);
+  t.placeSpawn=createSpawnPlacement(t);
+  t.canReachDeskPoint=(x,z)=>t.placeSpawn(x,z,1);
+  t.deviceFootprint=kind=>kind==='boss'?6.5:deviceSizes[kind].footprintRadius;
   const geometry=new PlaneGeometry(1,1);geometry.rotateX(-Math.PI/2);t.deskOwned.push(geometry);
   t.deskReady=(async()=>{
     const jobs=layout.layers.flatMap(({name,parts},layer)=>parts.map(part=>({name,layer,part})));
@@ -87,7 +93,7 @@ export function initDesk(t){
         t.deskOwned.push(material);
         const sheet=new Mesh(geometry,material);sheet.name='desk2d/'+name;
         sheet.scale.set(w/pixelsPerUnit,1,h/(pixelsPerUnit*tilt));
-        sheet.position.set(xAt(x+w/2),-.05,zAt(y+h/2));
+        sheet.position.set(xAt(x+w/2),-.05,zAt(y+h/2+(name==='mouse'?-160:0)));
         sheet.renderOrder=-100+layer;t.group.add(sheet);
       }
     }
@@ -110,13 +116,15 @@ export function deskTexture(t,file){
   }));
   return t.deskTextures.get(file);
 }
-export function deskCamera(run,dt,progress,bend=0){
+export function deskCamera(run,progress,bend=0){
   const c=run.r.camera,t=run.terrain,p=run.player.pos;
-  run.camTarget.lerp(p,1-Math.exp(-12*Math.max(0,dt)));
   const {x:focusX,z:focusZ}=run.camTarget;
-  const {x,z,w,h,distance}=progress===undefined
+  const {x,z:followZ,w,h,distance}=progress===undefined
     ?deskPlayFrame(c.aspect,halfWidth,halfDepth,focusX,focusZ)
     :deskFrame(c.aspect,halfWidth,halfDepth,focusX,focusZ,progress,bend);
+  // A sprint can outrun the smoothed focus. Keep the feet inside the picture.
+  const southEdge=progress===undefined?halfDepth-2/(pixelsPerUnit*tilt):halfDepth;
+  const z=Math.max(followZ,Math.min(southEdge,p.z+deskWalkInset)-h/tilt);
   c.position.set(x,distance*tilt,z+distance*Math.cos(pitch));c.lookAt(x,0,z);
   c.projectionMatrix.makeOrthographic(-w,w,h,-h,c.near,c.far,c.coordinateSystem);
   c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
@@ -153,6 +161,13 @@ export async function deskDevice(t,kind,tier=0){
   const {size,height,footprintRadius,strips,fx,layers}=deviceSizes[kind];
   const root=new Group();root.name='desk2d/device-'+kind;root.userData.displayHeight=height;
   root.userData.footprintRadius=footprintRadius;
+  // Centre the ground rings on visible artwork, excluding transparent padding.
+  const outline=strips??layers.base;
+  const left=Math.min(...outline.map(s=>s[0])),right=Math.max(...outline.map(s=>s[2]));
+  const top=Math.min(...outline.map(s=>s[1])),bottom=Math.max(...outline.map(s=>s[1]+1));
+  const centreY=size*(.3+.5-(top+bottom)/256);
+  const aspect=kind==='bill'?deviceSizes.bill.frame.width/deviceSizes.bill.frame.height:1;
+  root.userData.ringAnchor={x:size*((left+right)/256-.5)*aspect,y:centreY*Math.cos(pitch),z:-centreY*tilt};
   root.userData.deviceScreenFx=fx;
   if(kind==='bill'){
     const entries=await Promise.all(Object.entries(billLayers).map(async ([name,file])=>[name,await deskTexture(t,file)]));

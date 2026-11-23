@@ -7,7 +7,7 @@ import {isPlayableHeroForm} from '../source/src/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=55;
+export const assetPolicyVersion=61;
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
@@ -42,12 +42,14 @@ export function itemIconSelectionChanged(files) {
 }
 
 // Exclusions are based on the enabled forest-only rules and procedural world,
-// not merely on absence from a short playthrough. Keep the source art intact.
+// not merely on absence from a short playthrough.
 export function excludedAssetReason(key){
+  if(key==='assets/env/desk2d/device-boss.png')return '召唤门使用实时倒计时模型';
+  if(/^assets\/vfx\/heat-wave\.(?:png|json)$/.test(key))return '热风玩家技能已移除';
+  if(/^assets\/cries\/\d+\.ogg$/.test(key))return '旧角色叫声已停用';
   if(key.startsWith('assets/env/desk2d/device-bill/')&&/[^\x00-\x7f]/.test(key))return '订书机效果参考图';
   if(key==='assets/env/desk2d/device-bill.png'||key==='assets/models/devices/订书机.glb')return '订书机已使用分层原画';
   if(key==='assets/env/desk2d/device-altar.png'||key==='assets/env/desk2d/device-berry.png')return '已替换为分层设施图片';
-  if(key==='assets/models/devices/拍立得.glb'||key==='assets/ui/devices/ditto.png'||key==='assets/env/desk2d/device-ditto.png')return '道具复制装置已移除';
   if(excludedItemIcons.has(key))return '已隐藏道具的专用图标，当前玩法及界面无引用';
   if(/^assets\/glyphs\/(?:faint_01_atlas|wind-(?:idle|walk|death)-atlas)\.png$/.test(key))return '旧版动作图集';
   if(key==='assets/glyphs/copy-strokes.png'&&!isPlayableHeroForm(132))return '隐藏字灵的笔画图集';

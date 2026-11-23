@@ -10,7 +10,7 @@ export async function reviewDesktopLayout(page,dir){
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.evaluate(async()=>{
     window.dispatchEvent(new Event('resize'));app.halted=true;
-    Object.assign(app.meta.profile.settings,{quality:'high',batterySaver:false,autoUlt:false});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:'high',autoUlt:false});app.applySettings();
     window.desktopPrepare=async()=>{
       const r=app.run;r.state='play';r.godMode=true;r.pendingLevels=0;r.autoRun=false;r.ui.hideModal();
       r.player.moves=Array(4).fill(null);r.ult.clear();r.enemies.clear();

@@ -10,6 +10,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {bindPortalZoneClock} from './tools/portal-zone-clock.mjs';
 import {
   now, token, newProfile, newAccount, hashPassword, checkPassword,
   SEASON, EVENTS, seasonPayload, boardFor, json, body,
@@ -522,6 +523,9 @@ async function serveStatic(req, res, pathname) {
 
   if (inside && existsSync(file)) {
     const ext = path.extname(file);
+    if (rel === 'src/PortalDock.mjs') {
+      return sendFile(res, file, Buffer.from(bindPortalZoneClock(await readFile(file, 'utf8'))));
+    }
     if (ext === '.html' && rel === 'index.html') {
       let src = await readFile(file, 'utf8');
       const before = src;

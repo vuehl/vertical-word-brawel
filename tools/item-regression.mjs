@@ -68,7 +68,7 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
     qaPlace(objects.find(o=>o.kind==='freechest'&&!o.used));r.hints.scanT=0;const switched=qaItemFrames(1);
     const freeHint=r.hints.el?.dataset.kind;
     let altar=objects.find(o=>o.kind==='altar'&&!o.used);
-    // These timed screenshots exercise the eight-second, cyan tier.
+    // All altar tiers now share the ordinary facility progress ring.
     if(altar.data.tier!==0){
       const {x,z}=altar;
       r.interactables.remove(altar);
@@ -77,25 +77,26 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
     }
     qaPlace(altar);
     r.player.pos.set(altar.x+.15,altar.y,altar.z+2.7);r.camTarget.copy(r.player.pos);
-    qaItemFrames(91);
+    qaItemFrames(30);
     return {costLabel,switched,freeHint,ringCharge:altar.chargeRing.material.uniforms.dwell.value,
-      baseColor:altar.chargeRing.material.uniforms.baseColor.value.getHex(),charge:altar.charge,
+      sameRing:altar.chargeRing.geometry===r.interactables.dwellRing.geometry&&
+        altar.chargeRing.material.fragmentShader===r.interactables.dwellRing.material.fragmentShader,charge:altar.charge,
       clear:!r.ui.worldLabelNodes.has(altar)&&!inspected.doc.querySelector('.charge')&&!r.interactables.dwellRing.visible};
   });
   assert.match(visit.costLabel,/金币/);assert.ok(visit.switched>0&&visit.switched<.025);
   assert.equal(visit.ringCharge,visit.charge);assert.ok(visit.charge>0&&visit.charge<1);
-  assert.equal(visit.freeHint,'freechest');assert.equal(visit.baseColor,0x5af0ff);assert.ok(visit.clear);
-  await checkHint('altar','守护者祭坛');
+  assert.equal(visit.freeHint,'freechest');assert.ok(visit.sameRing);assert.ok(visit.clear);
+  await checkHint('altar','时尚小垃圾');
   await snapshot('14-guardian-altar');
   const later=await page.evaluate(()=>{
-    qaItemFrames(88);
+    qaItemFrames(30);
     const r=app.run,a=r.interactables.list.find(o=>o.kind==='altar'&&o.charge>0);
     return {charge:a.charge,arc:a.chargeRing.material.uniforms.dwell.value,clear:!r.ui.worldLabelNodes.has(a)};
   });
   assert.ok(later.charge>visit.charge+.25&&later.charge<1&&later.clear);assert.equal(later.arc,later.charge);
   await snapshot('14-guardian-altar-late');
   const almost=await page.evaluate(()=>{
-    qaItemFrames(50);
+    qaItemFrames(28);
     const a=app.run.interactables.list.find(o=>o.kind==='altar'&&o.charge>0);
     return a.chargeRing.material.uniforms.dwell.value;
   });

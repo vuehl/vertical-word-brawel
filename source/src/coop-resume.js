@@ -20,17 +20,27 @@ export function savedProgress(room) {
   const data=read(progressKey);
   return data?.seat===room.me && data.party===room.room.party ? data : null;
 }
+export function worldProgress(run) {
+  const portal=run.interactables.list.find(i=>i.kind==='portal');
+  const index=run.boss.bossIndex;
+  return {stage:run.stage,stageTime:run.stageTime,time:run.time,x:run.player.pos.x,z:run.player.pos.z,
+    portal:portal ? {x:portal.x,z:portal.z,sanct:!!portal.data?.sanct} : null,
+    boss:run.coop.bossShared && run.boss.alive ? {x:run.enemies.x[index],z:run.enemies.z[index],
+      slot:run.coop.bossAuth,hp:run.enemies.hp[index],maxHp:run.enemies.maxHp[index]} : run.coop.resumeBoss || null};
+}
 export function saveProgress(run) {
   const {coop,player:p}=run;
-  if(!p || !coop || coop.ended || run.state==='over' || run.buildingStage)return;
+  if(!p || !coop || coop.ended || run.state==='over' || run.state==='transition' || run.buildingStage)return;
   const fields=(object,keys)=>Object.fromEntries(keys.map(key=>[key,object[key]]));
-  const data={v:3,seat:coop.room.me,party:coop.party,stage:run.stage,
+  const world=worldProgress(run);
+  const data={v:3,seat:coop.room.me,party:coop.party,stage:run.stage,world,
     run:fields(run,['stats','gold','keys','goldSpent','springShoesSeen','splits','pendingLevels','rerolls','skips','tempMods','curses','nextEvo']),
     player:fields(p,['speciesId','evoStage','level','xp','growth','hp','shield','overheal','revives','dead']),
     bleed:coop.bleed,out:coop.out,pos:[p.pos.x,p.pos.y,p.pos.z],
     items:[...p.items],vitamins:[...p.vitamins],
     moves:p.moves.map(m=>m && {id:m.def.id,...fields(m,['level','mods','parents','extra','damageDone'])})};
   localStorage.setItem(progressKey,JSON.stringify(data));
+  if(coop.room.open)coop.room.send({op:'checkpoint',party:coop.party,data:world});
 }
 export function restoreProgress(run,data,world) {
   const p=run.player,coop=run.coop;
@@ -83,5 +93,9 @@ export function restoreProgress(run,data,world) {
     run.dragonDuel=run.stageBossSpecies===finalBossSpecies;
     run.stageCleared=true;run.bossSpawned=true;coop.wakeAltars();
     run.interactables.spawnPortal(world.portal.x,world.portal.z,world.portal.sanct,true);
-  }else if(world.boss)coop.onBossCall(null,world.stage,world.boss.x,world.boss.z,world.boss.slot);
+  }else if(world.boss){
+    const owner=coop.room.room.members.find(m=>m.slot===world.boss.slot);
+    coop.onBossCall(null,world.stage,world.boss.x,world.boss.z,owner && !owner.offline && !owner.away?world.boss.slot:coop.mySlot);
+    coop.resumeBoss=world.boss;
+  }
 }

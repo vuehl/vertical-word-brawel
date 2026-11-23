@@ -188,11 +188,43 @@ async function reviewMoveCapacity(page){
   console.log('Skill capacity, stale choice and fusion checks passed');
 }
 
+async function reviewVitaminArt(page,dir){
+  await page.evaluate(async()=>{
+    await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
+    app.halted=true;
+  });
+  for(const kind of ['newVit','upVit']){
+    await page.evaluate(kind=>{
+      const r=app.run;
+      const offers=['escape-rope','enigma-berry'].map(vit=>({kind,vit,rarity:0}));
+      if(kind==='upVit')for(const {vit} of offers)r.player.addVitamin(vit,1);
+      r.state='modal';r.ui.showLevelUp(r,[...offers,{kind:'newMove',id:297}],()=>{});
+      r.ui.hud(r);r.renderWorld(0);app.r.render(0);
+    },kind);
+    const cards=await page.evaluate(()=>[...app.run.ui.modalEl.querySelectorAll('[data-offer]')].map(card=>({
+      title:card.querySelector('b').textContent,
+      image:card.querySelector('img')?.getAttribute('src')?.split('?')[0].split('/').pop()??null,
+      glyph:card.querySelector('.zx-glyph')?.getAttribute('aria-label')??null,
+    })));
+    assert.deepEqual(cards,[
+      {title:'拾取增益',image:'escape-rope.png',glyph:null},
+      {title:'溢出治疗',image:'enigma-berry.png',glyph:null},
+      {title:'羽毛舞',image:null,glyph:'风'},
+    ]);
+    await page.waitForFunction(()=>{
+      inspected.env.drawUI(app.r.renderer);
+      return !inspected.modalTransition.active&&[...app.run.ui.modalEl.querySelectorAll('img')].every(img=>img.complete&&img.naturalWidth>0);
+    });
+    if(kind==='newVit')await page.screenshot({path:path.join(dir,'wind-vitamin-offers.png')});
+    await page.evaluate(()=>app.run.ui.hideModal());
+  }
+}
+
 export async function reviewUpgrade({page,resize,dir}){
   const baseline=process.argv.includes('--baseline'),samples=[];let liveLoop=null;
   await page.evaluate(async()=>{
     const account=await app.backend.guest();await app.meta.load(account);
-    Object.assign(app.meta.profile.settings,{quality:'low',fpsLimit:30,batterySaver:false});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:'low',fpsLimit:30});app.applySettings();
     await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;app.run.godMode=true;app.run.update(1/60);
   });
@@ -200,6 +232,7 @@ export async function reviewUpgrade({page,resize,dir}){
     await reviewRandomOffers(page);
     await reviewRetiredOffers(page);
     await reviewMoveCapacity(page);
+    await reviewVitaminArt(page,dir);
   }
   const ultimate=baseline?null:await reviewUltimateUpgrade(page,dir);
   // The animation/cache checks need a fresh dialog after the three ultimate
@@ -212,6 +245,8 @@ export async function reviewUpgrade({page,resize,dir}){
   try{
     for(const width of (baseline?[390]:[320,390,430])){
       await resize(width,width===320?568:width===430?932:844);
+      // Deliver Chrome's viewport resize before instrumenting the active layout.
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
       const build=await page.evaluate(({width,baseline})=>{
         const r=app.run;r.ui.hideModal();r.state='play';r.pendingLevels=1;r.rerolls=2;
         if(!baseline)r.player.setSpecies(width===320?4:width===390?5:6);
@@ -284,8 +319,8 @@ export async function reviewUpgrade({page,resize,dir}){
               const b=inspected.layout.box(inspected.doc.querySelector(selector)),s=inspected.doc.getElementById('game').getBoundingClientRect();
               window.tap(b.x+b.w/2-s.left,b.y+b.h/2-s.top);
             };
-            const stars=[],effect=r.levelUpEffect;
-            r.levelUpEffect=function(count){stars.push(count);return effect.call(this,count);};
+            const effects=[],effect=r.vfx.upgrade.play;
+            r.vfx.upgrade.play=function(...args){const result=effect.apply(this,args);effects.push(this.events.length);return result;};
             const finishExit=()=>{drawUpgradeFrame();a.clock+=150;drawUpgradeFrame();};
             click('.zx-reroll');const rerollsBeforeExit=r.rerolls;
             const rerollTransition=inspected.modalTransition.snapshot.phase==='exit';
@@ -300,11 +335,11 @@ export async function reviewUpgrade({page,resize,dir}){
             const sceneRenders=a.sceneRenders;
             a.clock+=260;drawUpgradeFrame();click('[data-offer]');finishExit();
             const restored=inspected.env.drawFrozenModal(app.r.renderer);
-            r.levelUpEffect=effect;
-            return {rerollsBeforeExit,rerolls,rerollTransition,beforeExit,chained,sceneRenders,restored,stars,pending:r.pendingLevels,state:r.state};
+            r.vfx.upgrade.play=effect;
+            return {rerollsBeforeExit,rerolls,rerollTransition,beforeExit,chained,sceneRenders,restored,effects,pending:r.pendingLevels,state:r.state};
           });
           assert.deepEqual(actions,{rerollsBeforeExit:2,rerolls:1,rerollTransition:true,beforeExit:{pending:2,state:'modal'},
-            chained:{pending:1,state:'modal',phase:'enter'},sceneRenders:1,restored:false,stars:[10],pending:0,state:'play'});
+            chained:{pending:1,state:'modal',phase:'enter'},sceneRenders:1,restored:false,effects:[],pending:0,state:'play'});
         }
         samples.push({width,buildMs:build.buildMs,frames});
       }finally{
@@ -318,7 +353,7 @@ export async function reviewUpgrade({page,resize,dir}){
     if(!baseline){
       liveLoop=await page.evaluate(async()=>{
         const r=app.run,renderer=app.r,originalGap=app.frameGap,originalRender=renderer.render,originalUpdate=r.update;
-        Object.assign(app.meta.profile.settings,{fpsLimit:60,batterySaver:false});app.applySettings();
+        Object.assign(app.meta.profile.settings,{fpsLimit:60});app.applySettings();
         r.pendingLevels=1;r.state='play';r.doLevelUp();r.ui.hud(r);
         renderer.render(0);inspected.env.drawUI(renderer.renderer);
         const time=r.time;let sceneRenders=0,updates=0,frames=0;
@@ -338,7 +373,8 @@ export async function reviewUpgrade({page,resize,dir}){
       });
       assert.equal(liveLoop.sceneRenders,0);assert.equal(liveLoop.updates,0);assert.ok(liveLoop.frames>=6);
       assert.ok(liveLoop.unchangedTime);assert.equal(liveLoop.state,'modal');
-      assert.equal(liveLoop.openingGap,1000/60);assert.equal(liveLoop.settledGap,1000/30);
+      // The shared frame policy now preserves the selected 60 FPS in menus too.
+      assert.equal(liveLoop.openingGap,1000/60);assert.equal(liveLoop.settledGap,1000/60);
     }
   }finally{await page.evaluate(()=>{app.halted=false;app.toMenu();});}
   fs.writeFileSync(path.join(dir,baseline?'upgrade-before.json':'upgrade-after.json'),JSON.stringify({

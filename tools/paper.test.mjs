@@ -52,7 +52,7 @@ test('dense same-type map icons preserve every location in counts without overla
   for(const size of [9,12,17]){
     const labels=Array.from({length:36},(_,i)=>({kind:'altar',
       x:60+Math.cos(i*Math.PI/18)*48,y:58+Math.sin(i*Math.PI/18)*48}));
-    labels.push({kind:'altar',text:'守护者祭坛',x:60,y:58});
+    labels.push({kind:'altar',text:'时尚小垃圾',x:60,y:58});
     const result=layoutBuildingIcons(labels,size);
     assert.equal(result.reduce((sum,g)=>sum+g.count,0),labels.length);
     assert.ok(result.length<labels.length);
@@ -80,15 +80,15 @@ test('map filters distinguish free gifts and keep buildings visible through fog 
   const run={ui:{mapFacilityIcon:kind=>({kind,naturalWidth:16,naturalHeight:20})},player:{pos:{x:0,z:0}},enemies:{n:0},boss:{alive:false},terrain:{world:240},
     interactables:{markers:()=>markers},allies:{list:[]}};
   let result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'freechest'});
-  assert.equal(result.count,2);assert.deepEqual(icons.sort(),['freechest','portal']);assert.deepEqual(texts,['2']);
+  assert.equal(result.count,2);assert.deepEqual(icons.sort(),['freechest']);assert.deepEqual(texts,['2','免费扭蛋']);
   icons.length=0;texts.length=0;result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'});
-  assert.equal(result.count,1);assert.deepEqual(icons.sort(),['chest','portal']);assert.deepEqual(texts,[]);
+  assert.equal(result.count,1);assert.deepEqual(icons.sort(),['chest']);assert.deepEqual(texts,['扭蛋']);
   markers=markers.filter(marker=>marker.kind!=='chest');
   assert.equal(drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'}).count,0);
   texts.length=0;run.events={blind:true};run.ui.mapFacilityIcon=()=>null;
   for(const shadow of [true,false]){
     result=drawBattleMinimap(canvas,run,{shadow,facilityKind:'freechest'});
-    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),['免','传'].sort());
+    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),(shadow?['免','免费扭蛋','门','门？']:['免','免费扭蛋']).sort());
   }
 });
 
@@ -96,6 +96,32 @@ test('overlapping different facility types are never counted as one type',()=>{
   const result=layoutBuildingIcons([{kind:'chest',x:45,y:35},
     {kind:'freechest',x:45,y:35}],10);
   assert.equal(result.length,2);assert.deepEqual(result.map(group=>group.count),[1,1]);
+});
+
+test('expanded map keeps names below icons, clear of other names and inside the dial',()=>{
+  const kinds=['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'];
+  const widths=[13,24,29.5,18.5,13,13,18.5,18.5,18.5,18.5];
+  const markers=kinds.map((kind,i)=>({kind,labelWidth:widths[i],x:60+Math.cos(i/kinds.length*Math.PI*2)*30,y:58+Math.sin(i/kinds.length*Math.PI*2)*30}));
+  const groups=layoutBuildingIcons(markers,12,{x:60,y:58},5.5);
+  for(let i=0;i<groups.length;i++){
+    const a=groups[i].box;
+    for(const [x,y] of [[a.x,a.y],[a.x+a.w,a.y],[a.x,a.y+a.h],[a.x+a.w,a.y+a.h]])assert.ok(Math.hypot(x-60,y-58)<=47.001);
+    for(let j=i+1;j<groups.length;j++){
+      const parts=b=>[{x:b.x+(b.w-12)/2,y:b.y,w:12,h:12},{x:b.x,y:b.y+13.5,w:b.w,h:5.5}];
+      for(const p of parts(a))for(const b of parts(groups[j].box))assert.ok(p.x+p.w<=b.x||b.x+b.w<=p.x||p.y+p.h<=b.y||b.y+b.h<=p.y);
+    }
+  }
+});
+
+test('compact map fits all ten types alongside a free chest near the player',()=>{
+  const kinds=['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'],lengths=[2,4,5,3,2,2,3,3,3,3];
+  const size=3840/380,font=2400/380,ratio=190/(84*2.3);
+  const markers=kinds.map((kind,i)=>({kind,labelWidth:lengths[i]*font+2,x:60+Math.cos(i/kinds.length*Math.PI*2)*32.4/ratio,y:58+Math.sin(i/kinds.length*Math.PI*2)*32.4/ratio}));
+  markers.push({kind:'freechest',labelWidth:4*font+2,x:60-4.5/ratio,y:58+6.3/ratio});
+  const groups=layoutBuildingIcons(markers,size,{x:60,y:58},font);
+  assert.equal(groups.length,10);
+  for(let i=0;i<groups.length;i++)for(let j=i+1;j<groups.length;j++)for(const a of groups[i].hitBoxes)for(const b of groups[j].hitBoxes)
+    assert.ok(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y);
 });
 
 test('both maps label unscaled boss distances in centimeters, including off-map minibosses',()=>{

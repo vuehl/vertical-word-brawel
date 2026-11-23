@@ -6,6 +6,11 @@ import {heroActionCatalog} from './hero-action-catalog.js';
 import {heroActionFrame} from './hero-actions.js';
 import {applyShelfMaterial} from './desk-shelf.js';
 const paintJobs=[];
+// Slightly lighter versions of the supplied hero colors, in texture linear space.
+const allyColors={
+  fire:[255,112,76],wind:[153,202,255],ink:[188,127,230],
+};
+for(const key of Object.keys(allyColors))allyColors[key]=new Float32Array(allyColors[key].map(c=>((c/255+.055)/1.055)**2.4));
 let paintTimer=null;
 function paintLater(paint){
   return new Promise((resolve,reject)=>{
@@ -42,6 +47,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     return ring;
   };
   let disposed=false;
+  const allyColor={value:allyColors.fire};
   const animations=new Map();
   function prepareHeroAnimation(id){
     if(disposed||!heroActionCatalog[id])return;
@@ -93,7 +99,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     }));
     page.jobs.push(entry.ready);t.userData.ready=Promise.all(page.jobs);textures.set(word,entry);return entry;
   }
-  function skin(batch,override,heroEntry){
+  function skin(batch,override,heroEntry,ally=false){
     if(batch.zxGlyph)return batch;
     const data=species(batch.sid);if(!data)return batch;
     const word=override||glyphWordForSpecies(batch.sid);
@@ -107,15 +113,37 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     if(!heroEntry)entry.ready.then(()=>{if(!disposed)batch.ready=true;},error=>{if(!disposed)batch.loadError=error;});
     m.fragmentShader=m.fragmentShader.replace('uniform sampler2D map;','uniform sampler2D map; uniform sampler2D zxGlyph;').replaceAll('texture2D(map,','texture2D(zxGlyph,');
     batch.zxOriginalGlyph=isOriginalHeroGlyph(word);
-    if(batch.zxOriginalGlyph){
+    batch.zxAlly=ally;
+    if(heroEntry?.ghost){
+      // Sample the casting form's own complete glyph; each trail style supplies
+      // its tint below and shares the same opacity controls.
+      m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);c.a*=clamp(vFx.y,0.,1.);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.,.28,.04),.35);gl_FragColor=c;}';
+      if(heroEntry.ghost==='wind')m.fragmentShader=m.fragmentShader.replace('vec3(1.,.28,.04),.35','vec3(.65,.92,1.),.85');
+      // 补1 uses a single coral-orange silhouette, without the actor's dark ink.
+      else m.fragmentShader=m.fragmentShader
+        .replace('c.a*=clamp','c.a*=smoothstep(.035,.10,max(c.r,max(c.g,c.b)));c.a*=clamp')
+        .replace('mix(c.rgb,vec3(1.,.28,.04),.35)','vec3(1.,.13,.06)');
+      m.transparent=true;m.depthWrite=false;
+    }else if(ally){
+      // Keep the authored ink border and hit flash; allies share the hero's
+      // palette without recoloring enemies that use the same atlas/word.
+      m.uniforms.zxAllyColor=allyColor;
+      m.fragmentShader='uniform sampler2D zxGlyph; uniform vec3 zxAllyColor; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;float fill=smoothstep(.035,.08,max(c.r,max(c.g,c.b)));c.rgb=mix(c.rgb,zxAllyColor,fill);c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
+      m.transparent=true;m.depthWrite=false;
+    }else if(batch.zxOriginalGlyph){
       // No palette/skin, outline, light ramp or fog recoloring on supplied art.
       // Retain the brief hit flash as combat feedback.
       m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
       m.transparent=true;m.depthWrite=false;
     }
     applyShelfMaterial(m,shelfUniforms);
-    m.needsUpdate=true;batches.add(batch,t.uuid+(batch.zxOriginalGlyph?'-original':''),heroEntry?1:1024);return batch;
+    m.needsUpdate=true;batches.add(batch,t.uuid+(heroEntry?.ghost?'-ghost-'+heroEntry.ghost:ally?'-ally':batch.zxOriginalGlyph?'-original':''),heroEntry?.ghost?96:heroEntry?1:ally?8:1024);return batch;
   }
+  run.sprites.getAllyGlyph=(id,playerSpecies)=>{
+    const word=glyphWordForSpecies(playerSpecies);
+    allyColor.value=allyColors['风讽疯'.includes(word)?'wind':'炎焱燚飒飙'.includes(word)?'fire':'ink'];
+    return skin(get(id,false,'ally'),undefined,undefined,true);
+  };
   run.sprites.prepareHeroForm=id=>Promise.all([prepareHeroStrokes(id),prepareHeroAnimation(id)]);
   run.sprites.heroFrame=(actor,id,action,nowMs)=>{
     if(action&&heroActionCatalog[id]&&!animations.get(id)?.texture.image){
@@ -126,6 +154,14 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   };
   run.sprites.getAnimatedHeroGlyph=(id,frame)=>
     skin(get(id,false,'hero-animation'),glyphWordForSpecies(frame.species),animations.get(frame.species));
+  run.sprites.getHeroGhostGlyph=(id,style='fire')=>{
+    const entry=animations.get(id);
+    if(!entry?.texture.image)return null;
+    const frame=heroActionFrame({},id,'walk',0);
+    const batch=skin(get(id,false,'hero-ghost-'+style),glyphWordForSpecies(id),{...entry,ghost:style,rect:frame.rect});
+    batch.zxGhostScale=frame.renderScale;
+    return batch;
+  };
   let playerEntry;
   run.sprites.getPlayerGlyph=(id,speciesId,pose,frame)=>{
     if(frame)return run.sprites.getAnimatedHeroGlyph(id,frame);

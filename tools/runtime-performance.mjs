@@ -27,8 +27,8 @@ import {fixtureSubpackage} from './fixture-play-chunks.mjs';
 import {gameProject} from './project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
 const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development),'minigame');
-const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion'].some(arg=>process.argv.includes(arg));
-const dir=process.env.POKEBONK_QA||path.join(root,fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
+const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion','--fusion-cleanup'].some(arg=>process.argv.includes(arg));
+const dir=process.env.POKEBONK_QA||path.join(root,process.argv.includes('--summon-mode')?'验收/召唤门蓝红双版':process.argv.includes('--skill-availability')?'验收/技能移除与空气斩':fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
 const {default:puppeteer}=await import(pathToFileURL(path.join(root,'tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js')));
 const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
@@ -87,12 +87,12 @@ try{
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
   const deskReview=process.argv.includes('--map-play')||process.argv.includes('--illustrated-desk');
-  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--hand-drawn-fireball'].some(arg=>process.argv.includes(arg))));
+  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--boss-performance','--hand-drawn-fireball','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
-    const initial={quality:app.meta.profile.settings.quality,saver:app.saver,fpsCap:app.fpsCap(),frameGap:app.frameGap()};
-    Object.assign(app.meta.profile.settings,{quality:upgradeResume?'low':'high',fpsLimit:60,batterySaver:false});app.applySettings();
+    const initial={quality:app.meta.profile.settings.quality,locked:app.meta.profile.settings.lock30Fps,fpsCap:app.fpsCap(),frameGap:app.frameGap()};
+    Object.assign(app.meta.profile.settings,{quality:upgradeResume?'low':'high',fpsLimit:60});app.applySettings();
     // Prevent the software rasterizer from monopolizing startup. Manual sample frames follow.
     window.realFrameGap=app.frameGap.bind(app);
     app.frameGap=()=>250;
@@ -111,7 +111,7 @@ try{
     app.run.update(1/60);
     return initial;
   },{development,repeatableMap,upgradeResume});
-  assert.equal(initial.quality,'high');assert.equal(initial.saver,false);assert.equal(initial.fpsCap,60);
+  assert.equal(initial.quality,'high');assert.equal(initial.locked,false);assert.equal(initial.fpsCap,60);
   if(development)await enterDeveloperFromHome(page,dir);
   if(development&&(fireReview||process.argv.some(arg=>['--illustrated-desk','--hand-drawn-fire-spin','--fire-breath'].includes(arg)))){
     // Art reviews must show the actual desktop, not the default developer
@@ -119,9 +119,45 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--battle-pacing')){
+  if(process.argv.includes('--gourd-offscreen')){
+    const {reviewGourdOffscreen}=await import('./gourd-offscreen-regression.mjs');
+    await reviewGourdOffscreen(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--facility-grey-rings')){
+    const {reviewFacilityGreyRings}=await import('./facility-grey-rings-regression.mjs');
+    await reviewFacilityGreyRings(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--countdown-dock')){
+    const {reviewCountdownDock}=await import('./countdown-dock-regression.mjs');
+    await reviewCountdownDock(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--upgrade-effects')){
+    const {reviewUpgradeEffects}=await import('./upgrade-effects-regression.mjs');
+    await reviewUpgradeEffects(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--summon-mode')){
+    const {reviewSummonModes}=await import('./summon-mode-regression.mjs');
+    await reviewSummonModes(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--frame-stability')){
+    const {reviewFrameStability}=await import('./frame-stability-regression.mjs');
+    await reviewFrameStability(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--exit-guidance')){
+    const {reviewExitGuidance}=await import('./exit-guidance-regression.mjs');
+    await reviewExitGuidance(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--android-stability')){
+    const {reviewAndroidStability}=await import('./android-stability-regression.mjs');
+    await reviewAndroidStability(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--map-wind')){
+    const {reviewMapWind}=await import('./map-wind-regression.mjs');
+    await reviewMapWind(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--boss-telegraphs')){
+    const {reviewBossTelegraphs}=await import('./boss-telegraph-regression.mjs');
+    await reviewBossTelegraphs(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--boss-performance')){
+    const {reviewBossPerformance}=await import('./boss-performance-regression.mjs');
+    await reviewBossPerformance(page,dir,process.argv.includes('--baseline'),process.argv.includes('--boss-programs'));assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--battle-pacing')){
     const {reviewBattlePacing}=await import('./battle-pacing-regression.mjs');
     await reviewBattlePacing(page);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--android-performance')&&process.argv.includes('--startup-soak')){
+    const {reviewAndroidStartup}=await import('./android-startup-regression.mjs');
+    await reviewAndroidStartup(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--android-performance')){
     const samples=await page.evaluate(()=>{
       const samples=[];
@@ -432,25 +468,25 @@ try{
     app.meta.profile.settings.touchScale=.85;app.applySettings();await app.meta.saveNow();
     const saved=JSON.parse(wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8')).accounts[app.meta.account.id].profile.settings;
     run.state='play';
-    const toggle=()=>inspected.doc.querySelector('[aria-label="省电模式"]').click();toggle();
-    const saver={quality:app.meta.profile.settings.quality,profile:run.performance.name,bloom:app.r.bloom.intensity,fpsCap:app.fpsCap(),frameGap:realFrameGap()};toggle();
+    const toggle=()=>inspected.doc.querySelector('[aria-label="锁定 30 帧"]').click();toggle();
+    const locked={quality:app.meta.profile.settings.quality,profile:run.performance.name,bloom:app.r.bloom.intensity,fpsCap:app.fpsCap(),frameGap:realFrameGap()};toggle();
     // Old web-only battery preferences must not override the native switch.
     inspected.env.localStorage.setItem('pb-battery','1');app.applySettings();
-    const restoredFps={fpsCap:app.fpsCap(),frameGap:realFrameGap(),saver:app.saver};
+    const restoredFps={fpsCap:app.fpsCap(),frameGap:realFrameGap(),locked:app.meta.profile.settings.lock30Fps};
     inspected.env.localStorage.removeItem('pb-battery');
     app.meta.profile.settings.fpsLimit=30;app.applySettings();
     const legacyFps=app.fpsCap();
-    const adaptive=(saver,measured,busy=false)=>{
-      Object.assign(app.meta.profile.settings,{quality:'medium',batterySaver:saver});app.applySettings();app.r.setDynRes(1);
+    const adaptive=(locked,measured,busy=false)=>{
+      Object.assign(app.meta.profile.settings,{quality:'medium',frameRateMode:'manual',lock30Fps:locked});app.applySettings();app.r.setDynRes(1);
       app.dyn={t:0,frames:0,js:0,good:0,wait:8,lastUp:-1e9};delete inspected.env.__dynFps;
       for(let i=0;i<125;i++)app.adaptRes(busy?1000/measured*.9:2,1/measured,100000+i*1000/measured);
       return app.r.dynRes;
     };
-    const dynamicResolution={atSaver30:adaptive(true,30),overloaded60:adaptive(false,30),busyNative:adaptive(false,11,true)};
+    const dynamicResolution={atLocked30:adaptive(true,30),overloaded60:adaptive(false,30),busyNative:adaptive(false,11,true)};
     delete inspected.env.__dynFps;app.meta.profile.settings.quality='high';app.applySettings();app.r.setDynRes(1);
     run.state='paused';
     inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
-    return {saved:{quality:saved.quality,touchScale:saved.touchScale},applied,removedControls,saver,restored:run.performance.name,restoredFps,legacyFps,dynamicResolution,options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
+    return {saved:{quality:saved.quality,touchScale:saved.touchScale},applied,removedControls,locked,restored:run.performance.name,restoredFps,legacyFps,dynamicResolution,options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
   });
   await page.screenshot({path:path.join(dir,'settings-quality.png')});
   if(report.glyphCrowd){
@@ -483,17 +519,17 @@ try{
   assert.equal(report.gameplay.misses,0);assert.ok(report.gameplay.escaped&&report.gameplay.stress.finite);assert.equal(report.gameplay.stress.state,'play');
   assert.ok(report.gameplay.stress.activeEnemies>=190&&report.gameplay.stress.farMoved>0,'Throttled distant enemies must continue simulating');
   assert.ok(report.gameplay.stress.particles<=report.gameplay.stress.particleLimit&&report.gameplay.stress.texts<=report.gameplay.stress.textLimit);
-  assert.deepEqual(report.settings.saved,{quality:'high',touchScale:.85});assert.equal(report.settings.saver.quality,'low');assert.equal(report.settings.saver.profile,'流畅');assert.equal(report.settings.restored,'精致');
+  assert.deepEqual(report.settings.saved,{quality:'high',touchScale:.85});assert.equal(report.settings.locked.quality,'high');assert.equal(report.settings.locked.profile,'精致');assert.equal(report.settings.restored,'精致');
   assert.deepEqual(report.settings.removedControls,{count:0,aimMode:'auto'});
   for(const result of report.settings.applied){assert.equal(result.actual,result.label);assert.equal(result.selected,result.label);}
   const [smooth,balanced,fine]=report.settings.applied;
   assert.ok(smooth.worldPixels<balanced.worldPixels&&balanced.worldPixels<fine.worldPixels);
   assert.equal(smooth.uiPixels,fine.uiPixels);assert.equal(balanced.uiPixels,fine.uiPixels);
   assert.deepEqual(report.settings.options,['流畅','均衡','精致']);
-  assert.equal(report.settings.saver.fpsCap,30);assert.ok(Math.abs(report.settings.saver.frameGap-1000/30)<.1);
-  assert.equal(report.settings.restoredFps.fpsCap,60);assert.equal(report.settings.restoredFps.saver,false);assert.equal(report.settings.restoredFps.frameGap,1000/60);
+  assert.equal(report.settings.locked.fpsCap,30);assert.ok(Math.abs(report.settings.locked.frameGap-1000/30)<.1);
+  assert.equal(report.settings.restoredFps.fpsCap,60);assert.equal(report.settings.restoredFps.locked,false);assert.equal(report.settings.restoredFps.frameGap,1000/60);
   assert.equal(report.settings.legacyFps,60);
-  assert.equal(report.settings.dynamicResolution.atSaver30,1);assert.equal(report.settings.dynamicResolution.overloaded60,1);
+  assert.equal(report.settings.dynamicResolution.atLocked30,1);assert.equal(report.settings.dynamicResolution.overloaded60,1);
   assert.equal(report.settings.dynamicResolution.busyNative,1,'Low FPS must not override the selected resolution');
   assert.ok(report.hud.bytes<100000000,'Low quality must reduce full HUD and minimap upload bandwidth');
   assert.equal(report.minimap.fullUploads,0,'A minimap refresh must not upload the whole screen');

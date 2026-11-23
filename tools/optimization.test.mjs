@@ -89,17 +89,18 @@ test('Android bounds scene resolution and shadow size within the player-selected
   assert.deepEqual(readDevice({getDeviceInfo(){throw Error();},getSystemInfoSync:()=>({platform:'ios'})}),{platform:'ios'});
   assert.deepEqual(readDevice({}),{platform:''});
   for(const platform of ['ios','android','devtools'])for(const quality of ['low','medium','high']){
-    const settings={quality,batterySaver:false},profile=performanceProfile(settings,{platform});
+    const settings={quality},profile=performanceProfile(settings,{platform});
     const preset=performanceProfiles[quality];
     if(platform==='android' && quality!=='low'){
-      const {pixelBudget,maxPixelRatio,workshopShadowSize,...visuals}=profile;
+      const {pixelBudget,maxPixelRatio,workshopShadowSize,fireImpactBudget,...visuals}=profile;
+      assert.equal(fireImpactBudget,quality==='high'?8:6);
       assert.ok(pixelBudget<preset.pixelBudget && maxPixelRatio<preset.maxPixelRatio && workshopShadowSize<preset.workshopShadowSize);
       assert.deepEqual({...visuals,pixelBudget:preset.pixelBudget,maxPixelRatio:preset.maxPixelRatio,workshopShadowSize:preset.workshopShadowSize},preset);
     }else assert.equal(profile,preset);
     assert.equal(profile.dynamicResolution,false);assert.equal(profile.lockVisualQuality,true);
     assert.equal(settings.quality,quality);
-    settings.batterySaver=true;assert.equal(performanceProfile(settings,{platform}),performanceProfiles.low);
-    settings.batterySaver=false;assert.equal(performanceProfile(settings,{platform}),profile);
+    settings.batterySaver=true;assert.equal(performanceProfile(settings,{platform}),profile);
+    delete settings.batterySaver;assert.equal(performanceProfile(settings,{platform}),profile);
   }
 });
 

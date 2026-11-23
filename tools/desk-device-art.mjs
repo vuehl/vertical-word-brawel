@@ -5,6 +5,14 @@ import {altarLayers} from '../source/src/desk-altar-art.js';
 import {berryLayers} from '../source/src/desk-berry-art.js';
 import {billLayers} from '../source/src/bill-layers.js';
 
+// Compose at the artist's original coordinates before trimming the transparent
+// margins so all three map markers remain legible at HUD size.
+async function writeDeviceIcon(source,kind,base,layers){
+  const composed=await sharp(base).composite(layers).png().toBuffer();
+  await sharp(composed).trim({background:'#0000'}).resize(128,128,{fit:'contain',background:'#0000'})
+    .png().toFile(path.join(source,'public/assets/ui/devices',kind+'.png'));
+}
+
 async function prepareBill(source){
   const originals=path.join(source,'art/device-bill'),out=path.join(source,'public/assets/env/desk2d');
   const art=name=>path.join(originals,path.basename(billLayers[name]));
@@ -33,8 +41,12 @@ async function prepareBill(source){
     await sharp(art(name)).extract({left:l,top:t,width:r-l,height:b-t}).png().toFile(path.join(out,billLayers[name]));
   }
   const silhouette=await sharp(art('base')).composite([{input:art('face')}]).png().toBuffer();
-  await sharp(art('base')).trim({background:'#0000'}).resize(128,128,{fit:'contain',background:'#0000'})
-    .png().toFile(path.join(source,'public/assets/ui/devices/bill.png'));
+  const [x,y,w,h]=frame.socket;
+  await writeDeviceIcon(source,'bill',art('base'),[
+    {input:art('face')},
+    {input:art('pupil'),left:Math.round(x+(w-pupil.width)/2),top:Math.round(y+(h-pupil.height)/2)},
+    {input:art('highlight')},
+  ]);
   return {frame,silhouette};
 }
 
@@ -64,6 +76,11 @@ export async function updateDeskDeviceArt(root) {
   // The wrapper is opaque. The painted drop shadow peaks at alpha 171.
   devices.berry.pickup={resolution:width,strips:await strips(berryLayers.base,width,203)};
   const bill=await prepareBill(root);
+  const art=file=>path.join(root,'public/assets/env/desk2d',file);
+  await writeDeviceIcon(root,'berry',art(berryLayers.base),[{input:art(berryLayers.spiral)}]);
+  await writeDeviceIcon(root,'altar',art(altarLayers.base),[
+    {input:art(altarLayers.idle)}, {input:art(altarLayers.tint)},
+  ]);
   devices.bill.frame=bill.frame;
   devices.bill.strips=await strips(bill.silhouette);
   delete devices.altar.strips;

@@ -90,12 +90,13 @@ const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
 const random=n=>{const x=Math.sin(n*127.1+43.7)*43758.5453;return x-Math.floor(x);};
 // Other fire cones share the original simulation and budget, but retain
 // their existing shader. Test/remote emitters without a move use the spray.
-const painted=emitter=>!emitter.key?.def||['flamethrower','dragon-breath','heat-wave'].includes(emitter.key.def.key);
+const painted=emitter=>!emitter.key?.def||['flamethrower','dragon-breath'].includes(emitter.key.def.key);
 
 export class HandDrawnFireJet{
   constructor(owner,scene){
     this.owner=owner;this.packets=[];this.serial=0;this.spawned=0;this.expired=0;this.limit=112;this.packetLimit=112;this.rate=48;this.clock=0;
     this.hits=[];this.hitTimes=new Map();this.hitLimit=28;
+    this.instances=[];
     this.legacy=new ProceduralFireJet(owner,scene);
     const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
     const texture=this.texture=new CanvasTexture(canvas);texture.colorSpace=SRGB;texture.generateMipmaps=false;texture.minFilter=texture.magFilter=1006;
@@ -141,13 +142,14 @@ export class HandDrawnFireJet{
       radius:(.38+b*.30)*scale,stretch:(.85+c*.35)*scale,lift:.45+c*.7,own:emitter.own!==false,painted:painted(emitter),purple:emitter.type==='dragon'});
     this.spawned++;
   }
-  sample(packet){
+  sample(packet,out={}){
     const p=clamp(packet.age/packet.life),grow=smooth(p/.58),shrink=1.-smooth((p-.65)/.35)*.64;
     const travel=packet.length*p*(1.3-.3*p),sway=(Math.sin(p*7.+packet.seed)-Math.sin(packet.seed))*p*.22;
     const birth=smooth(packet.age/.07),fade=1.-smooth((p-.62)/.38);
-    return {p,x:packet.x+packet.dx*travel-packet.dz*sway,y:packet.y+.06+Math.pow(p,1.7)*packet.lift,
-      z:packet.z+packet.dz*travel+packet.dx*sway,radius:packet.radius*(.10+grow*.90)*shrink,
-      length:packet.stretch*(.45+grow*(1.20+Math.sin(p*Math.PI)*.60))*shrink,alpha:birth*fade};
+    out.p=p;out.x=packet.x+packet.dx*travel-packet.dz*sway;out.y=packet.y+.06+Math.pow(p,1.7)*packet.lift;
+    out.z=packet.z+packet.dz*travel+packet.dx*sway;out.radius=packet.radius*(.10+grow*.90)*shrink;
+    out.length=packet.stretch*(.45+grow*(1.20+Math.sin(p*Math.PI)*.60))*shrink;out.alpha=birth*fade;
+    return out;
   }
   impact(x,y,z,own=true,critical=false,purple=false){
     if(!this.owner.allowed(own)||this.hits.length>=this.hitLimit)return;
@@ -158,13 +160,16 @@ export class HandDrawnFireJet{
     this.owner.impacts++;
   }
   updateHits(dt){
-    dt=Math.max(0,dt);this.hits=this.hits.filter(h=>{h.age+=dt;return h.age<atlas.clips.hit.count/48&&this.owner.allowed(h.own);});
+    dt=Math.max(0,dt);let live=0;
+    for(const h of this.hits){h.age+=dt;if(h.age<atlas.clips.hit.count/48&&this.owner.allowed(h.own))this.hits[live++]=h;}
+    this.hits.length=live;
     for(const [key,time] of this.hitTimes)if(this.clock-time>1)this.hitTimes.delete(key);
-    const [origin,motion,life]=this.hitAttributes.map(a=>a.array),v=this.owner.vfx;let count=0;
+    const origin=this.hitAttributes[0].array,motion=this.hitAttributes[1].array,life=this.hitAttributes[2].array,v=this.owner.vfx;let count=0;
     for(const h of this.hits){
       if(count>=this.hitLimit)break;const o=count++*4;
-      origin.set([h.x,h.y,h.z,h.size],o);motion.set([1,0,h.size,2+(h.purple?4:0)],o);
-      life.set([h.age*48/atlas.clips.hit.count,.66*v.opacity*(h.own?v.ownOpacity:1)*(v.calm?.78:1),0,h.age],o);
+      origin[o]=h.x;origin[o+1]=h.y;origin[o+2]=h.z;origin[o+3]=h.size;
+      motion[o]=1;motion[o+1]=0;motion[o+2]=h.size;motion[o+3]=2+(h.purple?4:0);
+      life[o]=h.age*48/atlas.clips.hit.count;life[o+1]=.66*v.opacity*(h.own?v.ownOpacity:1)*(v.calm?.78:1);life[o+2]=0;life[o+3]=h.age;
     }
     this.hitMesh.count=this.loaded?count:0;this.hitMesh.visible=this.hitMesh.count>0;
     for(const a of this.hitAttributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}
@@ -176,10 +181,9 @@ export class HandDrawnFireJet{
       if(this.hits.length||this.hitTimes.size||this.hitMesh.count)this.updateHits(dt);
       return;
     }
-    for(let i=this.packets.length-1;i>=0;i--){
-      const p=this.packets[i];p.age+=Math.max(0,dt);
-      if(p.age>=p.life||!owner.allowed(p.own)){this.packets.splice(i,1);this.expired++;}
-    }
+    let live=0;
+    for(const p of this.packets){p.age+=Math.max(0,dt);if(p.age>=p.life||!owner.allowed(p.own))this.expired++;else this.packets[live++]=p;}
+    this.packets.length=live;
     if(this.packets.length>this.packetLimit){this.packets.sort((a,b)=>a.age-b.age);this.packets.length=this.packetLimit;}
     if(dt>0)for(const emitter of emitters){
       if(emitter.fireTouched){
@@ -193,16 +197,20 @@ export class HandDrawnFireJet{
       }
       emitter.fireTouched=false;
     }
-    const camera=run.r.camera.position,instances=[];
+    const camera=run.r.camera.position,instances=this.instances;instances.length=0;
     for(const packet of this.packets){
-      packet.sample=this.sample(packet);if(packet.painted&&packet.id%2!==0)continue;
+      packet.sample=this.sample(packet,packet.sample??={});if(packet.painted&&packet.id%2!==0)continue;
       // Keep the old rolling fan, with fewer, larger overlapping tongues.
       const far=packet.painted?smooth((packet.sample.p-.52)/.30):0;
       const scale=packet.painted?1.5*(1-far*.32):1;
       // Far tongues shrink and extinguish before leaving the visual fan.
       // Their simulation and the move's damage cone are unchanged.
       const alpha=packet.sample.alpha*.88*(1-far);if(packet.painted&&alpha<.012)continue;
-      instances.push({...packet.sample,radius:packet.sample.radius*scale,length:packet.sample.length*scale,alpha,dx:packet.dx,dz:packet.dz,seed:packet.seed,age:packet.age,own:packet.own,painted:packet.painted,purple:packet.purple});
+      const instance=packet.instance??={};
+      instance.x=packet.sample.x;instance.y=packet.sample.y;instance.z=packet.sample.z;instance.p=packet.sample.p;
+      instance.radius=packet.sample.radius*scale;instance.length=packet.sample.length*scale;instance.alpha=alpha;
+      instance.dx=packet.dx;instance.dz=packet.dz;instance.seed=packet.seed;instance.age=packet.age;instance.own=packet.own;instance.painted=packet.painted;instance.purple=packet.purple;
+      instances.push(instance);
     }
     // The original connecting core retains its growth, length, timing and
     // stop envelope. Only its pixels now come from the authored spray frames.
@@ -210,24 +218,29 @@ export class HandDrawnFireJet{
       const authored=painted(emitter),growth=smooth(emitter.age/.24),length=emitter.artLength*(authored?.66:.55)*growth;
       if(length<.025)continue;
       const dx=Math.cos(emitter.angle),dz=Math.sin(emitter.angle),tail=clamp((this.clock-(emitter.fireLast??this.clock))/.10);
-      instances.push({x:emitter.x+dx*length*.5,y:emitter.y+.20,z:emitter.z+dz*length*.5,radius:length*.36,
-        length,dx,dz,p:tail,alpha:(authored?.86:.78)*growth*(1.-smooth((tail-.6)/.4)),seed:emitter.seed,age:emitter.age,core:1,own:emitter.own!==false,painted:authored,purple:emitter.type==='dragon'});
+      const instance=emitter.fireInstance??={};
+      instance.x=emitter.x+dx*length*.5;instance.y=emitter.y+.20;instance.z=emitter.z+dz*length*.5;instance.radius=length*.36;
+      instance.length=length;instance.dx=dx;instance.dz=dz;instance.p=tail;instance.alpha=(authored?.86:.78)*growth*(1.-smooth((tail-.6)/.4));
+      instance.seed=emitter.seed;instance.age=emitter.age;instance.core=1;instance.own=emitter.own!==false;instance.painted=authored;instance.purple=emitter.type==='dragon';
+      instances.push(instance);
     }
     for(const p of instances)p.depth=(p.x-camera.x)**2+(p.y-camera.y)**2+(p.z-camera.z)**2;
     instances.sort((a,b)=>b.depth-a.depth);
-    for(const [renderer,authored] of [[this,true],[this.legacy,false]]){
-      const [origin,motion,life]=renderer.attributes.map(a=>a.array);let count=0;
+    for(let pass=0;pass<2;pass++){
+      const authored=pass===0,renderer=authored?this:this.legacy;
+      const origin=renderer.attributes[0].array,motion=renderer.attributes[1].array,life=renderer.attributes[2].array;let count=0;
       for(const p of instances){
         if(p.painted!==authored)continue;
         const o=count++*4,opacity=owner.vfx.opacity*(p.own?owner.vfx.ownOpacity:1)*(owner.vfx.calm?.78:1);
-        origin.set([p.x,p.y,p.z,p.radius],o);motion.set([p.dx,p.dz,p.length,(p.core||0)+(p.purple?4:0)],o);
-        life.set([p.p,p.alpha*opacity,p.seed,p.age],o);
+        origin[o]=p.x;origin[o+1]=p.y;origin[o+2]=p.z;origin[o+3]=p.radius;
+        motion[o]=p.dx;motion[o+1]=p.dz;motion[o+2]=p.length;motion[o+3]=(p.core||0)+(p.purple?4:0);
+        life[o]=p.p;life[o+1]=p.alpha*opacity;life[o+2]=p.seed;life[o+3]=p.age;
       }
       renderer.mesh.count=authored&&!this.loaded?0:count;renderer.mesh.visible=renderer.mesh.count>0;
       for(const attribute of renderer.attributes){attribute.clearUpdateRanges();attribute.addUpdateRange(0,count*4);attribute.needsUpdate=true;}
     }
     this.updateHits(dt);
   }
-  clear(){this.packets.length=0;this.mesh.count=0;this.mesh.visible=false;this.hits.length=0;this.hitTimes.clear();this.hitMesh.count=0;this.hitMesh.visible=false;this.legacy.clear();}
+  clear(){this.packets.length=this.instances.length=0;this.mesh.count=0;this.mesh.visible=false;this.hits.length=0;this.hitTimes.clear();this.hitMesh.count=0;this.hitMesh.visible=false;this.legacy.clear();}
   dispose(){this.disposed=true;this.clear();this.legacy.dispose();this.mesh.parent?.remove(this.mesh);this.hitMesh.parent?.remove(this.hitMesh);this.mesh.geometry.dispose();this.hitMesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();this.hitMesh.dispose();this.texture.dispose();}
 }

@@ -4431,6 +4431,7 @@ export {zi as WorkshopStandardMaterial, Ha as WorkshopPointLight};
 
 // Public names used by the screen-effect module embedded in the device GLBs.
 export const DeviceFxThree = {
+  FloatType: f, LinearMipmapLinearFilter: c, PlaneGeometry: Di, SRGBColorSpace: M,
   BufferAttribute: Dn, BufferGeometry: Hn, Camera: Pa, Color: J, DataTexture: kr, DepthTexture: hi,
   DoubleSide: 2, DynamicDrawUsage: ie, Float32BufferAttribute: An, HalfFloatType: p,
   LinearFilter: o, Matrix4: q, Mesh: hr, NearestFilter: r, RedFormat: b, RGBAFormat: _, Scene: Ht, ShaderMaterial: Li,

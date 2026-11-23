@@ -1,7 +1,8 @@
 import {WindAtlasBatch} from './wind-vortex.js';
 import {starterForSpecies} from './starter-characters.js';
+import {installWindSkillArt} from './wind-skill-art.js';
 
-const moveKeys=new Set(['quick-attack','aerial-ace','twister']);
+const moveKeys=new Set(['quick-attack','aerial-ace','twister','gust','hurricane','wing-attack','feather-dance','tackle']);
 export function windMoveEffect(key,species) {
   if(moveKeys.has(key) && starterForSpecies(species).id===16) return 'wind-'+key;
 }
@@ -70,4 +71,5 @@ export function installWindMoveArt(registry) {
   registry['wind-twister']={...registry.twister,sourceKey:'twister',
     trail(){},hit(){},draw:(pool,id,size)=>art(pool.run).projectile(pool,id,size,true),
     boom:(run,x,y,z)=>art(run).play(4,8,24,x,run.terrain.height(x,z)+2.7,z,6.3)};
+  installWindSkillArt(registry);
 }

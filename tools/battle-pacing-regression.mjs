@@ -135,8 +135,14 @@ export async function reviewBattlePacing(page) {
           damage(1, dragon, 0, .2) !== 5) throw Error('Incorrect opening guardian damage in '+mode);
     }
     r.stage = 2;
-    if (damage(20, dragon) !== 10 || damage(100, dragonShot, .3) !== 15)
-      throw Error('Second guardian damage changed');
+    const secondZone = {
+      contact:damage(20,id), projectile:damage(20,{kind:'common',species:19}),
+      capped:damage(100,id,.3), floored:damage(1,id,0,.2),
+      guardian:damage(20,dragon), guardianShot:damage(100,dragonShot,.3),
+      terrain:damage(20,-1), event:damage(20,{kind:'event',species:19}),
+    };
+    r.stage = 4;
+    const finalZone = {contact:damage(20,id),guardian:damage(20,dragon),guardianShot:damage(100,dragonShot,.3)};
     r.stage = 1;
     const xpPerKill = () => {
       let xp = 0;
@@ -150,7 +156,10 @@ export async function reviewBattlePacing(page) {
     const localXp = xpPerKill();
     r.pickups.clear();
     r.combat.creditRemote(-1, 19, 0, p.pos.x, p.pos.y, p.pos.z, 8);
-    return {contact,projectile,capped,floored,terrain,localXp,remoteXp:xpPerKill()};
+    return {contact,projectile,capped,floored,terrain,localXp,remoteXp:xpPerKill(),secondZone,finalZone};
   });
-  assert.deepEqual(balance, {contact:10,projectile:10,capped:15,floored:10,terrain:20,localXp:10,remoteXp:10});
+  assert.deepEqual(balance, {contact:10,projectile:10,capped:15,floored:10,terrain:20,localXp:10,remoteXp:10,
+    secondZone:{contact:15,projectile:15,capped:22.5,floored:15,guardian:15,guardianShot:22.5,terrain:20,event:20},
+    finalZone:{contact:10,guardian:10,guardianShot:15}});
+  console.log('Battle damage balance passed:',JSON.stringify(balance));
 }

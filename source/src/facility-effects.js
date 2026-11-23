@@ -1,7 +1,20 @@
-import {DeviceFxThree as T, F as Frustum, lt as Sphere, PostprocessingPass, RedFormat} from '../assets/three-DmSYIDKK.js';
+import {DeviceFxThree as T, dt as Texture, F as Frustum, lt as Sphere, PostprocessingPass} from '../assets/three-DmSYIDKK.js';
 import {createDeviceScreenFx} from './DeviceScreenFx.mjs';
+import {attachPortalDock} from './PortalDock.mjs';
+import earcut, {flatten} from './vendor/earcut.js';
 
-export function createFacilityEffects(host) {
+// The trimmed Three.js bundle omits ShapeUtils. The dock uses this one
+// operation to turn the authored flash silhouettes into triangles.
+const dockThree = {...T, Texture, ShapeUtils: {triangulateShape(contour, holes) {
+  const rings = [contour, ...holes].map(ring => ring.map(point => [point.x, point.y]));
+  const polygon = flatten(rings);
+  const indices = earcut(polygon.vertices, polygon.holes);
+  const faces = [];
+  for (let i = 0; i < indices.length; i += 3) faces.push(indices.slice(i, i + 3));
+  return faces;
+}}};
+
+export function createFacilityEffects(host, focusWorld) {
   const {renderer, composer, scene, camera, outline, outlinePass, antiAliasPass} = host;
   const fx = createDeviceScreenFx(T, renderer);
   const meshesByRoot = new Map();
@@ -9,53 +22,29 @@ export function createFacilityEffects(host) {
   const visiblePass = new PostprocessingPass('Visible devices', null, null);
   const colourPass = new PostprocessingPass('Device screen effects', null, null);
   const source = {width: 0, height: 0, texture: null, depthTexture: null};
-  const options = {originalOutlineRadiusPx: 0};
+  const options = {focusWorld, matricesUpdated: true, originalOutlineRadiusPx: 0};
 
-  // PixelOutline runs before grading. Only that preset needs this one-channel
-  // exclusion mask so the world outline never inks the facilities.
-  const exclusion = new T.WebGLRenderTarget(1, 1, {
-    format: RedFormat, minFilter: T.NearestFilter, magFilter: T.NearestFilter, depthBuffer: false,
-  });
-  const maskScene = new T.Scene();
-  maskScene.matrixWorldAutoUpdate = false;
-  const maskMaterial = new T.ShaderMaterial({
-    side: T.DoubleSide, depthTest: false, depthWrite: false, toneMapped: false,
-    uniforms: {sceneDepth: {value: null}, size: {value: new T.Vector2()}},
-    vertexShader: 'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform sampler2D sceneDepth; uniform vec2 size;
-      void main(){
-        if(gl_FragCoord.z > texture2D(sceneDepth, gl_FragCoord.xy / size).r + .000002) discard;
-        gl_FragColor=vec4(1.);
-      }`,
-  });
-  const savedColour = new T.Color();
+  // The device ID mask already contains the visible silhouette (> .5).
+  // Prepare it before world outlines, then reuse it after colour grading.
+  // This avoids submitting every device mesh to a second full-size mask.
   const useMask = outline.uniforms.get('uHasDeviceMask');
   const worldMask = outline.uniforms.get('uDeviceMask');
-  worldMask.value = exclusion.texture;
+  worldMask.value = fx.maskTexture;
 
   function add(root) {
     if (meshesByRoot.has(root)) return;
     fx.add(root);
-    const pairs = [];
+    const meshes = [];
     root.traverse(mesh => {
       if (!mesh.isMesh) return;
-      const proxy = new T.Mesh(mesh.geometry, maskMaterial);
-      // RenderPass has already updated the real mesh, including its animated parents.
-      proxy.matrixWorld = mesh.matrixWorld;
-      proxy.matrixAutoUpdate = proxy.matrixWorldAutoUpdate = false;
-      proxy.frustumCulled = false;
-      proxy.layers.enableAll();
-      maskScene.add(proxy);
       if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
-      pairs.push([mesh, proxy]);
+      meshes.push(mesh);
     });
-    meshesByRoot.set(root, pairs);
+    meshesByRoot.set(root, meshes);
   }
   function remove(root) {
-    const pairs = meshesByRoot.get(root);
-    if (!pairs) return;
+    if (!meshesByRoot.has(root)) return;
     fx.remove(root);
-    for (const [, proxy] of pairs) maskScene.remove(proxy);
     meshesByRoot.delete(root);
   }
   function visible(mesh) {
@@ -72,30 +61,17 @@ export function createFacilityEffects(host) {
   visiblePass.render = (_, input) => {
     frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     let anyVisible = false;
-    for (const pairs of meshesByRoot.values()) for (const [mesh, proxy] of pairs) {
-      proxy.visible = visible(mesh);
-      if (proxy.visible) anyVisible = true;
+    for (const meshes of meshesByRoot.values()) {
+      if(meshes.some(visible)){anyVisible=true;break;}
     }
-    // The GLB adapter plays a sweep followed by two star bursts on a 3 s loop.
-    // Only composite during the star bursts. The world-outline mask stays active independently.
-    const phase = host.shared.uTime.value % 3;
-    colourPass.enabled = anyVisible && ((phase > 1.52 && phase < 1.82) || (phase >= 1.92 && phase < 2.52));
-    useMask.value = anyVisible && outlinePass.enabled;
-    if (!useMask.value) return;
-    exclusion.setSize(input.width, input.height);
-    maskMaterial.uniforms.sceneDepth.value = composer.stableDepthTexture;
-    maskMaterial.uniforms.size.value.set(input.width, input.height);
-    const previous = renderer.getRenderTarget(), alpha = renderer.getClearAlpha();
-    renderer.getClearColor(savedColour);
-    try {
-      renderer.setRenderTarget(exclusion);
-      renderer.setClearColor(0, 0);
-      renderer.clear(true, false, false);
-      renderer.render(maskScene, camera);
-    } finally {
-      renderer.setClearColor(savedColour, alpha);
-      renderer.setRenderTarget(previous);
-    }
+    colourPass.enabled = anyVisible;
+    useMask.value = false;
+    options.preparedFrame=null;
+    if (!anyVisible) return;
+    source.width=input.width;source.height=input.height;
+    source.depthTexture=composer.stableDepthTexture;
+    options.preparedFrame=fx.prepareFrame(scene,camera,host.shared.uTime.value,source,options);
+    useMask.value=options.preparedFrame.active>0&&outlinePass.enabled;
   };
   colourPass.enabled = false;
   colourPass.render = (_, input, output) => {
@@ -108,16 +84,17 @@ export function createFacilityEffects(host) {
   };
   composer.addPass(visiblePass, composer.passes.indexOf(outlinePass));
   composer.addPass(colourPass, composer.passes.indexOf(antiAliasPass));
+  async function prepare() {
+    await fx.prepare(camera, composer.inputBuffer);
+  }
   function dispose() {
     composer.removePass(visiblePass);
     composer.removePass(colourPass);
     useMask.value = false;
     worldMask.value = null;
     fx.dispose();
-    maskScene.clear();
     meshesByRoot.clear();
-    maskMaterial.dispose();
-    exclusion.dispose();
+    options.preparedFrame=null;
   }
-  return {add, remove, dispose};
+  return {add, remove, prepare, dispose, attachDock: (model, options) => attachPortalDock(dockThree, renderer, model, options)};
 }

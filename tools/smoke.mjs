@@ -498,7 +498,11 @@ async function verifyStartup(){
   console.log('Boot percentages through the first home frame:',[...new Set(values)].join(', '));
 }
 try{
-  if(process.argv.includes('--desk2d')){
+  if(process.argv.includes('--joystick-only')){
+    const {verifyJoystick}=await import('./joystick-regression.mjs');
+    await verifyJoystick(page,dir);
+    if(errors.length)throw Error(errors[0]);
+  }else if(process.argv.includes('--desk2d')){
     const {verifyDesk}=await import('./desk2d-regression.mjs');
     await verifyDesk(page,dir);
   }else await verifyStartup();

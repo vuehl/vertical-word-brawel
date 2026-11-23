@@ -28,7 +28,7 @@ import {createModalTransition} from './modal-transition.mjs';
 import {gameViewport} from './viewport.mjs';
 import {createMutationTargets} from './mutation-targets.mjs';
 import {uiScale} from './ui-resolution.mjs';
-import {readRuntimeInfo} from './device.mjs';
+import {readRuntimeInfo,readDevicePerformance} from './device.mjs';
 
 class InputEvent extends D.Event {
   constructor(type,options={}){super(type,{bubbles:options.bubbles!==false,cancelable:true});Object.assign(this,options);}
@@ -62,6 +62,7 @@ export async function setup(host) {
   const controls=createControlLayer(makeCanvas);
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
+  readDevicePerformance(wx,device).then(()=>win.dispatchEvent(new D.Event('deviceperformancechange')));
   const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true,uploadPixels:device.platform==='ios'});
   const peerTiles=['peer-health-0','peer-health-1','peer-tag-0','peer-tag-1'].map((id,i)=>
     createCanvasLayer(makeCanvas,id,{slot:14+i,movable:true,uploadPixels:device.platform==='ios'}));
@@ -72,6 +73,7 @@ export async function setup(host) {
   const skillLayer=soloLayers[2];
   soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
   soloLayers.push(createHUDLayer(makeCanvas,'stage-intro',20));
+  soloLayers.push(createHUDLayer(makeCanvas,'ultimate-cutin',21));
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
@@ -237,7 +239,18 @@ export async function setup(host) {
       const x=(t.clientX??t.pageX)-view.x,y=(t.clientY??t.pageY)-view.y;
       return {...t,identifier:t.identifier,clientX:x,clientY:y,pageX:x,pageY:y};
     };
-    const all=Array.from(event.touches||[],local),changed=Array.from(event.changedTouches||event.touches||[],local);
+    const all=Array.from(event.touches||[],local);
+    let changed=Array.from(event.changedTouches||[],local);
+    if(!changed.length){
+      if(kind==='up'||kind==='cancel'){
+        // A remaining contact still owns its control. Only cancel missing IDs
+        // when the platform omits the final coordinates; never synthesize a tap.
+        const live=new Set(all.map(t=>t.identifier??0));
+        changed=Array.from(pointers,([identifier,p])=>({identifier,clientX:p.x,clientY:p.lastY}))
+          .filter(t=>!live.has(t.identifier));
+        kind='cancel';
+      }else changed=kind==='down'?all.filter(t=>!pointers.has(t.identifier??0)):all;
+    }
     const touchType='touch'+({down:'start',move:'move',up:'end',cancel:'cancel'}[kind]);
     for(const t of changed){
       const id=t.identifier??0,x=t.clientX,y=t.clientY;
@@ -347,9 +360,7 @@ export async function setup(host) {
         entryHitScreen=entry;
         const mode=entry.dataset.entryPage,app=env.__zixingApp;
         const live=app.menuScene?.drawEntry()||false;
-        if(mode!=='departure'||!live){
-          host.entryScene.page(mode,view,Number(entry.dataset.tier||0),Number(entry.dataset.progress||0),live);
-        }
+        host.entryScene.page(mode,view,Number(entry.dataset.tier||0),Number(entry.dataset.progress||0),live);
         renderer.resetState();entrySceneVisible=entryArtResident=true;
         return;
       }

@@ -86,7 +86,10 @@ globalThis.wx={
   onShareAppMessage:listener=>{window.fixtureMenuCard=listener;},
   showShareMenu:({menus})=>{window.fixtureShareMenus=menus;},
   env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>fs,
-  getDeviceInfo:()=>({platform:window.fixturePlatform||'devtools'}),
+  getDeviceInfo:()=>({platform:window.fixturePlatform||'devtools',...window.fixtureDeviceInfo}),
+  // Existing render workload tests intentionally use a high-end device.
+  // Device-policy cases can inject a different tier or an unavailable API.
+  getDeviceBenchmarkInfo:({success,fail})=>window.fixtureBenchmark===null?fail({}):success(window.fixtureBenchmark??{modelLevel:1,benchmarkLevel:40}),
   getWindowInfo:()=>({windowWidth:innerWidth,windowHeight:innerHeight,pixelRatio:devicePixelRatio,
     safeArea:!window.phoneLayout?undefined:innerHeight>=innerWidth
       ?{left:0,top:36,right:innerWidth,bottom:innerHeight-34}
@@ -140,6 +143,7 @@ window.fixtureShow=options=>showCallbacks.forEach(fn=>fn(options));
 for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide'})){
   wx['on'+key]=fn=>{events[key]=fn;if(event.startsWith('touch'))document.addEventListener(event,fn,{passive:false});};
 }
+window.fixtureHide=()=>events.Hide?.();
 const fingers=new Map();
 window.tap=(x,y,kind='tap',id=1)=>{const t={identifier:id,clientX:x,clientY:y,pageX:x,pageY:y};
   const send=k=>{

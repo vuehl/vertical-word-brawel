@@ -43,6 +43,11 @@ for(const [group,expected] of Object.entries(index.packs)){
   if(group==='art')for(const [name,recipe] of Object.entries(index.sprites))files[name]=restoreSprite(files[recipe]);
 }
 function bytes(key){const [group,file]=index.files[key].split('/');return packs[group][file];}
+// This WebP encodes palette indices as pixels. Any transcoding corrupts both themes.
+const chantAsset='assets/vfx/dragon-chant.webp';
+assert.ok(index.files[chantAsset], 'Missing summon animation data atlas');
+assert.equal(digest(bytes(chantAsset)),digest(fs.readFileSync(path.join(pub,chantAsset))),
+  'Keep the summon data atlas byte-for-byte');
 for(const [key,ref] of Object.entries(index.files)){
   assert.equal(excludedAssetReason(key),null,'Unused asset still packaged: '+key);
   const data=bytes(key);assert.ok(data,'Missing '+key);assert.equal(digest(data).slice(0,16),path.basename(ref,path.extname(ref)));
@@ -146,7 +151,9 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
 const modelKinds=Object.keys(facilityNames).filter(kind=>kind!=='bill');
 const deviceKeys=modelKinds.map(kind=>'assets/models/'+facilityModelFile(kind)+'.glb');
-assert.equal(deviceKeys.length,8);
+assert.equal(deviceKeys.length,9);
+assert.deepEqual(fs.readdirSync(path.join(pub,'assets/models/devices')).filter(name=>name.endsWith('.glb')).sort(),
+  Object.values(facilityNames).map(name=>name+'.glb').sort(),'Each building name must match its source model');
 assert.deepEqual(models.sort(),['assets/models/ball.glb',...deviceKeys].sort());
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
 const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/DeviceScreenFx.mjs')));
@@ -177,8 +184,20 @@ for(const kind of modelKinds){
   const key='assets/models/'+facilityModelFile(kind)+'.glb',glb=Buffer.from(bytes(key));
   const gltf=JSON.parse(glb.toString('utf8',20,20+glb.readUInt32LE(12)));
   const adapter=gltf.asset.extras.deviceScreenFxAdapter,scene=gltf.scenes[gltf.scene??0].extras;
-  assert.equal(adapter.sha256,adapterHash,key);
-  assert.equal(digest(adapter.source),adapterHash,key);
+  assert.equal(digest(adapter.source),adapter.sha256,key);
+  if(kind==='boss'){
+    const dock=gltf.asset.extras.portalDockAdapter;
+    // The model embeds its original adapter pair. The game imports the
+    // optimised compositor and animated-screen implementation from src.
+    assert.equal(adapter.sha256,'d0fbc0f794e316abc3c99c4fa0ace0c0a474bdcf0e8a8eb5bfa7a8b4f47fb905',key);
+    assert.equal(dock.requiresDeviceScreenFxSha256,adapter.sha256,key);
+    assert.equal(digest(dock.source),dock.sha256,key);
+    assert.equal(dock.sha256,'5c2a3ca204d395f2bbbb2ebfd1b999f51ec162fea6180582d9cb301e5289f726',key);
+    assert.equal(scene.portalDock.version,1,key);
+  }else{
+    // These GLBs embed the original compatible v2 compositor.
+    assert.equal(adapter.sha256,'4eda06e489fe6ddc4e96e8d35716b72faecb4e0a3d6b20cffef999ab72488273',key);
+  }
   assert.equal(scene.deviceModel,({bill:'billpc',boss:'portal',portal:'boss'})[kind]??kind,key);
   if(kind==='boss'||kind==='portal')assert.equal(facilityIconFile(kind),'ui/devices/'+scene.deviceModel+'.png');
   assert.ok(index.files['assets/'+facilityIconFile(kind)],'Missing model thumbnail for '+kind);
@@ -188,6 +207,10 @@ for(const kind of modelKinds){
   assert.equal(scene.deviceScreenFx.stars.sharedOrigin,true,key);
   assert.equal(scene.deviceScreenFx.stars.scatter.tracks,8,key);
   assert.ok(scene.deviceScreenFx.supportXYZ.length>=12,key);
+  if(kind==='boss'){
+    assert.ok(!deskDevices.boss&&!index.files['assets/env/desk2d/device-boss.png']);
+    continue;
+  }
   assert.deepEqual(deskDevices[kind].fx,scene.deviceScreenFx,'Desk sprite effects for '+kind);
   if(kind==='altar'){
     const prefix='assets/env/desk2d/device-altar/';

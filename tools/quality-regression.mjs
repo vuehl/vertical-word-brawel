@@ -8,11 +8,11 @@ export async function reviewQuality(page,dir){
     await page.setViewport({width,height,deviceScaleFactor:3});
     await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
     const samples=[];
-    for(const quality of ['high','medium','low','saver','restored','dynamic','balanced-dynamic']){
+    for(const quality of ['high','medium','low','locked','restored','dynamic','balanced-dynamic']){
       const sample=await page.evaluate(async quality=>{
         const run=app.run,r=app.r,s=app.meta.profile.settings;
-        s.quality=quality==='balanced-dynamic'?'medium':['saver','restored','dynamic'].includes(quality)?'high':quality;
-        s.batterySaver=quality==='saver';app.applySettings();r.setDynRes(quality.endsWith('dynamic')?.6:1);
+        s.quality=quality==='balanced-dynamic'?'medium':['locked','restored','dynamic'].includes(quality)?'high':quality;
+        s.frameRateMode='manual';s.lock30Fps=quality==='locked';app.applySettings();r.setDynRes(quality.endsWith('dynamic')?.6:1);
         run.state='play';run.updateCamera(1);run.renderWorld(0);run.vfx.update(0);r.render(0);
         run.ui.hud(run);inspected.env.invalidateUI();inspected.env.drawUI(r.renderer);
         const world=[r.composer.inputBuffer.width,r.composer.inputBuffer.height];
@@ -32,26 +32,25 @@ export async function reviewQuality(page,dir){
           text:inspected.doc.querySelector('.zx-body').textContent,fpsCap:app.fpsCap()};
       },quality);
       samples.push(sample);
-      if(['high','low','saver'].includes(quality))await page.screenshot({path:path.join(dir,'settings-'+width+'-'+quality+'.png')});
+      if(['high','low','locked'].includes(quality))await page.screenshot({path:path.join(dir,'settings-'+width+'-'+quality+'.png')});
     }
-    const [high,medium,low,saver,restored,dynamic,balancedDynamic]=samples,pixels=s=>s.world[0]*s.world[1];
+    const [high,medium,low,locked,restored,dynamic,balancedDynamic]=samples,pixels=s=>s.world[0]*s.world[1];
     for(const sample of samples){
       assert.deepEqual(sample.ui,high.ui);assert.deepEqual(sample.display,high.display);
       assert.deepEqual(sample.layers,high.layers);assert.equal(sample.headingHash,high.headingHash,'Heading pixels stay identical');
       assert.doesNotMatch(sample.text,/各档界面文字|当前生效|对流畅度有多大帮助|场景像素预算/);
     }
     assert.ok(pixels(low)<pixels(medium)&&pixels(medium)<pixels(high));
-    assert.deepEqual(saver.world,low.world);assert.deepEqual(restored.world,high.world);
-    assert.deepEqual(dynamic.world,high.world);assert.deepEqual(balancedDynamic.world,medium.world);assert.equal(saver.fpsCap,30);
+    assert.deepEqual(locked.world,high.world);assert.deepEqual(restored.world,high.world);
+    assert.deepEqual(dynamic.world,high.world);assert.deepEqual(balancedDynamic.world,medium.world);assert.equal(locked.fpsCap,30);
     // The final setting and Back remain reachable on small phones.
     const scroll=await page.evaluate(()=>{
       const body=inspected.doc.querySelector('.zx-body');body.scrollTop=10000;
       inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
-      const fps=[...body.querySelectorAll('.zx-setting')].find(e=>e.textContent.startsWith('帧率上限'));
-      const b=inspected.layout.box(fps),back=inspected.layout.box(inspected.doc.querySelector('.zx-footer button'));
-      return {fpsVisible:b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1,backVisible:back.y>=back.clip.y&&back.y+back.h<=back.clip.b+1};
+      const b=inspected.layout.box(body.querySelector('[aria-label="锁定 30 帧"]')),back=inspected.layout.box(inspected.doc.querySelector('.zx-footer button'));
+      return {lockedVisible:b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1,backVisible:back.y>=back.clip.y&&back.y+back.h<=back.clip.b+1};
     });
-    assert.ok(scroll.fpsVisible&&scroll.backVisible,JSON.stringify(scroll));
+    assert.ok(scroll.lockedVisible&&scroll.backVisible,JSON.stringify(scroll));
     await page.screenshot({path:path.join(dir,'settings-bottom-'+width+'.png')});
     report.screens.push({width,height,samples,scroll,worldReduction:{medium:1-pixels(medium)/pixels(high),low:1-pixels(low)/pixels(high)}});
   }

@@ -200,9 +200,9 @@ import {
 var bO = LITE_SPECIES,
   xO = () => ({ idx: 0, ids: [], prog: [], claimed: [], rerolls: 0 }),
   SO = {
-    master: 0.8,
+    master: 1,
     music: 0.5,
-    sfx: 0.7,
+    sfx: 1,
     cries: 0.6,
     quality: `high`,
     aimMode: `auto`,

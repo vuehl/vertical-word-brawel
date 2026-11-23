@@ -8,7 +8,7 @@ export async function reviewDeviceEffects(page, dir) {
   const inventory = await page.evaluate(async () => {
     const account = await app.backend.guest();
     await app.meta.load(account);
-    Object.assign(app.meta.profile.settings, {quality: 'high', batterySaver: false, showBanners: false});
+    Object.assign(app.meta.profile.settings, {quality: 'high', showBanners: false});
     app.applySettings();
     if (!await app.startRun({species: 4, biome: 'forest', tier: 0, boosts: [], mode: 'standard'})) throw Error('Entry failed');
     // Stage one uses PNGs. Stage two exercises the GLB path and world-outline mask.
@@ -31,12 +31,13 @@ export async function reviewDeviceEffects(page, dir) {
       const kind = f.data?.gift ? 'freechest' : f.kind, model = f.model;
       if (!facilities.hasVisual(f) || !model?.userData.deviceScreenFx) throw Error('Missing ' + kind);
       const expectedScale = kind === 'berry' ? .5 : 1;
-      const ring = f.chargeRing ?? f.halo;
-      if(kind==='bill'||kind==='berry'){if(ring)throw Error('Unexpected ground ring on '+kind);}
-      else if (!ring || ring.visible !== (kind !== 'altar') || ring.parent !== f.group || ring.position.y <= 0 ||
+      const ring = f.halo;
+      if (kind === 'berry' || kind === 'bill') {
+        if (ring) throw Error('Unexpected ground ring on ' + kind);
+      } else if (!ring || !ring.visible || ring.parent !== f.group || ring.position.y <= 0 ||
           ring.scale.x <= model.userData.footprintRadius * expectedScale) throw Error('Missing ground ring on ' + kind);
-      if (ring&&(ring.position.x || ring.position.z || (kind === 'altar' ? !!f.halo :
-          ring.geometry !== facilities.dwellRing.geometry || ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1)))
+      if (ring&&(ring.position.x || ring.position.z ||
+          ring.geometry !== facilities.dwellRing.geometry || ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1))
         throw Error('Idle building must show only the empty interaction track: ' + kind);
       if (['freechest','chest'].includes(kind) && f.beacon) throw Error('Unexpected gacha beam');
       if (model.scale.toArray().some(x => x !== expectedScale) || f.group.scale.toArray().some(x => x !== 1) ||
@@ -45,7 +46,9 @@ export async function reviewDeviceEffects(page, dir) {
         if(!model.userData.updateGaze)throw Error('Missing layered stapler');
       }else if (model.userData.deviceModel !== ({boss:'portal',portal:'boss'}[kind]??kind))throw Error('Wrong GLB for ' + kind);
       model.traverse(m => {
-        if (m.isMesh && (!m.material.isMeshBasicMaterial || !(m.material.map?.image?.width > 0))) throw Error('Texture or legacy hull on ' + kind);
+        if (!m.isMesh || m.userData.portalTransient) return;
+        if (m.material.name === 'MAT_DemonEyeEmission' && m.material.emissiveMap?.image?.width > 0) return;
+        if (!m.material.isMeshBasicMaterial || !(m.material.map?.image?.width > 0)) throw Error('Texture or legacy hull on ' + kind);
       });
       inventory[kind] = (inventory[kind] || 0) + 1;
     }
@@ -63,7 +66,7 @@ export async function reviewDeviceEffects(page, dir) {
     return inventory;
   });
   assert.deepEqual(Object.keys(inventory).sort(),
-    ['chest','freechest','altar','boss','portal','magnet','berry','nest','bill'].sort());
+    ['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'].sort());
   await page.screenshot({path: path.join(dir, 'devices-in-game.png')});
   await page.evaluate(() => {
     const {host, facilities, sample, run} = deviceProbe;
@@ -263,7 +266,64 @@ export async function reviewDeviceEffects(page, dir) {
     const count = report.presets[quality] = changedPixels(body, await frame(.85));
     assert.equal(count,0,'Device sweep visible at ' + quality);
   }
-  await page.evaluate(() => {
+  report.dockClock = await page.evaluate(() => {
+    const {host, facilities, run} = deviceProbe;
+    const door = facilities.list.find(f => f.kind === 'boss');
+    door.group.visible = true;
+    const center = door.model.localToWorld(run.player.pos.clone().fromArray(door.model.userData.deviceScreenFx.centerXYZ));
+    // Decode the seven lit segments from the texture actually assigned to the GLB.
+    const masks = [63,6,91,79,102,109,125,7,127,111];
+    const segments = [[45,0],[88,45],[88,138],[45,182],[3,138],[3,45],[45,91]];
+    deviceProbe.readDockDigits = model => {
+      const screen = model.getObjectByName('Idle_screen');
+      const {data,width} = screen.material.map.image;
+      let digits = '';
+      for (let i=0; i<3; i++) {
+        let mask = 0;
+        segments.forEach(([x,y],bit) => {
+          const px = Math.round(183 + 119*i + 6 + x - .055*y);
+          if (data[(width*(62+y) + px)*4] > 235) mask |= 1 << bit;
+        });
+        digits += masks.indexOf(mask);
+      }
+      return digits;
+    };
+    function sample() {
+      host.camera.position.copy(center);
+      host.camera.position.z += 25;
+      host.camera.lookAt(center);
+      host.camera.updateMatrixWorld();
+      facilities.render();
+      run.ui.hud(run);
+      return [deviceProbe.readDockDigits(door.model), inspected.doc.querySelector('.zx-hud-clock').textContent, door.dock.state];
+    }
+    const samples = [];
+    for (const elapsed of [0,59.99,60,359.99,360]) {
+      run.stageTime = elapsed;
+      samples.push(sample());
+      if (elapsed === 60) {
+        run.pause();
+        run.update(.05);
+        samples.push(sample());
+        run.resume();
+      }
+    }
+    if (door.model.userData.portalCreamPhase !== -1) throw Error('Cream effects still active during transformation');
+    host.render(0);
+    run.stageTime += 3;
+    host.shared.uTime.value += 3;
+    facilities.render();
+    host.render(0);
+    const phase = door.model.userData.portalCreamPhase;
+    if (!(phase >= 0 && phase < 3)) throw Error('Cream cycle did not resume on the open dock');
+    samples.push(door.dock.state);
+    return samples;
+  });
+  assert.deepEqual(report.dockClock, [
+    ['360','06:00','idle'], ['301','05:01','idle'], ['300','05:00','idle'], ['300','05:00','idle'],
+    ['001','00:01','idle'], ['000','00:00','playing'], 'open',
+  ]);
+  await page.evaluate(async () => {
     const {facilities, host, run, sample} = deviceProbe;
     sample.group.visible = true;
     facilities.nearest = sample;
@@ -286,7 +346,17 @@ export async function reviewDeviceEffects(page, dir) {
     } finally {
       run.vfx.ring = emitRing;
     }
-    facilities.dispose();
+    const oldDoor = facilities.list.find(f => f.kind === 'boss');
+    await run.enterPortal();
+    const newDoor = run.interactables.list.find(f => f.kind === 'boss');
+    run.ui.hud(run);
+    if (run.stage !== 2 || oldDoor.dock || newDoor.dock.state !== 'idle' || deviceProbe.readDockDigits(newDoor.model) !== '360' ||
+        inspected.doc.querySelector('.zx-hud-clock').textContent !== '06:00') throw Error('Dock did not reset in the new zone');
+    run.stageTime = 300;
+    run.interactables.summonGuardian(newDoor, newDoor);
+    run.interactables.render();
+    if (!newDoor.used || !run.bossSpawned || newDoor.dock.state !== 'playing') throw Error('Early summons did not open the dock');
+    run.interactables.dispose();
     if (host.composer.passes.some(p => ['Visible devices','Device screen effects'].includes(p.name))) throw Error('Device passes survived unload');
   });
   fs.writeFileSync(path.join(dir,'device-effects.json'), JSON.stringify(report,null,2));

@@ -29,7 +29,7 @@ export async function reviewMapPlay(page,dir){
   assert.equal(report.stages[0].world,240);assert.equal(report.stages[0].camera,42);assert.equal(report.stages[0].twin,.33*1.2);
   assert.ok(report.stages[0].marbles>=4);
   assert.ok(report.stages[0].buildings.every(b=>b.inside));
-  assert.equal(report.stages[0].buildings.filter(b=>b.kind==='chest').length,6);
+  assert.equal(report.stages[0].buildings.filter(b=>b.kind==='chest').length,1);
   // Inspect the native image submitted to Canvas for the selected building.
   await page.evaluate(()=>{
     const r=app.run,b=r.interactables.list.find(b=>b.kind==='bill');if(!b)throw Error('Missing skill fusion building');

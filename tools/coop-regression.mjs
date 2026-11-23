@@ -138,6 +138,7 @@ export async function reviewCoop(browser, gamePort) {
           async connectContainer(opts) {
             if(opts.service !== config.service || !/^\/ws\/[a-f0-9]{32}$/.test(opts.path) || opts.config.env !== config.env) throw Error('Wrong socket route');
             window.routes.push('cloud');
+            if(window.holdRelay)await new Promise(resolve=>{window.releaseRelay=()=>{window.holdRelay=false;resolve();};});
             return {socketTask:openRelay(opts.path)};
           },
         };
@@ -623,6 +624,87 @@ export async function reviewCoop(browser, gamePort) {
     assert.deepEqual(recovered,seat);
     await host.waitForFunction(id=>{const p=app.run.coop.peers.get(id);return !p.gone && p.last?.level===17;},{},seat.id);
     await returning.waitForFunction(()=>app.run.boss.alive && app.run.coop.monsters.bossPose,{timeout:25000});
+    // Test each role independently. Backgrounding never retires a seat, and
+    // the foreground player's run and connection must remain untouched.
+    for(const index of [0,1]){
+      const away=clients[index],online=clients[1-index];
+      await Promise.all(clients.map(page=>page.evaluate(()=>{
+        app.run.player.iframes=3600;app.run.resume();
+        window.backgroundRun=app.run;window.backgroundRoom=app.coopRoom;
+        window.backgroundTime=app.run.time;window.menuVisits=0;
+        const original=app.toMenu.bind(app);app.toMenu=()=>{window.menuVisits++;return original();};
+      })));
+      const identity=await away.evaluate(()=>{
+        window.holdRelay=true;
+        const id={id:app.coopRoom.me,party:app.run.coop.party};
+        fixtureHide();return id;
+      });
+      await online.waitForFunction(id=>app.coopRoom.others.some(m=>m.id===id && m.away) &&
+        app.run.coop.peers.get(id)?.gone,{timeout:10000},identity.id);
+      assert.equal(await online.evaluate(()=>{
+        const r=app.run,c=r.coop,p=r.player;
+        const saved={dead:p.dead,bleed:c.bleed,out:c.out,wipeT:c.wipeT};
+        p.dead=true;c.bleed=30;c.out=false;c.wipeT=999;
+        c.downedTick(.1);
+        const survived=!c.ended && c.wipeT===0;
+        p.dead=saved.dead;c.bleed=saved.bleed;c.out=saved.out;c.wipeT=saved.wipeT;
+        return survived;
+      }),true,'an away teammate must not be counted as a defeated teammate');
+      assert.equal(await away.evaluate(()=>app.run===backgroundRun && app.coopRoom.open &&
+        app.run.coop.suspended && !menuVisits),true);
+      if(index===0){
+        // The socket can actually time out while the owner reads messages.
+        await away.evaluate(()=>dropRelay());
+        await away.waitForFunction(()=>app.run?.coop.reconnecting && !app.coopRoom.open);
+      }
+      await online.waitForFunction(()=>app.run===backgroundRun && app.coopRoom===backgroundRoom &&
+        app.coopRoom.open && app.run.time>backgroundTime+.5 && !menuVisits,{timeout:15000});
+      await away.evaluate(()=>fixtureShow({}));
+      await away.waitForFunction(()=>window.releaseRelay && app.run===backgroundRun && app.run.coop.reconnecting &&
+        !app.screen && inspected.doc.querySelector('.zx-reconnect'),{timeout:15000});
+      assert.equal(await away.evaluate(()=>menuVisits),0,'disconnected client must stay in the battle recovery view');
+      await away.evaluate(()=>releaseRelay());
+      await away.waitForFunction(()=>app.run!==backgroundRun && app.run?.state==='play' && app.run.coop.room.open && !app.screen,{timeout:100000});
+      assert.deepEqual(await away.evaluate(()=>({id:app.coopRoom.me,party:app.run.coop.party})),identity);
+      assert.equal(await online.evaluate(()=>app.run===backgroundRun && app.coopRoom===backgroundRoom && !menuVisits),true);
+      await online.waitForFunction(id=>!app.run.coop.peers.get(id)?.gone && !!app.run.coop.peers.get(id)?.last,{timeout:15000},identity.id);
+      console.log(index===0?'Host background/transport loss: guest continued, host resumed without menu':'Guest background: host continued, guest resumed without menu');
+    }
+    // Both phones lose their sockets together; recovery must not depend on a
+    // third, still-running client to answer resume-query.
+    const beforeDrop=await Promise.all(clients.map(page=>page.evaluate(()=>{
+      const r=app.run;r.pause();
+      window.beforeDrop={room:app.coopRoom.code,id:app.coopRoom.me,party:r.coop.party,seed:r.seed,
+        level:r.player.level,gold:r.gold,stage:r.stage};
+      window.dropRelay();
+      return window.beforeDrop;
+    })));
+    await Promise.all(clients.map(page=>page.waitForFunction(()=>window.app?.run?.state==='play' &&
+      app.run.coop.room.returning && !app.screen,{timeout:100000})));
+    for(const [i,page] of clients.entries()){
+      const actual=await page.evaluate(()=>({room:app.coopRoom.code,id:app.coopRoom.me,party:app.run.coop.party,
+        seed:app.run.seed,level:app.run.player.level,gold:app.run.gold,stage:app.run.stage}));
+      assert.deepEqual(actual,beforeDrop[i]);
+    }
+    // Then cold-restart both apps, retaining only the native persistent save.
+    await Promise.all(clients.map(page=>page.evaluate(()=>{
+      app.run.pause();
+      sessionStorage.setItem('resume-fixture-save',wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8'));
+    })));
+    await Promise.all(clients.map(page=>page.reload()));
+    for(const [i,page] of clients.entries()){
+      await page.evaluate(()=>wx.getFileSystemManager().writeFileSync('/userdata/pokebonk-save.json',sessionStorage.getItem('resume-fixture-save')));
+      await configure[i]();
+      await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
+    }
+    await Promise.all(clients.map(page=>page.waitForFunction(()=>window.app?.run?.state==='play' &&
+      app.run.coop.room.returning && !app.screen,{timeout:100000})));
+    for(const [i,page] of clients.entries()){
+      const actual=await page.evaluate(()=>({room:app.coopRoom.code,id:app.coopRoom.me,party:app.run.coop.party,
+        seed:app.run.seed,level:app.run.player.level,gold:app.run.gold,stage:app.run.stage}));
+      assert.deepEqual(actual,beforeDrop[i]);
+    }
+    console.log('Both-player socket loss and cold restart recovered room, seat, party, seed, level, gold and stage');
     // Enter the final sanctuary through the game's normal zone builder.
     await Promise.all(clients.map(page=>page.evaluate(async()=>{
       const r=app.run;r.stage=2;await r.coopAdvance(false);

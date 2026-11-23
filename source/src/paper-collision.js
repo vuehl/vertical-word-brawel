@@ -25,6 +25,31 @@ export function resolvePaperBox(box,point,radius){
   return point;
 }
 
+// Follow the requested displacement up to the silhouette. A rounded corner
+// can shorten either component, but cannot add sideways travel to a straight push.
+export function moveDeskPlayer(terrain,x,z,endX,endZ,radius,feet,out){
+  const steps=Math.max(1,Math.ceil(Math.hypot(endX-x,endZ-z)/radius));
+  const dx=(endX-x)/steps,dz=(endZ-z)/steps;
+  for(let i=0;i<steps;i++){
+    const nextX=x+dx,nextZ=z+dz;
+    terrain.resolve(nextX,nextZ,radius,feet,out);
+    if(out.x!==nextX||out.z!==nextZ){
+      // Allow the usual separation if a spawn or teleport already overlapped a prop.
+      if(!terrain.hitProp(x,feet,z,radius)){
+        out.x=clamp(out.x,Math.min(x,nextX),Math.max(x,nextX));
+        out.z=clamp(out.z,Math.min(z,nextZ),Math.max(z,nextZ));
+      }
+      if(terrain.hitProp(out.x,feet,out.z,radius)){
+        if(dx&&!terrain.hitProp(nextX,feet,z,radius)){out.x=nextX;out.z=z;}
+        else if(dz&&!terrain.hitProp(x,feet,nextZ,radius)){out.x=x;out.z=nextZ;}
+        else {out.x=x;out.z=z;break;}
+      }
+    }
+    x=out.x;z=out.z;
+  }
+  return out;
+}
+
 // Use steps smaller than the body radius so a dash cannot skip a thin prop.
 // A pursuing enemy keeps its chosen direction along the wall until it clears it.
 export function moveEnemyPastProps(terrain, x, z, endX, endZ, radius, feet, steerDistance, side, out, jump=false){

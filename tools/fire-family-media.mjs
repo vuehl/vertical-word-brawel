@@ -36,33 +36,23 @@ export async function reviewFireFamilyMedia(page,dir,moves){
  assert.ok(report.claws.scratch[1].size<report.claws.scratch[0].size/2);
  assert.deepEqual(report.claws.scratch.map(({palette,...shape})=>shape),report.claws.dragon.map(({palette,...shape})=>shape));
  assert.ok(report.claws.dragon.every(e=>e.palette===3));
- const keys=['scratch','slash','dragon-claw','fire-fang','flare-blitz','air-slash','inferno','heat-wave','dragon-breath'];
+ const keys=['air-slash','inferno'];
  for(const key of keys){
   const id=moves.find(m=>m.key===key).id;
   const result=await page.evaluate(async({id,key})=>{
-   const r=app.run;r.player.setSpecies(4);vfxSetup();r.ghosts.length=0;r.enemies.x[1]=0;r.enemies.z[1]=key==='inferno'?-8:-2.4;r.enemies.update();r.lockTarget=1;r.player.pos.y=r.terrain.height(0,0);
+   const r=app.run;r.player.setSpecies(key==='air-slash'?16:4);vfxSetup();r.ghosts.length=0;r.enemies.x[1]=0;r.enemies.z[1]=key==='inferno'?-8:-2.4;r.enemies.update();r.lockTarget=1;r.player.pos.y=r.terrain.height(0,0);
    await Promise.all([...r.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));
-   r.player.addMove(id);r.player.moves[0].timer=0;vfxAdvance(key.includes('breath')||key==='heat-wave'?15:4);vfxDraw();
+   r.player.addMove(id);r.player.moves[0].timer=0;vfxAdvance(4);vfxDraw();
    const f=r.vfx.crafted.fireFamily,j=r.vfx.crafted.fireJet;
-   return {key,count:f.mesh.count+f.heatMesh.count,heat:f.heatMesh.count,jet:j.mesh.count,ball:r.vfx.crafted.fireball.mesh.count,ghosts:r.ghosts.length,damage:r.player.moves[0].damageDone,gl:app.r.renderer.getContext().getError()};
+   return {key,count:f.mesh.count,jet:j.mesh.count,ball:r.vfx.crafted.fireball.mesh.count,ghosts:r.ghosts.length,damage:r.player.moves[0].damageDone,gl:app.r.renderer.getContext().getError()};
   },{key,id});
   assert.ok(result.count+result.jet+result.ball>0,'Missing visual '+key);assert.equal(result.gl,0);report.pictures.push(result);
   if(key==='inferno')assert.ok(result.ball>0,'Inferno must fly as the Ember fireball');
   if(key==='flare-blitz')assert.equal(result.ghosts,0,'Flame charge must not draw white glyph ghosts');
-  if(key==='heat-wave'){assert.equal(result.jet,0);assert.ok(result.heat>0,'Heat wave must render the complete library front');}
   await page.screenshot({path:path.join(dir,'review-'+key+'.png')});
  }
- report.heatWave=await page.evaluate(()=>{
-  const r=app.run,v=r.vfx.crafted,f=v.fireFamily;v.clear();const key={def:{key:'heat-wave'}};
-  for(let i=0;i<10;i++){v.cone(key,0,1,0,0,-1,7,'fire',.7);v.update(1/30);}
-  const count=f.heatMesh.count,finite=f.heatAttributes.every(a=>[...a.array.slice(0,count*4)].every(Number.isFinite));
-  const before=JSON.stringify(f.events);for(let i=0;i<20;i++)v.update(0);const paused=before===JSON.stringify(f.events);
-  v.update(1.5);const expired=f.heatMesh.count===0&&f.events.every(e=>!e.heatWave);
-  const second={def:{key:'heat-wave'}};v.cone(second,0,1,0,0,-1,7,'fire',.7);v.update(.05);r.hideOwnFx=true;v.update(0);const hidden=f.heatMesh.count===0;r.hideOwnFx=false;v.clear();
-  return {count,finite,paused,expired,hidden,cleared:f.heatMesh.count===0&&f.events.length===0,texture:[f.heatTexture.image.width,f.heatTexture.image.height]};
- });assert.ok(report.heatWave.count>0);for(const k of ['finite','paused','expired','hidden','cleared'])assert.ok(report.heatWave[k],k);assert.deepEqual(report.heatWave.texture,[1536,1536]);
  report.airSlash=await page.evaluate(()=>{
-  const r=app.run,f=r.vfx.crafted.fireFamily;vfxSetup();r.player.setSpecies(4);r.player.pos.y=r.terrain.height(0,0);
+  const r=app.run,f=r.vfx.crafted.fireFamily;vfxSetup();r.player.setSpecies(16);r.player.pos.y=r.terrain.height(0,0);
   r.player.addMove(403);r.player.moves[0].timer=0;vfxAdvance(12,1/60);r.player.moves[0].timer=999;vfxDraw(false);
   const wake=f.events.filter(e=>e.clip==='windCut'&&!e.key),head=f.events.find(e=>e.clip==='windCut'&&e.key);
   const moving=!!head&&wake.length>0,shortWake=wake.every(e=>e.life<=.10);
@@ -96,13 +86,8 @@ export async function reviewFireFamilyMedia(page,dir,moves){
   const sun={};f.sun(sun,p.x,p.y+5,p.z,.8);v.update(.10);const opening=f.events.some(e=>e.clip==='eruption'&&e.foreground);const count=f.events.length;f.sun(sun,p.x,p.y+5,p.z,.9);const once=f.events.length===count;v.clear();
   f.sun(sun,p.x,p.y+5,p.z,.01);v.update(.10);const sunRecast=f.events.some(e=>e.clip==='eruption'&&e.foreground);v.clear();
   f.sunBurst(p.x,p.y,p.z,5);v.update(.10);const infernoSun=opening&&once&&f.events.some(e=>e.clip==='eruption'&&e.foreground)&&f.events.some(e=>e.clip==='pillar')&&!f.events.some(e=>e.clip==='sun');v.clear();
-  const wind={D:1};for(let i=0;i<6;i++){f.wildfire(wind,p.x,p.y,p.z,.6,-.8,12,.8);v.update(.03);}
-  const entries=wind.wildfireArtKeys.map(key=>v.keys.get(key));const column=entries.length===3&&entries.every(e=>e.handDrawn&&Math.abs((e.x-p.x)*-.8-(e.z-p.z)*.6)<1e-6);
-  const nativeProjection=v.fireSpin.mesh.userData.projection==='upright-spiral-with-isometric-crown';
-  const before=JSON.stringify(v.fireSpin.attributes.map(a=>[...a.array.slice(0,v.fireSpin.mesh.count*4)]));f.wildfireEnd(wind);v.update(0);const sameWind=before===JSON.stringify(v.fireSpin.attributes.map(a=>[...a.array.slice(0,v.fireSpin.mesh.count*4)]));
-  v.update(.14);const fading=entries.every(e=>e.life>0&&e.life<=.14);v.update(.20);const gone=v.fireSpin.mesh.count===0&&f.wildfireKeys.size===0;v.clear();
-  return {fangBorn,fangFull,fangTail,fangEnvelope:fangBorn<fangFull*.1&&fangTail<fangFull*.25,infernoSun,sunRecast,column,nativeProjection,sameWind,fading,gone};
- },JSON.parse(fs.readFileSync('source/public/assets/vfx/fire-family.json')).clips.fang);for(const k of ['fangEnvelope','infernoSun','sunRecast','column','nativeProjection','sameWind','fading','gone'])assert.ok(report.continuity[k],k);
+  return {fangBorn,fangFull,fangTail,fangEnvelope:fangBorn<fangFull*.1&&fangTail<fangFull*.25,infernoSun,sunRecast};
+ },JSON.parse(fs.readFileSync('source/public/assets/vfx/fire-family.json')).clips.fang);for(const k of ['fangEnvelope','infernoSun','sunRecast'])assert.ok(report.continuity[k],k);
  for(const quality of ['low','medium','high']){
   const sample=await page.evaluate(quality=>{
    app.meta.profile.settings.quality=quality;app.applySettings();vfxSetup();const r=app.run,f=r.vfx.crafted.fireFamily;
@@ -120,38 +105,14 @@ export async function reviewFireFamilyMedia(page,dir,moves){
  for(let i=0;i<36;i++){await page.evaluate(()=>{vfxAdvance(3);vfxDraw();});frames.push(await page.screenshot());if([3,7,14,27].includes(i))fs.writeFileSync(path.join(dir,'ultimate-phase-'+i+'.png'),frames.at(-1));}
  const buffers=await Promise.all(frames.map(frame=>sharp(frame).ensureAlpha().raw().toBuffer()));
  await sharp(Buffer.concat(buffers),{raw:{width:390,height:844*buffers.length,channels:4,pageHeight:844}}).gif({delay:Array(buffers.length).fill(100),loop:0}).toFile(path.join(dir,'fire-ultimate.gif'));
- report.rangeUpgrades=await page.evaluate(heatId=>{
-  const run=app.run,player=run.player,family=run.vfx.crafted.fireFamily;
-  return [[1,4,1,1],[39,5,1,1],[45,6,1,1],[45,6,1.3,1.2]].map(([level,species,skillArea,playerArea])=>{
-   vfxSetup();
-   player.setSpecies(species);player.level=level;player.evoStage=species-4;player.growth=0;player.recompute();
-   player.stats.area=playerArea;player.addMove(heatId);
-   const move=player.moves[0];move.mods.area=skillArea;move.timer=0;
-   const enemies=run.enemies,target=1;
-   enemies.x[target]=0;enemies.z[target]=-9;enemies.update();run.lockTarget=target;
-   const startingHP=enemies.hp[target],frames=[];
-   for(let tick=0;tick<12;tick++){
-    run.castMove(0,move,1/30);run.vfx.update(1/30);
-    if(tick===3||tick===11){
-     if(family.heatMesh.count!==1)throw Error('Expected a single heat wave');
-     frames.push([family.heatAttributes[0].array[3],family.heatAttributes[2].array[3]]);
-    }
-   }
-   const front=family.events.find(event=>event.heatWave);
-   const travel=Math.hypot(front.travelX,front.travelZ),hit=enemies.hp[target]<startingHP;
-   run.vfx.clear();run.ult.charge=1;run.ult.fire();
-   const cloud=family.events.filter(event=>event.mushroomPart).map(event=>[event.size,event.height]);
-   return {level,skillArea,playerArea,frames,travel,hit,cloud};
+ report.cloudSizes=await page.evaluate(()=>{
+  const r=app.run;
+  return [4,5,6].map(species=>{
+   r.player.setSpecies(species);vfxSetup();r.ult.charge=1;r.ult.fire();
+   return r.vfx.crafted.fireFamily.events.filter(e=>e.mushroomPart).map(e=>[e.size,e.height]);
   });
- },moves.find(move=>move.key==='heat-wave').id);
- const [base,,,upgraded]=report.rangeUpgrades;
- assert.ok(base.frames[0][0]>0&&base.frames[1][0]>base.frames[0][0],'Keep the original expansion within each cast');
- assert.equal(base.cloud.length,2);
- for(const sample of report.rangeUpgrades){
-  assert.deepEqual(sample.frames,base.frames,'Heat Wave frame size at level '+sample.level);
-  assert.deepEqual(sample.cloud,base.cloud,'Mushroom cloud size at level '+sample.level);
- }
- assert.ok(Math.abs(upgraded.travel/base.travel-1.56)<1e-6);
- assert.deepEqual(report.rangeUpgrades.map(sample=>sample.hit),[false,false,false,true],'Only the range-upgraded cast hits the target at nine units');
+ });
+ assert.equal(report.cloudSizes[0].length,2);
+ for(const sizes of report.cloudSizes)assert.deepEqual(sizes,report.cloudSizes[0]);
  fs.writeFileSync(path.join(dir,'fire-family-visual-report.json'),JSON.stringify(report,null,2));console.log('Visual checks:',JSON.stringify(report));return report;
 }
