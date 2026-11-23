@@ -19,7 +19,7 @@ export async function reviewBattlePacing(page) {
       r.renderWorld = () => {};
       r.ui.experienceReady = () => true;
       r.ui.showLevelUp = (run, offers, choose) => {
-        if (offers.filter(o=>!o.vit).length>1 || new Set(offers.map(o=>o.key)).size!==offers.length)
+        if ((p.freeMoveSlot()<0 && offers.some(o=>o.kind==='newMove')) || new Set(offers.map(o=>o.key)).size!==offers.length)
           throw Error('Invalid upgrade panel: '+JSON.stringify(offers));
         if (stage===1 && run.stageTime<90) drafts.push({time:run.stageTime, offers:offers.map(o=>o.kind)});
         choose(offers.find(o => o.kind === 'newMove') ?? offers.find(o=>o.kind==='upMove') ?? offers[0]);

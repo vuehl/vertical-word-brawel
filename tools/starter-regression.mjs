@@ -55,7 +55,8 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     }finally{Object.assign(ui,{showLevelUp,experienceReady});Math.random=random;}
   });
   assert.equal(gustCard.title,'起风');
-  assert.ok(gustCard.text.includes('新招式')&&gustCard.text.includes('漩涡'),gustCard.text);
+  assert.doesNotMatch(gustCard.text,/新招式/);
+  assert.match(gustCard.text,/漩涡/);
   await page.waitForFunction(()=>{
     inspected.env.drawUI(app.r.renderer);
     return !inspected.modalTransition.active;

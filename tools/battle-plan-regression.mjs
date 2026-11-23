@@ -53,5 +53,5 @@ export async function reviewBattlePlan({page,tap,dir}){
     result.fusion=badges();return result;
   });
   const mark='★ 计划中';
-  assert.deepEqual(result,{upgrades:[mark,mark],redraw:[mark,mark],banished:[],shop:true,refresh:true,pick:[mark],loot:[mark],fusion:[mark]});
+  assert.deepEqual(result,{upgrades:[mark,mark],redraw:[],banished:[],shop:true,refresh:true,pick:[mark],loot:[mark],fusion:[mark]});
 }

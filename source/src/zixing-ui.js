@@ -1289,10 +1289,10 @@ export function createZixingUI(app,api) {
       const desc=api.offer(run,offer),quality=choiceQuality(offer.rarity);
       const level=desc.sub.match(/★?(\d+)\s*→\s*★?(\d+)/);
       const cap=level?desc.sub.slice(level.index+level[0].length).match(/\d+/)?.[0]:null;
-      const meta=level?el('div','zx-offer-rank',[
+      const rank=level?el('div','zx-offer-rank',[
         el('small','',desc.sub.includes('★')?'融合':'等级'),el('span','',level[1]),el('i','','→'),el('b','',level[2]),
         cap?el('small','zx-offer-cap','上限 '+cap):null,
-      ],{'aria-label':desc.sub}):el('span','zx-offer-kind',desc.sub);
+      ],{'aria-label':desc.sub}):null;
       const metrics=[],notes=[];
       for(const line of desc.lines){
         const label=line.replace(/₽/g,'金币');
@@ -1309,7 +1309,7 @@ export function createZixingUI(app,api) {
             el('b','zx-choice-title',desc.title),
             qualityBadge(quality),
           ]),
-          meta,plannedUpgrade(runPlan(run),offer)?planBadge():null,el('div','zx-upgrade-effects',effects),
+          rank,plannedUpgrade(runPlan(run),offer)?planBadge():null,el('div','zx-upgrade-effects',effects),
         ]),
       ],()=>choose(offer),'zx-offer zx-quality-card',{'data-offer':index,'data-paper-surface':'upgrade-card'});
       paintQuality(node,quality);return node;
@@ -1915,14 +1915,14 @@ export function createZixingUI(app,api) {
   }
   async function loading(total,loaded,onProgress) {
     // Entry owns its loading screen until the first scene frame is ready.
-    // Later area changes use the same plain progress view, with no hero popup.
-    const view=onProgress?null:loadingScreen('stage-loading');
+    // A portal keeps the previous battle frame visible while the glyphs load.
+    const view=onProgress||app.run?.changingZone?null:loadingScreen('stage-loading');
     const began=performance.now();
     try {
       for(;;){
         const n=loaded(),ratio=total?Math.min(1,n/total):1;
         const state={phase:'准备字灵',detail:'文字就绪 '+n+' / '+total,progress:onProgress ? .8+.14*ratio:ratio};
-        if(onProgress)onProgress(state);else view.update(state);
+        if(onProgress)onProgress(state);else view?.update(state);
         if(n>=total)return;
         if(performance.now()-began>30000)throw Error('字灵准备超时（'+n+'/'+total+'），请重试进入');
         await new Promise(resolve=>setTimeout(resolve,80));

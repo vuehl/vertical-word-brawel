@@ -115,7 +115,8 @@ export function drawBattleHealth(canvas,fraction,current,bonus=0) {
   };
   cut(4,'#526785');cut(1,'#F3F1FA');pill(3,3,82,12,6,'#3e5759');
   const fill=ctx.createLinearGradient(0,3,0,15);
-  fill.addColorStop(0,fraction<.3?'#F1A2A0':'#ABD6BB');fill.addColorStop(1,fraction<.3?'#C96B76':'#75B697');
+  fill.addColorStop(0,fraction<.3?'#F1A2A0':'#83CC68');
+  fill.addColorStop(1,fraction<.3?'#C96B76':'#4B9F52');
   ctx.save();capsule(3,3,82,12,6);ctx.clip();
   ctx.fillStyle=fill;ctx.fillRect(3,3,82*fraction,12);ctx.restore();
   const label=String(current)+(bonus?' +'+bonus:'');

@@ -2,6 +2,40 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
+export async function reviewPortalCrossing(page){
+  const before=await page.screenshot();
+  await page.evaluate(()=>{
+    const r=app.run,readyCount=r.sprites.readyCount,drawUI=inspected.env.drawUI;
+    window.waitingAtPortal=false;
+    window.portalUiFrames=0;
+    inspected.env.drawUI=function(...args){window.portalUiFrames++;return drawUI.apply(this,args);};
+    r.sprites.readyCount=function(){window.waitingAtPortal=true;return 0;};
+    window.finishCrossing=async()=>{
+      r.sprites.readyCount=readyCount;
+      try{await portalCrossing;}finally{app.halted=true;inspected.env.drawUI=drawUI;}
+    };
+    app.halted=false;
+    window.portalCrossing=r.enterPortal();
+  });
+  // Force a slow destination, with the real frame loop running during the wait.
+  let during;
+  try{
+    await page.waitForFunction(()=>window.waitingAtPortal);
+    during=await page.screenshot();
+  }finally{
+    await page.evaluate(()=>finishCrossing());
+  }
+  assert.ok(Buffer.from(before).equals(Buffer.from(during)),'Loading the next zone must leave the portal frame on screen');
+  const result=await page.evaluate(()=>{
+    const r=app.run;
+    if(r.state!=='play')throw Error('Portal failed to open the destination: '+r.state);
+    r.updateCamera(1);r.renderWorld(0);app.r.render(0);r.ui.hud(r);inspected.env.drawUI(app.r.renderer);
+    return {stage:r.stage,cleared:r.stageCleared,hidden:inspected.doc.querySelector('.zx-portal-guide').hidden};
+  });
+  assert.equal(await page.evaluate(()=>portalUiFrames),0,'A portal must not present UI-only frames');
+  return result;
+}
+
 export async function reviewExitGuidance(page,dir){
   const report={settings:[],guidance:[],maps:[]};
   for(const width of [320,390]){
@@ -77,10 +111,7 @@ export async function reviewExitGuidance(page,dir){
     const toast=doc.querySelector('.zx-toast-layer .toast')?.getBoundingClientRect();
     return {guideBottom:guide.bottom,toastTop:toast?.top};
   });
-  report.advance=await page.evaluate(async()=>{
-    const r=app.run;await r.enterPortal();r.state='play';r.ui.hud(r);
-    return {stage:r.stage,cleared:r.stageCleared,hidden:inspected.doc.querySelector('.zx-portal-guide').hidden};
-  });
+  report.advance=await reviewPortalCrossing(page);
   fs.writeFileSync(path.join(dir,'exit-guidance.json'),JSON.stringify(report,null,2));
   for(const s of report.settings){
     assert.deepEqual(s.initial,{fps:60,quality:'high',legacy:false,removed:true});

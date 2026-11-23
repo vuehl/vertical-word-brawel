@@ -13363,9 +13363,8 @@ var Df = 0.4,
       const dx = player.pos.x - this.x[id], dz = player.pos.z - this.z[id];
       const distance = Math.hypot(dx, dz) || 1;
       const heavy = flags & (Cf | R.Boss);
-      if (this.run.terrain.desk2d && !heavy && !(flags & R.Elite)) {
-        // Resolve the light hit with body separation in the same step.
-        // An independent knockback velocity used to shove the player twice.
+      if (this.run.terrain.zxPaper && !heavy && !(flags & R.Elite)) {
+        // Light contact contributes to crowd resistance on every portrait stage.
         player.crowdX += 0.1 * dx / distance;
         player.crowdZ += 0.1 * dz / distance;
       } else {
@@ -33422,13 +33421,28 @@ var mv = 30,
           return r.height(a, o) > this.pos.y + ne || r.height(e, t) > this.pos.y + ne;
         };
       this.anchorT > 0 && ((this.crowdX *= Cv), (this.crowdZ *= Cv));
-      let ae = Math.hypot(this.crowdX, this.crowdZ),
-        oe = (r.desk2d && y > 0 ? Math.min(Sv, w * 0.3) : Sv) * e;
-      ae > oe && ((this.crowdX *= oe / ae), (this.crowdZ *= oe / ae));
+      let walkX = this.vel.x * e, walkZ = this.vel.z * e;
+      if (r.zxPaper) {
+        // Bodies can slow a step into the crowd. Resolve against this frame's
+        // stride so pressure from the previous frame cannot steer a turn or release.
+        const stride = Math.hypot(walkX, walkZ);
+        if (stride > 0) {
+          const dx = walkX / stride, dz = walkZ / stride;
+          const opposing = -(this.crowdX * dx + this.crowdZ * dz);
+          const resistance = Gs(opposing, 0, Math.min(Sv * e, stride * 0.3));
+          walkX -= dx * resistance;
+          walkZ -= dz * resistance;
+        }
+      } else {
+        const pressure = Math.hypot(this.crowdX, this.crowdZ);
+        const scale = pressure > Sv * e ? Sv * e / pressure : 1;
+        walkX += this.crowdX * scale;
+        walkZ += this.crowdZ * scale;
+      }
       let se = Math.exp(-e * 9);
       ((this.kx *= se), (this.kz *= se));
-      let ce = this.vel.x * e + this.crowdX + this.kx * e,
-        le = this.vel.z * e + this.crowdZ + this.kz * e;
+      let ce = walkX + this.kx * e,
+        le = walkZ + this.kz * e;
       this.crowdX = this.crowdZ = 0;
       let ue = this.pos.x + ce,
         de = this.pos.z + le,
@@ -35514,30 +35528,30 @@ function Ub(run, count) {
     if (current ? current.level >= player.vitCap : player.vitamins.size >= player.vitaminSlots) continue;
     pool.push({kind:current?'upVit':'newVit', vit:vitamin.key, key});
   }
-  const offers = [];
-  let hasMove = false;
-  const plan = runPlan(run);
-  const random = F.shuffle(pool);
-  const shuffled = plan ? random.filter(o => plannedUpgrade(plan,o)).concat(random.filter(o => !plannedUpgrade(plan,o))) : random;
-  for (const offer of shuffled) {
-    if (!offer.vit) {
-      if (hasMove) continue;
-      hasMove = true;
+  // Each group gets a fresh shuffle once all its currently eligible cards have appeared.
+  const history = run.upgradeOfferHistory ??= {seen:new Set(), previous:new Set()};
+  for (const group of [pool.filter(o => o.kind === 'newMove'), pool.filter(o => o.kind === 'upMove'), pool.filter(o => o.vit)]) {
+    if (group.every(o => history.seen.has(o.key))) {
+      for (const offer of group) history.seen.delete(offer.key);
     }
+  }
+  const plan = runPlan(run);
+  const priority = offer => Number(history.previous.has(offer.key)) * 4 +
+    Number(history.seen.has(offer.key)) * 2 + Number(!plannedUpgrade(plan, offer));
+  const ranked = F.shuffle(pool).sort((a,b) => priority(a) - priority(b));
+  const openingAttack = run.director.normalOpening && run.openingDraftMisses >= 2 &&
+    player.moves.filter(Boolean).length === 1 && ranked.find(isNewAttackOffer);
+  const skill = openingAttack || ranked.find(o => o.kind === 'newMove') || ranked.find(o => !o.vit);
+  const vitamin = ranked.find(o => o.vit);
+  const offers = [...new Set([skill, vitamin, ...ranked].filter(Boolean))].slice(0, count);
+  history.previous.clear();
+  for (const offer of offers) {
+    history.seen.add(offer.key);
+    history.previous.add(offer.key);
     if (offer.kind !== 'newMove') offer.rarity = Hb(run);
     if (offer.kind === 'upMove') offer.ups = P_(player.moves[offer.slot], E[offer.rarity]);
-    offers.push(offer);
-    if (offers.length === count) break;
   }
-  if (run.director.normalOpening && run.openingDraftMisses >= 2 &&
-      player.moves.filter(Boolean).length === 1 && !offers.some(isNewAttackOffer)) {
-    const attack = shuffled.find(isNewAttackOffer);
-    if (attack) {
-      const slot = offers.findIndex(offer => !offer.vit);
-      offers[slot < 0 ? offers.length - 1 : slot] = attack;
-    }
-  }
-  return offers;
+  return F.shuffle(offers);
 }
 function Wb(e, t) {
   let r = e.player;
@@ -45634,7 +45648,8 @@ var GT = 15,
       const peers=this.coop?[...this.coop.peers.values()].filter(peer=>!peer.gone).map(peer=>peer.species):[];
       await this.sprites.prepareGlyphTextures(this.r.renderer,this.player.speciesId,peers);check();
       this.onLoadProgress?.({phase:'准备战斗特效',detail:'',progress:.95});
-      await waitForLoadingPaint(this.r.renderer);check();
+      if(!this.changingZone)await waitForLoadingPaint(this.r.renderer);
+      check();
       if(!this.fireTexturesPrepared){
         // A teammate or mimic can use any fire move. For solo characters,
         // warm their starting kit and loadout, one texture per loading frame.
@@ -46783,43 +46798,44 @@ var GT = 15,
           (this.ui.hideModal(), (this.state = `play`), (this.modalDeadT = 0)),
         e ? await this.finish(!0) : await this.changeZone());
     }
+    changingZone = false;
     async changeZone() {
-      ((this.state = `transition`), this.audio.power(), await this.ui.fade(!0));
-      let e = this.state;
-      if ((this.player.dead && !this.coop) || e === `dead` || e === `over`) this.ui.fade(!1);
-      else {
-        try {
-          (this.terrain.dispose(),
-            this.interactables.dispose(),
-            this.capture.dispose(),
-            this.sanctuary?.dispose(),
-            (this.sanctuary = null),
-            (this.timers.length = 0),
-            (this.anims.length = 0),
-            (this.ghosts.length = 0),
-            (this.ult.castPending = !1),
-            (this.weatherT = 0),
-            (this.ultFx.t = 0),
-            (this.cine.want = 0),
-            (this.player.renderScale = 1),
-            (this.player.flash = 0),
-            (this.stage = this.biome.sanctuary ? (FOREST_ROUTE[this.stage] ?? this.stage + 1) : this.stage + 1),
-            this.sprites.trim(3e3, uo ? 8e7 : 3e8),
-            await this.buildStageAsync(!1),
-            this.coop?.onStage(),
-            await this.openStage());
-        } catch (e) {
-          (console.error(`[pokebonk] No se pudo construir la zona`, e),
-            await this.ui.fade(!1),
-            this.ui.toast(
-              e instanceof MapSpawnError ? e.message : c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`),
-              null,
-            ),
-            (this.endHow = `error`),
-            this.finish(!1));
-          return;
-        }
-        ((this.state = `play`), await this.ui.fade(!1));
+      if (this.changingZone || this.disposed || (this.player.dead && !this.coop) || this.state === 'dead' || this.state === 'over') return;
+      this.changingZone = true;
+      this.state = 'transition';
+      try {
+        this.audio.power();
+        // Finish the interaction frame before disposing the world it is drawing.
+        await Promise.resolve();
+        if (this.disposed || this.state !== 'transition' || (this.player.dead && !this.coop)) return;
+        this.terrain.dispose();
+        this.interactables.dispose();
+        this.capture.dispose();
+        this.sanctuary?.dispose();
+        this.sanctuary = null;
+        this.timers.length = 0;
+        this.anims.length = 0;
+        this.ghosts.length = 0;
+        this.ult.castPending = false;
+        this.weatherT = 0;
+        this.ultFx.t = 0;
+        this.cine.want = 0;
+        this.player.renderScale = 1;
+        this.player.flash = 0;
+        this.stage = this.biome.sanctuary ? (FOREST_ROUTE[this.stage] ?? this.stage + 1) : this.stage + 1;
+        this.sprites.trim(3e3, uo ? 8e7 : 3e8);
+        await this.buildStageAsync(false);
+        this.coop?.onStage();
+        await this.openStage();
+        if (this.state === 'transition') this.state = 'play';
+      } catch (error) {
+        if (this.disposed || this.state === 'over') return;
+        console.error('[pokebonk] No se pudo construir la zona', error);
+        this.ui.toast(error instanceof MapSpawnError ? error.message : c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`), null);
+        this.endHow = 'error';
+        this.finish(false);
+      } finally {
+        this.changingZone = false;
       }
     }
     async climb() {
@@ -46867,10 +46883,10 @@ var GT = 15,
     async migrate() {
       if (this.state !== `play` || this.player.dead || !this.endless || this.boss.alive || this.mewtwo.active)
         return;
-      ((this.state = `transition`), this.audio.power(), await this.ui.fade(!0));
-      let e = this.state;
-      if (this.player.dead || e === `dead` || e === `over`) this.ui.fade(!1);
-      else {
+      this.state = 'transition';
+      this.audio.power();
+      await Promise.resolve();
+      if (!this.disposed && !this.player.dead && this.state === 'transition') {
         try {
           (this.terrain.dispose(),
             this.interactables.dispose(),
@@ -46910,7 +46926,6 @@ var GT = 15,
             this.applyWeatherLook());
         } catch (e) {
           (console.error(`[pokebonk] No se pudo construir el mapa nuevo`, e),
-            await this.ui.fade(!1),
             this.ui.toast(
               e instanceof MapSpawnError ? e.message : c(`No se pudo cargar la zona. La partida termina aquí y se guarda lo conseguido.`),
               null,
@@ -46920,7 +46935,6 @@ var GT = 15,
           return;
         }
         ((this.state = `play`),
-          await this.ui.fade(!1),
           this.ui.banner(
             c(`Tierras nuevas`),
             c(`Un mapa nuevo con todo por descubrir. La horda te ha seguido`),
@@ -79276,6 +79290,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       this.last = e;
       try {
         // Opaque menus only upload changed UI; hidden scenery stays idle.
+        // Leave the last portal frame on screen until the new world and its sprites are ready.
+        if(this.run?.changingZone && this.run.state==='transition' && !this.screen){this.perf.active=false;return;}
         if(this.run?.buildingStage){this.perf.active=false;window.drawUI?.(this.r.renderer);return;}
         if (this.screen?.classList.contains('zx-loading-screen') || window.nativeUI && this.screen?.classList.contains('zx')) {
           if(!this.run){this.perf.run=null;this.perf.fps=0;}

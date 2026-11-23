@@ -392,7 +392,6 @@ html.zixing .zx .zx-shop-shelves .zx-review-footer>button{width:0;min-width:0;he
 .zx-first-batch-upgrade .zx-offer-rank>small,.zx-first-batch-upgrade .zx-offer-rank>span,.zx-first-batch-upgrade .zx-offer-rank>i{color:#55657B;font-size:12px;line-height:17px}
 .zx-first-batch-upgrade .zx-offer-rank>b{background:#D5DFEB;color:#364E72;font-size:12px;line-height:17px;padding:0 4px}
 .zx-first-batch-upgrade .zx-offer-rank>.zx-offer-cap{margin-left:4px;padding-left:5px;border-left:1px solid #A9B6C7}
-.zx-first-batch-upgrade .zx-offer-kind{align-self:flex-start;background:#DCE4EE;color:#455774;font-size:12px;line-height:18px;padding:0 6px;border-left:2px solid #849BB9}
 .zx-first-batch-upgrade .zx-upgrade-effects{gap:3px;margin-top:2px;border-top:1px solid #B1BECD;padding-top:5px}
 .zx-first-batch-upgrade .zx-offer-stats{flex-wrap:wrap;gap:8px}
 .zx-first-batch-upgrade .zx-offer-stat{display:block;flex:0 1 auto;min-width:0;max-width:100%;white-space:normal;color:#334D73;font-size:15px;line-height:20px;font-weight:700}

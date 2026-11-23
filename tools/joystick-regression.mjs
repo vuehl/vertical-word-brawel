@@ -10,7 +10,9 @@ export async function verifyJoystick(page,dir){
     await handle.evaluate(el=>el.click());await handle.dispose();
   };
   if(await page.evaluate(()=>!!app.screen.querySelector('.auth-body button')))await click('.auth-body button');
-  await click('[data-action="journey"]');await click('[data-action="enter"]');
+  await click('[data-action="journey"]');
+  await click('[data-action="collection-next"]');
+  await click('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.terrain?.desk2d&&app.run.time>.1,{timeout:30000});
   await page.evaluate(()=>{
     app.halted=true;const r=app.run;r.enemies.clear();r.state='play';
@@ -126,6 +128,46 @@ export async function verifyJoystick(page,dir){
     assert.ok(circle.minForward>0,'Ordinary contact reversed movement during a circle: '+JSON.stringify(circle));
     assert.ok(circle.maxAngleError<5&&circle.maxPathError<30&&circle.stopSpeed<.01,JSON.stringify(circle));
   }
+  const testCloseCrowd=()=>page.evaluate(()=>{
+    const r=app.run,p=r.player,enemies=r.enemies,env=inspected.env;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
+    return [30,60].map(fps=>{
+      const dt=1/fps,initialHits=r.stats.hits;
+      p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.grounded=true;
+      p.iframes=p.crowdX=p.crowdZ=p.kx=p.kz=0;p.hp=p.maxHp;
+      // Pack one side so contact forces cannot cancel out in a symmetric ring.
+      const stageTime=r.stageTime;
+      r.stageTime=90;
+      for(let i=0;i<12;i++){
+        const id=enemies.spawn(19,p.pos.x+(i%3)*.2,p.pos.z+.35+Math.floor(i/3)*.15,1,1);
+        if(id<0)throw Error('Failed to place close crowd');
+      }
+      r.stageTime=stageTime;
+      let maxDrift=0,maxSideways=0,minForward=Infinity,loadedSteps=0;
+      const advance=(direction,frames)=>{
+        for(let i=0;i<frames;i++){
+          const oldX=p.pos.x,oldZ=p.pos.z;
+          if(Math.hypot(p.crowdX,p.crowdZ)>.001)loadedSteps++;
+          r.realDt=dt;p.update(dt);enemies.update(dt);r.input.endFrame();
+          const dx=p.pos.x-oldX,dz=p.pos.z-oldZ;
+          if(direction){
+            maxSideways=Math.max(maxSideways,Math.abs(dz));
+            minForward=Math.min(minForward,dx*direction);
+          }else maxDrift=Math.max(maxDrift,Math.hypot(dx,dz));
+        }
+      };
+      window.tap(x,y,'down',11);advance(0,3);
+      window.tap(x+8,y,'move',11);advance(1,4);
+      window.tap(x-8,y,'move',11);advance(-1,4);
+      window.tap(x,y,'move',11);advance(0,4);
+      window.tap(x+40,y,'move',11);advance(1,2);
+      window.tap(x+40,y,'up',11);advance(0,fps/2);
+      enemies.clear();
+      return {stage:r.stage,fps,hits:r.stats.hits-initialHits,loadedSteps,maxDrift,maxSideways,minForward};
+    });
+  });
+  const closeCrowd=await testCloseCrowd();
   const report=[];
   for(const [width,height] of [[320,568],[390,844],[430,932]]){
     await page.setViewport({width,height,deviceScaleFactor:2});
@@ -303,6 +345,18 @@ export async function verifyJoystick(page,dir){
   assert.ok(stall.dt.every(dt=>Math.abs(dt-stall.gap/1000)<1e-6),JSON.stringify(stall));
   const [first,held,reverse,released]=stall.samples;
   assert.ok(first>0&&held>0&&Math.abs(held+reverse)<.001&&Math.abs(released)<.001,JSON.stringify(stall));
-  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,southEdge,circles,controls:report,interruptions,cast,stall},null,2));
+  await page.evaluate(async()=>{
+    const r=app.run;
+    r.enemies.clear();r.godMode=false;
+    await r.changeZone();
+    if(r.stage!==2||r.state!=='play')throw Error('Could not enter the second combat area');
+    r.enemies.clear();r.ui.touch.update(r,'');inspected.env.drawUI(app.r.renderer);
+  });
+  closeCrowd.push(...await testCloseCrowd());
+  for(const sample of closeCrowd){
+    assert.ok(sample.hits>0&&sample.loadedSteps>4,JSON.stringify(sample));
+    assert.ok(sample.maxDrift<1e-6&&sample.maxSideways<1e-6&&sample.minForward>0,JSON.stringify(sample));
+  }
+  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,southEdge,circles,closeCrowd,controls:report,interruptions,cast,stall},null,2));
   console.log('Joystick contact damage during clockwise/counterclockwise turns, short and full drags, reversals, multitouch and release passed:',report.length,'screen/scale combinations');
 }

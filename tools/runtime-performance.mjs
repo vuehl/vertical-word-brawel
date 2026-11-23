@@ -156,6 +156,13 @@ try{
   }else if(process.argv.includes('--frame-stability')){
     const {reviewFrameStability}=await import('./frame-stability-regression.mjs');
     await reviewFrameStability(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--portal-crossing')){
+    const {reviewPortalCrossing}=await import('./exit-guidance-regression.mjs');
+    for(const stage of [2,4]){
+      assert.deepEqual(await reviewPortalCrossing(page),{stage,cleared:false,hidden:true});
+      console.log('Portal crossed without a blank frame, destination stage',stage);
+    }
+    assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--exit-guidance')){
     const {reviewExitGuidance}=await import('./exit-guidance-regression.mjs');
     await reviewExitGuidance(page,dir);assert.deepEqual(errors,[]);

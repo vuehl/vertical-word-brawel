@@ -46,11 +46,10 @@ async function reviewRetiredOffers(page){
 }
 
 async function reviewRandomOffers(page){
-  const moves=JSON.parse(fs.readFileSync(new URL('../source/public/data/moves.json',import.meta.url)));
-  const ids=Object.fromEntries(moves.filter(m=>['fire-spin','fire-blast'].includes(m.key)).map(m=>[m.key,m.id]));
-  const result=await page.evaluate(ids=>{
+  const result=await page.evaluate(()=>{
     const r=app.run, p=r.player, originalRandom=Math.random;
     const show=r.ui.showLevelUp, ready=r.ui.experienceReady;
+    const profile=r.meta.profile, savedCollection=profile.collection;
     let offers, pick, seed=613;
     try{
       const recharge=[];
@@ -60,29 +59,39 @@ async function reviewRandomOffers(page){
       Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
       r.ui.experienceReady=()=>true;
       r.ui.showLevelUp=(_run,items,choose)=>{offers=items;pick=choose;};
-      p.addMove(ids['fire-spin']); // The third slot is already available at game time zero.
+      // Reproduce the two marked, already-owned cards in the reported hand.
+      p.addMove(488);p.addVitamin('hp-up',1);
+      profile.collection={...savedCollection,plans:{[r.startSpecies]:{moves:['m488'],vitamins:['vhp-up']}}};
       p.level=3;r.stageTime=0;r.state='play';r.pendingLevels=1;r.rerolls=800;r.doLevelUp();
-      let allVitamins=0, lockedOffers=0, unlockedOffers=0;
-      const positions=new Set();
+      let multiSkillPages=0, lockedOffers=0, unlockedOffers=0;
+      const positions=new Set(), levelFiveSkills=new Set();
       for(let draw=0;draw<800;draw++){
-        p.level=draw<400?3:4;
+        const previous=new Set(offers.map(o=>o.key));
+        p.level=draw<300?3:draw<600?4:5;
         pick(null,'reroll');
-        const index=offers.findIndex(o=>!o.vit);
-        if(index===-1)allVitamins++;else positions.add(index);
-        if(offers.length!==3 || offers.filter(o=>!o.vit).length>1 || new Set(offers.map(o=>o.key)).size!==3)
+        if(offers.length!==3 || !offers.some(o=>o.kind==='newMove') || !offers.some(o=>o.vit) || new Set(offers.map(o=>o.key)).size!==3)
           throw Error('Invalid mixed offer: '+JSON.stringify(offers));
-        if(offers.some(o=>o.id===ids['fire-blast'])){
+        if(offers.filter(o=>!o.vit).length>1)multiSkillPages++;
+        offers.forEach((offer,index)=>{
+          if(offer.kind==='newMove'){
+            positions.add(index);
+            if(p.level===5)levelFiveSkills.add(offer.id);
+          }
+          if(p.level>=4 && previous.has(offer.key))throw Error('Repeated offer with alternatives: '+offer.key);
+        });
+        if(offers.some(o=>o.id===126)){
           if(p.level===3)lockedOffers++;else unlockedOffers++;
         }
       }
       const exhausted=offers;pick(null,'reroll');
-      return {recharge,allVitamins,lockedOffers,unlockedOffers,positions:[...positions].sort(),
+      return {recharge,multiSkillPages,lockedOffers,unlockedOffers,levelFiveSkills:[...levelFiveSkills].sort((a,b)=>a-b),positions:[...positions].sort(),
         zero:r.rerolls,blocked:exhausted===offers};
-    }finally{Math.random=originalRandom;r.ui.showLevelUp=show;r.ui.experienceReady=ready;}
-  },ids);
+    }finally{profile.collection=savedCollection;Math.random=originalRandom;r.ui.showLevelUp=show;r.ui.experienceReady=ready;}
+  });
   assert.deepEqual(result.recharge,[1,0,1,2]);
   assert.deepEqual(result.positions,[0,1,2]);
-  assert.ok(result.allVitamins>0 && result.unlockedOffers>0 && result.blocked);
+  assert.deepEqual(result.levelFiveSkills,[53,83,126,517]);
+  assert.ok(result.multiSkillPages>0 && result.unlockedOffers>0 && result.blocked);
   assert.equal(result.lockedOffers,0);assert.equal(result.zero,0);
   console.log('Mixed draft and empty-reroll checks:',result);
 }
@@ -105,18 +114,18 @@ async function reviewMoveCapacity(page){
       throw Error('No new skill offered with a free slot');
     };
     const checkFull=()=>{
-      let upgrades=0;
+      const seen=new Set(),expected=p.moves.slice(0,p.moveSlots).filter(move=>move&&move.level<p.capOf(move));
       for(let draw=0;draw<100;draw++){
         for(const offer of offers){
           if(offer.vit)continue;
           const move=p.moves[offer.slot];
           if(offer.kind!=='upMove'||offer.slot>=p.moveSlots||!move||offer.key!=='m'+move.def.id||move.level>=p.capOf(move))
             throw Error('Unexpected skill offered at capacity: '+JSON.stringify(offer));
-          upgrades++;
+          seen.add(move);
         }
         choose(null,'reroll');
       }
-      if(!upgrades)throw Error('No equipped skill upgrades offered');
+      if(!expected.every(move=>seen.has(move)))throw Error('An equipped skill never appeared');
     };
     try{
       Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
@@ -181,6 +190,26 @@ async function reviewMoveCapacity(page){
       p.addItem('tm-case');
       trainToCap(ordinary,10);
       trainToCap(fused,6);
+      for(const slots of [3,4]){
+        p.vitaminSlots=slots;
+        open();
+        while(p.vitamins.size<slots){
+          for(let draw=0;draw<20&&!offers.some(offer=>offer.kind==='newVit');draw++)choose(null,'reroll');
+          const fresh=offers.find(offer=>offer.kind==='newVit');
+          if(!fresh)throw Error('Missing new vitamin with free slots');
+          choose(fresh);
+          open();
+        }
+        const seen=new Set();
+        for(let draw=0;draw<20;draw++){
+          for(const offer of offers.filter(o=>o.vit)){
+            if(offer.kind!=='upVit'||!p.vitamins.has(offer.vit))throw Error('Unexpected vitamin at capacity');
+            seen.add(offer.vit);
+          }
+          choose(null,'reroll');
+        }
+        if(seen.size!==slots)throw Error('Missing equipped vitamin at capacity');
+      }
       return {rejected,learned:r.stats.movesLearned-learned,slots:p.moves.filter(Boolean).length};
     }finally{Object.assign(ui,{showLevelUp,showFusion,experienceReady});Math.random=random;}
   });
@@ -209,7 +238,7 @@ async function reviewVitaminArt(page,dir){
     assert.deepEqual(cards,[
       {title:'拾取增益',image:'escape-rope.png',glyph:null},
       {title:'溢出治疗',image:'enigma-berry.png',glyph:null},
-      {title:'羽毛舞',image:null,glyph:'风'},
+      {title:'羽毛舞',image:'flying.png',glyph:null},
     ]);
     await page.waitForFunction(()=>{
       inspected.env.drawUI(app.r.renderer);
@@ -267,13 +296,13 @@ export async function reviewUpgrade({page,resize,dir}){
           return result;
         };
         const cards=[...r.ui.modalEl.querySelectorAll('[data-offer]')];
-        return {buildMs,clock,glyphs:cards.flatMap(card=>[...card.querySelectorAll('.zx-glyph')].map(node=>node.getAttribute('aria-label'))),
-          vitamins:cards.filter(card=>card.querySelector('img')).length};
+        return {buildMs,clock,icons:cards.map(card=>card.querySelector('img')?.getAttribute('src')??'')};
       },{width,baseline});
       if(!baseline){
-        assert.ok(build.glyphs.length<=1);
-        if(build.glyphs.length)assert.deepEqual(build.glyphs,[width===320?'炎':width===390?'焱':'燚']);
-        assert.equal(build.vitamins,3-build.glyphs.length);
+        assert.equal(build.icons.length,3);
+        assert.ok(build.icons.every(Boolean));
+        assert.ok(build.icons.some(src=>src.includes('/types/')));
+        assert.ok(build.icons.some(src=>!src.includes('/types/')));
       }
       const frames=[];
       try{
