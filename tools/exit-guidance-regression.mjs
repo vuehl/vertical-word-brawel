@@ -12,7 +12,6 @@ export async function reviewExitGuidance(page,dir){
       Object.assign(s,{quality:'high',batterySaver:true,lock30Fps:false});app.applySettings();
       app.run.state='paused';app.zixing.settings(()=>{});
       const click=(selector,label)=>[...doc.querySelectorAll(selector)].find(e=>e.textContent===label).click();
-      click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');
       const toggle=()=>doc.querySelector('[aria-label="锁定 30 帧"]');
       const initial={fps:app.fpsCap(),quality:s.quality,legacy:'batterySaver' in s,removed:!doc.querySelector('[aria-label="省电模式"]')};
       toggle().click();const phases=[];
@@ -20,13 +19,13 @@ export async function reviewExitGuidance(page,dir){
       click('.zx-option','均衡');const changed={quality:s.quality,fps:app.fpsCap()};
       await app.meta.saveNow();
       const saved=JSON.parse(wx.getFileSystemManager().readFileSync('/userdata/pokebonk-save.json','utf8')).accounts[app.meta.account.id].profile.settings;
-      click('.zx-plain','恢复本页默认');
+      toggle().click();
       inspected.env.drawUI(app.r.renderer,true);
-      doc.querySelector('.zx-body').scrollTop=10000;
+      doc.querySelector('.zx-settings-scroll').scrollTop=10000;
       inspected.env.invalidateUI();
       inspected.env.drawUI(app.r.renderer,true);
       const box=inspected.layout.box(toggle());
-      return {initial,phases,changed,saved:{quality:saved.quality,locked:saved.lock30Fps,legacy:'batterySaver' in saved},reset:app.fpsCap(),text:doc.querySelector('.zx-body').textContent,visible:box.y>=box.clip.y&&box.y+box.h<=box.clip.b};
+      return {initial,phases,changed,saved:{quality:saved.quality,locked:saved.lock30Fps,legacy:'batterySaver' in saved},unlocked:app.fpsCap(),text:doc.querySelector('.zx-body').textContent,visible:box.y>=box.clip.y&&box.y+box.h<=box.clip.b};
     }));
     await page.screenshot({path:path.join(dir,`exit-settings-${width}.png`)});
     const result=await page.evaluate(()=>{
@@ -86,8 +85,8 @@ export async function reviewExitGuidance(page,dir){
   for(const s of report.settings){
     assert.deepEqual(s.initial,{fps:60,quality:'high',legacy:false,removed:true});
     assert.ok(s.phases.every(fps=>fps===30));assert.deepEqual(s.changed,{quality:'medium',fps:30});
-    assert.deepEqual(s.saved,{quality:'medium',locked:true,legacy:false});assert.equal(s.reset,60);assert.ok(s.visible);
-    assert.match(s.text,/如果手机出现卡顿/);assert.doesNotMatch(s.text,/省电模式/);
+    assert.deepEqual(s.saved,{quality:'medium',locked:true,legacy:false});assert.equal(s.unlocked,60);assert.ok(s.visible);
+    assert.match(s.text,/手动调整会记住选择/);assert.doesNotMatch(s.text,/省电模式/);
   }
   for(const m of report.maps)for(const name of ['扭蛋','免费扭蛋','传送门'])assert.ok(m.labels.includes(name),name);
   const [boss,noBanner,single,sanctuary,final,paused,resumed]=report.guidance;

@@ -40,7 +40,6 @@ export async function reviewAndroidStability(page,dir,baseline=false){
       const settings=app.meta.profile.settings,run=app.run,doc=inspected.doc;
       app.zixing.settings(()=>{});
       const click=(selector,text)=>{const button=[...doc.querySelectorAll(selector)].find(e=>e.textContent===text);if(!button)throw Error('Missing '+text);button.click();};
-      click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');
       const toggle=()=>doc.querySelector('[aria-label="锁定 30 帧"]');
       const initial=toggle().getAttribute('aria-checked');toggle().click();
       const quality=settings.quality,phases=[];
@@ -55,16 +54,16 @@ export async function reviewAndroidStability(page,dir,baseline=false){
       return {initial,quality,phases,afterQuality,selected:toggle().getAttribute('aria-checked')};
     });
     await page.screenshot({path:path.join(dir,'lock-30-settings.png')});
-    report.settings.reset=await page.evaluate(()=>{
+    report.settings.unlocked=await page.evaluate(()=>{
       const doc=inspected.doc;
-      [...doc.querySelectorAll('button')].find(e=>e.textContent==='恢复本页默认').click();
+      doc.querySelector('[aria-label="锁定 30 帧"]').click();
       const result={fps:app.fpsCap(),enabled:app.meta.profile.settings.lock30Fps,quality:app.meta.profile.settings.quality};
       app.setScreen(null);app.run.state='play';app.run.update(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
       return result;
     });
     assert.equal(report.settings.initial,'false');assert.equal(report.settings.selected,'true');
     assert.equal(report.settings.quality,'high');assert.ok(report.settings.phases.every(fps=>fps===30));
-    assert.equal(report.settings.afterQuality,30);assert.deepEqual(report.settings.reset,{fps:60,enabled:false,quality:'high'});
+    assert.equal(report.settings.afterQuality,30);assert.deepEqual(report.settings.unlocked,{fps:60,enabled:false,quality:'high'});
   }
   await page.evaluate(async()=>{
     const run=app.run,renderer=app.r.renderer;

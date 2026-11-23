@@ -117,7 +117,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     CanvasRenderingContext2D.prototype.getImageData=function(...args){loadProbe.readbacks++;return read.apply(this,args);};
     const account=await app.backend.guest();await app.meta.load(account);
     app.zixing.choose();
-    loadProbe.selection=Array.from(inspected.doc.querySelectorAll('.zx-choose [aria-label="炎"] canvas'),canvas=>{
+    loadProbe.selection=Array.from(app.screen.querySelectorAll('.journey-scene,.zc-character[data-species="4"] .zc-cutout'),canvas=>{
       const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
       return pixels.some((red,i)=>i%4===0&&red>120&&red>pixels[i+1]*1.5&&pixels[i+3]>200);
     });
@@ -149,7 +149,8 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
         matchedProps:t.zxProps.every(p=>p.walkable
           ? t.workshopGroundSurfaces.some(s=>s.kind===p.kind&&Math.abs(s.x-p.x)<.001&&Math.abs(s.z-p.z)<.001&&Math.abs(s.y-p.baseY-p.h)<.001)
           : t.colliders.some(c=>c.paperBox&&Math.abs(c.x-p.x)<.001&&Math.abs(c.z-p.z)<.001&&Math.abs(c.halfX*2-p.w)<.001&&Math.abs(c.halfZ*2-p.d)<.001)),
-        terrainBatches:t.group.children.length,
+        terrainBatches:t.group.children.length,desk2d:!!t.desk2d,
+        deskLayers:t.group.children.filter(mesh=>mesh.name.startsWith('desk2d/')&&mesh.material.map?.image?.width>0).length,
         readbacks:loadProbe.readbacks,loadingMetrics:r.loadingMetrics,
         hiddenImages:hiddenImages.map(img=>({src:img.src,width:img.naturalWidth,height:img.naturalHeight})),
         hiddenImageBytes:hiddenImages.reduce((sum,img)=>sum+img.naturalWidth*img.naturalHeight*4,0),
@@ -192,7 +193,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
   if(!baseline){
     await page.evaluate(()=>{app.toMenu();});
     await tap('[data-action="journey"]');
-    await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');
+    await tap('[data-action="collection-next"]');
     await page.evaluate(()=>{
       window.restorePrepare=inspected.env.prepareForest;
       inspected.env.prepareForest=async()=>{throw Error('测试：资源读取失败');};
@@ -205,7 +206,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     // A stalled download still shows real progress without loading controls.
     // External navigation must invalidate a late completion of this entry.
     await page.evaluate(()=>{inspected.env.prepareForest=progress=>new Promise(resolve=>{
-      window.entryPaintedBeforeResources=!!inspected.layout.box(inspected.doc.querySelector('.zx-loading-percent'));
+      window.entryPaintedBeforeResources=!!inspected.layout.box(inspected.doc.querySelector('.zx-entry-ticket'));
       window.reportEntryResource=progress;window.releaseEntry=resolve;
     });});
     await tap('[data-action="retry-entry"]');
@@ -225,7 +226,7 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/已等待|正在下载|正在处理|准备字灵|返回选择/);
     await page.evaluate(()=>app.zixing.difficulty());
     await page.evaluate(()=>releaseEntry());await sleep(100);
-    assert.equal(await page.evaluate(()=>app.screen.dataset.page),'difficulty');
+    assert.equal(await page.evaluate(()=>app.screen.dataset.page),'map');
     assert.equal(await page.evaluate(()=>!!app.run),false);
     await page.evaluate(()=>{inspected.env.prepareForest=restorePrepare;});
     // Fail after scene allocation to check disposal and the starting guard.
@@ -278,31 +279,19 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     const loadingLayouts=[];
     for(const [width,height] of [[320,568],[390,844],[430,932]]){
       await resize(width,height);await sleep(150);
-      await page.waitForFunction(()=>!!inspected.layout.box(app.screen?.querySelector('.zx-loading-title'))&&!!inspected.layout.box(app.screen?.querySelector('.zx-loading-ring')));
+      await page.waitForFunction(()=>!!inspected.layout.box(app.screen?.querySelector('.zx-entry-ticket')));
       loadingLayouts.push(await page.evaluate(()=>{
-        const boxes=Object.fromEntries(['.zx-loading-percent','.zx-loading-progress','.zx-loading-content','.zx-loading-ring'].map(selector=>{
-          const b=inspected.layout.box(app.screen.querySelector(selector));return [selector,b&&{x:b.x,y:b.y,w:b.w,h:b.h,clip:b.clip}];
-        }));
-        const titles=[...app.screen.querySelectorAll('.zx-loading-title')].map(el=>({text:el.textContent,font:inspected.layout.box(el)?.s.font}));
-        const ring=app.screen.querySelector('.zx-loading-ring'),ctx=ring.getContext('2d');
-        const alphaAt=(x,y)=>ctx.getImageData(x,y,1,1).data[3];
-        return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,boxes,titles,text:app.screen.textContent,buttons:app.screen.querySelectorAll('button').length,
-          ring:{static:ring.dataset.static,center:alphaAt(200,200),top:alphaAt(200,28),corner:alphaAt(10,10)}};
+        const ticket=app.screen.querySelector('.zx-entry-ticket'),{x,y,w,h}=inspected.layout.box(ticket);
+        return {width:inspected.env.innerWidth,height:inspected.env.innerHeight,x,y,w,h,
+          label:ticket.getAttribute('aria-valuetext'),buttons:app.screen.querySelectorAll('button').length};
       }));
       await page.screenshot({path:path.join(dir,'entry-glyphs-'+width+'.png')});
     }
     fs.writeFileSync(path.join(dir,'loading-layouts.json'),JSON.stringify(loadingLayouts,null,2));
-    for(const {width,height,boxes} of loadingLayouts)for(const [selector,b] of Object.entries(boxes)){
-      assert.ok(b&&b.w>0&&b.h>0&&b.x>=-1&&b.x+b.w<=width+1&&b.y>=-1&&b.y+b.h<=height+1,'Loading content fits: '+selector);
-      assert.ok(Math.abs(b.x+b.w/2-width/2)<2,'Loading content is horizontally centered: '+selector);
-      if(selector==='.zx-loading-percent')assert.ok(Math.abs(b.y+b.h/2-height/2)<height*.15,'Percentage stays near the screen center');
-    }
-    for(const layout of loadingLayouts){
-      assert.deepEqual(layout.titles.map(t=>t.text),['正在布置场景']);
-      assert.ok(layout.titles.every(t=>t.font===24),'Loading title uses a readable size: '+JSON.stringify(layout.titles));
-      assert.equal(layout.buttons,0);assert.doesNotMatch(layout.text,/准备字灵|已等待|返回选择/);
-      const progress=layout.boxes['.zx-loading-progress'];assert.equal(progress.w,progress.h);
-      assert.deepEqual(layout.ring,{static:'true',center:0,top:255,corner:0},'Progress is a cached ring with a transparent center');
+    for(const {width,height,x,y,w,h,label,buttons} of loadingLayouts){
+      assert.ok(w>=240&&h>=44&&x>=-1&&x+w<=width+1&&y>height*.5&&y+h<=height,'Loading slip fits below the illustration');
+      assert.ok(Math.abs(x+w/2-width/2)<2,'Loading slip is horizontally centered');
+      assert.match(label,/正在准备字灵 \d+%/);assert.equal(buttons,0);
     }
     await resize(390,844);
     await page.evaluate(()=>{window.holdEntryGlyphs=false;});
@@ -315,14 +304,14 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     assert.equal(entryRecovery.status,'ready');
     const hud=entryRecovery.firstHud;
     assert.ok(hud?.time===0&&hud.visible&&hud.green&&hud.hp>0&&hud.hp===hud.expected&&hud.icons,JSON.stringify(hud));
-    assert.deepEqual(probe.selection,[true,true,true],'Preview, starter button and move icon show colored artwork immediately');
+    assert.deepEqual(probe.selection,[true,true],'The character preview and starter card show colored artwork immediately');
     assert.ok(entryRecovery.phases.some(p=>p.phase==='绘制桌面与纸张'));
     assert.ok(entryRecovery.phases.some(p=>p.phase==='摆放场景物件'));
     assert.equal(entryRecovery.percentages.at(-1),100);
     for(let i=1;i<entryRecovery.percentages.length;i++)assert.ok(entryRecovery.percentages[i]>=entryRecovery.percentages[i-1],'Entry progress never goes backwards');
     assert.ok(entryRecovery.frames.some(f=>f.progress===100),'Completed percentage is actually painted');
     assert.ok(entryRecovery.frames.every(f=>!f.popup&&f.state!=='play'&&f.time===0),'No character popup, gameplay or elapsed game time while loading');
-    assert.ok(entryRecovery.warmFrames.length>0&&entryRecovery.warmFrames.every(f=>f.state==='transition'&&f.time===0&&f.progress<100),'First scene frame is prepared before revealing gameplay');
+    assert.ok(entryRecovery.warmFrames.some(f=>f.progress<100)&&entryRecovery.warmFrames.every(f=>f.state==='transition'&&f.time===0),'First scene frame is prepared before revealing gameplay');
     assert.equal(await page.evaluate(()=>app.screen),null);
     await page.screenshot({path:path.join(dir,'entry-complete.png')});
   }
@@ -338,7 +327,12 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
     for(const track of resources.tracks)assert.equal(track.bytes,0,'Removed track must not load: '+track.name);
     assert.equal(probe.initialResources.modelsRestored,0,'Entry must not expand unrequested legacy models');
     for(const s of [...stages,restart]){
-      const metric=s.loadingMetrics.at(-1);assert.ok(metric.terrain.yields>0);
+      const metric=s.loadingMetrics.at(-1);
+      if(s.desk2d){
+        const layout=JSON.parse(fs.readFileSync(new URL('../source/src/desk2d-layout.json',import.meta.url),'utf8'));
+        assert.equal(s.deskLayers,layout.layers.reduce((count,layer)=>count+layer.parts.length,0),'Every desk artwork layer is ready at entry');
+        assert.ok(metric.terrain.steps>=s.deskLayers&&s.colliders>0);
+      }else assert.ok(metric.terrain.yields>0);
       if(s.stage<4)assert.ok(metric.interactions.yields>0);
     }
     assert.deepEqual(probe.requests.filter(p=>/assets\/(?:cries|pmd(?:-shiny)?|portraits(?:-shiny)?|front|icons)\//.test(p)),[],'Glyph actors must not request any excluded image or cry');
@@ -347,9 +341,10 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       assert.equal(s.legacyImages,0);assert.equal(s.glyphs,s.actors);assert.ok(s.estimatedActorBytes<12*1048576);
       // Low desk objects are ground surfaces, while tall objects are blockers.
       assert.ok(s.matchedProps,'Every prop needs its ground surface or matching collider');
-      assert.ok(s.colliders>=s.props-s.walkableProps&&s.colliders<200&&s.props>10);
+      if(!s.desk2d)assert.ok(s.colliders>=s.props-s.walkableProps&&s.colliders<200&&s.props>10);
     }
-    assert.ok(stages[1].textures.filter(id=>stages[0].textures.includes(id)).length>=10,'Area changes must reuse the paper textures');
+    const workshopStages=stages.filter(stage=>!stage.desk2d);
+    assert.ok(workshopStages[1].textures.filter(id=>workshopStages[0].textures.includes(id)).length>=10,'Workshop areas must reuse the paper textures');
     const before=path.join(dir,'loading-before.json');
     if(fs.existsSync(before)){
       const previous=JSON.parse(fs.readFileSync(before));

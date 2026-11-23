@@ -57,8 +57,8 @@ export async function reviewFrameStability(page,dir,baseline=false){
     assert.ok(report.fireBuffers.reuse.instances&&report.fireBuffers.reuse.hits);
     report.settings=await page.evaluate(async()=>{
       const env=inspected.env,doc=inspected.doc,device=env.nativeDevice,originalDevice={...device},originalSettings={...app.meta.profile.settings};
-      const samples=[],click=text=>{const b=[...doc.querySelectorAll('button')].find(b=>b.textContent===text);if(!b)throw Error('Missing '+text);b.click();};
-      const show=()=>{app.zixing.settings(()=>{});click('画面');click('性能视野');};
+      const samples=[];
+      const show=()=>app.zixing.settings(()=>{});
       const state=()=>({fps:app.fpsCap(),checked:doc.querySelector('[aria-label="锁定 30 帧"]')?.getAttribute('aria-checked'),mode:app.meta.profile.settings.frameRateMode});
       try{
         for(const platform of ['android','ios'])for(const modelLevel of [1,2,3]){
@@ -73,7 +73,7 @@ export async function reviewFrameStability(page,dir,baseline=false){
           // A late device reply cannot override a manual choice.
           device.modelLevel=modelLevel===1?2:1;env.dispatchEvent(new env.Event('deviceperformancechange'));
           const afterReply=state();
-          click('恢复本页默认');const reset=state();
+          app.meta.profile.settings.frameRateMode='auto';app.applySettings();const reset=state();
           // With auto active, a late reply also synchronizes the visible switch.
           device.modelLevel=modelLevel;env.dispatchEvent(new env.Event('deviceperformancechange'));
           const autoReply=state();

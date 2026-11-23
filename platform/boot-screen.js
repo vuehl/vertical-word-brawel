@@ -1,5 +1,5 @@
 'use strict';
-const {paintMenuScene,polygon,gradient}=require('../source/src/menu-scene.js');
+const {paintLoadingBackdrop,paintLoadingSlip}=require('../source/src/menu-scene.js');
 
 // Native stationery and splash-sized hero copies are bundled in the main pack.
 module.exports = async function presentBootFrame(gl) {
@@ -38,14 +38,7 @@ module.exports = async function presentBootFrame(gl) {
     if(full){
       const ctx=canvas.getContext('2d');
       ctx.setTransform(s,0,0,s,0,0);
-      // The title, waves, desk and three printed glyphs share the home painter.
-      const top=Math.min(18,H*.0185),height=Math.min(520,track-68-top),width=height*.75;
-      ctx.fillStyle=gradient(ctx,0,top,0,top+height,'#292943',navy);ctx.fillRect(0,0,W,H);
-      ctx.save();ctx.translate((W-width)/2,top);
-      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(width,0);ctx.lineTo(width,height-17);
-      ctx.lineTo(width*.22,height);ctx.lineTo(0,height-8);ctx.closePath();ctx.clip();
-      paintMenuScene(ctx,width,height,true,word=>heroes[word]);
-      ctx.restore();
+      paintLoadingBackdrop(ctx,W,H,word=>heroes[word]);
     }
     let y=0,ctx=canvas.getContext('2d');
     if(strip){
@@ -56,15 +49,7 @@ module.exports = async function presentBootFrame(gl) {
       ctx.fillStyle=navy;ctx.fillRect(0,0,w,height);
     }
     ctx.setTransform(s,0,0,s,left*s,-y);ctx.save();ctx.translate(0,track);
-    // The paper slip holds both the phase and the real download percentage.
-    polygon(ctx,[[34,-39],[345,-39],[355,-29],[355,16],[347,24],[41,24],[34,18]],'#607EA9');
-    polygon(ctx,[[34,-43],[345,-43],[353,-35],[353,12],[346,19],[39,19],[32,12],[32,-41]],'#EEF0F7');
-    polygon(ctx,[[48,-48],[65,-48],[65,-31],[56,-35],[48,-31]],'#C77683');
-    ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillStyle='#293651';ctx.font='bold 15px sans-serif';
-    ctx.fillText(value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源',61,-18);
-    ctx.textAlign='right';ctx.font='bold 19px sans-serif';ctx.fillStyle='#385A8A';ctx.fillText(value+'%',329,-18);
-    ctx.fillStyle='#D1DBEA';ctx.fillRect(61,0,268,7);
-    if(value){ctx.fillStyle='#5076AE';ctx.fillRect(61,0,268*value/100,7);}
+    paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源');
     ctx.restore();
     return strip?y:null;
   }

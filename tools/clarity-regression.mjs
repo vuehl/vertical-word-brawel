@@ -42,7 +42,6 @@ export async function reviewClarity(page,dir){
     const s=app.meta.profile.settings;s.quality='high';s.frameRateMode='manual';s.lock30Fps=true;app.applySettings();
     app.run.state='paused';app.zixing.settings(()=>{});
     const click=(selector,label)=>[...inspected.doc.querySelectorAll(selector)].find(e=>e.textContent===label).click();
-    click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');
     const toggle=()=>inspected.doc.querySelector('[aria-label="锁定 30 帧"]').click();
     const state=async()=>{
       await app.meta.saveNow();
@@ -56,8 +55,8 @@ export async function reviewClarity(page,dir){
     toggle();const locked=await state();
     toggle();const off=await state();
     toggle();click('.zx-option','均衡');const medium=await state();
-    click('.zx-plain','恢复本页默认');
-    return {migrated,fine,locked,off,medium,reset:await state(),
+    toggle();click('.zx-option','精致');
+    return {migrated,fine,locked,off,medium,restored:await state(),
       options:[...inspected.doc.querySelectorAll('.zx-option')].map(el=>el.textContent)};
   });
   if(!baseline){
@@ -70,7 +69,7 @@ export async function reviewClarity(page,dir){
     assert.deepEqual(selection.migrated,expected('high',true,'精致'));
     assert.deepEqual(selection.fine,expected('high',false,'精致'));
     assert.deepEqual(selection.locked,selection.migrated);assert.deepEqual(selection.off,expected('high',false,'精致'));
-    assert.deepEqual(selection.medium,expected('medium',true,'均衡'));assert.deepEqual(selection.reset,selection.fine);
+    assert.deepEqual(selection.medium,expected('medium',true,'均衡'));assert.deepEqual(selection.restored,selection.fine);
     assert.deepEqual(selection.options,['流畅','均衡','精致']);
   }
   fs.writeFileSync(path.join(dir,'clarity-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));

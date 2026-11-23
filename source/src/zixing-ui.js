@@ -1,10 +1,12 @@
 import {journeyScene} from './journey-scene.js';
+import {paintLoadingSlip} from './menu-scene.js';
 import {headerCutout,titleRibbon,hudPaperIcon,paperIcon,upgradePrint,rewardPaper,arrivalPennant,settlementTicket,battleDialogHeading,battleDialogFrame,pausePagePrint,stagePortrait,choiceMark} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,dockDialogClose,mountMenuDialog,openPaperPrompt,paperDecisionPanel,paperDecisionActions,paperDialogTitle,standardButton,fitPaperActionLabels,standardFooter,freePaperActions} from './paper-system.js';
 import {choiceQuality,choiceModel,effectScope} from './choice-presentation.js';
 import {createCollectionUI} from './collection-ui.js';
 import {canDeploy,collectionRewards} from './collection-rules.js';
-import {installReviewBattle,itemOffer,qualityBadge} from './battle-review-ui.js';
+import {installReviewBattle,itemOffer,qualityBadge,planBadge} from './battle-review-ui.js';
+import {runPlan,planIncludes,plannedUpgrade} from './battle-plan.js';
 import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './coop-resume.js';
 import {RelayRoom} from './multiplayer.js';
 import {askCoopCode} from './coop-join-dialog.js';
@@ -19,11 +21,11 @@ import {prepareHudImage,waitForLoadingPaint} from './loading-work.js';
 import {selectGraphicsQuality} from './performance-profile.js';
 import {ExperienceRing} from './experience-ring.js';
 import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus} from './starter-characters.js';
-import {SINGLE_STAGE,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,remainingZoneSeconds} from './lite-rules.js';
+import {SINGLE_STAGE,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,QUIT_REWARD_MIN_SECONDS,remainingZoneSeconds} from './lite-rules.js';
 import {sceneAction} from './scene-action.js';
 import {facilityDwellSeconds,facilityNames} from './active-content.js';
 import {COOP_ROOM_SIZE} from './multiplayer-config.js';
-import {setFrameRateLock,resetFrameRatePolicy,frameRateHelp} from './frame-policy.js';
+import {setFrameRateLock,frameRateHelp} from './frame-policy.js';
 import {portalGuidance} from './portal-guidance.js';
 
 export {characters,icon as paperIcon};
@@ -217,7 +219,7 @@ export function createZixingUI(app,api) {
   document.documentElement.classList.add('zixing');
   if(!globalThis.__ZILING_COMPILED_STYLES__)document.head.append(el('style','',zixingStyle));
   window.__zixingApp=app;
-  let selected=defaultStarter,selectedDestination=destinations[0],selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,settingsTab=0,settingsSub=0,authPromise=null,activeEntry=null;
+  let selected=defaultStarter,selectedDestination=destinations[0],selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,authPromise=null,activeEntry=null;
   const scene=journeyScene();
   const ui=app.zixing={home,choose,map,difficulty:map,lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready,prepareHomeArt:scene.prepare,savedCard,settlementSaved};
   const character=characterForSpecies;
@@ -281,7 +283,7 @@ export function createZixingUI(app,api) {
   function screen(name,title,subtitle,body,actions=[],color='') {
     document.querySelectorAll('.run-hint,.zx-intro').forEach(node=>node.remove());
     const previous=app.screen;
-    const shared=previous?.classList.contains('journey-prep')&&
+    const shared=previous?.classList.contains('journey-prep')&&previous.dataset.page!=='entry'&&
       (['home','choose','map'].includes(name)||(name==='entry'&&previous.dataset.page==='map'));
     const node=shared?previous:el('section','',[],{'data-fullscreen':'true'});
     if(shared){
@@ -296,7 +298,7 @@ export function createZixingUI(app,api) {
       const flag=el('div','paper-title-label',[ribbon,el('h1','',title)]);
       flag.style.width=(Math.ceil(textMetrics.measureText(title).width)+65)+'px';
       node.classList.add('paper-menu-page');
-      const family=['choose','map','difficulty','collection-moves','collection-move-detail','collection-looks'].includes(name)?'sail':'wave';
+      const family=['choose','map','difficulty','collection-moves','collection-move-detail','collection-looks','collection-plan'].includes(name)?'sail':'wave';
       node.append(el('header','zx-header '+color,[headerCutout(family),flag,subtitle?el('small','',subtitle):null],{'data-paper-surface':'flat'}));
     }
     const content=el('div','zx-body',body);
@@ -322,22 +324,22 @@ export function createZixingUI(app,api) {
     })().finally(()=>{authPromise=null;});
     return authPromise;
   }
-  function pendingScreen(title,message,back) {
-    const node=screen('request',title,'',[requestIndicator(message)],back?[button('返回',back)]:[]);
+  async function loadPage(title,message,load,show,back,name='request') {
+    const indicator=requestIndicator(message);
+    const node=screen(name,title,'',[indicator],back?[button('返回',back)]:[]);
     node.classList.add('zx-request-page');
-    return node;
-  }
-  async function loadPage(title,message,load,show,back) {
-    const node=pendingScreen(title,message,back);
+    if(name==='choose')scene.mount(node,current(),null);
+    // Journey pages reuse their root. The indicator belongs to this request only.
+    const active=()=>app.screen===node&&node.contains(indicator);
     try {
       await load();
     }catch(error){
-      if(app.screen===node)screen('request-error',title,'',[card(text(error.message||'读取失败，请重试。'))],[
-        button('重试',()=>loadPage(title,message,load,show,back),'primary'),button('返回',back)
+      if(active())screen('request-error',title,'',[card(text(error.message||'读取失败，请重试。'))],[
+        button('重试',()=>loadPage(title,message,load,show,back,name),'primary'),button('返回',back)
       ]);
       return;
     }
-    if(app.screen===node)show();
+    if(active())show();
   }
   function openProfilePage(title,show) {
     if(profile())return show();
@@ -376,7 +378,7 @@ export function createZixingUI(app,api) {
     selected=p&&canDeploy(p,last)?last:4;
     const root=screen('home','','',[]);
     root.classList.add('zx-home-fixed');
-    const startButton=button('开始旅程',()=>openProfilePage('开始旅程',()=>scene.travel('choose',choose)),'primary zx-home-start',{'data-action':'journey'});
+    const startButton=button('开始旅程',()=>choose(),'primary zx-home-start',{'data-action':'journey'});
     const entry=(symbol,label,action,open)=>button([
       homeEntryFace(),el('span','paper-entry-content',[menuSymbol(symbol),el('span','paper-button-divider',[],{'aria-hidden':true}),el('span','paper-entry-label',label)]),
     ],open,'zx-home-entry zx-home-'+(action==='multiplayer'?'coop':action),{'data-action':action,'data-paper-surface':'flat'});
@@ -645,6 +647,7 @@ export function createZixingUI(app,api) {
     ui.collection=collection;return collection;
   }
   function choose(preserve=false) {
+    if(!profile())return loadPage('选择字灵','正在读取存档',ready,()=>choose(preserve),home,'choose');
     getCollection().open(!preserve);
   }
   function map() {
@@ -731,6 +734,33 @@ export function createZixingUI(app,api) {
     node.querySelector('.zx-body').dataset.paperSurface='flat';
     freePaperActions(node);
   }
+  function journeyLoadingScreen(config){
+    const ticket=el('canvas','zx-entry-ticket',[],{width:780,height:152,'data-static':'true',
+      role:'progressbar','aria-label':'桌上世界加载进度','aria-valuemin':0,'aria-valuemax':100});
+    const node=screen('entry','','',[ticket]);
+    node.classList.add('zx-loading-screen','journey-entry');
+    node.querySelector('.zx-body').dataset.paperSurface='flat';
+    scene.mount(node,character(config.species),app.meta.skinFor(config.species));
+    const captions={
+      '保存出发设置':'正在保存出发设置','准备对局':'正在布置桌上世界',
+      '绘制桌面与纸张':'正在绘制桌面','准备角色与场景物件':'正在布置桌上世界','摆放场景物件':'正在摆放桌面物件',
+      '准备字灵':'正在准备字灵','准备战斗特效':'正在准备战斗特效','准备场景特效':'正在准备场景特效',
+      '准备进入场景':'正在绘制首帧','准备完成':'桌上世界已就绪',
+    };
+    let shown=-1,caption='';
+    function update({progress=0,phase}){
+      const next=Math.max(shown,Math.min(100,Math.floor(progress*100)));
+      const label=captions[phase]||'正在准备场景资源';
+      if(next===shown&&label===caption)return shown;
+      shown=next;caption=label;
+      const ctx=ticket.getContext('2d');
+      ctx.setTransform(2,0,0,2,0,100);ctx.clearRect(0,-50,390,76);
+      paintLoadingSlip(ctx,shown,caption);
+      ticket.setAttribute('aria-valuenow',shown);ticket.setAttribute('aria-valuetext',caption+' '+shown+'%');
+      window.invalidateUI?.();return shown;
+    }
+    update({});return {node,update};
+  }
   function loadingScreen(name,coop=false) {
     const status=small('');status.hidden=true;
     const value=el('b','zx-loading-percent','0%');
@@ -744,7 +774,7 @@ export function createZixingUI(app,api) {
     let shown=-1;
     const update=({progress:fraction=0,teamReady=false,teamStatus='',phase=''})=>{
       if(coop)fraction=teamReady?1:Math.min(.9,fraction);
-      const message=teamStatus||(!node.classList.contains('journey-entry')&&phase==='保存出发设置'?'正在同步出发设置':'');
+      const message=teamStatus||(phase==='保存出发设置'?'正在同步出发设置':'');
       if(status.textContent!==message){status.textContent=message;status.hidden=!message;}
       const next=Math.max(shown,Math.min(100,Math.max(0,Math.floor(fraction*100))));
       if(next===shown)return shown;
@@ -763,14 +793,7 @@ export function createZixingUI(app,api) {
     let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
     const scenic=!config.coop&&['map','entry-error'].includes(app.screen?.dataset.page);
-    const view=loadingScreen('entry',!!config.coop),{node}=view;
-    let showLoading;
-    if(scenic){
-      scene.mount(node,character(config.species),app.meta.skinFor(config.species));node.classList.add('journey-entry');
-      const status=node.querySelector('.zx-loading-content');
-      status.hidden=true;
-      showLoading=setTimeout(()=>{if(app.screen===node&&node.dataset.page==='entry')status.hidden=false;},650);
-    }
+    const view=scenic?journeyLoadingScreen(config):loadingScreen('entry',!!config.coop),{node}=view;
     activeEntry=node;
     const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
     const update=({phase:title,detail:message='',progress=0,teamReady,teamStatus})=>{
@@ -784,7 +807,6 @@ export function createZixingUI(app,api) {
         if(value!==percentages[percentages.length-1])percentages.push(value);
       }
     };
-    if(scenic)update.reveal=()=>scene.reveal(app,node);
     const abandoned=()=>{if(app.screen===node)return false;cancelled=true;return true;};
     try {
       // Give the loading screen a frame before disk/decoder work starts.
@@ -823,7 +845,6 @@ export function createZixingUI(app,api) {
       }
       return false;
     }finally{
-      clearTimeout(showLoading);
       diagnostics.totalMs=Math.round(performance.now()-began);
       if(cancelled)diagnostics.status='cancelled';
       if(activeEntry===node)activeEntry=null;
@@ -964,89 +985,59 @@ export function createZixingUI(app,api) {
     ],[],'dust-close');
   }
   function settings(back=home) {
-    const scroll=el('div','zx-settings-scroll',[],{'aria-label':'设置选项'});
-    const sectionTitle=el('b','zx-settings-section-title','');
-    const reset=button('恢复本页默认',()=>{
-      const s=profile().settings;
-      for(const key of fields){if(key==='lock30Fps')resetFrameRatePolicy(s);else s[key]=api.defaults[key];}
-      app.applySettings();app.meta.save();refreshContent();
-    },'zx-plain');
-    const subTabs=el('div','zx-subtabs zx-settings-index',[],{'aria-label':'设置子分类'});
-    const subNames=[[],['性能视野','震动闪光','特效强度','攻击拾取'],[],['显示设置','战斗提示','流程提示']];
-    let fields=[];
-    function showSubtabs(){
-      const names=subNames[settingsTab];
-      subTabs.hidden=!names.length;
-      subTabs.replaceChildren(...names.map((label,i)=>el('button','zx-subtab'+(settingsSub===i?' on':''),[
-        el('span','',label),el('i','zx-subtab-mark',[],{'aria-hidden':true}),
-      ],{type:'button','aria-pressed':settingsSub===i,'data-paper-surface':'flat',onclick:()=>{
-        if(settingsSub===i)return;
-        const previous=subTabs.children[settingsSub],next=subTabs.children[i];
-        previous.classList.remove('on');previous.setAttribute('aria-pressed','false');
-        next.classList.add('on');next.setAttribute('aria-pressed','true');
-        settingsSub=i;refreshContent(true);
-      }})));
+    const s=profile().settings;
+    const save=()=>{app.applySettings();app.meta.save();};
+    function volume(label,key){
+      const value=s[key]??api.defaults[key];
+      const readout=small(percent(value));
+      const slider=el('input','zx-range',[],{type:'range',min:0,max:1,step:.01,value,'aria-label':label});
+      slider.addEventListener('input',()=>{
+        s[key]=Number(slider.value);
+        readout.textContent=percent(s[key]);
+        save();
+      });
+      return el('div','zx-setting',[row(el('b','',label),readout),slider]);
     }
-    const mainTabs=el('div','zx-tabs main zx-lab-tabs zc-album-tabs',['声音','画面','操作','界面'].map((name,i)=>
-      albumTab(el,button,name,i===settingsTab,()=>{
-        if(i===settingsTab)return;
-        setAlbumTabActive(mainTabs.children[settingsTab],false);
-        setAlbumTabActive(mainTabs.children[i],true);
-        settingsTab=i;settingsSub=0;showSubtabs();refreshContent(true);
-      })));
-    showSubtabs();refreshContent();
-    screen('settings','设置','仅调整当前设备的体验',[
-      mainTabs,subTabs,el('div','zx-settings-tools',[sectionTitle,reset]),scroll,
-    ],[small('调整即时生效'),button('返回',async()=>{await app.meta.saveNow();app.setScreen(null);back();})]);
 
-    function refreshContent(resetScroll=false){
-      const s=profile().settings;fields=[];
-      const save=()=>{app.applySettings();app.meta.save();};
-      const toggle=(label,key,note='')=>{
-        fields.push(key);const b=el('button','zx-switch'+(s[key]?' on':''),el('i'),{type:'button',role:'switch','aria-label':label,'aria-checked':!!s[key]});
-        b.addEventListener('click',()=>{if(key==='lock30Fps')setFrameRateLock(s,!s[key]);else s[key]=!s[key];b.classList.toggle('on',s[key]);b.setAttribute('aria-checked',s[key]);save();});
-        return el('div','zx-setting',[row(col(el('b','',label),note?small(note):null),b)]);
-      };
-      const range=(label,key,min,max,step,format=percent,note='')=>{
-        fields.push(key);const v=s[key]??api.defaults[key]??min,labelNode=small(format(v));
-        const input=el('input','zx-range',[],{type:'range',min,max,step,value:v,'aria-label':label});
-        input.addEventListener('input',()=>{s[key]=Number(input.value);labelNode.textContent=format(s[key]);save();});
-        return el('div','zx-setting',[row(el('b','',label),labelNode),input,note?small(note):null]);
-      };
-      const options=(label,key,values,note='')=>{
-        fields.push(key);const group=el('div','zx-options');
-        const explanation=note?small(typeof note==='function'?note():note):null;
-        const fill=()=>group.replaceChildren(...values.map(([v,label])=>el('button','zx-option'+((s[key]??api.defaults[key])===v?' on':''),label,{type:'button',onclick:()=>{
-          if(key==='quality'){selectGraphicsQuality(s,v);save();refreshContent();return;}
-          s[key]=v;save();
-          fill();if(typeof note==='function')explanation.textContent=note();
-        }})));fill();
-        return el('div','zx-setting',[row(el('b','',label),group),explanation]);
-      };
-      let title='',content=[];
-      if(settingsTab===0) {
-        title='声音与后台播放';content=[card(range('总音量','master',0,1,.01),...(window.backgroundMusicEnabled===false?[]:[range('音乐','music',0,1,.01)]),range('音效','sfx',0,1,.01)),card(toggle('切到后台时静音','muteHidden','后台不播放声音')),small('返回游戏后恢复声音，不影响设备本身的音量。')];
-      }else if(settingsTab===1&&settingsSub===0) {
-        title='画质与性能';content=[card(options('画质','quality',[['low','流畅'],['medium','均衡'],['high','精致']],()=>({low:'降低场景分辨率，简化阴影、光效和掉落表现。',medium:'固定中等场景清晰度，保留柔和阴影。',high:'固定高清场景，保留完整光效与更多特效细节。'}[s.quality??api.defaults.quality])),toggle('锁定 30 帧','lock30Fps',frameRateHelp))];
-      }else if(settingsTab===1&&settingsSub===1) {
-        title='镜头与闪光反馈';content=[card(toggle('屏幕震动','shakeOn'),range('震动强度','screenShake',0,1,.05),toggle('减少闪光','reduceFlashes','减少全屏闪光与高亮特效'))];
-      }else if(settingsTab===1&&settingsSub===2) {
-        title='攻击特效强度';content=[card(range('特效不透明度','fxOpacity',.2,1,.05,percent,'仅影响特效，不影响危险预警。'),range('我的攻击不透明度','ownFxOpacity',.1,1,.05),range('特效亮度','fxGlow',.2,1,.05)),small('战斗预警不受透明度和隐藏攻击设置影响。')];
-      }else if(settingsTab===1) {
-        title='自身攻击与拾取';content=[card(toggle('隐藏我的攻击','hideOwnFx','仅隐藏特效，伤害正常生效。'),toggle('简化经验掉落','calmCandies','减少掉落表现，拾取规则不变。'),options('拾取特效','pickupFx',[['full','完整'],['simple','简单']])),small('战斗预警不受透明度和隐藏攻击设置影响。')];
-      }else if(settingsTab===2) {
-        title='触控与大招';content=[card(range('按钮大小','touchScale',.7,1.3,.05,percent,'调整摇杆、大招等操作按钮的大小。'),small('固定俯视镜头 · 自动跟随字灵'))];
-      }else if(settingsSub===0) {
-        title='界面外观';content=[card(range('界面大小','hudScale',.6,1.3,.05),range('界面不透明度','hudOpacity',.3,1,.05)),card(range('首领血条不透明度','bossBarOpacity',.2,1,.05),options('首领体力','zxBossHealth',[['value','数值'],['percent','百分比']]))];
-      }else if(settingsSub===1) {
-        title='战斗信息提示';content=[card(toggle('伤害数字','damageNumbers'),toggle('浮动文字','floatText','保留治疗等即时反馈。'),toggle('大幅提示','showBanners'),toggle('道具与事件提示','showToasts')),small('危险范围提示等必要战斗信息始终保留。')];
-      }else {
-        title='对局流程提示';content=[card(toggle('显示本局道具','showItems','暂停页仍保留本局道具。'),toggle('仅一项升级时自动选择','skipEmptyLevelUp'),toggle('前几局玩法提示','tips')),small('危险范围提示等必要战斗信息始终保留。')];
+    const presets=[
+      ['low','流畅','降低场景分辨率，简化阴影、光效和掉落表现。'],
+      ['medium','均衡','固定中等场景清晰度，保留柔和阴影。'],
+      ['high','精致','固定高清场景，保留完整光效与更多特效细节。'],
+    ];
+    const choices=el('div','zx-options');
+    const description=small('');
+    function showQuality(){
+      const selected=s.quality??api.defaults.quality;
+      for(const [i,[value,,note]] of presets.entries()){
+        const active=value===selected;
+        choices.children[i].classList.toggle('on',active);
+        choices.children[i].setAttribute('aria-pressed',String(active));
+        if(active)description.textContent=note;
       }
-      sectionTitle.textContent=title;
-      scroll.replaceChildren(...content);
-      if(resetScroll)scroll.scrollTop=0;
     }
+    for(const [value,label] of presets){
+      choices.append(el('button','zx-option',label,{type:'button',onclick:()=>{
+        selectGraphicsQuality(s,value);showQuality();save();
+      }}));
+    }
+    showQuality();
+
+    const lock=el('button','zx-switch'+(s.lock30Fps?' on':''),el('i'),{
+      type:'button',role:'switch','aria-label':'锁定 30 帧','aria-checked':!!s.lock30Fps,
+      onclick:()=>{
+        setFrameRateLock(s,!s.lock30Fps);
+        lock.classList.toggle('on',s.lock30Fps);
+        lock.setAttribute('aria-checked',String(s.lock30Fps));
+        save();
+      },
+    });
+    const scroll=el('div','zx-settings-scroll',[
+      card(volume('总音量','master'),volume('音效','sfx')),
+      card(el('div','zx-setting',[row(el('b','','画质'),choices),description]),
+        el('div','zx-setting',row(col(el('b','','锁定 30 帧'),small(frameRateHelp)),lock))),
+    ],{'aria-label':'设置选项'});
+    screen('settings','设置','仅调整当前设备的体验',[scroll],
+      [small('调整即时生效'),button('返回',async()=>{await app.meta.saveNow();app.setScreen(null);back();})]);
   }
   function help() {
     if(document.querySelector('.zx-guide-overlay'))return;
@@ -1198,7 +1189,9 @@ export function createZixingUI(app,api) {
   function confirmEnd(run,tab) {
     const cancel=button('继续休整',()=>pause(run,tab),'',{'data-action':'end-cancel'});
     const confirm=button('结束本局',()=>{run.endHow='quit';return run.finish(false);},'danger',{'data-action':'end-confirm'});
-    const hint=el('p','paper-prompt-hint','结束后将按当前进度结算，本局临时强化随旅程结束。');
+    const hint=el('p','paper-prompt-hint',run.time<QUIT_REWARD_MIN_SECONDS
+      ? '本局未满 '+QUIT_REWARD_MIN_SECONDS+' 秒，现在结束将获得 0 星尘。'
+      : '结束后将按当前进度结算，本局临时强化随旅程结束。');
     const details=el('p','zx-end-state',character(run.startSpecies).word+' · Lv.'+run.player.level+'    '+time(run.time));
     const wrap=run.ui.modal(paperDecisionPanel(el,'结束本局？',hint,[details],cancel,confirm));
     wrap.className='zx zx-modal-wrap zx-dialog paper-prompt-overlay';
@@ -1316,7 +1309,7 @@ export function createZixingUI(app,api) {
             el('b','zx-choice-title',desc.title),
             qualityBadge(quality),
           ]),
-          meta,el('div','zx-upgrade-effects',effects),
+          meta,plannedUpgrade(runPlan(run),offer)?planBadge():null,el('div','zx-upgrade-effects',effects),
         ]),
       ],()=>choose(offer),'zx-offer zx-quality-card',{'data-offer':index,'data-paper-surface':'upgrade-card'});
       paintQuality(node,quality);return node;
@@ -1414,6 +1407,7 @@ export function createZixingUI(app,api) {
       // reward callbacks, keyboard bindings and protection against double taps.
       node.removeAttribute('style');node.style.cssText='';node.className='zx-item-card zx-quality-card'+(choice?' zx-item-option':'');paintQuality(node,quality);
       node.dataset.itemChoice=keys[index];
+      const planned=planIncludes(runPlan(run),'items',keys[index]);
       if(!choice){
         node.className='zx-loot-display';node.dataset.paperSurface='flat';
         const badge=qualityBadge(quality);
@@ -1424,13 +1418,13 @@ export function createZixingUI(app,api) {
         const held=el('div','zx-loot-limit',[el('span','','持有 / 上限'),el('b','',count+' / '+api.itemLimit(keys[index]))]);
         node.replaceChildren(rewardPaper('item',quality.key),el('div','zx-loot-stage',[picture,warning]),
           el('div','zx-loot-leaf',[el('div','zx-loot-name',[el('h3','',heading.textContent),badge]),
-            el('div','zx-loot-copy',[effect?text(effect,'zx-choice-description zx-loot-effect'):null,
+            el('div','zx-loot-copy',[planned?planBadge():null,effect?text(effect,'zx-choice-description zx-loot-effect'):null,
               affects&&!unused?text(affects.textContent,'zx-loot-beneficiaries'):null,story?text(story,'zx-loot-story'):null]),held]));
         return;
       }
       const held=body.querySelector('.cap');
       const effects=[...body.children].filter(n=>n!==heading&&n!==held&&!n.classList.contains('key')&&n.textContent.trim()).map(n=>n.textContent);
-      itemOffer(node,{key:keys[index],name:heading.textContent,picture,quality,effects,held:held?.textContent.replace(/^你有\s*/,'持有 ')});
+      itemOffer(node,{key:keys[index],name:heading.textContent,picture,quality,planned,effects,held:held?.textContent.replace(/^你有\s*/,'持有 ')});
     });
     const actions=[...wrap.querySelectorAll('.actions > button')];
     actions.forEach((node,index)=>{
@@ -1735,6 +1729,7 @@ export function createZixingUI(app,api) {
     portalGuide.hidden=true;
     hud.root.append(node);
     const combo=hud.els.streak;
+    combo.dataset.uiLayer='streak';
     combo.classList.add('zx-combo');combo.firstElementChild.textContent='连击';
     combo.firstElementChild.dataset.paperText=combo.children[1].dataset.paperText='outlined';
     hud.hudEl.append(combo);

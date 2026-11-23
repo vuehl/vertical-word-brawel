@@ -1,4 +1,5 @@
 import {glyphPreview} from './zixing-glyphs.js';
+import {planIncludes,runPlan} from './battle-plan.js';
 import {battleDialogFrame,hudPaperIcon} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,dockDialogClose,paperDecisionActions,standardButton} from './paper-system.js';
 const el=(tag,cls='',children=[],attrs={})=>{
@@ -27,17 +28,33 @@ export function shopAmount(value,{credit=false,caption=''}={}){
 export function qualityBadge(quality){
   return el('span','zx-quality-badge '+quality.key,quality.label,{'data-paper-surface':'rarity','data-quality':quality.key});
 }
-export function itemOffer(node,{key,name,picture,quality,effects,held}){
+export const planBadge=()=>el('small','zc-plan-badge','★ 计划中');
+export function itemOffer(node,{key,name,picture,quality,effects,held,planned}){
   node.className='zx-item-card zx-quality-card zx-item-option';
   node.dataset.paperSurface='item-offer';node.dataset.quality=quality.key;node.dataset.rarity=quality.label;node.dataset.itemChoice=key;
   picture.classList.add('zx-item-image');
   const badge=qualityBadge(quality);
   node.replaceChildren(el('div','zx-pick-art',picture),el('div','zx-pick-copy',[
     el('div','zx-pick-name',[el('b','',name),badge]),
+    planned?planBadge():null,
     ...effects.map(line=>el('p','zx-pick-effect',line.replace(/₽/g,'金币'))),
     held?el('small','zx-pick-held',held):null,
   ]));
   return node;
+}
+
+export function shopOffer({key,name,picture,quality,planned,effects,owned,status,action}){
+  const heading=el('div','zx-shop-head',[
+    el('div','zx-shop-labels',[el('b','zx-shop-name',name),planned?planBadge():null]),
+    qualityBadge(quality),
+  ]);
+  return el('article','zx-shop-offer',[
+    el('div','zx-shop-product',[
+      el('div','zx-shop-picture',picture),
+      el('div','zx-shop-description',[heading,...effects.map(line=>el('p','zx-shop-effect',line.replace(/₽/g,'金币')))]),
+    ]),
+    el('div','zx-shop-deal',[el('div','zx-shop-inventory',[el('small','zx-shop-owned',owned),status]),action]),
+  ],{'data-paper-surface':'shop-offer','data-quality':quality.key,'data-rarity':quality.label,'data-item-choice':key});
 }
 
 export function shopShelves(panel,previousView){
@@ -220,7 +237,7 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
   ],{'aria-hidden':'true','data-paper-surface':'fusion-mark'});
   const stamp=o=>el('span','zx-fusion-state'+(ready(o)?' ready':''),ready(o)?'可融合':'未满足');
   const identity=o=>el('div','zx-fusion-identity',[resultMark(o.r),
-    el('div','zx-fusion-name',[el('small','','融合结果'),el('h2','',o.r.name)]),stamp(o)]);
+    el('div','zx-fusion-name',[planIncludes(runPlan(run),'fusions','m'+o.r.id)?planBadge():el('small','','融合结果'),el('h2','',o.r.name)]),stamp(o)]);
   const ingredients=o=>el('div','zx-fusion-pair',o.names.flatMap((name,i)=>{
     const move=run.player.moves[i?o.b:o.a]||run.player.moves.find(m=>m&&(m.def.name===name||(o.r.moves?.[i]&&m.def.key===o.r.moves[i])));
     const part=el('div','zx-fusion-part',[

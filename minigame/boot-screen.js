@@ -29,6 +29,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var menu_scene_exports = {};
 __export(menu_scene_exports, {
   gradient: () => gradient,
+  paintLoadingBackdrop: () => paintLoadingBackdrop,
+  paintLoadingSlip: () => paintLoadingSlip,
   paintMenuScene: () => paintMenuScene,
   paintWordmark: () => paintWordmark,
   polygon: () => polygon
@@ -65,7 +67,7 @@ function paintWordmark(c, x, y) {
   c.fillText("\u5B57\u884C", 0, 0);
   c.restore();
 }
-function paintMenuScene(c, width, height, hero, wordImage) {
+function paintMenuScene(c, width, height, hero, wordImage, selectedWord) {
   const w = 780, h = hero ? 1040 : 340;
   c.save();
   c.scale(width / w, height / h);
@@ -166,7 +168,8 @@ function paintMenuScene(c, width, height, hero, wordImage) {
   c.restore();
   c.restore();
   if (hero) {
-    for (const [word, x, yy, size] of [["\u98CE", 286, 143, 143], ["\u708E", 494, 138, 185]]) {
+    const cast = selectedWord ? [[selectedWord, 390, 138, 190]] : [["\u98CE", 286, 143, 143], ["\u708E", 494, 138, 185]];
+    for (const [word, x, yy, size] of cast) {
       const image = wordImage(word);
       if (image) c.drawImage(image, x - size / 2, yy - size / 2, size, size);
     }
@@ -197,6 +200,43 @@ function paintMenuScene(c, width, height, hero, wordImage) {
   c.restore();
   c.restore();
 }
+function paintLoadingBackdrop(ctx, W, H, wordImage, selectedWord) {
+  const top = Math.min(18, H * 0.0185), height = Math.min(520, H * 0.79 - 68 - top), width = height * 0.75;
+  ctx.fillStyle = gradient(ctx, 0, top, 0, top + height, "#292943", "#21253F");
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate((W - width) / 2, top);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(width, 0);
+  ctx.lineTo(width, height - 17);
+  ctx.lineTo(width * 0.22, height);
+  ctx.lineTo(0, height - 8);
+  ctx.closePath();
+  ctx.clip();
+  paintMenuScene(ctx, width, height, true, wordImage, selectedWord);
+  ctx.restore();
+}
+function paintLoadingSlip(ctx, value, label) {
+  polygon(ctx, [[34, -39], [345, -39], [355, -29], [355, 16], [347, 24], [41, 24], [34, 18]], "#607EA9");
+  polygon(ctx, [[34, -43], [345, -43], [353, -35], [353, 12], [346, 19], [39, 19], [32, 12], [32, -41]], "#EEF0F7");
+  polygon(ctx, [[48, -48], [65, -48], [65, -31], [56, -35], [48, -31]], "#C77683");
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#293651";
+  ctx.font = "bold 15px sans-serif";
+  ctx.fillText(label, 61, -18);
+  ctx.textAlign = "right";
+  ctx.font = "bold 19px sans-serif";
+  ctx.fillStyle = "#385A8A";
+  ctx.fillText(value + "%", 329, -18);
+  ctx.fillStyle = "#D1DBEA";
+  ctx.fillRect(61, 0, 268, 7);
+  if (value) {
+    ctx.fillStyle = "#5076AE";
+    ctx.fillRect(61, 0, 268 * value / 100, 7);
+  }
+}
 var paper, ink;
 var init_menu_scene = __esm({
   "source/src/menu-scene.js"() {
@@ -206,7 +246,7 @@ var init_menu_scene = __esm({
 });
 
 // platform/boot-screen.js
-var { paintMenuScene: paintMenuScene2, polygon: polygon2, gradient: gradient2 } = (init_menu_scene(), __toCommonJS(menu_scene_exports));
+var { paintLoadingBackdrop: paintLoadingBackdrop2, paintLoadingSlip: paintLoadingSlip2 } = (init_menu_scene(), __toCommonJS(menu_scene_exports));
 module.exports = async function presentBootFrame(gl) {
   let program = gl.createProgram(), texture = gl.createTexture(), vao = gl.createVertexArray();
   let canvas = wx.createCanvas(), patch = wx.createCanvas(), last = "", textureWidth = 0, textureHeight = 0;
@@ -268,21 +308,7 @@ module.exports = async function presentBootFrame(gl) {
     if (full) {
       const ctx2 = canvas.getContext("2d");
       ctx2.setTransform(s, 0, 0, s, 0, 0);
-      const top = Math.min(18, H * 0.0185), height = Math.min(520, track - 68 - top), width = height * 0.75;
-      ctx2.fillStyle = gradient2(ctx2, 0, top, 0, top + height, "#292943", navy);
-      ctx2.fillRect(0, 0, W, H);
-      ctx2.save();
-      ctx2.translate((W - width) / 2, top);
-      ctx2.beginPath();
-      ctx2.moveTo(0, 0);
-      ctx2.lineTo(width, 0);
-      ctx2.lineTo(width, height - 17);
-      ctx2.lineTo(width * 0.22, height);
-      ctx2.lineTo(0, height - 8);
-      ctx2.closePath();
-      ctx2.clip();
-      paintMenuScene2(ctx2, width, height, true, (word) => heroes[word]);
-      ctx2.restore();
+      paintLoadingBackdrop2(ctx2, W, H, (word) => heroes[word]);
     }
     let y = 0, ctx = canvas.getContext("2d");
     if (strip) {
@@ -300,24 +326,7 @@ module.exports = async function presentBootFrame(gl) {
     ctx.setTransform(s, 0, 0, s, left * s, -y);
     ctx.save();
     ctx.translate(0, track);
-    polygon2(ctx, [[34, -39], [345, -39], [355, -29], [355, 16], [347, 24], [41, 24], [34, 18]], "#607EA9");
-    polygon2(ctx, [[34, -43], [345, -43], [353, -35], [353, 12], [346, 19], [39, 19], [32, 12], [32, -41]], "#EEF0F7");
-    polygon2(ctx, [[48, -48], [65, -48], [65, -31], [56, -35], [48, -31]], "#C77683");
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "left";
-    ctx.fillStyle = "#293651";
-    ctx.font = "bold 15px sans-serif";
-    ctx.fillText(value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 95 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 85 ? "\u6B63\u5728\u6574\u7406\u8D44\u6E90" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90", 61, -18);
-    ctx.textAlign = "right";
-    ctx.font = "bold 19px sans-serif";
-    ctx.fillStyle = "#385A8A";
-    ctx.fillText(value + "%", 329, -18);
-    ctx.fillStyle = "#D1DBEA";
-    ctx.fillRect(61, 0, 268, 7);
-    if (value) {
-      ctx.fillStyle = "#5076AE";
-      ctx.fillRect(61, 0, 268 * value / 100, 7);
-    }
+    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 95 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 85 ? "\u6B63\u5728\u6574\u7406\u8D44\u6E90" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90");
     ctx.restore();
     return strip ? y : null;
   }

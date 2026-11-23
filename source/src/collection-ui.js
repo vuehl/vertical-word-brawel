@@ -5,6 +5,7 @@ import {drawAppearanceGlyph} from './collection-art.js';
 import {profilePrint} from './collection-profile.js';
 import {glyphText} from './zixing-identity.js';
 import {openMoveDialog,openUltimateDialog} from './collection-move-dialog.js';
+import {openCollectionPlan} from './collection-plan.js';
 import {albumTab as paperTab,freePaperActions} from './paper-system.js';
 
 // Selection is local to this flow. Browsing, previews and newly captured entries
@@ -87,7 +88,7 @@ export function createCollectionUI(app,api,kit){
     });
     return el('div','zc-dossier-controls journey-commands',[
       action('招式','moves',()=>moves(selected)),
-      action('计划','plan',null,true),
+      action('计划','plan',()=>plan(selected)),
       action('外观','looks',()=>appearances(selected)),
     ],{'aria-label':'所选字灵的功能'});
   }
@@ -161,6 +162,18 @@ export function createCollectionUI(app,api,kit){
     }
     node.querySelector('.zx-body').dataset.paperSurface='flat';
     node.dataset.collectionFirst=String(intro);
+  }
+  function plan(id){
+    rememberList();view='plan';
+    openCollectionPlan({el,button,mount,footer,portrait:portrait(id,activeLook(id)),name:char(id).word,
+      catalog:api.planCatalog(id),saved:p().collection?.plans?.[id],back:render,
+      async save(plan){
+        p().collection??={};
+        const plans=p().collection.plans??={};
+        const old=plans[id];plans[id]=plan;
+        try{await app.meta.saveNow(true);}
+        catch(error){if(old)plans[id]=old;else delete plans[id];throw error;}
+      }});
   }
   function moves(id){
     rememberList();

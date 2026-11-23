@@ -31,6 +31,7 @@ export async function verifyEntry({page,tap,dir}){
     finish('up');
     if(app.screen.dataset.page!=='home')throw Error('Drag opened a page');
     press();finish('up');
+    if(app.screen.dataset.page!=='choose'||app.screen._journeyFade)throw Error('Journey tap must show character selection immediately');
   });
   const chooseMap=async()=>{
     await screen('choose');
@@ -80,16 +81,33 @@ export async function verifyEntry({page,tap,dir}){
   await journey();await chooseMap();
   await page.evaluate(()=>{
     const drawUI=inspected.env.drawUI;
-    const audit=window.departureAudit={progress:[],fade:[]},background=app.screen.querySelector('.journey-scene');
+    const audit=window.departureAudit={progress:[]},background=app.screen.querySelector('.journey-scene');
     inspected.env.drawUI=(...args)=>{
       const result=drawUI(...args),entry=app.screen;
       if(entry?.classList.contains('journey-entry')){
         if(entry.querySelector('.journey-scene')!==background)throw Error('Entry discarded the selected journey backdrop');
-        const value=Number(entry.querySelector('[role="progressbar"]').getAttribute('aria-valuenow'));
+        const ticket=entry.querySelector('.zx-entry-ticket'),value=Number(ticket.getAttribute('aria-valuenow'));
         audit.progress.push(value);
-        if(!audit.image&&value>=40&&!entry.querySelector('.zx-loading-content').hidden)audit.image=GameGlobal.pokebonk.canvas.toDataURL();
-        if(entry._journeyFade)audit.fade.push(entry._journeyFade.scene);
+        if(!audit.image&&value>=40&&value<100){
+          const box=inspected.layout.box(ticket);
+          if(!box||box.w<240||box.h<44)throw Error('Loading slip is missing or too small');
+          // Sample the visible fill and remaining track on the slip.
+          const pixels=ticket.getContext('2d').getImageData(122,106,536,1).data;
+          let filled=0;
+          for(let i=0;i<pixels.length;i+=4)if(pixels[i]===80&&pixels[i+1]===118)filled++;
+          if(Math.abs(filled-536*value/100)>1)throw Error('Loading bar disagrees with the percentage');
+          audit.image=GameGlobal.pokebonk.canvas.toDataURL();
+        }
+        if(value===100){
+          const canvas=inspected.uiCanvas;
+          const pixel=canvas.getContext('2d').getImageData(2,2,1,1).data;
+          if(pixel[3]!==255||pixel[0]>80)throw Error('Completed loading poster lost its opaque dark background');
+        }
         if(app.run?.time>0)throw Error('Combat started during the menu transition');
+      }else if(audit.progress.includes(100)){
+        audit.firstMap={state:app.run?.state,time:app.run?.time,page:entry?.dataset.page??null,
+          health:!!inspected.layout.box(app.run?.ui.root.querySelector('.zx-player-health'))?.w};
+        inspected.env.drawUI=drawUI;
       }
       return result;
     };
@@ -100,8 +118,9 @@ export async function verifyEntry({page,tap,dir}){
   assert.equal(await page.evaluate(()=>app.lastCfg.species),4);
   const audit=await page.evaluate(()=>departureAudit);
   assert.ok(audit.progress.includes(100)&&audit.progress.some(n=>n>0&&n<100));
-  assert.ok(audit.fade.some(n=>n<1)&&audit.fade.includes(0),'Paper scene must reveal the original battle map');
-  if(audit.image)await writeFile(path.join(dir,'03-camera-departure.png'),Buffer.from(audit.image.split(',')[1],'base64'));
+  assert.deepEqual(audit.firstMap,{state:'play',time:0,page:null,health:true});
+  assert.ok(audit.image);
+  await writeFile(path.join(dir,'03-camera-departure.png'),Buffer.from(audit.image.split(',')[1],'base64'));
   assert.ok(await page.evaluate(()=>!!app.run.ui.root.querySelector('.zx-square-hud .zx-stage-caption')));
   await page.evaluate(()=>{
     const run=app.run;
@@ -117,7 +136,19 @@ export async function verifyEntry({page,tap,dir}){
     return boxes.every((b,i)=>b.width===25&&b.height===25&&b.y===boxes[0].y&&(!i||b.x>=boxes[i-1].right));
   });
   await capture('04-entry-play');
-  await page.evaluate(()=>{app.run.streak=0;app.run.streakT=0;});
+  await page.evaluate(()=>{app.run.streakT=.9;});
+  await page.waitForFunction(()=>{
+    const streak=app.run.ui.els.streak;
+    const number=inspected.layout.box(streak.children[1].firstChild);
+    const fill=inspected.layout.box(streak.children[2].firstChild);
+    return number?.opacity>0&&number.opacity<.7&&fill?.w>0&&fill.w<20;
+  });
+  await page.evaluate(()=>app.run.onKill());
+  await page.waitForFunction(()=>{
+    const streak=app.run.ui.els.streak;
+    return streak.children[1].textContent==='×8'&&inspected.layout.box(streak.children[2].firstChild)?.w>45;
+  });
+  await page.evaluate(()=>{app.run.streakT=1/60;});
   await page.waitForFunction(()=>!app.run.ui.els.streak.offsetWidth);
   await page.evaluate(()=>{
     for(const id of ['rare-candy','fire-stone','ice-stone','leaf-stone'])app.run.player.items.set(id,1);
@@ -143,7 +174,14 @@ export async function verifyEntry({page,tap,dir}){
     if(!hud.root.querySelector('.zx-ultimate-call'))throw Error('Ultimate announcement did not render');
   });
   await tap('.zx-hud-pause');await capture('05-pause');
-  await page.evaluate(()=>app.toMenu());await screen('home');
+  const startingDust=await page.evaluate(()=>{app.run.time=29.99;return app.meta.profile.stardust;});
+  await tap('[data-action="pause-end"]');
+  assert.match(await page.evaluate(()=>app.run.ui.modalEl.textContent),/0 星尘/);
+  await tap('[data-action="end-confirm"]');
+  await page.waitForFunction(()=>app.run.ui.modalEl?.dataset.result==='summary');
+  assert.match(await page.evaluate(()=>app.run.ui.modalEl.querySelector('.zx-outcome-reward>b').textContent),/^星尘\s*\+0$/);
+  assert.equal(await page.evaluate(()=>app.meta.profile.stardust),startingDust);
+  await tap('[data-action="report-home"]');await screen('home');
   await journey();await chooseMap();
   console.log('Verified paper home, collection, route, room, lab and settings, illustrated handoff, original battle terrain and return.');
 }

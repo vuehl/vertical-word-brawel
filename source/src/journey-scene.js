@@ -1,4 +1,5 @@
 import {drawAppearanceGlyph} from './collection-art.js';
+import {paintLoadingBackdrop} from './menu-scene.js';
 
 // Each shot looks at the same point on the desk (the player's feet).
 const selectionShot={scale:1.96,origin:244,height:.195,actor:.40};
@@ -6,8 +7,6 @@ const shots={
   home:{scale:1.25,origin:195,height:.48,actor:.40},
   choose:selectionShot,
   map:selectionShot,
-  entry:{scale:1.54,origin:222,height:.29,actor:.31},
-  play:{scale:1,origin:195,height:.545,actor:.168},
 };
 function between(a,b,t){
   const mix=k=>a[k]+(b[k]-a[k])*t;
@@ -56,6 +55,15 @@ export function journeyScene(){
     if(node.dataset.sceneMargin!==String(margin))node.dataset.sceneMargin=String(margin);
     const ctx=node.getContext('2d');
     ctx.setTransform(d,0,0,d,margin*d,margin*d);
+    if(node.dataset.shot==='entry'){
+      const scale=Math.min(w/390,h/550);
+      // Continue the poster into the native safe-area gutters.
+      ctx.fillStyle='#292943';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
+      ctx.fillStyle='#21253F';ctx.fillRect(-margin,h,w+2*margin,margin);
+      ctx.save();ctx.scale(scale,scale);
+      paintLoadingBackdrop(ctx,w/scale,h/scale,()=>actor,word);ctx.restore();
+      window.invalidateUI?.();return;
+    }
     ctx.fillStyle='#E5E6D8';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
     const scale=Math.max(w/390,(h+margin)/844)*pose.scale,cx=w*.5,cy=h*pose.height;
     if(desk?.width&&desk.complete!==false)ctx.drawImage(desk,cx-scale*pose.origin,cy-scale*461,390*scale,844*scale);
@@ -70,7 +78,7 @@ export function journeyScene(){
   function moveTo(name,instant=false){
     if(!instant&&shots[target]===shots[name]){target=name;return;}
     const ticket=++motion,from=pose,to=shots[name];target=name;
-    if(instant){pose=to;paint();return;}
+    if(instant){pose=to;return;}
     animate(520,t=>{pose=between(from,to,ease(t));paint();},()=>ticket===motion&&node.isConnected);
   }
   function fade(page,from,to,ms){
@@ -89,7 +97,7 @@ export function journeyScene(){
     leaving=true;page.style.pointerEvents='none';
     const previous=page.dataset.page;
     try{
-      moveTo(name);
+      if(name!=='entry')moveTo(name);
       if(await fade(page,1,0,130))return await open();
     }finally{
       leaving=false;
@@ -100,6 +108,8 @@ export function journeyScene(){
   }
   function mount(page,c,look){
     const sameScene=node.parentNode===page,changed=page.dataset.page!==node.dataset.shot;
+    const directEntry=node.dataset.shot==='home'&&page.dataset.page==='choose';
+    if(directEntry)++presentation;
     page._journeyFade=null;
     page.classList.add('journey-prep');page.dataset.paperSurface='flat';
     if(!sameScene)page.insertBefore(node,page.firstChild);
@@ -107,40 +117,11 @@ export function journeyScene(){
     const key=(c?.word||'')+'/'+(look||'');
     if(identity!==key){word=c?.word||'';if(word)drawAppearanceGlyph(actor,word,c.tone,look,true);identity=key;}
     node.dataset.word=word;node.dataset.look=look||'normal';node.dataset.shot=page.dataset.page;
-    moveTo(page.dataset.page,!sameScene);
+    if(page.dataset.page==='entry')++motion;
+    else moveTo(page.dataset.page,!sameScene||directEntry);
     paint();
-    if(sameScene&&changed&&page.dataset.page!=='entry')fade(page,0,1,235);
+    if(sameScene&&changed&&!directEntry&&page.dataset.page!=='entry')fade(page,0,1,235);
   }
   window.addEventListener('resize',paint);
-  async function reveal(app,page){
-    if(app.screen!==page)return;
-    ++motion;++presentation;
-    page.querySelector('.zx-body').style.display='none';
-    const siblings=Array.from(app.ui.children).filter(el=>el!==page&&el.style.display!=='none');
-    const previous=siblings.map(el=>el.style.visibility);
-    const camera=app.r.camera,aspect=camera.aspect,view=camera.view?{...camera.view}:null;
-    const from=pose,p=app.run.player.pos,point=app.run.ui.project(app.run,p.x,p.y+1,p.z);
-    const endX=point.vis?point.x/window.innerWidth:.5,endY=point.vis?point.y/window.innerHeight:.545;
-    const end={...shots.play,height:endY};
-    siblings.forEach(el=>{el.style.visibility='hidden';});
-    try{
-      await animate(730,t=>{
-        const s=ease(t),scale=1+(from.scale-1)*(1-s);
-        pose=between(from,end,s);paint();
-        // Both cameras keep the same subject on screen throughout the handoff.
-        camera.setViewOffset(aspect,1,aspect*(endX-(.5+(endX-.5)*s)/scale),endY-pose.height/scale,aspect/scale,1/scale);
-        const alpha=1-ease(Math.max(0,Math.min(1,(t-.32)/.50)));
-        if(window.nativeUI)page._journeyFade={scene:alpha,controls:0};
-        else page.style.opacity=String(alpha);
-        app.r.needsDraw=true;app.r.render(0);
-        window.invalidateUI?.();window.drawUI?.(app.r.renderer);
-      },()=>app.screen===page);
-    }finally{
-      if(view?.enabled)camera.setViewOffset(view.fullWidth,view.fullHeight,view.offsetX,view.offsetY,view.width,view.height);
-      else camera.clearViewOffset();
-      camera.aspect=aspect;camera.updateProjectionMatrix();
-      siblings.forEach((el,i)=>{el.style.visibility=previous[i]||'';});
-    }
-  }
-  return {prepare,mount,travel,reveal};
+  return {prepare,mount,travel};
 }

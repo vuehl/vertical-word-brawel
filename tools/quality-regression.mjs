@@ -19,8 +19,6 @@ export async function reviewQuality(page,dir){
         const display=[r.renderer.domElement.width,r.renderer.domElement.height];
         const layers=inspected.hudLayers.map(l=>l.canvas?[l.canvas.width,l.canvas.height]:null);
         run.state='paused';app.zixing.settings(()=>{});
-        const click=(selector,label)=>[...inspected.doc.querySelectorAll(selector)].find(e=>e.textContent===label).click();
-        click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');
         await new Promise(resolve=>setTimeout(resolve,30));
         inspected.env.invalidateUI();inspected.env.drawUI(r.renderer,true);
         // Same heading pixels, including glyph antialiasing, in every preset.
@@ -45,7 +43,7 @@ export async function reviewQuality(page,dir){
     assert.deepEqual(dynamic.world,high.world);assert.deepEqual(balancedDynamic.world,medium.world);assert.equal(locked.fpsCap,30);
     // The final setting and Back remain reachable on small phones.
     const scroll=await page.evaluate(()=>{
-      const body=inspected.doc.querySelector('.zx-body');body.scrollTop=10000;
+      const body=inspected.doc.querySelector('.zx-settings-scroll');body.scrollTop=10000;
       inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer,true);
       const b=inspected.layout.box(body.querySelector('[aria-label="锁定 30 帧"]')),back=inspected.layout.box(inspected.doc.querySelector('.zx-footer button'));
       return {lockedVisible:b.y>=b.clip.y-1&&b.y+b.h<=b.clip.b+1,backVisible:back.y>=back.clip.y&&back.y+back.h<=back.clip.b+1};

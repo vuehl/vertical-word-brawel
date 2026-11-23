@@ -285,6 +285,7 @@ async function verifyStartup(){
     if(process.argv.includes('--startup-latency'))await reviewStartupLatency({page,dir,baseline:process.argv.includes('--baseline')});
     else if(process.argv.includes('--run-settlement'))await reviewRunSettlement({page,dir});
     else if(process.argv.includes('--entry-flow'))await (await import('./entry-regression.mjs')).verifyEntry({page,tap,dir});
+    else if(process.argv.includes('--battle-plan'))await (await import('./battle-plan-regression.mjs')).reviewBattlePlan({page,tap,dir});
     else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
     else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});

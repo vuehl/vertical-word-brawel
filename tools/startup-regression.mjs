@@ -91,7 +91,7 @@ export async function reviewStartupLatency({page,dir,baseline=false}) {
   await page.waitForFunction(()=>window.releaseTextDownload);
   await page.evaluate(local=>{
     wx.getFileSystemManager().writeFileSync('/userdata/pokebonk-save.json',local);
-    releaseTextDownload();
+    releaseTextDownload();releaseOptionalDownloads();
   },saved.local);
   await page.waitForFunction(()=>window.releaseStartupCloud,{timeout:30000});
   // Hold the server response independently of local loading and rendering.
@@ -103,20 +103,21 @@ export async function reviewStartupLatency({page,dir,baseline=false}) {
     assert.ok(before.home&&before.complete,'Home must be usable while cloud progress is still pending');
     assert.equal(before.profile,false,'Do not fabricate a profile before cloud progress arrives');
     await page.evaluate(()=>inspected.doc.querySelector('[data-action="journey"]').click());
-    assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'request','Entering gameplay must wait for the shared profile request');
-    await page.evaluate(()=>app.zixing.help());
+    assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'choose','A pending save must open character selection immediately');
+    assert.ok(await page.evaluate(()=>app.screen.textContent.includes('正在读取存档')&&!app.screen.querySelector('.zc-character')));
+    await page.evaluate(()=>app.screen.querySelector('.zx-footer button').click());
   }
   await page.evaluate(()=>releaseStartupCloud());
   await page.waitForFunction(()=>app.meta.profile?.stardust===321&&bootPercentages.includes(100),{timeout:15000});
-  if(!baseline)assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'help','A late save must not navigate away from the current page');
+  if(!baseline)assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'home','A late save must not reopen character selection after going back');
   const report=await page.evaluate(()=>({...startupAudit,packages:requestedPackages,percentages:[...new Set(bootPercentages)]}));
   report.beforeCloudReturned=before;
   if(!baseline){
     assert.equal(report.unsupportedCalls,0,'Native rendering must never submit unsupported color-space pixelStore calls');
     assert.equal(report.cloudRequests,1,'Home and gameplay entry must share one profile request');
-    assert.deepEqual([...new Set(report.packages)].sort(),['play','text'],'Optional art/world packages must not delay the home screen');
+    assert.deepEqual([...new Set(report.packages)].sort(),['art','play','text','world'],'Startup must use the packaged desk and character art');
   }
-  await page.evaluate(()=>{releaseOptionalDownloads();app.zixing.home();});
+  await page.evaluate(()=>app.zixing.home());
   fs.writeFileSync(path.join(dir,baseline?'startup-before.json':'startup-after.json'),JSON.stringify(report,null,2)+'\n');
   console.log('Returning-player startup:',JSON.stringify(report));
 }

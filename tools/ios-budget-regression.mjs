@@ -23,8 +23,6 @@ export async function reviewNativePerformance(page,dir){
     const requestedFrameRates=fixtureFrameRates.slice(firstRequest);
     app.run.ui.hud(app.run);r.render(0);env.drawUI(renderer);
     app.run.state='paused';app.zixing.settings(()=>{});
-    const graphics=[...doc.querySelectorAll('.zx-tabs.main button')].find(el=>el.textContent==='画面');
-    graphics.click();await new Promise(resolve=>setTimeout(resolve,0));
     const hasPowerSetting=!!doc.querySelector('[aria-label="iPhone 温控模式"]');
     const hasPowerControl='iosPowerMode' in env;
     env.drawUI(renderer,true);

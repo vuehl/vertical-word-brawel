@@ -476,7 +476,6 @@ try{
     const removedControls={count:inspected.doc.querySelectorAll('.tc-jump,.tc-dash,.tc-lock,.tc-aim').length,aimMode:app.run.aimMode};
     const run=app.run;run.state='paused';app.zixing.settings(()=>{});
     const click=(selector,label)=>{const el=[...inspected.doc.querySelectorAll(selector)].find(el=>el.textContent===label);if(!el)throw Error('Missing option '+label);el.click();};
-    click('.zx-tabs.main button','画面');click('.zx-subtab','性能视野');
     const applied=[];
     for(const label of ['流畅','均衡','精致']){
       click('.zx-option',label);

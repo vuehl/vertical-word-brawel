@@ -5,6 +5,7 @@ import {setChineseText, chineseText} from '../source/src/chinese-text.js';
 import {configureGlyphNames} from '../source/src/zixing-identity.js';
 import {moveCopy, specialNames} from '../source/src/form-copy.js';
 import {configureStarterSpecies} from '../source/src/starter-characters.js';
+import {runPlan,planIncludes,plannedUpgrade} from '../source/src/battle-plan.js';
 import {retiredMoveIds, moveAvailableForSpecies, configureSkillLearnsets} from '../source/src/skill-availability.js';
 
 export async function loadSkillCatalog() {
@@ -42,7 +43,7 @@ export async function loadSkillCatalog() {
     ji: entries => Object.defineProperties({}, Object.fromEntries(
       Object.entries(entries).map(([key, get]) => [key, {get, enumerable: true}]))),
     moveCopy, specialNames, windMoveEffect: () => null,
-    retiredMoveIds, moveAvailableForSpecies,
+    retiredMoveIds, moveAvailableForSpecies, runPlan, planIncludes, plannedUpgrade,
   });
   const evaluate = code => vm.runInContext(code, ctx, {timeout: 5000});
   evaluate('var ' + between('Zg = {', 'var e_ = class'));

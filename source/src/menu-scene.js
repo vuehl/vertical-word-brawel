@@ -9,7 +9,7 @@ c.save();c.translate(x,y);c.rotate(-.035);c.font='bold 191px "Ziling Swei",sans-
 
 // Menu illustration only. Battle glyph atlases, world textures and skill art
 // remain unchanged. These are flat colour cutouts, with no material texture.
-export function paintMenuScene(c,width,height,hero,wordImage){
+export function paintMenuScene(c,width,height,hero,wordImage,selectedWord){
   const w=780,h=hero?1040:340;
   c.save();c.scale(width/w,height/h);
   c.fillStyle=hero?gradient(c,0,0,0,h,'#292943','#21253F'):'#D7E8ED';c.fillRect(0,0,w,h);
@@ -39,7 +39,8 @@ export function paintMenuScene(c,width,height,hero,wordImage){
   for(let r=0;r<4;r++)for(let k=0;k<4;k++){c.fillStyle=r===0&&k===0?'#DF9180':'#93A7B7';c.fillRect(12+k*31,44+r*24,24,17);}c.restore();
   c.save();c.translate(-22,0);c.rotate(.23);c.fillStyle='#96A1C9';c.fillRect(0,4,175,106);c.fillStyle=paper;c.fillRect(0,0,175,100);c.fillStyle='#C5E1E9';c.fillRect(13,12,144,8);c.fillStyle='#D3D1EB';c.fillRect(0,42,175,58);c.save();c.translate(85,70);c.scale(1,.53);c.fillStyle='#F4F3F8';c.beginPath();c.arc(0,0,30,0,Math.PI*2);c.fill();c.fillStyle='#93ABD6';c.beginPath();c.arc(0,0,19,0,Math.PI*2);c.fill();c.restore();c.restore();
   if(hero){
-    for(const [word,x,yy,size] of [['风',286,143,143],['炎',494,138,185]]){
+    const cast=selectedWord?[[selectedWord,390,138,190]]:[['风',286,143,143],['炎',494,138,185]];
+    for(const [word,x,yy,size] of cast){
       const image=wordImage(word);
       if(image)c.drawImage(image,x-size/2,yy-size/2,size,size);
     }
@@ -55,5 +56,27 @@ export function paintMenuScene(c,width,height,hero,wordImage){
   polygon(c,[[0,235],[144,295],[780,266],[780,340],[0,340]],'#3D6FBD');
   polygon(c,[[0,235],[137,295],[70,284],[0,256]],'#7AB7DE');
   c.restore();c.restore();
+}
+
+// Shared loading artwork in the splash screen's 390-unit coordinate system.
+export function paintLoadingBackdrop(ctx,W,H,wordImage,selectedWord){
+  const top=Math.min(18,H*.0185),height=Math.min(520,H*.79-68-top),width=height*.75;
+  ctx.fillStyle=gradient(ctx,0,top,0,top+height,'#292943','#21253F');ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.translate((W-width)/2,top);
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(width,0);ctx.lineTo(width,height-17);
+  ctx.lineTo(width*.22,height);ctx.lineTo(0,height-8);ctx.closePath();ctx.clip();
+  paintMenuScene(ctx,width,height,true,wordImage,selectedWord);
+  ctx.restore();
+}
+
+export function paintLoadingSlip(ctx,value,label){
+  polygon(ctx,[[34,-39],[345,-39],[355,-29],[355,16],[347,24],[41,24],[34,18]],'#607EA9');
+  polygon(ctx,[[34,-43],[345,-43],[353,-35],[353,12],[346,19],[39,19],[32,12],[32,-41]],'#EEF0F7');
+  polygon(ctx,[[48,-48],[65,-48],[65,-31],[56,-35],[48,-31]],'#C77683');
+  ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillStyle='#293651';ctx.font='bold 15px sans-serif';
+  ctx.fillText(label,61,-18);
+  ctx.textAlign='right';ctx.font='bold 19px sans-serif';ctx.fillStyle='#385A8A';ctx.fillText(value+'%',329,-18);
+  ctx.fillStyle='#D1DBEA';ctx.fillRect(61,0,268,7);
+  if(value){ctx.fillStyle='#5076AE';ctx.fillRect(61,0,268*value/100,7);}
 }
 

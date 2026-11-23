@@ -1,5 +1,5 @@
 import {choiceQuality as itemOfferQuality} from './choice-presentation.js';
-import {itemOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './battle-review-ui.js';
+import {itemOffer,shopOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './battle-review-ui.js';
 import {createCaptureGourd,gourdIcon} from './capture-gourd.js';
 import {deskDevice} from './desk2d.js';
 import {createBerryPickup} from './berry-pickup.js';
@@ -20,6 +20,7 @@ import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterS
 import {windMoveEffect} from './wind-move-art.js';
 import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './skill-availability.js';
 import {mountLiteQA} from './lite-qa.js';
+import {runPlan, planIncludes, plannedUpgrade} from './battle-plan.js';
 import {createZixingUI,paperIcon} from './zixing-ui.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
 import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
@@ -35515,7 +35516,9 @@ function Ub(run, count) {
   }
   const offers = [];
   let hasMove = false;
-  const shuffled = F.shuffle(pool);
+  const plan = runPlan(run);
+  const random = F.shuffle(pool);
+  const shuffled = plan ? random.filter(o => plannedUpgrade(plan,o)).concat(random.filter(o => !plannedUpgrade(plan,o))) : random;
   for (const offer of shuffled) {
     if (!offer.vit) {
       if (hasMove) continue;
@@ -35614,6 +35617,11 @@ function Gb(e, t) {
 function canOfferItem(run, key) {
   return run.player.canHold(key) && run.meta.itemInPool(key) && !run.banished.has('i' + key) &&
     !(run.tower && key === 'dowsing-machine') && !(run.springShoesSeen && key === 'air-balloon');
+}
+function plannedItemKeys(run, count, minimumRarity = 0) {
+  const keys = runPlan(run)?.items;
+  if (!Array.isArray(keys)) return [];
+  return F.shuffle(keys.filter(key => sn.has(key) && sn.get(key).rarity >= minimumRarity && canOfferItem(run,key))).slice(0,count);
 }
 function qb(e, t = 0) {
   let n = e.player,
@@ -35726,7 +35734,8 @@ function Qb(e, t = 0, n = 3, r = 1) {
     });
 }
 function $b(e) {
-  let t = [];
+  let t = plannedItemKeys(e,4).map(key => ({key,price:nx(e,key)}));
+  if (t.some(item => item.key === 'air-balloon')) e.springShoesSeen = true;
   for (let n = 0; n < 16 && t.length < 4; n++) {
     let n = qb(e);
     if (n && !t.some(item => item.key === n)) {
@@ -36498,7 +36507,9 @@ function yS(e) {
     }
   }
   let a = { signature: 0, reaction: 1, type: 2, glitch: 3 };
-  return n.sort((e, t) => Number(t.ready) - Number(e.ready) || a[e.r.kind] - a[t.r.kind]);
+  const plan = runPlan(e);
+  const marked = offer => Number(planIncludes(plan,'fusions','m'+offer.r.id));
+  return n.sort((e, t) => Number(t.ready) - Number(e.ready) || marked(t) - marked(e) || a[e.r.kind] - a[t.r.kind]);
 }
 function bS(e, t) {
   let n = e.player,
@@ -45622,7 +45633,7 @@ var GT = 15,
       }
       const peers=this.coop?[...this.coop.peers.values()].filter(peer=>!peer.gone).map(peer=>peer.species):[];
       await this.sprites.prepareGlyphTextures(this.r.renderer,this.player.speciesId,peers);check();
-      this.onLoadProgress?.({phase:'准备战斗特效',detail:'',progress:.96});
+      this.onLoadProgress?.({phase:'准备战斗特效',detail:'',progress:.95});
       await waitForLoadingPaint(this.r.renderer);check();
       if(!this.fireTexturesPrepared){
         // A teammate or mimic can use any fire move. For solo characters,
@@ -45633,15 +45644,19 @@ var GT = 15,
         if([4,5,6].includes(this.player.speciesId))keys.add('flame-charge');
         if([16,17,18,58,59].includes(this.player.speciesId))keys.add('wind-ultimate');
         for(const move of this.player.moves)if(move)keys.add(move.def.effectKey ?? move.def.key);
+        let prepared=0;
         for(const key of keys){
           const uploaded=await this.vfx.crafted.prepareMoveTexture(key);
           check();
+          prepared++;
+          this.onLoadProgress?.({phase:'准备战斗特效',progress:(95+2*prepared/keys.size)/100});
           if(uploaded)await waitForLoadingPaint();
           check();
         }
         this.fireTexturesPrepared=true;
       }
       await warmCombatShaders(this.r);check();
+      this.onLoadProgress?.({phase:'准备场景特效',progress:.98});
       await this.interactables.deviceFx?.prepare();check();
       if(!onProgress)this.ui.stageIntro(this);
     }
@@ -46945,7 +46960,7 @@ var GT = 15,
     }
     endInfo(e) {
       let t = this.player,
-        n = e ? `won` : t.dead ? `died` : (this.endHow ?? `quit`),
+        n = e ? `won` : (this.endHow ?? (t.dead ? `died` : `quit`)),
         r = this.stats;
       return {
         how: n,
@@ -47301,10 +47316,11 @@ var GT = 15,
         this.whenFree(() => this.rollChestItem(e, t, n));
         return;
       }
-      let r = qb(this, t ?? +!!e);
+      const planned = plannedItemKeys(this,n,t ?? +!!e);
+      let r = planned[0] ?? qb(this, t ?? +!!e);
       if (r) {
         if (n > 1) {
-          let i = [r];
+          let i = planned.length ? planned : [r];
           for (let r = 0; r < 16 && i.length < n; r++) {
             let n = qb(this, t ?? +!!e);
             n && !i.includes(n) && i.push(n);
@@ -51734,8 +51750,8 @@ var KO = 300,
       (clearTimeout(this.saveTimer),
         (this.saveTimer = window.setTimeout(() => this.backend.savePrefs(this.account, this.profile), 400)));
     }
-    saveNow() {
-      return (clearTimeout(this.saveTimer), this.backend.savePrefs(this.account, this.profile));
+    saveNow(reportError=false) {
+      return (clearTimeout(this.saveTimer), this.backend.savePrefs(this.account, this.profile,reportError));
     }
     adopt(e) {
       (this.profile &&
@@ -64074,6 +64090,24 @@ function ZX(app) {
     speciesInfo: id => k.get(id),
     evolutionIds: id => k.evolutionsOf(id).map(actor=>actor.id),
     evolutionLevel: (from,to) => k.runEvolution(from,k.get(to)).level,
+    planCatalog(id) {
+      const inLeague = other => app.meta.inLeague(other);
+      const pool = Vb(id,pt.get(id),k.get(id).types,inLeague);
+      const moves = XD(pool,{species:id,inLeague});
+      const typeIcon = type => Zt('ui/types/'+type+'.png');
+      return {
+        moves:moves.map(move=>({key:'m'+move.id,name:move.name,detail:catalogMoveMeta(move),icon:typeIcon(move.type)})),
+        vitamins:m.map(v=>({key:'v'+v.key,name:v.name,detail:v.desc,icon:itemIcon(v.icon)})),
+        fusions:BD(moves).filter(({r})=>moveAvailableForSpecies(r.id,id)).map(({r,a,b,ta,tb})=>({
+          key:'m'+r.id,name:r.name,detail:[Pi[r.type],DD(r.kind)].join(' · '),icon:typeIcon(r.type),
+          pair:a && b ? [a.name,b.name] : [ta,tb].map(types=>(types??[]).map(type=>Pi[type]).join('/')+'属性招式'),
+          requirement:'两项招式均达到 '+fusionRequiredLevel+' 级后可融合。',
+        })),
+        items:tt.filter(item=>app.meta.itemInPool(item.key)).map(item=>({
+          key:item.key,name:Zb(item.key).name,detail:item.desc,icon:itemIcon(item.key),
+        })),
+      };
+    },
     collectionMoveBook(id,catalog,onInspect,kitIntro) {
       const actor=pt.get(id),species=k.get(id);
       const inLeague=other=>app.meta.inLeague(other);
@@ -72437,10 +72471,10 @@ var JI = class {
       ((t.fps = X(`div`, { class: `fps` })),
         (t.streak = X(
           `div`,
-          { class: `streak`, style: { display: `none` } },
+          { class: `streak`, hidden: true },
           X(`small`, {}, c(`RACHA`)),
           X(`b`, {}, `×0`),
-          X(`i`, {}, X(`u`)),
+          X(`i`, { role: 'progressbar', 'aria-label': '连击剩余时间', 'aria-valuemin': 0, 'aria-valuemax': wE.STREAK_WINDOW }, X(`u`)),
         )),
         (t.lowhp = X(`div`, { class: `lowhp`, style: { display: `none` } })),
         (t.lockHint = X(
@@ -72573,31 +72607,39 @@ var JI = class {
           this.popups.delete(s);
         }, 900));
     }
-    streakHud(e, t) {
-      let n = this.els.streak,
-        r = e >= 3;
-      if (
-        (r !== this.stkOn &&
-          ((this.stkOn = r), (n.style.display = r ? `` : `none`), (this.stkN = -1), (this.stkBar = -1)),
-        !r)
-      )
-        return;
-      let i = performance.now(),
-        a = n.children[1];
-      if (e !== this.stkN && i - this.stkAt >= 120) {
-        let t = this.stkN < 0;
-        ((this.stkN = e), (this.stkAt = i), (a.textContent = `×${e}`));
-        let r = String(e >= 100 ? 4 : e >= 50 ? 3 : e >= 25 ? 2 : +(e >= 10));
-        (n.dataset.tier !== r && (n.dataset.tier = r),
-          t ||
-            a.animate?.([{ transform: `scale(1.45) rotate(-4deg)` }, { transform: `none` }], {
-              duration: 220,
-              easing: `ease-out`,
-            }));
+    streakHud(count, remaining) {
+      const streak = this.els.streak;
+      const visible = count >= 3 && remaining > 0;
+      if (visible !== this.stkOn) {
+        this.stkOn = visible;
+        streak.hidden = !visible;
+        this.stkN = this.stkBar = -1;
       }
-      let o = Math.max(0, Math.min(24, Math.ceil((t / 3) * 24)));
-      o !== this.stkBar &&
-        ((this.stkBar = o), (n.children[2].firstChild.style.transform = `scaleX(${o / 24})`));
+      if (!visible) return;
+
+      const number = streak.children[1];
+      if (count !== this.stkN) {
+        const tier = count >= 100 ? 4 : count >= 50 ? 3 : count >= 25 ? 2 : Number(count >= 10);
+        if (streak.dataset.tier !== String(tier)) {
+          streak.dataset.tier = String(tier);
+          streak.style.setProperty('--sc', ['#0089ED', '#00AB78', '#F28300', '#F03D51', '#AB36EF'][tier]);
+        }
+        number.textContent = `×${count}`;
+        const now = performance.now();
+        if (this.stkN >= 0 && now - this.stkAt >= 120) {
+          number.animate?.([{transform:'scale(1.45) rotate(-4deg)'}, {transform:'none'}], {duration:220, easing:'ease-out'});
+          this.stkAt = now;
+        }
+        this.stkN = count;
+      }
+
+      const progress = Math.min(1, Math.ceil(remaining / wE.STREAK_WINDOW * 48) / 48);
+      if (progress !== this.stkBar) {
+        this.stkBar = progress;
+        streak.children[2].firstChild.style.transform = `scaleX(${progress})`;
+        streak.children[2].setAttribute('aria-valuenow', String(progress * wE.STREAK_WINDOW));
+        streak.style.setProperty('--streak-alpha', String(Math.min(1, progress * 2)));
+      }
     }
     stkOn = !1;
     stkN = -1;
@@ -74478,13 +74520,9 @@ var JI = class {
           i = X(`div`, { class: `cards` });
         const addOffer=(list,key,count,action,status,selling=false)=>{
           const item=Zb(key),def=sn.get(key),applies=selling?null:this.affects(e,(def?.mods??[]).map(m=>m.stat));
-          const row=itemOffer(X('article',{}),{key,name:item.name,picture:Q(key),quality:itemOfferQuality(item.rarity),
-            effects:selling?[]:[item.desc,...(applies?[applies.textContent]:[])],held:''});
-          row.classList.add('zx-shop-offer');
-          const copy=row.querySelector('.zx-pick-copy');
-          const owned=X('small',{class:'zx-shop-owned'},selling?'持有 ×'+count:'持有 '+count+'/'+(def?.max??10));
-          copy.append(X('div',{class:'zx-shop-deal'},X('div',{class:'zx-shop-inventory'},owned,status),action));
-          list.append(row);
+          list.append(shopOffer({key,name:item.name,picture:Q(key),quality:itemOfferQuality(item.rarity),
+            planned:!selling&&planIncludes(runPlan(e),'items',key),effects:selling?[]:[item.desc,...(applies?[applies.textContent]:[])],
+            owned:selling?'持有 ×'+count:'持有 '+count+' / '+(def?.max??10),status,action}));
         };
         for(const lot of r){
           const full=!e.player.canHold(lot.key),short=e.gold<lot.price;
@@ -74492,7 +74530,7 @@ var JI = class {
           const status=X('small',{class:'zx-shop-status'},state);
           const buy=X('button',{type:'button',class:'zx-review-button primary zx-shop-action',disabled:lot.sold||full||short?'true':null,
             'data-shop-buy':lot.key,'aria-label':'购买'+Zb(lot.key).name+'，花费'+P(lot.price)+(state?'，'+state:''),
-            onclick:()=>{if(!buy.isConnected||lot.sold)return;e.buyShopItem(lot)?(N.coin(),n()):N.deny();}},shopAmount(P(lot.price)));
+            onclick:()=>{if(!buy.isConnected||lot.sold)return;e.buyShopItem(lot)?(N.coin(),n()):N.deny();}},X('span',{},'购买'),shopAmount(P(lot.price)));
           addOffer(i,lot.key,e.player.items.get(lot.key)??0,buy,status);
         }
         const a=X('div',{class:'zx-sale-list'});
@@ -74512,7 +74550,7 @@ var JI = class {
               a.querySelectorAll('.armed').forEach(other=>other.dispatchEvent(new Event('disarm')));
               N.click();sell.classList.add('armed');status.textContent='再次点击确认';sell.setAttribute('aria-label','确认'+saleLabel);
               timer=window.setTimeout(disarm,3000);
-            }},shopAmount(P(price),{credit:true}));
+            }},X('span',{},'出售'),shopAmount(P(price),{credit:true}));
           sell.addEventListener('disarm',disarm);
           addOffer(a,key,count,sell,status,true);
         }
@@ -77775,7 +77813,7 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
         wO(r.profile)
       );
     }
-    async savePrefs(e, t) {
+    async savePrefs(e, t, reportError=false) {
       await this.req(
         `/profile/prefs`,
         `PUT`,
@@ -77791,7 +77829,7 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
           collection: t.collection,
         },
         e.token,
-      ).catch(() => {});
+      ).catch(error => {if(reportError)throw error;});
     }
     async startRun(e, t) {
       this.q = null;
@@ -79038,18 +79076,17 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         onLoadProgress?.({phase:'准备字灵',detail:'',progress:.8}),
         ZX(this).attachRun(this.run),
         await this.run.openStage(onLoadProgress),
-        onLoadProgress?.({phase:'准备进入场景',detail:'',progress:.96}),
+        onLoadProgress?.({phase:'准备进入场景',detail:'',progress:.99}),
         await waitForLoadingPaint(this.r.renderer),
         // Upload textures, compile shaders and populate the HUD while the
         // opaque loading page still covers the first frame. No play time elapses.
         this.run.update(0),
         await this.run.ui.prepareEntryIcons?.(),
         warmCombatDraw(this.run),
-        window.drawUI?.(this.r.renderer),
         onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
         await waitForLoadingPaint(this.r.renderer),
         await e.coop?.room.waitForBattleStart((title,teamReady)=>onLoadProgress?.({phase:title,teamStatus:title,teamReady,progress:1})),
-        await onLoadProgress?.reveal?.(),
+        // Remove the opaque page and submit the first playable frame in the same turn.
         this.setScreen(null),
         (this.run.onLoadProgress=null),
         (this.run.state='play'),

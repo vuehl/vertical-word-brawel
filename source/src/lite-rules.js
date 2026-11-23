@@ -6,6 +6,7 @@ export const LITE_BIOME = 'forest';
 export const FOREST_ROUTE = Object.freeze([1, 2, 4]);
 export const FOREST_COMBAT_ZONES = FOREST_ROUTE.length - 1;
 export const SINGLE_STAGE = 'single-stage';
+export const QUIT_REWARD_MIN_SECONDS = 30;
 // Encounter tables are authored on a ten-minute clock. Only wave progression
 // uses that clock. Movement, cooldowns, drops and run records use game seconds.
 export const WAVE_SECONDS = 600;

@@ -71,6 +71,7 @@ export async function setup(host) {
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
   const soloLayers=['counters','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
   const skillLayer=soloLayers[2];
+  soloLayers.push(createHUDLayer(makeCanvas,'streak',22));
   soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
   soloLayers.push(createHUDLayer(makeCanvas,'stage-intro',20));
   soloLayers.push(createHUDLayer(makeCanvas,'ultimate-cutin',21));
@@ -140,8 +141,9 @@ export async function setup(host) {
           if(record.attributeName==='data-frame')skillLayer.invalidatePixels();
           continue;
         }
-        // Adding or removing a slot moves the bottom-anchored column as a whole.
-        if(record.type==='childList'&&element?.dataset?.uiLayer==='skills'){
+        // Recompute tile bounds when the skill column changes size or the streak appears/disappears.
+        if((record.type==='childList'&&element?.dataset?.uiLayer==='skills')||
+           (record.attributeName==='hidden'&&element?.dataset?.uiLayer==='streak')){
           uiFrames.invalidate(true,true);continue;
         }
         const tile=fixedLayerFor(element);

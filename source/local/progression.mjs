@@ -1,4 +1,4 @@
-import {constrainLiteProfile, isLiteSpecies, isLiteFamily, SINGLE_STAGE, runRecordKey} from '../src/lite-rules.js';
+import {constrainLiteProfile, isLiteSpecies, isLiteFamily, SINGLE_STAGE, QUIT_REWARD_MIN_SECONDS, runRecordKey} from '../src/lite-rules.js';
 import fs from 'node:fs';
 import '../src/customize.js';
 import * as rules from '../src/progression.js';
@@ -79,7 +79,10 @@ export function settleRun(p,result) {
     if(task){const metric=task.metric;const maximum=['time','level','stage','runKills'].includes(metric);const delta=maximum?Number(result[metric==='runKills'?'kills':metric]??0):(p.counters[metric]??0)-(before[metric]??0);p[period].prog[i]=Math.min(task.goal,maximum?Math.max(p[period].prog[i]??0,delta):(p[period].prog[i]??0)+Math.max(0,delta));}
   }
   for(const ev of events){const state=eventState(p,ev.id);state.pts+=ev.pointsFor(result);for(const [key,value]of Object.entries(ev.countersFor(result))){state.c[key]=key==='floor'?Math.max(state.c[key]??0,value):(state.c[key]??0)+value;}state.best=Math.max(state.best,ev.boardValue(result)??0);}
-  const dust=Math.round((Math.max(LOCAL_REWARDS.minimumDust,Math.round((result.kills??0)/LOCAL_REWARDS.killsPerDust))+(result.victory?LOCAL_REWARDS.victoryDust:0))*([1,1.75,2.5][result.tier??0]??1));
+  const earlyQuit=result.end?.how==='quit' && (result.time??0)<QUIT_REWARD_MIN_SECONDS;
+  const killDust=Math.max(LOCAL_REWARDS.minimumDust,Math.round((result.kills??0)/LOCAL_REWARDS.killsPerDust));
+  const baseDust=killDust+(result.victory?LOCAL_REWARDS.victoryDust:0);
+  const dust=earlyQuit?0:Math.round(baseDust*([1,1.75,2.5][result.tier??0]??1));
   p.stardust+=dust;p.totalStardust+=dust;
   constrainLiteProfile(p);
   return dust;

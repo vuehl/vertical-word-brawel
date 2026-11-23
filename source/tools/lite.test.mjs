@@ -40,6 +40,20 @@ test('settlement preserves enemy research and evolution, excludes removed captur
  assert.equal(p.research[25],10);assert.ok(p.seen.includes(151));assert.deepEqual(p.biomes,{forest:1});
  const before=p.stardust;assert.equal(applyAction(p,{k:'lab',id:'reroll',lv:99}),false);assert.equal(p.stardust,before);
 });
+test('manual quits earn zero dust before 30 seconds and normal rewards from 30 seconds',()=>{
+ const cases=[
+   {time:0,how:'quit',dust:0}, {time:29.999,how:'quit',dust:0},
+   {time:30,how:'quit',dust:5}, {time:30.01,how:'quit',dust:5},
+   {time:10,how:'died',dust:5}, {time:10,how:'won',dust:130},
+ ];
+ for(const {time,how,dust} of cases){
+   const p=constrainLiteProfile(createProfile('test'));
+   p.stardust=12;p.totalStardust=20;
+   const result={species:4,biome:'forest',mode:'standard',tier:2,stage:1,kills:200,time,level:2,victory:how==='won',end:{how}};
+   assert.equal(settleRun(p,result),dust);
+   assert.deepEqual([p.stardust,p.totalStardust,p.counters.runs,p.counters.kills],[12+dust,20+dust,1,200]);
+ }
+});
 test('HTTP blocks removed content, saves valid play once, and restores progression',async()=>{
  const root=path.resolve(import.meta.dirname,'..'),dir=await fs.mkdtemp(path.join(os.tmpdir(),'pokebonk-lite-test-'));
  const port=18186;let proc,token;

@@ -239,9 +239,20 @@ html.zixing .zx.zx-team-overlay{position:fixed;inset:0;z-index:950;background:rg
 .zx .zx-shop-stock,.zx .zx-shop-stock>.cards,.zx .zx-shop-resale,.zx .zx-shop-resale>.zx-sale-list{display:flex;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:8px;min-height:0;width:100%;margin:0;padding:0;overflow:visible}
 .zx.zx-modal-wrap.zx-review-shop,.zx.zx-modal-wrap.zx-review-copy,.zx.zx-modal-wrap.zx-review-forget{background:rgba(23,30,48,.82)}
 .zx .zx-shop-stock>.shop-reroll{width:100%;min-height:42px;flex:none;margin:0}
-.zx .zx-shop-shelves .zx-shop-offer{display:flex;flex-direction:row;align-items:center;gap:12px;width:100%;flex:none;min-height:104px;padding:8px 12px 10px 8px;text-align:left;border:0}
+.zx .zx-shop-offer{display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;flex:none;padding:12px 12px 8px 14px;text-align:left;background:#EDF0F6;border:0}
+.zx .zx-shop-product{display:flex;flex-direction:row;align-items:flex-start;gap:12px}
+.zx .zx-shop-picture{display:flex;align-items:center;justify-content:center;width:46px;height:46px;flex:none;background:#DCE5EF}
+.zx .zx-shop-picture>img{display:block;width:34px;height:34px;object-fit:contain;margin:0}
+.zx .zx-shop-description{display:flex;flex-direction:column;flex:1;min-width:0;align-self:center;gap:5px}
+.zx .zx-shop-head,.zx .zx-shop-labels{display:flex;flex-direction:row;align-items:center;gap:6px}
+.zx .zx-shop-head{justify-content:space-between;align-items:flex-start}
+.zx .zx-shop-labels{flex:1;min-width:0;flex-wrap:wrap}
+.zx .zx-shop-name{min-width:0;font-size:17px;line-height:23px;color:#263751}
+.zx .zx-shop-labels>.zc-plan-badge{align-self:center;flex:none;padding:1px 5px;background:#F2DDE3;color:#943B55;font-size:11px;line-height:16px}
+.zx .zx-shop-head>.zx-quality-badge{flex:none;font-size:12px;line-height:17px;padding:1px 7px;color:#F3F1FA}
+.zx .zx-shop-effect{margin:0;font-size:14px;line-height:20px;color:#405470}
 .zx .zx-shop-owned{font-size:13px;line-height:17px;color:#4F637F}
-.zx .zx-shop-deal{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:6px}
+.zx .zx-shop-deal{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding-top:6px;border-top:1px solid #BDCAD9}
 .zx .zx-shop-amount{display:flex;flex-direction:row;justify-content:center;align-items:center;gap:4px;flex:none}
 .zx .zx-shop-value,.zx .zx-shop-plus,.zx .zx-shop-caption{color:inherit;font-size:inherit;line-height:inherit;font-weight:700}
 .zx .zx-shop-amount>canvas{flex:none;object-fit:contain}
@@ -251,10 +262,10 @@ html.zixing .zx .zx-shop-index>.zx-shop-index-tab{display:flex;align-items:cente
 html.zixing .zx .zx-shop-index>.zx-shop-index-tab[aria-pressed="true"]{color:#70374D}
 .zx .zx-shop-ledger>.zx-shop-balance{display:flex;align-items:center;justify-content:center;min-width:64px;flex:none;font-size:15px;font-weight:700;color:#EEF2F8}
 .zx .zx-shop-sell-hint{padding:2px 3px;margin:0;color:#E7EBF6;font-size:14px;line-height:20px}
-.zx .zx-shop-status{flex:1;min-width:0;font-size:13px;line-height:18px;color:#795462}
+.zx .zx-shop-status{flex:none;min-width:0;font-size:13px;line-height:18px;color:#795462}
 .zx .zx-shop-action.armed{outline:2px solid #6689B7}
 
-html.zixing .zx .zx-shop-deal>.zx-shop-action{width:auto;min-width:84px;height:38px;min-height:38px;flex:none;padding:0 9px;font-size:15px}
+html.zixing .zx .zx-shop-deal>.zx-shop-action{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:8px;width:auto;min-width:102px;height:44px;min-height:44px;flex:none;padding:0 10px;font-size:15px}
 .zx .zx-shop-stock>.help,.zx .zx-shop-empty{padding:5px 4px;color:#DEEAFA;font-size:13px;line-height:18px}
 .zx .zx-shop-shelves>.zx-review-footer{display:flex;flex-direction:row;gap:8px;padding:0;margin:0;flex:none}
 html.zixing .zx .zx-shop-shelves .zx-review-footer>button{width:0;min-width:0;height:48px;min-height:48px;flex:1;margin:0;padding:0 6px;font-size:17px}
@@ -485,11 +496,12 @@ html.zixing .zx-capture-focus{position:absolute;inset:0;z-index:160;display:flex
 html.zixing .zx-capture-focus>.cap-vig{position:absolute;inset:0;background:rgba(0,0,0,.48)}
 html.zixing .zx-capture-focus>.zx-catch-track{position:relative;align-self:center;margin:0}
 html.zixing #hud>.streak.zx-combo{position:absolute;left:auto;right:15px;top:40%;bottom:auto;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:0;width:102px;margin:0;padding:0;transform:none;text-align:right;pointer-events:none}
+html.zixing #hud>.zx-combo[hidden]{display:none}
 html.zixing #hud>.zx-combo>small{display:block;color:#2D3A50;font-size:12px;line-height:16px;letter-spacing:1px;-webkit-text-stroke:1.5px #F3F1FA;paint-order:stroke fill}
-html.zixing #hud>.zx-combo>b{display:block;color:#2D3A50;font-size:27px;line-height:32px;font-weight:900;text-align:right;-webkit-text-stroke:2px #F3F1FA;paint-order:stroke fill;text-shadow:0 1px 2px #293349}
-html.zixing #hud>.zx-combo[data-tier="4"]>b{animation:none;color:#794655}
-html.zixing #hud>.zx-combo>i{display:flex;flex-direction:row;justify-content:flex-end;width:56px;height:3px;margin:1px 0 0;background:rgba(26,32,42,.58)}
-html.zixing #hud>.zx-combo>i>u{display:block;height:100%;background:#E7D4B0;transform-origin:right}
+html.zixing #hud>.zx-combo>b{display:block;color:var(--sc);font-size:27px;line-height:32px;font-weight:900;text-align:right;-webkit-text-stroke:2px #F3F1FA;paint-order:stroke fill;text-shadow:0 1px 2px #293349;animation:none}
+html.zixing #hud>.zx-combo>*{opacity:var(--streak-alpha,1)}
+html.zixing #hud>.zx-combo>i{display:flex;flex-direction:row;justify-content:flex-end;width:56px;height:4px;margin:1px 0 0;background:rgba(26,32,42,.58)}
+html.zixing #hud>.zx-combo>i>u{display:block;width:100%;height:100%;background:var(--sc);transform-origin:right}
 
 .zx.zx-square-hud .zx-hud-supplies{position:absolute;left:0;top:57px;width:180px;height:23px;padding:0;align-items:flex-start}
 .zx.zx-square-hud .zx-inventory-items{width:auto;height:23px;align-items:flex-start}
@@ -549,13 +561,8 @@ html.zixing .run-hint div>span{font-size:12px;line-height:17px;color:#D9E5F1}
 html.zixing .run-hint .rh-ic{flex:none;width:25px;height:25px;padding:0;background:transparent;border:0;box-shadow:none}
 html.zixing .run-hint .rh-ic img{width:22px;height:22px;object-fit:contain}
 .zx .zx-combat-shell>section.zx-shop-shelves{gap:6px}
-.zx .zx-shop-stock,.zx .zx-shop-stock>.cards{gap:5px}
-.zx .zx-shop-shelves .zx-shop-offer{min-height:87px;padding:5px 8px;gap:6px}
-.zx .zx-shop-shelves .zx-pick-copy{gap:1px;padding:0 2px}
-.zx .zx-shop-shelves .zx-pick-effect{line-height:17px;font-size:13px}
 .zx .zx-shop-inventory{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start}
 .zx .zx-shop-status:empty{display:none}
-html.zixing .zx .zx-shop-deal>.zx-shop-action{height:44px;min-height:44px}
 .zx .zx-evo-choice-head,.zx .zx-evo-benefit,.zx .zx-evo-line{display:flex;flex-direction:row;align-items:center;gap:8px}
 .zx .zx-evo-choice-head,.zx .zx-evo-benefit{width:100%;justify-content:space-between}
 .zx .zx-evo-choice-head>b{font-size:17px;color:#293B56}

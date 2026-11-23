@@ -173,13 +173,8 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     }
     for(const tab of ['战斗','生存','成长']){await tap('.zx-tabs button',tab);await snapshot('lab-'+tab+'-'+width);}
     await tap('.zx-footer button','返回');await page.evaluate(()=>app.zixing.settings());
-    for(const tab of ['声音','画面','操作','界面']){
-      await tap('.zx-tabs.main button',tab);
-      const sub=await page.evaluate(()=>[...inspected.doc.querySelectorAll('.zx-subtab')].map(e=>e.textContent));
-      if(sub.length)for(const name of sub){await tap('.zx-subtab',name);await snapshot('settings-'+tab+'-'+name+'-'+width);}
-      else await snapshot('settings-'+tab+'-'+width);
-    }
-    await tap('.zx-tabs.main button','声音');
+    assert.deepEqual(await page.evaluate(()=>[...app.screen.querySelectorAll('.zx-setting b')].map(el=>el.textContent)),['总音量','音效','画质','锁定 30 帧']);
+    await snapshot('settings-'+width);
     const value=await page.evaluate(()=>{
       const input=inspected.doc.querySelector('[aria-label="总音量"]'),b=input.getBoundingClientRect(),s=inspected.doc.getElementById('game').getBoundingClientRect();
       window.tap(b.x+b.width*.65-s.x,b.y+b.height/2-s.y);return app.meta.profile.settings.master;
@@ -278,9 +273,8 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await tap('.zx-modal .zx-button','返回');
     assert.equal(await page.evaluate(()=>app.run.state),'play');
     swipeControls(await controls());
-    await tap('.zx-hud-pause');await tap('.zx-modal .zx-button','设置');await tap('.zx-tabs.main button','操作');
+    await tap('.zx-hud-pause');await tap('.zx-modal .zx-button','设置');
     assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/扩展操作按钮|手动跳跃/);
-    await tap('.zx-tabs.main button','画面');
     assert.doesNotMatch(await page.evaluate(()=>app.screen.textContent),/显示的敌人|很近|近处/);
     await tap('.zx-footer button','返回');await tap('.zx-modal .zx-button','返回');
     const c=await controls();swipeControls(c);assert.equal(c.extras.length,0);
@@ -343,6 +337,6 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
       fs.writeFileSync(path.join(dir,'forest-regression.json'),JSON.stringify({mode:'controlled stage traversal and victory, not natural playthrough',report},null,2));
     }
   }
-  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','settings tabs at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and floating joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide touch origins, direction, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
+  fs.writeFileSync(path.join(dir,'zixing-validation.json'),JSON.stringify({reports,perf,checks:[...(!process.argv.includes('--battle-only')?['menu navigation','three characters','centered card text at three phone widths','drawn lock icons','difficulty locks','research purchase and persistence','insufficient funds','single-page settings at three phone widths','native slider persistence']:[]),...(menusOnly?[]:['battle','reference HUD and floating joystick at three widths and three button scales','joystick direction, deadzone, knob limits and recentering','screen-wide touch origins, direction, release and cancellation','multitouch movement with fixed camera','ultimate cast during joystick movement','removed enemy visibility setting and extended controls','pause/resume','current attributes','level-up','evolution','slots','quit confirmation','real settlement'])]},null,2));
   console.log('Zixing regression passed:',reports.length,'screenshots');
 }

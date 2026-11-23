@@ -170,6 +170,9 @@ export function drawUiPaper(ctx,box){
       poly(ctx,[[0,8],[8,0],[86,0],[76,h-4],[8,h-4],[0,h-12]],'#B3C8DF');
       poly(ctx,[[w-38,0],[w-26,0],[w-33,7],[w-45,7]],'#869FBB');
       break;}
+    case 'shop-offer':
+      cut(ctx,0,3,w,h-3,6,edge);cut(ctx,0,0,w,h-4,6,top);
+      poly(ctx,[[0,6],[5,1],[5,h-5],[0,h-10]],accent);break;
     case 'item-offer':
       cut(ctx,0,3,w,h-3,5,edge);cut(ctx,0,0,w,h-4,5,top);
       poly(ctx,[[0,5],[5,0],[70,0],[60,h-4],[5,h-4],[0,h-9]],bottom);
@@ -210,6 +213,19 @@ export function drawUiPaper(ctx,box){
       cut(ctx,0,2,w,h-2,7,'#819CBB');
       cut(ctx,0,0,w,h-3,7,'#F3F1FA');
       break;
+    case 'plan-sheet': {
+      // Ruled notebook margin and the torn bottom edge of the reference sheet.
+      ctx.fillStyle='#92A9C4';ctx.fillRect(0,3,w,h-3);
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(w,0);ctx.lineTo(w,h-6);
+      for(let x=w;x>0;x-=10){
+        ctx.lineTo(Math.max(0,x-5),h-2);ctx.lineTo(Math.max(0,x-10),h-6);
+      }
+      ctx.closePath();ctx.fillStyle=white;ctx.fill();
+      ctx.fillStyle='#DDC4CD';ctx.fillRect(11,10,1,h-23);
+      ctx.fillStyle='#A7B9D1';
+      for(let y=29;y<h-12;y+=76){ctx.beginPath();ctx.arc(6,y,1.7,0,Math.PI*2);ctx.fill();}
+      break;
+    }
     case 'lab-balance':
       cut(ctx,0,3,w,h-3,6,'#2F415D');cut(ctx,0,0,w,h-3,6,'#49678C');
       poly(ctx,[[0,6],[6,0],[75,0],[59,h-3],[6,h-3],[0,h-9]],'#3C567B');
