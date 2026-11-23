@@ -56,9 +56,48 @@ export async function reviewRunSettlement({page,dir}) {
   console.log('Interrupted run settled once, with no confirmation on either launch.');
 }
 
+async function checkFirstJourneyFrame(page) {
+  const viewport=page.viewport();
+  await page.setViewport({...viewport,deviceScaleFactor:2});
+  await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
+  const frame=await page.evaluate(async()=>{
+    const env=inspected.env,r=app.r,gl=r.renderer.getContext();
+    const pixel=new Uint8Array(4);
+    function sample(){
+      gl.readPixels(gl.drawingBufferWidth>>1,gl.drawingBufferHeight>>1,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+      return Array.from(pixel);
+    }
+    const applied=new Promise(resolve=>{
+      const apply=app.applySettings;
+      app.applySettings=function(){
+        app.applySettings=apply;
+        // Sample in the same task, before WebGL can discard a presented frame.
+        env.invalidateUI();env.drawUI(r.renderer,true);
+        const before=sample(),worldBefore=r.composer.inputBuffer.width;
+        const resets=new MutationObserver(()=>{});
+        resets.observe(r.canvas._surface,{attributes:true,attributeFilter:['width','height']});
+        apply.call(app);
+        const resized=resets.takeRecords().length;
+        resets.disconnect();
+        resolve({before,after:sample(),worldBefore,worldAfter:r.composer.inputBuffer.width,resized});
+      };
+    });
+    app.screen.querySelector('[data-action="journey"]').click();
+    return applied;
+  });
+  assert.notEqual(frame.worldBefore,frame.worldAfter,'Exercise a real change of world resolution on first profile load');
+  assert.equal(frame.resized,0,'Changing world resolution must not reset the visible canvas during the zoom');
+  assert.equal(frame.before[3],255,'The outgoing journey frame is visible');
+  assert.deepEqual(frame.after,frame.before,'Applying the first profile must preserve the displayed journey frame');
+  await page.waitForFunction(()=>app.screen?.querySelector('.zc-character'));
+  await page.setViewport(viewport);
+  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.zixing.home();});
+}
+
 // Exercise the returning-player path: a fresh guest never reads cloud progress
 // until the first tap, so a cold-only smoke test cannot catch this startup stall.
 export async function reviewStartupLatency({page,dir,baseline=false}) {
+  if(!baseline)await checkFirstJourneyFrame(page);
   const saved=await page.evaluate(async()=>{
     const account=await app.backend.guest();await app.meta.load(account);
     const p=app.meta.profile;

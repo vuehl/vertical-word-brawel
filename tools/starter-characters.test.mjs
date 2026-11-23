@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {roster} from '../source/src/catalogs.js';
 import {constrainLiteProfile,isLiteFamily,validLiteRun} from '../source/src/lite-rules.js';
-import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff,windSpeedDamageBonus,updateStarterSpeed} from '../source/src/starter-characters.js';
+import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff,windSpeedDamageBonus,windBossDamage,updateStarterSpeed} from '../source/src/starter-characters.js';
 import {glyphWordForSpecies} from '../source/src/paper-glyph-art.js';
 import {glyphCatalog} from '../source/src/glyph-catalog.js';
 import {restoreProgress} from '../source/src/coop-resume.js';
@@ -23,7 +23,9 @@ test('both wind paths follow the supplied design, and all nine supplied cutouts 
   }
   assert.deepEqual(characters.map(c=>c.word),['炎','风']);
   assert.equal(glyphCatalog.heroes[132].preview,undefined);
-  assert.deepEqual(roster.find(p=>p.id===16).branch,[17,58]);
+  const wind=roster.find(p=>p.id===16);
+  assert.deepEqual(wind.branch,[17,58]);
+  assert.equal(wind.passive,'');
 });
 
 test('legacy starter selection migrates without losing currency, research, settings or records',()=>{
@@ -74,7 +76,7 @@ test('rejoining remembers skipped spring shoes and caps pairs from older saves',
 test('borrowed ultimates keep the original cast, while wind forms use the correct source stage',()=>{
   const calls=[],original={};
   for(const id of [4,16,58,132])original[id]={names:['a','b','c'],descs:['d0','d1','d2'],dur:[1.2,1.8,3],cast:ctx=>calls.push([id,ctx])};
-  for(const [id,name,source,index] of [[4,'一点火苗',4,0],[5,'火圈绕身',4,1],[6,'满屏是火',4,2],[132,'照着变',132,0],[16,'一阵刮来',16,0],[58,'叫完就冲',16,1]]){
+  for(const [id,name,source,index] of [[4,'一点火苗',4,0],[5,'一点火苗',4,1],[6,'一点火苗',4,2],[132,'照着变',132,0],[16,'一阵风刮来',16,0]]){
     const def=starterUltimate(id,original);assert.deepEqual(def.names,[name]);assert.equal(def.dur[0],original[source].dur[index]);
     def.cast({tier:2,form:2});const [actual,ctx]=calls.at(-1);assert.equal(actual,source);
     assert.equal(ctx.tier,[16,58].includes(id)?index:2);
@@ -83,7 +85,7 @@ test('borrowed ultimates keep the original cast, while wind forms use the correc
 });
 
 test('wind ultimates multiply only their designated speed by ten, refresh without stacking, and clean up',()=>{
-  for(const [id,name,key,stat,other] of [[18,'刮倒一片',attackSpeedBuff,'attackSpeed','moveSpeed'],[59,'跑得没影',speedBuff,'moveSpeed','attackSpeed']]){
+  for(const [id,name,key,stat,other] of [[17,'刮倒一片',attackSpeedBuff,'attackSpeed','moveSpeed'],[58,'跑得没影',speedBuff,'moveSpeed','attackSpeed'],[18,'刮倒一片',attackSpeedBuff,'attackSpeed','moveSpeed'],[59,'跑得没影',speedBuff,'moveSpeed','attackSpeed']]){
     const p={buffs:new Map(),stats:{moveSpeed:1.7,attackSpeed:1.7},recompute(){this.stats.moveSpeed=this.stats.attackSpeed=1.7;applyStarterSpeed(this.stats,this.buffs);},addBuff(key,t,label){this.buffs.set(key,{t,label});this.recompute();}};
     const def=starterUltimate(id,{});assert.deepEqual(def.names,[name]);assert.equal(def.dur[0],5);
     def.cast({run:{player:p}});assert.equal(p.stats[stat],17);assert.equal(p.buffs.get(key).t,5);assert.equal(p.stats[other],1.7);
@@ -92,11 +94,22 @@ test('wind ultimates multiply only their designated speed by ten, refresh withou
   }
 });
 
-test('movement branch converts all bonus speed to damage without a cap or a penalty for slows',()=>{
-  for(const id of [58,59])for(const [speed,bonus] of [[.8,0],[1,0],[1.02,.01],[1.2,.1],[10,4.5],[12,5.5]]){
+test('movement bonus rises with speed and remains below forty percent',()=>{
+  for(const id of [58,59])for(const [speed,bonus] of [[.8,0],[1,0],[1.2,1/15],[2,.2],[10,.36],[100,.396]]){
     assert.ok(Math.abs(windSpeedDamageBonus(id,speed*1.07,1.07)-bonus)<1e-10);
   }
   for(const id of [4,5,6,16,17,18,132])assert.equal(windSpeedDamageBonus(id,10,1),0);
+});
+
+test('one full speed ultimate cannot burst down a fresh boss, including simultaneous hits',()=>{
+  const budgets=new Map();
+  const hit=(time,gen=1)=>windBossDamage(budgets,0,gen,10000,time,1e12);
+  assert.equal(hit(0),800);
+  assert.equal(hit(0),0);
+  let total=800;
+  for(let frame=1;frame<=300;frame++) total+=hit(frame/60)+hit(frame/60);
+  assert.ok(Math.abs(total-3800)<1e-6);
+  assert.equal(hit(5,2),800);
 });
 
 test('speed afterimages follow travelled positions, retain the casting glyph, stay bounded and clear',()=>{

@@ -104,10 +104,10 @@ test('supplied form and skill names resolve for current moves and historical lab
       count++;
     }
   }
-  assert.equal(count,410);
+  assert.equal(count,365);
   assert.equal(moveCopy(18,'空气斩','air-slash'),'空气斩');
   assert.equal(moveCopy(4,'火花','ember'),'火点拍');
-  assert.equal(moveCopy(16,'电光一闪','quick-attack'),'连扇');
+  assert.equal(moveCopy(16,'电光一闪','quick-attack'),'电光一闪');
   assert.equal(moveCopy(132,'变身','transform'),'照影打');
   assert.equal(moveCopy(132,'烟幕'),'越学越像');
   assert.equal(moveCopy(6,'烟幕'),'烧成灰烬');

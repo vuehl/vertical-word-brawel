@@ -4,7 +4,6 @@ import path from 'node:path';
 
 export async function reviewWindSkills(page,dir){
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
-  const supplement=process.argv.includes('--wind-supplement');
   const report={moves:[],fire:[],ultimates:[]};
   await page.evaluate(async()=>{
     if(!await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Wind run failed');
@@ -22,10 +21,9 @@ export async function reviewWindSkills(page,dir){
       e.update();r.lockTarget=0;
     };
   });
-  for(const id of (supplement?[297]:process.argv.includes('--wind-skills-updated')?[16,542,17,297,33,50006,50088]:[98,332,239,16,542,17,297,33,50006,50088])){
+  for(const id of [98,332,239,17,33,49001,50006,50106]){
     const def=await page.evaluate(async id=>{
       setupWind();const r=app.run;r.player.setSpecies(16);
-      if(id===297){for(let i=0;i<r.enemies.n;i++)r.enemies.z[i]-=4;r.enemies.update();}
       if(!r.player.addMove(id))throw Error('Missing '+id);
       const m=r.player.moves[0];m.timer=0;
       await r.vfx.crafted.prepareMoveTexture(m.def.effectKey??m.def.key);
@@ -35,6 +33,7 @@ export async function reviewWindSkills(page,dir){
     for(let i=0;i<32;i++){
       const state=await page.evaluate(()=>{
         vfxAdvance(2,1/60);const r=app.run;r.player.moves[0].timer=999;
+        if(r.player.moves[0].def.key==='wind-ring-wave')return Array.from({length:r.vfx.rings.n},(_,j)=>j);
         return [r.vfx.crafted.windMoves,r.vfx.crafted.windSkills].filter(Boolean).flatMap(a=>Array.from({length:a.mesh.count},(_,j)=>a.pose.getX(j)));
       });
       visible=Math.max(visible,state.length);state.forEach(p=>poses.add(p));
@@ -44,7 +43,7 @@ export async function reviewWindSkills(page,dir){
     assert.ok(visible>0,def.key+' visible');assert.ok(poses.size>=2,def.key+' animated');assert.ok(result.damage>0,def.key+' damage');assert.equal(result.remaining,0);assert.equal(result.gl,0);
     report.moves.push({...def,...result,visible,poses:poses.size});fs.writeFileSync(path.join(dir,'wind-skills.json'),JSON.stringify(report,null,2));console.log('Wind skill',def.key,result.damage);
   }
-  for(const species of (supplement?[]:[4,5,6])){
+  for(const species of [4,5,6]){
     const result=await page.evaluate(async species=>{
       setupWind();const r=app.run,p=r.player;p.setSpecies(species);await r.sprites.prepareHeroForm(species);
       if(!p.addMove(488))throw Error('Missing stampede');p.moves[0].timer=0;
@@ -58,32 +57,38 @@ export async function reviewWindSkills(page,dir){
     assert.ok(result.damage>0);assert.equal(result.remaining,0);report.fire.push(result);
     fs.writeFileSync(path.join(dir,'wind-skills.json'),JSON.stringify(report,null,2));
   }
-  for(const species of (supplement?[17]:[16,17,58])){
+  for (const species of [16,17,18,58,59]) {
     const result=await page.evaluate(async species=>{
-      setupWind();const r=app.run;r.player.setSpecies(species);await r.sprites.prepareHeroForm(species);
-      await r.vfx.crafted.prepareMoveTexture('wind-ultimate');r.ult.charge=1;r.ult.fire();vfxAdvance(12,1/60);
-      return {species,rings:r.vfx.rings.n,vortex:(r.vfx.crafted.windVortex?.mesh.count||0)+(r.vfx.crafted.windSkills?.mesh.count||0)};
+      setupWind();const r=app.run,p=r.player;p.setSpecies(species);p.buffs.clear();p.recompute();
+      await r.vfx.crafted.prepareMoveTexture('wind-ultimate');
+      const before={attack:p.stats.attackSpeed,move:p.stats.moveSpeed};
+      r.ult.charge=1;r.ult.fire();vfxAdvance(12,1/60);
+      return {species,name:r.ult.name,attack:p.stats.attackSpeed/before.attack,move:p.stats.moveSpeed/before.move,
+        vortex:r.vfx.crafted.windVortex?.mesh.count||0};
     },species);
-    assert.ok(species===17?result.rings>=3&&result.vortex>=26:result.vortex>0,JSON.stringify(result));report.ultimates.push(result);
-    await page.evaluate(()=>vfxDraw());await page.screenshot({path:path.join(dir,`ultimate-${species}.png`)});
-    if(species===17){
-      const travel=await page.evaluate(()=>{
-        const r=app.run,a=r.vfx.crafted.windSkills;
-        const before=[...a.tracked.values()].map(e=>[e.x,e.z]);
-        vfxAdvance(35,1/60);
-        const after=[...a.tracked.values()].map(e=>[e.x,e.z]);
-        const hp=Array.from(r.enemies.hp).reduce((a,b)=>a+b,0);
-        vfxAdvance(120,1/60);
-        return {before,after,damage:hp-Array.from(r.enemies.hp).reduce((a,b)=>a+b,0),remaining:a.mesh.count};
-      });
-      assert.equal(travel.before.length,2);assert.equal(travel.after.length,2);
-      assert.notDeepEqual(travel.before,travel.after);assert.ok(travel.damage>0,'Travelling tornadoes still hit after the initial ring');assert.equal(travel.remaining,0);
-      result.travel=travel;
+    if(species===16){assert.equal(result.name,'一阵风刮来');assert.ok(result.vortex>0);}
+    else {
+      const attack=[17,18].includes(species);
+      assert.equal(result.name,attack?'刮倒一片':'跑得没影');
+      assert.ok(Math.abs(result.move-(attack?1:10))<1e-6);
+      assert.ok(Math.abs(result.attack-(attack?10:1))<1e-6);
     }
-    fs.writeFileSync(path.join(dir,'wind-skills.json'),JSON.stringify(report,null,2));
+    report.ultimates.push(result);
+    await page.screenshot({path:path.join(dir,`ultimate-${species}.png`)});
   }
+  report.boss=await page.evaluate(()=>{
+    setupWind();const r=app.run,p=r.player,e=r.enemies;
+    p.setSpecies(58);p.buffs.clear();p.recompute();r.ult.def.cast({run:r});
+    const target=0;
+    e.flags[target]|=4; // Boss
+    const opts={type:'flying',cls:'physical',slot:0,noReact:true,fixed:true,silent:true};
+    const hp=e.hp[target];
+    for(let j=0;j<40;j++)r.combat.hit(target,hp*100,opts);
+    return {before:hp,after:e.hp[target]};
+  });
+  assert.ok(Math.abs(report.boss.after/report.boss.before-.92)<.00001,JSON.stringify(report.boss));
   report.speed=await page.evaluate(async()=>{
-    setupWind();const r=app.run,p=r.player;p.setSpecies(59);await r.sprites.prepareHeroForm(59);
+    setupWind();const r=app.run,p=r.player;p.setSpecies(59);p.buffs.clear();p.recompute();await r.sprites.prepareHeroForm(59);
     const key='ziling-wind-speed',base=p.stats.moveSpeed;
     r.ult.charge=1;r.ult.fire();vfxAdvance(4,1/60);
     const boosted=p.stats.moveSpeed;

@@ -36,7 +36,7 @@ export async function reviewUpgradeEffects(page,dir){
       r.ui.showLevelUp=(run,offers,callback)=>{offered=offers;choose=callback;};
       try{r.doLevelUp();if(!choose)throw Error('Upgrade choices not shown');choose(offered[0]);}finally{r.ui.showLevelUp=show;}
       const fx=r.vfx.upgrade;
-      if(fx.events.length!==0||fx.mesh.visible||fx.rearMesh.visible)throw Error('Ordinary upgrade must not create an orbit effect');
+      if(fx.events.length!==0||fx.mesh.visible||fx.rearMesh.visible||fx.light.mesh.visible)throw Error('Ordinary upgrade must not create an evolution effect');
       for(let i=0;i<20;i++)r.update(1/60);
       return {species,word:r.sprites.get(species).zxGlyph,state:r.state,pending:r.pendingLevels,count:fx.mesh.count,
         events:fx.events.length,visible:fx.mesh.visible||fx.rearMesh.visible,programs:app.r.renderer.info.programs.length};
@@ -65,16 +65,24 @@ export async function reviewUpgradeEffects(page,dir){
       finally{r.sprites.getPlayerGlyph=get;p.speedNow=speed;p.hurtT=hurt;}
       return {from,to,before,oldHp,state:r.state,species:p.speciesId,count:r.vfx.upgrade.mesh.count,
         front:r.vfx.upgrade.mesh.visible,rear:r.vfx.upgrade.rearMesh.visible,
+        lightFrame:r.vfx.upgrade.light.mesh.visible?r.vfx.upgrade.light.pose.getX(0):-1,
         overlay:!!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-cutin,.zx-evolution-result'),
         frames,worldPaused:r.time===clock,stationary:p.pos.equals(position)};
     },{from,to});
     assert.equal(start.state,'evolving');assert.equal(start.species,from);assert.equal(start.count,1);assert.ok(start.front&&start.rear);assert.equal(start.overlay,false);
+    assert.equal(start.lightFrame,27,'Golden spiral is loaded and playing on the original form');
     await draw(`evolution-${from}-${to}-orbit`);
     assert.ok(start.worldPaused&&start.stationary,'Idle animation must not resume combat or movement');
     assert.ok(start.frames.length>1&&start.frames.every(f=>f.action==='idle'&&f.species===from));
     assert.ok(new Set(start.frames.map(f=>f.index)).size>1,'Original form idle frames must advance during evolution');
+    const burst=await page.evaluate(()=>{
+      const r=app.run;for(let i=0;i<27;i++)r.update(1/30);
+      return r.vfx.upgrade.light.pose.getX(0);
+    });
+    assert.equal(burst,63,'The expanding ring coincides with the form change');
+    if(from===4||to===58)await draw(`evolution-${from}-${to}-burst`);
     const landing=await page.evaluate(()=>{
-      const r=app.run;for(let i=0;i<31;i++)r.update(1/30);
+      const r=app.run;for(let i=0;i<4;i++)r.update(1/30);
       return {species:r.player.speciesId,lift:r.player.evolutionLift,scale:r.player.renderScale,
         overlay:!!r.ui.root.querySelector('.zx-evolution-cutin,.zx-evolution-result')};
     });
@@ -140,10 +148,11 @@ export async function reviewUpgradeEffects(page,dir){
   report.settings=await page.evaluate(()=>{
     const r=app.run,fx=r.vfx.upgrade;
     fx.play(r.player,true);fx.play(r.player,true);const coalesced=fx.events.length===1;
-    r.hideOwnFx=true;fx.update(.1);fx.play(r.player,true);const hidden=fx.events.length===0&&!fx.mesh.visible;
+    r.hideOwnFx=true;fx.update(.1);fx.play(r.player,true);const hidden=fx.events.length===0&&!fx.mesh.visible&&!fx.light.mesh.visible;
     r.hideOwnFx=false;r.vfx.calm=true;r.vfx.ownFade=.4;r.vfx.fade=.5;fx.play(r.player,true);fx.update(.2);
     const calm=fx.mesh.material.uniforms.calm.value,opacity=fx.timing.getW(0);
-    r.vfx.clear();const cleared=fx.events.length===0&&!fx.mesh.visible;
+    fx.update(1.6);const calmBurst=fx.light.pose.getY(0);
+    r.vfx.clear();const cleared=fx.events.length===0&&!fx.mesh.visible&&!fx.light.mesh.visible;
     r.vfx.calm=false;r.vfx.ownFade=1;r.vfx.fade=1;
     // Ordinary upgrades must stay free of orbits in coop and chained choices.
     const coop=r.coop,show=r.ui.showLevelUp;r.coop={};r.nextEvo=null;r.state='play';r.pendingLevels=1;r.ui.showLevelUp=()=>{};
@@ -153,13 +162,14 @@ export async function reviewUpgradeEffects(page,dir){
     r.ui.showLevelUp=(run,offers,choose)=>{choices++;earlyEffects+=fx.events.length;choose(offers[0]);};
     try{r.doLevelUp();}finally{r.ui.showLevelUp=show;}
     const chained=choices===3&&earlyEffects===0&&fx.events.length===0&&r.pendingLevels===0;r.vfx.clear();
-    return {coalesced,hidden,calm,opacity,cleared,cooperative,chained};
+    return {coalesced,hidden,calm,opacity,calmBurst,cleared,cooperative,chained};
   });
   assert.ok(report.settings.coalesced&&report.settings.hidden&&report.settings.cleared&&report.settings.cooperative&&report.settings.chained);
   assert.equal(report.settings.calm,1);assert.ok(Math.abs(report.settings.opacity-.14)<1e-6);
+  assert.ok(Math.abs(report.settings.calmBurst-.14*.18)<1e-6);
   report.dispose=await page.evaluate(()=>{
     const r=app.run,fx=r.vfx.upgrade;fx.play();app.toMenu();
-    return {disposed:fx.disposed,detached:!fx.mesh.parent&&!fx.rearMesh.parent,empty:fx.events.length===0};
+    return {disposed:fx.disposed&&fx.light.disposed,detached:!fx.mesh.parent&&!fx.rearMesh.parent&&!fx.light.mesh.parent,empty:fx.events.length===0};
   });
   assert.ok(report.dispose.disposed&&report.dispose.detached&&report.dispose.empty);
   fs.writeFileSync(path.join(dir,'upgrade-effects.json'),JSON.stringify(report,null,2));

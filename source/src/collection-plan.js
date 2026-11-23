@@ -27,7 +27,7 @@ export function openCollectionPlan({el,button,mount,footer,portrait,name,catalog
       const row=button([
         el('img','zc-plan-icon',[],{src:entry.icon,alt:''}),
         el('div','zc-plan-copy',[el('b','',entry.name),el('small','',entry.detail),
-          entry.pair?el('span','zc-plan-pair',entry.pair.join('  ＋  ')):null,
+          entry.pairs?el('span','zc-plan-pair',entry.pairs.map(pair=>pair.join('  ＋  ')).join(' 或 ')):null,
           entry.requirement?el('small','',entry.requirement):null]),
         star,
       ],()=>{

@@ -75,9 +75,9 @@ for (const recipe of allFusions) {
   recipe.originalName = originalNames.get(recipe.name) ?? recipe.name;
   recipe.firePairs = fusionGroups.get(recipe.key) ?? [];
   recipe.reachable = recipe.firePairs.length ? 'fire' : windKeys.has(recipe.key) ? 'wind' : 'retained';
-  recipe.materials = (recipe.moves ?? []).map(key => {
+  recipe.materials = [...new Set((recipe.ingredientPairs ?? []).flat())].map(key => {
     const raw = data.movesByKey.get(key), active = activeByKey.get(key);
-    return {key, id: raw?.id, name: raw?.name ?? key, type: raw?.type,
+    return {key, id: raw?.id, name: ctx.formMove(raw?.id, recipe.member)?.name ?? raw?.name ?? key, type: raw?.type,
       valid: !!active && ctx.gS(active), reason: !active ? '当前未启用' : !ctx.gS(active) ? '天气或增益技不能作融合材料' : ''};
   });
   if (recipe.materials.some(m => !m.valid)) recipe.reachable = 'blocked';

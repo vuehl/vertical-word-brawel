@@ -178,8 +178,8 @@ export class StylizedSkillFX{
       case 'wind-ultimate':return [this.windArt().texture,this.windSkillArt().texture];
       case 'wind-quick-attack':case 'wind-aerial-ace':case 'wind-twister':return [this.windMoveArt().texture];
       case 'wind-tackle':return [this.windMoveArt().texture,this.windSkillArt().texture];
-      case 'wind-gust':case 'wind-hurricane':case 'wind-wing-attack':case 'wind-feather-dance':
-      case 'fu-16':case 'fu-t-flying':return [this.windSkillArt().texture];
+      case 'wind-wing-attack':
+      case 'fu-16':case 'fu-wind-spin':return [this.windSkillArt().texture];
       case 'ember':return [ball];
       case 'fire-spin':return [spin];
       case 'flamethrower':case 'dragon-breath':return [jet];
@@ -333,9 +333,9 @@ export class StylizedSkillFX{
     const p=this.run.player,id=p.speciesId,type=ctx.type;
     if([4,5,6].includes(id)){this.fireFamily.ultimate(ctx);return;}
     this.cast(type,ctx.x,ctx.y,ctx.z,2.4);
-    if(id===59){
+    if(id===58||id===59){
       this.windSkillArt().play('gust',ctx.x,ctx.y+.1,ctx.z,6.8);
-    }else if(id===18){
+    }else if(id===17||id===18){
       this.volume({x:ctx.x,y:ctx.y+.1,z:ctx.z,radius:1.7,height:4.5,mode:type==='fire'?3:1,type,color:effectColors[type]||effectColors.flying,duration:.6});
     }else if(id===132){
       this.volume({x:ctx.x,y:ctx.y+.1,z:ctx.z,radius:2.2,height:4.5,mode:1,type:'psychic',color:effectColors.psychic,duration:.85});

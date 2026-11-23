@@ -45,25 +45,19 @@ export class WindSkillArt extends WindAtlasBatch {
     for(let i=this.events.length-1;i>=0;i--)if(!this.drawPose(this.events[i],now-this.events[i].start))this.events.splice(i,1);
     for(const [key,e] of this.tracked){if(now-e.touched>.16)this.tracked.delete(key);else this.drawPose(e,now-e.start,true);}
   }
-  projectile(pool,id,size,clip){
+  wingProjectile(pool,id,size){
     if(!this.owner.allowed())return;
-    const vortex=['gust','hurricane'].includes(clip),age=pool.maxLife[id]-pool.life[id];
-    this.drawPose({clip,x:pool.x[id],y:vortex?pool.run.terrain.height(pool.x[id],pool.z[id])+.1:pool.y[id],z:pool.z[id],
-      size:vortex?Math.max(4,size*(clip==='gust'?2:3)):size*3.2,dx:vortex?0:pool.vx[id],dz:vortex?0:pool.vz[id]},age,true);
+    this.drawPose({clip:'wing',x:pool.x[id],y:pool.y[id],z:pool.z[id],size:size*3.2,
+      dx:pool.vx[id],dz:pool.vz[id]},pool.maxLife[id]-pool.life[id],true);
   }
   reset(){this.events.length=0;this.tracked.clear();this.clear();}
 }
 
 export function installWindSkillArt(registry){
   const art=run=>run.vfx.crafted.windSkillArt();
-  for(const [key,clip] of [['gust','gust'],['hurricane','hurricane'],['wing-attack','wing'],['feather-dance','feather']]){
-    const hit=clip==='wing'?'wingHit':clip==='feather'?'featherHit':null;
-    registry['wind-'+key]={...registry[key],sourceKey:key,trail(){},
-      cast(run,x,y,z){if(clip==='feather')art(run).play('featherCast',x,y,z,4.2);},
-      draw:(pool,id,size)=>art(pool.run).projectile(pool,id,size,clip),
-      hit:(run,x,y,z)=>{if(hit)art(run).play(hit,x,y,z,3.8);},hitCover:true,
-      boom(){}};
-  }
+  registry['wind-wing-attack']={...registry['wing-attack'],sourceKey:'wing-attack',trail(){},cast(){},
+    draw:(pool,id,size)=>art(pool.run).wingProjectile(pool,id,size),
+    hit:(run,x,y,z)=>art(run).play('wingHit',x,y,z,3.8),hitCover:true,boom(){}};
   registry['wind-tackle']={...registry.tackle,sourceKey:'tackle',replacesDash:true,
     dash(run,x,y,z,dx,dz,length){
       run.vfx.crafted.windMoveArt().dash(run,x,y,z,dx,dz,length);

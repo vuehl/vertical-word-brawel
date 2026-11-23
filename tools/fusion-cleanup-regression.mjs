@@ -9,7 +9,7 @@ export async function reviewFusionCleanup(page, dir) {
     const p=app.run.player;let rejected=0;
     for(const species of [4,5,6,16,17,18,58,59]){
       vfxSetup();p.setSpecies(species);
-      for(let id=50000;id<=50105;id++)if(![50001,50006,50080,50088].includes(id)){
+      for(let id=50000;id<=50106;id++)if(![50001,50006,50080,50106].includes(id)){
         if(p.addMove(id))throw Error('Retired ID restored: '+id);rejected++;
       }
     }
@@ -19,7 +19,7 @@ export async function reviewFusionCleanup(page, dir) {
     }
     throw Error('No clear recording lane');
   });
-  assert.equal(report.rejected,102*8);
+  assert.equal(report.rejected,103*8);
   await page.evaluate(()=>{
     window.cleanupSetup=async species=>{
       vfxSetup();const r=app.run,p=r.player,e=r.enemies,{x,z}=cleanupLane;
@@ -34,7 +34,7 @@ export async function reviewFusionCleanup(page, dir) {
       e.update();
     };
   });
-  for(const [species,id] of [[4,50001],[4,50080],[16,50006],[16,50088],[4,488],[5,488],[6,488],[4,126],[4,53],[4,83],[4,517],[16,403]]){
+  for(const [species,id] of [[4,50001],[4,50080],[16,50006],[16,50106],[4,488],[5,488],[6,488],[4,126],[4,53],[4,83],[4,517],[16,49001]]){
     for(const level of id>=50000?[1,5]:[1]){
       const sample=await page.evaluate(async({species,id,level})=>{
         await cleanupSetup(species);const r=app.run,p=r.player;
@@ -59,7 +59,7 @@ export async function reviewFusionCleanup(page, dir) {
       if(id===50001){assert.equal(sample.maxJet,0,'No feeding flame jet');assert.ok(sample.maxSpin>0&&sample.maxFamily>0,'Vortex and burst remain');}
       if(id===53)assert.ok(sample.maxJet>0,'Standalone Flamethrower remains');
       if(id===126)assert.ok(sample.maxFamily>0,'Fire Blast survives completion-atlas removal');
-      if([50006,50088].includes(id))assert.ok(sample.maxWind>0);
+      if([50006,50106].includes(id))assert.ok(sample.maxWind>0);
       report.casts.push(sample);console.log('Verified',sample.key,species,level,sample.damage);
     }
   }

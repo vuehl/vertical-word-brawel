@@ -4,27 +4,28 @@ export const retiredMoveIds = new Set([
   10, 163, 225, 257, 337, 394, 424,
 ]);
 // Permanent IDs: old saves must never resolve a removed fusion as a new skill.
-export const activeFusionIds = new Set([50001, 50006, 50080, 50088]);
-export const retiredFusionId = id => id >= 50000 && id <= 50105 && !activeFusionIds.has(id);
+export const activeFusionIds = new Set([50001, 50006, 50080, 50106]);
+export const retiredFusionId = id => id >= 50000 && id <= 50106 && !activeFusionIds.has(id);
 
 const fireForms = new Set([4, 5, 6]);
 const windForms = new Set([16, 17, 18, 58, 59]);
-// Shared fire skills stay enabled for other families; wind cannot learn or
-// restore Ember, Flamethrower or Scorching Sun from older loadouts.
-const windExcludedMoves = new Set([52, 53, 488, 50080]);
+const windMoves = new Set([98, 33, 17, 332, 239, 49001]);
+const windFusions = new Set([50006, 50106]);
+
 export function moveAvailableForSpecies(id, species) {
-  return !retiredMoveIds.has(id) && !retiredFusionId(id) && !(id === 403 && fireForms.has(Number(species))) &&
-    !(id === 488 && species != null && !fireForms.has(Number(species))) &&
-    !(windForms.has(Number(species)) && windExcludedMoves.has(id));
+  if (retiredMoveIds.has(id) || retiredFusionId(id)) return false;
+  if (species == null) return true;
+  if (windForms.has(Number(species))) return windMoves.has(id) || windFusions.has(id);
+  if (id === 49001 || windFusions.has(id)) return false;
+  return !(id === 403 && fireForms.has(Number(species))) && !(id === 488 && !fireForms.has(Number(species)));
 }
 
 export function configureSkillLearnsets(learnsets) {
   for (const [species, moves] of Object.entries(learnsets)) {
     learnsets[species] = moves.filter(([id]) => moveAvailableForSpecies(id, species));
   }
-  // Both wind branches inherit the base form's level-one Air Slash offer.
-  const wind = learnsets[16] ?? [];
-  learnsets[16] = [...wind.filter(([id]) => id !== 403), [403, 1]];
+  // Descendants also inherit these offers through the base learnset.
+  learnsets[16] = [...windMoves].map(id => [id, 1]);
   // Expose the authored stampede using the ordinary Flame Charge ID.
   learnsets[4] = [...(learnsets[4] ?? []).filter(([id]) => id !== 488), [488, 1]];
 }

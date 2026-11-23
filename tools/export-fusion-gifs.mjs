@@ -27,7 +27,7 @@ const qa=process.env.POKEBONK_QA||path.join(root,'验收',title);
 fs.mkdirSync(out,{recursive:true});fs.mkdirSync(qa,{recursive:true});
 const {ctx}=await loadSkillCatalog();
 const skills=(stampede?[['炎',4,'flame-charge'],['焱',5,'flame-charge'],['燚',6,'flame-charge']]:
-  [['炎',4,'fu-4'],['炎',4,'fu-t-fire'],['风',16,'fu-16'],['风',16,'fu-t-flying']])
+  [['炎',4,'fu-4'],['炎',4,'fu-t-fire'],['风',16,'fu-16'],['风',16,'fu-wind-spin']])
   .map(([family,species,key])=>({family,species,key,id:stampede?488:ctx.fS(key),name:stampede?ctx.formMove(488,species).name:ctx.dS(key).name}))
   .filter(skill=>!process.env.SKILL_GIF_SPECIES||skill.species===Number(process.env.SKILL_GIF_SPECIES))
   .filter(skill=>!process.env.FUSION_GIF_KEY||skill.key===process.env.FUSION_GIF_KEY);

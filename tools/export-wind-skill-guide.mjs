@@ -85,9 +85,9 @@ for (const recipe of allFusions) {
   recipe.wind = recipe.windPairs.length > 0;
   recipe.fire = recipe.firePairs.length > 0;
   recipe.formIds = [...new Set(recipe.windPairs.flatMap(p => p.forms))];
-  recipe.materials = (recipe.moves ?? []).map(key => {
+  recipe.materials = [...new Set((recipe.ingredientPairs ?? []).flat())].map(key => {
     const raw = data.movesByKey.get(key), def = activeByKey.get(key);
-    return {key, id: raw?.id, name: raw?.name ?? key, type: raw?.type,
+    return {key, id: raw?.id, name: ctx.formMove(raw?.id, recipe.member)?.name ?? raw?.name ?? key, type: raw?.type,
       valid: !!def && ctx.gS(def), reason: !def ? '当前未启用' : !ctx.gS(def) ? '天气或增益技能不能作材料' : ''};
   });
   recipe.availability = recipe.wind || recipe.fire ? 'playable' : recipe.materials.some(m => !m.valid) ? 'blocked' : 'retained';
@@ -97,7 +97,7 @@ for (const recipe of allFusions) {
 // The offline calculator uses this compact pure resolver; verify it against the game's matcher.
 const resolver = `function resolveRecipe(recipes,a,b){
   if(!a||!b||a.id===b.id)return null;
-  const signature=recipes.find(r=>r.kind==='signature'&&r.moves&&((r.moves[0]===a.key&&r.moves[1]===b.key)||(r.moves[0]===b.key&&r.moves[1]===a.key)));
+  const signature=recipes.find(r=>r.ingredientPairs?.some(pair=>pair.includes(a.key)&&pair.includes(b.key)));
   if(signature)return signature;
   const reaction=recipes.find(r=>r.kind==='reaction'&&((r.pair[0].includes(a.type)&&r.pair[1].includes(b.type))||(r.pair[0].includes(b.type)&&r.pair[1].includes(a.type))));
   return reaction||(a.type===b.type?recipes.find(r=>r.kind==='type'&&r.type===a.type):null)||null;

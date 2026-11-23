@@ -1648,8 +1648,8 @@ export function createZixingUI(app,api) {
       overlay('风起两路','为本局选择一条进阶路线',windRoutes.filter(route=>ids.includes(route.middle)).map(route=>{
         const trait=routeHeading(route);
         return button([el('div','zx-evo-choice-head',[el('b','',trait+'路线'),routePrint([16,route.middle,route.final])]),
-          el('div','zx-evo-benefit',[el('b','',trait+' ×10'),el('small','','终阶大招 · 持续 5 秒')]),
-          el('small','zx-evo-note','首次进阶  ·  '+character(route.middle).word+'  ·  '+(route.middle===17?'环形扩散':'卷着打转')),
+          el('div','zx-evo-benefit',[el('b','',trait+' ×10'),el('small','','持续 5 秒')]),
+          el('small','zx-evo-note','首次进阶  ·  '+character(route.middle).word+'  ·  '+character(route.middle).ult),
         ],()=>{if(chosen)return;chosen=true;choose(route.middle);},'zx-branch-choice',{'data-branch-id':route.middle,'data-paper-surface':'info-slip'});
       }),[],hud,'zx-evo-dialog');
     };

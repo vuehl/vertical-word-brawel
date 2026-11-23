@@ -24,17 +24,34 @@ test('removed skills cannot resolve or enter either starter family through share
   }
 });
 
-test('Air Slash is a level-one wind offer across both branches with its combat behavior and name intact', () => {
-  for (const species of [16, 17, 18, 58, 59]) {
-    const offers = catalog(species).filter(m => m.id === 403);
-    assert.equal(offers.length, 1);
-    assert.equal(offers[0].level, 1);
-    const move = ctx.formMove(403, species);
-    assert.equal(move.name, '空气斩');
-    assert.equal(move.type, 'flying');
-    assert.equal(move.arch, 'boomerang');
-    assert.ok(Math.abs(move.cd - 1.547) < 1e-9);
-    assert.equal(move.flinch, .3);
+test('each wind form learns six moves and has exactly four unordered fusion pairs', () => {
+  evaluate(between('var M_ = class', 'function P_('));
+  evaluate(between('function Tx(', 'function Ex('));
+  const ids = [98,33,49001,17,332,239];
+  const pairs = new Map([['17:239','残气乱刮'],['239:332','残气乱刮'],
+    ['33:98','卷着打转'],['98:49001','卷着打转']]);
+  for (const species of [16,17,18,58,59]) {
+    const defs = ids.map(id => ctx.formMove(id,species));
+    assert.deepEqual(defs.map(d => d.name), ['电光一闪','撞击','环形扩散','翅膀攻击','燕返','龙卷风']);
+    for (const a of defs) for (const b of defs) {
+      const pair = [a.id,b.id].sort((x,y) => x-y).join(':');
+      assert.equal(ctx._S(a,b,species)?.name,pairs.get(pair));
+    }
+    const player = {speciesId:species,roster:config.Bt.find(r=>r.id===16),
+      moves:defs.map(def=>({def,level:4,parents:[]}))};
+    const choices = ctx.yS({player,banished:new Set()});
+    assert.equal(choices.length,4);
+    assert.ok(choices.every(row=>row.ready));
+    for (const {a,b,r} of choices) {
+      const moves=[defs[a],defs[b]].map(def=>Object.assign(new ctx.M_(def),{level:4}));
+      const run={player:{speciesId:species,moves,forgetMove(slot){moves[slot]=null;}},fusions:[]};
+      const fused=ctx.bS(run,{a:0,b:1,r});
+      assert.deepEqual(moves,[fused,null]);
+      assert.equal(fused.def.name,r.name);
+      assert.deepEqual([...fused.parents],[defs[a].id,defs[b].id]);
+      assert.deepEqual(run.fusions,[r.key]);
+    }
+    for(const id of [16,97,297,403,542,50088]) assert.equal(ctx.formMove(id,species),null);
   }
 });
 
@@ -61,7 +78,7 @@ test('Flame Stampede is a selectable ordinary fire skill, upgrades normally and 
 
 test('wind excludes fire skills while the removed cross-element fusion stays unavailable', () => {
   for (const species of [16, 17, 18, 58, 59]) {
-    assert.deepEqual(catalog(species).map(m => m.id).sort((a,b) => a-b), [16,17,33,97,98,239,297,332,403,542]);
+    assert.deepEqual(catalog(species).map(m => m.id).sort((a,b) => a-b), [17,33,98,239,332,49001]);
     for (const id of windRemoved) assert.equal(ctx.formMove(id, species), null, `${species}:${id}`);
   }
   for (const species of [4, 5, 6]) {
@@ -77,7 +94,7 @@ test('wind rejects fire fusion offers and stale confirmation callbacks but keeps
     for (const ids of [[52,53], [52,403], [53,17], [126,517], [126,403]]) {
       const defs = ids.map(id => ctx.O_(id));
       const recipe = ctx._S(...defs);
-      if (ids.every(id => [52,53,126,517].includes(id))) assert.ok(recipe, 'fire recipe stays available');
+      if (ids[0] === 52 && ids[1] === 53) assert.ok(recipe, 'fire recipe stays available');
       else assert.equal(recipe,null,'removed reaction has no fallback');
       assert.equal(ctx._S(...defs, species), null);
       const run = {player:{speciesId:species,roster:null,moves:defs.map(def => ({def,level:4}))}};
@@ -85,21 +102,44 @@ test('wind rejects fire fusion offers and stale confirmation callbacks but keeps
       assert.equal(ctx.bS(run,{a:0,b:1,r:recipe}), null);
       assert.equal(run.player.moves.filter(Boolean).length, 2, 'rejected fusion preserves materials');
     }
-    assert.equal(ctx._S(ctx.O_(17),ctx.O_(542),species).key, 'fu-16');
-    assert.equal(ctx._S(ctx.O_(16),ctx.O_(403),species).key, 'fu-t-flying');
+    assert.equal(ctx._S(ctx.O_(17),ctx.O_(239),species).key, 'fu-16');
+    assert.equal(ctx._S(ctx.O_(98),ctx.O_(49001),species).key, 'fu-wind-spin');
   }
   assert.equal(ctx._S(ctx.O_(52),ctx.O_(53),4).key, 'fu-t-fire');
 });
 
 test('only four stable fusion IDs resolve, and all removed save slots reject', () => {
-  const expected = new Map([['fu-4',50001],['fu-16',50006],['fu-t-fire',50080],['fu-t-flying',50088]]);
+  const expected = new Map([['fu-4',50001],['fu-16',50006],['fu-t-fire',50080],['fu-wind-spin',50106]]);
   assert.equal(ctx.lS.length,4);
   for(const [key,id] of expected){assert.equal(ctx.fS(key),id);assert.equal(ctx.O_(id).key,key);}
-  for(let id=50000;id<=50105;id++) if(![...expected.values()].includes(id)) {
+  for(let id=50000;id<=50106;id++) if(![...expected.values()].includes(id)) {
     assert.equal(ctx.O_(id),null,String(id));
     for(const species of [4,5,6,16,17,18,58,59]) assert.equal(ctx.formMove(id,species),null);
   }
   assert.equal(ctx.formMove(488,4).castRecipe.key,undefined,'ordinary stampede no longer depends on a retired fusion key');
+});
+
+test('fire forms have the same opening move and exactly four ordered-independent fusion pairs', () => {
+  const roster = config.Bt.find(row => row.id === 4);
+  assert.equal(roster.passive, '');
+  const expected = new Map([['83:517','炼狱风暴'], ['83:126','炼狱风暴'], ['52:488','灼热之阳'], ['52:53','灼热之阳']]);
+  for (const species of [4, 5, 6]) {
+    const defs = catalog(species).map(m => ctx.formMove(m.id, species));
+    assert.deepEqual([52, 53, 83, 126, 488, 517].map(id => ctx.formMove(id, species).name),
+      ['火点拍', '喷射火焰', '火焰漩涡', '大字爆炎', '烈焰狂奔', '炼狱']);
+    for (const a of defs) for (const b of defs) {
+      const pair = [a.id, b.id].sort((x,y) => x-y).join(':');
+      assert.equal(ctx._S(a,b,species)?.name, expected.get(pair));
+    }
+    const player = {speciesId:species, roster, moves:defs.map(def => ({def, level:4, parents:[]}))};
+    const choices = ctx.yS({player, banished:new Set()});
+    assert.equal(choices.length, 4);
+    assert.ok(choices.every(row => row.ready));
+    player.moves = [];
+    const hints = ctx.yS({player, banished:new Set()});
+    assert.equal(hints.length, 4);
+    assert.ok(hints.every(row => !row.ready && row.need.length === 2));
+  }
 });
 
 test('fire vortex drops the feeding jet and its line damage', () => {
@@ -111,31 +151,31 @@ test('fire vortex drops the feeding jet and its line damage', () => {
 test('fusion menu skips unsupported pairs and still offers the surviving fire and wind recipes', () => {
   const recipe = (a, b) => ctx._S(ctx.O_(a), ctx.O_(b));
   assert.equal(recipe(52, 33), null, 'different unrelated types have no fallback fusion');
-  assert.equal(recipe(33, 98), null, 'retired normal fusion stays unavailable');
+  assert.equal(recipe(33, 98).name, '卷着打转');
   assert.equal(recipe(82, 200), null, 'retired dragon fusion stays unavailable');
   assert.equal(recipe(52, 52), null, 'a skill cannot be both ingredients');
-  assert.equal(recipe(53, 83).key, 'fu-4');
-  assert.equal(recipe(52, 126).key, 'fu-t-fire');
+  assert.equal(recipe(517, 83).key, 'fu-4');
+  assert.equal(recipe(52, 488).key, 'fu-t-fire');
   assert.equal(recipe(52, 403), null);
-  assert.equal(recipe(16, 403).key, 'fu-t-flying');
+  assert.equal(recipe(16, 403), null);
   const run = {player: {moves: [52, 33].map(id => ({def:ctx.O_(id), level:4})), roster:null}};
   assert.equal(ctx.yS(run).length, 0);
-  run.player.moves = [53, 83].map(id => ({def:ctx.O_(id), level:4}));
+  run.player.moves = [517, 83].map(id => ({def:ctx.O_(id), level:4}));
   assert.equal(ctx.yS(run)[0].r.key, 'fu-4');
   assert.equal(ctx.yS(run)[0].ready, true);
 });
 
-test('level-up and reroll selection can offer Air Slash only to wind', () => {
+test('level-up and reroll selection can offer Ring Wave only to wind', () => {
   ctx.m = [];
   ctx.F = {shuffle: list => list};
   for (const species of [4, 5, 6, 16, 17, 18, 58, 59]) {
     const p = {speciesId:species, types:[species < 7 ? 'fire' : 'flying'],
       roster:config.Bt.find(s => s.id === (species < 7 ? 4 : 16)), level:1,
       freeMoveSlot:() => 0, ownedMoveIds:() => new Set(), moves:[], vitamins:new Map()};
-    const run = {player:p, director:{normalOpening:false}, meta:{inLeague:() => true}, banished:new Set(catalog(species).filter(m => m.id !== 403).map(m => 'm'+m.id))};
+    const run = {player:p, director:{normalOpening:false}, meta:{inLeague:() => true}, banished:new Set(catalog(species).filter(m => m.id !== 49001).map(m => 'm'+m.id))};
     for (let reroll = 0; reroll < 3; reroll++) {
       const offers = ctx.Ub(run, 3);
-      assert.equal(offers.some(o => o.id === 403), species >= 16, String(species));
+      assert.equal(offers.some(o => o.id === 49001), species >= 16, String(species));
       assert.ok(offers.every(o => !removed.includes(o.id)));
     }
   }
@@ -163,7 +203,7 @@ test('old wind loadouts drop all four scoped removals and recover the opening sk
   }
 });
 
-test('old co-op loadouts discard retired skills, preserve wind Air Slash and keep a usable opening attack', () => {
+test('old co-op loadouts discard retired skills, preserve Ring Wave and keep a usable opening attack', () => {
   for (const species of [4, 6, 16, 18, 59]) {
     const opening = species < 7 ? 52 : 98;
     const p = {speciesId:species, hp:10, maxHp:10, moves:[{def:ctx.formMove(opening, species)}, null, null, null],
@@ -175,11 +215,11 @@ test('old co-op loadouts discard retired skills, preserve wind Air Slash and kee
       }};
     const run={player:p, coop:{}, camTarget:{copy(){}}, director:{timeline:[]}, planEvolution:() => null};
     const data={v:3,stage:1,run:{nextEvo:null},player:{speciesId:species,level:9,hp:10},pos:[0,0,0],
-      moves:[{id:10},{id:50024},{id:403,level:5,damageDone:123},{id:50105}]};
+      moves:[{id:10},{id:403},{id:49001,level:5,damageDone:123},{id:50088}]};
     restoreProgress(run,data,{stage:1,time:60,stageTime:60});
     const kept=p.moves.filter(Boolean);
     assert.equal(kept.length,1);
-    assert.equal(kept[0].def.id,species < 7 ? opening : 403);
+    assert.equal(kept[0].def.id,species < 7 ? opening : 49001);
     if (species >= 16) {
       assert.equal(p.moves[2].level,5);
       assert.equal(p.moves[2].damageDone,123);

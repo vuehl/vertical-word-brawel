@@ -101,7 +101,7 @@ export async function reviewFireSpin(page,dir,moves){
       const parts=Array.from({length:s.mesh.count},(_,j)=>({kind:s.attributes[1].array[j*4+2],frame:s.attributes[1].array[j*4+1]}));
       return {parts,triangles:s.mesh.geometry.index.count/3,projection:s.mesh.userData.projection,glError:app.r.renderer.getContext().getError()};
     },i);
-    assert.equal(state.projection,'upright-spiral-with-isometric-crown');assert.equal(state.triangles,10);assert.equal(state.glError,0);
+    assert.equal(state.projection,'isometric-fire-funnel');assert.equal(state.triangles,2*(24*24+16*16));assert.equal(state.glError,0);
     const body=state.parts.find(p=>p.kind===0),dust=state.parts.find(p=>p.kind===4);
     assert.ok(body&&dust);assert.equal(body.frame,dust.frame,'Ground dust must stay registered to the exact body pose');
     report.shapeCycle.push(state);shapeFrames.push(await page.screenshot());

@@ -52,7 +52,7 @@ export async function reviewFireFamilyMedia(page,dir,moves){
   await page.screenshot({path:path.join(dir,'review-'+key+'.png')});
  }
  report.airSlash=await page.evaluate(()=>{
-  const r=app.run,f=r.vfx.crafted.fireFamily;vfxSetup();r.player.setSpecies(16);r.player.pos.y=r.terrain.height(0,0);
+  const r=app.run,f=r.vfx.crafted.fireFamily;vfxSetup();r.player.setSpecies(19);r.player.pos.y=r.terrain.height(0,0);
   r.player.addMove(403);r.player.moves[0].timer=0;vfxAdvance(12,1/60);r.player.moves[0].timer=999;vfxDraw(false);
   const wake=f.events.filter(e=>e.clip==='windCut'&&!e.key),head=f.events.find(e=>e.clip==='windCut'&&e.key);
   const moving=!!head&&wake.length>0,shortWake=wake.every(e=>e.life<=.10);

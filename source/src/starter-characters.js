@@ -6,17 +6,31 @@ export const starterEvolutionLevels = Object.freeze([10,20]);
 export const starterWords = Object.freeze(Object.fromEntries(
   [4,5,6,132,16,17,18,58,59].map(id=>[id,formCopy[id].word])
 ));
+export const windSpeedPassive = '超过基础移速时获得伤害加成，收益逐渐递减，最高 40%。';
 export const windRoutes = [
-  {middle:17, final:18, role:'A · 攻速', note:'「卷着打转」双龙卷伴随风环与羽毛扩散。「刮倒一片」攻速十倍，持续5秒。'},
-  {middle:58, final:59, role:'B · 移速', note:'「叫完就冲」卷起旋风。「跑得没影」移速十倍，持续5秒。飒、飙被动：移速每增加 2%，伤害 +1%，大招加速同样生效。'},
+  {middle:17, final:18, role:'A · 攻速', note:'首次进阶获得「刮倒一片」，攻速变为 10 倍，持续 5 秒。'},
+  {middle:58, final:59, role:'B · 移速', note:'首次进阶获得「跑得没影」，移速变为 10 倍，持续 5 秒。'+windSpeedPassive},
 ];
 export const attackSpeedBuff = 'ziling-wind-attack-speed';
 export const speedBuff = 'ziling-wind-speed';
 export const speedDuration = 5;
-export const windSpeedPassive = '移速每增加 2%，伤害 +1%（相对当前形态基础移速，含大招加速）。';
 export const hasWindSpeedPassive = id => id === 58 || id === 59;
 export function windSpeedDamageBonus(id,speed,baseSpeed){
-  return hasWindSpeedPassive(id)&&baseSpeed>0 ? Math.max(0,speed/baseSpeed-1)*.5 : 0;
+  if (!hasWindSpeedPassive(id) || !(speed > baseSpeed && baseSpeed > 0)) return 0;
+  return .4 * (1 - baseSpeed / speed);
+}
+// All simultaneous hits on the same boss draw from one allowance during 跑得没影.
+export function windBossDamage(budgets, index, generation, maxHp, time, damage) {
+  let budget = budgets.get(index);
+  if (!budget || budget.generation !== generation) {
+    budget = {generation, time, fraction:.08};
+    budgets.set(index, budget);
+  }
+  const available = Math.min(.08, budget.fraction + Math.max(0, time - budget.time) * .06);
+  const dealt = Math.min(damage, maxHp * available);
+  budget.fraction = Math.max(0, available - dealt / maxHp);
+  budget.time = time;
+  return dealt;
 }
 const characterDefinitions = [
   {id:4,word:'炎',name:'炎',tone:'fire',color:'#bc3441',role:'火 · 爆发',motto:'二火成炎，三火成焱，四火成燚',move:moveCopy(4,'火花','ember'),ult:formCopy[4].ultimate[1],evolution:'炎 → 焱 → 燚'},
@@ -58,7 +72,7 @@ export function configureStarterSpecies(species){
 }
 const renamed=(original,name,index=0,cast=original.cast)=>({...original,names:[name],descs:[original.descs[index]],dur:[original.dur[index]],cast});
 const ultCache=new Map();
-export function starterUltimate(id,original,castWindRing){
+export function starterUltimate(id,original){
   if(ultCache.has(id))return ultCache.get(id);
   let def;
   const name=formCopy[id]?.ultimate[1];
@@ -66,14 +80,10 @@ export function starterUltimate(id,original,castWindRing){
     const index=id-4;
     def=renamed(original[4],name,index);
   }else if(id===132)def=renamed(original[132],name);
-  else if(id===16||id===58){
-    const index=id===16?0:1;
-    def=renamed(original[16],name,index,ctx=>original[16].cast({...ctx,tier:index,form:index}));
-  }else if(id===17){
-    def={names:[name],descs:['两道龙卷向前推进，牵引并持续击打敌人；周身风环和羽毛向外扩散。'],
-      type:'flying',cls:'special',dur:[2.2],tint:0xb8e8e0,cast:castWindRing};
-  }else if(id===18||id===59){
-    const attack=id===18,key=attack?attackSpeedBuff:speedBuff;
+  else if(id===16){
+    def=renamed(original[16],name,0,ctx=>original[16].cast({...ctx,tier:0,form:0}));
+  }else if([17,18,58,59].includes(id)){
+    const attack=id===17||id===18,key=attack?attackSpeedBuff:speedBuff;
     def={names:[name],descs:['使当前'+(attack?'攻击':'移动')+'速度变为 10 倍，持续 '+speedDuration+' 秒。重复释放刷新持续时间。'+(attack?'':'被动：'+windSpeedPassive)],
       type:'flying',cls:'physical',dur:[speedDuration],tint:0xb8e8e0,
       cast({run}){run.player.addBuff(key,speedDuration,name);run.player.zilingSpeedFx=0;run.player.zilingSpeedPosition=null;}};

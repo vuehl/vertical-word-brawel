@@ -15,7 +15,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     await tap('[data-action="journey"]');
     assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-species]')].map(e=>Number(e.dataset.species))),[4,16]);
     await snapshot('choose-before-'+width);
-    for(const [id,word,ult] of [[4,'炎','一点火苗'],[16,'风','一阵刮来']]){
+    for(const [id,word,ult] of [[4,'炎','一点火苗'],[16,'风','一阵风刮来']]){
       await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-'+width);
       const data=await page.evaluate(()=>{
         const canvas=app.screen.querySelector('.zx-glyph.large canvas'),box=canvas.getBoundingClientRect();
@@ -26,7 +26,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       });
       assert.ok(data.preview.width>0&&data.preview.pixels>=3*data.preview.width,'Large starter art must cover a 3x display');
       assert.ok(data.text.includes(word)&&data.text.includes(ult));
-      assert.ok(data.text.includes(({4:'火点拍',16:'连扇'})[id]+'  ·  自动攻击'));assert.ok(!data.text.includes('积蓄能量，释放专属大招'));
+      assert.ok(data.text.includes(({4:'火点拍',16:'电光一闪'})[id]+'  ·  自动攻击'));assert.ok(!data.text.includes('积蓄能量，释放专属大招'));
       for(const b of data.buttons)assert.ok(b.x>=0&&b.x+b.w<=width+1);
       report.menus.push({width,id,word,ult,preview:data.preview});
     }
@@ -35,7 +35,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
   await tap('.zx-footer button','选择关卡');await tap('.zx-footer button','选择难度');await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.state==='play',{timeout:60000});
   // Reproduce the reported card using the opening wind hero's real offer pool.
-  const gustCard=await page.evaluate(()=>{
+  const ringCard=await page.evaluate(()=>{
     app.halted=true;
     const r=app.run,ui=r.ui,{showLevelUp,experienceReady}=ui;
     const random=Math.random;
@@ -45,26 +45,26 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       ui.experienceReady=()=>true;
       ui.showLevelUp=(_run,offers,choose)=>{options=offers;pick=choose;};
       r.player.level=2;r.pendingLevels=1;r.rerolls=100;r.doLevelUp();
-      const gust=offer=>offer.kind==='newMove'&&offer.id===16;
-      while(!options.some(gust)&&r.rerolls>0)pick(null,'reroll');
-      const index=options.findIndex(gust);
-      if(index<0)throw Error('Gust missing from wind hero draft');
+      const ring=offer=>offer.kind==='newMove'&&offer.id===49001;
+      while(!options.some(ring)&&r.rerolls>0)pick(null,'reroll');
+      const index=options.findIndex(ring);
+      if(index<0)throw Error('Ring Wave missing from wind hero draft');
       showLevelUp(r,options,pick);
       const card=ui.modalEl.querySelector('[data-offer="'+index+'"]');
       return {index,title:card.querySelector('b').textContent,text:card.textContent};
     }finally{Object.assign(ui,{showLevelUp,experienceReady});Math.random=random;}
   });
-  assert.equal(gustCard.title,'起风');
-  assert.doesNotMatch(gustCard.text,/新招式/);
-  assert.match(gustCard.text,/漩涡/);
+  assert.equal(ringCard.title,'环形扩散');
+  assert.doesNotMatch(ringCard.text,/新招式/);
+  assert.match(ringCard.text,/扩散|波/);
   await page.waitForFunction(()=>{
     inspected.env.drawUI(app.r.renderer);
     return !inspected.modalTransition.active;
   });
-  await snapshot('wind-gust-offer');
-  await tap('[data-offer="'+gustCard.index+'"]');
+  await snapshot('wind-ring-wave-offer');
+  await tap('[data-offer="'+ringCard.index+'"]');
   await draw(); // The halted game needs a UI frame to complete the exit and apply the choice.
-  assert.deepEqual(await page.evaluate(()=>app.run.player.moves.filter(Boolean).map(m=>m.def.name)),['连扇','起风']);
+  assert.deepEqual(await page.evaluate(()=>app.run.player.moves.filter(Boolean).map(m=>m.def.name)),['电光一闪','环形扩散']);
   await page.evaluate(()=>{
     app.halted=true;
     window.starterTestSetup=()=>{
@@ -102,16 +102,16 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       starterTestAdvance(300);const r=app.run;
       return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types,kit:r.player.roster.kit};
     });assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:20});
-    assert.equal(middle.ult,choice===17?'卷着打转':'叫完就冲');
+    assert.equal(middle.ult,choice===17?'刮倒一片':'跑得没影');
     await page.evaluate(()=>{const r=app.run;r.player.level=r.nextEvo.level;r.player.xpNext=r.player.xpFor(r.player.level);r.tryEvolve();});
     await draw();await tap('.zx-modal button','确认进阶');
     const final=await page.evaluate(()=>{
       starterTestAdvance(300);const r=app.run;return {id:r.player.speciesId,next:r.nextEvo,ult:r.ult.name,types:r.player.types,kit:r.player.roster.kit,passive:r.player.ability};
     });assert.equal(final.id,end);assert.equal(final.next,null);assert.deepEqual(final.types,['flying']);
-    assert.equal(final.ult,end===18?'刮倒一片':'跑得没影');assert.equal(final.passive,'tailwind');
+    assert.equal(final.ult,end===18?'刮倒一片':'跑得没影');assert.equal(final.passive,'');
     assert.deepEqual(final.kit,middle.kit);
     await draw();
-    assert.deepEqual(await page.evaluate(()=>({name:inspected.doc.querySelector('.zx-hud-name').textContent,type:inspected.doc.querySelector('.zx-hud-element').textContent})),{name:end===18?'疯':'飙',type:end===18?'风':'火'});
+    assert.deepEqual(await page.evaluate(()=>({name:inspected.doc.querySelector('.zx-hud-name').textContent,type:inspected.doc.querySelector('.zx-hud-element').textContent})),{name:end===18?'疯':'飙',type:'风'});
     await snapshot('evolved-'+end);report.routes.push({choice,end,plan,middle,final});
   }
   // Exercise all playable ultimate definitions. Keep enemies alive so normal
@@ -133,23 +133,23 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       const label = inspected.doc.querySelector('[data-skill-slot]').getAttribute('aria-label');
       p.moves.fill(null);
       window.starterHp=()=>Array.from({length:r.enemies.n},(_,i)=>r.enemies.alive[i]?r.enemies.hp[i]:0).reduce((a,b)=>a+b,0);
-      const before=starterHp(),speed=p.stats[id===18?"attackSpeed":"moveSpeed"];
+      const before=starterHp(),speed=p.stats[[17,18].includes(id)?"attackSpeed":"moveSpeed"];
       r.ult.charge=1;r.ult.fire();starterTestAdvance(3);
-      const active={name:r.ult.name,def:r.ult.def.names,duration:r.ult.def.dur[0],speed:p.stats[id===18?"attackSpeed":"moveSpeed"],buffs:[...p.buffs].map(([key,b])=>[key,b.t,b.label])};
+      const active={name:r.ult.name,def:r.ult.def.names,duration:r.ult.def.dur[0],speed:p.stats[[17,18].includes(id)?"attackSpeed":"moveSpeed"],buffs:[...p.buffs].map(([key,b])=>[key,b.t,b.label])};
       return {id,before,speed,active,basic,label,passive:p.abilityName};
     },id);
-    const basic=({4:'火点拍',5:'三头烧',6:'四火烧',16:'连扇',17:'侧风拍',18:'乱风拍',58:'连叫',59:'疾跑撞'})[id];
+    const basic=({4:'火点拍',5:'火点拍',6:'火点拍',16:'电光一闪',17:'电光一闪',18:'电光一闪',58:'电光一闪',59:'电光一闪'})[id];
     assert.equal(sample.basic,basic);
     assert.ok(sample.label.includes(basic),sample.label);
-    if(id===6)assert.equal(sample.passive,'越打越旺');
+    if([4,5,6].includes(id))assert.equal(sample.passive,'');
     await snapshot('ultimate-'+id);
-    if(id===18||id===59){
+    if([17,18,58,59].includes(id)){
       assert.ok(Math.abs(sample.active.speed/sample.speed-10)<1e-8,'Actual combat speed stat must be exactly tenfold');
       const timers=await page.evaluate(id=>{
-        const r=app.run,p=r.player,key=id===18?'ziling-wind-attack-speed':'ziling-wind-speed',before=p.buffs.get(key).t;
+        const r=app.run,p=r.player,key=[17,18].includes(id)?'ziling-wind-attack-speed':'ziling-wind-speed',before=p.buffs.get(key).t;
         r.state='paused';r.update(2);const paused=p.buffs.get(key).t;r.state='play';
-        r.ult.def.cast({run:r});const refreshed=p.buffs.get(key).t,speed=p.stats[id===18?'attackSpeed':'moveSpeed'];
-        starterTestAdvance(330);return {before,paused,refreshed,speed,after:p.stats[id===18?'attackSpeed':'moveSpeed'],buffs:[...p.buffs.keys()]};
+        r.ult.def.cast({run:r});const refreshed=p.buffs.get(key).t,speed=p.stats[[17,18].includes(id)?'attackSpeed':'moveSpeed'];
+        starterTestAdvance(330);return {before,paused,refreshed,speed,after:p.stats[[17,18].includes(id)?'attackSpeed':'moveSpeed'],buffs:[...p.buffs.keys()]};
       },id);assert.equal(timers.paused,timers.before);assert.equal(timers.refreshed,5);assert.equal(timers.speed,sample.active.speed);
       assert.ok(Math.abs(timers.after-sample.speed)<1e-8);assert.ok(!timers.buffs.some(key=>key.startsWith('ziling-wind-')));sample.timers=timers;
     }else{

@@ -92,11 +92,11 @@ export async function reviewDeveloperEvolution(page,dir){
     await dev('close');assert.equal((await state()).id,choice);assert.deepEqual((await state()).choices,[]);
     await dev('open');await dev('evolve-next');assert.equal((await state()).level,20);
     const final=await finish();assert.equal(final.id,end);assert.equal(final.next,null);assert.equal(final.stage,2);
-    assert.equal(final.ult,end===18?'刮倒一片':'跑得没影');assert.equal(final.ability,'tailwind');
+    assert.equal(final.ult,end===18?'刮倒一片':'跑得没影');assert.equal(final.ability,'');
     await dev('open');assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-dev-action="evolve-next"]').disabled),true);
     await preview(end===18?'疯':'飙');
     await dev('stop-workload');
-    const restored=await state();assert.equal(restored.id,16);assert.equal(restored.level,1);assert.equal(restored.stage,0);assert.equal(restored.ability,'tailwind');assert.deepEqual(restored.next,{to:-1,level:10});
+    const restored=await state();assert.equal(restored.id,16);assert.equal(restored.level,1);assert.equal(restored.stage,0);assert.equal(restored.ability,'');assert.deepEqual(restored.next,{to:-1,level:10});
     report.routes.push({choice,middle,final,restored});
   }
   await start(4);await page.screenshot({path:path.join(dir,'dev-fire-evolution-panel.png')});

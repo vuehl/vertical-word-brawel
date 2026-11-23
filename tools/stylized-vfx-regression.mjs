@@ -24,22 +24,6 @@ export async function reviewStylizedVFX(page,dir){
     window.vfxAdvance=(frames,dt=1/30)=>{const r=app.run;for(let i=0;i<frames;i++){r.realTime+=dt;r.simulate(dt);r.updateCamera(dt);r.renderWorld(dt);r.vfx.update(dt);r.vfxPeaks.particles=Math.max(r.vfxPeaks.particles,r.vfx.add.n+r.vfx.norm.n);r.vfxPeaks.volumes=Math.max(r.vfxPeaks.volumes,r.vfx.crafted.mesh.count);r.vfxPeaks.firePackets=Math.max(r.vfxPeaks.firePackets,r.vfx.crafted.fireJet.mesh.count);r.vfxPeaks.projectiles=Math.max(r.vfxPeaks.projectiles,r.projectiles.used);for(const e of r.vfx.crafted.entries)if(!r.vfxPeaks.modes.includes(e.mode))r.vfxPeaks.modes.push(e.mode);}vfxDraw(false);};
     vfxSetup();vfxDraw();
   });
-  report.base=await page.evaluate(()=>{
-    const r=app.run,c=app.r.camera,t=r.vfx.atlas,ctx=t.image.getContext('2d'),pixels=ctx.getImageData(0,0,128,128).data;
-    let partial=0;for(let i=3;i<pixels.length;i+=4)if(pixels[i]>0&&pixels[i]<255)partial++;
-    return {camera:{distance:r.camDist,fov:c.fov,pitch:r.camPitch},atlas:{width:t.image.width,height:t.image.height,partial,style:t.userData.style},maps:[...r.terrain.paperAssets.photos.values()].map(p=>p.style),pointLights:r.terrain.workshopPointLights.length,volumeVertices:r.vfx.crafted.mesh.geometry.getAttribute('position').count};
-  });
-  assert.equal(report.base.camera.distance,42);assert.equal(report.base.camera.fov,37);assert.ok(Math.abs(report.base.camera.pitch-Math.PI*.3)<1e-9);
-  assert.equal(report.base.atlas.width,1024);assert.ok(report.base.atlas.partial>100);assert.ok(report.base.maps.every(p=>p==='painted-toy'));assert.equal(report.base.pointLights,4);assert.ok(report.base.volumeVertices>800);
-  if(process.argv.includes('--fusion-cleanup')){
-    const {reviewFusionCleanup}=await import('./fusion-cleanup-regression.mjs');return reviewFusionCleanup(page,dir);
-  }
-  if(process.argv.includes('--skill-availability')){
-    const {reviewSkillAvailability}=await import('./skill-availability-regression.mjs');return reviewSkillAvailability(page,dir);
-  }
-  if(process.argv.includes('--wind-skills')){
-    const {reviewWindSkills}=await import('./wind-skills-regression.mjs');return reviewWindSkills(page,dir);
-  }
   if(process.argv.includes('--fire-family')){
     const {reviewFireFamily}=await import('./fire-family-regression.mjs');return reviewFireFamily(page,dir,moves);
   }
@@ -52,6 +36,24 @@ export async function reviewStylizedVFX(page,dir){
   if(process.argv.includes('--fire-completion')){
     const {reviewFireCompletion}=await import('./fire-completion-regression.mjs');return reviewFireCompletion(page,dir);
   }
+  if(process.argv.includes('--wind-skills')){
+    const {reviewWindSkills}=await import('./wind-skills-regression.mjs');return reviewWindSkills(page,dir);
+  }
+  if(process.argv.includes('--skill-availability')){
+    const {reviewSkillAvailability}=await import('./skill-availability-regression.mjs');return reviewSkillAvailability(page,dir);
+  }
+  report.base=await page.evaluate(()=>{
+    const r=app.run,c=app.r.camera,t=r.vfx.atlas,ctx=t.image.getContext('2d'),pixels=ctx.getImageData(0,0,128,128).data;
+    let partial=0;for(let i=3;i<pixels.length;i+=4)if(pixels[i]>0&&pixels[i]<255)partial++;
+    return {camera:{distance:r.camDist,fov:c.fov,pitch:r.camPitch},atlas:{width:t.image.width,height:t.image.height,partial,style:t.userData.style},maps:[...r.terrain.paperAssets.photos.values()].map(p=>p.style),pointLights:r.terrain.workshopPointLights.length,volumeVertices:r.vfx.crafted.mesh.geometry.getAttribute('position').count};
+  });
+  assert.equal(report.base.camera.distance,42);assert.equal(report.base.camera.fov,37);assert.ok(Math.abs(report.base.camera.pitch-Math.PI*.3)<1e-9);
+  assert.equal(report.base.atlas.width,1024);assert.ok(report.base.atlas.partial>100);assert.ok(report.base.maps.every(p=>p==='painted-toy'));assert.equal(report.base.pointLights,4);assert.ok(report.base.volumeVertices>800);
+  if(process.argv.includes('--fusion-cleanup')){
+    const {reviewFusionCleanup}=await import('./fusion-cleanup-regression.mjs');return reviewFusionCleanup(page,dir);
+  }
+
+
   if(process.argv.includes('--lighting')){
     const {reviewLighting}=await import('./lighting-regression.mjs');return reviewLighting(page,dir);
   }
@@ -200,8 +202,8 @@ export async function reviewStylizedVFX(page,dir){
   for(const species of [4,5,6,16,17,18,58,59]){
     await page.evaluate(async species=>{if(!await app.startRun({species:[4,5,6].includes(species)?4:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Could not start form '+species);app.halted=true;app.run.player.setSpecies(species);vfxSetup();await Promise.all([...app.run.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));app.run.ult.charge=1;app.run.ult.fire();vfxAdvance(14);},species);
     const state=await page.evaluate(()=>{const r=app.run;return {species:r.player.speciesId,name:r.ult.name,active:r.ult.active,authoredFire:r.vfx.crafted.fireFamily.mesh.count,volumes:r.vfx.crafted.entries.map(e=>({mode:e.mode,type:e.type,age:e.age,x:e.x,z:e.z})),particles:r.vfx.add.n+r.vfx.norm.n,damage:r.stats.damage,vertices:r.vfx.crafted.mesh.count,camera:r.camDist,rings:r.vfx.rings.n};});
-    if(species===17){assert.equal(state.name,'卷着打转');assert.ok(state.rings>0);}
-    assert.equal(state.species,species);assert.equal(state.camera,42);assert.ok(state.particles+state.volumes.length+state.authoredFire>0);if([4,5,6].includes(species))assert.ok(state.authoredFire>0);if([16,58].includes(species))assert.ok(state.volumes.some(v=>v.mode===1));
+    if(species===17)assert.equal(state.name,'刮倒一片');
+    assert.equal(state.species,species);assert.equal(state.camera,42);assert.ok(state.particles+state.volumes.length+state.authoredFire>0);if([4,5,6].includes(species))assert.ok(state.authoredFire>0);if([17,18].includes(species))assert.ok(state.volumes.some(v=>v.mode===1));
     if(species===16)assert.ok(await page.evaluate(()=>app.run.vfx.crafted.windVortex?.mesh.count>0),'The supplied wind atlas must be visible during 一阵刮来');
     report.ultimates.push(state);if([4,6,16,17,58].includes(species))await screenshot('ultimate-'+species);
   }

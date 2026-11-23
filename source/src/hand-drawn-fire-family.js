@@ -1,22 +1,62 @@
-import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
+import {fireFootprints,fireFootprintGLSL,fireSurfaceGeometry} from './fire-footprint.js';
+import {B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
 import atlas from '../public/assets/vfx/fire-family.json' with {type:'json'};
 import mushroomAtlas from '../public/assets/vfx/fire-mushroom.json' with {type:'json'};
 
 export const fireFamilyMoves=new Set(['scratch','slash','dragon-claw','fire-fang','flare-blitz','air-slash','inferno','fire-blast','fu-4']);
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
+// Measured lower-ring aspect and tilt in the packed eruption / meteor drawings.
+const burstFootprints={eruption:{depthRatio:.56,shear:.16,pivotY:.46},meteorHit:{depthRatio:.48,shear:.02,pivotY:.42}};
 const vertex=layout=>`
 attribute vec4 iOrigin;attribute vec4 iFrame;attribute vec4 iStyle;attribute vec4 iPose;attribute vec4 iTween;
 uniform vec3 heroPosition;
-varying vec4 vScreen;varying vec4 vHero;varying vec2 vClarity;
+varying vec4 vScreen;varying vec4 vHero;varying vec2 vClarity;varying vec4 vBurst;
 varying vec2 vUv;varying vec2 vLocal;varying vec2 vCut;varying float vAlpha;varying float vPalette;
 varying vec2 vNextUv;varying float vBlend;
+${fireFootprintGLSL}
 void main(){
  vec2 local=(uv-iPose.xy)*vec2(iOrigin.w,iStyle.w);
  float a=iStyle.x;vec4 p=viewMatrix*vec4(iOrigin.xyz,1.);
- if(iStyle.y>.5&&iStyle.y<1.5){
+ // Burst sprites contain an upright plume and painted rings around its foot.
+ // Share their animation frame, but give only the rim a ground-plane quad.
+ bool mixedBurst=iTween.z<0.;
+ bool floorQuad=position.z>.5;
+ vBurst=vec4(mixedBurst?(floorQuad?1.:2.):0.,-iTween.z,iTween.w,iPose.z);
+ if(floorQuad && !mixedBurst){gl_Position=vec4(2.,2.,2.,1.);return;}
+ if(floorQuad){
+  float pivot=vBurst.w;
+  vec2 base=(uv-vec2(.5,pivot))*iOrigin.w;
+  p=viewMatrix*vec4(iOrigin.xyz+fireFootprint(base,a,-iTween.z,iTween.w),1.);
+ }else if(iStyle.y>=5.){
+  vec2 eye=normalize(vec2(viewMatrix[0][2],viewMatrix[2][2]));
+  vec2 right=vec2(eye.y,-eye.x);
+  float width=iOrigin.w;
+  float dx=(uv.x-.5)*width;
+  float depth,up;
+  if(iStyle.y==6.){
+   float t=clamp((uv.y-.47)/.40,0.,1.);
+   float rr=sqrt(max(0.,.345*.345-pow(abs(uv.x-.5),2.)));
+   float phi=t*3.141593;
+   depth=(.59-1.18*t)*rr*width;
+   up=(.02+.19*sin(t*1.95)+.06*t+.22*rr*sin(phi)+max(0.,uv.y-.87))*width;
+  }else{
+   float belly=.18+.12*smoothstep(.15,.53,uv.y);
+   depth=.62*sqrt(max(0.,belly*belly-pow(abs(uv.x-.5),2.)))*width;
+   up=local.y*1.36;
+  }
+  vec2 xz=right*dx+eye*depth;
+  p=viewMatrix*vec4(iOrigin.xyz+vec3(xz.x,up,xz.y),1.);
+ }else if(iTween.z>0.){
+  p=viewMatrix*vec4(iOrigin.xyz+fireFootprint(local,a,iTween.z,iTween.w),1.);
+ }else if(iStyle.y>.5&&iStyle.y<1.5){
   vec2 ground=vec2(local.x*cos(a)-local.y*sin(a),local.x*sin(a)+local.y*cos(a));
   p=viewMatrix*vec4(iOrigin.xyz+vec3(ground.x,0.,-ground.y),1.);
+ }else if(iStyle.y==4.){
+  vec3 axis=(viewMatrix*vec4(cos(a),0.,sin(a),0.)).xyz;
+  vec2 perpendicular=normalize(vec2(-axis.y,axis.x)+vec2(.00001,0.));
+  p.xyz+=axis*local.x;
+  p.xy+=perpendicular*local.y;
  }else if(iStyle.y>1.5){
   vec3 direction=(viewMatrix*vec4(cos(a),0.,sin(a),0.)).xyz;
   vec2 heading=length(direction.xy)>.001?normalize(direction.xy):vec2(1.,0.);
@@ -31,11 +71,11 @@ void main(){
  vUv=(tile+mix(vec2(.5/${layout.tile}.),vec2(1.-.5/${layout.tile}.),uv))/vec2(${layout.columns}.,${layout.rows}.);
  vec2 nextTile=vec2(mod(iTween.x,${layout.columns}.),${layout.rows-1}.-floor(iTween.x/${layout.columns}.));
  vNextUv=(nextTile+mix(vec2(.5/${layout.tile}.),vec2(1.-.5/${layout.tile}.),uv))/vec2(${layout.columns}.,${layout.rows}.);vBlend=iTween.y;
- vAlpha=iFrame.y;vPalette=iStyle.z;vLocal=uv;vCut=iPose.zw;
+ vAlpha=iFrame.y;vPalette=iStyle.z;vLocal=uv;vCut=vec2(mixedBurst?0.:iPose.z,iPose.w);
 }`;
 const fragment=`
 uniform sampler2D map;uniform float crispCloud;varying vec2 vUv;varying vec2 vLocal;varying vec2 vCut;varying float vAlpha;varying float vPalette;
-varying vec4 vScreen;varying vec4 vHero;varying vec2 vClarity;
+varying vec4 vScreen;varying vec4 vHero;varying vec2 vClarity;varying vec4 vBurst;
 varying vec2 vNextUv;varying float vBlend;
 void main(){
  float lower=vCut.x+(vCut.x>0.?.13*pow(abs(vLocal.x-.5)*2.,2.):0.);
@@ -43,6 +83,16 @@ void main(){
  vec4 ink=texture2D(map,vUv);
  if(vBlend>0.){vec4 nextInk=texture2D(map,vNextUv);float a=mix(ink.a,nextInk.a,vBlend);ink=vec4(mix(ink.rgb*ink.a,nextInk.rgb*nextInk.a,vBlend)/max(.001,a),a);}
  float density=ink.a*smoothstep(crispCloud>.5?.035:.06,crispCloud>.5?.45:.52,ink.a);
+ if(vBurst.x>.5){
+  // Keep the hot central column upright. The lower lip, outer arcs and ash
+  // strokes occupy the footprint; a short feather joins both silhouettes.
+  vec2 offset=vLocal-vec2(.5,vBurst.w);
+  float radius=length(vec2(offset.x,(offset.y-vBurst.z*offset.x)/vBurst.y));
+  float outer=smoothstep(.27,.38,radius);
+  float sides=1.-smoothstep(.09,.23,offset.y-.40*abs(offset.x));
+  float rim=outer*sides;
+  density*=vBurst.x<1.5?rim:1.-rim;
+ }
  float alpha=density*vAlpha;if(alpha<.01)discard;
  if(vCut.x>0.)alpha*=smoothstep(lower,lower+.06,vLocal.y);
  vec3 pigment=ink.rgb;float light=max(ink.r,max(ink.g,ink.b));
@@ -84,6 +134,10 @@ void main(){
  // Enemy-owned effects keep their full warning visibility.
  float heroDistance=length((vScreen.xy/vScreen.w-vHero.xy)/vHero.zw);
  alpha*=mix(1.,mix(.18,1.,smoothstep(.3,1.3,heroDistance)),vClarity.y);
+ if(vCut.x>.45){
+  float lit=smoothstep(.50,.77,vLocal.y);
+  pigment*=mix(vec3(.91,.78,.72),vec3(1.04,1.02,.99),lit);
+ }
  gl_FragColor=vec4(pigment,alpha);
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
@@ -94,7 +148,7 @@ void main(){
 export class HandDrawnFireFamily{
  supports(key){return fireFamilyMoves.has(key);}
  constructor(owner,scene){
-  this.owner=owner;this.events=[];this.ordered=[];this.groups=[[],[]];this.keys=new Map();this.hitTimes=new Map();this.clock=0;this.limit=128;this.played=0;
+  this.owner=owner;this.events=[];this.ordered=[];this.groups=[[],[],[]];this.keys=new Map();this.hitTimes=new Map();this.clock=0;this.limit=128;this.played=0;
   this.impactBudget=Infinity;this.impactBucket=-1;this.impactCount=0;
   const atlasTexture=(file,flag)=>{
    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
@@ -114,12 +168,13 @@ export class HandDrawnFireFamily{
   this.mushroomTexture=atlasTexture('assets/vfx/fire-mushroom.png','mushroomLoaded');
   const batch=(capacity,kind)=>{
    const foreground=kind===1,layout=foreground?mushroomAtlas:atlas;
-   const g=new BufferGeometry();g.setAttribute('position',new BufferAttribute(new Float32Array([0,0,0,1,0,0,1,1,0,0,1,0]),3));g.setAttribute('uv',new BufferAttribute(new Float32Array([0,0,1,0,1,1,0,1]),2));g.setIndex([0,1,2,0,2,3]);
+   const g=fireSurfaceGeometry(foreground?24:1,true);
    const attributes=['iOrigin','iFrame','iStyle','iPose','iTween'].map(name=>{const a=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);g.setAttribute(name,a);return a;});
    const m=new ShaderMaterial({vertexShader:vertex(layout),fragmentShader:fragment,uniforms:{map:{value:foreground?this.mushroomTexture:this.texture},crispCloud:{value:foreground?1:0},heroPosition:{value:{x:0,y:0,z:0}}},transparent:true,depthWrite:false,depthTest:!foreground,side:2,toneMapped:false});m.forceSinglePass=true;
-   const mesh=new InstancedMesh(g,m,capacity);mesh.name=foreground?'fire-mushroom-foreground':'authored-fire-family';mesh.count=0;mesh.visible=false;mesh.frustumCulled=false;mesh.renderOrder=foreground?1000:7.15;scene.add(mesh);return {mesh,attributes};
+   const mesh=new InstancedMesh(g,m,capacity);mesh.name=kind===2?'fire-vortex-rear-spokes':foreground?'fire-mushroom-foreground':'authored-fire-family';mesh.count=0;mesh.visible=false;mesh.frustumCulled=false;mesh.renderOrder=kind===2?6.98:foreground?1000:7.15;scene.add(mesh);return {mesh,attributes};
   };
   const normal=batch(128,0),top=batch(16,1);this.mesh=normal.mesh;this.attributes=normal.attributes;this.topMesh=top.mesh;this.topAttributes=top.attributes;
+  this.batches=[normal,top,batch(128,2)];
  }
  loadTexture(texture){
   return texture.userData.ready??=texture.userData.load();
@@ -254,16 +309,22 @@ export class HandDrawnFireFamily{
   const scale=.60;
   // A narrow rising stem and a broad rolling cap share the library drawing.
   // The dedicated last scene pass cannot be covered by actors or other VFX.
-  this.play('pillar',x,y,z,7.6*scale,{height:23*scale,life,delay,anchorY:.14,cutUpper:.59,frameStart:.04,frameEnd:.46,mushroomPart:'stem',foreground:true,layer:0,priority:2,fadeIn:.08,fadeOut:.35,blend:true});
-  this.play('pillar',x,y+12.8*scale,z,21.2*scale,{height:24*scale,life:life-.12,delay:delay+.20,anchorY:.50,cutLower:.47,frameStart:.13,frameEnd:.46,mushroomPart:'cap',foreground:true,layer:2,priority:2,fadeIn:.12,fadeOut:.42,blend:true});
+  this.play('pillar',x,y,z,7.6*scale,{height:23*scale,life,delay,anchorY:.14,cutUpper:.59,frameStart:.04,frameEnd:.46,mushroomPart:'stem',mode:5,foreground:true,layer:0,priority:2,fadeIn:.08,fadeOut:.35,blend:true});
+  this.play('pillar',x,y+12.8*scale,z,21.2*scale,{height:24*scale,life:life-.12,delay:delay+.20,anchorY:.50,cutLower:.47,frameStart:.13,frameEnd:.46,mushroomPart:'cap',mode:6,foreground:true,layer:2,priority:2,fadeIn:.12,fadeOut:.42,blend:true});
   this.play('sweepRing',x,y+10.2*scale,z,11.2*scale,{height:6.3*scale,life:1.1,delay:delay+.25,mode:1,spin:.7,priority:2,alpha:.36,scaleFrom:.65,scaleTo:1.05,fadeIn:.10,fadeOut:.5,blend:true});
  }
  fusionVortex(key,x,y,z,radius,main){
   this.owner.touch(key,{x,y,z,radius:radius*(main?1.05:.95),height:radius*3,mode:3,type:'fire',handDrawn:true,own:true});
   this.touch(key,'sweepRing',x,y+.18,z,radius*2.5,{height:radius*2.5,mode:1,spin:-1.8,priority:2,alpha:.32,clarity:2});
  }
- fusionSpoke(x,y,z,dx,dz,radius){
-  this.play('wake',x+dx*radius,y+.8,z+dz*radius,6,{life:.42,mode:2,angle:Math.atan2(-dz,-dx),travelX:dx*5,travelZ:dz*5,priority:1});
+ fusionSpoke(x,y,z,dx,dz,vortexRadius){
+  // Match the rendered funnel width at the emission height.
+  const width=vortexRadius*1.05*2.4,start=width*.17,travel=width*.55+4.4;
+  this.play('wake',x+dx*start,y+width*.60,z+dz*start,5.7,{
+   life:.42,mode:4,angle:Math.atan2(-dz,-dx),anchorX:.32,height:4.8,
+   travelX:dx*travel,travelZ:dz*travel,rise:.75,priority:1,
+   spoke:{x,z,dx,dz}
+  });
  }
  fusionBurst(x,y,z,radius,main){
   this.play('eruption',x,y,z,main?12:8,{life:.65,anchorY:.2,priority:2});
@@ -314,15 +375,19 @@ export class HandDrawnFireFamily{
   for(const [key,t] of this.hitTimes)if(this.clock-t>1)this.hitTimes.delete(key);
   const v=this.owner.vfx,camera=this.owner.run?.r.camera.position;
   const hero=this.owner.run?.player.pos;
-  if(hero)for(const mesh of [this.mesh,this.topMesh])Object.assign(mesh.material.uniforms.heroPosition.value,{x:hero.x,y:hero.y+1,z:hero.z});
+  if(hero)for(const {mesh} of this.batches)Object.assign(mesh.material.uniforms.heroPosition.value,{x:hero.x,y:hero.y+1,z:hero.z});
   // Transparent quads are sorted back to front within the batch.
   const ordered=this.ordered;ordered.length=0;
   for(let i=0;i<Math.min(this.events.length,this.limit);i++)ordered.push(this.events[i]);
   if(camera)ordered.sort((a,b)=>(b.x-camera.x)**2+(b.y-camera.y)**2+(b.z-camera.z)**2-((a.x-camera.x)**2+(a.y-camera.y)**2+(a.z-camera.z)**2));
   for(const group of this.groups)group.length=0;
-  for(const e of ordered)this.groups[e.foreground?1:0].push(e);
-  for(const kind of [0,1]){
-  const foreground=kind===1,mesh=foreground?this.topMesh:this.mesh,attributes=foreground?this.topAttributes:this.attributes;
+  for(const e of ordered){
+   const spoke=e.spoke;
+   const behind=spoke&&camera&&(camera.x-spoke.x)*spoke.dx+(camera.z-spoke.z)*spoke.dz<0;
+   this.groups[behind?2:e.foreground?1:0].push(e);
+  }
+  for(const [kind,{mesh,attributes}] of this.batches.entries()){
+  const foreground=kind===1;
   const origin=attributes[0].array,frame=attributes[1].array,style=attributes[2].array,pose=attributes[3].array,tween=attributes[4].array;let count=0;
   const group=this.groups[kind];if(foreground)group.sort((a,b)=>(a.layer||0)-(b.layer||0));
   for(const e of group){
@@ -330,27 +395,28 @@ export class HandDrawnFireFamily{
    if(count>=(foreground?16:this.limit))break;
    const spec=(foreground?mushroomAtlas:atlas).clips[e.clip],t=clamp(e.age/e.life),ease=1-(1-t)**2;
    const biteHit=e.bite?Math.max(0,1-Math.abs(e.age-.14)/.06):0;
-   const growth=e.bite?1.08-.13*smooth(e.age/.14)+biteHit*.07:e.mushroomPart==='stem'?.72+.28*clamp(e.age/.18):e.mushroomPart==='cap'?.30+.70*(1-(1-clamp(e.age/.28))**3):e.grow?.18+.82*Math.sin(Math.min(1,t*1.5)*Math.PI/2):e.scaleFrom!=null?e.scaleFrom+(e.scaleTo-e.scaleFrom)*ease:1;
+   const growth=e.spoke?Math.min(1,.38+t*2.8):e.bite?1.08-.13*smooth(e.age/.14)+biteHit*.07:e.mushroomPart==='stem'?.72+.28*clamp(e.age/.18):e.mushroomPart==='cap'?.30+.70*(1-(1-clamp(e.age/.28))**3):e.grow?.18+.82*Math.sin(Math.min(1,t*1.5)*Math.PI/2):e.scaleFrom!=null?e.scaleFrom+(e.scaleTo-e.scaleFrom)*ease:1;
    const vertical=e.bite?growth*(1-biteHit*.24):e.mushroomPart==='stem'?.16+.84*(1-(1-clamp(e.age/.30))**2):e.mushroomPart==='cap'?.50+.50*(1-(1-clamp(e.age/.32))**2):growth;
    // Brief anticipation, fast closure, then a short recoil and continuous fade.
    const progress=e.bite?(e.age<.065?e.age/.065*.045:e.age<.14?.045+smooth((e.age-.065)/.075)*.365:.41+(e.age-.14)/.29*.59):e.hold?(t<.58?t/.58*.35:.35+(t-.58)/.42*.65):t;
    const start=e.frameStart||0,end=e.frameEnd??1,phase=e.frameProgress??(start+(end-start)*(e.loop?((e.age+(e.phaseOffset||0))*(e.cycleHz??1.4))%1:progress));
    const looping=e.loop&&e.frameProgress==null,position=clamp(phase)*(looping||!e.blend?spec.count:spec.count-1),index=Math.min(spec.count-1,Math.floor(position)),next=looping?(index+1)%spec.count:Math.min(spec.count-1,index+1);
-   const birth=e.fadeIn?smooth(e.age/e.fadeIn):1,fade=e.fadeOut?smooth((e.life-e.age)/e.fadeOut):e.key||e.mushroomPart?1:Math.min(1,(1-t)*5);
+   const birth=e.spoke?Math.min(1,t/.095):e.fadeIn?smooth(e.age/e.fadeIn):1,fade=e.fadeOut?smooth((e.life-e.age)/e.fadeOut):e.key||e.mushroomPart?1:Math.min(1,(1-t)*5);
    const alpha=e.alpha*(e.own?v.ownOpacity:1)*v.opacity*(v.calm?.76:1)*birth*fade;
    const o=count++*4;
    origin[o]=e.x+(e.travelX||0)*t+(e.releasing?(e.tailVX||0)*e.life*smooth(t):0);origin[o+1]=e.y-(e.fall||0)*t+(e.rise||0)*t;origin[o+2]=e.z+(e.travelZ||0)*t+(e.releasing?(e.tailVZ||0)*e.life*smooth(t):0);origin[o+3]=e.size*growth;
    frame[o]=spec.first+index;frame[o+1]=alpha;frame[o+2]=e.clarity||0;frame[o+3]=e.own&&(e.palette===0||e.heroOpening)?1:0;
-   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=(e.height||e.size)*vertical;
-   pose[o]=e.anchorX;pose[o+1]=e.anchorY;pose[o+2]=e.cutLower;pose[o+3]=e.cutUpper;tween[o]=spec.first+next;tween[o+1]=e.blend?position-index:0;tween[o+2]=tween[o+3]=0;
+   const footprint=fireFootprints[e.clip],burst=burstFootprints[e.clip];
+   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=footprint?origin[o+3]:(e.height||e.size)*vertical;
+   pose[o]=e.anchorX;pose[o+1]=footprint?footprint.pivotY:e.anchorY;pose[o+2]=burst?burst.pivotY:e.cutLower;pose[o+3]=e.cutUpper;tween[o]=spec.first+next;tween[o+1]=e.blend?position-index:0;tween[o+2]=burst?-burst.depthRatio:(footprint?.depthRatio??0);tween[o+3]=(burst??footprint)?.shear??0;
   }
   mesh.count=(foreground?this.mushroomLoaded:this.loaded)?count:0;mesh.visible=mesh.count>0;
   if(count)for(const a of attributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}
   }
  }
  setPerformance(profile){this.limit=profile.name==='流畅'?48:profile.name==='均衡'?80:128;this.impactBudget=profile.fireImpactBudget??(profile.name==='流畅'?4:Infinity);}
- clear(){this.events.length=this.ordered.length=0;for(const group of this.groups)group.length=0;this.impactBucket=-1;this.impactCount=0;this.keys.clear();this.hitTimes.clear();for(const mesh of [this.mesh,this.topMesh]){mesh.count=0;mesh.visible=false;}}
- dispose(){this.disposed=true;this.clear();for(const mesh of [this.mesh,this.topMesh]){mesh.parent?.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh.dispose();}this.texture.dispose();this.mushroomTexture.dispose();}
+ clear(){this.events.length=this.ordered.length=0;for(const group of this.groups)group.length=0;this.impactBucket=-1;this.impactCount=0;this.keys.clear();this.hitTimes.clear();for(const {mesh} of this.batches){mesh.count=0;mesh.visible=false;}}
+ dispose(){this.disposed=true;this.clear();for(const {mesh} of this.batches){mesh.parent?.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh.dispose();}this.texture.dispose();this.mushroomTexture.dispose();}
 }
 
 export function installFireFamilyVFX(registry){

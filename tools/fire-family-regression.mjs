@@ -7,6 +7,23 @@ export async function reviewFireFamily(page,dir,moves){
  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));window.familyRandom=Math.random;Math.random=()=>.43;
   const generator=Object.values(app.run).find(x=>x?.rng?.next)?.rng;if(!generator)throw Error('Gameplay RNG missing');
   window.familyRngPrototype=Object.getPrototypeOf(generator);window.familyRngNext=familyRngPrototype.next;familyRngPrototype.next=()=>.43;
+  const r=app.run,t=r.terrain;
+  for(let z=-24;z<=24;z+=3)for(let x=-24;x<=24;x+=3){
+   if(!Array.from({length:28},(_,i)=>z-i*.4).every(zz=>t.inBounds(x,zz,2)&&t.isFlatOpen(x,zz)&&!t.hitProp(x,t.surface(x,zz)+.5,zz,2)))continue;
+   window.placeFireTargets=()=>{
+    const p=r.player,e=r.enemies;
+    p.pos.set(x,t.surface(x,z),z);r.camTarget.copy(p.pos);p.facing.set(0,-1);
+    for(let i=0;i<e.n;i++){
+     e.x[i]=x;e.z[i]=z-2.4-i*2;e.y[i]=t.surface(e.x[i],e.z[i]);
+     const batch=r.sprites.get(e.species[i],false,e.glyphWords[i]);
+     e.radius[i]=Math.max(.45,Math.min(4,batch.bodyWidth(e.scale[i])*.42));
+     e.hgt[i]=Math.max(.8,batch.bodyHeight(e.scale[i]));e.sized[i]=1;
+    }
+    e.update();r.lockTarget=0;
+   };
+   return;
+  }
+  throw Error('No open lane for fire skill targets');
  });
  const keys=['growl','ember','flamethrower','fire-spin','smokescreen','scary-face','inferno'];
  keys.push('fu-4');
@@ -16,12 +33,11 @@ export async function reviewFireFamily(page,dir,moves){
    const r=app.run;r.weather=r.baseWeather='clear';r.weatherT=0;r.player.setSpecies(4);vfxSetup();
    // setSpecies increments evolution scaling; each sample must start clean.
    const p=r.player;p.level=1;p.evoStage=0;p.growth=0;p.buffs.clear();p.recompute();p.hp=p.maxHp;p.kx=p.kz=0;
-   r.time=0;r.realTime=0;r.player.pos.y=r.terrain.height(0,0);r.player.facing.set(0,-1);
-   r.enemies.x[1]=0;r.enemies.z[1]=-2.4;r.enemies.update();r.lockTarget=1;
+   r.time=0;r.realTime=0;placeFireTargets();
    if(!r.player.addMove(id))return {key,available:false};
    await Promise.all([r.vfx.crafted.fireFamily?.ready,r.vfx.crafted.fireJet.ready,r.vfx.crafted.fireSpin.ready,r.vfx.crafted.fireball.ready,...[...r.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready)]);
    const m=r.player.moves[0];m.timer=0;window.familyTrace=[];
-   return {key,available:true,arch:m.def.arch};
+   return {key,available:true,arch:m.def.arch,jetBefore:r.vfx.crafted.fireJet.spawned};
   },{id,key});
   if(sample.available){
    for(let i=0;i<8;i++){
@@ -29,13 +45,14 @@ export async function reviewFireFamily(page,dir,moves){
     (sample.trace??=[]).push(frame);
     if(i===0||i===2)await page.screenshot({path:path.join(dir,(baseline?'before-':'after-')+key+'-'+i+'.png')});
    }
-   sample.visual=await page.evaluate(()=>{const v=app.run.vfx.crafted;return {family:v.fireFamily?.played||0,jet:v.fireJet.spawned,generic:v.mesh.count,gl:app.r.renderer.getContext().getError()};});
+   sample.visual=await page.evaluate(before=>{const v=app.run.vfx.crafted;return {family:v.fireFamily?.played||0,jet:v.fireJet.spawned-before,generic:v.mesh.count,gl:app.r.renderer.getContext().getError()};},sample.jetBefore);
+   delete sample.jetBefore;
   }
   report.moves.push(sample);
  }
  for(const species of [4,5,6]){
   const info=await page.evaluate(async species=>{
-   const r=app.run;r.weather=r.baseWeather='clear';r.weatherT=0;r.player.setSpecies(species);vfxSetup();r.time=0;r.realTime=0;r.player.pos.y=r.terrain.height(0,0);r.player.evoStage=species-4;r.player.growth=0;
+   const r=app.run;r.weather=r.baseWeather='clear';r.weatherT=0;r.player.setSpecies(species);vfxSetup();r.time=0;r.realTime=0;placeFireTargets();r.player.evoStage=species-4;r.player.growth=0;
    r.player.level=1;r.player.buffs.clear();r.player.recompute();r.player.hp=r.player.maxHp;r.player.kx=r.player.kz=0;
    await Promise.all([...r.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));r.ult.charge=1;r.ult.fire();
    return {species,name:r.ult.name,tier:r.ult.tier,duration:r.ult.active};
@@ -50,6 +67,11 @@ export async function reviewFireFamily(page,dir,moves){
  const baselineFile=process.env.POKEBONK_FIRE_BASELINE||new URL('./fire-family-baseline.json',import.meta.url);
  fs.writeFileSync(path.join(dir,'fire-family-report.json'),JSON.stringify(report,null,2));
  const gameplay={moves:report.moves.map(({key,available,trace})=>available?{key,available,trace}:{key,available}),ultimates:report.ultimates};
+ for(const move of gameplay.moves.filter(move=>move.available))assert.ok(move.trace.at(-1).damage>0,move.key+' must hit the targets');
+ for(const ult of gameplay.ultimates){
+  assert.equal(ult.name,'一点火苗');
+  assert.ok(ult.trace.at(-1).hp.some(hp=>hp<1e7),'ultimate must hit the targets');
+ }
  if(baseline)fs.writeFileSync(baselineFile,JSON.stringify(gameplay)+'\n');
  else {
   const previous=JSON.parse(fs.readFileSync(baselineFile));

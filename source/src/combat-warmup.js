@@ -25,7 +25,7 @@ export function warmCombatDraw(run){
   const crafted=vfx.crafted,family=crafted?.fireFamily;
   // compileAsync links programs but does not allocate instancing buffers. Draw
   // prepared skill batches once under the loading cover, including ultimates.
-  const meshes=[...pools.map(pool=>pool.mesh),vfx.upgrade?.mesh,vfx.upgrade?.rearMesh,crafted?.mesh,crafted?.fireJet.mesh,crafted?.fireJet.hitMesh,
+  const meshes=[...pools.map(pool=>pool.mesh),vfx.upgrade?.mesh,vfx.upgrade?.rearMesh,vfx.upgrade?.light?.mesh,crafted?.mesh,crafted?.fireJet.mesh,crafted?.fireJet.hitMesh,
     crafted?.fireJet.legacy.mesh,crafted?.fireSpin.mesh,crafted?.fireball.mesh,
     family?.mesh,family?.topMesh,
     crafted?.windVortex?.mesh,crafted?.windMoves?.mesh,crafted?.stampede?.mesh].filter(Boolean);

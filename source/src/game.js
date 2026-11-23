@@ -16,7 +16,7 @@ import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './dragon-chant.js';
-import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus} from './starter-characters.js';
+import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage} from './starter-characters.js';
 import {windMoveEffect} from './wind-move-art.js';
 import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './skill-availability.js';
 import {mountLiteQA} from './lite-qa.js';
@@ -5002,6 +5002,7 @@ var oc = (e, t) =>
         `PixelOutline`,
         `
       uniform vec3 uColor; uniform float uStrength;
+      uniform bool uHasFireMask; uniform sampler2D uFireMask;
       uniform bool uHasDeviceMask; uniform sampler2D uDeviceMask;
       float vz(vec2 uv){ return -getViewZ(readDepth(uv)); }
       void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor){
@@ -5010,6 +5011,7 @@ var oc = (e, t) =>
         float m = max(max(vz(uv + vec2(t.x, 0.)), vz(uv - vec2(t.x, 0.))), max(vz(uv + vec2(0., t.y)), vz(uv - vec2(0., t.y))));
         float edge = smoothstep(.22 + c * .003, .40 + c * .004, m - c) * step(c, 300.);
         if (uHasDeviceMask && texture2D(uDeviceMask, uv).r > .5) edge = 0.;
+        if (uHasFireMask) edge *= 1. - smoothstep(.08,.85,texture2D(uFireMask,uv).r);
         vec3 col = mix(inputColor.rgb, uColor, edge * uStrength);
         // First stop of the HDR chain: the scene lives in half floats (max 65504), so many additive glows piled up (a boss
         // fight) overflow to Inf and an Inf/NaN pixel spreads through the bloom's blur as black or white blocks, or the
@@ -5023,6 +5025,8 @@ var oc = (e, t) =>
           uniforms: new Map([
             [`uColor`, new hi(new Ei(1708072))],
             [`uStrength`, new hi(0.85)],
+            [`uHasFireMask`, new hi(false)],
+            [`uFireMask`, new hi(null)],
             [`uHasDeviceMask`, new hi(false)],
             [`uDeviceMask`, new hi(null)],
           ]),
@@ -5349,17 +5353,27 @@ var oc = (e, t) =>
       // Keep the world render targets at the chosen game quality. A phone can
       // present the final pass and the UI at a higher resolution for legible text.
       const displayRatio = Math.max(r, window.uiPixelRatio || r);
-      let i = `${e}x${t}@${r}/${displayRatio}`;
-      i !== this.sizeKey &&
-        ((this.sizeKey = i),
-        (this.needsDraw = !0),
-        (this.canvas.style.imageRendering = n ? `pixelated` : `auto`),
-        this.renderer.setPixelRatio(r),
-        this.renderer.setSize(e, t, !1),
-        this.composer.setSize(e, t, !1),
-        displayRatio !== r && this.renderer.setPixelRatio(displayRatio),
-        (this.camera.aspect = e / t),
-        this.camera.updateProjectionMatrix());
+      const key = `${e}x${t}@${r}/${displayRatio}`;
+      if (key === this.sizeKey) return;
+      this.sizeKey = key;
+      this.needsDraw = true;
+      this.canvas.style.imageRendering = n ? `pixelated` : `auto`;
+
+      // Loading the first profile can change world quality during the home zoom.
+      // Writing canvas.width or height clears the presented frame, even at the same size.
+      const display = this.renderer.getSize(new li());
+      if (display.width !== e || display.height !== t || this.renderer.getPixelRatio() !== displayRatio) {
+        this.renderer.setDrawingBufferSize(e, t, displayRatio);
+        window.invalidateUI?.();
+      }
+      const worldWidth = Math.floor(e * r), worldHeight = Math.floor(t * r);
+      const composer = this.composer;
+      composer.inputBuffer.setSize(worldWidth, worldHeight);
+      composer.outputBuffer.setSize(worldWidth, worldHeight);
+      composer.depthRenderTarget?.setSize(worldWidth, worldHeight);
+      for (const pass of composer.passes) pass.setSize(worldWidth, worldHeight);
+      this.camera.aspect = e / t;
+      this.camera.updateProjectionMatrix();
     }
     get hires() {
       return this.quality.hires ?? this.quality.bloom;
@@ -26006,7 +26020,7 @@ function castWindRing(ctx) {
   run.animate(duration,progress=>Oh(ctx,hit,x,z,radius*progress,1,{knock:4}));
 }
 function Xh(e, t) {
-  return starterUltimate(e,Uh,castWindRing) ?? (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
+  return starterUltimate(e,Uh) ?? (e == null ? void 0 : Uh[e]) ?? Yh[t] ?? Yh.normal;
 }
 var Zh = (e, t) => gh(e.names, t),
   Qh = (e, t) => gh(e.dur, t),
@@ -27852,6 +27866,7 @@ var e_ = class {
             (r.ui.popup(i.x[e], i.y[e] + i.hgt[e] + 1.4, i.z[e], c(`¡Bonk!`), `#8ad85a`, 1.1), r.shake(0.06)),
           r.vfx.ring(i.x[e], i.y[e], i.z[e], 2.6, 9099354, 0.3)));
       let b = s;
+      if (i.flags[e] & R.Boss) s = this.limitWindBossHit(e, s);
       i.capRate[e] > 0 && (s = this.capHit(e, s));
       let x = s < b * 0.7,
         S = Math.min(s, Math.max(0, i.hp[e]));
@@ -27973,6 +27988,12 @@ var e_ = class {
           r.audio.hit(l, u, m));
       }
       return (i.hp[e] <= 0 && this.killEnemy(e, n), s);
+    }
+    windBossBudget = new Map();
+    limitWindBossHit(index, damage) {
+      const {player, enemies, time} = this.run;
+      if (!player.buffs.has(speedBuff)) return damage;
+      return windBossDamage(this.windBossBudget, index, enemies.gen[index], enemies.maxHp[index], time, damage);
     }
     capHit(e, t) {
       let n = this.run.enemies,
@@ -28328,7 +28349,8 @@ var e_ = class {
             this.run.vfx.trail(n.x[e], n.y[e] + n.hgt[e] + 0.2, n.z[e], 16747224, 0.4, I.Heart, 0.7)),
         n.root[e] > 0 && (n.root[e] -= t),
         r > 0 &&
-          (n.capRate[e] > 0 && (r = this.capHit(e, r * t) / t),
+          (n.flags[e] & R.Boss && t > 0 && (r = this.limitWindBossHit(e, r * t) / t),
+          n.capRate[e] > 0 && (r = this.capHit(e, r * t) / t),
           (n.flags[e] & R.Boss && this.run.boss.immune) || this.takeHp(e, r * t),
           this.meter.add(e, (r * t) / n.wt[e]),
           n.flags[e] & R.Boss && this.run.boss.kit?.clampHp(),
@@ -29132,6 +29154,7 @@ var e_ = class {
   ]),
   y_ = new Set([`spikes`, `toxic-spikes`, `stealth-rock`, `sticky-web`]),
   b_ = {
+    "wind-ring-wave": `nova`,
     metronome: `random`,
     "cotton-spore": `cone`,
     "razor-wind": `wave`,
@@ -29554,6 +29577,7 @@ var e_ = class {
     "weather-ball": `orb`,
   },
   x_ = {
+    "wind-ring-wave": {pulses:3, status:null},
     outrage: { pulses: 3 },
     "shadow-bone": { count: 3, spread: 0.32, dmgMul: 0.7 },
     "cotton-spore": { statusChance: 0.3 },
@@ -30426,6 +30450,14 @@ function Q_(e, t, n, r) {
             s = i.pos.y,
             u = i.pos.z,
             d = t * (1 + n * 0.12);
+          if (o.key === 'wind-ring-wave') {
+            const duration = .65;
+            const hit = new Set();
+            e.vfx.ring(a, s, u, d, 0x8bcaff, duration, 0, L.Plain);
+            e.animate(duration, progress => Oh({run:e, dmg:r, base:x}, hit, a, u, d * progress, 1, {knock:1}));
+            Y_(e, o.key, `cast`, {k:n}, () => e.audio.whoosh());
+            return;
+          }
           if (C.nova) C.nova(e, a, s, u, d, c, artRadius * (1 + n * 0.12));
           else {
             (e.vfx.ring(a, s, u, d, c, 0.45), e.vfx.ring(a, s, u, d * 0.7, 16777215, 0.3));
@@ -31675,10 +31707,8 @@ function lv(e) {
   return n[t % n.length];
 }
 Object.assign(cv, ag, fg, vg, Dg, Mg);
-for (const key of ['blaze', 'imposter']) {
-  const passive = cv[key];
-  passive.name = specialNames.passive.get(passive.name) ?? passive.name;
-}
+cv.imposter.name = specialNames.passive.get(cv.imposter.name) ?? cv.imposter.name;
+cv[''] = {name: '', desc: ''};
 function uv(e) {
   return cv[e] ?? lv(e);
 }
@@ -36088,10 +36118,10 @@ function Ax(e, t) {
 var lS = [{
   "key": "fu-4",
   "member": 4,
-  "moves": ["fire-spin", "flamethrower"],
+  "ingredientPairs": [["fire-spin", "inferno"], ["fire-spin", "fire-blast"]],
   "kind": "signature",
-  "name": "转着烧遍",
-  "desc": "投出火焰旋涡吸引敌人，旋涡不断变大，向外甩出螺旋火焰后爆炸。",
+  "name": "炼狱风暴",
+  "desc": "投出火焰漩涡吸引敌人，旋涡不断变大，向外甩出螺旋火焰后爆炸。",
   "type": "fire",
   "cls": "special",
   "cd": 3.23,
@@ -36119,7 +36149,7 @@ var lS = [{
             spokeTick=.2;
             for(let j=0;j<3;j++){
               const angle=age*4+j/3*H,dx=Math.cos(angle),dz=Math.sin(angle);
-              art.fusionSpoke(x,y,z,dx,dz,radius);
+              art.fusionSpoke(x,y,z,dx,dz,baseRadius*baseFusionScale);
               for(const target of t.enemies.within(x+dx*(radius+3),z+dz*(radius+3),2.6*e.R))
                 Dh(e,target,.25,{status:'burn',statusChance:.3,dirX:dx,dirZ:dz,knock:1,silent:true});
             }
@@ -36147,10 +36177,10 @@ var lS = [{
 }, {
   "key": "fu-16",
   "member": 16,
-  "moves": ["wing-attack", "hurricane"],
+  "ingredientPairs": [["twister", "wing-attack"], ["twister", "aerial-ace"]],
   "kind": "signature",
   "name": "残气乱刮",
-  "desc": "飓风向敌人推进并将其卷入，其中不断飞出往返的锋利羽翼。",
+  "desc": "龙卷风向前推进并牵引敌人，锋利的羽翼从风中飞出，来回切割。",
   "type": "flying",
   "cls": "special",
   "cd": 2.4416504956396077,
@@ -36210,7 +36240,9 @@ var lS = [{
   "id": 50006
 }, {
   "key": "fu-t-fire",
-  "kind": "type",
+  "member": 4,
+  "ingredientPairs": [["ember", "flame-charge"], ["ember", "flamethrower"]],
+  "kind": "signature",
   "type": "fire",
   "cls": "special",
   "name": "灼热之阳",
@@ -36261,65 +36293,20 @@ var lS = [{
   "repeats": true,
   "id": 50080
 }, {
-  "key": "fu-t-flying",
-  "kind": "type",
+  "key": "fu-wind-spin",
+  "member": 16,
+  "ingredientPairs": [["quick-attack", "tackle"], ["quick-attack", "wind-ring-wave"]],
+  "kind": "signature",
   "type": "flying",
   "cls": "special",
-  "name": "台风",
-  "desc": "龙卷风向敌人推进，卷着并不停击打他们，锋利的羽毛四散飞出。",
+  "name": "卷着打转",
+  "desc": "两道龙卷向前推进，牵引并持续击打敌人。环绕自身的风环与羽毛同时向外扩散。",
   "cd": 3.23,
-  "power": 3.9,
-  "hits": 4.5,
-  "cast": (e) => {
-        Lh(e, e.ax, e.az, 15 * e.R, 1.8 * e.D, 0.5, 2 + mx(e, 0.3, 1), {
-          status: `knock`,
-          statusChance: 0.1,
-        }, 2);
-        for (let t = 1; t <= mx(e, 0.5, 3); t++) {
-          let n = (t % 2 ? 1 : -1) * 0.45 * Math.ceil(t / 2),
-            r = Math.cos(n),
-            i = Math.sin(n);
-          e.run.later(0.15 * t, () =>
-            Lh(
-              { ...e, x: e.run.player.pos.x, z: e.run.player.pos.z },
-              e.ax * r - e.az * i,
-              e.ax * i + e.az * r,
-              15 * e.R,
-              1.6 * e.D,
-              0.4,
-              2,
-              { status: `knock`, statusChance: 0.1 },
-            ),
-          );
-        }
-        let t = 8 + mx(e, 2, 8);
-        for (let n = 0; n < t; n++)
-          e.run.later(0.2 + n * 0.12, () => {
-            let t = e.run.player.pos,
-              n = F.range(0, H);
-            hx(
-              e,
-              {
-                x: t.x,
-                y: t.y + 1.2,
-                z: t.z,
-                dx: Math.cos(n),
-                dz: Math.sin(n),
-                speed: 18,
-                life: 0.6,
-                radius: 0.6,
-                pierce: 2,
-                shape: I.PixFeather,
-                size: 0.8,
-                color: 16777215,
-                fx: Kp(`wing-attack`),
-              },
-              0.4,
-            );
-          });
-      },
-  "sfx": (e) => Cs(e, 1.6, 0.14, 0, 350),
-  "id": 50088
+  "power": 1.35,
+  "hits": 5,
+  "range": 16,
+  "cast": e => castWindRing(e),
+  "id": 50106
 }], uS = new Map();
 for (const recipe of lS) {
   uS.set(recipe.key, {r:recipe, id:recipe.id});
@@ -36424,19 +36411,14 @@ const fireStampedeRecipe = {
 };
 var dS = (e) => uS.get(e)?.r,
   fS = (e) => uS.get(e)?.id ?? -1,
-  pS = (e) => lS.find((t) => t.kind === `signature` && t.member === e),
   mS = 1.3,
   hS = 1.7 * mS,
   gS = (e) => e.arch !== `weather` && e.arch !== `buff` && e.arch !== `fusion`;
 function _S(e, t, species) {
   if (!e || !t || !formMove(e.id, species) || !formMove(t.id, species) || e.id === t.id) return null;
   const available = recipe => recipe && moveAvailableForSpecies(fS(recipe.key), species) ? recipe : null;
-  let n = lS.find(
-    (n) =>
-      n.kind === `signature` &&
-      n.moves &&
-      ((n.moves[0] === e.key && n.moves[1] === t.key) || (n.moves[0] === t.key && n.moves[1] === e.key)),
-  );
+  let n = lS.find(recipe => recipe.ingredientPairs?.some(([a, b]) =>
+    (a === e.key && b === t.key) || (a === t.key && b === e.key)));
   if (n) return available(n);
   let r = (e, t, n) => e.pair[0].includes(t) && e.pair[1].includes(n),
     i = lS.find((n) => n.kind === `reaction` && (r(n, e.type, t.type) || r(n, t.type, e.type)));
@@ -36467,39 +36449,42 @@ function yS(e) {
           r: o,
           a: i.i,
           b: a.i,
+          ingredients: [i.m.def.id, a.m.def.id],
           names: [i.m.def.name, a.m.def.name],
           types: [i.m.def.type, a.m.def.type],
           ready: !s.length,
           need: s,
         }));
     }
-  let i = t.roster ? pS(t.roster.id) : void 0;
-  if (i?.moves && !n.some((e) => e.r === i)) {
-    let r = i.moves.map((e) => formMove(k.movesByKey.get(e)?.id ?? -1, t.speciesId));
-    if (r.every(Boolean)) {
-      let a = r
-        .map((n) => {
-          let r = t.moves.find((e) => e?.def.id === n.id);
-          return r
-            ? r.level < fusionRequiredLevel
-              ? vS(n.name, r.level)
-              : ``
-            : t.moves.some((e) => e?.parents.includes(n.id))
-              ? c(`{name} ya está dentro de otra fusión`, { name: n.name })
-              : e.banished.has(`m` + n.id)
-                ? c(`{name} está desterrado`, { name: n.name })
-                : c(`Aprende {name}`, { name: n.name });
-        })
-        .filter(Boolean);
-      n.push({
-        r: i,
-        a: -1,
-        b: -1,
-        names: [r[0].name, r[1].name],
-        types: [r[0].type, r[1].type],
-        ready: !1,
-        need: a,
-      });
+  for (const i of lS.filter(recipe => recipe.ingredientPairs && recipe.member === t.roster?.id)) {
+    for (const pair of i.ingredientPairs) {
+      let r = pair.map((e) => formMove(k.movesByKey.get(e)?.id ?? -1, t.speciesId));
+      if (r.every(Boolean) && !n.some(row => row.r === i && r.every(move => row.ingredients.includes(move.id)))) {
+        let a = r
+          .map((n) => {
+            let r = t.moves.find((e) => e?.def.id === n.id);
+            return r
+              ? r.level < fusionRequiredLevel
+                ? vS(n.name, r.level)
+                : ``
+              : t.moves.some((e) => e?.parents.includes(n.id))
+                ? c(`{name} ya está dentro de otra fusión`, { name: n.name })
+                : e.banished.has(`m` + n.id)
+                  ? c(`{name} está desterrado`, { name: n.name })
+                  : c(`Aprende {name}`, { name: n.name });
+          })
+          .filter(Boolean);
+        n.push({
+          r: i,
+          a: -1,
+          b: -1,
+          ingredients: r.map(move => move.id),
+          names: [r[0].name, r[1].name],
+          types: [r[0].type, r[1].type],
+          ready: !1,
+          need: a,
+        });
+      }
     }
   }
   let a = { signature: 0, reaction: 1, type: 2, glitch: 3 };
@@ -36511,7 +36496,8 @@ function bS(e, t) {
   let n = e.player,
     r = n.moves[t.a],
     i = n.moves[t.b];
-  if (!t.r || !r || !i || _S(r.def, i.def, n.speciesId) !== t.r) return null;
+  if (!t.r || !r || !i || r.level < fusionRequiredLevel || i.level < fusionRequiredLevel ||
+      _S(r.def, i.def, n.speciesId) !== t.r) return null;
   let a = formMove(fS(t.r.key), n.speciesId);
   if (!a) return null;
   let o = new M_(a);
@@ -45605,7 +45591,7 @@ var GT = 15,
     }
     async initialize() {
       this.state='transition';
-      await Promise.all([this.buildStageAsync(true), prepareDragonChant()]);
+      await Promise.all([this.buildStageAsync(true), prepareDragonChant(), this.vfx.upgrade.prepare()]);
       this.applyBoosts();
     }
     idleWarmup=new CombatIdleWarmup();
@@ -49824,10 +49810,11 @@ function BD(e) {
     n = new Map(t.map((e) => [e.key, e])),
     r = [];
   for (let e of lS)
-    if (e.kind === `signature` && e.moves) {
-      let t = n.get(e.moves[0]),
-        i = n.get(e.moves[1]);
-      t && i && r.push({ r: e, a: t, b: i });
+    if (e.ingredientPairs) {
+      for (const [left, right] of e.ingredientPairs) {
+        const a = n.get(left), b = n.get(right);
+        if (a && b) r.push({r: e, a, b});
+      }
     } else if (e.kind === `reaction` && e.pair) {
       let n = t.filter((t) => e.pair[0].includes(t.type)),
         i = t.filter((t) => e.pair[1].includes(t.type));
@@ -50724,7 +50711,7 @@ function aO(e) {
     r(
       c(`Movimientos`),
       c(`{n} aprendidos`, { n: t.moves.filter(Boolean).length }),
-      X(`p`, { class: `mp-hint` }, X(`b`, {}, t.abilityName), `: `, i.desc),
+      t.ability ? X(`p`, { class: `mp-hint` }, X(`b`, {}, t.abilityName), `: `, i.desc) : null,
       X(
         `div`,
         { class: `pk-moves` },
@@ -64079,14 +64066,20 @@ function ZX(app) {
       const pool = Vb(id,pt.get(id),k.get(id).types,inLeague);
       const moves = XD(pool,{species:id,inLeague});
       const typeIcon = type => Zt('ui/types/'+type+'.png');
+      const fusions = new Map();
+      for (const {r,a,b,ta,tb} of BD(moves)) {
+        if (!moveAvailableForSpecies(r.id,id)) continue;
+        if (!fusions.has(r.id)) fusions.set(r.id,{
+          key:'m'+r.id,name:r.name,detail:[Pi[r.type],DD(r.kind)].join(' · '),icon:typeIcon(r.type),
+          pairs:[],requirement:'两项招式均达到 '+fusionRequiredLevel+' 级后可融合。',
+        });
+        const pair = a && b ? [a.name,b.name] : [ta,tb].map(types=>(types??[]).map(type=>Pi[type]).join('/')+'属性招式');
+        fusions.get(r.id).pairs.push(pair);
+      }
       return {
         moves:moves.map(move=>({key:'m'+move.id,name:move.name,detail:catalogMoveMeta(move),icon:typeIcon(move.type)})),
         vitamins:m.map(v=>({key:'v'+v.key,name:v.name,detail:v.desc,icon:itemIcon(v.icon)})),
-        fusions:BD(moves).filter(({r})=>moveAvailableForSpecies(r.id,id)).map(({r,a,b,ta,tb})=>({
-          key:'m'+r.id,name:r.name,detail:[Pi[r.type],DD(r.kind)].join(' · '),icon:typeIcon(r.type),
-          pair:a && b ? [a.name,b.name] : [ta,tb].map(types=>(types??[]).map(type=>Pi[type]).join('/')+'属性招式'),
-          requirement:'两项招式均达到 '+fusionRequiredLevel+' 级后可融合。',
-        })),
+        fusions:[...fusions.values()],
         items:tt.filter(item=>app.meta.itemInPool(item.key)).map(item=>({
           key:item.key,name:Zb(item.key).name,detail:item.desc,icon:itemIcon(item.key),
         })),
@@ -64197,7 +64190,7 @@ function wP(e) {
       (MP(o, i, { sub: n.role, name: i.name, height: 230 }),
         o.append(X(`div`, { class: `ls-flash` }), X(`div`, { class: `ls-stamp` }, c(`¡Te elijo a ti!`))));
       let u = k.movesByKey.get(n.kit[0]),
-        d = u ? O_(u.id) : null,
+        d = u ? formMove(u.id, n.id) : null,
         f = -1,
         p = X(
           `button`,
@@ -64216,13 +64209,13 @@ function wP(e) {
           X(
             `div`,
             { class: `sp-info` },
-            X(
+            n.passive ? X(
               `div`,
               { class: `sp-pas` },
               X(`small`, {}, c(`Pasiva`)),
               X(`b`, {}, a.name ?? ``),
               X(`span`, {}, a.desc),
-            ),
+            ) : null,
             d
               ? X(
                   `div`,
@@ -65644,7 +65637,7 @@ function KP(e, t = `standard`, n, r) {
         },
         o ? X(`div`, { class: `tt-types` }, ...n.types.map((e) => XC(e))) : null,
         r
-          ? X(`p`, {}, X(`b`, {}, uv(t.passive).name ?? ``), ` — `, uv(t.passive).desc)
+          ? (t.passive ? X(`p`, {}, X(`b`, {}, uv(t.passive).name ?? ``), ` — `, uv(t.passive).desc) : null)
           : a.done
             ? X(
                 `p`,
@@ -66089,7 +66082,7 @@ function KP(e, t = `standard`, n, r) {
             se(
               c(`Pasiva y kit`),
               ZC(n.types[0], 22),
-              oe(
+              t.passive ? oe(
                 c(`Pasiva de clase`),
                 X(
                   `div`,
@@ -66099,7 +66092,7 @@ function KP(e, t = `standard`, n, r) {
                   eD(t.passive),
                   e.length ? X(`div`, { class: `ls-mods` }, ...e.map((e) => X(`span`, {}, e))) : null,
                 ),
-              ),
+              ) : null,
               oe(
                 c(`Kit de ataques`),
                 X(
@@ -75311,14 +75304,14 @@ var JI = class {
           c(`Movimientos`),
           c(`{n} aprendidos`, { n: t.moves.filter(Boolean).length }),
           `pz-left`,
-          X(
+          t.ability ? X(
             `div`,
             { class: `pz-ability` },
             X(`small`, {}, c(`Habilidad`)),
             X(`b`, {}, t.abilityName),
             X(`p`, {}, o.desc),
             eD(t.ability, t.level, e.stage, !0),
-          ),
+          ) : null,
           l,
           TD(e),
           X(

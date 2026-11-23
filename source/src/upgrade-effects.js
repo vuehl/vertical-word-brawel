@@ -1,9 +1,18 @@
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw} from '../assets/three-DmSYIDKK.js';
+import {WindAtlasBatch} from './wind-vortex.js';
 
 // jinhua.gif flashes into the new form at frame 126. The game clock drives
 // both the effect and the actual species change, including at low frame rates.
 export const EVOLUTION_REVEAL=1.8;
 export const EVOLUTION_DURATION=3.3;
+
+// Frames 92–123 have a 20 ms delay. The rest use 40 ms. Preserve those
+// relative speeds while aligning frame 126 with the gameplay reveal.
+function lightFrame(age,reveal,duration){
+  const time=age<reveal?4.4*age/reveal:4.4+1.8*(age-reveal)/(duration-reveal);
+  const frame=time<3.68?time*25:time<4.32?92+(time-3.68)*50:124+(time-4.32)*25;
+  return Math.floor(frame/2+1e-6);
+}
 
 function geometry(){
   const positions=[],uv=[],parts=[],indices=[];
@@ -13,7 +22,7 @@ function geometry(){
     for(let i=0;i<=128;i++){vertex(i/128,0,ring);vertex(i/128,1,ring);}
     for(let i=0;i<128;i++){const a=first+i*2;indices.push(a,a+1,a+2,a+1,a+3,a+2);}
   }
-  for(let part=2;part<19;part++){
+  for(let part=2;part<20;part++){
     const a=parts.length;vertex(0,0,part);vertex(1,0,part);vertex(0,1,part);vertex(1,1,part);
     indices.push(a,a+1,a+2,a+1,a+3,a+2);
   }
@@ -27,6 +36,9 @@ export class UpgradeEffects {
   constructor(run,scene){
     this.run=run;this.events=[];
     const g=geometry(),capacity=8;
+    this.light=new WindAtlasBatch(scene,capacity,'assets/vfx/evolution-light.webp',8,9,160,'evolution-light');
+    this.light.mesh.renderOrder=7.1;
+    this.light.mesh.material.depthTest=false;
     this.origin=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
     this.timing=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
     g.setAttribute('originSize',this.origin);g.setAttribute('effectTime',this.timing);
@@ -54,13 +66,14 @@ export class UpgradeEffects {
           vUv=uv;kind=part;
           float age=effectTime.x,reveal=effectTime.y,h=originSize.w;
           float progress=clamp(age/max(reveal,.001),0.,1.);
+          float seconds=progress*4.4;
+          float frame=seconds<3.68?seconds*25.:seconds<4.32?92.+(seconds-3.68)*50.:124.+(seconds-4.32)*25.;
           float ending=1.-smoothstep(reveal+.08,effectTime.z,age);
           alpha=effectTime.w*smoothstep(0.,.12,age)*ending;
           vec4 p=viewMatrix*vec4(originSize.xyz,1.);
           p.y+=h*.48;
           head=1.;depthSide=1.;
           if(part<1.5){
-            float frame=progress*126.;
             vec3 pose=orbitPose(frame);
             float release=smoothstep(reveal-.045,reveal+.14,age);
             float a=uv.x*TAU;
@@ -91,13 +104,19 @@ export class UpgradeEffects {
             p.z+=.2;
             alpha*=sin(life*3.14159)*.65*smoothstep(.48,.8,age)*
               (1.-.8*smoothstep(1.2,1.6,age)*(1.-smoothstep(reveal,reveal+.3,age)));
-          }else{
+          }else if(part<18.5){
             float pulse=smoothstep(reveal-.07,reveal,age)*(1.-smoothstep(reveal+.03,reveal+.24,age));
-            float f=progress*126.;
+            float f=frame;
             float charge=exp(-pow(abs(f-90.)/2.5,2.))+exp(-pow(abs(f-102.)/2.5,2.))+exp(-pow(abs(f-120.)/3.,2.));
             pulse=max(pulse,charge*.42*(1.-calm));
             p.xy+=(uv-.5)*h*4.8;p.z+=h*.65;
             alpha*=pulse*(1.-calm*.82);
+          }else{
+            // Darken the desk behind the gathering light, fading before the burst.
+            depthSide=-1.;
+            p.xy+=(uv-.5)*h*5.8;
+            alpha*=smoothstep(0.,.28,progress)*(.12+.30*smoothstep(84.,120.,frame))
+              *(1.-smoothstep(reveal-.06,reveal+.045,age))*(1.-calm*.75);
           }
           gl_Position=projectionMatrix*p;
         }`,
@@ -109,6 +128,12 @@ export class UpgradeEffects {
           // Glyphs don't write depth. Split arcs around their render order so
           // the supplied orbit really passes behind and in front of any form.
           if(layer*depthSide<0.)discard;
+          if(kind>18.5){
+            float shade=alpha*(1.-smoothstep(.12,1.,length((vUv-.5)*2.)));
+            if(shade<.003)discard;
+            gl_FragColor=vec4(0.,0.,0.,shade);
+            return;
+          }
           float light,core;
           if(kind<1.5){
             float d=abs(vUv.y-.5)*2.;
@@ -141,6 +166,12 @@ export class UpgradeEffects {
     this.rearMesh.frustumCulled=false;this.rearMesh.renderOrder=.9;
     this.clear();scene.add(this.rearMesh,this.mesh);
   }
+  prepare(){
+    return this.loading??=this.light.texture.userData.load().then(loaded=>{
+      if(loaded&&!this.disposed)this.run.r.renderer.initTexture(this.light.texture);
+      else this.loading=null;
+    });
+  }
   play(actor=this.run.player,evolution=false,reveal=EVOLUTION_REVEAL){
     if(this.disposed||this.run.hideOwnFx)return;
     // Consecutive levels coalesce, and an evolution replaces the short pulse.
@@ -148,7 +179,8 @@ export class UpgradeEffects {
     if(previous>=0)this.events.splice(previous,1);
     if(this.events.length>=this.origin.count)this.events.shift();
     const height=Math.max(1.9,Math.min(2.55,this.run.sprites.get(actor.speciesId).bodyHeight()*1.3));
-    this.events.push({actor,height,age:0,reveal:evolution?reveal:.9,duration:evolution?reveal+EVOLUTION_DURATION-EVOLUTION_REVEAL:1.45});
+    if(evolution&&!this.light.loaded)this.prepare();
+    this.events.push({actor,height,evolution,age:0,reveal:evolution?reveal:.9,duration:evolution?reveal+EVOLUTION_DURATION-EVOLUTION_REVEAL:1.45});
     this.update(0);
   }
   update(dt){
@@ -156,20 +188,34 @@ export class UpgradeEffects {
     const fx=this.run.vfx;
     this.mesh.material.uniforms.calm.value=fx.calm?1:0;
     this.mesh.count=0;
+    this.light.clear();
     for(let i=this.events.length-1;i>=0;i--){
       const e=this.events[i];e.age+=Math.max(0,dt);
       if(e.age>=e.duration||e.actor.dead){this.events.splice(i,1);continue;}
       const p=e.actor.pos,j=this.mesh.count++,scale=e.actor.renderScale??1;
       this.origin.setXYZW(j,p.x,p.y+.08,p.z,e.height*scale);
-      this.timing.setXYZW(j,e.age,e.reveal,e.duration,fx.opacity*fx.ownOpacity*(fx.calm?.7:1));
+      const opacity=fx.opacity*fx.ownOpacity*(fx.calm?.7:1);
+      this.timing.setXYZW(j,e.age,e.reveal,e.duration,opacity);
+      if(e.evolution){
+        const frame=lightFrame(e.age,e.reveal,e.duration);
+        if(frame<72){
+          // In the padded square image the center sits 0.48 actor heights
+          // above the ground, matching the procedural orbit.
+          const isBurst=frame>=61&&frame<=66;
+          const fade=fx.calm?(isBurst?.18:.55):1;
+          this.light.push(p.x,p.y+.08,p.z,e.height*scale*4,frame,opacity*fade,.38);
+        }
+      }
     }
+    this.light.end();
     this.mesh.visible=this.mesh.count>0;
     this.rearMesh.count=this.mesh.count;this.rearMesh.visible=this.mesh.visible;
     if(this.mesh.visible)this.origin.needsUpdate=this.timing.needsUpdate=true;
   }
-  clear(){this.events.length=0;this.mesh.count=this.rearMesh.count=0;this.mesh.visible=this.rearMesh.visible=false;}
+  clear(){this.events.length=0;this.mesh.count=this.rearMesh.count=0;this.mesh.visible=this.rearMesh.visible=false;this.light.clear();}
   dispose(){
     this.disposed=true;this.clear();this.mesh.geometry.dispose();
+    this.light.dispose();
     for(const mesh of [this.mesh,this.rearMesh]){mesh.parent?.remove(mesh);mesh.material.dispose();mesh.dispose();}
   }
 }

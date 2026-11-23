@@ -234,7 +234,7 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
   const identity=o=>el('div','zx-fusion-identity',[resultMark(o.r),
     el('div','zx-fusion-name',[planIncludes(runPlan(run),'fusions','m'+o.r.id)?planBadge():el('small','','融合结果'),el('h2','',o.r.name)]),stamp(o)]);
   const ingredients=o=>el('div','zx-fusion-pair',o.names.flatMap((name,i)=>{
-    const move=run.player.moves[i?o.b:o.a]||run.player.moves.find(m=>m&&(m.def.name===name||(o.r.moves?.[i]&&m.def.key===o.r.moves[i])));
+    const move=run.player.moves[i?o.b:o.a]||run.player.moves.find(m=>m && m.def.id===o.ingredients[i]);
     const part=el('div','zx-fusion-part',[
       typeIcon(o.types[i],22),el('div','zx-fusion-material',[el('b','',name),
         el('small',move?.level>=requiredLevel?'ready':'',move?'Lv.'+move.level+' / '+requiredLevel:'未学习')]),
