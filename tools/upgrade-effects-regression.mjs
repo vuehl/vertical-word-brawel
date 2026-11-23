@@ -67,11 +67,11 @@ export async function reviewUpgradeEffects(page,dir){
     assert.ok(start.frames.length>1&&start.frames.every(f=>f.action==='idle'&&f.species===from));
     assert.ok(new Set(start.frames.map(f=>f.index)).size>1,'Original form idle frames must advance during evolution');
     await draw(`evolution-${from}-${to}-orbit`);
-    await page.evaluate(()=>{for(let i=0;i<34;i++)app.run.update(1/30);});
+    await page.evaluate(()=>{for(let i=0;i<24;i++)app.run.update(1/30);});
     const contracting=await page.evaluate(()=>({species:app.run.player.speciesId,
       reveal:app.run.vfx.upgrade.events[0].reveal,duration:app.run.vfx.upgrade.events[0].duration}));
     assert.equal(contracting.species,from,'The old glyph must remain until the reference flash');
-    assert.equal(contracting.reveal,2.2);assert.ok(Math.abs(contracting.duration-4.08)<1e-6);
+    assert.equal(contracting.reveal,1.8);assert.ok(Math.abs(contracting.duration-3.3)<1e-6);
     await draw(`evolution-${from}-${to}-contract`);
     await page.evaluate(()=>{for(let i=0;i<6;i++)app.run.update(1/30);});
     await draw(`evolution-${from}-${to}-reveal`);

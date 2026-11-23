@@ -29,7 +29,7 @@ import {createPlayerFootRing,createFacilityDwellRing,createAltarChargeRing,creat
 import {EnemyTelegraphs} from './enemy-telegraphs.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
-import {FramePacer} from './frame-pacing.js';
+import {FramePacer,CombatClock} from './frame-pacing.js';
 import {warmCombatShaders,warmCombatDraw} from './combat-warmup.js';
 import {UpgradeEffects,EVOLUTION_REVEAL,EVOLUTION_DURATION} from './upgrade-effects.js';
 import {createActorTypeLookup} from './actor-types.js';
@@ -12714,7 +12714,10 @@ var Df = 0.4,
             );
         }
       }
-      const word=enemyWord(e,a);
+      const captureCandidate = !!(a & (R.Capture | R.Alpha)) &&
+        !this.run.captureEncounter && e === this.run.captureTarget;
+      if ((a & R.Capture) && !captureCandidate) return -1;
+      const word = captureCandidate ? glyphWordForSpecies(e) : enemyWord(e,a);
       let c = k.get(e),
         l = this.run.sprites.get(e, false, word),
         u = a & 1,
@@ -12739,6 +12742,9 @@ var Df = 0.4,
       else if (this.n < 2200) s = this.n++;
       else return -1;
       this.glyphWords[s]=word;
+      if (captureCandidate) {
+        this.run.captureEncounter = {index:s, generation:(this.gen[s]+1) >>> 0, stage:this.run.stage};
+      }
       let g = c.stats,
         _ = (12 + c.bst * 0.055) * r * ENEMY_HEALTH_SCALE,
         v = a & 28806 ? 1 : (this.run.director?.toughness() ?? 1);
@@ -12932,6 +12938,7 @@ var Df = 0.4,
         s = n.pos.y,
         l = i ? i.targets : null,
         u = l ? l.length : 0;
+      r.steerDeskEnemy?.advance();
       this.grid.build(this.n, this.x, this.z, this.alive, this.radius, this.dying);
       let d = this.grid,
         f = (this.sepOdd ^= 1),
@@ -12970,12 +12977,13 @@ var Df = 0.4,
         let m = this.lodDt[i] + e,
           h = !1,
           g = a,
-          _ = o;
+          _ = o,
+          targetSlot = 0;
         if (u > 2) {
           let e = 1 / 0;
           for (let t = 0; t < u; t += 2) {
             let n = (l[t] - this.x[i]) ** 2 + (l[t + 1] - this.z[i]) ** 2;
-            n < e && ((e = n), (g = l[t]), (_ = l[t + 1]));
+            n < e && ((e = n), (g = l[t]), (_ = l[t + 1]), (targetSlot=t/2));
           }
         } else u === 2 && ((g = l[0]), (_ = l[1]));
         let v = g !== a || _ !== o;
@@ -13088,8 +13096,9 @@ var Df = 0.4,
         }
         if(x && O===w && te===E && r.steerDeskEnemy){
           if(t.time>=this.deskNavUntil[i]){
-            this.deskNavUntil[i]=t.time+.18+(i%5)*.015;
-            this.deskNavActive[i]=+r.steerDeskEnemy(this.x[i],this.z[i],g,_,this.radius[i],this.propPosition);
+            const interval=this.count>=100 && ee>24 ? .48 : .18;
+            this.deskNavUntil[i]=t.time+interval+(i%5)*.015;
+            this.deskNavActive[i]=+r.steerDeskEnemy(this.x[i],this.z[i],g,_,this.radius[i],this.propPosition,targetSlot);
             this.deskNavX[i]=this.propPosition.x;this.deskNavZ[i]=this.propPosition.z;
           }
           if(this.deskNavActive[i]){O=this.deskNavX[i];te=this.deskNavZ[i];}
@@ -15958,7 +15967,9 @@ var Pm = class {
       n && (n.damage += t);
     }
     intercept(e) {
-      if(!isLiteSpecies(this.run.enemies.species[e]))return false;
+      const encounter = this.run.captureEncounter;
+      if (!encounter || encounter.index !== e || encounter.stage !== this.run.stage ||
+          encounter.generation !== this.run.enemies.gen[e] || this.run.enemies.species[e] !== this.run.captureTarget) return false;
       if (e === this.releasing) return !1;
       if (e === this.down && this.state !== `idle`) return !0;
       if (this.state !== `idle` || this.run.state === `dead`) return !1;
@@ -33650,7 +33661,7 @@ var mv = 30,
         f = e.spectralSkin ? [0.82, 0.66, 1.35, 0.68 + 0.07 * Math.sin(e.time * 3)] : [1, 1, 1, 0];
       t.push(
         this.pos.x,
-        this.pos.y,
+        this.pos.y + (this.evolutionLift ?? 0),
         this.pos.z,
         n,
         r,
@@ -34057,6 +34068,7 @@ var mv = 30,
               i = k.evolutionsOf(r);
             if(i.length && t.stage >= 1)r = this.rng.pick(i).id;
             if(!k.hasSprite(r))r = e.id;
+            if (!t.captureEncounter) r = t.captureTarget;
             const index=t.enemies.spawn(r, n.x, n.z, this.hpMult(), this.dmgMult(), R.Alpha);
             if(index<0)return;
             const word=t.enemies.glyphWords[index];
@@ -34425,7 +34437,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     get word() {
       const enemies = this.run.enemies;
       if (enemies.species[this.index] === this.species) return enemies.glyphWords[this.index];
-      return enemySpeciesWord(this.species);
+      return glyphWordForSpecies(this.species);
     }
     family = -1;
     weakT = 0;
@@ -34486,6 +34498,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     update(e) {
       let t = this.run,
         n = t.enemies;
+      if (t.captureEncounter && (this.state === 'idle' || this.state === 'done')) return;
       if (this.shinyStage !== t.stage) {
         ((this.shinyStage = t.stage),
           (this.shinyAt =
@@ -34509,13 +34522,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         ((this.classicAt = 1 / 0), this.spawnClassic());
       else if (this.state === `idle`) {
         if (t.stageTime < this.spawnAt) return;
-        let e = t.meta.leagueReady().filter((e) => e !== 150),
-          n = e.length ? F.pick(e) : -1;
-        if (n < 0) {
-          this.spawnAt = 1 / 0;
-          return;
-        }
-        this.spawnEncounter(n);
+        this.spawnEncounter(t.captureTarget);
       } else if (this.state === `roaming`) {
         if (!n.alive[this.index] || n.species[this.index] !== this.species) {
           this.state = `done`;
@@ -34549,7 +34556,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
           this.weakT <= 0 && (this.mirror ? this.fadeMirror() : this.recover()));
     }
     spawnEncounter(e) {
-      if(!isLiteSpecies(e))return;
+      if(this.run.captureEncounter || e !== this.run.captureTarget)return;
       let t = this.run,
         n = e;
       t.sprites.get(n);
@@ -34604,17 +34611,10 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         t.cry(n),
         t.audio.encounter());
     }
-    spawnShiny(e) {
+    spawnShiny() {
       let t = this.run;
-      if (this.state === `roaming` || this.state === `weakened` || this.state === `throwing`) return;
-      let n = LITE_SPECIES.map(id=>k.get(id)).filter((e) => k.hasAnimated(e.id)),
-        r = new Set(t.meta.profile.shinies.map((e) => t.meta.family(e))),
-        i = n.filter((e) => !r.has(t.meta.family(e.id)));
-      !i.length &&
-        e &&
-        (i = n.filter((e) => !r.has(t.meta.family(e.id))));
-      let a = i.length ? i : n,
-        o = a.length ? F.weighted(a, Tb).id : 25;
+      if (t.captureEncounter) return;
+      const o = t.captureTarget;
       t.sprites.get(o);
       let s = t.terrain.randomPoint(F, t.player.pos.x, t.player.pos.z, 18, 32),
         l = t.enemies.spawn(
@@ -34651,12 +34651,12 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         t = (t) => e.family(t),
         n = new Set();
       for (let r of e.profile.classics ?? []) for (let e of Re(r, t)) n.add(e);
-      return LITE_SPECIES.map(id=>k.get(id)).filter(
+      return [k.get(this.run.captureTarget)].filter(
         (e) => !e.legendary && !e.mythical && k.hasAnimated(e.id) && Re(e.id, t).some((e) => !n.has(e)),
       );
     }
     spawnClassic(e) {
-      if(e !== undefined && !isLiteSpecies(e))return;
+      if(this.run.captureEncounter || (e !== undefined && e !== this.run.captureTarget))return;
       let t = this.run;
       if (
         this.state === `roaming` ||
@@ -34744,12 +34744,14 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     interceptBoss(e) {
       let t = this.run,
         n = t.enemies;
-      return t.endless || !isLiteSpecies(n.species[e]) || !(n.flags[e] & R.Shiny) || e !== t.boss.bossIndex
+      return t.endless || t.captureEncounter || n.species[e] !== t.captureTarget || !(n.flags[e] & R.Shiny) || e !== t.boss.bossIndex
         ? !1
         : (t.onBossKilled(e), t.boss.release(), this.takeOver(e, n.species[e], `shiny`), !0);
     }
     takeOver(e, t, n = `league`) {
-      if(!isLiteSpecies(t))return;
+      if(this.run.captureEncounter || t !== this.run.captureTarget || this.run.enemies.species[e] !== t)return;
+      this.run.captureEncounter = {index:e, generation:this.run.enemies.gen[e], stage:this.run.stage};
+      this.run.enemies.glyphWords[e] = glyphWordForSpecies(t);
       let r = this.run,
         i = r.enemies;
       (this.state === `roaming` || this.state === `weakened`) &&
@@ -34801,7 +34803,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         this.state === `roaming` ||
         this.state === `weakened` ||
         this.state === `throwing` ||
-        !k.byId.has(e) ||
+        o.captureEncounter || e !== o.captureTarget || t !== e ||
         !Number.isFinite(i + a)
       )
         return !1;
@@ -35188,7 +35190,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     intercept(e) {
       let t = this.run;
       if (this.state !== `fight` || e !== t.boss.bossIndex || !(t.boss.kit instanceof ay)) return !1;
-      if (((this.state = `done`), this.endless)) return (t.projectiles.clearHostile(), !1);
+      if (((this.state = `done`), this.endless || t.captureEncounter || Db !== t.captureTarget)) return (t.projectiles.clearHostile(), !1);
       (t.boss.release(),
         t.projectiles.clearHostile(),
         t.capture.takeOver(e, Db),
@@ -45377,6 +45379,10 @@ var GT = 15,
     events;
     capture;
     mewtwo;
+    captureEncounter = null;
+    get captureTarget() {
+      return LITE_SPECIES.find(id => id !== this.startSpecies);
+    }
     mewtwoFought = !1;
     allies;
     boosts;
@@ -47223,12 +47229,15 @@ var GT = 15,
           let r = n.pos.x,
             c = n.pos.z;
           this.animate(
-            0.55,
+            0.46,
             (e) => {
-              n.renderScale = 1 + Math.sin(e * Math.PI) * 0.08 * (1 - e * 0.6);
+              const lift = Math.sin(e * Math.PI);
+              n.evolutionLift = this.hideOwnFx ? 0 : lift * 0.52;
+              n.renderScale = 1 + lift * 0.08 * (1 - e * 0.6);
             },
             () => {
               n.renderScale = 1;
+              n.evolutionLift = 0;
             },
           );
           for (let e of this.enemies.within(r, c, 18))
@@ -47439,7 +47448,7 @@ var GT = 15,
         );
       a(Qb(this, t, n, i), r);
     }
-    update(e, dwellSeconds = e) {
+    update(e, dwellSeconds = e, tickSeconds = 0, ticks = 1) {
       if(this.coop && (this.coop.suspended || this.coop.reconnecting || !this.coop.room.open))return;
       let t = this.input;
       // Start after loading or restoring the room, so the boss intro owns its cinematic state.
@@ -47493,7 +47502,7 @@ var GT = 15,
             ? this.pause()
             : this.state === `paused` && !t.justUnlocked() && !this.ui.pauseEsc() && this.resume()),
         this.hitstopT > 0 && (this.hitstopT -= e));
-      let r = Math.min(e, 1 / 20) * this.timeScale * (this.hitstopT > 0 ? 0.08 : 1),
+      let r = (tickSeconds || Math.min(e, 1 / 20)) * this.timeScale * (this.hitstopT > 0 ? 0.08 : 1),
         i =
           this.state === `play` ||
           this.state === `dead` ||
@@ -47537,13 +47546,21 @@ var GT = 15,
       let c = this.ultFx;
       c.t > 0 && (i || a) && (c.t -= e);
       let l = c.t > 0 ? Math.min(1, c.k + e / 0.15) : Math.max(0, c.k - e / 0.5);
+      if(l!==c.k){c.k=l;this.pushLook();}
+      if(a)this.stepAnims(e,true);
+      if(this.state==='capturing'){this.orbitals.begin();this.orbitalsGlow.begin();this.capBall?.update(e);}
+      if(i && r>0){
+        this.realDt=tickSeconds || e;
+        this.simulate(r,dwellSeconds/ticks);
+        if(ticks===2 && this.state==='play' && !this.buildingStage && !this.pendingLevels && this.hitstopT<=0){
+          this.input.endFrame();
+          this.simulate(r,dwellSeconds/2);
+          r*=2;
+        }
+        this.realDt=e;
+      }
       if (
-        (l !== c.k && ((c.k = l), this.pushLook()),
-        a && this.stepAnims(e, !0),
-        this.state === `capturing` &&
-          (this.orbitals.begin(), this.orbitalsGlow.begin(), this.capBall?.update(e)),
-        i && r > 0 && this.simulate(r, dwellSeconds),
-        !frozenWorld&&this.updateCamera(e),
+        (!frozenWorld&&this.updateCamera(e),
         this.state === `capturing` && this.clearCaptureView(),
         !frozenWorld&&this.renderWorld(i ? r : 0),
         !frozenWorld&&this.vfx.update(i ? r : a ? e : 0),
@@ -53566,7 +53583,7 @@ function vA(e, n) {
       [],
       X(`div`, { class: `nw-wrap` }, r, i),
     );
-  r.append(X(`div`, { class: `center`, style: { padding: `40px` } }, X(`div`, { class: `pokeball-spin` })));
+  r.append(X(`div`, { class: `center`, style: { padding: `40px` } }, Q(`poke-ball`, `pix gourd-spin`)));
   let o = [],
     s = -1,
     l = lA(),
@@ -54387,7 +54404,7 @@ function HA(e, t = () => CP(e)) {
           `tier`,
         ),
       ),
-        $(te).append(X(`div`, { class: `cp-lb-load` }, X(`div`, { class: `pokeball-spin` }))),
+        $(te).append(X(`div`, { class: `cp-lb-load` }, Q(`poke-ball`, `pix gourd-spin`))),
         $(ne));
       let r;
       try {
@@ -55639,7 +55656,7 @@ function tj(e, t = () => CP(e), n) {
         );
       $(u).append(
         r,
-        X(`div`, { class: `center`, style: { padding: `60px` } }, X(`div`, { class: `pokeball-spin` })),
+        X(`div`, { class: `center`, style: { padding: `60px` } }, Q(`poke-ball`, `pix gourd-spin`)),
       );
       let l;
       try {
@@ -55851,7 +55868,7 @@ function oj(e, t = () => CP(e)) {
     i = X(
       `div`,
       { class: `fr-list` },
-      X(`div`, { class: `center`, style: { padding: `40px` } }, X(`div`, { class: `pokeball-spin` })),
+      X(`div`, { class: `center`, style: { padding: `40px` } }, Q(`poke-ball`, `pix gourd-spin`)),
     ),
     a = X(`small`, {}),
     o = X(`input`, { class: `bd-search`, placeholder: c(`Buscar entre tus amigos…`), maxlength: `24` }),
@@ -57587,7 +57604,7 @@ function Lj(e, t, n, r, i) {
     );
   (ae(),
     $(y).append(
-      X(`div`, { class: `center`, style: { padding: `40px` } }, X(`div`, { class: `pokeball-spin` })),
+      X(`div`, { class: `center`, style: { padding: `40px` } }, Q(`poke-ball`, `pix gourd-spin`)),
     ),
     se());
   let he = window.setInterval(() => {
@@ -57854,7 +57871,7 @@ async function Qj(e) {
   let n = X(
     `div`,
     { class: `cl-hub` },
-    X(`div`, { class: `center`, style: { padding: `60px` } }, X(`div`, { class: `pokeball-spin` })),
+    X(`div`, { class: `center`, style: { padding: `60px` } }, Q(`poke-ball`, `pix gourd-spin`)),
   );
   $P(
     e,
@@ -58065,7 +58082,7 @@ function rM(e, t, n) {
         X(`b`, {}, c(`Clasificación de clanes`)),
         X(`small`, {}, An(e.backend.season().n)),
       ),
-      X(`div`, { class: `center`, style: { padding: `30px` } }, X(`div`, { class: `pokeball-spin` })),
+      X(`div`, { class: `center`, style: { padding: `30px` } }, Q(`poke-ball`, `pix gourd-spin`)),
     );
   ($(t).append(
     X(
@@ -58310,7 +58327,7 @@ function oM(e, t) {
     r = X(
       `div`,
       { class: `cl-found-list` },
-      X(`div`, { class: `center`, style: { padding: `24px` } }, X(`div`, { class: `pokeball-spin` })),
+      X(`div`, { class: `center`, style: { padding: `24px` } }, Q(`poke-ball`, `pix gourd-spin`)),
     ),
     i = X(`small`, {}, c(`Clanes que buscan miembros`)),
     a = 0,
@@ -58401,7 +58418,7 @@ async function sM(e, t, n = () => CP(e)) {
     i = X(
       `div`,
       { class: `cl-page` },
-      X(`div`, { class: `center`, style: { padding: `60px` } }, X(`div`, { class: `pokeball-spin` })),
+      X(`div`, { class: `center`, style: { padding: `60px` } }, Q(`poke-ball`, `pix gourd-spin`)),
     ),
     a = $P(
       e,
@@ -60628,7 +60645,7 @@ async function NM(e) {
     n = X(
       `div`,
       { class: `ml-wrap scroll` },
-      X(`div`, { class: `center`, style: { padding: `60px` } }, X(`div`, { class: `pokeball-spin` })),
+      X(`div`, { class: `center`, style: { padding: `60px` } }, Q(`poke-ball`, `pix gourd-spin`)),
     );
   if (
     ($P(
@@ -61328,7 +61345,7 @@ async function PM(e, t = `week`, n = `main`) {
   );
   $(a).append(
     d,
-    X(`div`, { class: `center`, style: { padding: `60px` } }, X(`div`, { class: `pokeball-spin` })),
+    X(`div`, { class: `center`, style: { padding: `60px` } }, Q(`poke-ball`, `pix gourd-spin`)),
   );
   let f;
   try {
@@ -64370,7 +64387,7 @@ function TP(e) {
       if (
         (C(),
         $(m).append(
-          X(`div`, { class: `center`, style: { padding: `40px` } }, X(`div`, { class: `pokeball-spin` })),
+          X(`div`, { class: `center`, style: { padding: `40px` } }, Q(`poke-ball`, `pix gourd-spin`)),
         ),
         r === `clans`)
       ) {
@@ -68759,7 +68776,7 @@ function HF(e, t) {
               );
       $(o).append(
         b,
-        X(`div`, { class: `center`, style: { padding: `60px` } }, X(`div`, { class: `pokeball-spin` })),
+        X(`div`, { class: `center`, style: { padding: `60px` } }, Q(`poke-ball`, `pix gourd-spin`)),
       );
       let x;
       try {
@@ -69544,7 +69561,7 @@ function XF(e, t, n = () => CP(e)) {
     a = X(
       `div`,
       { class: `pf-body scroll` },
-      X(`div`, { class: `center`, style: { padding: `60px` } }, X(`div`, { class: `pokeball-spin` })),
+      X(`div`, { class: `center`, style: { padding: `60px` } }, Q(`poke-ball`, `pix gourd-spin`)),
     ),
     o = X(`div`, { class: `row pf-actions` }),
     s = $P(e, `pf`, c(`Ficha de entrenador`), ``, i, [o], a);
@@ -72821,7 +72838,7 @@ var JI = class {
         d = X(
           `div`,
           { class: `run-loading` },
-          X(`div`, { class: `pokeball-spin` }),
+          Q(`poke-ball`, `pix gourd-spin`),
           X(`h2`, {}, c(`Preparando la zona`)),
           X(`div`, { class: `bar` }, i, a),
           s,
@@ -75098,7 +75115,7 @@ var JI = class {
       ),
         e.cry(e.player.speciesId));
     }
-    showEvolution(e, t, n = 3.6) {
+    showEvolution(e, t, n = EVOLUTION_REVEAL) {
       let r = X(
         `div`,
         { class: `evo`, style: { "--evo-d": `${n}s` } },
@@ -78855,7 +78872,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           `div`,
           { class: `loading` },
           X(`div`, { class: `logo` }, X(`div`, { class: `logo-word` }, `Poké`, X(`span`, {}, `Bonk`))),
-          X(`div`, { class: `pokeball-spin` }),
+          Q(`poke-ball`, `pix gourd-spin`),
           n,
         );
       this.setScreen(window.nativeUI ? null : r);
@@ -78977,6 +78994,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         ),
         document.addEventListener(`visibilitychange`, () => {
           this.last=null;this.dynAt=performance.now();this.dyn.t=this.dyn.frames=this.dyn.js=0;
+          this.combatClock.run=null;
           this.perf.active=false;
           this.pacer.reset();
           if(this.run)this.run.crowdSample=null;
@@ -79460,10 +79478,15 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     }
     halted = !1;
     pacer = new FramePacer(window.setNativeFrameRate);
+    combatClock = new CombatClock();
     loop = (e) => {
-      if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) {this.perf.active=false;this.pacer.reset();return;}
-      let t = this.frameGap();
-      if (!this.pacer.ready(e,t,this.r.needsDraw)) return;
+      if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) {this.perf.active=false;this.pacer.reset();this.combatClock.run=null;this.last=null;return;}
+      const gap = this.frameGap();
+      if (!this.pacer.ready(e,gap,this.r.needsDraw)) return;
+      const combat=this.run?.state==='play'&&!this.run.buildingStage&&!this.screen?.classList.contains('zx-loading-screen');
+      const ticks=combat?this.combatClock.ticks(this.run,e,gap):1;
+      if(!combat)this.combatClock.run=null;
+      if(!ticks)return;
       const elapsed = this.last === null ? 0 : Math.max(0, (e - this.last) / 1e3);
       let n = Math.min(0.1, elapsed);
       this.last = e;
@@ -79483,7 +79506,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         if(!this.r.needsDraw&&window.drawFrozenModal?.(this.r.renderer)){
           this.perf.active=false;this.run.crowdSample=null;this.adaptRes(0,0,e);this.failing=0;return;
         }
-        this.run ? this.run.update(n, Math.min(elapsed, 0.5)) : this.menuScene?.update(n);
+        this.run ? this.run.update(n, Math.min(elapsed, 0.5), combat?gap/1000:0, ticks) : this.menuScene?.update(n);
         // The XP ring still needs HUD updates while combat is paused. Reuse
         // that same scene when the choice first appears.
         if(this.run?.pendingLevels>0&&!this.r.needsDraw&&window.drawFrozenUpgrade?.(this.r.renderer)){

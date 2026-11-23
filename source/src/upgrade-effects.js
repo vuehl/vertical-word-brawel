@@ -1,12 +1,10 @@
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw} from '../assets/three-DmSYIDKK.js';
 
-// Keep the reference's orbit poses, but compress the lead-in from 4.32s to 2.2s.
-// The 1.88s reveal tail retains its original timing.
-export const EVOLUTION_REVEAL=2.2;
-export const EVOLUTION_DURATION=EVOLUTION_REVEAL+1.88;
+// jinhua.gif flashes into the new form at frame 126. The game clock drives
+// both the effect and the actual species change, including at low frame rates.
+export const EVOLUTION_REVEAL=1.8;
+export const EVOLUTION_DURATION=3.3;
 
-// Reconstruct the supplied recording's gold orbit / contraction / reveal without
-// baking its desk or 炎 glyph into the effect. All forms share this one batch.
 function geometry(){
   const positions=[],uv=[],parts=[],indices=[];
   const vertex=(u,v,part)=>{positions.push(0,0,0);uv.push(u,v);parts.push(part);};
@@ -41,20 +39,16 @@ export class UpgradeEffects {
         varying vec2 vUv;
         varying float kind,alpha,head,depthSide;
         const float TAU=6.2831853;
-        // Traced screen-space poses: tilt, aspect, radius, second arc visibility.
-        vec4 orbitPose(float t){
-          vec4 a=vec4(-.22,.22,1.02,0.);
-          a=mix(a,vec4(-.48,.24,1.02,0.),smoothstep(.92,1.24,t));
-          a=mix(a,vec4(-.22,.30,1.,1.),smoothstep(1.24,1.52,t));
-          a=mix(a,vec4(-.64,.40,.86,1.),smoothstep(1.52,1.84,t));
-          a=mix(a,vec4(-1.08,.58,.70,1.),smoothstep(1.84,2.16,t));
-          a=mix(a,vec4(-2.05,.65,.68,1.),smoothstep(2.16,2.48,t));
-          a=mix(a,vec4(-2.30,.53,.74,1.),smoothstep(2.48,2.76,t));
-          a=mix(a,vec4(-3.52,.28,1.,1.),smoothstep(2.76,3.08,t));
-          a=mix(a,vec4(-3.57,.30,1.,1.),smoothstep(3.08,3.40,t));
-          a=mix(a,vec4(-4.35,.60,.78,1.),smoothstep(3.40,3.72,t));
-          a=mix(a,vec4(-4.70,.55,.27,1.),smoothstep(3.72,4.04,t));
-          return mix(a,vec4(-4.90,.60,.50,1.),smoothstep(4.16,4.32,t));
+        // Ellipse tilt, aspect and radius sampled in source GIF frame units.
+        vec3 orbitPose(float f){
+          vec3 pose=vec3(-.33,.24,1.15);
+          pose=mix(pose,vec3(-.45,.30,1.02),smoothstep(36.,48.,f));
+          pose=mix(pose,vec3(-1.03,.72,.66),smoothstep(48.,61.,f));
+          pose=mix(pose,vec3(-.80,.51,.88),smoothstep(62.,72.,f));
+          pose=mix(pose,vec3(-.40,.27,1.16),smoothstep(72.,82.,f));
+          pose=mix(pose,vec3(-.92,.56,.74),smoothstep(87.,97.,f));
+          pose=mix(pose,vec3(-1.18,.68,.24),smoothstep(99.,111.,f));
+          return mix(pose,vec3(-1.25,.72,.30),smoothstep(117.,123.,f));
         }
         void main(){
           vUv=uv;kind=part;
@@ -66,36 +60,42 @@ export class UpgradeEffects {
           p.y+=h*.48;
           head=1.;depthSide=1.;
           if(part<1.5){
-            float t=min(age,reveal)*4.32/reveal+max(0.,age-reveal);
-            vec4 pose=orbitPose(t);
+            float frame=progress*126.;
+            vec3 pose=orbitPose(frame);
+            float release=smoothstep(reveal-.045,reveal+.14,age);
             float a=uv.x*TAU;
-            float tilt=part<.5?pose.x:mix(.35,1.45,smoothstep(1.52,3.08,t));
-            float ellipse=part<.5?pose.y:mix(.33,.26,smoothstep(2.76,3.4,t));
-            float radius=h*pose.z*(part<.5?1.:.93);
+            float tilt=part<.5?pose.x:mix(.47,1.48,smoothstep(53.,81.,frame));
+            float ellipse=part<.5?pose.y:mix(.36,.23,smoothstep(68.,85.,frame));
+            float radius=h*mix(pose.z,part<.5?1.85:2.05,release);
+            tilt=mix(tilt,-.40,release);
+            ellipse=mix(ellipse,part<.5?.29:.94,release);
             vec2 q=vec2(cos(a),sin(a)*ellipse);
             vec2 tangent=normalize(vec2(-sin(a),cos(a)*ellipse));
             vec2 normal=vec2(-tangent.y,tangent.x);
-            float trail=fract(uv.x-t*.88+part*.43);
+            float trail=fract(uv.x-frame*.034+part*.43);
             head=smoothstep(.04,.84,trail)*(1.-smoothstep(.94,1.,trail));
-            float width=h*.22;
+            float width=h*mix(.16,.35,release);
             q=q*radius+normal*(uv.y-.5)*width;
             p.xy+=mat2(cos(tilt),sin(tilt),-sin(tilt),cos(tilt))*q;
             depthSide=sin(a);
             p.z+=sin(a)*h*.48;
-            alpha*=smoothstep(.68,.92,t)*(1.-smoothstep(4.32,4.56,t));
-            if(part>.5)alpha*=pose.w;
+            alpha*=smoothstep(16.,22.,frame)*(1.-smoothstep(reveal+.045,reveal+.22,age));
+            if(part>.5)alpha*=smoothstep(30.,40.,frame);
           }else if(part<17.5){
             float seed=part*2.39996;
             float life=fract(age*.65+part*.173);
             float r=h*(.85+.8*fract(part*.618));
             vec2 q=vec2(cos(seed)*r,sin(seed)*r*.65+(life-.5)*h*.65);
-            float size=h*(.04+.035*fract(part*.371));
+            float size=h*(.055+.045*fract(part*.371));
             p.xy+=q+(uv-.5)*size;
             p.z+=.2;
             alpha*=sin(life*3.14159)*.65*smoothstep(.48,.8,age)*
               (1.-.8*smoothstep(1.2,1.6,age)*(1.-smoothstep(reveal,reveal+.3,age)));
           }else{
-            float pulse=smoothstep(reveal-.16,reveal,age)*(1.-smoothstep(reveal,reveal+.24,age));
+            float pulse=smoothstep(reveal-.07,reveal,age)*(1.-smoothstep(reveal+.03,reveal+.24,age));
+            float f=progress*126.;
+            float charge=exp(-pow(abs(f-90.)/2.5,2.))+exp(-pow(abs(f-102.)/2.5,2.))+exp(-pow(abs(f-120.)/3.,2.));
+            pulse=max(pulse,charge*.42*(1.-calm));
             p.xy+=(uv-.5)*h*4.8;p.z+=h*.65;
             alpha*=pulse*(1.-calm*.82);
           }

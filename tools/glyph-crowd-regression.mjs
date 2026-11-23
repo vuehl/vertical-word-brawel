@@ -29,24 +29,32 @@ export async function reviewGlyphCrowd(page,dir){
   });
   assert.equal(report.ring.particleSpawns,0);assert.ok(report.ring.hiddenWhenDead&&report.ring.restored);assert.equal(report.ring.hasTimeUniform,false);
 
-  report.encounters=[];
-  for(const [id,word] of [[4,'炎'],[16,'风'],[132,'摹']]){
-    const data=await page.evaluate(async id=>{
-      const run=app.run;run.enemies.clear();run.capture.state='done';run.capture.spawnEncounter(id);
-      const index=run.capture.index;
-      run.enemies.x[index]=run.player.pos.x+3;run.enemies.z[index]=run.player.pos.z-3;
-      run.ui.hud(run);run.renderWorld(0);run.vfx.update(0);
-      inspected.env.invalidateUI();app.r.render(0);inspected.env.drawUI(app.r.renderer);
-      await new Promise(resolve=>setTimeout(resolve,200));
-      const banner=inspected.doc.querySelector('.banner'),icon=banner?.querySelector('canvas');
-      return {text:banner?.textContent,word:icon?.dataset.glyph,static:icon?.dataset.static,species:run.enemies.species[index],imageSources:[...inspected.doc.querySelectorAll('img')].map(el=>el.getAttribute('src')).filter(s=>/(?:portraits|icons|front|pmd)\/\d+\.png/.test(s||''))};
-    },id);
-    assert.ok(data.text.includes('字灵「'+word+'」现身'));assert.equal(data.word,word);assert.equal(data.static,'true');assert.equal(data.species,id);assert.deepEqual(data.imageSources,[]);
-    report.encounters.push(data);
-    await page.screenshot({path:path.join(dir,'glyph-encounter-'+id+'.png')});
-  }
+  report.encounter=await page.evaluate(async()=>{
+    const run=app.run,target=run.captureTarget,capture=run.capture;
+    run.enemies.clear();
+    capture.spawnEncounter(run.startSpecies);
+    if(run.captureEncounter)throw Error('Own character became a capture target');
+    capture.spawnEncounter(target);
+    const index=capture.index,word=capture.word;
+    run.enemies.x[index]=run.player.pos.x+3;run.enemies.z[index]=run.player.pos.z-3;
+    run.ui.hud(run);run.renderWorld(0);run.vfx.update(0);
+    inspected.env.invalidateUI();app.r.render(0);inspected.env.drawUI(app.r.renderer);
+    await new Promise(resolve=>setTimeout(resolve,200));
+    const banner=inspected.doc.querySelector('.banner'),icon=banner?.querySelector('canvas');
+    return {text:banner?.textContent,word:icon?.dataset.glyph,static:icon?.dataset.static,
+      target,expectedWord:target===4?'炎':'风',spawnedWord:word,species:run.enemies.species[index]};
+  });
+  const {text,word,static:isStatic,target,expectedWord,spawnedWord,species}=report.encounter;
+  assert.ok(text.includes('字灵「'+expectedWord+'」现身'));
+  assert.equal(word,expectedWord);assert.equal(spawnedWord,word);
+  assert.equal(isStatic,'true');assert.equal(species,target);
+  await page.screenshot({path:path.join(dir,'glyph-encounter-'+target+'.png')});
   report.map=await page.evaluate(async()=>{
     const run=app.run;run.capture.state='done';run.capture.index=-1;run.enemies.clear();
+    run.capture.spawnEncounter(run.captureTarget);
+    run.capture.spawnShiny();
+    run.capture.spawnClassic(run.captureTarget);
+    if(run.enemies.count || run.capture.index !== -1)throw Error('Capture encounter appeared twice');
     run.ui.hudEl.querySelectorAll('.banner').forEach(e=>e.remove());
     run.openMap();run.ui.hud(run);await new Promise(resolve=>setTimeout(resolve,250));
     app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);

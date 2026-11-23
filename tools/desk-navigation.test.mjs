@@ -26,6 +26,7 @@ test('monsters traverse actual stepped prop silhouettes from both sides at 30/60
       for(let frame=0;frame<fps*30&&Math.hypot(goalX-x,goalZ-z)>.25;frame++){
         const d=Math.hypot(goalX-x,goalZ-z);
         dir.x=(goalX-x)/d;dir.z=(goalZ-z)/d;
+        steer.advance();
         steer(x,z,goalX,goalZ,radius,dir);
         moveEnemyPastProps(t,x,z,x+dir.x*speed/fps,z+dir.z*speed/fps,radius,0,speed/fps,side,out);
         x=out.x;z=out.z;side=out.side;

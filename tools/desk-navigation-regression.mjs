@@ -10,6 +10,7 @@ export async function verifyDeskNavigation(page){
       let [x,z]=a,vx=0,vz=0,until=0,active=false;const dir={},out={};
       if(t.hitProp(x,0,z,.7)||t.hitProp(...[b[0],0,b[1],.7]))throw Error('Blocked navigation fixture');
       for(let frame=0;frame<fps*25;frame++){
+        t.steerDeskEnemy.advance();
         const d=Math.hypot(b[0]-x,b[1]-z);if(d<.3)break;
         if(frame>=until){active=t.steerDeskEnemy(x,z,...b,.7,dir);until=frame+Math.ceil(fps*.24);}
         const dx=active?dir.x:(b[0]-x)/d,dz=active?dir.z:(b[1]-z)/d;
