@@ -110,6 +110,9 @@ const sources={
       // Both the HTML entity table and CSS data URLs use this bundled decoder.
       // Fold out linkedom's Node-only fallbacks when building the WeChat bundle.
       code='import {decodeBase64String as atob} from "pokebonk:base64";\n'+code.replaceAll('typeof atob === "function"','true');
+      // The native layout engine applies the same HTML stylesheet to every album card.
+      // Reuse selector programs, but never cache their results across DOM changes.
+      code+='\nexport const compileStyleSelector=selector=>compile(selector,{adapter,strict:true,xmlMode:false,cacheResults:false});';
       return {contents:code,resolveDir:path.dirname(args.path)};
     });
     build.onLoad({filter:/src[\\/](config|move-effects|boss-encounters)\.js$/},args=>({

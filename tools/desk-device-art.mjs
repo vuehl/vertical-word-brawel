@@ -4,13 +4,15 @@ import sharp from 'sharp';
 import {altarLayers} from '../source/src/desk-altar-art.js';
 import {berryLayers} from '../source/src/desk-berry-art.js';
 import {billLayers} from '../source/src/bill-layers.js';
+import {deskPitch} from '../source/src/desk-framing.js';
+import {facilityIconFile} from '../source/src/active-content.js';
 
 // Compose at the artist's original coordinates before trimming the transparent
-// margins so all three map markers remain legible at HUD size.
-async function writeDeviceIcon(source,kind,base,layers){
-  const composed=await sharp(base).composite(layers).png().toBuffer();
+// margins so the map markers remain legible at HUD size.
+async function writeDeviceIcon(source,kind,base,layers=[]){
+  const composed=layers.length?await sharp(base).composite(layers).png().toBuffer():base;
   await sharp(composed).trim({background:'#0000'}).resize(128,128,{fit:'contain',background:'#0000'})
-    .png().toFile(path.join(source,'public/assets/ui/devices',kind+'.png'));
+    .png().toFile(path.join(source,'public/assets',facilityIconFile(kind)));
 }
 
 async function prepareBill(source){
@@ -74,7 +76,9 @@ export async function updateDeskDeviceArt(root) {
   if(width!==height)throw Error('QQ糖图层需要使用相同的正方形画布');
   devices.berry.strips=await strips(berryLayers.base);
   // The wrapper is opaque. The painted drop shadow peaks at alpha 171.
-  devices.berry.pickup={resolution:width,strips:await strips(berryLayers.base,width,203)};
+  const opaque=await strips(berryLayers.base,width,203);
+  const left=Math.min(...opaque.map(row=>row[0])),right=Math.max(...opaque.map(row=>row[2]));
+  devices.berry.pickupCenter=[(left+right)/(2*width),(opaque[0][1]+opaque.at(-1)[1]+1)/(2*height)];
   const bill=await prepareBill(root);
   const art=file=>path.join(root,'public/assets/env/desk2d',file);
   await writeDeviceIcon(root,'berry',art(berryLayers.base),[{input:art(berryLayers.spiral)}]);
@@ -86,6 +90,28 @@ export async function updateDeskDeviceArt(root) {
   delete devices.altar.strips;
   devices.altar.layers = {};
   for (const [name,file] of Object.entries(altarLayers)) devices.altar.layers[name]=await strips(file);
+  // Project the painted outline for highlights and stars in every camera view.
+  for(const [kind,device] of Object.entries(devices)){
+    if(!['altar','berry','bill'].includes(kind))await writeDeviceIcon(root,kind,art('device-'+kind+'.png'));
+    const outline=device.strips??Object.values(device.layers).flat();
+    const aspect=kind==='bill'?device.frame.width/device.frame.height:1;
+    const lift = kind === 'bill' ? 0.39 : 0.3;
+    const points=outline.flatMap(([l,y,r])=>[[l,y],[r,y],[l,y+1],[r,y+1]]);
+    const toModel=([x,y])=>{
+      const height=(.5+lift-y/128)*device.size;
+      return [(x/128-.5)*device.size*aspect,height*Math.cos(deskPitch),-height*Math.sin(deskPitch)]
+        .map(value=>Number(value.toFixed(5)));
+    };
+    const boundary=new Set();
+    for(let i=0;i<32;i++){
+      const angle=i*Math.PI/16,dx=aspect*Math.cos(angle),dy=Math.sin(angle);
+      const tip=points.reduce((a,b)=>(b[0]-a[0])*dx+(b[1]-a[1])*dy>0?b:a);
+      boundary.add(tip);
+    }
+    device.fx.supportXYZ=Array.from(boundary).flatMap(toModel);
+    const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
+    device.fx.centerXYZ=toModel([(Math.min(...xs)+Math.max(...xs))/2,(Math.min(...ys)+Math.max(...ys))/2]);
+  }
   const updated = JSON.stringify(devices);
   if (updated!==original) await fs.writeFile(manifest,updated);
 }

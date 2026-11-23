@@ -220,7 +220,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
   report.portalWarning=await page.evaluate(async()=>{
     const r=app.run,objects=r.interactables,portal=objects.list.find(o=>o.kind==='portal'),p=r.player.pos;
     await portal.modelReady;
-    if(portal.model.userData.deviceModel!=='boss')throw Error('The exit must use the wooden door');
+    if(portal.model.name!=='desk2d/device-portal')throw Error('The exit must use the wooden door');
     const gap=target=>Math.min(...objects.list.filter(f=>f!==target&&f.group.visible)
       .map(f=>Math.hypot(f.x-target.x,f.z-target.z)-f.r-target.r));
     if(gap(portal)<5||!objects.fitsOnDesk(portal.x,portal.z,portal.r))throw Error('Obstructed exit');

@@ -1,4 +1,5 @@
 // Approved UI review, scoped to battle HUD and scene interaction dialogs.
+export const summonerBarColors={fill:'#5394CE',accent:'#9CD9FC'};
 export const battleReviewStyle=`
 .zx-review-overlay{padding:12px;align-items:center;justify-content:center}
 
@@ -124,10 +125,19 @@ html.zixing .zx-combat-feed .zx-review-boss .bb-tag{color:#D2DDEC;font-size:11px
 html.zixing .zx-combat-feed .zx-review-boss .bb-rage{color:#FFE4E8;background:#9E576B;padding:0 4px;line-height:16px;margin:0}
 html.zixing .zx-combat-feed .zx-review-boss .bb-bar{height:9px;min-height:9px;margin:4px 0 0;border-radius:2px;background:#29364E}
 html.zixing .zx-combat-feed .zx-review-boss .bb-bar>b{color:#F4E6EE;font-size:14px;line-height:18px}
-html.zixing .zx-combat-feed .zx-review-boss:not(.shield):not(.immune) .bb-bar>i{background:linear-gradient(90deg,#B96882,#E797A3)}
+html.zixing .zx-combat-feed .zx-review-boss:not(.shield):not(.immune) .bb-bar>i{background:linear-gradient(90deg,var(--boss-fill,#B96882),var(--boss-accent,#E797A3))}
 html.zixing .zx-combat-feed .zx-review-boss .bb-bar>u{background:#D9B2AE}
 html.zixing .zx-combat-feed .zx-review-boss .bb-foot{min-height:0;margin-top:3px}
 html.zixing .zx-combat-feed .zx-review-boss .bb-sub{color:#E3DDEA}
+.zx-combat-feed .totem{--boss-fill:#DEA33D;--boss-accent:#F8D373;--boss-seal-edge:#9D763D;--boss-seal-face:#FFF1CF}
+.zx-combat-feed .summoner{--boss-fill:${summonerBarColors.fill};--boss-accent:${summonerBarColors.accent};--boss-seal-edge:#527494;--boss-seal-face:#E2F2FC}
+html.zixing .zx-combat-feed .zx-review-boss.mini{margin:0;padding:6px 10px 8px 11px;opacity:1}
+html.zixing .zx-combat-feed .mini .bb-pt{border-radius:5px;background:var(--boss-seal-face)}
+html.zixing .zx-combat-feed .mini .bb-tag{background:#2C3951;color:var(--boss-accent);border-radius:2px;padding:0 4px;letter-spacing:0}
+html.zixing .zx-combat-feed .mini .bb-bar>u{background:var(--boss-seal-face)}
+html.zixing .zx-combat-feed .mini .bb-bar>b{color:#FAF7F0}
+html.zixing .zx-combat-feed .mini .bb-sub,html.zixing .zx-combat-feed .mini .bb-sti>b{color:#DFE7F3;letter-spacing:0}
+html.zixing .zx-combat-feed .mini .bb-sub.move{color:var(--boss-accent)}
 .zx-guide-pin>.cp-tip{position:absolute;left:0;top:0;width:0;height:0;border:0!important;background:transparent;transform:none!important;overflow:visible;filter:none}
 .zx-guide-pin>.cp-tip>.zx-guide-needle{position:absolute;left:-32px;top:-32px;width:64px;height:64px;pointer-events:none}
 .zx-guide-pin>.cp-ic{left:-17px;top:-17px;width:34px;height:34px;transform:none!important;animation:none;filter:none}

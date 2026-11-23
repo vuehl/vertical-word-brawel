@@ -10,7 +10,7 @@ function four(s){const v=parts(s);return [v[0],v[1]??v[0],v[2]??v[0],v[3]??v[1]?
 function clamp(n,lo,hi){return Math.min(hi,Math.max(lo,n));}
 const scrolls=s=>/auto|scroll/.test(s['overflow-y']??s.overflow??'');
 export function createLayout(doc,view,native,fonts,uiAssets) {
-  const ctx=native.getContext('2d'),engine=styleEngine(view,uiAssets.rules);
+  const ctx=native.getContext('2d'),engine=styleEngine(view,uiAssets.rules,uiAssets.compileStyleSelector);
   const ref=readReference(view,uiAssets.layout);
   let boxes=[],seen=new WeakMap(),metrics={},clampedScroll=false;
   let overlay=null,overlayBoxes=[],overlaySeen=new WeakMap();

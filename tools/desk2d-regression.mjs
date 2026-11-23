@@ -11,7 +11,8 @@ export async function verifyDesk(page,dir){
  const click=async(selector,match)=>{const el=await page.waitForFunction((sel,txt)=>[...app.screen.querySelectorAll(sel)].find(el=>!txt||el.textContent.includes(txt)),{timeout:15000},selector,match);await el.evaluate(el=>el.click());await el.dispose();};
  console.log('Home',await page.evaluate(()=>app.screen.textContent.slice(0,250)));
  if(await page.evaluate(()=>!!app.screen.querySelector('.auth-body button')))await click('.auth-body button');
- await click('[data-action="journey"]');await click('[data-action="enter"]');
+ await click('[data-action="journey"]');await click('[data-action="collection-next"]');
+ await click('.zx-album-mode[data-mode="standard"][data-tier="0"]');await click('[data-action="enter"]');
  await page.waitForFunction(()=>app.run?.terrain?.desk2d&&app.run.time>.1,{timeout:30000});
  if(process.argv.includes('--bill-gaze-only')){
    await page.evaluate(()=>{app.halted=true;app.run.state='paused';});

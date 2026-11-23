@@ -388,12 +388,12 @@ export function drawUiPaper(ctx,box){
     case 'boss-strip':
       cut(ctx,0,2,w,h-2,7,'#354157');
       cut(ctx,0,0,w,h-3,7,gradient(ctx,w,h,'#465674','#35435E'));
-      poly(ctx,[[0,7],[7,0],[15,0],[6,9],[6,h-12],[0,h-6]],'#C28190');
+      poly(ctx,[[0,7],[7,0],[15,0],[6,9],[6,h-12],[0,h-6]],box.s.vars?.['--boss-accent']||'#C28190');
       break;
     case 'boss-seal':
-      cut(ctx,0,1,w,h-1,6,'#9C6177');
-      cut(ctx,1,0,w-2,h-3,5,'#DEC3CF');
-      cut(ctx,3,2,w-6,h-7,4,'#F0DEE6');
+      cut(ctx,0,1,w,h-1,6,box.s.vars?.['--boss-seal-edge']||'#9C6177');
+      cut(ctx,1,0,w-2,h-3,5,box.s.vars?.['--boss-accent']||'#DEC3CF');
+      cut(ctx,3,2,w-6,h-7,4,box.s.vars?.['--boss-seal-face']||'#F0DEE6');
       break;
     case 'guide-seal': {
       const accent=box.s.vars?.['--rc']||'#7EA3CF';

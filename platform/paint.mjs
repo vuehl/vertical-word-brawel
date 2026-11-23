@@ -25,7 +25,7 @@ export function paint(layout,boxes,view,scale) {
   for(const b of boxes)if(b.el.dataset?.fullscreen==='true'&&b.opacity>0&&b.w>0&&b.h>0)fullPage=b;
   // Scenic menus animate only their composited opacity. Cached layout boxes
   // and their hit geometry can stay valid while the camera moves at frame rate.
-  const scenic=fullPage?.el,fade=scenic?._journeyFade;
+  const scenic=fullPage?.el,fade=!scenic?._journeyCamera&&scenic?._journeyFade;
   ctx.translate(view.x,view.y);
   for(const b of boxes) {
     const {x,y,w,h,s,el,tag,clip}=b;
@@ -175,7 +175,7 @@ export function compositor(gl,canvas) {
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   }
-  function compose(changed,opaque,layers,freezeKey,run){
+  function compose(changed,opaque,layers,freezeKey,run,foregroundOpacity){
     const bufferWidth=gl.drawingBufferWidth,bufferHeight=gl.drawingBufferHeight;
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,bufferWidth,bufferHeight);
     gl.activeTexture(gl.TEXTURE0);
@@ -204,7 +204,11 @@ export function compositor(gl,canvas) {
       }else gl.copyTexSubImage2D(gl.TEXTURE_2D,0,0,0,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
       frozenOwner=run;frozenKey=freezeKey;frozenWidth=gl.drawingBufferWidth;frozenHeight=gl.drawingBufferHeight;
     }else if(!freezeKey)frozenKey=null;
-    if(opaque){gl.clearColor(.957,.949,.98,1);gl.clear(gl.COLOR_BUFFER_BIT);}
+    if(opaque){
+      if(foregroundOpacity!==undefined)gl.clearColor(229/255,230/255,216/255,1);
+      else gl.clearColor(.957,.949,.98,1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
     gl.useProgram(prog);gl.uniform1f(opacity,1);gl.bindVertexArray(vao);
     if(freezeKey){
       gl.disable(gl.BLEND);gl.bindTexture(gl.TEXTURE_2D,frozen);gl.uniform1i(flip,1);gl.drawArrays(gl.TRIANGLES,0,3);
@@ -218,7 +222,8 @@ export function compositor(gl,canvas) {
         width=canvas.width;height=canvas.height;
       }else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,canvas);
     }
-    gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);gl.drawArrays(gl.TRIANGLES,0,3);
+    gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+    if(foregroundOpacity===undefined)gl.drawArrays(gl.TRIANGLES,0,3);
     const sx=bufferWidth/canvas.width,sy=bufferHeight/canvas.height;
     let slots=0,lastOpacity=1;
     for(const control of layers){
@@ -252,12 +257,16 @@ export function compositor(gl,canvas) {
       if(alpha!==lastOpacity){gl.uniform1f(opacity,alpha);lastOpacity=alpha;}
       gl.drawArrays(gl.TRIANGLES,0,3);
     }
+    if(foregroundOpacity!==undefined){
+      gl.viewport(0,0,bufferWidth,bufferHeight);gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.uniform1f(opacity,foregroundOpacity);gl.drawArrays(gl.TRIANGLES,0,3);
+    }
     activeSlots=slots;
   }
-  const draw=(renderer,changed,opaque=false,layers=[],freezeKey=null,run=freezeKey)=>{
+  const draw=(renderer,changed,opaque=false,layers=[],freezeKey=null,run=freezeKey,foregroundOpacity)=>{
     // Raw GL owns this pass. Reset Three's cached state once on handoff,
     // including when an offscreen canvas upload fails.
-    try{compose(changed,opaque,layers,freezeKey,run);}
+    try{compose(changed,opaque,layers,freezeKey,run,foregroundOpacity);}
     finally{gl.bindVertexArray(null);renderer.resetState();}
   };
   draw.hasFrozen=hasFrozen;draw.releaseFrozen=release;

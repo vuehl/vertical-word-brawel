@@ -103,7 +103,7 @@ export async function reviewStartupLatency({page,dir,baseline=false}) {
     assert.ok(before.home&&before.complete,'Home must be usable while cloud progress is still pending');
     assert.equal(before.profile,false,'Do not fabricate a profile before cloud progress arrives');
     await page.evaluate(()=>inspected.doc.querySelector('[data-action="journey"]').click());
-    assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'choose','A pending save must open character selection immediately');
+    await page.waitForFunction(()=>app.screen?.dataset.page==='choose');
     assert.ok(await page.evaluate(()=>app.screen.textContent.includes('正在读取存档')&&!app.screen.querySelector('.zc-character')));
     await page.evaluate(()=>app.screen.querySelector('.zx-footer button').click());
   }

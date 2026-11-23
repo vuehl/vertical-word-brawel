@@ -682,9 +682,8 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .zx-guide-mark{display:flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;background:#DCE7F2;border-radius:4px}
 .zx-guide-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
 .zx-guide-copy>b{font-size:16px;line-height:21px;color:#26334E}
-.zx-guide-copy>p,.zx-guide-legal p{margin:0;font-size:14px;line-height:21px;color:#445772}
-.zx-guide-scroll>.zx-button.zx-plain{align-self:flex-start;flex:none;min-height:44px;padding:0 4px;font-size:13px;font-weight:400;color:#405D82;background:transparent}
-.zx-guide-legal{flex:none;padding:4px 4px 10px}
+.zx-guide-copy>p{margin:0;font-size:14px;line-height:21px;color:#445772}
+.zx-guide-row:last-child{border-bottom:0}
 .screen.zx>.paper-screen-footer.paper-covered-actions,.zx-home-fixed .zx-home-foot.paper-covered-actions,.zx-pause-footer>.paper-back.paper-covered-actions{opacity:0;pointer-events:none}
 .zc-related{display:flex;flex-direction:column;gap:8px;padding:3px 1px 10px;color:#34415B}
 .zc-related .mv-group>b,.zc-detail-note{color:#53657F;font-size:12px}

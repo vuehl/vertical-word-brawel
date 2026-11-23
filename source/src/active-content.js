@@ -21,5 +21,5 @@ export const facilityNames = Object.freeze({
 export const isActiveFacility = kind => Object.hasOwn(facilityNames, kind);
 // The art IDs describe the physical models. The countdown dock summons and the wooden door is the exit.
 const doorIcons = {boss: 'portal', portal: 'boss'};
-export const facilityModelFile = kind => 'devices/' + facilityNames[kind];
+export const summonDockModel = 'devices/' + facilityNames.boss;
 export const facilityIconFile = kind => 'ui/devices/' + (doorIcons[kind] ?? kind) + '.png';

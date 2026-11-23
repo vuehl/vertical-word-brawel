@@ -79,16 +79,23 @@ export async function reviewUpgradeEffects(page,dir){
         overlay:!!r.ui.root.querySelector('.zx-evolution-cutin,.zx-evolution-result')};
     });
     assert.equal(landing.species,to);assert.equal(landing.scale,1);assert.ok(landing.lift>0&&!landing.overlay,'Let the character finish its animation');
-    const stamped=await page.evaluate(()=>{
+    const stamped=await page.evaluate(dt=>{
       const r=app.run,root=r.ui.root,frames=new Set();
-      let card;
+      let card,landedAt;
       for(let i=0;i<150;i++){
-        r.update(1/30);
+        r.update(dt);
         if(r.player.renderScale!==1||root.querySelector('.zx-evolution-cutin'))throw Error('Unexpected enlarged evolution glyph');
         card=root.querySelector('.zx-evolution-result');
-        if(!card)continue;
-        if(r.vfx.upgrade.events.length)throw Error('Result appeared before the evolution animation finished');
-        if(!frames.size){app.r.render(0);inspected.env.drawUI(app.r.renderer);}
+        if(r.player.evolutionLift>0){
+          if(card)throw Error('Result appeared while the character was airborne');
+          continue;
+        }
+        if(!card)throw Error('Missing result on the landing frame');
+        if(!frames.size){
+          landedAt=r.realTime;
+          if(card.dataset.frame!=='0')throw Error('Expected the first painted result frame on landing');
+          app.r.render(0);inspected.env.drawUI(app.r.renderer);
+        }
         frames.add(card.dataset.frame);
         if(card.dataset.frame==='1')break;
       }
@@ -100,9 +107,10 @@ export async function reviewUpgradeEffects(page,dir){
       }
       const sealInk=inkCount(seal.getContext('2d').getImageData(0,0,seal.width,seal.height).data);
       const cardInk=inkCount(card.getContext('2d').getImageData(238*2,0,58*2,64*2).data);
-      return {lift:r.player.evolutionLift,sealInk,cardInk,frames:frames.size,cards:root.querySelectorAll('.zx-evolution-result').length,
+      return {lift:r.player.evolutionLift,sealInk,cardInk,frames:frames.size,settleTime:r.realTime-landedAt,cards:root.querySelectorAll('.zx-evolution-result').length,
         healthHidden:root.querySelector('.zx-player-health').hidden};
-    });
+    },from===16?1/60:1/30);
+    assert.ok(stamped.settleTime<=.24,'Stamp should settle within the short entrance animation');
     assert.equal(stamped.lift,0);assert.equal(stamped.cards,1);assert.equal(stamped.cardInk,0);assert.ok(!stamped.healthHidden&&stamped.sealInk>100&&stamped.frames>1);
     await page.evaluate(()=>app.run.ui.toast('终极技已就绪！',null));
     await draw(`evolution-${from}-${to}-result`);

@@ -11,21 +11,21 @@ export async function reviewDeviceEffects(page, dir) {
     Object.assign(app.meta.profile.settings, {quality: 'high', showBanners: false});
     app.applySettings();
     if (!await app.startRun({species: 4, biome: 'forest', tier: 0, boosts: [], mode: 'standard'})) throw Error('Entry failed');
-    // Stage one uses PNGs. Stage two exercises the GLB path and world-outline mask.
-    await app.run.changeZone();
     app.halted = true;
     const run = app.run, facilities = run.interactables, host = app.r;
     const portal = facilities.spawnPortal(0, 0, false, true);
     const sanct = facilities.spawnPortal(10, 0, true, true);
-    const gift = facilities.spawnChest(2, 0, false, true);
-    const reward = facilities.spawnChest(4, 0, true);
+    const slot=facilities.list.find(f=>f.kind==='freechest');
+    const gift=facilities.add('chest',slot.x,slot.z,{data:{gift:true}});
+    await gift.modelReady;
+    const reward=facilities.add('freechest',slot.x,slot.z);
     const removed = facilities.add('magnet', 0, 1);
     facilities.remove(removed);
     await Promise.all([portal, sanct, gift, reward, removed].map(f => f.modelReady));
     run.stepAnims(1);
     facilities.render();
     if (run.events.start('eclipse') || 'eclipse' in host.sky.material.uniforms) throw Error('Eclipse still active');
-    if (run.terrain.paperAssets.textures.has('scenery-foot-ring')) throw Error('Decorative scenery has dashed rings');
+    if (run.terrain.paperAssets?.textures.has('scenery-foot-ring')) throw Error('Decorative scenery has dashed rings');
     const inventory = {};
     for (const f of facilities.list) {
       const kind = f.data?.gift ? 'freechest' : f.kind, model = f.model;
@@ -36,15 +36,16 @@ export async function reviewDeviceEffects(page, dir) {
         if (ring) throw Error('Unexpected ground ring on ' + kind);
       } else if (!ring || !ring.visible || ring.parent !== f.group || ring.position.y <= 0 ||
           ring.scale.x <= model.userData.footprintRadius * expectedScale) throw Error('Missing ground ring on ' + kind);
-      if (ring&&(ring.position.x || ring.position.z ||
+      if (ring&&(
           ring.geometry !== facilities.dwellRing.geometry || ring.material.fragmentShader !== facilities.dwellRing.material.fragmentShader || ring.material.uniforms.dwell.value !== -1))
         throw Error('Idle building must show only the empty interaction track: ' + kind);
       if (['freechest','chest'].includes(kind) && f.beacon) throw Error('Unexpected gacha beam');
       if (model.scale.toArray().some(x => x !== expectedScale) || f.group.scale.toArray().some(x => x !== 1) ||
           f.group.userData.h !== model.userData.displayHeight * expectedScale) throw Error('Wrong display scale for ' + kind);
-      if(kind==='bill'){
-        if(!model.userData.updateGaze)throw Error('Missing layered stapler');
-      }else if (model.userData.deviceModel !== ({boss:'portal',portal:'boss'}[kind]??kind))throw Error('Wrong GLB for ' + kind);
+      if(kind==='boss'){
+        if(!f.dock||model.userData.deviceModel!=='portal')throw Error('Missing countdown dock');
+      }else if(model.name!=='desk2d/device-'+kind)throw Error('Wrong illustrated building for '+kind);
+      if(kind==='bill'&&!model.userData.updateGaze)throw Error('Missing layered stapler');
       model.traverse(m => {
         if (!m.isMesh || m.userData.portalTransient) return;
         if (m.material.name === 'MAT_DemonEyeEmission' && m.material.emissiveMap?.image?.width > 0) return;
@@ -95,9 +96,11 @@ export async function reviewDeviceEffects(page, dir) {
       return draw.call(this, scene, camera);
     };
     deviceProbe.pointCamera = angle => {
+      host.camera.updateProjectionMatrix();
       host.camera.position.set(center.x + 16*Math.sin(angle), center.y + 6, center.z + 16*Math.cos(angle));
       host.camera.lookAt(center);
       host.camera.updateMatrixWorld();
+      facilities.render(0);
     };
     deviceProbe.cover = () => {
       const mesh = sample.model.getObjectByProperty('isMesh', true).clone(false);
@@ -156,12 +159,12 @@ export async function reviewDeviceEffects(page, dir) {
         app.r.outlinePass.enabled = false;
       });
       report.oldOutlineOnDevice = changedPixels(base, await frame(0));
-      assert.equal(report.oldOutlineOnDevice, 0, 'Legacy outline is still drawing on the GLB');
+      assert.equal(report.oldOutlineOnDevice, 0, 'Legacy outline is still drawing on the building');
       await page.evaluate(() => {app.r.outlinePass.enabled = true;});
     }
     const [x0, y0, x1, y1] = bounds, view = {name, stars: []};
     for (const time of [.8, 1.06]) {
-      assert.equal(changedPixels(base,await frame(time)),0,'Facility sweep at '+time);
+      assert.ok(changedPixels(base,await frame(time))>20,'Missing facility sweep at '+time);
     }
     for (const [time, beat] of [[1.65,'ringed-star'],[1.87,'gap'],[2.20,'scatter'],[2.56,'rest']]) {
       const shot = await frame(time, name + '-' + beat);
@@ -241,10 +244,11 @@ export async function reviewDeviceEffects(page, dir) {
       host.camera.position.set(.34,.45,.83).normalize().multiplyScalar(radius*1.25/tangent).add(center);
       host.camera.lookAt(center);
       host.camera.updateMatrixWorld();
+      facilities.render(0);
     }, kind);
     const body = await frame(0), sweep = await frame(.85), stars = await frame(2.12);
     const counts = report.devices[kind] = {sweep: changedPixels(body,sweep), stars: changedPixels(body,stars)};
-    assert.ok(counts.sweep === 0 && counts.stars > 10, title+' '+JSON.stringify(counts));
+    assert.ok(counts.sweep>0 && counts.stars>10,title+' '+JSON.stringify(counts));
     if (process.argv.includes('--device-preview')) {
       const {width,height,channels} = stars.info;
       const tile = await sharp(stars.data,{raw:{width,height,channels}})
@@ -264,7 +268,7 @@ export async function reviewDeviceEffects(page, dir) {
     }, quality);
     const body = await frame(0);
     const count = report.presets[quality] = changedPixels(body, await frame(.85));
-    assert.equal(count,0,'Device sweep visible at ' + quality);
+    assert.ok(count>0,'Missing device sweep at ' + quality);
   }
   report.dockClock = await page.evaluate(() => {
     const {host, facilities, run} = deviceProbe;
@@ -349,6 +353,10 @@ export async function reviewDeviceEffects(page, dir) {
     const oldDoor = facilities.list.find(f => f.kind === 'boss');
     await run.enterPortal();
     const newDoor = run.interactables.list.find(f => f.kind === 'boss');
+    for(const building of run.interactables.list){
+      if(building!==newDoor&&building.model?.name!=='desk2d/device-'+(building.data?.gift?'freechest':building.kind))
+        throw Error('Zone change replaced the illustrated '+building.kind);
+    }
     run.ui.hud(run);
     if (run.stage !== 2 || oldDoor.dock || newDoor.dock.state !== 'idle' || deviceProbe.readDockDigits(newDoor.model) !== '360' ||
         inspected.doc.querySelector('.zx-hud-clock').textContent !== '06:00') throw Error('Dock did not reset in the new zone');

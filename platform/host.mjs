@@ -99,8 +99,10 @@ export async function setup(host) {
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
   const uiAssets=await readUIAssets(host.files);
+  uiAssets.compileStyleSelector=D.compileStyleSelector;
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
+  let lastJourneyCamera=null;
   const upgradeCue=run=>run?.state==='play'&&!run.coop&&run.pendingLevels>0&&run.evoHold<=0&&!run.upgradeTiming.waiting(run.ult)&&run.ui.experienceReady?.()===false;
   const frozenUpgradeKey=()=>{
     const app=win.__pb,run=app?.run;
@@ -386,12 +388,15 @@ export async function setup(host) {
       const overlay=modalTransition.element;
       layout.setOverlay(overlay);
       const playing=usingBattleHUD()&&!opaque;
+      const page=env.__zixingApp?.screen,camera=opaque&&page?._journeyCamera;
+      if(!!camera!==!!lastJourneyCamera)uiFrames.invalidate(false,true);
       const changed=uiFrames.draw(now,opaque?'opaque':playing?'play':state,layout,boxes=>{
         // Classify once in paint order. A full HUD refresh used to walk the
         // ancestors of every box separately for every tile, then again for the base.
         const groups=new Map(),base=[],tiles=run?.coop?coopTiles:soloTiles;
         if(playing)for(const tile of activeHudLayers())tile.refreshIfDirty(layout);
         for(const box of boxes){
+          if(camera&&box.el.dataset?.journeyBackdrop==='true')continue;
           const element=box.el.nodeType===1?box.el:box.el.parentElement;
           const tile=playing?tiles.get(layerId(element)):null;
           if(tile){
@@ -403,12 +408,25 @@ export async function setup(host) {
         for(const tile of allTiles)tile.capture(groups.get(tile)||emptyBoxes,layout);
         paint(layout,base,view,scale);
       });
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);
+      if(camera){
+        const tile=(canvas,x,y,w,h,slot,dirty)=>({canvas:canvas._surface,x:(view.x+x)*scale,y:(view.y+y)*scale,
+          width:w*scale,height:h*scale,slot,changed:dirty});
+        const layers=[tile(camera.desk,camera.x,camera.y,camera.width,camera.height,25,camera.desk!==lastJourneyCamera?.desk)];
+        if(camera.actor)layers.push(tile(camera.actor,camera.cx-camera.size/2,camera.cy-camera.size/2,
+          camera.size,camera.size,26,camera.actor!==lastJourneyCamera?.actor));
+        draw(renderer,changed,true,layers,null,null,page._journeyFade?.controls??1);
+        lastJourneyCamera=camera;
+        return;
+      }
+      const finishedJourney=!!lastJourneyCamera;
+      lastJourneyCamera=null;
       if(opaque&&!changed)return;
       modalTransition.prepare(layout,view,scale);
       const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
       const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
-      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);
       draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
+      if(finishedJourney)draw.releaseUnused();
       if(overlay)modalTransition.presented(perf.now());
     },
     readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},

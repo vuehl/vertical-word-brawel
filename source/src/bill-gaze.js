@@ -59,9 +59,6 @@ export function installBillGaze(sprite,textures,frame){
     return a.z>=-1&&a.z<=1&&a.x<=1&&b.x>=-1&&a.y<=1&&b.y>=-1;
   }
   return (camera,player,visible,dt)=>{
-    // Keep the flat art facing the camera on both the desk and later maps.
-    sprite.quaternion.copy(camera.quaternion);
-    sprite.position.set(0,sprite.scale.y*.39,0).applyQuaternion(camera.quaternion);
     if(visible){
       sprite.updateWorldMatrix(true,false);
       lo.copy(bounds.min).applyMatrix4(sprite.matrixWorld).project(camera);

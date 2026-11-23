@@ -22,17 +22,45 @@ export async function verifyEntry({page,tap,dir}){
     const press=()=>inspected.touches('down',{touches:[touch],changedTouches:[touch]});
     const finish=kind=>inspected.touches(kind,{touches:[],changedTouches:[]});
     press();finish('cancel');
-    if(app.screen.dataset.page!=='home')throw Error('Cancelled press opened a page');
+    if(app.screen.dataset.page!=='home'||app.screen._journeyCamera)throw Error('Cancelled press started a journey');
     press();
     for(const dy of [-35,0]){
       const moved={...touch,y:y+dy};
       inspected.touches('move',{touches:[moved],changedTouches:[moved]});
     }
     finish('up');
-    if(app.screen.dataset.page!=='home')throw Error('Drag opened a page');
+    if(app.screen.dataset.page!=='home'||app.screen._journeyCamera)throw Error('Drag started a journey');
+    const draw=inspected.env.drawUI,frames=[],frameGap=app.frameGap;
+    const gl=app.r.renderer.getContext(),viewport=gl.viewport;
+    let deskWidth=0;
+    gl.viewport=(x,y,w,h)=>{deskWidth=Math.max(deskWidth,w);return viewport.call(gl,x,y,w,h);};
+    if(window.productionFrameGap)app.frameGap=productionFrameGap;
+    window.uiPerf={uploads:0,allocations:0};
+    inspected.env.drawUI=(...args)=>{
+      const camera=app.screen?._journeyCamera;
+      deskWidth=0;
+      draw(...args);
+      if(camera)frames.push({ms:performance.now(),width:deskWidth,cy:camera.cy,uploads:uiPerf.uploads,page:app.screen.dataset.page});
+      else if(app.screen?.dataset.page==='choose'){
+        window.journeyFrames=frames;
+        app.frameGap=frameGap;
+        gl.viewport=viewport;
+        inspected.env.drawUI=draw;
+        delete window.uiPerf;
+      }
+    };
     press();finish('up');
-    if(app.screen.dataset.page!=='choose'||app.screen._journeyFade)throw Error('Journey tap must show character selection immediately');
+    if(!app.screen._journeyCamera)throw Error('Journey tap did not start the camera');
+    press();finish('up');
   });
+  await page.waitForFunction(()=>window.journeyFrames);
+  const frames=await page.evaluate(()=>journeyFrames.filter(f=>f.page==='home'));
+  assert.ok(frames.length>=4&&frames.every((f,i)=>!i||f.width>=frames[i-1].width));
+  assert.ok(frames.at(-1).width>frames[0].width*1.4&&frames.at(-1).cy<frames[0].cy*.6);
+  assert.ok(frames.some((f,i)=>i&&f.width>frames[i-1].width&&f.uploads===frames[i-1].uploads),
+    'The camera should advance using cached textures');
+  console.log('Journey zoom:',frames.length,'frames,',frames.at(-1).uploads,'UI uploads, longest interval',
+    Math.round(Math.max(...frames.slice(1).map((f,i)=>f.ms-frames[i].ms))),'ms');
   const chooseMap=async()=>{
     await screen('choose');
     assert.equal(await page.evaluate(()=>app.screen.querySelector('.journey-scene')?.dataset.shot),'choose');

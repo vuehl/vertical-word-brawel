@@ -141,6 +141,13 @@ try{
   }else if(process.argv.includes('--gourd-offscreen')){
     const {reviewGourdOffscreen}=await import('./gourd-offscreen-regression.mjs');
     await reviewGourdOffscreen(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--berry-pickup')){
+    const {verifyBerryPickup}=await import('./berry-pickup-regression.mjs');
+    await verifyBerryPickup(page,dir);
+    await page.evaluate(()=>app.run.changeZone());
+    assert.equal(await page.evaluate(()=>app.run.stage),2);
+    await verifyBerryPickup(page,dir);
+    assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--facility-grey-rings')){
     const {reviewFacilityGreyRings}=await import('./facility-grey-rings-regression.mjs');
     await reviewFacilityGreyRings(page,dir);assert.deepEqual(errors,[]);
@@ -169,7 +176,7 @@ try{
   }else if(process.argv.includes('--android-stability')){
     const {reviewAndroidStability}=await import('./android-stability-regression.mjs');
     await reviewAndroidStability(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
-  }else if(process.argv.includes('--map-wind')){
+  }else if(process.argv.includes('--map-wind')||process.argv.includes('--polaroid')){
     const {reviewMapWind}=await import('./map-wind-regression.mjs');
     await reviewMapWind(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--boss-telegraphs')){

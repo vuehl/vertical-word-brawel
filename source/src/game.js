@@ -1,14 +1,14 @@
 import {choiceQuality as itemOfferQuality} from './choice-presentation.js';
 import {itemOffer,shopOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './battle-review-ui.js';
 import {createCaptureGourd,gourdIcon} from './capture-gourd.js';
-import {deskDevice} from './desk2d.js';
+import {deskDevice,deskTexture,disposeDeskDevice} from './desk2d.js';
 import {createBerryPickup} from './berry-pickup.js';
-import {deskTilt,deskFrame,deskWalkInset} from './desk-framing.js';
+import {deskPitch,deskTilt,deskFrame,deskWalkInset} from './desk-framing.js';
 import {MapSpawnError,mapRulesFor} from './map-rules.js';
 import {altarPalette} from './desk-altar-art.js';
 import {ALTAR_RING_EMISSIVE,altarRingFragment} from './altar-ring-vfx.js';
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
-import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,facilityModelFile,facilityNames,isActiveFacility} from './active-content.js';
+import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,summonDockModel,facilityNames,isActiveFacility} from './active-content.js';
 import {createFacilityEffects} from './facility-effects.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat,worldProgress} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
@@ -28,7 +28,7 @@ import {heroActionCatalog} from './hero-action-catalog.js';
 import {playerHeroAction,animatedPixelHeight,glyphBillboardSize} from './hero-actions.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
-import {createPlayerFootRing,createFacilityDwellRing,createAltarChargeRing,createDeskAltarRing} from './player-foot-ring.js';
+import {createPlayerFootRing,createFacilityDwellRing,createDeskAltarRing} from './player-foot-ring.js';
 import {EnemyTelegraphs} from './enemy-telegraphs.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
@@ -36727,13 +36727,13 @@ function PS(e, t) {
   return Math.round(Math.max([10, 18, 30, 50, 90][t] * e.stage, Math.min(n, MS[t] * OS(e))));
 }
 var RS = [
-  {color: 5959935, css: '#2ec8e0', r: 6, drain: 6, min: 0, offers: 3, picks: 1},
-  {color: 5953658, css: '#5ad87a', r: 5.5, drain: 5, min: 1, offers: 3, picks: 1},
-  {color: 12611839, css: '#c070ff', r: 5, drain: 4, min: 2, offers: 3, picks: 1},
-  {color: 16765498, css: '#ffd23a', r: 4.5, drain: 3, min: 3, offers: 4, picks: 2},
+  {r: 6, drain: 6, min: 0, offers: 3, picks: 1},
+  {r: 5.5, drain: 5, min: 1, offers: 3, picks: 1},
+  {r: 5, drain: 4, min: 2, offers: 3, picks: 1},
+  {r: 4.5, drain: 3, min: 3, offers: 4, picks: 2},
 ];
 var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
-  VS = { altar: 200, challenge: 240, ditto: 150, magnet: 150, berry: 60 };
+  VS = { altar: 200, challenge: 240, ditto: 60, magnet: 150, berry: 60 };
 function rollAltarTier(rng, poolSize, luckMult) {
   // Draw one blessing from the area's original tier distribution.
   const slot = rng.int(0, poolSize - 1);
@@ -36765,6 +36765,7 @@ var GS = class e {
         this.dwellTime = 0;
         this.waitingForGold = false;
         this.warnedPortal = null;
+        if (target?.kind === 'ditto') run.ui.prepareDittoPictures(run.player.items);
       }
       if (!target || run.state !== 'play' || run.player.dead) return;
       if (target.kind === 'boss') {
@@ -36807,6 +36808,7 @@ var GS = class e {
     constructor(run, deferred = false) {
       this.run = run;
       run.r.scene.add(this.group);
+      this.deviceArt = {deskTextures:new Map(),deskOwned:[],shared:run.r.shared};
       const three = {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr};
       this.dwellRing = createFacilityDwellRing(this.group, three);
       this.idleRingMaterial = this.dwellRing.material.clone();
@@ -36842,13 +36844,12 @@ var GS = class e {
     async loadDevice(facility) {
       const group = facility.group;
       if (this.disposed || group.parent !== this.group) return;
-      const flat=this.run.terrain.desk2d;
       const kind=BS(facility);
-      // The summon dock needs its live countdown screen and opening animation.
-      // Other desk facilities use the illustrated sprites.
-      const artOwner=kind==='bill'?(this.billArt??={deskOwned:[],deskTextures:new Map()}):flat&&kind!=='boss'?this.run.terrain:null;
-      const model = artOwner ? await deskDevice(artOwner,kind,facility.data?.tier) : await bu(facilityModelFile(kind));
-      if (this.disposed || group.parent !== this.group) return;
+      const model=kind==='boss' ? await bu(summonDockModel) : await deskDevice(this.deviceArt,kind,facility.data?.tier);
+      if (this.disposed || group.parent !== this.group) {
+        if(kind!=='boss')disposeDeskDevice(model);
+        return;
+      }
       if (!model) {
         facility.retry = setTimeout(() => this.loadDevice(facility), 10000);
         return;
@@ -36862,9 +36863,7 @@ var GS = class e {
       if (facility.kind === 'altar') {
         const tier = facility.data.tier, three = {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr};
         const palette = altarPalette[tier];
-        ring = facility.chargeRing = flat
-          ? createDeskAltarRing(group,three,new Ei(palette.ring),new Ei(palette.dark),model.userData.breathOpacity)
-          : createAltarChargeRing(group,three,new Ei(RS[tier].color));
+        ring = facility.chargeRing = createDeskAltarRing(group,three,new Ei(palette.ring),new Ei(palette.dark),model.userData.breathOpacity);
       } else if(facility.kind==='berry'){
         facility.berryPickup=createBerryPickup(model,this.run.r);
       }
@@ -36881,7 +36880,6 @@ var GS = class e {
         group.add(halo);
       }
       facility.model = model;
-      if(artOwner)group.rotation.y=0;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
       this.deviceFx.add(model);
       if (model.userData.portalDock) {
@@ -36914,7 +36912,7 @@ var GS = class e {
       facility.dock?.dispose();
       facility.dock = null;
       this.restoreDeviceColour(facility);
-      // GLTF clones share the template's geometry, textures and original materials.
+      if(facility.kind!=='boss')disposeDeskDevice(facility.model);
       facility.model.removeFromParent();
       facility.model = null;
     }
@@ -36949,8 +36947,8 @@ var GS = class e {
       if (kind === 'altar') {
         const tier = facility.data?.tier;
         facility.data = {tier: Number.isInteger(tier) && RS[tier] ? tier : 0};
-        facility.altarColor = this.run.terrain.desk2d ? altarPalette[facility.data.tier].dark : RS[facility.data.tier].color;
-        facility.altarCss = this.run.terrain.desk2d ? '#' + facility.altarColor.toString(16).padStart(6,'0') : RS[facility.data.tier].css;
+        facility.altarColor = altarPalette[facility.data.tier].dark;
+        facility.altarCss = '#' + facility.altarColor.toString(16).padStart(6,'0');
         facility.charge = 0;
         facility.charging = false;
         facility.r = RS[facility.data.tier].r;
@@ -36959,14 +36957,11 @@ var GS = class e {
         facility.r = this.run.sanctuary ? 5 : 4;
       } else if (kind === 'portal') {
         facility.r = 3.4;
-        const player = this.run.player.pos;
-        group.rotation.y = Math.atan2(player.x - x, player.z - z);
         const beacon = facility.beacon = fb(this.portalColor(facility), 1.7, 6.6);
         beacon.position.set(x, y, z);
         this.group.add(beacon);
       } else if (kind === 'bill') {
         facility.r = 3.4;
-        group.rotation.y = Math.atan2(-x, -z);
       } else if (kind === 'nest') {
         facility.r = 2.8;
       }
@@ -36987,7 +36982,7 @@ var GS = class e {
     populate() {for(const _ of this.populationSteps()){} }
     async populateAsync() {
       // The first summoned portal must open immediately when the boss falls.
-      const portal = !this.run.terrain.desk2d && !this.run.sanctuary && loadModelTemplate(facilityModelFile('portal'));
+      const portal = deskTexture(this.deviceArt,'device-portal.png');
       const check = () => { if (this.disposed || this.run.disposed) throw Error('本局已结束'); };
       const stats = await runLoadingSteps(this.populationSteps(),{
         check,
@@ -37399,6 +37394,7 @@ var GS = class e {
             }
             t.openDitto(() => {
               e.used = true;
+              (e.data ??= {}).regenAt = t.time + VS.ditto;
               this.dim(e);
             });
             break;
@@ -37424,13 +37420,14 @@ var GS = class e {
             ((e.used = !0),
               this.dim(e),
               (t.pickups.magnetAll = 5),
-              t.ui.toast(c(`¡Magnemite atrae toda la experiencia!`), `magnet`),
+              t.ui.toast(c(`¡Magnemite atrae toda la experiencia!`),null,facilityIconFile('magnet')),
               t.cry(81),
               t.audio.power());
             break;
           case `berry`:
-            if(t.state!=='play'||t.player.dead||t.coop?.lifting||t.capture.throwing||t.capture.canThrow()||
-                !this.hasVisual(e)||!e.berryPickup?.inReach(t.player))break;
+            if(Math.hypot(e.x-t.player.pos.x,e.z-t.player.pos.z)>e.r+0.8 ||
+                t.state!=='play'||t.player.dead||t.coop?.lifting||t.capture.throwing||t.capture.canThrow()||
+                !e.berryPickup||!this.hasVisual(e))break;
             e.used=true;e.absorbing=true;
             (e.data??={}).regenAt=t.time+VS.berry;
             e.berryPickup.begin(t.player);
@@ -37673,7 +37670,8 @@ var GS = class e {
             if(a.berryPickup.advance(e,t.player)){
               a.absorbing=false;
               t.vfx.burst(n.x,n.y+1,n.z,5933823,16,4,I.Heart,.5);
-              t.ui.toast(c(`Recuperas PS con unas Bayas Aranja`),`oran-berry`);t.audio.heal();
+              t.ui.toast(c(`Recuperas PS con unas Bayas Aranja`),null,facilityIconFile('berry'));
+              t.audio.heal();
             }
           }else if(a.used)this.regen(a);
           else if(ready)this.interact(a);
@@ -37809,7 +37807,7 @@ var GS = class e {
               I.Twinkle,
               0.9,
             ),
-          t.endless && a.used && VS[a.kind] && this.regen(a),
+          (a.kind === 'ditto' || t.endless) && a.used && VS[a.kind] && this.regen(a),
           a.data?.comet && !a.used && (a.charge ?? 0) <= 0 && (a.data.life -= e) <= 0)
         ) {
           this.burnOut(a);
@@ -37980,11 +37978,16 @@ var GS = class e {
         !this.run.player.dead && this.hasVisual(target);
       ring.material.uniforms.dwell.value = ring.visible ? progress : -1;
       for (const facility of this.list) {
-        const anchor=facility.model?.userData.ringAnchor, halo=facility.halo;
+        const model=facility.model;
+        if(model && facility.kind!=='boss' && !facility.absorbing){
+          model.quaternion.copy(this.run.r.camera.quaternion);
+          model.rotateX(deskPitch);
+        }
+        const anchor=model?.userData.ringAnchor, halo=facility.halo;
         if(anchor && halo){
           // Project the artwork centre onto the ring's ground plane along the
           // current view, so both orthographic desk and perspective views align.
-          const model=facility.model,camera=this.run.r.camera,p=halo.position;
+          const camera=this.run.r.camera,p=halo.position;
           model.updateWorldMatrix(true,false);
           model.localToWorld(p.copy(anchor));
           const m=camera.matrixWorld.elements, ortho=camera.projectionMatrix.elements[15]===1;
@@ -38299,11 +38302,11 @@ var GS = class e {
     dispose() {
       this.disposed = true;
       for (const facility of this.list) this.releaseDevice(facility);
-      if(this.billArt){
-        this.billArt.disposed=true;
-        for(const value of this.billArt.deskOwned)value.dispose();
-        this.billArt=null;
-      }
+      this.deviceArt.disposed=true;
+      for(const value of this.deviceArt.deskOwned)value.dispose();
+      this.deviceArt.deskOwned.length=0;
+      this.deviceArt.deskTextures.clear();
+      this.deviceArt.deskDeviceGeometries?.clear();
       this.idleRingMaterial.dispose();
       this.deviceFx?.dispose();
       this.deviceFx = null;
@@ -40736,10 +40739,10 @@ var ew = {
   tower: [0, 3],
   "look-stone": [-2, 0],
 };
-function Q(e, t = `pix`) {
+function Q(e, t = `pix`, iconFile = k.items[e]?.icon || `items/${e}.png`) {
   let n = X(`img`, {
     class: t,
-    src: k.items[e]?.icon ? Zt(k.items[e].icon) : Zt(`items/${e}.png`),
+    src: Zt(iconFile),
     alt: ``,
     draggable: `false`,
   });
@@ -46168,7 +46171,7 @@ var GT = 15,
         return;
       }
       const seconds = t ? 3.2 : 2.6;
-      this.ui.bossIntro(species, t, seconds, enemies.glyphWords[e]);
+      this.ui.bossIntro(species, t, seconds, enemies.glyphWords[e], c(t ? `Legendario` : `Guardián`));
       this.audio.duck(.25, seconds);
       this.revealBoss(e, seconds, .35, t, yaw);
     }
@@ -64067,7 +64070,7 @@ function SP() {
 function ZX(app) {
   const itemIcon=id=>Zt(k.items[id]?.icon||`items/${id}.png`);
   return createZixingUI(app, {
-    defaults: {...SO, zxBossHealth:'value'},
+    defaults: SO,
     speciesInfo: id => k.get(id),
     evolutionIds: id => k.evolutionsOf(id).map(actor=>actor.id),
     evolutionLevel: (from,to) => k.runEvolution(from,k.get(to)).level,
@@ -64156,7 +64159,6 @@ function ZX(app) {
     itemIcon,
     itemRarity: id => sn.get(id)?.rarity,
     itemLimit: id => sn.get(id)?.max??10,
-    credits: () => nPFull(() => rI(app)),
     glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
   });
 }
@@ -72670,14 +72672,14 @@ var JI = class {
       }
       e.style.top = r > 0 ? `${Math.round(r + 8)}px` : ``;
     }
-    toast(message, item) {
+    toast(message, item, iconFile) {
       if (!message) return;
       const tab = X('i', {class: 'zx-note-tab', 'aria-hidden': 'true'});
       const notice = X('div', {class: 'toast'}, tab, X('span', {class: 'zx-note-text'}, message));
       this.toastsEl.append(notice);
       while (this.toastsEl.children.length > 4) this.toastsEl.firstChild.remove();
-      if (item) {
-        const icon = Q(item);
+      if (item || iconFile) {
+        const icon = Q(item, 'pix', iconFile);
         icon.hidden = true;
         icon.onerror = () => icon.remove();
         const reveal = () => {
@@ -73171,6 +73173,13 @@ var JI = class {
         n.classList.add(`gain`),
         e && n.classList.add(`big`));
     }
+    updateBossHealth(bar, hp, maxHp) {
+      const fraction = maxHp > 0 ? Math.min(1, Math.max(0, hp / maxHp)) : 0;
+      const label = bar.lastElementChild, value = (fraction * 100).toFixed(1) + '%';
+      if (label.textContent !== value) label.textContent = value;
+      bar.children[1].style.transform = `scaleX(${fraction})`;
+      return fraction;
+    }
     miniBars(e, t, n) {
       let r = e.minibosses?.list ?? [],
         i = e.enemies;
@@ -73208,15 +73217,12 @@ var JI = class {
             e.sub.textContent !== l &&
               ((e.sub.textContent = l),
               s && (e.sub.classList.remove(`pop`), e.sub.offsetWidth, e.sub.classList.add(`pop`))));
-          let u = Math.max(0, i.hp[a.i] / i.maxHp[a.i]);
+          let u = this.updateBossHealth(e.bar, i.hp[a.i], i.maxHp[a.i]);
           (u >= e.lag
             ? ((e.lag = u), (e.hold = 0.45))
             : (e.hold -= t) <= 0 && (e.lag = Math.max(u, e.lag - t * 0.6)),
-            (e.bar.children[1].style.transform = `scaleX(${u})`),
             (e.bar.children[0].style.transform = `scaleX(${e.lag})`),
             (e.foot.style.display = e.st.update(i, a.i) || l ? `` : `none`));
-          const hp=P(Math.max(0,i.hp[a.i]));
-          if(e.bar.children[2].textContent!==hp)e.bar.children[2].textContent=hp;
         }));
     }
     fitTop() {
@@ -73482,13 +73488,11 @@ var JI = class {
           s.textContent !== e &&
             ((s.textContent = e), s.classList.remove(`pop`), s.offsetWidth, s.classList.add(`pop`));
         }
-        let u = Math.max(0, e.enemies.hp[t] / e.enemies.maxHp[t]);
+        let u = this.updateBossHealth(o, e.enemies.hp[t], e.enemies.maxHp[t]);
         (u >= this.bossLag
           ? ((this.bossLag = u), (this.bossLagHold = 0.45))
           : (this.bossLagHold -= a) <= 0 && (this.bossLag = Math.max(u, this.bossLag - a * 0.6)),
-          (o.children[1].style.transform = `scaleX(${u})`),
           (o.children[0].style.transform = `scaleX(${this.bossLag})`),
-          (o.children[4].textContent = P(Math.max(0, e.enemies.hp[t]))),
           (n.bossFoot.style.display = this.bossSt.update(e.enemies, t) || r || l ? `` : `none`));
       } else ((n.boss.style.display = `none`), this.bossSt.reset());
       (this.miniBars(e, a, _.alive), this.placeToasts());
@@ -74579,27 +74583,37 @@ var JI = class {
       };
       (setTimeout(() => addEventListener(`keydown`, r), 250), e.cry(52));
     }
+    prepareDittoPictures(items) {
+      const pictures = this.dittoPictures ??= new Map();
+      for (const key of items.keys()) {
+        if (pictures.has(key)) continue;
+        const picture = new Image();
+        pictures.set(key,picture);
+        picture.alt = Zb(key).name;
+        picture.draggable = false;
+        picture.onerror = () => pictures.delete(key);
+        picture.src = Zt(k.items[key]?.icon || `items/${key}.png`);
+      }
+      return pictures;
+    }
     showDitto(e, t) {
-      let n = X(`div`, { class: `cards scroll` });
+      const pictures = this.prepareDittoPictures(e.player.items);
+      this.dittoPictures = null;
+      const list = X('div', { class: 'zx-review-content zx-item-body' });
       for (const [key,count] of e.player.items) {
         const item=Zb(key),limit=sn.get(key)?.max??10,full=!e.player.canHold(key);
         const card=X('button',{type:'button',disabled:full?'true':null,
           onclick:()=>{if(!card.isConnected)return;if(!e.player.canHold(key)){N.deny();return;}t(key);}});
-        n.append(itemOffer(card,{key,name:item.name,picture:Q(key),quality:itemOfferQuality(item.rarity),
+        list.append(itemOffer(card,{key,name:item.name,picture:pictures.get(key),quality:itemOfferQuality(item.rarity),
           effects:[item.desc],held:'持有 '+count+'/'+limit+(full?' · 已满':'')}));
       }
-      if (!n.children.length) n.append(X(`div`,{class:`zx-review-empty`},X(`b`,{},`暂无可复制道具`),X(`p`,{},`先在地图拾取或商店购买一个道具。`)));
-      let r = this.modal(
-        X(`h1`, { class: `small` }, `道具复制`),
-        n,
-        X(
-          `div`,
-          { class: `actions` },
-          X(`button`, { class: `btn ghost`, onclick: () => t(null) }, `返回`),
-        ),
-        sO(e),
+      const pane = this.modal(
+        X('h1', { class: 'small' }, '道具复制'),
+        list,
+        X('button', { class: 'btn ghost', onclick: () => t(null) }, '返回'),
       );
-      (styleReviewDialog(r,`zx-review-copy`),lO(e, () => r.isConnected), e.cry(132));
+      styleReviewDialog(pane,'zx-review-copy','zx-item-pick');
+      e.cry(132);
     }
     showSlots(e, t, n) {
       let r = (e) =>
@@ -75086,7 +75100,7 @@ var JI = class {
           n * 1e3 + 4e3,
         ));
     }
-    bossIntro(e, t, n, word) {
+    bossIntro(e, t, n, word, role) {
       let r = k.get(e),
         i = t ? `#e8a81a` : `#ff4a8a`,
         a = X(
@@ -75101,7 +75115,7 @@ var JI = class {
             X(
               `div`,
               {},
-              X(`p`, {}, c(t ? `POKÉMON LEGENDARIO` : `GUARDIÁN DE LA ZONA`)),
+              X(`p`, {}, role),
               X(`h1`, {}, word),
               X(`div`, { class: `row evo-types` }, ...r.types.map((e) => XC(e))),
             ),

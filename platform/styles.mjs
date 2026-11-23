@@ -64,8 +64,14 @@ function resolveVars(value,vars,view) {
   }
   return s.replace(/env\(safe-area-inset-(\w+)(?:,[^)]*)?\)/g,(_,side)=>(view.insets?.[side]||0)+'px');
 }
-export function styleEngine(view,rules) {
+export function styleEngine(view,rules,compileSelector) {
   const groups=new Map(),cache=new WeakMap(),bad=new Set();
+  const matchers=new Map();
+  function matches(el,selector){
+    if(!compileSelector||selector.includes(':scope'))return el.matches(selector);
+    if(!matchers.has(selector))matchers.set(selector,compileSelector(selector));
+    return matchers.get(selector)(el);
+  }
   const indexed=rules.filter(r=>mediaMatches(r[3],view));
   for(const r of indexed){if(!groups.has(r[2]))groups.set(r[2],[]);groups.get(r[2]).push(r);}
   let generation=0;
@@ -92,7 +98,7 @@ export function styleEngine(view,rules) {
       if(id)keys.push('#'+id);
       for(const key of keys)for(const r of groups.get(key)||[]){
         if(bad.has(r[0]))continue;
-        try{if(el.matches(r[0]))hits.add(r);}catch{bad.add(r[0]);}
+        try{if(matches(el,r[0]))hits.add(r);}catch{bad.add(r[0]);}
       }
       const apply=(k,v,important)=>{
         // A later shorthand replaces the earlier longhands too. Otherwise

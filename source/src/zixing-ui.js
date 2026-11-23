@@ -378,7 +378,12 @@ export function createZixingUI(app,api) {
     selected=p&&canDeploy(p,last)?last:4;
     const root=screen('home','','',[]);
     root.classList.add('zx-home-fixed');
-    const startButton=button('开始旅程',()=>choose(),'primary zx-home-start',{'data-action':'journey'});
+    const startButton=button('开始旅程',()=>{
+      const travel=scene.travel('choose',()=>choose());
+      // Start the shared profile read during the zoom. The chooser handles pending reads and retries.
+      if(!profile())ready().catch(()=>{});
+      return travel;
+    },'primary zx-home-start',{'data-action':'journey'});
     const entry=(symbol,label,action,open)=>button([
       homeEntryFace(),el('span','paper-entry-content',[menuSymbol(symbol),el('span','paper-button-divider',[],{'aria-hidden':true}),el('span','paper-entry-label',label)]),
     ],open,'zx-home-entry zx-home-'+(action==='multiplayer'?'coop':action),{'data-action':action,'data-paper-surface':'flat'});
@@ -982,7 +987,7 @@ export function createZixingUI(app,api) {
     readingDialog(app.ui,app.screen,app.screen.querySelector('[data-action="dust-help"]'),'星尘从哪里来',[
       ['stardust','旅程结算','探索、击败敌人和镇守可获得星尘。每局结算一次，可在研究所使用。'],
       ['collect','挑战失败也有收益','按已完成的探索和挑战结算星尘。通关进度需击败关卡镇守。'],
-    ],[],'dust-close');
+    ],'dust-close');
   }
   function settings(back=home) {
     const s=profile().settings;
@@ -1049,24 +1054,14 @@ export function createZixingUI(app,api) {
       ['collect','攻击与拾取',`招式自动释放，靠近即可拾取经验、金币和道具。在扭蛋机旁停留 ${facilityDwellSeconds} 秒可触发互动。`],
       ['burst','释放大招','大招就绪后，点大招按钮释放。'],
     ];
-    const details=el('div','zx-guide-legal',[],{id:'zx-guide-legal'});details.hidden=true;
-    const legal=button('署名与法律声明',()=>{
-      if(!details.firstElementChild)details.append(api.credits());
-      details.hidden=!details.hidden;
-      legal.setAttribute('aria-expanded',String(!details.hidden));
-      if(!details.hidden)legal.scrollIntoView({block:'nearest'});
-    },'zx-plain',{'data-action':'guide-credits','data-paper-surface':'flat','aria-controls':'zx-guide-legal','aria-expanded':false});
-    readingDialog(host,host===pauseSheet?pauseSheet:app.screen,trigger,'玩法说明',instructions,[legal,details],'guide-close');
+    readingDialog(host,host===pauseSheet?pauseSheet:app.screen,trigger,'玩法说明',instructions,'guide-close');
   }
-  function readingDialog(host,screenNode,trigger,title,instructions,extra,action){
+  function readingDialog(host,screenNode,trigger,title,instructions,action){
     if(host.querySelector('.zx-guide-overlay'))return;
     const panel=el('section','zx-guide-paper',[
       el('h2','',title),
-      el('div','zx-guide-scroll',[
-        ...instructions.map(([symbol,title,desc])=>el('div','zx-guide-row',[
-          el('span','zx-guide-mark',menuSymbol(symbol,25)),el('div','zx-guide-copy',[el('b','',title),text(desc)])])),
-        ...extra,
-      ]),
+      el('div','zx-guide-scroll',instructions.map(([symbol,title,desc])=>el('div','zx-guide-row',[
+        el('span','zx-guide-mark',menuSymbol(symbol,25)),el('div','zx-guide-copy',[el('b','',title),text(desc)])]))),
     ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'album-page'});
     const wrap=el('div','zx zx-modal-wrap zx-guide-overlay',panel);
     const close=()=>{wrap.remove();trigger?.focus?.({preventScroll:true});};
@@ -1744,7 +1739,10 @@ export function createZixingUI(app,api) {
       clearEvolution();
       const card=evolutionResult(character(from),character(to),run.skinLook,before,after);
       const animate=!run.hideOwnFx&&profile()?.settings.showBanners!==false&&!run.vfx.calm&&!stillMotion?.matches;
-      resultSlip={...card,start:null,settled:!animate};
+      // Landing starts the feedback while the last orbit particles fade.
+      card.paint(animate?0:1);
+      resultSlip={...card,start:run.realTime,settled:!animate};
+      combatFeed.lane.insertBefore(card.node,toastLayer);
     };
     function placeEvolutionStamp(feet){
       const {node:card,stamp}=resultSlip;
@@ -1767,17 +1765,11 @@ export function createZixingUI(app,api) {
       if(!stamp.parentElement)node.append(stamp);
     }
     function updateEvolution(feet){
-      if(resultSlip.start===null){
-        if(run.vfx.upgrade.events.some(event=>event.actor===run.player))return;
-        resultSlip.start=run.realTime;
-        combatFeed.lane.insertBefore(resultSlip.node,toastLayer);
-        if(resultSlip.settled)resultSlip.paint(1);
-      }
       const elapsed=run.realTime-resultSlip.start;
       if(elapsed>=2.4){clearEvolution();return;}
       placeEvolutionStamp(feet);
-      if(resultSlip.settled)return;
-      const progress=Math.min(1,elapsed/.28);
+      if(resultSlip.settled||elapsed===0)return;
+      const progress=Math.min(1,elapsed/.2);
       resultSlip.paint(progress);
       resultSlip.settled=progress===1;
     }
@@ -1917,11 +1909,6 @@ export function createZixingUI(app,api) {
       combatFeed.syncEvent();
       combatFeed.placeTeam(hud.coopHud);
       combatFeed.placeMarkers();
-      if(run.boss.alive){
-        const i=run.boss.bossIndex,hp=Math.max(0,run.enemies.hp[i]);
-        const value=profile().settings.zxBossHealth==='percent'?percent(hp/Math.max(1,run.enemies.maxHp[i])):number(Math.ceil(hp));
-        updateText(hud.els.bossBar.children[4],value);
-      }
       const p=run.player;
       const stage=paperStages[Math.min(3,run.stage-1)],region=run.sanctuary?'圣地':run.stage+(run.mode===SINGLE_STAGE?'/1区':'/'+FOREST_COMBAT_ZONES+'区');
       const detail=region+' · '+difficultyName(run)+'难度';

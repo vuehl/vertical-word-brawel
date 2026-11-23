@@ -37,6 +37,7 @@ export function journeyScene(){
   node.className='journey-scene';node.dataset.static='true';node.setAttribute('aria-hidden','true');
   node.dataset.journeyBackdrop='true';
   let desk=null,deskReady=null,pose=shots.home,target='',identity='',word='',motion=0,presentation=0,leaving=false;
+  let moving=false,blending=false,actorLayer=null;
   function prepare(){
     if(!deskReady)deskReady=new Promise(resolve=>{
       const image=new Image();
@@ -46,10 +47,29 @@ export function journeyScene(){
     });
     return deskReady;
   }
+  function drawActor(ctx,cx,cy,size){
+    ctx.save();ctx.translate(cx,cy+size*.36);ctx.scale(1,.24);
+    ctx.beginPath();ctx.arc(0,0,size*.265,0,Math.PI*2);ctx.fillStyle='rgba(45,49,66,.21)';ctx.fill();ctx.restore();
+    ctx.drawImage(actor,cx-size/2,cy-size/2,size,size);
+  }
   function paint(){
     if(!node.isConnected)return;
     const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
     const d=Math.min(2,window.devicePixelRatio||1),margin=window.nativeUI?96:0;
+    const scale=Math.max(w/390,(h+margin)/844)*pose.scale,cx=w*.5,cy=h*pose.height;
+    const x=cx-scale*pose.origin,y=cy-scale*461,size=Math.min(w*pose.actor,h*.21);
+    const page=node.parentNode;
+    if(window.nativeUI&&(moving||blending)&&desk&&node.dataset.shot!=='entry'){
+      if(word&&!actorLayer){
+        actorLayer=document.createElement('canvas');
+        actorLayer.width=actorLayer.height=actor.width;
+        drawActor(actorLayer.getContext('2d'),actor.width/2,actor.width/2,actor.width);
+      }
+      // The native compositor can move these two textures without repainting the album.
+      page._journeyCamera={desk,x,y,width:390*scale,height:844*scale,actor:word&&actorLayer,cx,cy,size};
+      return;
+    }
+    page._journeyCamera=null;
     const pw=Math.round((w+2*margin)*d),ph=Math.round((h+2*margin)*d);
     if(node.width!==pw||node.height!==ph){node.width=pw;node.height=ph;}
     if(node.dataset.sceneMargin!==String(margin))node.dataset.sceneMargin=String(margin);
@@ -65,29 +85,25 @@ export function journeyScene(){
       window.invalidateUI?.();return;
     }
     ctx.fillStyle='#E5E6D8';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
-    const scale=Math.max(w/390,(h+margin)/844)*pose.scale,cx=w*.5,cy=h*pose.height;
-    if(desk?.width&&desk.complete!==false)ctx.drawImage(desk,cx-scale*pose.origin,cy-scale*461,390*scale,844*scale);
-    if(word){
-      const size=Math.min(w*pose.actor,h*.21);
-      ctx.save();ctx.translate(cx,cy+size*.36);ctx.scale(1,.24);
-      ctx.beginPath();ctx.arc(0,0,size*.265,0,Math.PI*2);ctx.fillStyle='rgba(45,49,66,.21)';ctx.fill();ctx.restore();
-      ctx.drawImage(actor,cx-size/2,cy-size/2,size,size);
-    }
+    if(desk?.width&&desk.complete!==false)ctx.drawImage(desk,x,y,390*scale,844*scale);
+    if(word)drawActor(ctx,cx,cy,size);
     window.invalidateUI?.();
   }
   function moveTo(name,instant=false){
     if(!instant&&shots[target]===shots[name]){target=name;return;}
     const ticket=++motion,from=pose,to=shots[name];target=name;
-    if(instant){pose=to;return;}
-    animate(520,t=>{pose=between(from,to,ease(t));paint();},()=>ticket===motion&&node.isConnected);
+    if(instant){moving=false;pose=to;return;}
+    return animate(520,t=>{moving=t<1;pose=between(from,to,ease(t));paint();},()=>ticket===motion&&node.isConnected);
   }
   function fade(page,from,to,ms){
     const ticket=++presentation,controls=Array.from(page.children).filter(el=>el!==node);
     return animate(ms,t=>{
       const value=from+(to-from)*ease(t);
-      if(window.nativeUI)page._journeyFade=value===1?null:{scene:1,controls:value};
-      else for(const el of controls)el.style.opacity=t===1&&to===1?'':String(value);
-      window.invalidateUI?.();
+      if(window.nativeUI){
+        page._journeyFade=value===1?null:{scene:1,controls:value};
+        if(blending!==(t<1)){blending=t<1;paint();}
+      }else for(const el of controls)el.style.opacity=t===1&&to===1?'':String(value);
+      if(!page._journeyCamera)window.invalidateUI?.();
     },()=>ticket===presentation&&node.parentNode===page&&page.isConnected);
   }
   async function travel(name,open){
@@ -97,8 +113,12 @@ export function journeyScene(){
     leaving=true;page.style.pointerEvents='none';
     const previous=page.dataset.page;
     try{
-      if(name!=='entry')moveTo(name);
-      if(await fade(page,1,0,130))return await open();
+      const camera=name!=='entry'&&moveTo(name);
+      const hidden=await fade(page,page._journeyFade?.controls??1,0,130);
+      if(!hidden)return;
+      // Building and laying out all the album cards mid-zoom can skip several frames.
+      if(previous==='home'&&name==='choose'&&camera&&!await camera)return;
+      if(node.parentNode===page&&page.isConnected&&page.dataset.page===previous)return open();
     }finally{
       leaving=false;
       if(page.isConnected&&page.dataset.page===previous){
@@ -108,19 +128,18 @@ export function journeyScene(){
   }
   function mount(page,c,look){
     const sameScene=node.parentNode===page,changed=page.dataset.page!==node.dataset.shot;
-    const directEntry=node.dataset.shot==='home'&&page.dataset.page==='choose';
-    if(directEntry)++presentation;
+    ++presentation;blending=false;
     page._journeyFade=null;
     page.classList.add('journey-prep');page.dataset.paperSurface='flat';
     if(!sameScene)page.insertBefore(node,page.firstChild);
     prepare();
     const key=(c?.word||'')+'/'+(look||'');
-    if(identity!==key){word=c?.word||'';if(word)drawAppearanceGlyph(actor,word,c.tone,look,true);identity=key;}
+    if(identity!==key){word=c?.word||'';if(word)drawAppearanceGlyph(actor,word,c.tone,look,true);actorLayer=null;identity=key;}
     node.dataset.word=word;node.dataset.look=look||'normal';node.dataset.shot=page.dataset.page;
-    if(page.dataset.page==='entry')++motion;
-    else moveTo(page.dataset.page,!sameScene||directEntry);
+    if(page.dataset.page==='entry'){++motion;moving=false;}
+    else moveTo(page.dataset.page,!sameScene);
     paint();
-    if(sameScene&&changed&&!directEntry&&page.dataset.page!=='entry')fade(page,0,1,235);
+    if(sameScene&&changed&&page.dataset.page!=='entry')fade(page,0,1,235);
   }
   window.addEventListener('resize',paint);
   return {prepare,mount,travel};

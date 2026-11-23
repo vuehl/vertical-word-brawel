@@ -30,7 +30,7 @@ export function sceneAction(run,target,prompt){
     case 'bill':return action('融合招式',used?'冷却中':data.ready?'可融合':'需满级招式',used);
     case 'meowth':return action('打开商店');
     case 'hypno':return action('遗忘技能');
-    case 'ditto':return action('复制道具',used?'已使用':'',used);
+    case 'ditto':return action('复制道具',used?'冷却中':'',used);
     case 'fossil':return action('复活化石',used?'已使用':'消耗生命上限',used);
     case 'rhydon':return action('强化首领',used||run.bossSpawned?'已结束':run.roars?run.roars+' / 3':'',used||run.bossSpawned);
     case 'nest':return action('拾取字灵蛋',used?'空巢':run.egg?'已携带':'',used||!!run.egg);

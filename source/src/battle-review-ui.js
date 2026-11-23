@@ -1,4 +1,5 @@
 import {glyphPreview} from './zixing-glyphs.js';
+import {summonerBarColors} from './battle-review-style.js';
 import {planIncludes,runPlan} from './battle-plan.js';
 import {battleDialogFrame,hudPaperIcon} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,dockDialogClose,paperDecisionActions,standardButton} from './paper-system.js';
@@ -34,12 +35,14 @@ export function itemOffer(node,{key,name,picture,quality,effects,held,planned}){
   node.dataset.paperSurface='item-offer';node.dataset.quality=quality.key;node.dataset.rarity=quality.label;node.dataset.itemChoice=key;
   picture.classList.add('zx-item-image');
   const badge=qualityBadge(quality);
-  node.replaceChildren(el('div','zx-pick-art',picture),el('div','zx-pick-copy',[
+  const art=el('div','zx-pick-art',picture);
+  const copy=el('div','zx-pick-copy',[
     el('div','zx-pick-name',[el('b','',name),badge]),
     planned?planBadge():null,
     ...effects.map(line=>el('p','zx-pick-effect',line.replace(/₽/g,'金币'))),
     held?el('small','zx-pick-held',held):null,
-  ]));
+  ]);
+  node.replaceChildren(art,copy);
   return node;
 }
 
@@ -165,7 +168,7 @@ export function teamOverview(run,body,types,close){
 export function styleReviewDialog(pane,...classes){
   const content=el('section','zx zx-modal zx-review-dialog '+classes.join(' '),Array.from(pane.childNodes),{role:'dialog','aria-modal':'true'});
   // Keep legacy scene actions outside their scrolling body; preserve all original handlers.
-  if(classes.some(c=>['zx-review-shop','zx-review-copy','zx-review-forget'].includes(c))){
+  if(classes.some(c=>['zx-review-shop','zx-review-forget'].includes(c))){
     const body=el('div','zx-review-content'),footer=el('div','zx-review-footer zx-review-legacy-footer');
     for(const child of Array.from(content.children)){
       if(child.tagName==='H1'||child.classList.contains('shop-reroll'))continue;
@@ -173,13 +176,6 @@ export function styleReviewDialog(pane,...classes){
       else body.append(child);
     }
     content.append(body,footer);
-  }
-  if(classes.includes('zx-review-copy')){
-    const body=content.querySelector('.zx-review-content'),list=body.querySelector('.cards');
-    const opener=body.querySelector('.pk-btn'),footer=content.querySelector('.zx-review-footer');
-    opener.replaceChildren('查看我的队伍');opener.dataset.action='inspect-team';footer.append(opener);
-    body.replaceChildren(...Array.from(list.children));body.classList.add('zx-item-body');
-    content.classList.add('zx-item-pick');content.dataset.paperSurface='flat';
   }
   if(classes.includes('zx-review-forget')){
     const body=content.querySelector('.zx-review-content'),rows=Array.from(body.querySelectorAll('.item-row'));
@@ -202,8 +198,7 @@ export function styleReviewDialog(pane,...classes){
   pane.className='zx zx-modal-wrap zx-review-overlay '+classes.join(' ');
   const title=content.querySelector('h1'),heading=title?.closest('.zx-review-heading');
   let subtitle=heading?.querySelector('.zx-review-note')?.textContent;
-  if(classes.includes('zx-fusion-list')||classes.includes('zx-fusion-preview'))content.dataset.paperSurface='flat';
-  if(classes.includes('zx-review-copy'))subtitle='选择 1 件已持有的道具';
+  if(classes.includes('zx-fusion-list')||classes.includes('zx-fusion-preview')||classes.includes('zx-review-copy'))content.dataset.paperSurface='flat';
   if(classes.includes('zx-review-shop')){
     content.dataset.paperSurface='flat';
     const [name,balance]=title.textContent.split(' · ');
@@ -347,23 +342,34 @@ export class ReviewFeedbackQueue{
   }
   clear(){this.pending.length=0;this.active=null;}
 }
-export function drawBossArrival(canvas,{word,type,legend=false},progress=0.5){
+const goldArrival={
+  paper:'#f8f0d6',panel:'#332838',dots:'#685144',edge:'#be4c37',ink:'#943e2f',
+  ray:'#d4a451',light:'#ffdf8a',ring:'#f8d17e',glow:'#ffe28f',glyph:'#b64327',
+  outline:'#ffe9a1',title:'#fff1ba',shadow:'#9a392c',subtitle:'#e9c77d',
+};
+const blueArrival={
+  paper:'#e2f2fc',panel:'#202f47',dots:'#3d5672',edge:summonerBarColors.fill,ink:'#385f8b',
+  ray:summonerBarColors.fill,light:summonerBarColors.accent,ring:'#bde8ff',glow:summonerBarColors.accent,glyph:summonerBarColors.fill,
+  outline:'#ddf4ff',title:summonerBarColors.accent,shadow:'#244d79',subtitle:'#bcddf4',
+};
+export function drawBossArrival(canvas,{title,word,type,legend=false,kind},progress=0.5){
+  const colors=kind==='summoner'?blueArrival:goldArrival;
   const c=canvas.getContext('2d'),w=780,h=372;if(canvas.width!==w)canvas.width=w;if(canvas.height!==h)canvas.height=h;c.setTransform(1,0,0,1,0,0);c.globalAlpha=1;
   const enter=Math.min(1,progress/.16),leave=progress>.83?(1-progress)/.17:1;
   c.clearRect(0,0,w,h);c.globalAlpha=Math.max(0,Math.min(1,leave));c.translate(-(1-enter)*w,0);
   const poly=(pts,fill)=>{c.beginPath();pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=fill;c.fill();};
-  poly([[0,59],[780,0],[780,308],[0,365]],'#f8f0d6');
-  for(let j=0;j<14;j++){const y=28+j*23;c.strokeStyle=j%3?'#943e2f':'#d6a847';c.lineWidth=j%4===0?5:2;c.beginPath();c.moveTo(j%2?0:640,y);c.lineTo(j%2?155:780,y-27);c.stroke();}
-  poly([[0,114],[780,20],[780,283],[0,343]],'#332838');poly([[0,102],[780,8],[780,21],[0,117]],'#be4c37');
+  poly([[0,59],[780,0],[780,308],[0,365]],colors.paper);
+  for(let j=0;j<14;j++){const y=28+j*23;c.strokeStyle=j%3?colors.ink:colors.ray;c.lineWidth=j%4===0?5:2;c.beginPath();c.moveTo(j%2?0:640,y);c.lineTo(j%2?155:780,y-27);c.stroke();}
+  poly([[0,114],[780,20],[780,283],[0,343]],colors.panel);poly([[0,102],[780,8],[780,21],[0,117]],colors.edge);
   c.save();c.beginPath();c.moveTo(0,117);c.lineTo(780,21);c.lineTo(780,283);c.lineTo(0,343);c.closePath();c.clip();
-  c.fillStyle='#685144';for(let x=0;x<w;x+=9)for(let y=0;y<h;y+=9)c.fillRect(x,y,1.5,1.5);c.restore();
-  c.save();c.translate(621,143);c.rotate(-.08);const glow=c.createRadialGradient(0,0,12,0,0,145);glow.addColorStop(0,'#ffe28fcc');glow.addColorStop(1,'#e5b45b00');c.fillStyle=glow;c.fillRect(-145,-145,290,290);
-  for(let j=0;j<12;j++){c.rotate(Math.PI/6);poly([[0,-127],[11,-74],[-11,-74]],j%2?'#d4a451':'#ffdf8a');}
-  c.beginPath();c.arc(0,0,124,0,Math.PI*2);c.strokeStyle='#f8d17e';c.lineWidth=3;c.stroke();
-  c.font='bold '+(word.length>1?106:174)+'px "Ziling Swei",sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';c.strokeStyle='#ffe9a1';c.lineWidth=10;c.strokeText(word,0,4);c.fillStyle=legend?'#a32c22':'#b64327';c.fillText(word,0,4);c.restore();
-  c.save();c.translate(35,175);c.rotate(-.105);c.font='bold 72px "Ziling Swei",sans-serif';c.lineJoin='round';c.strokeStyle='#9a392c';c.lineWidth=8;c.strokeText('首领来袭',0,0);c.fillStyle='#fff1ba';c.fillText('首领来袭',0,-4);
-  c.font='bold 27px "Ziling Swei",sans-serif';c.fillStyle='#e9c77d';c.fillText(word+'  /  '+type,14,58);c.restore();
-  for(let j=0;j<10;j++){c.save();c.translate((j*109+41)%780,(j*43+24)%350);c.rotate(.5);c.fillStyle=j%2?'#f5cf70':'#b34831';c.fillRect(0,0,5,14);c.restore();}
+  c.fillStyle=colors.dots;for(let x=0;x<w;x+=9)for(let y=0;y<h;y+=9)c.fillRect(x,y,1.5,1.5);c.restore();
+  c.save();c.translate(621,143);c.rotate(-.08);const glow=c.createRadialGradient(0,0,12,0,0,145);glow.addColorStop(0,colors.glow+'cc');glow.addColorStop(1,colors.glow+'00');c.fillStyle=glow;c.fillRect(-145,-145,290,290);
+  for(let j=0;j<12;j++){c.rotate(Math.PI/6);poly([[0,-127],[11,-74],[-11,-74]],j%2?colors.ray:colors.light);}
+  c.beginPath();c.arc(0,0,124,0,Math.PI*2);c.strokeStyle=colors.ring;c.lineWidth=3;c.stroke();
+  c.font='bold '+(word.length>1?106:174)+'px "Ziling Swei",sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';c.strokeStyle=colors.outline;c.lineWidth=10;c.strokeText(word,0,4);c.fillStyle=legend?'#a32c22':colors.glyph;c.fillText(word,0,4);c.restore();
+  c.save();c.translate(35,175);c.rotate(-.105);c.font='bold 72px "Ziling Swei",sans-serif';c.lineJoin='round';c.strokeStyle=colors.shadow;c.lineWidth=8;c.strokeText(title,0,0);c.fillStyle=colors.title;c.fillText(title,0,-4);
+  c.font='bold 27px "Ziling Swei",sans-serif';c.fillStyle=colors.subtitle;c.fillText(word+'  /  '+type,14,58);c.restore();
+  for(let j=0;j<10;j++){c.save();c.translate((j*109+41)%780,(j*43+24)%350);c.rotate(.5);c.fillStyle=j%2?colors.light:colors.edge;c.fillRect(0,0,5,14);c.restore();}
 }
 // Only the status paper changes brightness; its lettering and icon stay steady.
 const weatherColors={
@@ -402,6 +408,11 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   const feed=el('div','zx-combat-feed'),teamRow=el('div','zx-combat-team'),feedback=el('div','zx-combat-feedback');
   hud.els.boss.classList.add('zx-review-boss');hud.els.boss.dataset.uiLayer='boss';
   hud.els.boss.dataset.paperSurface='boss-strip';hud.els.bossPt.dataset.paperSurface='boss-seal';
+  for(const mini of hud.minis){
+    mini.el.classList.add('zx-review-boss');
+    mini.el.dataset.paperSurface='boss-strip';
+    mini.pt.dataset.paperSurface='boss-seal';
+  }
   const directions=new Map();
   for(const marker of [hud.arrow,...hud.pins]){
     marker.classList.add('zx-guide-pin');
@@ -529,10 +540,12 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     if(lastSuccess===session){lastSuccess=-1;return;}
     queue.push({word:wordFor(species),ok:true});wake();
   };
-  hud.bossIntro=(species,legend,duration,word)=>{
+  hud.bossIntro=(species,legend,duration,word,role,kind)=>{
     arrival?.el.remove();hud.hudEl.querySelectorAll('.bossintro').forEach(n=>n.remove());
-    const canvas=el('canvas','zx-review-boss-art',[],{'aria-hidden':true}),panel=el('div','zx-review-arrival',canvas,{role:'status','aria-label':'首领来袭 · '+(word||wordFor(species))});
-    panel.dataset.uiLayer='boss-arrival';hud.root.append(panel);started=performance.now();arrival={el:panel,canvas,data:{word:word||wordFor(species),type:typeName(typeOf(species)),legend}};wake();
+    const title=role+'来袭',glyph=word||wordFor(species);
+    const canvas=el('canvas','zx-review-boss-art',[],{'aria-hidden':true});
+    const panel=el('div','zx-review-arrival',canvas,{role:'status','aria-label':title+' · '+glyph});
+    panel.dataset.uiLayer='boss-arrival';hud.root.append(panel);started=performance.now();arrival={el:panel,canvas,data:{title,word:glyph,type:typeName(typeOf(species)),legend,kind}};wake();
     // Presentation never resumes combat; the existing run.introBoss lifecycle owns it.
   };
   const clear=hud.clear?.bind(hud);

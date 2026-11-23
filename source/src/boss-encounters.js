@@ -8919,12 +8919,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         return (
           n.vfx.ring(r.x, s, r.z, 9, 14183167, 0.9),
           n.vfx.burst(r.x, s + 2, r.z, 15247615, 40, 10, I.Twinkle, 0.7, 0.8),
-          n.ui.banner(
-            c(`¡Pokémon Dominante!`),
-            c(`{name} irradia un aura poderosa y llama a los suyos`, { name: o.name }),
-            `#c25aff`,
-            { species: i, glyph: o.name },
-          ),
+          n.ui.bigBanners && n.ui.bossIntro(i, false, 1.4, o.name, c(`Dominante`), o.kind),
           n.audio.alarm(),
           n.cry(i),
           !0
@@ -8946,17 +8941,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         (this.list.push(o), (this.lastIndex = a));
         let s = n.enemies.y[a];
         (n.vfx.ring(r.x, s, r.z, 8, 7012218, 0.9), n.vfx.dust(r.x, s, r.z, 13154456, 18, 6));
-        let l = k.get(o.calls[0]).name;
         return (
-          n.ui.banner(
-            c(`¡Pokémon Invocador!`),
-            c(`{name} está llamando a sus {minion}. Encuéntralo antes de que se marche`, {
-              name: o.name,
-              minion: l,
-            }),
-            `#3ac85a`,
-            { species: i, glyph: o.name },
-          ),
+          n.ui.bigBanners && n.ui.bossIntro(i, false, 1.4, o.name, c(`Invocador`), o.kind),
           n.audio.alarm(),
           n.cry(i),
           !0

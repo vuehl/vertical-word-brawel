@@ -228,7 +228,7 @@ function drawEvolutionStamp(ctx,progress){
   const press=Math.sin(Math.PI*Math.max(0,(progress-.72)/.28));
   const size=.80+.06*(1-fall);
   ctx.save();ctx.translate(50,51-3*(1-fall));ctx.rotate(-.12-.06*(1-fall));
-  ctx.scale(size*(1+.04*press),size*(1-.08*press));ctx.globalAlpha*=fall;
+  ctx.scale(size*(1+.04*press),size*(1-.08*press));ctx.globalAlpha*=.6+.4*fall;
   polygon(ctx,[[-49,-48],[-43,-52],[44,-51],[49,-46],[48,43],[43,49],[-46,48]],'#fff2d7');
   ctx.lineJoin='round';ctx.lineWidth=3;
   polygon(ctx,[[-42,-43],[39,-44],[42,-40],[41,39],[-40,41],[-43,38]],null,'#943b29');
@@ -264,7 +264,7 @@ export function evolutionResult(from,to,look,before,after){
   node.setAttribute('aria-label','进阶完成，'+route+'，最大生命 '+before+' → '+after);
   function paint(progress){
     print.clearRect(0,0,320,66);
-    const enter=Math.min(1,.35+progress*2.6);
+    const enter=Math.min(1,.65+progress*2.6);
     print.save();print.translate(-6*(1-enter),0);print.globalAlpha=enter;
     print.drawImage(face,0,0,320,66);
     print.restore();

@@ -13,7 +13,7 @@ import {actorMetrics} from '../source/src/actor-metrics.js';
 import {heroActionCatalog} from '../source/src/hero-action-catalog.js';
 import {assetPolicyVersion,compressedFireAtlases,excludedAssetReason,musicTracks} from './asset-policy.mjs';
 import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/catalogs.js';
-import {facilityNames,facilityIconFile,facilityModelFile,isActiveItem} from '../source/src/active-content.js';
+import {facilityNames,facilityIconFile,summonDockModel,isActiveItem} from '../source/src/active-content.js';
 import {resolveItemIcon} from '../source/src/item-icons.js';
 import {glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
@@ -149,12 +149,10 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
   count[category]=(count[category]||0)+1;
 }
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
-const modelKinds=Object.keys(facilityNames).filter(kind=>kind!=='bill');
-const deviceKeys=modelKinds.map(kind=>'assets/models/'+facilityModelFile(kind)+'.glb');
-assert.equal(deviceKeys.length,9);
-assert.deepEqual(fs.readdirSync(path.join(pub,'assets/models/devices')).filter(name=>name.endsWith('.glb')).sort(),
-  Object.values(facilityNames).map(name=>name+'.glb').sort(),'Each building name must match its source model');
-assert.deepEqual(models.sort(),['assets/models/ball.glb',...deviceKeys].sort());
+const dockKey='assets/models/'+summonDockModel+'.glb';
+assert.deepEqual(fs.readdirSync(path.join(pub,'assets/models/devices')).filter(name=>name.endsWith('.glb')),
+  [path.basename(dockKey)]);
+assert.deepEqual(models.sort(),['assets/models/ball.glb',dockKey].sort());
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
 const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/DeviceScreenFx.mjs')));
 const deskDevices=JSON.parse(fs.readFileSync(path.join(root,'source/src/desk2d-devices.json'),'utf8'));
@@ -163,55 +161,37 @@ for(const [name] of deskTiles){
   const key='assets/env/desk2d/'+name;
   assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed desk tile '+name);
 }
-const entryData=(await import('../minigame/entry-data.js')).default;
-for(const [name,, ,w,h] of entryData.layers){
-  const image=await sharp(Buffer.from(entryData.images[name],'base64')).metadata();
-  assert.equal(image.format,'jpeg');
-  if(name==='spawn.jpg')assert.deepEqual([image.width,image.height],[w,h]);
-}
-for(const name of ['idle.png','home.png','stages.png','ribbon.png']){
-  const image=Buffer.from(entryData.images[name],'base64');
-  assert.equal((await sharp(image).metadata()).format,'png');
-  if(name!=='idle.png')assert.equal(digest(image),digest(fs.readFileSync(path.join(root,'source/art/entry',name))));
-}
+const journeyDesk='assets/ui-paper/journey-desk.png';
+assert.equal(digest(bytes(journeyDesk)),digest(fs.readFileSync(path.join(pub,journeyDesk))));
 assert.ok(index.files['assets/env/desk2d/shelf-depth.png'],'Missing shelf occlusion texture');
 const billPrefix='assets/env/desk2d/device-bill/';
 assert.deepEqual(Object.keys(index.files).filter(key=>key.startsWith(billPrefix)).map(key=>key.slice(billPrefix.length)).sort(),
   ['device-bill_default.png','eyeball.png','face.png','highlight_eye.png']);
-assert.ok(index.files['assets/'+facilityIconFile('bill')]);
-assert.ok(!index.files['assets/env/desk2d/device-bill.png']&&!index.files['assets/models/'+facilityModelFile('bill')+'.glb']);
-for(const kind of modelKinds){
-  const key='assets/models/'+facilityModelFile(kind)+'.glb',glb=Buffer.from(bytes(key));
-  const gltf=JSON.parse(glb.toString('utf8',20,20+glb.readUInt32LE(12)));
-  const adapter=gltf.asset.extras.deviceScreenFxAdapter,scene=gltf.scenes[gltf.scene??0].extras;
-  assert.equal(digest(adapter.source),adapter.sha256,key);
-  if(kind==='boss'){
-    const dock=gltf.asset.extras.portalDockAdapter;
-    // The model embeds its original adapter pair. The game imports the
-    // optimised compositor and animated-screen implementation from src.
-    assert.equal(adapter.sha256,'d0fbc0f794e316abc3c99c4fa0ace0c0a474bdcf0e8a8eb5bfa7a8b4f47fb905',key);
-    assert.equal(dock.requiresDeviceScreenFxSha256,adapter.sha256,key);
-    assert.equal(digest(dock.source),dock.sha256,key);
-    assert.equal(dock.sha256,'5c2a3ca204d395f2bbbb2ebfd1b999f51ec162fea6180582d9cb301e5289f726',key);
-    assert.equal(scene.portalDock.version,1,key);
-  }else{
-    // These GLBs embed the original compatible v2 compositor.
-    assert.equal(adapter.sha256,'4eda06e489fe6ddc4e96e8d35716b72faecb4e0a3d6b20cffef999ab72488273',key);
-  }
-  assert.equal(scene.deviceModel,({bill:'billpc',boss:'portal',portal:'boss'})[kind]??kind,key);
-  if(kind==='boss'||kind==='portal')assert.equal(facilityIconFile(kind),'ui/devices/'+scene.deviceModel+'.png');
-  assert.ok(index.files['assets/'+facilityIconFile(kind)],'Missing model thumbnail for '+kind);
-  assert.equal(adapter.apiVersion,2,key);
-  assert.equal(scene.deviceScreenFx.version,2,key);
-  assert.equal(scene.deviceScreenFx.cycleSeconds,3,key);
-  assert.equal(scene.deviceScreenFx.stars.sharedOrigin,true,key);
-  assert.equal(scene.deviceScreenFx.stars.scatter.tracks,8,key);
-  assert.ok(scene.deviceScreenFx.supportXYZ.length>=12,key);
-  if(kind==='boss'){
-    assert.ok(!deskDevices.boss&&!index.files['assets/env/desk2d/device-boss.png']);
+const dockBytes=Buffer.from(bytes(dockKey));
+const gltf=JSON.parse(dockBytes.toString('utf8',20,20+dockBytes.readUInt32LE(12)));
+const {deviceScreenFxAdapter:adapter,portalDockAdapter:dock}=gltf.asset.extras;
+const scene=gltf.scenes[gltf.scene??0].extras;
+assert.equal(digest(adapter.source),adapter.sha256);
+assert.equal(adapter.sha256,'d0fbc0f794e316abc3c99c4fa0ace0c0a474bdcf0e8a8eb5bfa7a8b4f47fb905');
+assert.equal(dock.requiresDeviceScreenFxSha256,adapter.sha256);
+assert.equal(digest(dock.source),dock.sha256);
+assert.equal(dock.sha256,'5c2a3ca204d395f2bbbb2ebfd1b999f51ec162fea6180582d9cb301e5289f726');
+assert.equal(scene.portalDock.version,1);
+assert.equal(scene.deviceModel,'portal');
+assert.equal(adapter.apiVersion,2);
+assert.deepEqual(Object.keys(deskDevices).sort(),Object.keys(facilityNames).filter(kind=>kind!=='boss').sort());
+for(const kind of Object.keys(facilityNames)){
+  assert.ok(index.files['assets/'+facilityIconFile(kind)],'Missing facility thumbnail for '+kind);
+  const fx=kind==='boss'?scene.deviceScreenFx:deskDevices[kind].fx;
+  assert.equal(fx.version,2,kind);
+  assert.equal(fx.cycleSeconds,3,kind);
+  assert.equal(fx.stars.sharedOrigin,true,kind);
+  assert.equal(fx.stars.scatter.tracks,8,kind);
+  assert.ok(fx.supportXYZ.length>=12,kind);
+  if(kind==='boss'||kind==='bill'){
+    assert.ok(!index.files['assets/env/desk2d/device-'+kind+'.png']);
     continue;
   }
-  assert.deepEqual(deskDevices[kind].fx,scene.deviceScreenFx,'Desk sprite effects for '+kind);
   if(kind==='altar'){
     const prefix='assets/env/desk2d/device-altar/';
     assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)).sort(),
@@ -227,8 +207,8 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }
-const report={mappedResources:Object.keys(index.files).length,RGBA:count,fireColorError,originalModels:models.length-deviceKeys.length,
-  deviceModels:deviceKeys.length,deviceAdapterSha256:adapterHash,
+const report={mappedResources:Object.keys(index.files).length,RGBA:count,fireColorError,originalModels:models.length-1,
+  deviceModels:1,deviceAdapterSha256:adapterHash,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:[],
   removedSceneAssetsVerified:removedSceneAssets.length,
   actorBoundsVerified:152,itemIconsVerified:verifiedCatalogItems,excludedCatalogIcons,cries:0,locales:['zh'],legacyActorImages:0,

@@ -5,7 +5,7 @@ import {altarLayers,altarPalette} from './desk-altar-art.js';
 import {berryLayers,applyBerryLayers} from './desk-berry-art.js';
 import {billLayers} from './bill-layers.js';
 import {installBillGaze} from './bill-gaze.js';
-import {w as Color,y as BufferGeometry,v as Attribute,I as Group,et as PlaneGeometry,K as Mesh,q as BasicMaterial,dt as Texture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
+import {ht as Vector3,w as Color,y as BufferGeometry,v as Attribute,I as Group,et as PlaneGeometry,K as Mesh,q as BasicMaterial,dt as Texture,ot as SRGB} from '../assets/three-DmSYIDKK.js';
 import {paperBox,hitsPaperBox} from './paper-collision.js';
 import {createDeskNavigation,createSpawnPlacement} from './desk-navigation.js';
 
@@ -145,13 +145,17 @@ function deskGeometry(t,key,strips,resolution=128){
 function deskSprite(t,key,strips,size,texture,layer=0){
   const geometry=deskGeometry(t,key,strips);
   const material=new BasicMaterial({map:texture,transparent:true,alphaTest:.08,toneMapped:false,fog:false});
-  t.deskOwned.push(material);
   const sprite=new Mesh(geometry,material);
   sprite.name=key;sprite.scale.setScalar(size);
   sprite.rotation.x=-pitch;
-  sprite.position.set(0,size*.3*Math.cos(pitch)+layer*.002*tilt,-size*.3*tilt+layer*.002*Math.cos(pitch));
+  const lift = size * (key === 'bill' ? 0.39 : 0.3);
+  sprite.position.set(0,lift*Math.cos(pitch)+layer*.002*tilt,-lift*tilt+layer*.002*Math.cos(pitch));
   sprite.renderOrder=layer*.001;
   return sprite;
+}
+// Geometry and textures belong to the zone. Each placed illustration owns its materials.
+export function disposeDeskDevice(root){
+  root?.traverse(mesh=>{if(mesh.isMesh)mesh.material.dispose();});
 }
 export async function deskDevice(t,kind,tier=0){
   const {size,height,footprintRadius,strips,fx,layers}=deviceSizes[kind];
@@ -181,8 +185,9 @@ export async function deskDevice(t,kind,tier=0){
     }));
     if(t.disposed)return null;
     const sprite=deskSprite(t,kind,strips,size,textures.base);
-    const pickup=deviceSizes.berry.pickup;
-    sprite.userData.pickupGeometry=deskGeometry(t,'berry-pickup',pickup.strips,pickup.resolution);
+    const [u,v]=deviceSizes.berry.pickupCenter;
+    sprite.updateMatrix();
+    root.userData.pickupCenter=new Vector3(u-.5,.5-v,0).applyMatrix4(sprite.matrix);
     root.userData.setVisualState=applyBerryLayers(sprite.material,textures,t.shared.uTime);
     root.add(sprite);return root;
   }

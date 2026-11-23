@@ -12,25 +12,73 @@ export async function reviewMapWind(page,dir){
     },selector);
     await page.touchscreen.tap(point.x,point.y);await draw();
   };
-  const camera=await page.evaluate(async()=>{
-    const run=app.run,facilities=run.interactables;
-    const camera=facilities.list.find(f=>f.kind==='ditto');
+  await page.setViewport({width:320,height:568,deviceScaleFactor:3});
+  const inventory=await page.evaluate(async()=>{
+    const r=app.run,p=r.player,f=r.interactables,camera=f.list.find(building=>building.kind==='ditto');
     await camera.modelReady;
-    const player=run.player,position=player.pos.clone();
-    const key='razor-claw',before=player.items.get(key)??0;
-    player.addItem(key);
-    player.pos.set(camera.x,camera.y,camera.z);
-    for(let i=0;i<90;i++)facilities.update(0,1/60);
-    const dialog=run.ui.modalEl.querySelector('[data-choice="showDitto"]');
-    const title=dialog.querySelector('h2').textContent;
-    const index=[...player.items.keys()].indexOf(key);
-    dialog.querySelector('[data-offer="'+index+'"]').click();
-    const result={title,visible:!!camera.model,used:camera.used,copied:player.items.get(key)===before+2,state:run.state};
-    player.removeItem(key);player.removeItem(key);
-    player.pos.copy(position);
+    window.cameraStart={position:p.pos.clone(),time:r.time,items:new Map(p.items)};
+    for(const key of ['razor-claw','stick','big-root','bicycle','repel','smoke-ball','honey','lucky-punch'])p.addItem(key);
+    while(p.canHold('stick'))p.addItem('stick');
+    p.pos.set(camera.x,camera.y,camera.z);
+    f.update(0,0);
+    await new Promise(resolve=>setTimeout(resolve,f.dwellDuration*1000));
+    f.update(0,f.dwellDuration);
+    return [...p.items.keys()];
+  });
+  await draw();
+  const copyLayout=()=>page.evaluate(()=>{
+    const modal=app.run.ui.modalEl,list=modal.querySelector('.zx-item-body'),close=modal.querySelector('.paper-dismiss-button');
+    return {title:modal.querySelector('h1').textContent,keys:[...list.children].map(card=>card.dataset.itemChoice),
+      full:list.querySelector('[data-item-choice="stick"]').disabled,team:!!modal.querySelector('.pk-btn'),
+      close:close.getBoundingClientRect(),list:list.getBoundingClientRect(),offset:list.scrollTop,max:list.scrollHeight-list.clientHeight,
+      outside:!list.contains(close)};
+  });
+  const before=await copyLayout();
+  assert.equal(before.title,'道具复制');assert.deepEqual(before.keys,inventory);
+  const artwork=await page.evaluate(()=>{
+    const modal=app.run.ui.modalEl,style=inspected.env.getComputedStyle;
+    return {subtitle:!!modal.querySelector('.zx-paper-upgrade-head small'),
+      cards:[...modal.querySelectorAll('[data-item-choice]')].map(card=>{
+        const picture=card.querySelector('.zx-item-image'),name=card.querySelector('.zx-pick-name>b');
+        const box=picture.getBoundingClientRect(),key=card.dataset.itemChoice;
+        return {key,loaded:picture.complete&&picture.naturalWidth>0&&picture.src.includes('/items/'+key+'.png'),
+          iconOnLeft:box.width>0&&box.right<=card.querySelector('.zx-pick-copy').getBoundingClientRect().left,
+          opacity:Number(style(card).opacity||1),quality:card.dataset.quality,ink:style(name).color};
+      })};
+  });
+  assert.equal(artwork.subtitle,false);
+  for(const card of artwork.cards){
+    assert.ok(card.loaded&&card.iconOnLeft,JSON.stringify(card));
+    if(card.quality==='rare'){assert.equal(card.opacity,1);assert.equal(card.ink.toLowerCase(),'#244e7e');}
+  }
+  assert.ok(before.full&&!before.team&&before.outside&&before.max>0&&before.close.height>0&&before.close.y>=before.list.bottom);
+  const origin=await page.evaluate(()=>inspected.doc.getElementById('game').getBoundingClientRect());
+  const x=before.list.x+before.list.width/2-origin.x,y=before.list.bottom-12-origin.y;
+  await page.screenshot({path:path.join(dir,'polaroid-inventory.png')});
+  await page.touchscreen.touchStart(x,y);await page.touchscreen.touchMove(x,y-120);await page.touchscreen.touchEnd();
+  await draw();
+  const after=await copyLayout();
+  assert.ok(after.offset>before.offset);assert.deepEqual(after.close,before.close);
+  await tap('.zx-review-copy .paper-dismiss-button');
+  const canceled=await page.evaluate(()=>{
+    const run=app.run,f=run.interactables,camera=f.list.find(b=>b.kind==='ditto');
+    const result={state:run.state,used:camera.used};f.interact(camera);return result;
+  });
+  assert.deepEqual(canceled,{state:'play',used:false});await draw();
+  const quantity=await page.evaluate(()=>app.run.player.items.get('razor-claw'));
+  await tap('.zx-review-copy [data-item-choice="razor-claw"]');
+  const copied=await page.evaluate(()=>{
+    const r=app.run,p=r.player,f=r.interactables,camera=f.list.find(b=>b.kind==='ditto');
+    const result={count:p.items.get('razor-claw'),seconds:camera.data.regenAt-r.time,used:camera.used};
+    r.time=camera.data.regenAt-.01;f.update(0,0);f.interact(camera);result.beforeExpiry=r.state;
+    r.time+=.01;f.update(0,0);f.interact(camera);result.reopened=!!r.ui.modalEl?.querySelector('.zx-item-body');
+    r.ui.modalEl?.querySelector('.paper-dismiss-button')?.click();
+    p.pos.copy(cameraStart.position);r.time=cameraStart.time;p.items=new Map(cameraStart.items);p.recompute();
     return result;
   });
-  assert.deepEqual(camera,{title:'拍立得 · 选择要复制的道具',visible:true,used:true,copied:true,state:'play'});
+  assert.deepEqual(copied,{count:quantity+1,seconds:60,used:true,beforeExpiry:'play',reopened:true});
+  console.log('Polaroid inventory, touch scrolling, fixed close and 60-second cooldown verified.');
+  if(process.argv.includes('--polaroid'))return;
   await page.evaluate(()=>{
     const r=app.run,p=r.player.pos;
     const kinds=['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'];
