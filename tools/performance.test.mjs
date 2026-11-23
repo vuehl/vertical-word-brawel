@@ -5,8 +5,37 @@ import {paperBox,hitsPaperBox,resolvePaperBox} from '../source/src/paper-collisi
 import {updatePaperVisibility} from '../source/src/paper-visibility.js';
 import {separateCrowd} from '../source/src/crowd-separation.js';
 import {FramePacer,CombatClock} from '../source/src/frame-pacing.js';
-import {warmCombatShaders,warmCombatDraw} from '../source/src/combat-warmup.js';
+import {CombatIdleWarmup,warmCombatShaders,warmCombatDraw} from '../source/src/combat-warmup.js';
 import {readRuntimeInfo} from '../platform/device.mjs';
+
+test('idle combat work waits for stable 30 FPS and retries a full cache without draining a backlog',()=>{
+  const warm=new CombatIdleWarmup(),gap=1000/30,requests=[];
+  let now=performance.now(),room=false;
+  const run={director:{cardsDrawn:1,cards:[{id:20}]},sprites:{warmEnemyGlyph(id,word){
+    requests.push([id,word]);return room;
+  }}};
+  function frame(interval=gap,spent=4,target=gap){
+    now+=interval;warm.afterFrame(run,target,interval,target-spent,now);
+  }
+  for(let i=0;i<30;i++)frame(1000/60,4,1000/60);
+  frame(80);
+  for(let i=0;i<14;i++)frame();
+  assert.equal(requests.length,0);
+  for(let i=0;i<2;i++)frame();
+  assert.equal(requests.length,1);
+  room=true;
+  for(let i=0;i<6;i++)frame();
+  assert.deepEqual(requests[1],requests[0]);
+  frame(gap,25);
+  for(let i=0;i<12;i++)frame();
+  assert.equal(requests.length,2);
+  for(let i=0;i<5;i++)frame();
+  assert.equal(requests.length,3);
+  assert.notDeepEqual(requests[2],requests[1]);
+  run.director={cardsDrawn:1,cards:[{id:21}]};
+  for(let i=0;i<6;i++)frame();
+  assert.equal(requests.at(-1)[0],21);
+});
 
 test('combat ticks retain the selected cadence through jitter and discard a stall backlog',()=>{
   for(const fps of [30,60]){

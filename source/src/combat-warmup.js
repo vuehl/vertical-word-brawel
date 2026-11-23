@@ -1,3 +1,6 @@
+import {enemyWords,enemySpeciesWord} from './character-rules.js';
+import {formCopy} from './form-copy.js';
+
 // Compile invisible combat pools too, while the loading screen is still up.
 // The scene is rendered into the composer's target, so use that color space
 // for compilation. Never leave that target bound across an asynchronous wait.
@@ -32,5 +35,44 @@ export function warmCombatDraw(run){
     run.r.render(0);
   }finally{
     for(const {mesh,visible,count} of saved){mesh.visible=visible;mesh.count=count;}
+  }
+}
+
+// Only prepare CPU-side batches for the resident monster atlas. Native decode,
+// texture uploads and shader compilation cannot be interrupted to meet a deadline.
+export class CombatIdleWarmup {
+  stable=0;
+  next=0;
+  cursor=0;
+  disabled=false;
+  afterFrame(run,gap,interval,remaining,now){
+    if(this.disabled)return;
+    if(gap!==1000/30||interval<=0||interval>gap*1.2||remaining<gap*.4){
+      this.stable=0;
+      this.next=Math.max(this.next,now+500);
+      return;
+    }
+    if(++this.stable<6||now<this.next)return;
+    this.next=now+150;
+    const director=run.director;
+    if(this.director!==director||this.generation!==director.cardsDrawn){
+      this.director=director;
+      this.generation=director.cardsDrawn;
+      this.cursor=0;
+    }
+    const cards=director.cards,count=Math.min(3,cards.length);
+    if(this.cursor>=count*enemyWords.length)return;
+    const id=cards[cards.length-1-this.cursor%count].id;
+    const index=Math.floor(this.cursor/count);
+    const word=formCopy[id]?enemySpeciesWord(id):enemyWords[index];
+    try{
+      // When all speculative slots are occupied, revisit this candidate later.
+      if(run.sprites.warmEnemyGlyph(id,word))this.cursor++;
+    }catch(error){
+      this.disabled=true;
+      console.warn('战斗空闲预热已停止',error);
+    }
+    // A single allocation is indivisible. Back off if it exceeded its slice.
+    if(performance.now()-now>2){this.next=now+2000;this.stable=0;}
   }
 }

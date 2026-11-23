@@ -5,6 +5,7 @@ import {createHeroPoseTexture,loadedHeroRig,prepareHeroStrokes} from './hero-pos
 import {heroActionCatalog} from './hero-action-catalog.js';
 import {heroActionFrame} from './hero-actions.js';
 import {applyShelfMaterial} from './desk-shelf.js';
+import {actorMetrics} from './actor-metrics.js';
 const paintJobs=[];
 // Slightly lighter versions of the supplied hero colors, in texture linear space.
 const allyColors={
@@ -181,10 +182,37 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     }
     for(const page of pages){await Promise.all(page.jobs);if(!disposed)renderer.initTexture(page.texture);}
   };
-  run.sprites.get=(...args)=>skin(get(...args),args[2]);
+  const unusedWarmGlyphs=new Set();
+  run.sprites.warmEnemyGlyph=(id,word)=>{
+    if(disposed||!actorMetrics[id]||!monsterTexture.image||textures.get(word)?.texture!==monsterTexture)return true;
+    if(run.sprites.batches.has(id+':'+word))return true;
+    if(unusedWarmGlyphs.size>=6){
+      // The normal sprite-cache trim can evict an unclaimed batch under pressure.
+      for(const batch of unusedWarmGlyphs){
+        if(run.sprites.batches.get(batch.zxBatchKey)!==batch)unusedWarmGlyphs.delete(batch);
+      }
+      if(unusedWarmGlyphs.size>=6)return false;
+    }
+    const batch=skin(get(id,true,word),word);
+    batch.warmOnly=true;
+    unusedWarmGlyphs.add(batch);
+    return true;
+  };
+  run.sprites.discardUnusedWarmGlyphs=()=>{
+    for(const batch of unusedWarmGlyphs){
+      const key=batch.zxBatchKey;
+      if(run.sprites.batches.get(key)===batch){run.sprites.batches.delete(key);batch.dispose();}
+    }
+    unusedWarmGlyphs.clear();
+  };
+  run.sprites.get=(...args)=>{
+    const batch=get(...args);
+    if(batch.warmOnly){batch.warmOnly=false;unusedWarmGlyphs.delete(batch);}
+    return skin(batch,args[2]);
+  };
   for(const batch of run.sprites.batches.values())skin(batch);
   run.sprites.clear=()=>{
-    disposed=true;clear();batches.clear();
+    disposed=true;unusedWarmGlyphs.clear();clear();batches.clear();
     playerEntry?.texture.dispose();playerEntry=null;monsterTexture.dispose();
     for(const {texture} of animations.values())texture.dispose();
     animations.clear();

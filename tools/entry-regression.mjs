@@ -9,7 +9,7 @@ export async function verifyEntry({page,tap,dir}){
   const capture=name=>page.screenshot({path:path.join(dir,name+'.png')});
   const hit=async(x,y)=>{
     const {scale,x:left,y:top}=entryLayout(await page.evaluate(()=>({...inspected.env.entryViewport()})));
-    await page.evaluate((x,y)=>window.tap(x,y),left+x*scale,top+y*scale);
+    await page.touchscreen.tap(left+x*scale,top+y*scale);
   };
   await screen('home');
   await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed);
@@ -34,7 +34,25 @@ export async function verifyEntry({page,tap,dir}){
     animated=!before.equals(await crop(await page.screenshot()));
   }
   assert.ok(animated,'The idle atlas must change the visible hero while the menu stands still');
-  await hit(190,650);await screen('map');await capture('02-stages');
+  // Some input adapters give window x/y at press and an empty touch list at release.
+  const v=await page.evaluate(()=>({...inspected.env.entryViewport()}));
+  const {scale,x,y}=entryLayout(v);
+  await page.evaluate((x,y)=>{
+    const touch={identifier:7,x,y};
+    const press=()=>inspected.touches('down',{touches:[touch],changedTouches:[touch]});
+    const finish=kind=>inspected.touches(kind,{touches:[],changedTouches:[]});
+    press();finish('cancel');
+    if(app.screen.dataset.page!=='home')throw Error('Cancelled press opened a page');
+    press();
+    for(const dy of [-35,0]){
+      const moved={...touch,y:y+dy};
+      inspected.touches('move',{touches:[moved],changedTouches:[moved]});
+    }
+    finish('up');
+    if(app.screen.dataset.page!=='home')throw Error('Drag opened a page');
+    press();finish('up');
+  },x+190*scale,y+650*scale);
+  await screen('map');await capture('02-stages');
   const selected=()=>page.evaluate(()=>Number(app.screen.dataset.tier));
   assert.equal(await selected(),0);
   await hit(240,623);assert.equal(await selected(),0,'A locked tier cannot be started');

@@ -96,7 +96,7 @@ export async function setup(host) {
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
   const uiAssets=await readUIAssets(host.files);
-  let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets),entrySceneVisible=false,entryHitScreen=null,entryArtResident=true;
+  let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets),entrySceneVisible=false,entryArtResident=true;
   let draw=null,active=null,captured=new Map(),pointers=new Map();
   const upgradeCue=run=>run?.state==='play'&&!run.coop&&run.pendingLevels>0&&run.evoHold<=0&&!run.upgradeTiming.waiting(run.ult)&&run.ui.experienceReady?.()===false;
   const frozenUpgradeKey=()=>{
@@ -243,7 +243,7 @@ export async function setup(host) {
     // controls that actually changed; an empty-space swipe needs no UI upload.
     if(kind!=='move'&&win.__pb?.run?.state!=='play'&&!modalTransition.element)uiFrames.invalidate(false,true);
     const local=t=>{
-      const x=(t.clientX??t.pageX)-view.x,y=(t.clientY??t.pageY)-view.y;
+      const x=(t.clientX??t.pageX??t.x)-view.x,y=(t.clientY??t.pageY??t.y)-view.y;
       return {...t,identifier:t.identifier,clientX:x,clientY:y,pageX:x,pageY:y};
     };
     const all=Array.from(event.touches||[],local);
@@ -260,12 +260,13 @@ export async function setup(host) {
     }
     if(!changed.length){
       if(kind==='up'||kind==='cancel'){
-        // A remaining contact still owns its control. Only cancel missing IDs
-        // when the platform omits the final coordinates; never synthesize a tap.
+        // A single entry-button press can finish at its last known position.
+        // Ambiguous releases and combat contacts still receive cancellation.
         const live=new Set(all.map(t=>t.identifier??0));
-        changed=Array.from(pointers,([identifier,p])=>({identifier,clientX:p.x,clientY:p.lastY}))
+        const single=pointers.size===1?pointers.values().next().value:null;
+        changed=Array.from(pointers,([identifier,p])=>({identifier,clientX:p.lastX,clientY:p.lastY}))
           .filter(t=>!live.has(t.identifier));
-        kind='cancel';
+        if(!single?.entryButton||event.touches==null||live.size)kind='cancel';
       }else changed=kind==='down'?all.filter(t=>!pointers.has(t.identifier??0)):all;
     }
     const touchType='touch'+({down:'start',move:'move',up:'end',cancel:'cancel'}[kind]);
@@ -275,12 +276,12 @@ export async function setup(host) {
       if(kind==='down'){
         if(x<0||y<0||x>=view.w||y>=view.h)continue;
         const entry=env.__zixingApp?.screen;
-        if(entry?.dataset.entryPage && entry!==entryHitScreen){
-          layout.refresh('entry');entryHitScreen=entry;
-        }
-        const target=layout.hit(x,y);p={target,x,y,lastX:x,lastY:y,scrolled:false};pointers.set(id,p);
+        const entryButton=entry?.entryTargetAt?.(x,y);
+        const target=entryButton||(entry?.entryTargetAt?entry:layout.hit(x,y));
+        p={target,entryButton,x,y,lastX:x,lastY:y,scrolled:false};pointers.set(id,p);
       }
       if(!p)continue;
+      if(p.entryButton&&Math.hypot(x-p.x,y-p.y)>=15)p.scrolled=true;
       const target=captured.get(id)||p.target,options={pointerId:id,pointerType:'touch',clientX:x,clientY:y,pageX:x,pageY:y,button:0,buttons:kind==='up'?0:1,isPrimary:pointers.keys().next().value===id,bubbles:true};
       if(kind==='move'&&target!==win.__pb?.run?.ui?.touch?.el&&p.target.type!=='range'){
         for(let sc=p.target;sc;sc=sc.parentElement){
@@ -300,7 +301,8 @@ export async function setup(host) {
       const input=p.target.closest?.('input,textarea');
       if(input?.type==='range'&&(kind==='down'||kind==='move'))setRange(input,x);
       if(kind==='up'||kind==='cancel'){
-        if(kind==='up'&&!p.scrolled&&Math.hypot(x-p.x,y-p.y)<15&&!p.target.closest?.('[disabled]')){
+        const releasedOnButton=!p.entryButton||env.__zixingApp?.screen?.entryTargetAt?.(x,y)===p.entryButton;
+        if(kind==='up'&&releasedOnButton&&!p.scrolled&&Math.hypot(x-p.x,y-p.y)<15&&!p.target.closest?.('[disabled]')){
           if(input){if(input.type==='checkbox'){input.checked=!input.checked;input.dispatchEvent(new InputEvent('change'));}
             else if(input.type==='range')input.dispatchEvent(new InputEvent('change'));else if(!['button','submit'].includes(input.type))keyboard(input);}
           p.target.dispatchEvent(new InputEvent('click',options));
@@ -372,9 +374,7 @@ export async function setup(host) {
       mutations(observer.takeRecords());
       const entry=env.__zixingApp?.screen;
       if(host.entryScene&&entry?.dataset.entryPage){
-        // Native touch dispatch uses the same Yoga boxes as the other menus.
         uiFrames.draw(now,'entry',layout,()=>{});
-        entryHitScreen=entry;
         const mode=entry.dataset.entryPage,app=env.__zixingApp;
         const live=app.menuScene?.drawEntry()||false;
         host.entryScene.page(mode,view,Number(entry.dataset.tier||0),Number(entry.dataset.progress||0),live);
@@ -382,7 +382,7 @@ export async function setup(host) {
         return;
       }
       if(entrySceneVisible){
-        host.entryScene.suspend();entrySceneVisible=false;entryHitScreen=null;uiFrames.invalidate(true,true);
+        host.entryScene.suspend();entrySceneVisible=false;uiFrames.invalidate(true,true);
       }
       if(env.__pb?.run?.state==='play'&&entryArtResident){
         host.entryScene?.releaseArt();entryArtResident=false;
@@ -426,7 +426,6 @@ export async function setup(host) {
     env.devicePixelRatio=view.dpr;
     scale=env.uiPixelRatio=uiScale(view);uiCanvas.width=Math.round(view.width*scale);uiCanvas.height=Math.round(view.height*scale);
     layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);modalTransition.invalidate();
-    entryHitScreen=null;
     for(const query of queries.values()){
       const matches=mediaMatches(query.media,view);
       if(matches!==query.matches){query.matches=matches;query.dispatchEvent(new InputEvent('change',{matches,media:query.media}));}

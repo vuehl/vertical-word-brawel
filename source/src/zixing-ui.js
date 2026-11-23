@@ -250,12 +250,16 @@ export function createZixingUI(app,api) {
     });
     node.positionControls=()=>{
       const v=window.entryViewport(),{x,y,scale}=entryLayout(v);
-      for(const {target,rect:[left,top,w,h]} of targets){
+      for(const item of targets){
+        const {target,rect:[left,top,w,h]}=item;
         const height=Math.max(44,h*scale);
-        Object.assign(target.style,{position:'absolute',left:(x-v.x+left*scale)+'px',top:(y-v.y+(top+h/2)*scale-height/2)+'px',
-          width:w*scale+'px',height:height+'px',minWidth:'0px',minHeight:'0px',padding:'0px',margin:'0px'});
+        const bx=x-v.x+left*scale,by=y-v.y+(top+h/2)*scale-height/2,width=w*scale;
+        item.bounds={left:bx,top:by,right:bx+width,bottom:by+height};
+        Object.assign(target.style,{position:'absolute',left:bx+'px',top:by+'px',
+          width:width+'px',height:height+'px',minWidth:'0px',minHeight:'0px',padding:'0px',margin:'0px'});
       }
     };
+    node.entryTargetAt=(x,y)=>targets.find(({bounds:b})=>x>=b.left&&x<b.right&&y>=b.top&&y<b.bottom)?.target;
     node.positionControls();app.setScreen(node);return node;
   }
   window.addEventListener('resize',()=>app.screen?.positionControls?.());

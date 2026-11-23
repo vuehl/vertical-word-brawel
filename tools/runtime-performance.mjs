@@ -104,7 +104,7 @@ try{
     }
     if(development)return initial;
     await inspected.env.prepareForest();
-    if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Start failed');
+    if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw app.lastStartError??Error('Start failed');
     app.halted=true;app.run.godMode=true;app.run.queueLevelUp=()=>{};
     // startRun warms the transition frame before switching to play. Show the
     // gameplay HUD once before freezing frames for deterministic measurements.
@@ -119,7 +119,26 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--gourd-offscreen')){
+  if(process.argv.includes('--idle-warmup')){
+    const result=await page.evaluate(()=>{
+      const run=app.run,sprites=run.sprites,gap=1000/30,clock=run.time,count=run.enemies.count;
+      let now=performance.now();
+      // Drive the frame-budget inputs deterministically on the shipped renderer.
+      for(let i=0;i<360;i++)run.idleWarmup.afterFrame(run,gap,gap,gap-4,now+=gap);
+      const pending=[...sprites.batches.values()].filter(batch=>batch.warmOnly);
+      if(!pending.length)throw Error('No active enemy glyph batches prepared');
+      const first=pending[0],unmoved=run.time===clock&&run.enemies.count===count;
+      const p=run.player.pos;
+      const slot=run.enemies.spawnProxy(first.id,p.x+2,p.y,p.z,0,1,first.zxGlyph);
+      const reused=slot>=0&&sprites.batches.get(first.zxBatchKey)===first&&!first.warmOnly;
+      sprites.discardUnusedWarmGlyphs();
+      return {pending:pending.length,reused,unmoved,kept:sprites.batches.has(first.zxBatchKey),
+        discarded:pending.slice(1).every(batch=>!sprites.batches.has(batch.zxBatchKey))};
+    });
+    console.log('Idle warmup:',result);
+    assert.ok(result.pending<=6&&result.reused&&result.unmoved&&result.kept&&result.discarded);
+    assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--gourd-offscreen')){
     const {reviewGourdOffscreen}=await import('./gourd-offscreen-regression.mjs');
     await reviewGourdOffscreen(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--facility-grey-rings')){

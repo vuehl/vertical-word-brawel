@@ -30,7 +30,7 @@ import {EnemyTelegraphs} from './enemy-telegraphs.js';
 import {CrowdGrid} from './crowd-grid.js';
 import {crowdStep,separationBudget} from './crowd-cadence.js';
 import {FramePacer,CombatClock} from './frame-pacing.js';
-import {warmCombatShaders,warmCombatDraw} from './combat-warmup.js';
+import {CombatIdleWarmup,warmCombatShaders,warmCombatDraw} from './combat-warmup.js';
 import {UpgradeEffects,EVOLUTION_REVEAL,EVOLUTION_DURATION} from './upgrade-effects.js';
 import {createActorTypeLookup} from './actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
@@ -45601,6 +45601,7 @@ var GT = 15,
       await Promise.all([this.buildStageAsync(true), prepareDragonChant()]);
       this.applyBoosts();
     }
+    idleWarmup=new CombatIdleWarmup();
     async openStage(onProgress) {
       let e = [...new Set([...this.stageSprites(),...Array.from(this.sprites.batches.values(),batch=>batch.id)])];
       const check=()=>{if(this.disposed)throw Error('本局已结束');};
@@ -45779,6 +45780,7 @@ var GT = 15,
           this.ult.clear());
       this.stageTime = 0;
       this.player.moveSlots = this.stage > 1 && this.meta.lab('slot-move') ? 4 : 3;
+      this.sprites.discardUnusedWarmGlyphs();
       ((this.minibosses = new sb(this)),
         (this.events = new ub(this)),
         (this.director = new Av(this)),
@@ -79483,6 +79485,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       if ((requestAnimationFrame(this.loop), this.halted || (window.nativeUI && document.hidden))) {this.perf.active=false;this.pacer.reset();this.combatClock.run=null;this.last=null;return;}
       const gap = this.frameGap();
       if (!this.pacer.ready(e,gap,this.r.needsDraw)) return;
+      const frameWindow=Math.min(gap,this.pacer.next-e);
       const combat=this.run?.state==='play'&&!this.run.buildingStage&&!this.screen?.classList.contains('zx-loading-screen');
       const ticks=combat?this.combatClock.ticks(this.run,e,gap):1;
       if(!combat)this.combatClock.run=null;
@@ -79521,6 +79524,9 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           else e.frames++;
           e.last=now;e.active=true;
           if(now-e.started>=1000){e.fps=e.frames*1000/(now-e.started);e.frames=0;e.started=now;}
+          if(combat&&gap===1000/30&&!document.hidden&&!this.screen&&!this.run.buildingStage&&!this.run.dragonDuel){
+            this.run.idleWarmup.afterFrame(this.run,gap,elapsed*1000,frameWindow-(now-t),now);
+          }
         }else this.perf.active=false;
         ((this.failing = 0), this.adaptRes(performance.now() - t, (e - this.dynAt) / 1e3, e));
       } catch (e) {
