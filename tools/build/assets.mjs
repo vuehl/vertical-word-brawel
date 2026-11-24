@@ -23,6 +23,7 @@ const projectRoot=gameProject(root,development);
 const out=path.join(projectRoot,'minigame');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pokebonk-art-'));
 const packs = {art: {}, world: {}, text: {}, dragon_summon: {}};
+const filters = {world:{},dragon_summon:{}};
 const index = {};
 const generatedSprites={};
 const fontText=[];
@@ -36,8 +37,10 @@ function addPage(pack, data, extension) {
   packs[pack][name] = new Uint8Array(data);
   return pack + '/' + name;
 }
-function add(pack, key, data, extension = path.extname(key)) {
-  index[key] = addPage(pack,data,extension);
+function add(pack, key, data, extension = path.extname(key), filter) {
+  const ref=addPage(pack,data,extension);
+  index[key]=ref;
+  if(filter)filters[pack][ref.split('/')[1]]=filter;
 }
 function walk(dir) {
   return fs.readdirSync(dir, {withFileTypes:true}).flatMap(e =>
@@ -110,10 +113,9 @@ if(fs.existsSync(packRoot))for(const entry of fs.readdirSync(packRoot,{withFileT
   if(!target.startsWith(packRoot+path.sep))throw Error('Invalid generated package path');
   fs.rmSync(target,{recursive:true,force:true});
 }
-packModels(packs.world);
+filters.world['model-parts.bin']=['indices',packModels(packs.world)];
 for (const [name, entries] of Object.entries(packs)) {
-  // A 1 MiB window keeps the small icon block compressible alongside the large atlases.
-  const {bytes,rawSize}=packStream(entries,name==='text'?11:10,name==='art'?20:23);
+  const {bytes,rawSize}=packStream(entries,name,filters[name]);
   const dir=path.join(out,'packs',name);
   fs.mkdirSync(dir,{recursive:true});
   fs.writeFileSync(path.join(dir,'assets.br'),bytes);

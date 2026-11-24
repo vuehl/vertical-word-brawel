@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import {encodeLosslessAtlas} from './lossless-atlas.mjs';
 
 export const isAtlasIcon = key => /^assets\/(?:items|ui\/(?:devices|icons|types))\/[^/]+\.png$/.test(key);
 
@@ -38,8 +39,9 @@ export async function packIconAtlases(icons, addPage, index) {
         }
         frames.push([x+1,y+1,width,height]);
       }
-      const page=sharp(rgba,{raw:{width:pageWidth,height:pageHeight,channels:4}});
-      const bytes=await page.webp({lossless:true,effort:6}).toBuffer();
+      const raw={width:pageWidth,height:pageHeight,channels:4};
+      const bytes=pack==='world'?await encodeLosslessAtlas(rgba,raw):
+        await sharp(rgba,{raw}).webp({lossless:true,effort:6}).toBuffer();
       const ref=addPage(pack,bytes,'.webp');
       pages[ref.split('/')[1]]=frames;
       tiles.forEach(({key},tile)=>{index[key]=ref+'#'+tile;});

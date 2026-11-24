@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import sharp from 'sharp';
-import {packMeshBytes} from '../../source/src/effects/dragon-summon-hd/mesh-bytes.js';
+import {encodeLosslessAtlas} from './lossless-atlas.mjs';
 
 export const dragonDirectory='assets/vfx/dragon-summon-hd/';
 
@@ -8,7 +8,7 @@ export const dragonDirectory='assets/vfx/dragon-summon-hd/';
 // here so the desktop source, frame numbers and cinematic clock stay intact.
 export async function packDragonSummon(sourceFor,add) {
   const input=name=>sourceFor(dragonDirectory+name);
-  const emit=(name,data,extension)=>add('dragon_summon',dragonDirectory+name,data,extension);
+  const emit=(name,data,extension,filter)=>add('dragon_summon',dragonDirectory+name,data,extension,filter);
   const meta=JSON.parse(fs.readFileSync(input('manifest.json'),'utf8'));
   async function colorPages(name,width,height,columns,rows,quality) {
     const section=meta[name], sources=section.pages;
@@ -53,9 +53,10 @@ export async function packDragonSummon(sourceFor,add) {
       const src=(y*2*info.width+x*2)*3,next=src+info.width*3;
       for(let c=0;c<3;c++)mask[(y*width+x)*3+c]=Math.round((data[src+c]+data[src+3+c]+data[next+c]+data[next+3+c])/4);
     }
-    emit(file,await sharp(mask,{raw:{width,height,channels:3}}).webp({lossless:true,effort:6}).toBuffer(),'.webp');
+    emit(file,await encodeLosslessAtlas(mask,{width,height,channels:3}),'.webp');
   }
-  emit(arc.mesh,packMeshBytes(fs.readFileSync(input(arc.mesh))));
+  const indices=arc.frames.flatMap(frame=>frame.layers.map(layer=>[layer.indexByteOffset,layer.indexCount]));
+  emit(arc.mesh,fs.readFileSync(input(arc.mesh)),'.bin',['mesh',indices]);
   emit(meta.boss.file,await sharp(input(meta.boss.file)).webp({lossless:true,effort:6}).toBuffer(),'.webp');
   emit('manifest.json',Buffer.from(JSON.stringify(meta)));
 }

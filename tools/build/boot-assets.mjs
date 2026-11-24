@@ -75,7 +75,7 @@ export function addBootAssets(out, assets) {
     info.files[key]='text/'+name;
     if (previous && !Object.values(info.files).includes(previous)) delete entries[previous.slice('text/'.length)];
   }
-  const {bytes,rawSize}=packStream(entries,11);
+  const {bytes,rawSize}=packStream(entries,'text');
   info.packs.text=hash(bytes);
   info.rawSizes.text=rawSize;
   fs.writeFileSync(archive+'.next',bytes);

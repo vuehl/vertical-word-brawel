@@ -2,8 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {brotliDecompressSync} from 'node:zlib';
+import {packStream} from '../build/pack-resources.mjs';
+import {resourceEntries} from '../build/resource-stream.mjs';
 import codec from '../../platform/resource-codec.js';
 import {runLoadingSteps} from '../../source/src/performance/loading-work.js';
+
+test('archive filters preserve PCM headers, wrapped 16-bit indices, mesh padding and ordinary files',()=>{
+  const samples=Buffer.alloc(16);
+  [0,65535,1,32768,32767,2,2,0].forEach((value,i)=>samples.writeUInt16LE(value,2*i));
+  const wav=Buffer.concat([Buffer.from('524946460000000057415645666d74201000000001000100c05d000080bb0000020010006461746100000000','hex'),samples]);
+  wav.writeUInt32LE(wav.length-8,4);
+  wav.writeUInt32LE(samples.length,40);
+  const stereo=Buffer.from(wav);
+  stereo.writeUInt16LE(2,22);
+  const pool=Buffer.concat([Buffer.from([32]),samples,Buffer.from([1,2,3]),samples]);
+  const entries={'mono.wav':wav,'stereo.wav':stereo,'model.bin':pool,'mesh.bin':pool,'extra.txt':Buffer.from('text')};
+  const ranges=[[1,8],[20,8]];
+  const filters={'model.bin':['indices',ranges],'mesh.bin':['mesh',ranges]};
+  const packed=packStream(entries,'text',filters);
+  const raw=brotliDecompressSync(packed.bytes);
+  const manifest=JSON.parse(raw.toString('utf8',4,4+raw.readUInt32LE()));
+  assert.deepEqual(manifest.find(([name])=>name==='mono.wav')[2],['pcm16']);
+  assert.equal(manifest.find(([name])=>name==='stereo.wav').length,2);
+  for(const [name,bytes] of resourceEntries(raw))assert.deepEqual(Buffer.from(bytes),entries[name],name);
+  assert.throws(()=>packStream(entries,'world',{'model.bin':['indices',[[1,8],[15,2]]]}),/range/);
+});
 
 function models(){
   const pool=Uint8Array.from([3,5,7,11,13,17,19,23]);

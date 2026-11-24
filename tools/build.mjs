@@ -209,8 +209,14 @@ console.log('Native project:',(total/1048576).toFixed(2),'MiB, main:',(main/1048
 const playFiles=[...result.files.keys()].map(name=>({name,bytes:fs.statSync(path.join(playDir,name)).size}))
   .sort((a,b)=>b.bytes-a.bytes);
 console.log('Largest play script:',playFiles[0].name,playFiles[0].bytes,'bytes (limit 1.8 MiB).');
-// Keep a conservative 20 MiB preview budget, with room for compiler metadata.
-if(total>20*1048576-128*1024||main>4*1048576-64*1024)throw Error('WeChat preview package budget exceeded.');
+// WeChat allows 30 MiB across all packages and 4 MiB for the main package.
+// Reserve space for metadata added by DevTools.
+for(const [label,bytes,budget] of [
+  ['total package',total,30*1048576-128*1024],
+  ['main package',main,4*1048576-64*1024],
+]){
+  if(bytes>budget)throw Error(`WeChat ${label} exceeds the build budget: ${bytes} bytes (limit ${budget} bytes).`);
+}
 if(process.argv.includes('--analyze')){
   const attributed=new Map();
   for(const key of result.shippedOutputs)for(const [file,{bytesInOutput}] of Object.entries(result.metafile.outputs[key].inputs)){
