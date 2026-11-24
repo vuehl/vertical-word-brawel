@@ -12,6 +12,7 @@ import {updateDeskDeviceArt} from './desk-device-art.mjs';
 import {assetPolicyVersion,compressedFireAtlases,musicTracks,excludedAssetReason} from './asset-policy.mjs';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
 import {gameProject} from './project-target.mjs';
+import {dragonDirectory,packDragonSummon} from './dragon-summon-pack.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const source = path.join(root, 'source');
@@ -20,7 +21,7 @@ const development=process.argv.includes('--dev');
 const projectRoot=gameProject(root,development);
 const out=path.join(projectRoot,'minigame');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pokebonk-art-'));
-const packs = {art: {}, world: {}, text: {}};
+const packs = {art: {}, world: {}, text: {}, dragon_summon: {}};
 const index = {};
 const generatedSprites={};
 const fontText=[];
@@ -56,15 +57,16 @@ for (const folder of ['assets', 'overrides/assets']) {
       if(reason){excluded.set('assets/'+name,reason);continue;}
       const key = 'assets/' + name;
       // The home and character screens need the atlas before the first tap.
+      if(key.startsWith(dragonDirectory))continue;
       const targetPack=key==='assets/glyphs/atlas.png'?'text':pack;
       if (selected.has(key)) continue;
       selected.add(key);
       const input = sourceFor(key);
       const original = fs.readFileSync(input);
       if (name.endsWith('.png') && original.length > 3000) {
-        const options=compressedFireAtlases.has(key)
-          ? {quality:88,alphaQuality:100,effort:6,smartSubsample:true}
-          : {lossless:true,effort:category==='glyphs'?6:4};
+        const options=key==='assets/vfx/portal-screen.png'
+          ? {quality:87,alphaQuality:100,smartSubsample:true,effort:6}
+          : {lossless:true,effort:category==='glyphs'||compressedFireAtlases.has(key)?6:4};
         const webp = await sharp(original).webp(options).toBuffer();
         if (webp.length < original.length) { add(targetPack, key, webp, '.webp'); continue; }
       }
@@ -72,6 +74,7 @@ for (const folder of ['assets', 'overrides/assets']) {
     }
   }
 }
+await packDragonSummon(sourceFor,add);
 for (const file of walk(path.join(pub,'data'))) {
   const key = path.relative(pub,file).replaceAll('\\','/');
   const data=runtimeData(key,fs.readFileSync(file));

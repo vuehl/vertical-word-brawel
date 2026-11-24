@@ -1,86 +1,222 @@
 {
-  "tile": 256,
+  "tile": 192,
   "columns": 8,
-  "rows": 8,
+  "rows": 14,
   "clips": {
     "gust": {
       "first": 0,
-      "count": 8,
-      "fps": 20,
-      "source": "起风.gif",
+      "count": 4,
+      "fps": 15,
+      "pivot": 0.08,
+      "source": "大招/跑得没影.gif",
       "pages": [
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15
-      ]
+        4,
+        5,
+        4,
+        5
+      ],
+      "times": [
+        0,
+        60,
+        130,
+        190,
+        260
+      ],
+      "sha256": "794b4555a354cef9f7c07e10697e692c5560def14f3c806ee42d9628bbe18ec7"
     },
-    "hurricane": {
-      "first": 8,
-      "count": 8,
-      "fps": 20,
-      "source": "暴风.gif",
+    "attackLoops": {
+      "first": 4,
+      "count": 11,
+      "fps": 15,
+      "pivot": 0.1,
+      "source": "大招/刮倒一片.gif",
       "pages": [
+        4,
+        5,
+        6,
+        7,
         8,
         9,
         10,
         11,
         12,
         13,
-        14,
-        15
-      ]
+        14
+      ],
+      "times": [
+        0,
+        60,
+        130,
+        200,
+        260,
+        330,
+        400,
+        460,
+        530,
+        600,
+        660,
+        730
+      ],
+      "sha256": "9abab96010e4c1b61774ead06cba70741b17fa6437f741bb6ca7560570d3c84f"
     },
     "typhoon": {
-      "first": 16,
+      "first": 15,
       "count": 8,
       "fps": 20,
-      "source": "台风.gif",
+      "pivot": 0.08,
+      "source": "typhoon.png"
+    },
+    "wingLaunch": {
+      "first": 23,
+      "count": 9,
+      "fps": 20,
+      "pivot": 0.5,
+      "source": "翅膀攻击.gif",
       "pages": [
+        5,
+        6,
+        7,
         8,
         9,
         10,
         11,
         12,
-        13,
-        14,
-        15
-      ]
+        13
+      ],
+      "times": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400,
+        450
+      ],
+      "sha256": "e3c26c0c77168eff18f74f8e13d884a6c93b8c58c0d118738f9ded0eecb2f42e"
     },
     "wing": {
-      "first": 24,
+      "first": 32,
       "count": 4,
       "fps": 20,
+      "pivot": 0.5,
       "source": "翅膀攻击.gif",
       "pages": [
         8,
         9,
         10,
         11
-      ]
+      ],
+      "times": [
+        0,
+        50,
+        100,
+        150,
+        200
+      ],
+      "sha256": "e3c26c0c77168eff18f74f8e13d884a6c93b8c58c0d118738f9ded0eecb2f42e"
     },
-    "feather": {
-      "first": 28,
-      "count": 4,
+    "wingHit": {
+      "first": 36,
+      "count": 21,
       "fps": 20,
-      "source": "wind-supplement/羽毛舞.gif",
+      "pivot": 0.5,
+      "source": "翅膀攻击.gif",
       "pages": [
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32
+      ],
+      "times": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400,
+        450,
+        500,
+        550,
+        600,
+        650,
+        700,
+        750,
+        800,
+        850,
+        900,
+        950,
+        1000,
+        1050
+      ],
+      "sha256": "e3c26c0c77168eff18f74f8e13d884a6c93b8c58c0d118738f9ded0eecb2f42e"
+    },
+    "fusionFeather": {
+      "first": 57,
+      "count": 1,
+      "fps": 15,
+      "pivot": 0.5,
+      "source": "融合/残气乱刮.gif",
+      "pages": [
+        7
+      ],
+      "times": [
+        0,
+        60
+      ],
+      "sha256": "c3fc71495cd16a9a7c834ce5cc517df0b8e5b714d9e9145e05d447e4e4516098"
+    },
+    "turningFeather": {
+      "first": 58,
+      "count": 1,
+      "fps": 15,
+      "pivot": 0.5,
+      "source": "融合/卷着打转.gif",
+      "pages": [
+        6
+      ],
+      "times": [
+        0,
+        70
+      ],
+      "sha256": "ea630ac727a83e042aa1373215e463fe71ebe5d92bf2254837d7ab1abe2922c0"
+    },
+    "tackleRush": {
+      "first": 59,
+      "count": 16,
+      "fps": 20,
+      "pivot": 0.1,
+      "source": "撞击.gif",
+      "pages": [
+        5,
+        6,
+        7,
+        8,
         9,
         10,
         11,
-        12
-      ]
-    },
-    "wingHit": {
-      "first": 32,
-      "count": 9,
-      "fps": 20,
-      "source": "翅膀攻击.gif",
-      "pages": [
         12,
         13,
         14,
@@ -90,14 +226,44 @@
         18,
         19,
         20
-      ]
+      ],
+      "times": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400,
+        450,
+        500,
+        550,
+        600,
+        650,
+        700,
+        750,
+        800
+      ],
+      "sha256": "3a0fd0a19e22fb1bdcb86dff9864cb40d9729115fe7ff76c9817db61eb125ddf"
     },
-    "featherHit": {
-      "first": 41,
-      "count": 9,
+    "quickSpark": {
+      "first": 75,
+      "count": 24,
       "fps": 20,
-      "source": "wind-supplement/羽毛舞.gif",
+      "pivot": 0.5,
+      "source": "电光一闪.gif",
       "pages": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
         14,
         15,
         16,
@@ -106,42 +272,71 @@
         19,
         20,
         21,
-        22
-      ]
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28
+      ],
+      "times": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400,
+        450,
+        500,
+        550,
+        600,
+        650,
+        700,
+        750,
+        800,
+        850,
+        900,
+        950,
+        1000,
+        1050,
+        1100,
+        1150,
+        1200
+      ],
+      "sha256": "6bc43d4726588065f4df82849c6cf11f6a4fc961f9b07926b6bea73b2a3cfd4f"
     },
-    "tackleHit": {
-      "first": 50,
-      "count": 5,
+    "quickHalo": {
+      "first": 99,
+      "count": 8,
       "fps": 20,
-      "source": "撞击.gif",
+      "pivot": 0.5,
+      "source": "电光一闪.gif",
       "pages": [
+        5,
         6,
         7,
         8,
         9,
-        10
-      ]
-    },
-    "featherCast": {
-      "first": 55,
-      "count": 4,
-      "fps": 20,
-      "source": "wind-supplement/羽毛舞.gif",
-      "pages": [
-        6,
-        7,
-        8,
-        9
-      ]
-    },
-    "turningFeather": {
-      "first": 59,
-      "count": 1,
-      "fps": 20,
-      "source": "wind-supplement/卷着打转.gif",
-      "pages": [
-        10
-      ]
+        10,
+        11,
+        12
+      ],
+      "times": [
+        0,
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400
+      ],
+      "sha256": "6bc43d4726588065f4df82849c6cf11f6a4fc961f9b07926b6bea73b2a3cfd4f"
     }
   }
 }

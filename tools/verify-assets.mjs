@@ -17,6 +17,9 @@ import {facilityNames,facilityIconFile,summonDockModel,isActiveItem} from '../so
 import {resolveItemIcon} from '../source/src/item-icons.js';
 import {glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
+import {unpackMeshBytes} from '../source/src/dragon-summon-hd/mesh-bytes.js';
+import {dragonDirectory} from './dragon-summon-pack.mjs';
+import {portalScreenAtlas} from '../source/src/portal-screen-atlas.js';
 const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'source/public');
 const packs={};
 const digest=b=>createHash('sha256').update(b).digest('hex');
@@ -45,6 +48,37 @@ for(const [group,expected] of Object.entries(index.packs)){
 function bytes(key){const [group,file]=index.files[key].split('/');return packs[group][file];}
 // This WebP encodes palette indices as pixels. Any transcoding corrupts both themes.
 const chantAsset='assets/vfx/dragon-chant.webp';
+const meshAsset='assets/vfx/dragon-summon-hd/arc-mesh.bin';
+assert.equal(digest(unpackMeshBytes(bytes(meshAsset))),digest(fs.readFileSync(path.join(pub,meshAsset))));
+const sourceDragon=JSON.parse(fs.readFileSync(path.join(pub,dragonDirectory,'manifest.json')));
+const packedDragon=JSON.parse(Buffer.from(bytes(dragonDirectory+'manifest.json')));
+const dragonFiles=['manifest.json',packedDragon.arc.mesh,packedDragon.boss.file,...packedDragon.arc.pages,
+  packedDragon.orb.background.file,...packedDragon.orb.pages,...packedDragon.burst.pages];
+assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith(dragonDirectory)).sort(),dragonFiles.map(f=>dragonDirectory+f).sort());
+for(const name of dragonFiles)assert.ok(index.files[dragonDirectory+name].startsWith('dragon_summon/'),name);
+async function checkColorFrame(file,packed,width,height) {
+  const original=await sharp(path.join(pub,dragonDirectory,file)).removeAlpha().raw().toBuffer();
+  const rgb=await packed.resize(width,height).removeAlpha().raw().toBuffer();
+  assert.equal(rgb.length,original.length,file);
+  let squared=0;
+  for(let i=0;i<rgb.length;i++)squared+=(rgb[i]-original[i])**2;
+  assert.ok(Math.sqrt(squared/rgb.length)<11,'Summon color frame error: '+file);
+}
+for(const kind of ['orb','burst']){
+  const src=sourceDragon[kind],atlas=packedDragon[kind],{width,height,columns,rows}=atlas;
+  assert.equal(atlas.frames.length,src.frames.length);
+  for(let i=0;i<src.frames.length;i++){
+    const frame=atlas.frames[i];
+    if(!src.frames[i]){assert.equal(frame,null);continue;}
+    assert.ok(frame.tile>=0&&frame.tile<columns*rows);
+    const page=sharp(bytes(dragonDirectory+atlas.pages[frame.page]));
+    const rect={left:(frame.tile%columns)*width,top:Math.floor(frame.tile/columns)*height,width,height};
+    await checkColorFrame(src.pages[src.frames[i].page],page.extract(rect),src.width,src.height);
+  }
+}
+const orbBg=sourceDragon.orb.background;
+await checkColorFrame(orbBg.file,sharp(bytes(dragonDirectory+packedDragon.orb.background.file)),
+  sourceDragon.orb.width*orbBg.columns,sourceDragon.orb.height*orbBg.rows);
 assert.ok(index.files[chantAsset], 'Missing summon animation data atlas');
 assert.equal(digest(bytes(chantAsset)),digest(fs.readFileSync(path.join(pub,chantAsset))),
   'Keep the summon data atlas byte-for-byte');
@@ -115,24 +149,33 @@ for(const id of [...Array.from({length:151},(_,i)=>i+1),201]){
 }
 for(const key of Object.keys(index.files))assert.equal(glyphSpeciesFromImage(key),null,'Legacy actor image must not ship: '+key);
 assert.match(index.files['assets/glyphs/atlas.png'],/^text\//,'Character selection needs the atlas in the startup package');
-// The three painted fire atlases use lossy RGB. Check alpha exactly and bound
-// visible colour error in every animation tile, including small impact poses.
+// Check visible color and alpha in every tile of the portal screen loop.
 const fireColorError={};
 for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
   const category=key.split('/')[1];
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   const decode=b=>sharp(b).ensureAlpha().raw().toBuffer({resolveWithObject:true});
   const [a,b]=await Promise.all([decode(source),decode(bytes(key))]);
+  if(packedDragon.arc.pages.some(file=>dragonDirectory+file===key)){
+    const {width,height}=b.info;
+    assert.equal(a.info.width,width*2);assert.equal(a.info.height,height*2);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++)for(let c=0;c<3;c++){
+      const i=4*(2*y*a.info.width+2*x)+c,below=i+4*a.info.width;
+      const expected=Math.round((a.data[i]+a.data[i+4]+a.data[below]+a.data[below+4])/4);
+      assert.equal(b.data[4*(y*width+x)+c],expected,key);
+    }
+    continue;
+  }
   assert.deepEqual(a.info,b.info,key);
-  if(compressedFireAtlases.has(key)){
-    const {tile,rows,columns}=JSON.parse(fs.readFileSync(source.replace(/\.png$/,'.json'),'utf8'));
-    assert.equal(a.info.width,columns*tile);assert.equal(a.info.height,rows*tile);
+  if(key==='assets/vfx/portal-screen.png'){
+    const {rows,columns,pad}=portalScreenAtlas,w=portalScreenAtlas.width+2*pad,h=portalScreenAtlas.height+2*pad;
+    assert.equal(a.info.width,columns*w);assert.equal(a.info.height,rows*h);
     let worst=0;
     for(let frame=0;frame<rows*columns;frame++){
       let error=0,weight=0;
-      for(let y=0;y<tile;y++){
-        let i=((Math.floor(frame/columns)*tile+y)*a.info.width+frame%columns*tile)*4;
-        for(let x=0;x<tile;x++,i+=4){
+      for(let y=0;y<h;y++){
+        let i=((Math.floor(frame/columns)*h+y)*a.info.width+frame%columns*w)*4;
+        for(let x=0;x<w;x++,i+=4){
           const alpha=a.data[i+3];
           if(alpha!==b.data[i+3])throw Error('Changed alpha: '+key+' @ '+i/4);
           for(let c=0;c<3;c++)error+=alpha*Math.abs(a.data[i+c]-b.data[i+c]);
@@ -141,11 +184,11 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
       }
       if(weight)worst=Math.max(worst,error/weight);
     }
-    assert.ok(worst<=10,'Visible colour error in '+key+': '+worst);
-    fireColorError[key]=worst;
+    assert.ok(worst<3,'Visible colour error in '+key+': '+worst);
   }else for(let i=0;i<a.data.length;i+=4){
     if(a.data[i+3]!==b.data[i+3]||(a.data[i+3]&&a.data.readUIntBE(i,3)!==b.data.readUIntBE(i,3)))throw Error('Changed visible pixel: '+key+' @ '+i/4);
   }
+  if(compressedFireAtlases.has(key))fireColorError[key]=0; // Exact visible pixels verified above.
   count[category]=(count[category]||0)+1;
 }
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));

@@ -27,9 +27,9 @@ export async function reviewSummonModes(page, dir) {
       if(spec.coop){
         const me={id:'summon-local',slot:0,name:'本机',species:4};
         const peer={id:'summon-peer',slot:1,name:'队友',species:16};
-        const room={me:me.id,mine:me,open:false,room:{members:[me,peer],state:'started',party:'summon-qa'},
+        const room={me:me.id,mine:me,others:[peer],open:true,room:{members:[me,peer],state:'started',party:'summon-qa'},
           mesh:{broadcast:packet=>window.summonPackets.push(packet),sendCtl:()=>{}},
-          linkState:()=> 'closed',waitForBattleStart:async()=>{},request:async()=>{},leave:()=>{}};
+          linkState:()=> 'closed',waitForBattleStart:async()=>{},request:async()=>{},send:()=>{},leave:()=>{}};
         config.coop={party:'summon-qa',room};
         app.meta.beginRun=async cfg=>({...await begin.call(app.meta,{...cfg,party:undefined}),party:cfg.party,offline:false});
       }
@@ -41,6 +41,11 @@ export async function reviewSummonModes(page, dir) {
       const r=app.run, facilities=r.interactables, door=facilities.list.find(o=>o.kind==='boss');
       await door.modelReady;
       r.godMode=true;r.queueLevelUp=()=>{};r.capture.update=()=>{};r.enemies.clear();
+      if(spec.art){
+        const id=r.enemies.spawn(47,door.x+2,door.z,1,1);
+        if(id<0)throw Error('Could not stage a sacrifice');
+        r.enemies.hp[id]=r.enemies.maxHp[id]*.75;
+      }
       r.player.moves.fill(null);r.nextCp=1e9;r.state='play';
       r.hints.el?.remove();r.ui.hudEl.querySelectorAll('.banner,.run-hint,.zx-intro').forEach(n=>n.remove());
       r.director.timeline=r.director.timeline.filter(event=>event.kind==='guardian');
@@ -76,6 +81,8 @@ export async function reviewSummonModes(page, dir) {
         r.update(.02);
         if(spec.trigger==='timer-first')hold(1);
       }
+      await r.dragonHdAssets?.loading;
+      if(!r.dragonHd)throw Error('Missing HD summon in '+spec.name);
       const canvas=r.ui.hudEl.querySelector('.zx-dragon-chant'), boss=r.boss.bossIndex;
       if(!canvas)throw Error('Missing summon animation in '+spec.name);
       window.summonCanvas=canvas;
@@ -104,7 +111,9 @@ export async function reviewSummonModes(page, dir) {
     if(spec.art){
       for(const seconds of [.12,.55,.9,1.4,1.68,1.78]){
         const frame=await page.evaluate(seconds=>{
-          const r=app.run,canvas=window.summonCanvas;r.ui.dragonChant.draw(seconds);
+          const r=app.run,canvas=window.summonCanvas;
+          for(let i=0;i<120&&r.dragonHd.time+1e-6<seconds;i++)r.update(Math.min(1/60,seconds-r.dragonHd.time));
+          if(Math.abs(r.dragonHd.time-seconds)>.001)throw Error('Summon clock stalled during the chant');
           const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
           let blue=0,red=0,visible=0,hash=0;
           for(let i=0;i<pixels.length;i+=4){
@@ -124,6 +133,35 @@ export async function reviewSummonModes(page, dir) {
       assert.equal(frames[2].hash,frames[3].hash,'Hold the complete artwork without redrawing');
       assert.notEqual(frames[4].hash,frames[3].hash,'Artwork retracts to the left');
       assert.equal(frames[5].visible,0,'The overlay must fully clear after retraction');
+      for(const seconds of [2.04,2.85,3.34,3.46,3.82]){
+        const frame=await page.evaluate(seconds=>{
+          const r=app.run,fx=r.dragonHd;
+          for(let i=0;i<180&&fx.time+1e-6<seconds;i++)r.update(1/60);
+          window.summonRenderWorld(0);app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
+          const pixelCheck=seconds===3.34;
+          let allWhite=false;
+          if(pixelCheck){
+            const gl=app.r.renderer.getContext(),w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
+            const pixels=new Uint8Array(w*h*4);
+            gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+            allWhite=pixels.every(v=>v===255);
+          }
+          const projected=fx.center.clone().project(r.r.camera);
+          return {seconds,time:fx.time,centered:Math.abs(projected.x)<.02&&Math.abs(projected.y)<.02,
+            arc:fx.arc.layers[1].visible,after:fx.after.mesh.visible,
+            hidden:fx.hides(fx.id),allWhite,hd:!!r.restoreDragonGlyph,
+            draining:fx.victims.some(v=>v.removed>0&&r.enemies.alive[v.id]&&!fx.hides(v.id)),
+            allDrained:fx.victims.length>0&&fx.victims.every(v=>!r.enemies.alive[v.id])};
+        },seconds);
+        frames.push(frame);
+        assert.ok(Math.abs(frame.time-seconds)<.018&&frame.hd&&frame.centered,JSON.stringify(frame));
+        assert.equal(frame.hidden,seconds<3.68);
+        assert.equal(frame.after,seconds>=3.41);
+        if(seconds===2.04)assert.ok(frame.arc&&frame.draining,JSON.stringify(frame));
+        if(seconds===2.85)assert.ok(frame.allDrained,JSON.stringify(frame));
+        if(seconds===3.34)assert.ok(frame.allWhite,'Flash must cover the whole composited viewport');
+        await page.screenshot({path:path.join(dir,`summon-${spec.name}-${seconds}.png`)});
+      }
     }
     const ended=await page.evaluate(()=>{
       const r=app.run;

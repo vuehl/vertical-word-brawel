@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
+import {buildHashes} from './preview-files.mjs';
 import {verifyDeveloperPreview,writeDeveloperPreviewPage} from './developer/preview-support.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
@@ -25,9 +25,7 @@ function runCLI(args){
 
 execFileSync(process.execPath,[path.join(import.meta.dirname,'build.mjs'),...(development?['--dev']:[])],{cwd:root,stdio:'inherit',windowsHide:true});
 fs.mkdirSync(output,{recursive:true});
-const buildHashes=()=>Object.fromEntries(['game.js','game.json','play/game.js','boot-screen.js','entry-data.js','assets.js','packs/text/assets.br'].map(name=>
-  [name,createHash('sha256').update(fs.readFileSync(path.join(projectRoot,'minigame',name))).digest('hex')]));
-const hashes=buildHashes();
+const hashes=buildHashes(projectRoot);
 const developerBuild=development?verifyDeveloperPreview(projectRoot):null;
 if(development){
   console.log('开发测试工程：'+projectRoot+'\n开发构建：'+developerBuild);
@@ -49,7 +47,7 @@ try{
   const expected=['TOTAL','main',...declared.map(p=>'/'+p.root.replace(/\/$/,'')+(p.root.endsWith('.js')?'':'/'))].sort();
   const actual=preview.size.packages.map(p=>p.name).sort();
   if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error('预览分包清单仍是旧版，请重新打开工程后重试');
-  if(JSON.stringify(buildHashes())!==JSON.stringify(hashes))throw Error('预览期间运行包发生变化，请重新生成预览');
+  if(JSON.stringify(buildHashes(projectRoot))!==JSON.stringify(hashes))throw Error('预览期间运行包发生变化，请重新生成预览');
   fs.renameSync(nextQR,qr);fs.renameSync(nextInfo,path.join(output,'preview-info.json'));
 }finally{
   for(const file of [nextQR,nextInfo])fs.rmSync(file,{force:true});

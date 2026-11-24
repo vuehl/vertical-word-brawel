@@ -7,6 +7,7 @@
     {"name": "play", "root": "play"},
     {"name": "art", "root": "packs/art"},
     {"name": "world", "root": "packs/world"},
-    {"name": "text", "root": "packs/text"}
+    {"name": "text", "root": "packs/text"},
+    {"name": "dragon_summon", "root": "packs/dragon_summon"}
   ]
 }

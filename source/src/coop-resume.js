@@ -1,5 +1,6 @@
-import {jr as heldItemRules, Nr as vitaminRules} from './config.js';
+import {jr as heldItemRules, Nr as vitaminRules, vitaminKindLimit} from './config.js';
 import {finalBossSpecies} from './character-rules.js';
+import {springShoesKey} from './active-content.js';
 const seatKey='ziling.coop.seat.1', progressKey='ziling.coop.progress.1';
 function read(key) {
   try {return JSON.parse(localStorage.getItem(key));} catch {return null;}
@@ -34,10 +35,10 @@ export function saveProgress(run) {
   const fields=(object,keys)=>Object.fromEntries(keys.map(key=>[key,object[key]]));
   const world=worldProgress(run);
   const data={v:3,seat:coop.room.me,party:coop.party,stage:run.stage,world,
-    run:fields(run,['stats','gold','keys','goldSpent','springShoesSeen','splits','pendingLevels','rerolls','skips','tempMods','curses','nextEvo']),
+    run:fields(run,['stats','gold','keys','goldSpent','springShoesState','splits','pendingLevels','rerolls','skips','tempMods','curses','nextEvo']),
     player:fields(p,['speciesId','evoStage','level','xp','growth','hp','shield','overheal','revives','dead']),
     bleed:coop.bleed,out:coop.out,pos:[p.pos.x,p.pos.y,p.pos.z],
-    items:[...p.items],vitamins:[...p.vitamins],
+    items:[...p.items],vitamins:[...p.vitamins],chosenVitamins:[...p.chosenVitamins],
     moves:p.moves.map(m=>m && {id:m.def.id,...fields(m,['level','mods','parents','extra','damageDone'])})};
   localStorage.setItem(progressKey,JSON.stringify(data));
   if(coop.room.open)coop.room.send({op:'checkpoint',party:coop.party,data:world});
@@ -49,11 +50,16 @@ export function restoreProgress(run,data,world) {
     if(data.player.speciesId!==p.speciesId)p.setSpecies(data.player.speciesId);
     Object.assign(p,data.player);
     p.items=new Map((data.items ?? []).filter(([key])=>heldItemRules.has(key)));
-    if (p.items.has('air-balloon')) {
-      p.items.set('air-balloon', 1);
-      run.springShoesSeen = true;
+    if (p.items.has(springShoesKey)) {
+      p.items.set(springShoesKey, 1);
+      run.springShoesState = 'claimed';
+    } else {
+      run.springShoesState = data.run.springShoesState ?? (data.run.springShoesSeen ? 'offered' : 'available');
     }
     p.vitamins=new Map((data.vitamins ?? []).filter(([key])=>vitaminRules.has(key)));
+    // Older saves keep every owned bonus. Their first four choices form the upgrade pool.
+    const chosen = new Set([...(data.chosenVitamins ?? []), ...p.vitamins.keys()]);
+    p.chosenVitamins = new Set([...chosen].filter(key=>vitaminRules.has(key)).slice(0,vitaminKindLimit));
     const openingMoveId=p.moves[0]?.def.id;
     p.moves.fill(null);
     for(const [i,saved] of data.moves.entries()){

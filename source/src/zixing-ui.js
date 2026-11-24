@@ -11,7 +11,7 @@ import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from './co
 import {RelayRoom} from './multiplayer.js';
 import {askCoopCode} from './coop-join-dialog.js';
 import {createPeerHud} from './coop-peer-hud.js';
-import {drawMenuGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from './paper-glyph-art.js';
+import {drawMenuGlyph,drawRouteGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from './paper-glyph-art.js';
 import {homeWordmark,homeEntryFace,menuSymbol,itineraryStamp} from './menu-paper-art.js';
 import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,drawBattleStatus,drawStageCaption,drawUltimateSeal} from './paper-hud-art.js';
 import {paperStages} from './paper-world.js';
@@ -82,10 +82,10 @@ export function itemDialog(title,body,actions,attrs={}){
   ],attrs);
 }
 const card=(...nodes)=>el('div','zx-card',nodes);
-function glyph(c,large=false){
-  const word=c.word||c,node=el('div','zx-glyph paper-portrait '+(c.tone||'')+(large?' large':''),[],{'aria-label':word});
+function glyph(c,draw=drawMenuGlyph){
+  const word=c.word||c,node=el('div','zx-glyph paper-portrait '+(c.tone||''),[],{'aria-label':word});
   const canvas=el('canvas','zx-glyph-image');canvas.dataset.static='true';node.append(canvas);
-  drawMenuGlyph(canvas,word,c.tone,large);
+  draw(canvas,word,c.tone);
   canvas.dataset.glyphReady='true';return node;
 }
 const statRow=(label,value)=>el('div','zx-stat-row',[el('b','',label),el('span','',value)]);
@@ -1410,7 +1410,7 @@ export function createZixingUI(app,api) {
         const story=body.querySelector('.muted')?.textContent.trim();
         const effect=body.querySelector('p')?.textContent.trim(),count=run.player.items.get(keys[index])??0;
         const warning=unused?el('span','zx-loot-fit','当前招式用不到',{'aria-label':affects.textContent}):null;
-        const held=el('div','zx-loot-limit',[el('span','','持有 / 上限'),el('b','',count+' / '+api.itemLimit(keys[index]))]);
+        const held=el('div','zx-loot-limit',[el('span','','当前持有'),el('b','',String(count))]);
         node.replaceChildren(rewardPaper('item',quality.key),el('div','zx-loot-stage',[picture,warning]),
           el('div','zx-loot-leaf',[el('div','zx-loot-name',[el('h3','',heading.textContent),badge]),
             el('div','zx-loot-copy',[planned?planBadge():null,effect?text(effect,'zx-choice-description zx-loot-effect'):null,
@@ -1638,7 +1638,7 @@ export function createZixingUI(app,api) {
       for(const id of ids){
         if(nodes.length)nodes.push(el('span','zx-evo-arrow','→'));
         const actor=character(id);
-        nodes.push(el('span','zx-evo-form',glyph(actor),{'aria-label':actor.word}));
+        nodes.push(el('span','zx-evo-form',glyph(actor,drawRouteGlyph),{'aria-label':actor.word}));
       }
       return el('div','zx-evo-line',nodes);
     }

@@ -50,7 +50,7 @@ async function reviewRandomOffers(page){
   const result=await page.evaluate(()=>{
     const r=app.run, p=r.player, originalRandom=Math.random;
     const show=r.ui.showLevelUp, ready=r.ui.experienceReady;
-    const profile=r.meta.profile, savedCollection=profile.collection;
+    const profile=r.meta.profile, savedCollection=profile.collection, savedLab=profile.lab;
     let offers, pick, seed=613;
     try{
       const recharge=[];
@@ -64,7 +64,7 @@ async function reviewRandomOffers(page){
       p.addMove(488);p.addVitamin('hp-up',1);
       profile.collection={...savedCollection,plans:{[r.startSpecies]:{moves:['m488'],vitamins:['vhp-up']}}};
       p.level=3;r.stageTime=0;r.state='play';r.pendingLevels=1;r.rerolls=800;r.doLevelUp();
-      let multiSkillPages=0, vitaminOnlyPages=0, lockedOffers=0, unlockedOffers=0;
+      let lockedOffers=0, unlockedOffers=0;
       const positions=new Set(), levelFiveSkills=new Set(), vitaminKeys=new Set();
       for(let draw=0;draw<800;draw++){
         const previous=new Set(offers.map(o=>o.key));
@@ -72,8 +72,7 @@ async function reviewRandomOffers(page){
         pick(null,'reroll');
         if(offers.length!==3 || new Set(offers.map(o=>o.key)).size!==3)
           throw Error('Invalid mixed offer: '+JSON.stringify(offers));
-        if(offers.filter(o=>!o.vit).length>1)multiSkillPages++;
-        if(offers.every(o=>o.vit))vitaminOnlyPages++;
+        if(offers.filter(o=>o.vit).length!==2)throw Error('Expected one skill and two vitamins');
         offers.forEach((offer,index)=>{
           if(offer.vit)vitaminKeys.add(offer.vit);
           if(offer.kind==='newMove'){
@@ -87,14 +86,25 @@ async function reviewRandomOffers(page){
         }
       }
       const exhausted=offers;pick(null,'reroll');
-      return {recharge,multiSkillPages,vitaminOnlyPages,vitaminCount:vitaminKeys.size,lockedOffers,unlockedOffers,levelFiveSkills:[...levelFiveSkills].sort((a,b)=>a-b),positions:[...positions].sort(),
-        zero:r.rerolls,blocked:exhausted===offers};
-    }finally{profile.collection=savedCollection;Math.random=originalRandom;r.ui.showLevelUp=show;r.ui.experienceReady=ready;}
+      const zero=r.rerolls,blocked=exhausted===offers;
+      profile.lab={...savedLab,choice4:1};
+      r.rerolls=300;r.state='play';r.doLevelUp();
+      let extraSkills=0;
+      for(let draw=0;draw<300;draw++){
+        const skills=offers.filter(o=>!o.vit).length;
+        if(new Set(offers.map(o=>o.key)).size!==4 || (skills!==1 && skills!==2))throw Error('Unexpected four-card draw');
+        extraSkills+=skills-1;
+        pick(null,'reroll');
+      }
+      return {recharge,vitaminCount:vitaminKeys.size,lockedOffers,unlockedOffers,levelFiveSkills:[...levelFiveSkills].sort((a,b)=>a-b),positions:[...positions].sort(),
+        zero,blocked,extraSkills};
+    }finally{profile.collection=savedCollection;profile.lab=savedLab;Math.random=originalRandom;r.ui.showLevelUp=show;r.ui.experienceReady=ready;}
   });
   assert.deepEqual(result.recharge,[1,0,1,2]);
   assert.deepEqual(result.positions,[0,1,2]);
   assert.deepEqual(result.levelFiveSkills,[53,83,126,517]);
-  assert.ok(result.multiSkillPages>0 && result.vitaminOnlyPages>0 && result.unlockedOffers>0 && result.blocked);
+  assert.ok(result.unlockedOffers>0 && result.blocked);
+  assert.ok(result.extraSkills>70 && result.extraSkills<130);
   assert.equal(result.vitaminCount,vitamins.length);
   assert.equal(result.lockedOffers,0);assert.equal(result.zero,0);
   console.log('Mixed draft and empty-reroll checks:',result);
@@ -135,7 +145,7 @@ async function reviewMoveCapacity(page){
       Math.random=()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
       ui.experienceReady=()=>true;
       ui.showLevelUp=(_run,items,pick)=>{offers=items;choose=pick;};
-      p.addMove(83); // Fire Spin alongside the starter move.
+      p.addMove(488); // Flame Stampede can fuse with the starter move.
       p.level=40;r.nextEvo=null;r.rerolls=1000;
       open();
       const stale=newOffer(),learned=r.stats.movesLearned,rerolls=r.rerolls;
@@ -196,10 +206,10 @@ async function reviewMoveCapacity(page){
       trainToCap(fused,6);
       r.rerolls=1000;
       open();
-      while(p.vitamins.size<vitaminKeys.length){
+      while(p.vitamins.size<4){
         const fresh=offers.find(offer=>offer.kind==='newVit');
         if(!fresh){
-          if(!r.rerolls)throw Error('Could not collect every vitamin');
+          if(!r.rerolls)throw Error('Could not collect four different vitamins');
           choose(null,'reroll');
           continue;
         }
@@ -208,10 +218,20 @@ async function reviewMoveCapacity(page){
         if(p.vitamins.size!==before+1||p.vitamins.get(fresh.vit)?.level!==1)throw Error('Vitamin did not stack with previous kinds');
         open();
       }
-      for(let draw=0;draw<20&&!offers.some(o=>o.kind==='upVit');draw++)choose(null,'reroll');
+      const chosen=new Set(p.vitamins.keys());
+      const fifth=vitaminKeys.find(key=>!chosen.has(key));
+      if(p.addVitamin(fifth,1))throw Error('Accepted a fifth vitamin');
+      for(let draw=0;draw<20;draw++){
+        const cards=offers.filter(o=>o.vit);
+        if(cards.length!==2||cards.some(o=>o.kind!=='upVit'||!chosen.has(o.vit)))throw Error('Unexpected locked vitamin offer');
+        choose(null,'reroll');
+      }
       const upgrade=offers.find(o=>o.kind==='upVit');
       choose(upgrade);
-      if(p.vitamins.get(upgrade.vit).level!==2||!vitaminKeys.every(key=>p.vitamins.has(key)))throw Error('Vitamin upgrade lost inventory');
+      if(p.vitamins.get(upgrade.vit).level!==2||p.vitamins.size!==4)throw Error('Vitamin upgrade lost inventory');
+      for(const key of ['razor-claw','stick','assault-vest','honey','bicycle']){
+        if(!p.addItem(key))throw Error('Could not collect item alongside four vitamins: '+key);
+      }
       return {rejected,learned:r.stats.movesLearned-learned,slots:p.moves.filter(Boolean).length};
     }finally{Object.assign(ui,{showLevelUp,showFusion,experienceReady});Math.random=random;}
   },vitamins.map(v=>v.key));
@@ -229,7 +249,7 @@ async function reviewVitaminArt(page,dir){
       const r=app.run;
       const offers=['escape-rope','enigma-berry'].map(vit=>({kind,vit,rarity:0}));
       if(kind==='upVit')for(const {vit} of offers)r.player.addVitamin(vit,1);
-      r.state='modal';r.ui.showLevelUp(r,[...offers,{kind:'newMove',id:297}],()=>{});
+      r.state='modal';r.ui.showLevelUp(r,[...offers,{kind:'newMove',id:17}],()=>{});
       r.ui.hud(r);r.renderWorld(0);app.r.render(0);
     },kind);
     const cards=await page.evaluate(()=>[...app.run.ui.modalEl.querySelectorAll('[data-offer]')].map(card=>({
@@ -240,7 +260,7 @@ async function reviewVitaminArt(page,dir){
     assert.deepEqual(cards,[
       {title:'拾取增益',image:'escape-rope.png',glyph:null},
       {title:'溢出治疗',image:'enigma-berry.png',glyph:null},
-      {title:'羽毛舞',image:'flying.png',glyph:null},
+      {title:'翅膀攻击',image:'flying.png',glyph:null},
     ]);
     await page.waitForFunction(()=>{
       inspected.env.drawUI(app.r.renderer);
@@ -251,10 +271,97 @@ async function reviewVitaminArt(page,dir){
   }
 }
 
+async function reviewItemStacking(page){
+  const result=await page.evaluate(()=>{
+    const run=app.run,p=run.player,eligible=run.meta.itemInPool;
+    try{
+      run.meta.itemInPool=key=>key==='honey';
+      const before=p.stats.pickupRange;
+      const initial=p.items.get('honey')??0;
+      for(let copy=0;copy<12;copy++)if(!p.addItem('honey'))throw Error('Rejected honey');
+      run.gold=100000;
+      run.openShop();
+      run.ui.hideModal();
+      run.openShop(); // Reopening the same stock must keep the honey for sale.
+      for(let purchase=0;purchase<2;purchase++){
+        const buy=run.ui.modalEl.querySelector('[data-shop-buy="honey"]');
+        if(!buy||buy.disabled)throw Error('Missing honey in shop');
+        buy.click();
+        if(!run.shop.stock[0].sold)throw Error('Purchase did not consume stock');
+        if(!purchase){
+          if(!run.rerollShop())throw Error('Failed to restock shop');
+          run.openShop();
+        }
+      }
+      run.resume();
+      for(const action of ['sell','take','take']){
+        run.rollChestItem(false);
+        const card=run.ui.modalEl.querySelector('[data-item-choice="honey"]');
+        const button=run.ui.modalEl.querySelector('[data-item-action="'+action+'"]');
+        if(!card||!button)throw Error('Chest did not offer previously seen honey');
+        button.click();
+      }
+      let copies=0;
+      run.openDitto(()=>copies++);
+      run.ui.modalEl.querySelector('[data-item-choice="honey"]').click();
+      if(copies!==1)throw Error('Expected one copy of an already stacked item');
+      return {gained:p.items.get('honey')-initial,pickupRange:p.stats.pickupRange-before};
+    }finally{run.meta.itemInPool=eligible;run.resume();}
+  });
+  assert.deepEqual(result,{gained:17,pickupRange:25.5});
+  console.log('Stacking verified through shop restocks, repeated chest offers and copying a held stack.');
+}
+
+async function reviewSpringShoes(page){
+  for(const mode of ['standard','single-stage']){
+    await page.evaluate(async mode=>{
+      await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode});
+      const run=app.run,p=run.player,key='air-balloon',eligible=run.meta.itemInPool;
+      const check=(ok,message)=>{if(!ok)throw Error(mode+': '+message);};
+      try{
+        check(p.items.get(key)===1 && !p.addItem(key),'Expected one equipped starting pair');
+        run.openDitto(()=>{throw Error('Copied starting shoes');});
+        check(run.state==='play','Only shoes should leave the camera available');
+        p.addItem('honey');
+        run.openDitto(()=>{});
+        check(!run.ui.modalEl.querySelector('[data-item-choice="air-balloon"]'),'Shoes offered for copying');
+        run.ui.modalEl.querySelector('[data-item-choice="honey"]').click();
+        check(p.items.get('honey')===2,'Other items must remain copyable');
+        p.removeItem(key);
+        run.meta.itemInPool=id=>id===key;
+        const noShoes=()=>{
+          const gold=run.gold;
+          run.rollChestItem(false,1,2);
+          check(run.gold>gold && run.state==='play','Shoes drawn a second time');
+        };
+        noShoes();
+        run.openShop();
+        check(!run.shop.stock.length,'Sold shoes restocked');
+        run.resume();
+        check(!p.addItem(key),'Sold starting shoes granted again');
+
+        // A legacy inventory with no recorded shoes still gets one opportunity.
+        run.springShoesState='available';
+        run.rollChestItem(false);
+        const take=mode==='standard';
+        run.ui.modalEl.querySelector(take?'[data-item-action="take"]':'[data-item-action="sell"]').click();
+        check((p.items.get(key)??0)===Number(take),'First draw did not resolve');
+        if(take)p.removeItem(key);
+        noShoes();
+        run.gold=1000;
+        check(run.rerollShop() && !run.shop.stock.length,'Shoes drawn again on shop refresh');
+      }finally{run.meta.itemInPool=eligible;}
+    },mode);
+  }
+  console.log('Single-stage and standard starting shoes, one-time draws, sale and copy exclusions verified.');
+}
+
 export async function reviewUpgrade({page,resize,dir}){
   const baseline=process.argv.includes('--baseline'),samples=[];let liveLoop=null;
   await page.evaluate(async()=>{
     const account=await app.backend.guest();await app.meta.load(account);
+    const start=app.backend.startRun.bind(app.backend);
+    app.backend.startRun=async(...args)=>({...await start(...args),seed:53090});
     Object.assign(app.meta.profile.settings,{quality:'low',fpsLimit:30});app.applySettings();
     await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'});
     app.halted=true;app.run.godMode=true;app.run.update(1/60);
@@ -263,6 +370,8 @@ export async function reviewUpgrade({page,resize,dir}){
     await reviewRandomOffers(page);
     await reviewRetiredOffers(page);
     await reviewMoveCapacity(page);
+    await reviewItemStacking(page);
+    await reviewSpringShoes(page);
     await reviewVitaminArt(page,dir);
   }
   const ultimate=baseline?null:await reviewUltimateUpgrade(page,dir);

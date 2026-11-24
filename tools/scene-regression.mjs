@@ -27,15 +27,14 @@ export async function reviewScenes({page,tap,dir,sleep}) {
         run.meta.itemInPool=key=>key===shoes || (choice && key===other);
         run.rollChestItem(false,1,choice?2:1);
         const cards=[...run.ui.root.querySelectorAll('[data-item-choice]')].map(card=>card.dataset.itemChoice);
-        const action=choice?'[data-item-choice="razor-claw"]':'[data-item-action="sell"]';
-        run.ui.root.querySelector(action).dispatchEvent(new inspected.env.Event('click'));
+        if(choice)run.ui.root.querySelector('[data-item-action="take"]').click();
         run.meta.itemInPool=key=>key===shoes;
         const gold=run.gold;
         run.rollChestItem(false,1,2);
-        return {cards:cards.sort(),goldFallback:run.state==='play' && run.gold>gold,owned:run.player.items.has(shoes)};
+        return {cards,owned:run.player.items.get(shoes),fallback:run.state==='play'&&run.gold>gold};
       } finally {run.meta.itemInPool=pool;}
     },choice);
-    assert.deepEqual(result,{cards:choice?['air-balloon','razor-claw']:['air-balloon'],goldFallback:true,owned:false});
+    assert.deepEqual(result,{cards:choice?['razor-claw']:[],owned:1,fallback:true});
   }
   async function summonAtBuilding(captureIntro=false) {
     const timing=await page.evaluate(async()=>{
@@ -267,9 +266,9 @@ export async function reviewScenes({page,tap,dir,sleep}) {
         try {
           run.meta.itemInPool=key=>key==='air-balloon';
           run.rollChestItem(false);
-          return run.state==='play' && run.gold>gold;
+          return run.state==='play' && run.gold>gold && run.player.items.get('air-balloon')===1;
         } finally {run.meta.itemInPool=pool;}
-      }),'Changing zones must not offer skipped shoes again');
+      }),'The opening pair stays unique after changing zones');
     }
     const inventory=await page.evaluate(removed=>{
       const r=app.run,interactions=r.interactables;r.state='paused';

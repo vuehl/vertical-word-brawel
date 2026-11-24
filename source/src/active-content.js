@@ -1,17 +1,18 @@
 // IDs keep items with identical display names distinct. Water Stone has a
 // catalog entry but no held-item combat definition.
+export const springShoesKey = 'air-balloon';
 const itemIds = new Set([
   'max-revive', 'rare-candy', 'master-ball', 'dawn-stone', 'tm-case', 'poke-flute',
   'shiny-stone', 'dusk-stone', 'comet-shard', 'thunder-stone', 'fire-stone',
   'ice-stone', 'leaf-stone', 'revive', 'water-stone', 'expert-belt', 'assault-vest',
   'star-piece', 'stick', 'bicycle', 'full-heal', 'razor-claw', 'rocky-helmet',
-  'air-balloon', 'big-root', 'smoke-ball', 'repel', 'old-rod', 'honey', 'lucky-punch',
+  springShoesKey, 'big-root', 'smoke-ball', 'repel', 'old-rod', 'honey', 'lucky-punch',
 ]);
 export const isActiveItem = id => itemIds.has(id);
 
-export const facilityDwellSeconds = 1.5;
+export const facilityDwellSeconds = 0;
 export const altarChargeSeconds = 3;
-export const bossSummonSeconds = 3;
+export const bossSummonSeconds = 0;
 export const bossSummonUnlockSeconds = run =>
   run?.biome?.id === 'forest' && run.stage === 2 ? 3 * 60 : 5 * 60;
 export const facilityNames = Object.freeze({

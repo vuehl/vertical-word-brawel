@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import aceAtlas from '../source/public/assets/vfx/wind-ace.json' with {type:'json'};
+import moveAtlas from '../source/public/assets/vfx/wind-moves.json' with {type:'json'};
 
 export async function reviewStylizedVFX(page,dir){
   const moves=JSON.parse(fs.readFileSync(new URL('../source/public/data/moves.json',import.meta.url),'utf8'));
@@ -41,6 +43,60 @@ export async function reviewStylizedVFX(page,dir){
   }
   if(process.argv.includes('--skill-availability')){
     const {reviewSkillAvailability}=await import('./skill-availability-regression.mjs');return reviewSkillAvailability(page,dir);
+  }
+  if(process.argv.includes('--wind-moves')){
+    await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+    await page.evaluate(async()=>{
+      if(!await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Cannot start wind');
+      if(!app.run.vfx.crafted.windMoves?.loaded)throw Error('Starting move atlas was not preloaded');
+      const t=app.run.terrain;
+      // Place the real cast on open desk space so both homing shots can
+      // reach the target without running into a randomly placed prop.
+      for(let z=-12;z<=12;z+=2)for(let x=-12;x<=12;x+=2){
+        if(Array.from({length:20},(_,i)=>[x+i*.15,z-i*.5]).every(([xx,zz])=>
+          t.inBounds(xx,zz,1.8)&&t.isFlatOpen(xx,zz)&&!t.hitProp(xx,t.height(xx,zz)+.3,zz,1.8))){
+          window.windReviewStart={x,z};return;
+        }
+      }
+      throw Error('No clear wind review lane');
+    });
+    for(const key of ['quick-attack','aerial-ace','twister']){
+      const {id,name}=moves.find(move=>move.key===key);
+      await page.evaluate(async id=>{
+        vfxSetup();
+        const r=app.run,e=r.enemies,{x,z}=windReviewStart;
+        r.player.pos.set(x,r.terrain.surface(x,z),z);r.camTarget.copy(r.player.pos);
+        for(let i=0;i<e.n;i++){
+          e.x[i]=x+2+i;e.z[i]=z-6-i;e.y[i]=r.terrain.surface(e.x[i],e.z[i]);
+        }
+        e.update();r.lockTarget=0;
+        if(!r.player.addMove(id))throw Error('Missing wind move');
+        await r.vfx.crafted.prepareMoveTexture(r.player.moves[0].def.effectKey);
+        r.player.moves[0].timer=0;
+      },id);
+      const frames=[],poses=new Set();
+      for(let i=0;i<22;i++){
+        const indices=await page.evaluate(i=>{
+          vfxAdvance(i===0?1:2);const r=app.run,art=r.player.moves[0].def.id===332?r.vfx.crafted.windAce:r.vfx.crafted.windMoves;
+          r.player.moves[0].timer=999;
+          return Array.from({length:art.mesh.count},(_,j)=>art.pose.getX(j));
+        },i);
+        for(const frame of indices)poses.add(frame);
+        frames.push(await sharp(await page.screenshot()).ensureAlpha().raw().toBuffer());
+      }
+      assert.ok(poses.size>=3,name+' must display animated frames');
+      if(key==='aerial-ace')assert.ok([...poses].some(n=>n>=aceAtlas.hit.first),'Wind blades must play their contact frames');
+      if(key==='quick-attack')assert.ok(poses.has(moveAtlas.dashGhost),'Wind dash must show its recorded ghost');
+      await page.evaluate(()=>vfxAdvance(100));
+      const result=await page.evaluate(()=>{
+        const r=app.run;return {damage:r.player.moves[0].damageDone,visible:r.vfx.crafted.windMoves.mesh.visible||!!r.vfx.crafted.windAce?.mesh.visible};
+      });
+      assert.ok(result.damage>0,name+' must hit');assert.equal(result.visible,false,name+' must clear');
+      await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
+        .gif({delay:67,loop:0}).toFile(path.join(dir,name+'.gif'));
+      console.log(name,'verified',poses.size,'poses, damage',result.damage);
+    }
+    return;
   }
   report.base=await page.evaluate(()=>{
     const r=app.run,c=app.r.camera,t=r.vfx.atlas,ctx=t.image.getContext('2d'),pixels=ctx.getImageData(0,0,128,128).data;
@@ -83,59 +139,6 @@ export async function reviewStylizedVFX(page,dir){
     return reviewFireBreath(page,dir,moves);
   }
   const screenshot=async name=>{await page.screenshot({path:path.join(dir,name+'.png')});report.screens.push(name);};
-  if(process.argv.includes('--wind-moves')){
-    await page.setViewport({width:390,height:844,deviceScaleFactor:1});
-    await page.evaluate(async()=>{
-      if(!await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Cannot start wind');
-      if(!app.run.vfx.crafted.windMoves?.loaded)throw Error('Starting move atlas was not preloaded');
-      const t=app.run.terrain;
-      // Place the real cast on open desk space so both homing shots can
-      // reach the target without running into a randomly placed prop.
-      for(let z=-12;z<=12;z+=2)for(let x=-12;x<=12;x+=2){
-        if(Array.from({length:20},(_,i)=>[x+i*.15,z-i*.5]).every(([xx,zz])=>
-          t.inBounds(xx,zz,1.8)&&t.isFlatOpen(xx,zz)&&!t.hitProp(xx,t.height(xx,zz)+.3,zz,1.8))){
-          window.windReviewStart={x,z};return;
-        }
-      }
-      throw Error('No clear wind review lane');
-    });
-    for(const key of ['quick-attack','aerial-ace','twister']){
-      const {id,name}=moves.find(move=>move.key===key);
-      await page.evaluate(id=>{
-        vfxSetup();
-        const r=app.run,e=r.enemies,{x,z}=windReviewStart;
-        r.player.pos.set(x,r.terrain.surface(x,z),z);r.camTarget.copy(r.player.pos);
-        for(let i=0;i<e.n;i++){
-          e.x[i]=x+2+i;e.z[i]=z-6-i;e.y[i]=r.terrain.surface(e.x[i],e.z[i]);
-        }
-        e.update();r.lockTarget=0;
-        if(!r.player.addMove(id))throw Error('Missing wind move');
-        r.player.moves[0].timer=0;
-      },id);
-      const frames=[],poses=new Set();
-      for(let i=0;i<22;i++){
-        const indices=await page.evaluate(i=>{
-          vfxAdvance(i===0?1:2);const r=app.run,art=r.vfx.crafted.windMoves;
-          r.player.moves[0].timer=999;
-          return Array.from({length:art.mesh.count},(_,j)=>art.pose.getX(j));
-        },i);
-        for(const frame of indices)poses.add(frame);
-        frames.push(await sharp(await page.screenshot()).ensureAlpha().raw().toBuffer());
-      }
-      assert.ok(poses.size>=3,name+' must display animated frames');
-      if(key==='aerial-ace')assert.ok([...poses].some(n=>n>=22&&n<30),'Wind blades must play their contact frames');
-      if(key==='quick-attack')assert.ok(poses.has(30),'Wind dash must show its recorded ghost');
-      await page.evaluate(()=>vfxAdvance(100));
-      const result=await page.evaluate(()=>{
-        const r=app.run;return {damage:r.player.moves[0].damageDone,visible:r.vfx.crafted.windMoves.mesh.visible};
-      });
-      assert.ok(result.damage>0,name+' must hit');assert.equal(result.visible,false,name+' must clear');
-      await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
-        .gif({delay:67,loop:0}).toFile(path.join(dir,name+'.gif'));
-      console.log(name,'verified',poses.size,'poses, damage',result.damage);
-    }
-    return;
-  }
   if(process.argv.includes('--wind-vortex')){
     await page.evaluate(async()=>{
       await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});

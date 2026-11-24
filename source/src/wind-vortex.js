@@ -1,5 +1,7 @@
 import {et as PlaneGeometry, H as InstancedMesh, B as InstanceAttribute, j as DynamicDraw,
   ct as ShaderMaterial, dt as Texture, ot as SRGB} from '../assets/three-DmSYIDKK.js';
+import vortexAtlas from '../public/assets/vfx/wind-vortex.json' with {type:'json'};
+import {windFrameAt} from './wind-frame-time.js';
 
 export class WindAtlasBatch {
   constructor(scene, capacity, file, columns, rows, tileSize, name) {
@@ -93,16 +95,66 @@ export class WindAtlasBatch {
   }
 }
 
-// Eight registered poses from 一阵刮来, anchored at the tip of the funnel.
+// Each scanline of the texture holds the radial profile of one GIF frame.
+export class WindRing extends WindAtlasBatch {
+  constructor(owner) {
+    super(owner.mesh.parent,1,'assets/vfx/wind-ring.png',1,1,1,'wind-ground-ripples');
+    this.owner=owner;
+    this.mesh.renderOrder=-1;
+    this.mesh.material.side=2;
+    this.mesh.material.vertexShader=`
+      attribute vec4 originSize;
+      attribute vec3 frameAlpha;
+      varying vec2 disc;
+      varying float row,alpha;
+      void main(){
+        disc=2.*uv-1.;
+        vec3 p=originSize.xyz+vec3(disc.x,0.,disc.y)*originSize.w;
+        gl_Position=projectionMatrix*viewMatrix*vec4(p,1.);
+        row=(154.5-frameAlpha.x)/155.;
+        alpha=frameAlpha.y;
+      }`;
+    this.mesh.material.fragmentShader=`
+      uniform sampler2D map;
+      varying vec2 disc;
+      varying float row,alpha;
+      void main(){
+        float r=length(disc);
+        if(r>=1.)discard;
+        float angle=atan(disc.y,disc.x);
+        float ripple=.004*sin(angle*7.+row*19.)+.002*cos(angle*11.-row*33.);
+        vec4 ink=texture2D(map,vec2(clamp(r+ripple,0.,1.),row));
+        if(ink.a*alpha<.01)discard;
+        gl_FragColor=vec4(ink.rgb,ink.a*alpha);
+        #include <colorspace_fragment>
+      }`;
+  }
+  start(radius) {
+    this.radius=radius;
+    if(this.startTime==null||this.owner.run.time-this.startTime>=7.75)this.startTime=this.owner.run.time;
+  }
+  draw() {
+    this.clear();
+    const {run,vfx}=this.owner,age=run.time-this.startTime;
+    if(this.startTime!=null && age>=0 && age<7.75 && this.owner.allowed()){
+      const {x,y,z}=run.player.pos;
+      this.push(x,y+.13,z,this.radius,Math.floor(age*20),vfx.opacity*vfx.ownOpacity*(vfx.calm?.8:1));
+    }else if(age>=7.75)this.startTime=null;
+    this.end();
+  }
+  reset(){this.startTime=null;this.clear();}
+}
+
+// Preserve the source's nonuniform exposures from formation through fade-out.
 export class WindVortex extends WindAtlasBatch {
   constructor(scene,capacity) {
-    super(scene,capacity,'assets/vfx/wind-vortex.png',4,2,224,'wind-ultimate-vortex');
+    super(scene,capacity,'assets/vfx/wind-vortex.png',vortexAtlas.columns,vortexAtlas.rows,vortexAtlas.tile,'wind-ultimate-vortex');
   }
   draw(emitters,opacity) {
     this.clear();
     for(const e of emitters){
-      const fade=Math.max(0,Math.min(1,e.progress/.06,(1-e.progress)/.15));
-      this.push(e.x,e.y,e.z,e.height*1.35,Math.floor(e.age*25)%8,opacity*fade,.09);
+      const frame=windFrameAt(vortexAtlas,e.progress*vortexAtlas.times.at(-1)/1000);
+      if(frame>=0)this.push(e.x,e.y,e.z,e.height*1.25,frame,opacity,.09);
     }
     this.end();
   }

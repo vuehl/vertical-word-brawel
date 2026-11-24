@@ -18,12 +18,12 @@ export async function reviewMapWind(page,dir){
     await camera.modelReady;
     window.cameraStart={position:p.pos.clone(),time:r.time,items:new Map(p.items)};
     for(const key of ['razor-claw','stick','big-root','bicycle','repel','smoke-ball','honey','lucky-punch'])p.addItem(key);
-    while(p.canHold('stick'))p.addItem('stick');
+    for(let copy=0;copy<12;copy++)if(!p.addItem('stick'))throw Error('Could not stack sticks');
     p.pos.set(camera.x,camera.y,camera.z);
     f.update(0,0);
     await new Promise(resolve=>setTimeout(resolve,f.dwellDuration*1000));
     f.update(0,f.dwellDuration);
-    return [...p.items.keys()];
+    return [...p.items.keys()].filter(key=>key!=='air-balloon');
   });
   await draw();
   const copyLayout=()=>page.evaluate(()=>{
@@ -51,7 +51,7 @@ export async function reviewMapWind(page,dir){
     assert.ok(card.loaded&&card.iconOnLeft,JSON.stringify(card));
     if(card.quality==='rare'){assert.equal(card.opacity,1);assert.equal(card.ink.toLowerCase(),'#244e7e');}
   }
-  assert.ok(before.full&&!before.team&&before.outside&&before.max>0&&before.close.height>0&&before.close.y>=before.list.bottom);
+  assert.ok(!before.full&&!before.team&&before.outside&&before.max>0&&before.close.height>0&&before.close.y>=before.list.bottom);
   const origin=await page.evaluate(()=>inspected.doc.getElementById('game').getBoundingClientRect());
   const x=before.list.x+before.list.width/2-origin.x,y=before.list.bottom-12-origin.y;
   await page.screenshot({path:path.join(dir,'polaroid-inventory.png')});
@@ -65,11 +65,11 @@ export async function reviewMapWind(page,dir){
     const result={state:run.state,used:camera.used};f.interact(camera);return result;
   });
   assert.deepEqual(canceled,{state:'play',used:false});await draw();
-  const quantity=await page.evaluate(()=>app.run.player.items.get('razor-claw'));
-  await tap('.zx-review-copy [data-item-choice="razor-claw"]');
+  const quantity=await page.evaluate(()=>app.run.player.items.get('stick'));
+  await tap('.zx-review-copy [data-item-choice="stick"]');
   const copied=await page.evaluate(()=>{
     const r=app.run,p=r.player,f=r.interactables,camera=f.list.find(b=>b.kind==='ditto');
-    const result={count:p.items.get('razor-claw'),seconds:camera.data.regenAt-r.time,used:camera.used};
+    const result={count:p.items.get('stick'),seconds:camera.data.regenAt-r.time,used:camera.used};
     r.time=camera.data.regenAt-.01;f.update(0,0);f.interact(camera);result.beforeExpiry=r.state;
     r.time+=.01;f.update(0,0);f.interact(camera);result.reopened=!!r.ui.modalEl?.querySelector('.zx-item-body');
     r.ui.modalEl?.querySelector('.paper-dismiss-button')?.click();

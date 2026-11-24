@@ -1,10 +1,12 @@
 import path from 'node:path';
 import sharp from 'sharp';
+import fs from 'node:fs';
+import {createHash} from 'node:crypto';
 
-// Registered crops from the three 390 x 892 combat recordings.
+// Only live consumers: dash ghost and the complete twister sequence.
 const directory = process.argv[2];
 if (!directory) throw Error('Pass the directory containing the three wind move GIFs');
-const tile = 192, columns = 8, rows = 5, layers = [];
+const tile = 192, columns = 8, layers = [];
 async function recording(name) {
   const file = path.join(directory, name + '.gif');
   const read = page => sharp(file, {page}).removeAlpha().raw().toBuffer();
@@ -29,42 +31,6 @@ async function recording(name) {
   };
 }
 const twister = await recording('龙卷风');
-for (let page = 7; page <= 18; page++) {
-  const cx = Math.round(201+(page-7)*3.45), foot = Math.round(505-(page-7)*7.6);
-  await twister(page,cx-96,foot-176,(x,y,r,g,b,diff) => {
-    const height = foot-y;
-    if (height < 0 || height > 174 || (y<260 && x<210) || Math.abs(x-cx) > Math.min(88,32+height*.49)) return;
-    const chroma = Math.max(r,g,b)-Math.min(r,g,b);
-    if (chroma > 31 || Math.min(r,g,b)<55) return;
-    return [r,g,b,Math.min(255,(32-chroma)*24,diff*8)];
-  });
-}
-const ace = await recording('燕返');
-const cyan = (r,g,b,diff) => {
-  const tint = Math.min(g-r,b-r);
-  if (tint < 8 && Math.min(r,g,b)<229) return;
-  return [r,g,b,Math.min(255,diff*5)];
-};
-// Register one blade from each pose against its tangent. Each live homing
-// projectile supplies its own position and facing, including extra shots.
-const blades=[
-  [153,461,-10,48],[152,451,-8,57],[151,439,-4,66],[152,425,8,66],
-  [156,411,19,64],[162,398,30,59],[170,386,40,53],[180,376,45,45],
-  [192,367,50,38],[204,359,56,32],
-];
-for (const [index,[cx,cy,dx,dy]] of blades.entries()) {
-  const page=10+index;
-  await ace(page,cx-96,cy-96,(x,y,r,g,b,diff) => {
-    if (Math.hypot(x-cx,y-cy)>49 || Math.hypot(x-194,y-522)<49 || x<141 || y>503) return;
-    return cyan(r,g,b,diff);
-  },Math.atan2(dx,dy));
-}
-for (const page of [20,21,22,24,26,28,31,34]) {
-  await ace(page,248-96,373-96,(x,y,r,g,b,diff) => {
-    if (Math.hypot((x-248)/1.45,y-373)>34) return;
-    return cyan(r,g,b,diff);
-  });
-}
 const dash = await recording('电光一闪');
 // The third ghost is isolated on bare paper after the speed lines fade.
 await dash(10,267-96,306-96,(x,y,r,g,b,diff,bg) => {
@@ -73,20 +39,38 @@ await dash(10,267-96,306-96,(x,y,r,g,b,diff,bg) => {
   if (a<.035) return;
   return [Math.max(0,Math.min(255,bg[0]+(r-bg[0])/a)),Math.max(0,Math.min(255,bg[1]+(g-bg[1])/a)),244,Math.min(255,a*1000)];
 });
-for (const page of [6,8,10,12]) {
-  await ace(page,194-96,522-96,(x,y,r,g,b,diff) => {
-    const radius = Math.hypot(x-194,(y-522)*1.12);
-    if (radius<32 || radius>52 || y>552) return;
-    return cyan(r,g,b,diff);
+const first=layers.length,pages=Array.from({length:19},(_,i)=>i+5);
+for(const page of pages){
+  const cx=Math.round(201+(page-7)*3.45),foot=Math.round(505-(page-7)*7.6);
+  await twister(page,cx-96,foot-176,(x,y,r,g,b,diff,bg)=>{
+    const h=foot-y;
+    if(h<0||h>174||(y<260&&x<210)||Math.abs(x-cx)>Math.min(88,32+h*.49))return;
+    // Recover transparency by removing the warm paper tint. Early poses are
+    // translucent grey, so a simple neutral-colour threshold loses them.
+    const tint=bg[0]-bg[2];
+    if(tint<24){
+      // An enemy or a white book in the background must not cut a glyph-shaped
+      // hole out of the opaque grey funnel drawn in front of it.
+      const chroma=Math.max(r,g,b)-Math.min(r,g,b);
+      return chroma<32&&Math.min(r,g,b)>65?[r,g,b,Math.min(255,diff*6)]:undefined;
+    }
+    const alpha=Math.max(0,Math.min(1,1-(r-b)/tint));
+    if(alpha<.045||Math.min(r,g,b)<65||b-r>24||g-r>16)return;
+    return [r,g,b].map((v,c)=>Math.max(0,Math.min(255,bg[c]+(v-bg[c])/alpha))).concat(Math.round(alpha*255));
   });
+  const pixels=layers.at(-1).input;
+  if(page===5)pixels.fill(0);
+  if(page>=18){
+    const clean=layers[first+6+(page-18)%4-5].input;
+    clean.copy(pixels);
+    const fade=page<21?1:[.9,.65,.4][page-21];
+    for(let k=3;k<pixels.length;k+=4)pixels[k]=Math.round(pixels[k]*fade);
+  }
 }
-for (const page of [6,7,8,9]) {
-  await dash(page,204-96,511-96,(x,y,r,g,b,diff) => {
-    const radius = Math.hypot(x-204,(y-511)*1.1);
-    if (radius<55 || radius>68 || y>533 || r-g<9 || g-b<8) return;
-    return [255,225,168,Math.min(230,diff*2)];
-  });
-}
+const rows=Math.ceil(layers.length/columns),file=path.join(directory,'龙卷风.gif');
+const {delay}=await sharp(file,{animated:true}).metadata(),times=[0];
+for(const page of pages)times.push(times.at(-1)+delay[page]);
+fs.writeFileSync(path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-moves.json'),JSON.stringify({tile,columns,rows,dashGhost:0,twister:{first,count:pages.length,pages,times,source:'龙卷风.gif',reconstructedRegions:'Frames 18–23 use registered clean poses to replace the HUD and damage-label occlusion.',sha256:createHash('sha256').update(fs.readFileSync(file)).digest('hex')}})+'\n');
 await sharp({create:{width:tile*columns,height:tile*rows,channels:4,background:'#00000000'}})
   .composite(layers).png({palette:true,colours:256,dither:0}).toFile(
     path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-moves.png'));

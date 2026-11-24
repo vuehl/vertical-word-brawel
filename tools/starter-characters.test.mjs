@@ -58,18 +58,20 @@ test('rejoining restores wave time, keeps a wind branch and migrates only old ev
   }
 });
 
-test('rejoining remembers skipped spring shoes and caps pairs from older saves',()=>{
-  for(const [items,savedRun,expected] of [
-    [[], {springShoesSeen:true}, 0],
-    [[['air-balloon',3]], {}, 1],
-    [[], {}, 0],
+test('rejoining preserves the one-time spring shoe draw and normalizes older stacks',()=>{
+  for(const [items,savedRun,expected,state] of [
+    [[], {springShoesSeen:true}, 0,'offered'],
+    [[['air-balloon',13]], {}, 1,'claimed'],
+    [[], {springShoesState:'claimed'}, 0,'claimed'],
+    [[], {springShoesState:'offered'}, 0,'offered'],
+    [[], {}, 0,'available'],
   ]){
     const player={speciesId:4,moves:[],pos:{set(){}},xpFor:()=>30,recompute(){}};
-    const run={player,coop:{},camTarget:{copy(){}},director:{timeline:[]},springShoesSeen:false};
+    const run={player,coop:{},camTarget:{copy(){}},director:{timeline:[]}};
     const data={stage:1,player:{speciesId:4},items,pos:[0,0,0],moves:[],run:{nextEvo:null,...savedRun}};
     restoreProgress(run,data,{stage:1,time:60,stageTime:60});
     assert.equal(player.items.get('air-balloon')??0,expected);
-    assert.equal(run.springShoesSeen,Boolean(expected||savedRun.springShoesSeen));
+    assert.equal(run.springShoesState,state);
   }
 });
 

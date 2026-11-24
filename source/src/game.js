@@ -8,7 +8,7 @@ import {MapSpawnError,mapRulesFor} from './map-rules.js';
 import {altarPalette} from './desk-altar-art.js';
 import {ALTAR_RING_EMISSIVE,altarRingFragment} from './altar-ring-vfx.js';
 import {formCopy, moveCopy, specialNames} from './form-copy.js';
-import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,summonDockModel,facilityNames,isActiveFacility} from './active-content.js';
+import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,summonDockModel,facilityNames,isActiveFacility,springShoesKey} from './active-content.js';
 import {createFacilityEffects} from './facility-effects.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat,worldProgress} from './coop-resume.js';
 import {RoomMonsters,roomMonster} from './room-monsters.js';
@@ -16,8 +16,10 @@ import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
 import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
 import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './dragon-chant.js';
+import {beginDragonSummon,clearDragonSummon,warmDragonSummon} from './dragon-summon-hd/sequence.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage} from './starter-characters.js';
 import {windMoveEffect} from './wind-move-art.js';
+import {createWindAceCast,advanceWindAce,windAceImpact} from './wind-ace.js';
 import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './skill-availability.js';
 import {mountLiteQA} from './lite-qa.js';
 import {runPlan, planIncludes} from './battle-plan.js';
@@ -65,6 +67,7 @@ import {
   A as f,
   An as p,
   Ar as m,
+  vitaminKindLimit,
   At as h,
   B as g,
   Bn as _,
@@ -5385,6 +5388,7 @@ var oc = (e, t) =>
         (this.chromaAmt *= Math.exp(-e * 8)),
         this.sky.position.copy(this.camera.position));
       this.composer.render(e);
+      if (!window.nativeUI) this.dragonFlash?.drawFlash(this.renderer);
     }
   },
   fc = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
@@ -13392,6 +13396,7 @@ var Df = 0.4,
       (e.enemyShadowCells??=new Set()).clear();
       for (let r = 0; r < this.n; r++) {
         if (!this.alive[r] || this.flags[r] & 32768) continue;
+        if (e.dragonHd?.hides(r) || e.dragonHdPending?.id === r) continue;
         let s = this.lodDt[r],
           separation = this.flags[r] & 8192 ? 0 : 6,
           c = this.x[r] + (s > 0 ? (this.vx[r] + this.kx[r] + this.sepX[r]*separation) * s : 0),
@@ -14562,6 +14567,7 @@ var Yp = 3e3,
     n = 0;
     tmpHit = [];
     tmpBoom = [];
+    aceFlights = new Map();
     tmpPull = [];
     tmpBounce = [];
     alive = new Uint8Array(Yp);
@@ -14696,6 +14702,7 @@ var Yp = 3e3,
     }
     remove(e) {
       ((this.alive[e] = 0), this.free.push(e), this.used--);
+      if(this.aceFlights.size)this.aceFlights.delete(e);
       let t = this.slot[e];
       t >= 0 && t < 16 && this.perSlot[t]--;
     }
@@ -14761,7 +14768,9 @@ var Yp = 3e3,
           (l & 16 && this.explode(c), this.remove(c));
           continue;
         }
-        if (l & 2 && l & 1) {
+        const ace=this.aceFlights.size && this.aceFlights.get(c);
+        if(ace && e>0)advanceWindAce(this,c,ace,e);
+        else if (l & 2 && l & 1) {
           let t = r.pos.x - this.x[c],
             n = r.pos.y + 0.8 - this.y[c],
             i = r.pos.z - this.z[c],
@@ -14890,10 +14899,19 @@ var Yp = 3e3,
               o = n.flags[t] & 4 ? 0.5 : 9;
             ((n.kx[t] += (r / a) * o * e * 6), (n.kz[t] += (i / a) * o * e * 6));
           }
+        if(ace && ace.hitsLeft<=0)continue;
         let p = this.rad[c],
-          m = n.within(this.x[c], this.z[c], p, this.tmpHit),
+          travelX=ace?this.vx[c]*e:0,travelZ=ace?this.vz[c]*e:0,
+          travel2=travelX*travelX+travelZ*travelZ,
+          m = ace ? n.within(this.x[c]-travelX*.5,this.z[c]-travelZ*.5,p+Math.sqrt(travel2)*.5,this.tmpHit)
+            : n.within(this.x[c], this.z[c], p, this.tmpHit),
           h = 0;
         for (let e of m) {
+          if(ace && travel2>0){
+            const dx=this.x[c]-n.x[e],dz=this.z[c]-n.z[e];
+            const f=Math.max(0,Math.min(1,(dx*travelX+dz*travelZ)/travel2));
+            if((dx-travelX*f)**2+(dz-travelZ*f)**2>(p+n.radius[e])**2)continue;
+          }
           if (
             Math.abs(n.y[e] + n.hgt[e] * 0.5 - this.y[c]) > n.hgt[e] * 0.6 + p + 0.6 ||
             this.alreadyHit(c, e)
@@ -14909,6 +14927,7 @@ var Yp = 3e3,
           t.combat.hit(e, this.dmg[c], {
             type: this.types[c],
             cls: this.cls[c],
+            windAceHit: !!ace,
             status: this.status[c],
             statusChance: this.statusChance[c],
             slot: this.slot[c],
@@ -14917,6 +14936,11 @@ var Yp = 3e3,
             dirZ: this.vz[c] / r,
             drain: this.drain[c],
           });
+          if(ace){
+            windAceImpact(t,ace.cast,e);
+            if(--ace.hitsLeft<=0)break;
+            continue;
+          }
           let i = qp(this.fx[c]);
           if (
             (++h > 4 ||
@@ -14975,6 +14999,7 @@ var Yp = 3e3,
     render() {
       (this.pool.begin(), this.glow.begin());
       this.run.vfx.crafted.windMoves?.begin();
+      this.run.vfx.crafted.windAce?.begin();
       this.run.vfx.crafted.windSkills?.begin();
       let e = this.run.vfx.ownOpacity,
         t = this.run.hideOwnFx;
@@ -15030,10 +15055,12 @@ var Yp = 3e3,
                     ));
       }
       this.run.vfx.crafted.windMoves?.end();
+      this.run.vfx.crafted.windAce?.end();
       this.run.vfx.crafted.windSkills?.end();
       (this.pool.end(), this.glow.end());
     }
     clear() {
+      this.aceFlights.clear();
       (this.alive.fill(0),
         (this.n = 0),
         (this.free.length = 0),
@@ -22044,8 +22071,8 @@ function Lh(e, t, n, r, i, a, o, s = {}, artRadius = o, openingVortex = false) {
     f = 0;
   W(c, i, (p, m) => {
     let h = p / i,
-      g = r * (1 - (1 - h) * (1 - h)) * 0.95 + 1,
-      _ = Math.sin(p * 5) * 1.2,
+      g = openingVortex ? 1+r*h : r * (1 - (1 - h) * (1 - h)) * 0.95 + 1,
+      _ = openingVortex ? 0 : Math.sin(p * 5) * 1.2,
       v = l + t * g - n * _,
       y = u + n * g + t * _,
       b = c.terrain.arenaR - 1.5,
@@ -22930,9 +22957,12 @@ var J = {
         let t = e.run,
           n = [1, 2, 3][e.tier],
           r = Math.atan2(e.az, e.ax);
-        for (let t = 0; t < n; t++) {
-          let i = r + (t - (n - 1) / 2) * 0.55;
-          Lh(e, Math.cos(i), Math.sin(i), 16 * e.R, 2.2, 0.4, 1.8 + e.tier * 0.35, {
+        const opening=t.player.speciesId===16;
+        for (let index = 0; index < n; index++) {
+          let i = r + (index - (n - 1) / 2) * 0.55;
+          const target=opening?t.aimTarget(16*e.R):-1;
+          const range=target>=0?Math.min(16*e.R,Math.hypot(t.enemies.x[target]-e.x,t.enemies.z[target]-e.z)+.8):16*e.R;
+          Lh(e, Math.cos(i), Math.sin(i), range, opening?Math.max(.55,range/8.7):2.2, 0.4, 1.8 + e.tier * 0.35, {
             status: `confusion`,
             statusChance: 0.2,
           }, 1.8, e.run.player.speciesId === 16);
@@ -27950,9 +27980,9 @@ var e_ = class {
         const criticalFx=(u||m)&&r.vfx.criticalImpact(t,a,o);
         if(authoredBreath)r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),visualMove==='dragon-breath');
         else if(authoredFamily)r.vfx.crafted.fireFamily.impact(visualMove||'ultimate',t,a,o);
-        else if(!authoredEmber)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
+        else if(!n.windAceHit && !authoredEmber)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
-          !continuousFire && !authoredEmber && !authoredBreath && !authoredFamily && Math.random() < 0.6 &&
+          !n.windAceHit && !continuousFire && !authoredEmber && !authoredBreath && !authoredFamily && Math.random() < 0.6 &&
             (u || this.hitFxN++ < Yg) &&
             r.vfx.burst(t, a, o, d, u ? 9 : 4, u ? 7 : 4, am(n.type), u ? 0.55 : 0.4, 0.3),
           m
@@ -27980,7 +28010,12 @@ var e_ = class {
                 : l < 0.99
                   ? 11053240
                   : 16777215;
-        (r.vfx.number(i.x[e], i.y[e] + i.hgt[e] + 0.3, i.z[e], s, f, m ? 2 : u, e+"/"+i.gen[e]),
+        const numberY=i.y[e]+i.hgt[e]+.3,numberKey=e+"/"+i.gen[e];
+        if(n.windAceHit){
+          // The first four contact exposures show the slash before the damage label.
+          r.later(.10,()=>r.vfx.number(t,numberY,o,s,f,m?2:u,numberKey));
+        }else r.vfx.number(t,numberY,o,s,f,m?2:u,numberKey);
+        (
           l > 1.01 &&
             F.chance(0.25) &&
             this.canReact(`eff`) &&
@@ -30101,6 +30136,24 @@ function Q_(e, t, n, r) {
   // Range upgrades move the hit boundary and the points where effects appear.
   // Each painted frame keeps the dimensions authored for the base move.
   const artRadius = o.area;
+  if(o.key==='wind-ring-wave'){
+    n.timer-=r;
+    if(n.timer<=0){
+      n.timer=h;
+      i.attackAnim();
+      Bg(i.ability)?.onMoveFired?.(e,n,t);
+      const fieldRadius=d*1.85;
+      e.vfx.crafted.windRingArt().start(fieldRadius);
+      const pos=i.pos;
+      for(let pulse=0;pulse<3;pulse++){
+        const hit=new Set();
+        const wave=()=>e.animate(.85,progress=>Oh({run:e,dmg:u*.4,base:x},hit,pos.x,pos.z,fieldRadius*progress,1,{knock:1}));
+        if(pulse)e.later(.22*pulse,wave);else wave();
+      }
+      Y_(e,o.key,`cast`,void 0,()=>e.audio.whoosh());
+    }
+    return;
+  }
   if (o.arch === `orbit`) {
     if (((n.timer -= r), n.active > 0)) {
       ((n.active -= r), (n.phase += r * m));
@@ -30300,6 +30353,7 @@ function Q_(e, t, n, r) {
         n.timer = 0.2; n.waitingForTarget = true;
         return;
       }
+      const aceCast=o.effectKey==='wind-aerial-ace'?createWindAceCast(e,r,m,p):null;
       let i = o.arch === `homing` ? 0.9 : (o.spread ?? 0.18);
       for (let s = 0; s < f; s++) {
         let c = (s - (f - 1) / 2) * i,
@@ -30313,7 +30367,7 @@ function Q_(e, t, n, r) {
                 : o.arch === `boomerang`
                   ? em.Boomerang | em.Spin
                   : 0;
-        e.projectiles.fire({
+        const shot=e.projectiles.fire({
           x: v,
           y,
           z: b,
@@ -30321,7 +30375,7 @@ function Q_(e, t, n, r) {
           dz: r.x * h + r.z * l,
           dy: r.y,
           speed: m,
-          life: p,
+          life: aceCast?.duration??p,
           radius: o.arch === `boomerang` ? d : o.arch === `orb` ? 0.55 : d,
           dmg: u,
           type: o.type,
@@ -30341,9 +30395,12 @@ function Q_(e, t, n, r) {
           target: r.target,
           fx: S,
         });
+        if(aceCast && shot>=0)e.projectiles.aceFlights.set(shot,{
+          cast:aceCast,side:s%2,bend:1+Math.floor(s/2)*.18,index:0,hitsLeft:1+o.pierce+n.mods.pierce
+        });
       }
       (C.cast?.(e, v, y, b, r.x, r.z, c, artRadius),
-        o.key !== 'ember' && o.effectKey !== 'wind-aerial-ace' && e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
+        o.key !== 'ember' && o.effectKey !== 'wind-aerial-ace' && o.effectKey !== 'wind-wing-attack' && e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
         Y_(e, o.key, `cast`, { k: f }, () => e.audio.shot(o.type, 0.6)));
       break;
     }
@@ -30450,14 +30507,6 @@ function Q_(e, t, n, r) {
             s = i.pos.y,
             u = i.pos.z,
             d = t * (1 + n * 0.12);
-          if (o.key === 'wind-ring-wave') {
-            const duration = .65;
-            const hit = new Set();
-            e.vfx.ring(a, s, u, d, 0x8bcaff, duration, 0, L.Plain);
-            e.animate(duration, progress => Oh({run:e, dmg:r, base:x}, hit, a, u, d * progress, 1, {knock:1}));
-            Y_(e, o.key, `cast`, {k:n}, () => e.audio.whoosh());
-            return;
-          }
           if (C.nova) C.nova(e, a, s, u, d, c, artRadius * (1 + n * 0.12));
           else {
             (e.vfx.ring(a, s, u, d, c, 0.45), e.vfx.ring(a, s, u, d * 0.7, 16777215, 0.3));
@@ -30672,6 +30721,9 @@ function Q_(e, t, n, r) {
       break;
     case `vortex`: {
       let r = e.aimDir(14, n);
+      const target=r.target;
+      const lifetime=o.effectKey==='wind-twister' && target>=0
+        ? Math.min(p,Math.max(.25,(Math.hypot(E.x[target]-v,E.z[target]-b)+.6)/m)) : p;
       for (let n = 0; n < f; n++) {
         let i = (n - (f - 1) / 2) * 0.6,
           a = Math.cos(i),
@@ -30683,7 +30735,7 @@ function Q_(e, t, n, r) {
           dx: r.x * a - r.z * s,
           dz: r.x * s + r.z * a,
           speed: m,
-          life: p,
+          life: lifetime,
           radius: 1.2,
           dmg: u,
           type: o.type,
@@ -30860,12 +30912,20 @@ function nv(e, t, n) {
   for (let [e, t] of Object.entries(n)) s[e] += t;
   return s;
 }
+function stackedItemModifier(mod, count) {
+  if (count === 1) return mod;
+  return {
+    stat: mod.stat,
+    add: mod.add == null ? undefined : mod.add * count,
+    mul: mod.mul == null ? undefined : mod.mul < 1 ? mod.mul ** count : 1 + (mod.mul - 1) * count,
+  };
+}
 function rv(e, t) {
   let n = t.length && Array.isArray(t[0]) ? t : [t];
   for (let t of n) for (let n of t) n.add && (e[n.stat] += n.add);
   for (let t of n) {
     let n = {};
-    for (let r of t) r.mul && (r.mul < 1 ? (e[r.stat] *= r.mul) : (n[r.stat] = (n[r.stat] ?? 0) + r.mul - 1));
+    for (let r of t) r.mul != null && (r.mul < 1 ? (e[r.stat] *= r.mul) : (n[r.stat] = (n[r.stat] ?? 0) + r.mul - 1));
     for (let [t, r] of Object.entries(n)) e[t] *= 1 + r;
   }
 }
@@ -31760,6 +31820,7 @@ var mv = 30,
     moves = [null, null, null, null];
     moveSlots = 3;
     vitamins = new Map();
+    chosenVitamins = new Set();
     items = new Map();
     buffs = new Map();
     ability;
@@ -31919,7 +31980,7 @@ var mv = 30,
       for (let [t, r] of this.items) {
         let i = sn.get(t);
         if (!i) continue;
-        for (let e = 0; e < r; e++) n.push(...i.mods);
+        for (const mod of i.mods) n.push(stackedItemModifier(mod, r));
         let a = dn[t];
         a && (e.typeBoost[a] = (e.typeBoost[a] ?? 1) + 0.3 * r);
       }
@@ -31997,9 +32058,14 @@ var mv = 30,
         }
       return e;
     }
+    canTakeVitamin(key) {
+      return Ne.has(key) && (this.chosenVitamins.has(key) || this.chosenVitamins.size < vitaminKindLimit) &&
+        (this.vitamins.get(key)?.level ?? 0) < this.vitCap;
+    }
     addVitamin(e, t) {
       let n = this.vitamins.get(e);
-      if (!Ne.has(e) || n?.level >= this.vitCap) return false;
+      if (!this.canTakeVitamin(e)) return false;
+      this.chosenVitamins.add(e);
       if (
         ((this.run.vitTaken = !0),
         n
@@ -32036,12 +32102,15 @@ var mv = 30,
       return 10 + (this.items.has(`max-ether`) ? 2 : 0);
     }
     canHold(e) {
-      return sn.has(e) && (this.items.get(e) ?? 0) < (sn.get(e).max ?? 10);
+      return sn.has(e) && (e !== springShoesKey || (this.run.springShoesState !== 'claimed' && !this.items.has(e)));
+    }
+    copyableItemKeys() {
+      return [...this.items.keys()].filter(key => key !== springShoesKey);
     }
     addItem(e) {
       return this.canHold(e)
         ? (this.items.set(e, (this.items.get(e) ?? 0) + 1),
-          e === 'air-balloon' && (this.run.springShoesSeen = true),
+          e === springShoesKey && (this.run.springShoesState = 'claimed'),
           (this.run.peakItems = Math.max(
             this.run.peakItems,
             [...this.items.values()].reduce((e, t) => e + t, 0),
@@ -35549,7 +35618,7 @@ function canUpgradeMove(player, slot) {
   return slot < player.moveSlots && move && formMove(move.def.id, player.speciesId) && move.level < player.capOf(move);
 }
 function Ub(run, count) {
-  const player = run.player, pool = [];
+  const player = run.player, moves = [], vitamins = [];
   if (player.freeMoveSlot() >= 0) {
     const catalog = Vb(player.speciesId,player.roster,player.types,id => run.meta.inLeague(id));
     const owned = player.ownedMoveIds();
@@ -35558,7 +35627,7 @@ function Ub(run, count) {
     for (const {id,level} of [...catalog.kit,...catalog.line,...shared,...(catalog.any ?? [])]) {
       const key = 'm'+id;
       if (level <= player.level && !owned.has(id) && !run.banished.has(key)) {
-        pool.push({kind:'newMove', id, key, rarity:0});
+        moves.push({kind:'newMove', id, key, rarity:0});
         owned.add(id);
       }
     }
@@ -35566,16 +35635,24 @@ function Ub(run, count) {
   player.moves.forEach((move,slot) => {
     if (!canUpgradeMove(player, slot)) return;
     const key = 'm'+move.def.id;
-    if (!run.banished.has(key)) pool.push({kind:'upMove', slot, key});
+    if (!run.banished.has(key)) moves.push({kind:'upMove', slot, key});
   });
   for (const vitamin of m) {
     const key = 'v'+vitamin.key, current = player.vitamins.get(vitamin.key);
-    if (run.banished.has(key)) continue;
-    if (current?.level >= player.vitCap) continue;
-    pool.push({kind:current?'upVit':'newVit', vit:vitamin.key, key});
+    if (run.banished.has(key) || !player.canTakeVitamin(vitamin.key)) continue;
+    vitamins.push({kind:current?'upVit':'newVit', vit:vitamin.key, key});
   }
-  const history = run.upgradeOfferHistory ??= {seen:new Set(), previous:new Set()};
-  const offers = drawOfferPage(pool, count, history);
+  // Each full group of three has one move. Give an extra slot the same 1:2 odds.
+  const targetMoves = Math.floor(count / 3) + Number(count % 3 > 0 && Math.random() < (count % 3) / 3);
+  const moveCount = Math.min(moves.length, Math.max(targetMoves, count - vitamins.length));
+  const history = run.upgradeOfferHistory ??= {
+    moves: {seen:new Set(), previous:new Set()},
+    vitamins: {seen:new Set(), previous:new Set()},
+  };
+  const offers = F.shuffle([
+    ...drawOfferPage(moves, moveCount, history.moves),
+    ...drawOfferPage(vitamins, count - moveCount, history.vitamins),
+  ]);
   for (const offer of offers) {
     if (offer.kind !== 'newMove') offer.rarity = Hb(run);
     if (offer.kind === 'upMove') offer.ups = P_(player.moves[offer.slot], E[offer.rarity]);
@@ -35658,7 +35735,8 @@ function Gb(e, t) {
 }
 function canOfferItem(run, key) {
   return run.player.canHold(key) && run.meta.itemInPool(key) && !run.banished.has('i' + key) &&
-    !(run.tower && key === 'dowsing-machine') && !(run.springShoesSeen && key === 'air-balloon');
+    (key !== springShoesKey || run.springShoesState === 'available') &&
+    !(run.tower && key === 'dowsing-machine');
 }
 function drawItemKeys(run, count, minimumRarity = 0) {
   const eligible = tt.filter(item => canOfferItem(run, item.key));
@@ -35675,8 +35753,9 @@ function drawItemKeys(run, count, minimumRarity = 0) {
       history.previous.add(item.key);
     }
   }
-  if (page.some(item => item.key === 'air-balloon')) run.springShoesSeen = true;
-  return page.map(item => item.key);
+  const keys = page.map(item => item.key);
+  if (keys.includes(springShoesKey)) run.springShoesState = 'offered';
+  return keys;
 }
 var Yb = {
   physical: (e) => e.cls === `physical`,
@@ -36229,7 +36308,7 @@ var lS = [{
             shape: I.PixFeather,
             size: 1.2,
             color: 16777215,
-            fx: Kp(`wind-wing-attack`),
+            fx: Kp(`wind-fusion-feather`),
             knock: 1,
           },
           0.45,
@@ -36751,7 +36830,7 @@ var GS = class e {
         this.dwellTime = 0;
         this.waitingForGold = false;
         this.warnedPortal = null;
-        if (target?.kind === 'ditto') run.ui.prepareDittoPictures(run.player.items);
+        if (target?.kind === 'ditto') run.ui.prepareDittoPictures(run.player.copyableItemKeys());
       }
       if (!target || run.state !== 'play' || run.player.dead) return;
       if (target.kind === 'boss') {
@@ -36771,15 +36850,7 @@ var GS = class e {
       }
       this.waitingForGold = false;
       const duration = this.dwellDuration;
-      if (this.dwellTime >= duration) return;
-      // A slow drag or a blocked stride is still an active move. Starting a
-      // shop/choice here would cancel the thumb that brought the player past it.
-      const touch = run.ui.touch;
-      if (touch?.floatingStick && touch.stickId >= 0 && (run.input.stickX || run.input.stickY) &&
-          ['chest','freechest','cursedchest','meowth','ditto','hypno','fossil','bill','slots'].includes(target.kind)) {
-        this.dwellTime = 0;
-        return;
-      }
+      if (this.dwellTime > 0 && this.dwellTime >= duration) return;
       if (run.coop?.lifting || run.capture.throwing || run.capture.canThrow()) {
         this.dwellTime = 0;
         return;
@@ -36787,7 +36858,8 @@ var GS = class e {
       this.dwellTime += seconds;
       // Frame deltas can add up a fraction below the exact duration.
       if (this.dwellTime + 1e-9 >= duration) {
-        this.dwellTime = duration;
+        // Latch instant interactions until the player leaves the range.
+        this.dwellTime = Math.max(duration, Number.EPSILON);
         this.interact(target);
       }
     }
@@ -36856,14 +36928,6 @@ var GS = class e {
       if(ring){
         ring.position.set(0, .12, 0);
         ring.scale.setScalar(facility.ringRadius);
-      }
-      if (kind !== 'berry' && kind !== 'bill') {
-        const halo = facility.halo = this.dwellRing.clone();
-        halo.material = this.idleRingMaterial;
-        halo.visible = !facility.used;
-        halo.position.set(0, .12, 0);
-        halo.scale.setScalar(facility.ringRadius);
-        group.add(halo);
       }
       facility.model = model;
       this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
@@ -37241,7 +37305,7 @@ var GS = class e {
             ? c(`El guardián ya despertó`)
             : this.run.stageTime < bossSummonUnlockSeconds(this.run)
               ? '距可提前召唤 ' + Ys(Math.ceil(bossSummonUnlockSeconds(this.run) - this.run.stageTime)).padStart(5, '0')
-              : `停留 ${bossSummonSeconds} 秒 · 唤醒镇守`;
+              : `靠近即可唤醒镇守`;
         case `shrine`:
           return this.run.bossSpawned ? c(`El santuario late con fuerza`) : c(`Tocar el santuario`);
         case `portal`:
@@ -37374,10 +37438,6 @@ var GS = class e {
             t.openShop();
             break;
           case `ditto`:
-            if (!t.player.items.size) {
-              t.ui.toast(c(`Ditto no tiene nada que copiar...`), null);
-              break;
-            }
             t.openDitto(() => {
               e.used = true;
               (e.data ??= {}).regenAt = t.time + VS.ditto;
@@ -37969,7 +38029,7 @@ var GS = class e {
           model.quaternion.copy(this.run.r.camera.quaternion);
           model.rotateX(deskPitch);
         }
-        const anchor=model?.userData.ringAnchor, halo=facility.halo;
+        const anchor=model?.userData.ringAnchor, halo=facility.chargeRing;
         if(anchor && halo){
           // Project the artwork centre onto the ring's ground plane along the
           // current view, so both orthographic desk and perspective views align.
@@ -37983,7 +38043,6 @@ var GS = class e {
             p.x+=dx*distance;p.y=facility.y+.12;p.z+=dz*distance;
           }
           facility.group.worldToLocal(p);
-          facility.chargeRing?.position.copy(p);
         }
         if (facility.dock) {
           if (facility.used || this.run.bossSpawned) facility.dock.open();
@@ -40851,12 +40910,12 @@ var mw = 7500,
     ball: {
       letter: `b`,
       kind: 'chest',
-      text: () => `停留 ${facilityDwellSeconds} 秒，花费标价金币抽取道具。`,
+      text: () => `靠近即可花费标价金币抽取道具。`,
     },
     freeball: {
       letter: 'u',
       kind: 'freechest',
-      text: () => `停留 ${facilityDwellSeconds} 秒，免费抽取一件道具。`,
+      text: () => `靠近即可免费抽取一件道具。`,
     },
     altar: {
       letter: `a`,
@@ -40867,12 +40926,12 @@ var mw = 7500,
       letter: `s`,
       icon: () => paperIcon('coin', 26, '#a47638'),
       title: () => c(`Tienda de Meowth`),
-      text: () => `在商店旁停留 ${facilityDwellSeconds} 秒即可选购道具。`,
+      text: () => `靠近商店即可选购道具。`,
     },
     guardian: {
       letter: `g`,
       kind: 'boss',
-      text: run => `满 ${bossSummonUnlockSeconds(run) / 60} 分钟后，在装置光圈内停留 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
+      text: run => `满 ${bossSummonUnlockSeconds(run) / 60} 分钟后，靠近装置即可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
     },
     alpha: {
       letter: `f`,
@@ -40886,12 +40945,12 @@ var mw = 7500,
     portal: {
       letter: `p`,
       kind: 'portal',
-      text: () => `在木门旁停留 ${facilityDwellSeconds} 秒，前往下一区域或通关。`,
+      text: () => `靠近木门即可前往下一区域或通关。`,
     },
     egg: {
       letter: `e`,
       kind: 'nest',
-      text: () => `停留 ${facilityDwellSeconds} 秒带上蛋，击败敌人即可孵化伙伴。`,
+      text: () => `靠近即可带上蛋，击败敌人即可孵化伙伴。`,
     },
     level: {
       letter: `l`,
@@ -43550,7 +43609,7 @@ var iT = Math.PI / 180,
           e.ui.ultCutIn(t.speciesId, Zh(n, r), Ni[n.type]),
         d || (e.ultLook(n.tint, a + 0.3), e.audio.duck(0.35, a + 0.6), J.start(e.audio)),
         (n.sfx ?? (() => {}))(e.audio, u));
-      const sparks = [4,5,6].includes(t.speciesId) ? 0 : 24;
+      const sparks = [4,5,6,16].includes(t.speciesId) ? 0 : 24;
       if (sparks) e.vfx.ring(u.x, u.y, u.z, 4.5, Ni[n.type], 0.5, 0.9);
       for (let t = 0; t < sparks; t++) {
         let r = (t / 24) * Math.PI * 2,
@@ -45410,8 +45469,8 @@ var GT = 15,
     }
     econ = { shop: 0, sold: 0 };
     goldSpent = 0;
-    springShoesSeen = false;
     peakItems = 0;
+    springShoesState = 'available';
     vitTaken = !1;
     slotSpins = 0;
     slotSpent = 0;
@@ -45734,6 +45793,7 @@ var GT = 15,
       finally {this.buildingStage=false;}
     }
     buildStage(e, preparedTerrain, deferred = false) {
+      clearDragonSummon(this);
       this.dragonDuel = false;
       let t = this.r,
         r = this.stage === 4 ? (this.biome.sanctuary ?? null) : null;
@@ -45759,6 +45819,9 @@ var GT = 15,
           (this.ult = new NT(this)),
           this.sprites.preload(this.ult.def.preload ?? []),
           this.meta.lab(`revive`) && this.player.addItem(`max-revive`));
+        if (this.stage === 1 && this.biome.id === 'forest' && (this.mode === 'standard' || this.mode === SINGLE_STAGE)) {
+          this.player.addItem(springShoesKey);
+        }
         let e = this.player.roster ? k.movesByKey.get(this.player.roster.kit[0])?.id : void 0;
         (this.player.addMove(e ?? j_(this.startSpecies)),
           (this.nextEvo = this.planEvolution(this.startSpecies, 1)));
@@ -46139,27 +46202,53 @@ var GT = 15,
       this.setCine({follow:e, dist:4.5 + enemies.hgt[e] * 1.4, pitch:.12, orbit:.3});
       if (species === finalBossSpecies) {
         this.dragonDuel = true;
-        const revealSeconds = 2.25;
-        this.audio.duck(.25, dragonChantSeconds + revealSeconds);
-        const chant = this.ui.dragonChant = startDragonChant(this.ui, beat => {
-          J.whoosh(this.audio, .4 + beat * .08, .11, 560 + beat * 130);
-          if (beat === 3) this.audio.boom(.55);
-        }, summonMode);
-        this.animate(dragonChantSeconds, progress => chant.draw(progress * dragonChantSeconds), () => {
-          chant.clearWords();
-          if (!this.boss.live(e)) {
-            this.state = 'play'; this.cine.want = 0; this.yawBack = yaw; this.ui.endCinematic();
-            return;
-          }
-          const travelSeconds = this.sacrificeToDragon(e);
-          this.revealBoss(e, revealSeconds, travelSeconds / revealSeconds, true, yaw);
-        });
+        beginDragonSummon(this, e, fx => this.playDragonIntro(e, summonMode, yaw, fx));
         return;
       }
       const seconds = t ? 3.2 : 2.6;
       this.ui.bossIntro(species, t, seconds, enemies.glyphWords[e], c(t ? `Legendario` : `Guardián`));
       this.audio.duck(.25, seconds);
       this.revealBoss(e, seconds, .35, t, yaw);
+    }
+    playDragonIntro(id, summonMode, yaw, fx) {
+      const revealSeconds = 2.25;
+      this.audio.duck(.25, dragonChantSeconds + revealSeconds);
+      const chant = this.ui.dragonChant = startDragonChant(this.ui, beat => {
+        J.whoosh(this.audio, .4 + beat * .08, .11, 560 + beat * 130);
+        if (beat === 3) this.audio.boom(.55);
+      }, summonMode);
+      const endIntro = () => {
+        this.state = 'play'; this.cine.want = 0; this.yawBack = yaw; this.ui.endCinematic();
+      };
+      this.animate(dragonChantSeconds, progress => {
+        if (fx && this.dragonHd !== fx) return;
+        const elapsed = progress * dragonChantSeconds;
+        chant.draw(elapsed);
+        fx?.update(elapsed);
+      }, () => {
+        if (fx && this.dragonHd !== fx) return;
+        chant.clearWords();
+        if (!this.boss.live(id)) {
+          clearDragonSummon(this);
+          endIntro();
+          return;
+        }
+        if (!fx) {
+          const travelSeconds = this.sacrificeToDragon(id);
+          this.revealBoss(id, revealSeconds, travelSeconds / revealSeconds, true, yaw);
+          return;
+        }
+        fx.beginGather();
+        fx.update(dragonChantSeconds);
+        this.animate(revealSeconds, progress => {
+          if (this.dragonHd === fx) fx.update(dragonChantSeconds + progress * revealSeconds);
+        }, () => {
+          if (this.dragonHd !== fx) return;
+          fx.dispose();
+          this.dragonHd = null;
+          endIntro();
+        });
+      });
     }
     revealBoss(e, r, roarAt, golden, yaw) {
       const n = this.enemies, i = n.species[e];
@@ -46728,7 +46817,7 @@ var GT = 15,
         if (left) messages.push('附近还有 ' + left + ' 个奖励扭蛋');
         if (lastZone && this.capture.canWait()) messages.push('还有字灵等待收服');
         if (messages.length) {
-          this.ui.toast(messages.join('，') + `。继续停留 ${facilityDwellSeconds} 秒即可离开。`, 'poke-ball');
+          this.ui.toast(messages.join('，') + `。即将离开。`, 'poke-ball');
           this.audio.deny();
           this.interactables.warnedPortal = portal;
           this.interactables.dwellTime = 0;
@@ -47316,14 +47405,13 @@ var GT = 15,
       } else {
         let e = PS(this, 2);
         (this.addGold(e),
-          this.ui.toast(c(`Ya tienes todos los objetos al máximo: +{n} ₽`, { n: e }), `nugget`));
+          this.ui.toast(`暂无可选道具，获得 ${e} 金币`, `nugget`));
       }
     }
     openShop() {
       this.state = `modal`;
       let e = this.endless ? 100 + this.endless.shopVisit : this.tower ? 200 + this.tower.floor : this.stage;
       if (!this.shop || this.shop.stage !== e) this.shop = {stage: e, stock: $b(this), rerolls: 0};
-      else this.shop.stock = this.shop.stock.filter(item => item.key !== 'air-balloon');
       this.ui.showShop(this, () => this.resume());
     }
     rerollCost() {
@@ -47356,10 +47444,15 @@ var GT = 15,
           !0);
     }
     openDitto(onCopy) {
+      const keys = this.player.copyableItemKeys();
+      if (!keys.length) {
+        this.ui.toast(this.player.items.has(springShoesKey) ? '弹簧鞋不可复制' : c(`Ditto no tiene nada que copiar...`), null);
+        return;
+      }
       this.state = 'modal';
-      this.ui.showDitto(this, key => {
+      this.ui.showDitto(this, keys, key => {
         if (this.state !== 'modal') return;
-        if (key && this.player.items.has(key) && this.player.addItem(key)) {
+        if (keys.includes(key) && this.player.items.has(key) && this.player.addItem(key)) {
           onCopy();
           this.ui.toast(c(`¡Ditto se transforma en {item}!`, {item: Zb(key).name}), key);
         }
@@ -47465,7 +47558,7 @@ var GT = 15,
               oc(`modal`, Error(`modal state without a window`)),
               (this.state = `play`)))
           : (this.modalDeadT = 0),
-        (this.state === `evolving` || this.state === `cinematic`) && !this.anims.some((e) => e.cine))
+        (this.state === `evolving` || this.state === `cinematic`) && !this.dragonHdPending && !this.anims.some((e) => e.cine))
       ) {
         if (((this.cineDeadT += e), this.cineDeadT > 1.5)) {
           ((this.cineDeadT = 0),
@@ -47568,6 +47661,8 @@ var GT = 15,
       updateCrowdBudget(this,performance.now(),document.hidden);
     }
     simulate(e, dwellSeconds = e) {
+      if (this.stageTime >= bossSummonUnlockSeconds(this) - 60 && !this.bossSpawned &&
+          !this.dragonHdAssets && this.stageBossSpecies === finalBossSpecies) warmDragonSummon(this);
       let t = this.input,
         n = this.player,
         r = !!this.coop && n.dead;
@@ -48059,7 +48154,7 @@ var GT = 15,
       let n = this.sprites.get(this.player.speciesId);
       for (let t = this.ghosts.length - 1; t >= 0; t--) {
         let r = this.ghosts[t];
-        if(r.windGlyph){
+        if(r.windGlyph||r.dashGlyph){
           const age=this.time-r.start;
           if(age>=r.life||!this.vfx.crafted.allowed()){this.ghosts.splice(t,1);continue;}
           const glyph=this.sprites.getHeroGhostGlyph(r.species,'wind');
@@ -48092,6 +48187,7 @@ var GT = 15,
     }
     dispose() {
       this.disposed=true;
+      clearDragonSummon(this);
       this.r.setCombatLoad(0);
       (this.coop?.dispose(),
         this.hints.dispose(),
@@ -48704,8 +48800,10 @@ function LE(e, t, n) {
   let i = [],
     a = dn[t];
   a && i.push(c(`+{pct}% daño de tipo {type}`, { pct: 30 * n, type: Pi[a] }));
-  for (let e of r.mods)
-    i.push(e.mul == null ? FE(e.stat, (e.add ?? 0) * n) : FE(e.stat, void 0, e.mul ** +n));
+  for (const mod of r.mods) {
+    const {stat, add, mul} = stackedItemModifier(mod, n);
+    i.push(FE(stat, add, mul));
+  }
   let o = IE[t];
   return (o && i.push(...o(e, n)), i);
 }
@@ -50610,7 +50708,7 @@ function iO(e, t) {
         `div`,
         {},
         X(`b`, {}, n.name),
-        X(`small`, {}, `${Le[n.rarity]} · ${c(`×{n} de {max}`, { n: i, max: r.max ?? 10 })}`),
+        X(`small`, {}, `${Le[n.rarity]} · ×${i}`),
       ),
     ),
     X(`p`, {}, n.desc),
@@ -64151,7 +64249,6 @@ function ZX(app) {
     facilityIcon: kind => Zt(facilityIconFile(kind)),
     itemIcon,
     itemRarity: id => sn.get(id)?.rarity,
-    itemLimit: id => sn.get(id)?.max??10,
     glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
   });
 }
@@ -67407,7 +67504,7 @@ function _F(e, t = `lab`) {
               X(
                 `span`,
                 { class: `ic-note` + (e ? `` : ` green`) },
-                e ? c(`Archivado`) : c(`En tus Poké Balls · máx. {n}`, { n: a.max ?? 10 }),
+                e ? c(`Archivado`) : c(`En tus Poké Balls`),
               ),
               r || e
                 ? X(
@@ -74169,7 +74266,7 @@ var JI = class {
             `div`,
             {},
             X(`b`, {}, n.name),
-            X(`small`, {}, `${Le[n.rarity]} · ${c(`×{n} de {max}`, { n: r, max: sn.get(t)?.max ?? 10 })}`),
+            X(`small`, {}, `${Le[n.rarity]} · ×${r}`),
           ),
         ),
         X(`p`, {}, n.desc),
@@ -74440,7 +74537,6 @@ var JI = class {
       t.forEach((t, n) => {
         let i = Zb(t),
           o = e.player.items.get(t) ?? 0,
-          s = sn.get(t)?.max ?? 10,
           l = X(
             `button`,
             { class: `card`, onclick: () => a(t) },
@@ -74454,7 +74550,7 @@ var JI = class {
                 e,
                 (sn.get(t)?.mods ?? []).map((e) => e.stat),
               ),
-              X(`small`, { class: `cap` }, c(`Tienes {n}/{max}`, { n: o, max: s })),
+              X(`small`, { class: `cap` }, `持有 ×${o}`),
               X(`div`, { class: `key` }, `[${n + 1}]`),
             ),
           );
@@ -74494,13 +74590,13 @@ var JI = class {
           const item=Zb(key),def=sn.get(key),applies=selling?null:this.affects(e,(def?.mods??[]).map(m=>m.stat));
           list.append(shopOffer({key,name:item.name,picture:Q(key),quality:itemOfferQuality(item.rarity),
             planned:!selling&&planIncludes(runPlan(e),'items',key),effects:selling?[]:[item.desc,...(applies?[applies.textContent]:[])],
-            owned:selling?'持有 ×'+count:'持有 '+count+' / '+(def?.max??10),status,action}));
+            owned:'持有 ×'+count,status,action}));
         };
         for(const lot of r){
-          const full=!e.player.canHold(lot.key),short=e.gold<lot.price;
-          const state=lot.sold?'已售罄':full?'持有已满':short?'余额不足':'';
+          const short=e.gold<lot.price;
+          const state=lot.sold?'已售罄':short?'余额不足':'';
           const status=X('small',{class:'zx-shop-status'},state);
-          const buy=X('button',{type:'button',class:'zx-review-button primary zx-shop-action',disabled:lot.sold||full||short?'true':null,
+          const buy=X('button',{type:'button',class:'zx-review-button primary zx-shop-action',disabled:lot.sold||short?'true':null,
             'data-shop-buy':lot.key,'aria-label':'购买'+Zb(lot.key).name+'，花费'+P(lot.price)+(state?'，'+state:''),
             onclick:()=>{if(!buy.isConnected||lot.sold)return;e.buyShopItem(lot)?(N.coin(),n()):N.deny();}},X('span',{},'购买'),shopAmount(P(lot.price)));
           addOffer(i,lot.key,e.player.items.get(lot.key)??0,buy,status);
@@ -74576,9 +74672,9 @@ var JI = class {
       };
       (setTimeout(() => addEventListener(`keydown`, r), 250), e.cry(52));
     }
-    prepareDittoPictures(items) {
+    prepareDittoPictures(keys) {
       const pictures = this.dittoPictures ??= new Map();
-      for (const key of items.keys()) {
+      for (const key of keys) {
         if (pictures.has(key)) continue;
         const picture = new Image();
         pictures.set(key,picture);
@@ -74589,16 +74685,16 @@ var JI = class {
       }
       return pictures;
     }
-    showDitto(e, t) {
-      const pictures = this.prepareDittoPictures(e.player.items);
+    showDitto(e, keys, t) {
+      const pictures = this.prepareDittoPictures(keys);
       this.dittoPictures = null;
       const list = X('div', { class: 'zx-review-content zx-item-body' });
-      for (const [key,count] of e.player.items) {
-        const item=Zb(key),limit=sn.get(key)?.max??10,full=!e.player.canHold(key);
-        const card=X('button',{type:'button',disabled:full?'true':null,
-          onclick:()=>{if(!card.isConnected)return;if(!e.player.canHold(key)){N.deny();return;}t(key);}});
+      for (const key of keys) {
+        const count=e.player.items.get(key);
+        const item=Zb(key);
+        const card=X('button',{type:'button',onclick:()=>{if(card.isConnected)t(key);}});
         list.append(itemOffer(card,{key,name:item.name,picture:pictures.get(key),quality:itemOfferQuality(item.rarity),
-          effects:[item.desc],held:'持有 '+count+'/'+limit+(full?' · 已满':'')}));
+          effects:[item.desc],held:'持有 ×'+count}));
       }
       const pane = this.modal(
         X('h1', { class: 'small' }, '道具复制'),
@@ -75370,7 +75466,7 @@ var JI = class {
                     `div`,
                     { class: `row`, style: { gap: `6px` } },
                     X(`span`, { class: `pz-rar` }, Le[i.rarity]),
-                    X(`span`, { class: `pz-count` }, c(`×{n} de {max}`, { n, max: a.max ?? 10 })),
+                    X(`span`, { class: `pz-count` }, `×${n}`),
                   ),
                 ),
               ),

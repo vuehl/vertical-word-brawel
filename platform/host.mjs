@@ -426,6 +426,7 @@ export async function setup(host) {
       const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
       const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
       draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
+      run?.dragonHd?.drawFlash(renderer);
       if(finishedJourney)draw.releaseUnused();
       if(overlay)modalTransition.presented(perf.now());
     },

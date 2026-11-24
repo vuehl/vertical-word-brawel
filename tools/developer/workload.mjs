@@ -59,12 +59,12 @@ export function createWorkload(run,skills){
     const moves=workloadMoves(run,next,skills);
     if(!moves.length)throw Error('当前形态没有已解锁的可用技能。');
     if(!saved){
-      saved={player:Object.fromEntries(['moves','moveSlots','vitamins','items','level','xp','xpNext','hp','addXp','gainLevel','speciesId','data','types','roster','ability','evoStage','growth'].map(k=>[k,p[k]])),pendingLevels:run.pendingLevels,nextEvo:run.nextEvo&&{...run.nextEvo}};
+      saved={player:Object.fromEntries(['moves','moveSlots','vitamins','chosenVitamins','items','level','xp','xpNext','hp','addXp','gainLevel','speciesId','data','types','roster','ability','evoStage','growth'].map(k=>[k,p[k]])),pendingLevels:run.pendingLevels,nextEvo:run.nextEvo&&{...run.nextEvo}};
     }
     // Every application starts clean; rewinding does not stack old upgrades/loot.
     run.projectiles.clear();run.zones.clear();run.vfx.clear();run.pickups.clear();
     mode=nextMode;preset=next;elapsed=refill=serial=0;
-    p.moves=[null,null,null,null];p.vitamins=new Map();
+    p.moves=[null,null,null,null];p.vitamins=new Map();p.chosenVitamins=new Set();
     p.items=new Map(next.items?[['razor-claw',Math.min(3,next.items)],['assault-vest',Math.min(3,next.items)]]:[]);
     p.level=next.level;p.xpNext=p.xpFor(p.level);
     p.xp=Math.min(saved.player.xp,p.xpNext-1);

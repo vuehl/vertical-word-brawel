@@ -3,14 +3,17 @@ import path from 'node:path';
 
 export function verifyDeveloperPreview(project){
   const main=fs.readFileSync(path.join(project,'minigame/game.js'),'utf8');
-  const play=fs.readFileSync(path.join(project,'minigame/play.js'),'utf8');
-  return verifyDeveloperBundle(main,play);
+  const directory=path.join(project,'minigame/play');
+  const play=fs.readFileSync(path.join(directory,'game.js'),'utf8');
+  const modules=fs.readdirSync(directory).filter(name=>name.endsWith('.js')&&name!=='game.js').sort()
+    .map(name=>fs.readFileSync(path.join(directory,name),'utf8')).join('\n');
+  return verifyDeveloperBundle(main,play,modules);
 }
-export function verifyDeveloperBundle(main,play){
+export function verifyDeveloperBundle(main,play,modules=''){
   const id=/api\.developerBuild\s*===\s*"([^"]+)"/.exec(main)?.[1];
   if(!id||!play.includes('developerBuild:'+JSON.stringify(id)))throw Error('开发测试入口与玩法包标识不匹配，已停止生成二维码。');
   for(const marker of ['__zixingDeveloper','zx-dev-button','zx-dev-panel','开发测试版 DEV 8','pokebonk-dev-save.json']){
-    if(!play.includes(marker))throw Error('开发包缺少测试模块：'+marker+'，已停止生成二维码。');
+    if(!(play+'\n'+modules).includes(marker))throw Error('开发包缺少测试模块：'+marker+'，已停止生成二维码。');
   }
   return id;
 }

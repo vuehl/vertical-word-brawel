@@ -73,5 +73,5 @@ export async function reviewBattlePlan({page,tap,dir}){
     result.fusion=badges();return result;
   });
   const mark='★ 计划中';
-  assert.deepEqual(result,{marked:2,banished:[],refresh:true,items:heldItems.map(item=>item.key).sort(),fusion:[mark]});
+  assert.deepEqual(result,{marked:2,banished:[],refresh:true,items:heldItems.map(item=>item.key).filter(key=>key!=='air-balloon').sort(),fusion:[mark]});
 }

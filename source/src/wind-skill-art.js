@@ -1,5 +1,6 @@
 import {WindAtlasBatch} from './wind-vortex.js';
 import atlas from '../public/assets/vfx/wind-skills.json' with {type:'json'};
+import {windFrameAt} from './wind-frame-time.js';
 
 export class WindSkillArt extends WindAtlasBatch {
   constructor(owner){
@@ -25,17 +26,17 @@ export class WindSkillArt extends WindAtlasBatch {
       if(age>=1.05)return false;
       const progress=Math.max(0,age/1.05),radius=e.size*(.22+.78*progress);
       const alpha=this.owner.vfx.opacity*this.owner.vfx.ownOpacity*(1-progress)*(this.owner.vfx.calm?.8:1);
-      for(let i=0;i<24;i++){
-        const angle=i*Math.PI/12+age*.6,x=e.x+Math.cos(angle)*radius,z=e.z+Math.sin(angle)*radius;
-        this.push(x,this.owner.run.terrain.surface(x,z)+.65,z,.85,atlas.clips.turningFeather.first,alpha,.5,Math.cos(angle+.6),Math.sin(angle+.6));
+      for(let i=0;i<32;i++){
+        const angle=i*Math.PI/16+age*.6,x=e.x+Math.cos(angle)*radius,z=e.z+Math.sin(angle)*radius;
+        this.push(x,this.owner.run.terrain.surface(x,z)+.65,z,1.15,atlas.clips.turningFeather.first,alpha,.5,Math.cos(angle+.6),Math.sin(angle+.6));
       }
       return true;
     }
-    const c=atlas.clips[e.clip],frame=Math.floor(age*c.fps);
-    if(!loop&&frame>=c.count)return false;
+    const c=atlas.clips[e.clip],frame=windFrameAt(c,age,loop);
+    if(frame<0)return false;
     const opacity=this.owner.vfx.opacity*this.owner.vfx.ownOpacity*(this.owner.vfx.calm?.8:1);
     if(!this.owner.vfx.view||this.owner.vfx.view.visible(e.x,e.y,e.z,e.size))
-      this.push(e.x,e.y,e.z,e.size,c.first+(loop?frame%c.count:frame),opacity,['gust','hurricane','typhoon'].includes(e.clip)?.08:.5,e.dx||0,e.dz||0);
+      this.push(e.x,e.y,e.z,e.size,c.first+frame,opacity,c.pivot,e.dx||0,e.dz||0);
     return true;
   }
   begin(){
@@ -45,9 +46,9 @@ export class WindSkillArt extends WindAtlasBatch {
     for(let i=this.events.length-1;i>=0;i--)if(!this.drawPose(this.events[i],now-this.events[i].start))this.events.splice(i,1);
     for(const [key,e] of this.tracked){if(now-e.touched>.16)this.tracked.delete(key);else this.drawPose(e,now-e.start,true);}
   }
-  wingProjectile(pool,id,size){
+  wingProjectile(pool,id,size,clip='wing'){
     if(!this.owner.allowed())return;
-    this.drawPose({clip:'wing',x:pool.x[id],y:pool.y[id],z:pool.z[id],size:size*3.2,
+    this.drawPose({clip,x:pool.x[id],y:pool.y[id],z:pool.z[id],size:size*3.2,
       dx:pool.vx[id],dz:pool.vz[id]},pool.maxLife[id]-pool.life[id],true);
   }
   reset(){this.events.length=0;this.tracked.clear();this.clear();}
@@ -55,12 +56,13 @@ export class WindSkillArt extends WindAtlasBatch {
 
 export function installWindSkillArt(registry){
   const art=run=>run.vfx.crafted.windSkillArt();
-  registry['wind-wing-attack']={...registry['wing-attack'],sourceKey:'wing-attack',trail(){},cast(){},
+  registry['wind-wing-attack']={...registry['wing-attack'],sourceKey:'wing-attack',trail(){},cast:(run,x,y,z)=>art(run).play('wingLaunch',x,y,z,4.25),
     draw:(pool,id,size)=>art(pool.run).wingProjectile(pool,id,size),
     hit:(run,x,y,z)=>art(run).play('wingHit',x,y,z,3.8),hitCover:true,boom(){}};
+  registry['wind-fusion-feather']={...registry['wind-wing-attack'],
+    draw:(pool,id,size)=>art(pool.run).wingProjectile(pool,id,size*.65,'fusionFeather')};
   registry['wind-tackle']={...registry.tackle,sourceKey:'tackle',replacesDash:true,
     dash(run,x,y,z,dx,dz,length){
-      run.vfx.crafted.windMoveArt().dash(run,x,y,z,dx,dz,length);
-      for(let i=1;i<=3;i++){const xx=x+dx*length*i/3,zz=z+dz*length*i/3;art(run).play('tackleHit',xx,run.terrain.surface(xx,zz)+.9,zz,3);}
+      art(run).play('tackleRush',x,y+1.3,z,length*.90,dx,dz);
     }};
 }

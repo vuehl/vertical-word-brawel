@@ -45,15 +45,30 @@ export function updatePaperCamera(run,dt){
     run.camTarget.z=p.z;
     run.camTarget.y+=(p.y-run.camTarget.y)*k;
   }else run.camTarget.lerp(p,k);
-  if(run.terrain.desk2d)return deskCamera(run);
+  const trackingDragon=run.dragonDuel && run.cine.blend>0 &&
+    run.cine.follow===run.boss.bossIndex && run.boss.alive;
+  let blend=0;
+  if(trackingDragon){
+    const id=run.cine.follow,enemies=run.enemies,t=run.cine.blend;
+    dragonFocus.set(enemies.x[id],enemies.y[id]+enemies.hgt[id]*.55,enemies.z[id]);
+    blend=t*t*(3-2*t);
+  }
+  if(run.terrain.desk2d){
+    deskCamera(run);
+    if(trackingDragon){
+      // Translate the orthographic desk view without changing its pitch or
+      // scale. The glyph's center projects to the same point as this floor Z.
+      const distance=run.camDist,pitch=run.camPitch;
+      const focusZ=dragonFocus.z-dragonFocus.y/Math.tan(pitch);
+      c.position.x+=(dragonFocus.x-c.position.x)*blend;
+      c.position.z+=(focusZ+distance*Math.cos(pitch)-c.position.z)*blend;
+    }
+    return;
+  }
   run.camYaw=PAPER_CAMERA.yaw;run.camPitch=PAPER_CAMERA.pitch;run.camDist=PAPER_CAMERA.distance;
   const distance=PAPER_CAMERA.distance*Math.max(1,.46/Math.max(.25,c.aspect));
   focus.set(run.camTarget.x,run.camTarget.y+.5,run.camTarget.z-2.5);
-  if(run.dragonDuel && run.cine.blend>0 && run.cine.follow===run.boss.bossIndex && run.boss.alive){
-    const id=run.cine.follow, enemies=run.enemies, blend=run.cine.blend;
-    dragonFocus.set(enemies.x[id],enemies.y[id]+enemies.hgt[id]*.55,enemies.z[id]);
-    focus.lerp(dragonFocus,blend*blend*(3-2*blend));
-  }
+  if(trackingDragon)focus.lerp(dragonFocus,blend);
   c.position.set(focus.x,focus.y+Math.sin(PAPER_CAMERA.pitch)*distance,focus.z+Math.cos(PAPER_CAMERA.pitch)*distance);
   // Keep the camera on the inside of the tall southern boundary. As the player
   // approaches it, the view naturally becomes more overhead, rather than
