@@ -42,19 +42,24 @@ for(let frame=0;frame<frames;frame++){
     lookup[k+3]=255*a;
   }
 }
-// GIF palette quantization introduces isolated one-pixel colour changes.
-// Smooth along the radius in premultiplied alpha without mixing time steps.
-const smooth=Buffer.alloc(lookup.length),weights=[1,4,6,4,1];
+// Keep the narrow bright contours in the source. The old five-tap Gaussian
+// softened every band into a broad glow; use light premultiplied denoising,
+// then restore the radial edges and suppress the low-opacity haze.
+const smooth=Buffer.alloc(lookup.length),weights=[1,6,1];
 for(let frame=0;frame<frames;frame++)for(let radius=0;radius<bins-2;radius++){
   let alpha=0;
   const rgb=[0,0,0],target=(frame*bins+radius)*4;
   for(let j=0;j<weights.length;j++){
-    const k=(frame*bins+Math.max(0,radius+j-2))*4,a=weights[j]*lookup[k+3];
+    const k=(frame*bins+Math.max(0,radius+j-1))*4,a=weights[j]*lookup[k+3];
     alpha+=a;
     for(let c=0;c<3;c++)rgb[c]+=a*lookup[k+c];
   }
   if(alpha>0)for(let c=0;c<3;c++)smooth[target+c]=Math.round(rgb[c]/alpha);
-  smooth[target+3]=Math.round(alpha/16);
+  const base=alpha/8;
+  let broad=0;
+  for(let j=-4;j<=4;j++)broad+=lookup[(frame*bins+Math.max(0,Math.min(bins-1,radius+j)))*4+3];
+  const crisp=255*Math.pow(base/255,1.18)+1.15*(base-broad/9);
+  smooth[target+3]=Math.round(Math.max(0,Math.min(255,crisp)));
 }
 await sharp(smooth,{raw:{width:bins,height:frames,channels:4}}).png().toFile(
   path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-ring.png'));

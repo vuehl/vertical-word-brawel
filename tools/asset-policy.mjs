@@ -7,7 +7,7 @@ import {isPlayableHeroForm} from '../source/src/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=73;
+export const assetPolicyVersion=74;
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);

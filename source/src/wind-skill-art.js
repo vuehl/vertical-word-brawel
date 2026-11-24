@@ -60,7 +60,7 @@ export function installWindSkillArt(registry){
     draw:(pool,id,size)=>art(pool.run).wingProjectile(pool,id,size),
     hit:(run,x,y,z)=>art(run).play('wingHit',x,y,z,3.8),hitCover:true,boom(){}};
   registry['wind-fusion-feather']={...registry['wind-wing-attack'],
-    draw:(pool,id,size)=>art(pool.run).wingProjectile(pool,id,size*.65,'fusionFeather')};
+    draw:(pool,id,size)=>art(pool.run).wingProjectile(pool,id,size*.36,'fusionFeather')};
   registry['wind-tackle']={...registry.tackle,sourceKey:'tackle',replacesDash:true,
     dash(run,x,y,z,dx,dz,length){
       art(run).play('tackleRush',x,y+1.3,z,length*.90,dx,dz);

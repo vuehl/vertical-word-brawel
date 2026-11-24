@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export async function reviewWindSkills(page,dir){
-  await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+  await page.setViewport({width:390,height:844,deviceScaleFactor:process.env.WIND_REFERENCE_DIR?2:1});
+  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.r.sizeKey='';app.r.dynRes=1;app.r.resize();});
   const report={moves:[],fire:[],ultimates:[]};
   await page.evaluate(async()=>{
     if(!await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard',seed:20261123}))throw Error('Wind run failed');

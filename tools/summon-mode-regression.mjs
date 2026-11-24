@@ -62,11 +62,11 @@ export async function reviewSummonModes(page, dir) {
         if(facilities.label(door)!=='距可提前召唤 '+(spec.stage===2?'03:00':'05:00'))throw Error('Incorrect local zone unlock clock');
         inside();r.stageTime=unlock-.1;hold(200);facilities.interact(door);
         locked=!r.bossSpawned&&facilities.dwellTime===0;
-        outside();facilities.update(0,0);inside();
+        outside();facilities.update(0,0);
         r.stageTime=spec.trigger==='manual-first'?deadline-.01:unlock;
-        if(facilities.label(door)!=='停留 3 秒 · 唤醒镇守')throw Error('Door did not unlock');
-        hold(179);waiting=!r.bossSpawned;
-        hold(1);
+        if(facilities.label(door)!=='靠近即可唤醒镇守')throw Error('Door did not unlock');
+        hold(1);waiting=!r.bossSpawned;
+        inside();hold(1);
         if(spec.trigger==='manual-first'){r.stageTime=deadline;r.director.fire('guardian');}
       }else if(spec.trigger==='remote'){
         r.state='paused';
@@ -76,10 +76,9 @@ export async function reviewSummonModes(page, dir) {
       }else{
         outside();facilities.update(0,0);
         r.time=r.stageTime=deadline-.02;
-        if(spec.trigger==='timer-first'){inside();hold(179);}
         r.update(.01);waiting=!r.bossSpawned;
         r.update(.02);
-        if(spec.trigger==='timer-first')hold(1);
+        if(spec.trigger==='timer-first'){inside();hold(1);}
       }
       await r.dragonHdAssets?.loading;
       if(!r.dragonHd)throw Error('Missing HD summon in '+spec.name);

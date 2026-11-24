@@ -5,9 +5,13 @@ import {createHash} from 'node:crypto';
 
 export async function recordWindReference(page,sourceDir,destination){
   fs.mkdirSync(destination,{recursive:true});
-  const buildFiles=['assets.js','play/combat.js','play/gameplay.js','play/presentation.js'];
+  const capture=await page.evaluate(()=>({scale:window.devicePixelRatio,
+    worldWidth:app.r.composer.inputBuffer.width,worldHeight:app.r.composer.inputBuffer.height,
+    canvasWidth:app.r.canvas.width,canvasHeight:app.r.canvas.height}));
+  if(capture.scale<2||capture.worldWidth<780)throw Error('Review must render at least 780 px wide, not enlarge a low-resolution capture: '+JSON.stringify(capture));
+  const buildFiles=['assets.js','play/combat.js','play/game-data.js','play/gameplay.js','play/presentation.js'];
   const report={environment:'编译后的微信运行包，桌面 Chrome SwiftShader 模拟；真实技能与伤害。场景、HUD、角色位置不同，未宣称全屏像素相等。',
-    build:Object.fromEntries(buildFiles.map(file=>[file,createHash('sha256').update(fs.readFileSync(path.join(import.meta.dirname,'../minigame',file))).digest('hex')])),clips:[]};
+    capture,build:Object.fromEntries(buildFiles.map(file=>[file,createHash('sha256').update(fs.readFileSync(path.join(import.meta.dirname,'../minigame',file))).digest('hex')])),clips:[]};
   const prior=process.env.WIND_RECORD_SKILLS&&fs.existsSync(path.join(destination,'逐帧索引.json'))
     ?JSON.parse(fs.readFileSync(path.join(destination,'逐帧索引.json'))):null;
   if(prior&&JSON.stringify(prior.build)!==JSON.stringify(report.build))throw Error('Cannot combine recordings from different builds');
@@ -112,11 +116,18 @@ export async function recordWindReference(page,sourceDir,destination){
       while(refFrame+1<delays.length&&frameStart[refFrame+1]<=ms)refFrame++;
       const source=await sharp(file,{page:refFrame}).extract({left:0,top,width,height}).png().toBuffer();
       const live=await page.screenshot({clip:{x:0,y:52,width,height}});
+      const stem=String(refFrame).padStart(3,'0');
+      const sourceFile=path.basename(name)+'/source-'+stem+'.png',liveFile=path.basename(name)+'/game-'+stem+'.png';
+      fs.writeFileSync(path.join(destination,sourceFile),source);
+      fs.writeFileSync(path.join(destination,liveFile),live);
+      // Keep the compact side-by-side GIF for playback/export. The viewer uses
+      // the independent lossless PNGs above, never this downsampled preview.
+      const preview=await sharp(live).resize(width,height).png().toBuffer();
       const pair=await sharp({create:{width:width*2+2,height,channels:3,background:'#212c32'}})
-        .composite([{input:source,left:0,top:0},{input:live,left:width+2,top:0}]).png().toBuffer();
+        .composite([{input:source,left:0,top:0},{input:preview,left:width+2,top:0}]).png().toBuffer();
       const frameFile=String(refFrame).padStart(3,'0')+'.png';
       fs.writeFileSync(path.join(frameDir,frameFile),pair);
-      record.frames.push({index:refFrame,timeMs:ms,delayMs:delays[refFrame],file:path.basename(name)+'/'+frameFile,state});
+      record.frames.push({index:refFrame,timeMs:ms,delayMs:delays[refFrame],file:path.basename(name)+'/'+frameFile,sourceFile,liveFile,state});
       raw.push(await sharp(pair).removeAlpha().raw().toBuffer());
     }
     if(species===59){
@@ -133,16 +144,20 @@ export async function recordWindReference(page,sourceDir,destination){
 }
 
 function frameViewer(report){
-  return `<!doctype html><meta charset="utf-8"><title>风系技能逐帧对照</title>
-<style>body{font:16px system-ui;background:#17212b;color:#eee;margin:24px auto;max-width:1000px}h1{font-size:24px}select,button,input{font:inherit;padding:8px;margin:4px}input{width:360px}img{display:block;max-width:100%;image-rendering:auto}p{color:#b6c9d6;line-height:1.6}.labels{display:flex;width:782px;max-width:100%;text-align:center}.labels span{width:50%}</style>
-<h1>风系技能逐帧对照</h1><p>左侧为原始 GIF，右侧为当前游戏实战。按原片每帧时间采样，不跳帧。方向键逐帧，空格播放/暂停。场景和 HUD 不同，此页用于核对特效，不代表全屏像素一致。</p>
-<select id="skill"></select><button id="prev">上一帧</button><button id="play">播放</button><button id="next">下一帧</button><br><input id="frame" type="range" min="0" value="0"><output id="info"></output>
-<div class="labels"><span>原始 GIF</span><span>当前游戏</span></div><img id="pair"><p id="hash"></p>
-<script>const report=${JSON.stringify(report).replace(/</g,'\\u003c')};const $=id=>document.getElementById(id);let selected=0,index=0,timer=null;
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>风系技能逐帧对照 · 高清</title>
+<style>*{box-sizing:border-box}body{font:15px/1.5 system-ui;background:#17212b;color:#eee;margin:0 auto;padding:20px 16px;max-width:1040px}h1{font-size:23px;margin:0 0 10px}p{color:#bdceda;margin:8px 0 16px}select,button{font:inherit;color:inherit;background:#263746;border:1px solid #526a7d;border-radius:5px;padding:8px 11px;cursor:pointer}button:hover{background:#34536b}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #8bc9ff;outline-offset:2px}.controls{display:flex;flex-wrap:wrap;gap:7px;align-items:center}.timeline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0}input{width:min(360px,100%);flex:1 1 220px}output{font-variant-numeric:tabular-nums}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}figure{margin:0;min-width:0;background:#0e1922;border-radius:7px;overflow:hidden}figcaption{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;color:#c4d7e4;font-size:14px}.stage{overflow:auto;display:flex;justify-content:center}img{display:block;width:390px;max-width:100%;height:auto;flex:none;image-rendering:auto}a{color:#93d0ff;text-underline-offset:3px}.zoom .stage{justify-content:flex-start;max-height:78vh}.zoom img{width:auto;max-width:none}details{color:#91a9bc;margin-top:18px;font-size:13px}code{overflow-wrap:anywhere}#mode{margin:8px 0;font-size:13px;color:#a3bdd0}@media(max-width:850px){.comparison{grid-template-columns:1fr;max-width:600px;margin:auto}h1{font-size:21px}figcaption{padding:9px 12px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}</style>
+<h1>风系技能逐帧对照</h1><p>原片与当前实战同步逐帧查看。方向键切帧，空格播放或暂停。窄窗口上下排列，避免把两张图挤小。</p>
+<div class="controls"><select id="skill" aria-label="选择技能"></select><button id="prev">上一帧</button><button id="play">播放</button><button id="next">下一帧</button><button id="zoom" aria-pressed="false">原尺寸查看</button></div>
+<div class="timeline"><input id="frame" type="range" min="0" value="0" aria-label="选择帧"><output id="info"></output></div>
+<div id="comparison" class="comparison"><figure><figcaption><span>原始 GIF · 390 × 480</span><a id="sourceLink" target="_blank" rel="noopener">打开原图</a></figcaption><div class="stage"><img id="reference" alt="原始 GIF 当前帧"></div></figure><figure><figcaption><span>当前游戏 · 780 × 960 高清</span><a id="liveLink" target="_blank" rel="noopener">打开高清图</a></figcaption><div class="stage"><img id="live" alt="当前游戏高清帧"></div></figure></div>
+<p id="mode">游戏画面使用 2 倍分辨率的无损 PNG。原片保留录屏原尺寸；场景和 HUD 不同，此页用于核对特效。</p><details><summary>查看参考文件校验信息</summary><code id="hash"></code></details>
+<script>const report=${JSON.stringify(report).replace(/</g,'\\u003c')};const $=id=>document.getElementById(id);const revision=report.build['assets.js'].slice(0,12)+report.build['play/game-data.js'].slice(0,12);let selected=Math.max(0,report.clips.findIndex(c=>c.name==='融合/残气乱刮')),index=19,timer=null,playing=false,paintVersion=0;
 report.clips.forEach((c,i)=>$('skill').add(new Option(c.name,i)));
-function show(){const c=report.clips[selected],f=c.frames[index];$('frame').max=c.frames.length-1;$('frame').value=index;$('pair').src=f.file;$('info').textContent=(index+1)+' / '+c.frames.length+' 帧 · '+f.timeMs+' ms · 停留 '+f.delayMs+' ms';$('hash').textContent='参考文件 SHA-256：'+c.sha256;}
-function stop(){clearTimeout(timer);timer=null;$('play').textContent='播放';}
+$('skill').value=selected;
+function url(file){return file+'?v='+revision;}
+async function show(){const version=++paintVersion,c=report.clips[selected],f=c.frames[index];$('frame').max=c.frames.length-1;$('frame').value=index;$('reference').src=url(f.sourceFile);$('live').src=url(f.liveFile);$('sourceLink').href=url(f.sourceFile);$('liveLink').href=url(f.liveFile);$('info').textContent=(index+1)+' / '+c.frames.length+' 帧 · '+f.timeMs+' ms · 停留 '+f.delayMs+' ms';$('hash').textContent='SHA-256：'+c.sha256;await Promise.allSettled([$ ('reference').decode(),$('live').decode()]);return version===paintVersion;}
+function stop(){playing=false;clearTimeout(timer);timer=null;$('play').textContent='播放';}
 function step(n){stop();index=Math.max(0,Math.min(report.clips[selected].frames.length-1,index+n));show();}
-function tick(){show();$('play').textContent='暂停';timer=setTimeout(()=>{index=(index+1)%report.clips[selected].frames.length;tick();},report.clips[selected].frames[index].delayMs);}
-$('skill').onchange=e=>{stop();selected=+e.target.value;index=0;show();};$('frame').oninput=e=>{stop();index=+e.target.value;show();};$('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);$('play').onclick=()=>timer?stop():tick();document.onkeydown=e=>{if(e.key==='ArrowRight'){e.preventDefault();step(1);}if(e.key==='ArrowLeft'){e.preventDefault();step(-1);}if(e.code==='Space'){e.preventDefault();$('play').click();}};show();</script>`;
+async function tick(){const start=performance.now();if(!await show()||!playing)return;$('play').textContent='暂停';timer=setTimeout(()=>{index=(index+1)%report.clips[selected].frames.length;tick();},Math.max(0,report.clips[selected].frames[index].delayMs-(performance.now()-start)));}
+$('skill').onchange=e=>{stop();selected=+e.target.value;index=0;show();};$('frame').oninput=e=>{stop();index=+e.target.value;show();};$('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);$('play').onclick=()=>{if(playing)stop();else{playing=true;tick();}};$('zoom').onclick=()=>{const on=$('comparison').classList.toggle('zoom');$('zoom').setAttribute('aria-pressed',on);$('zoom').textContent=on?'适合窗口':'原尺寸查看';};document.onkeydown=e=>{if(['INPUT','SELECT'].includes(e.target.tagName))return;if(e.key==='ArrowRight'){e.preventDefault();step(1);}if(e.key==='ArrowLeft'){e.preventDefault();step(-1);}if(e.code==='Space'){e.preventDefault();$('play').click();}};show();</script></html>`;
 }
