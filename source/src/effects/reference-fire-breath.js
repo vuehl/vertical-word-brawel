@@ -2,6 +2,8 @@ import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as Ins
 import atlas from '../../../resources/public/assets/vfx/fire-breath-reference.json' with {type:'json'};
 
 export const isReferenceBreath=e=>e.key?.def?.key==='flamethrower'||String(e.key).startsWith('enemy-cone-flamethrower');
+const frameEndMs=atlas.frameEndMs;
+const durationMs=frameEndMs[frameEndMs.length-1];
 const vertex=`
 attribute vec4 iOrigin;attribute vec4 iPose;
 varying vec2 vUv;varying float vAlpha;
@@ -21,8 +23,8 @@ void main(){vec4 c=texture2D(map,vUv);c.a*=vAlpha;if(c.a<.005)discard;gl_FragCol
 #include <colorspace_fragment>
 }`;
 
-// One recorded spray per caster: startup/tail play once, the middle loops.
-// Damage and the continuously simulated packets remain in the original code.
+// One pass through the original GIF frames for each cast. The emitter keeps
+// supplying position and direction while the damage cone is active.
 export class ReferenceFireBreath{
   constructor(owner,scene){
     this.owner=owner;this.streams=new Map();this.clock=0;this.limit=28;
@@ -50,19 +52,20 @@ export class ReferenceFireBreath{
     if(dt>0)for(const e of emitters){
       if(!isReferenceBreath(e)||!e.fireTouched||!this.owner.allowed(e.own!==false))continue;
       let s=this.streams.get(e.key);
-      if(!s){if(this.streams.size>=this.limit)continue;s={age:0,last:this.clock,own:e.own!==false};this.streams.set(e.key,s);}
-      if(this.clock-s.last>.08)s.age=0;
-      Object.assign(s,{x:e.x,y:e.y,z:e.z,angle:e.angle,size:e.artLength*1.35,last:this.clock});
+      if(!s){if(this.streams.size>=this.limit)continue;s={start:this.clock,own:e.own!==false};this.streams.set(e.key,s);}
+      else if(this.clock-s.last-dt>.10)s.start=this.clock;
+      Object.assign(s,{x:e.x,y:e.y,z:e.z,angle:e.angle,size:e.artLength*1.2,last:this.clock});
     }
     const [origin,pose]=this.attributes.map(a=>a.array),v=this.owner.vfx;let count=0;
     for(const [key,s] of this.streams){
-      s.age+=dt;
-      const idle=this.clock-s.last,tail=idle>.05,clip=atlas.clips;
-      if(!this.owner.allowed(s.own)||idle>.05+clip.tail.count/atlas.fps){this.streams.delete(key);continue;}
+      if(!this.owner.allowed(s.own)){this.streams.delete(key);continue;}
+      const elapsedMs=(this.clock-s.start)*1000+1e-6;
+      if(elapsedMs>=durationMs){
+        if(this.clock-s.last>.10)this.streams.delete(key);
+        continue;
+      }
       if(count>=this.limit)continue;
-      let frame;
-      if(tail)frame=clip.tail.first+Math.min(clip.tail.count-1,Math.floor((idle-.05)*atlas.fps));
-      else{const t=Math.floor(s.age*atlas.fps);frame=t<clip.start.count?t:clip.loop.first+(t-clip.start.count)%clip.loop.count;}
+      const frame=frameEndMs.findIndex(end=>elapsedMs<end);
       const o=count++*4;
       origin.set([s.x,s.y,s.z,s.size],o);
       pose.set([s.angle,frame,v.opacity*(s.own?v.ownOpacity:1)*(v.calm?.78:1),0],o);

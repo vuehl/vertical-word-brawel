@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import sharp from 'sharp';
+import referenceAtlas from '../../resources/public/assets/vfx/fire-breath-reference.json' with {type:'json'};
 import baselines from './fire-vfx-baselines.json' with {type:'json'};
 
 // Called by runtime-performance.mjs --vfx --fire-breath. Exercise the real
@@ -129,16 +130,15 @@ export async function reviewFireBreath(page,dir,moves){
   if(!baseline){
     report.reference=await page.evaluate(()=>{
       const r=app.run,v=r.vfx.crafted,j=v.fireJet,art=j.reference;
-      const key={def:{key:'flamethrower'}},frames=new Set();v.clear();
-      for(let i=0;i<45;i++){
+      const key={def:{key:'flamethrower'}};v.clear();
+      for(let i=0;i<30;i++){
         v.cone(key,i/45,1,0,1,0,7,'fire',.7);v.update(1/30);
-        if(art.mesh.count)frames.add(art.attributes[1].array[1]);
       }
-      const follows=Math.abs(art.attributes[0].array[0]-44/45)<.0001;
+      const follows=Math.abs(art.attributes[0].array[0]-29/45)<.0001;
       const before=JSON.stringify([...art.streams.values()]),pose=JSON.stringify(art.attributes.map(a=>[...a.array]));
       v.update(0);const paused=before===JSON.stringify([...art.streams.values()])&&pose===JSON.stringify(art.attributes.map(a=>[...a.array]));
       for(let i=0;i<6;i++)v.update(1/30);
-      const tail=art.mesh.count===1&&art.attributes[1].array[1]>=17;
+      const tail=art.mesh.count===1&&art.attributes[1].array[1]>=16;
       for(let i=0;i<20;i++)v.update(1/30);
       const expired=art.mesh.count===0&&art.streams.size===0;
       v.cone(key,0,1,0,0,-1,7,'fire',.7);v.update(1/30);
@@ -147,10 +147,33 @@ export async function reviewFireBreath(page,dir,moves){
       v.cone('enemy-cone-flamethrower-check',0,1,0,0,-1,7,'fire',.7,false);v.update(1/30);
       const enemyVisible=art.mesh.count===1;
       r.hideOwnFx=false;v.clear();const cleared=art.mesh.count===0&&art.streams.size===0;
-      return {frames:[...frames],follows,paused,tail,expired,restarted,hidden,enemyVisible,cleared};
+      return {follows,paused,tail,expired,restarted,hidden,enemyVisible,cleared};
     });
-    assert.ok(report.reference.frames.length>=16,'The recording must animate through startup and sustain');
-    for(const [key,value] of Object.entries(report.reference))if(key!=='frames')assert.equal(value,true,key);
+    for(const [key,value] of Object.entries(report.reference))assert.equal(value,true,key);
+    const gif=fs.readFileSync(new URL('../../'+referenceAtlas.source,import.meta.url));
+    assert.equal(createHash('sha256').update(gif).digest('hex'),referenceAtlas.sha256);
+    const {delay}=await sharp(gif,{animated:true}).metadata();
+    const frameEnds=referenceAtlas.pages.reduce((ends,index)=>[...ends,(ends.at(-1)??0)+delay[index]],[]);
+    assert.deepEqual(referenceAtlas.frameEndMs,frameEnds);
+    report.referenceTiming=await page.evaluate(frameEnds=>{
+      const v=app.run.vfx.crafted,art=v.fireJet.reference;
+      const emitter={key:{def:{key:'flamethrower'}},fireTouched:true,x:0,y:1,z:0,angle:0,artLength:7};
+      const frame=()=>art.mesh.count===0?-1:art.attributes[1].array[1];
+      v.clear();
+      art.update(1/30,[emitter]);
+      const boundaries=[frame()];let last=0;
+      for(const end of frameEnds){
+        art.update((end-last-1)/1000,[emitter]);boundaries.push(frame());
+        art.update(.001,[emitter]);boundaries.push(frame());
+        last=end;
+      }
+      art.update(.5,[emitter]);const holdsAtEnd=frame()===-1;
+      art.update(.2,[]);art.update(.02,[emitter]);const newCast=frame()===0;
+      v.clear();
+      return {boundaries,holdsAtEnd,newCast};
+    },frameEnds);
+    const boundaries=[0,...frameEnds.flatMap((_,i)=>[i,i+1<frameEnds.length?i+1:-1])];
+    assert.deepEqual(report.referenceTiming,{boundaries,holdsAtEnd:true,newCast:true});
     report.referencePressure=[];
     for(const quality of ['low','medium','high']){
       const sample=await page.evaluate(quality=>{
