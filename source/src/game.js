@@ -46006,6 +46006,7 @@ var GT = 15,
           this.zones.clear(),
           this.vfx.clear(),
           this.ult.clear());
+      this.mapEvents.clear();
       this.stageTime = 0;
       this.player.moveSlots = this.stage > 1 && this.meta.lab('slot-move') ? 4 : 3;
       this.sprites.discardUnusedWarmGlyphs();
@@ -48323,6 +48324,7 @@ var GT = 15,
     }
     renderWorld(e) {
       let t = this.r.camera;
+      this.mapEvents.renderWeather();
       this.sprites.setShelfDepth(this.terrain.shelfDepth);
       this.sprites.begin(t);
       updateWorkshopScene(this,e,this.sprites);
@@ -48374,7 +48376,7 @@ var GT = 15,
       this.r.setCombatLoad(0);
       (this.coop?.dispose(),
         this.hints.dispose(),
-        this.mapEvents.clear(),
+        this.mapEvents.dispose(),
         this.audio.stopMusic(),
         this.audio.endRun(),
         this.r.setAtmos(1, 1, 1, 0, 0.4),

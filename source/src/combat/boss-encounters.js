@@ -3,6 +3,7 @@ import {ENEMY_DANGER_COLOR} from './enemy-telegraphs.js';
 import {finalBossSpecies} from '../data/character-rules.js';
 import {FOREST_COMBAT_ZONES, SINGLE_STAGE} from '../data/lite-rules.js';
 import {ENEMY_HEALTH_SCALE} from '../performance/spawn-budget.js';
+import {PaperWeather} from '../effects/paper-weather.js';
 import {chineseText as c} from '../data/chinese-text.js';
 import {Dn as T, Rr as Je} from '../data/config.js';
 import {E as yr, I as Cr, K as Tr, ct as Kr, w as Ei} from '../vendor/three-DmSYIDKK.js';
@@ -8303,6 +8304,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       at = 1 / 0;
       spout = null;
       bliz = null;
+      paperWeather = null;
       flying = -1;
       relaunch = 0;
       look = {
@@ -8341,9 +8343,28 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               ? (this.at = e.stageTime + Xy * F.range(0.6, 1.2))
               : F.chance(t === `spout` ? Ky : qy) && (this.at = F.range(Jy, Yy))));
       }
-      start() {
-        let e = this.kind;
-        e === `spout` ? this.startSpout() : e === `blizzard` && this.startBlizzard();
+      start(kind=this.kind) {
+        if (this.busy || (kind !== 'spout' && kind !== 'blizzard')) return false;
+        if (kind === 'spout') this.startSpout();
+        else this.startBlizzard();
+        return true;
+      }
+      renderWeather() {
+        const {terrain,events,r,time,vfx}=this.run;
+        let kind=0,amount=0,angle=0;
+        if(terrain.zxPaper){
+          if(this.bliz){
+            kind=2;angle=this.bliz.a;
+            amount=this.bliz.t>3?.24+.76*this.bliz.k:this.bliz.k;
+          }else if(this.spout){
+            kind=3;amount=this.spout.mat.uniforms.uFade.value;
+          }else if(events?.lastLook==='fog'){
+            kind=1;amount=events.kind==='fog'?.24+.76*events.k:events.k;
+          }
+        }
+        if(amount<=0){this.paperWeather?.hide();return;}
+        this.paperWeather??=new PaperWeather(r.scene);
+        this.paperWeather.update(kind,amount,time,r.camera.aspect,angle,vfx.calm);
       }
       update(e) {
         let t = this.run;
@@ -8363,20 +8384,27 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         let e = this.run,
           t = e.terrain,
           n = e.player.pos,
-          r = n.x + 40,
+          paper = t.zxPaper,
+          r = n.x + (paper ? 0 : 40),
           i = n.z;
-        for (let e = 0; e < 40; e++) {
-          let e = F.range(0, Math.PI * 2),
-            a = F.range(34, 46),
-            o = n.x + Math.cos(e) * a,
-            s = n.z + Math.sin(e) * a;
-          if (t.inBounds(o, s, 8) && ((r = o), (i = s), t.height(o, s) < t.waterLevel)) break;
+        for (let attempt = 0; attempt < 40; attempt++) {
+          // Paper scenes use a narrow north-up camera. Start ahead of the
+          // player, with lateral and southern fallbacks near the map edge.
+          const angle = paper && attempt < 10 ? F.range(-2.06, -1.08) : F.range(0, Math.PI * 2);
+          const distance = paper ? F.range(10, 13) : F.range(34, 46);
+          const x = n.x + Math.cos(angle) * distance, z = n.z + Math.sin(angle) * distance;
+          if (!t.inBounds(x, z, paper ? 3 : 8)) continue;
+          r = x; i = z;
+          if (paper || t.height(x, z) < t.waterLevel) break;
         }
         let a = n.x + F.range(-6, 6),
           o = n.z + F.range(-6, 6),
           s = Math.hypot(a - r, o - i) || 1,
           l = this.funnelMat(),
-          u = new Tr(new yr(6.5, 1.3, 21, 28, 10, !0).translate(0, 10.5, 0), l);
+          height = paper ? 12 : 21,
+          u = new Tr(new yr(paper ? 4.4 : 6.5, 1.3, height, 28, 10, !0).translate(0, height / 2, 0), l);
+        u.name = 'weather-waterspout';
+        u.position.set(r, t.surface(r, i) - 0.3, i);
         ((u.renderOrder = 4),
           e.r.scene.add(u),
           (this.spout = {
@@ -8411,7 +8439,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           l = o.x - r.x,
           u = o.z - r.z,
           d = Math.hypot(l, u) || 1;
-        ((r.dx += (l / d) * e * 0.12), (r.dz += (u / d) * e * 0.12));
+        const steering = n.zxPaper ? 0.34 : 0.12;
+        ((r.dx += (l / d) * e * steering), (r.dz += (u / d) * e * steering));
         let f = Math.hypot(r.dx, r.dz) || 1;
         if (
           ((r.dx /= f),
@@ -8425,9 +8454,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           ((r.dx /= e), (r.dz /= e));
         }
         let p = n.surface(r.x, r.z),
-          m = Math.min(1, r.t / 2, (Qy - r.t) / 2);
+          m = Math.max(0, Math.min(1, r.t / 2, (Qy - r.t) / 2));
         for (let n = 0, i = Math.floor(e * 150 * m + Math.random()); n < i; n++) {
-          let e = Math.random() ** 0.8 * 20,
+          let e = Math.random() ** 0.8 * (t.terrain.zxPaper ? 12 : 20),
             n = 1 + e * 0.28,
             i = t.time * 5 + e * 0.6 + F.range(0, Math.PI * 2);
           t.vfx.norm.spawn({
@@ -8543,12 +8572,13 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           uniforms: {
             uTime: e.uTime,
             uFade: { value: 0 },
+            uPaper: { value: Number(!!this.run.terrain.zxPaper) },
             uFogColor: e.uFogColor,
             uFogNear: e.uFogNear,
             uFogFar: e.uFogFar,
           },
           vertexShader: `varying vec2 vUv; varying float vD; void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.); vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
-          fragmentShader: `uniform float uTime, uFade, uFogNear, uFogFar; uniform vec3 uFogColor; varying vec2 vUv; varying float vD;
+          fragmentShader: `uniform float uTime, uFade, uPaper, uFogNear, uFogFar; uniform vec3 uFogColor; varying vec2 vUv; varying float vD;
         float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
         void main(){
           vec2 q = floor(vec2(vUv.x * 56., vUv.y * 40.)) / vec2(56., 40.);
@@ -8556,9 +8586,14 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           float band2 = fract(q.x * 3. - q.y * 1.4 - uTime * 0.6 + 0.37);
           float a = step(0.55, band) * 0.55 + step(0.7, band2) * 0.35;
           a += step(0.985, hash(q + floor(uTime * 8.))) * 0.6;
-          a *= smoothstep(0., 0.12, vUv.y) * (1. - smoothstep(0.85, 1., vUv.y)) * uFade;
+          float spiral = sin((vUv.x * 3. + vUv.y * 3.1 - uTime * 1.03) * 6.283185);
+          float crest = smoothstep(.25,.94,spiral);
+          float spray = smoothstep(.88,.99,hash(q + floor(uTime * 12.)));
+          float water = min(.92,.22+.62*crest+.16*spray);
+          a = mix(a,water,uPaper) * smoothstep(0., 0.12, vUv.y) * (1. - smoothstep(0.88, 1., vUv.y)) * uFade;
           if (a < 0.05) discard;
           vec3 c = mix(vec3(0.55, 0.72, 0.86), vec3(0.93, 0.97, 1.), step(0.6, band));
+          c = mix(c,mix(vec3(.065,.30,.43),vec3(.72,.96,.97),crest),uPaper);
           gl_FragColor = vec4(mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vD)), a);
           #include <colorspace_fragment>
         }`,
@@ -8662,7 +8697,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         n.t -= e;
         let s = n.k;
         ((n.k = Math.max(0, Math.min(1, n.t > 3 ? n.k + e / 3 : n.t / 3))),
-          Math.abs(n.k - s) > 0.001 && t.pushLook(),
+          !o.zxPaper && Math.abs(n.k - s) > 0.001 && t.pushLook(),
           (n.turn -= e),
           n.turn <= 0 &&
             ((n.turn = F.range(5, 8)),
@@ -8708,8 +8743,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 ((a.hazSlow[t] = Math.min(a.hazSlow[t], 1 - 0.25 * d)),
                 (a.kx[t] += l * rb * 0.5 * d * e),
                 (a.kz[t] += u * rb * 0.5 * d * e)));
-        let p = t.r.camera.position;
-        for (let n = Math.floor(e * 280 * d + Math.random()); n > 0; n--) {
+        let p = o.zxPaper ? i : t.r.camera.position;
+        for (let n = Math.floor(e * (o.zxPaper ? 115 : 280) * d + Math.random()); n > 0; n--) {
           let e = p.x + F.range(-20, 20) - l * 12,
             n = p.z + F.range(-20, 20) - u * 12;
           t.vfx.norm.spawn({
@@ -8778,6 +8813,12 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (this.spout = null),
           (this.flying = -1),
           this.bliz && ((this.bliz = null), this.run.pushLook()));
+        this.paperWeather?.hide();
+      }
+      dispose() {
+        this.clear();
+        this.paperWeather?.dispose();
+        this.paperWeather=null;
       }
     },
     ob = {
@@ -9448,11 +9489,18 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       startRandom() {
         let e = this.run;
         if (this.active || e.boss.alive || e.stageCleared || e.mapEvents.busy) return !1;
-        let t = Object.keys(cb).filter((e) => !this.done.has(e));
-        return (
-          !t.length && e.endless && (this.done.clear(), (t = Object.keys(cb))),
-          !t.length || this.start(F.weighted(t, (e) => (e === `meowth` ? 0.8 : 1)))
-        );
+        const kinds=Object.keys(cb);
+        if(e.biome.id==='forest' && e.terrain.zxPaper)kinds.push('blizzard','spout');
+        let remaining=kinds.filter(kind=>!this.done.has(kind));
+        if(!remaining.length && e.endless){this.done.clear();remaining=kinds;}
+        if(!remaining.length)return true;
+        const kind=F.weighted(remaining,kind=>kind==='meowth'?.8:1);
+        if(kind==='blizzard'||kind==='spout'){
+          const started=e.mapEvents.start(kind);
+          if(started)this.done.add(kind);
+          return started;
+        }
+        return this.start(kind);
       }
       start(e) {
         let t = this.run,
@@ -9512,7 +9560,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             this.left <= 0 && this.end())
           : (this.k = Math.max(0, this.k - e / 3)),
           (this.flash = Math.max(0, this.flash - e * 5)),
-          (this.k !== n || this.flash > 0 || r > 0) && t.pushLook());
+          !t.terrain.zxPaper && (this.k !== n || this.flash > 0 || r > 0) && t.pushLook());
       }
       atmos() {
         if (this.k <= 0 && this.flash <= 0) return null;
@@ -9574,8 +9622,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       }
       fogFx(e) {
         let t = this.run,
-          n = t.r.camera.position,
-          r = t.player.pos;
+          r = t.player.pos,
+          n = t.terrain.zxPaper ? r : t.r.camera.position;
         if (Math.random() < e * 9 * this.k) {
           let e = n.x + F.range(-22, 22),
             r = n.z + F.range(-22, 22);

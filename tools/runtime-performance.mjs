@@ -86,7 +86,7 @@ try{
   }
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
-  const deskReview=process.argv.includes('--map-play')||process.argv.includes('--illustrated-desk');
+  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects'].includes(arg));
   const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
@@ -251,6 +251,9 @@ try{
   }else if(process.argv.includes('--map-play')){
     const {reviewMapPlay}=await import('./regression/map-play-regression.mjs');
     await reviewMapPlay(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--weather-effects')){
+    const {reviewWeatherEffects}=await import('./regression/weather-effects-regression.mjs');
+    await reviewWeatherEffects(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--vfx')){
     await reviewStylizedVFX(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--workshop')){
