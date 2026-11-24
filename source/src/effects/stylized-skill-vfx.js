@@ -185,7 +185,8 @@ export class StylizedSkillFX{
       case 'fu-16':case 'fu-wind-spin':return [this.windSkillArt().texture];
       case 'ember':return [ball];
       case 'fire-spin':return [spin];
-      case 'flamethrower':case 'dragon-breath':return [jet];
+      case 'flamethrower':return [this.fireJet.reference.texture];
+      case 'dragon-breath':return [jet];
       case 'inferno':return [ball,base];
       case 'fire-blast':return [ball,base,family.mushroomTexture];
       case 'fire-ultimate':case 'fu-t-fire':return [base,family.mushroomTexture];

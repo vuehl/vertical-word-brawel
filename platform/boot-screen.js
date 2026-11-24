@@ -1,25 +1,27 @@
 'use strict';
 const {paintLoadingBackdrop,paintLoadingSlip}=require('../source/src/ui/menu-scene.js');
 
-// Native stationery and splash-sized hero copies are bundled in the main pack.
+// The first frame can draw both heroes from one main-package texture.
 module.exports = async function presentBootFrame(gl) {
   let program=gl.createProgram(),texture=gl.createTexture(),vao=gl.createVertexArray();
   let canvas=wx.createCanvas(),patch=wx.createCanvas(),last='',textureWidth=0,textureHeight=0;
-  const heroes={};
-  for(const [word,src] of Object.entries(require('./boot-hero-art'))){
-    const image=wx.createImage();
-    image.onload=()=>{if(canvas){heroes[word]=image;last='';}};
-    function loadLocal(){
-      image.onerror=null;
-      if(!canvas)return;
-      try{
-        const file=wx.env.USER_DATA_PATH+'/zixing-boot-'+word+'.png';
-        wx.getFileSystemManager().writeFileSync(file,src.slice(src.indexOf(',')+1),'base64');
-        image.src=file;
-      }catch(error){console.warn('[字行] 启动字灵图片读取失败',word,error);}
-    }
-    image.onerror=loadLocal;
-    try{image.src=src;}catch{loadLocal();}
+  const {words,src}=require('./boot-hero-art'),image=wx.createImage();
+  let ready=false;
+  image.onload=()=>{if(canvas){ready=true;last='';}};
+  function loadLocal(){
+    image.onerror=null;
+    if(!canvas)return;
+    try{
+      const file=wx.env.USER_DATA_PATH+'/zixing-boot-heroes.webp';
+      wx.getFileSystemManager().writeFileSync(file,src.slice(src.indexOf(',')+1),'base64');
+      image.src=file;
+    }catch(error){console.warn('[字行] 启动字灵图片读取失败',error);}
+  }
+  image.onerror=loadLocal;
+  try{image.src=src;}catch{loadLocal();}
+  function drawHero(ctx,word,x,y,size){
+    const index=words.indexOf(word),tile=image.height;
+    if(ready&&index>=0)ctx.drawImage(image,index*tile,0,tile,tile,x,y,size,size);
   }
   function attach(type,source){
     const shader=gl.createShader(type);
@@ -38,7 +40,7 @@ module.exports = async function presentBootFrame(gl) {
     if(full){
       const ctx=canvas.getContext('2d');
       ctx.setTransform(s,0,0,s,0,0);
-      paintLoadingBackdrop(ctx,W,H,word=>heroes[word]);
+      paintLoadingBackdrop(ctx,W,H,drawHero);
     }
     let y=0,ctx=canvas.getContext('2d');
     if(strip){

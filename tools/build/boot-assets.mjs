@@ -13,18 +13,13 @@ import {zixingStyle} from '../../source/src/ui/zixing-style.js';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex').slice(0,16);
 
 export async function writeBootHeroArt(root,out){
-  const images={};
-  for(const id of starterSpecies){
-    const word=starterWords[id];
-    // The splash draws these at 72 logical pixels (about 159 physical pixels
-    // on a 430px phone at 2x). Keep extra detail without decoding 512px art.
-    // Only the generated main-package copy changes; keep the supplied PNGs.
-    const image=await sharp(path.join(root,'resources/art/glyphs',`hero_${id}_${word}.png`))
-      .resize(256,256,{fit:'inside',withoutEnlargement:true})
-      .png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
-    images[word]='data:image/png;base64,'+image.toString('base64');
-  }
-  const file=path.join(out,'boot-hero-art.js'), code='module.exports = '+JSON.stringify(images)+';\n';
+  const words=starterSpecies.map(id=>starterWords[id]);
+  const tiles=await Promise.all(starterSpecies.map(id=>
+    sharp(path.join(root,'resources/art/glyphs',`hero_${id}_${starterWords[id]}.png`))
+      .resize(256,256,{fit:'contain',withoutEnlargement:true,background:'#0000'}).png().toBuffer()));
+  const atlas=await sharp(tiles,{join:{across:tiles.length}}).webp({lossless:true,effort:6}).toBuffer();
+  const file=path.join(out,'boot-hero-art.js');
+  const code='module.exports = '+JSON.stringify({words,src:'data:image/webp;base64,'+atlas.toString('base64')})+';\n';
   if(fs.existsSync(file)&&fs.readFileSync(file,'utf8')===code)return;
   const pending=file+'.'+process.pid+'.tmp';
   try{
@@ -52,7 +47,7 @@ export function bootAssets(root) {
   const assets={'engine/styles.json':Buffer.from(JSON.stringify(rules))};
   const directory=path.join(root,'resources/public/assets/ui-paper');
   for(const name of fs.readdirSync(directory)){
-    if(name.endsWith('.png'))assets['assets/ui-paper/'+name]=fs.readFileSync(path.join(directory,name));
+    if(/\.(png|webp)$/.test(name))assets['assets/ui-paper/'+name]=fs.readFileSync(path.join(directory,name));
   }
   return assets;
 }
@@ -65,9 +60,15 @@ export function addBootAssets(out, assets) {
   const files = Object.entries(assets).map(([key,data])=>({key,data,name:hash(data)+path.extname(key)}));
   const archive = path.join(out,'packs/text/assets.br');
   const packed = fs.readFileSync(archive);
-  if (hash(packed)===info.packs.text && files.every(({key,name})=>info.files[key]==='text/'+name)) return;
+  const removed=Object.keys(info.files).filter(key=>key.startsWith('assets/ui-paper/')&&!Object.hasOwn(assets,key));
+  if (!removed.length && hash(packed)===info.packs.text && files.every(({key,name})=>info.files[key]==='text/'+name)) return;
   const entries = Object.create(null);
   unpackStream(brotliDecompressSync(packed), (name,bytes)=>{entries[name]=bytes;});
+  for(const key of removed){
+    const previous=info.files[key];
+    delete info.files[key];
+    if(!Object.values(info.files).includes(previous))delete entries[previous.slice('text/'.length)];
+  }
   for (const {key,data,name} of files) {
     const previous = info.files[key];
     entries[name]=data;

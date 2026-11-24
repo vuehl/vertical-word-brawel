@@ -36,7 +36,7 @@ export async function reviewUpgradeEffects(page,dir){
       r.ui.showLevelUp=(run,offers,callback)=>{offered=offers;choose=callback;};
       try{r.doLevelUp();if(!choose)throw Error('Upgrade choices not shown');choose(offered[0]);}finally{r.ui.showLevelUp=show;}
       const fx=r.vfx.upgrade;
-      if(fx.events.length!==0||fx.mesh.visible||fx.rearMesh.visible||fx.light.mesh.visible)throw Error('Ordinary upgrade must not create an evolution effect');
+      if(fx.events.length!==0||fx.mesh.visible||fx.rearMesh.visible||fx.light.mesh.visible||fx.screen.mesh.visible)throw Error('Ordinary upgrade must not create an evolution effect');
       for(let i=0;i<20;i++)r.update(1/60);
       return {species,word:r.sprites.get(species).zxGlyph,state:r.state,pending:r.pendingLevels,count:fx.mesh.count,
         events:fx.events.length,visible:fx.mesh.visible||fx.rearMesh.visible,programs:app.r.renderer.info.programs.length};
@@ -48,6 +48,8 @@ export async function reviewUpgradeEffects(page,dir){
   for(const [from,to] of [[4,5],[5,6],[16,17],[17,18],[16,58],[58,59]]){
     const [width,height]=to===58?[320,568]:to===6?[430,932]:[390,844];
     await page.setViewport({width,height,deviceScaleFactor:1});
+    await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
+    await page.waitForFunction(({width,height})=>Math.abs(app.run.r.camera.aspect-width/height)<1e-6&&innerWidth===width&&innerHeight===height,{}, {width,height});
     const start=await page.evaluate(async({from,to})=>{
       const r=app.run,p=r.player;r.state='play';r.pendingLevels=0;r.anims.length=0;r.vfx.clear();p.setSpecies(from);p.renderScale=1;p.iframes=0;p.flash=0;
       await r.sprites.prepareHeroForm(from);await r.sprites.prepareHeroForm(to);
@@ -55,38 +57,54 @@ export async function reviewUpgradeEffects(page,dir){
       r.nextEvo={to,level:p.level};const before=r.stats.evolutions,oldHp=Math.round(p.maxHp);
       r.startEvolution();
       [...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
+      const {reveal,duration}=r.vfx.upgrade.events[0],steps=Math.ceil(reveal*.5*30);
       const frames=[],get=r.sprites.getPlayerGlyph,clock=r.time,position=p.pos.clone();
       const speed=p.speedNow,hurt=p.hurtT;p.speedNow=4;p.hurtT=.2;
       r.sprites.getPlayerGlyph=(...args)=>{
         const frame=args[3];frames.push({action:frame?.action,index:frame?.index,species:frame?.species});
         return get(...args);
       };
-      try{for(let i=0;i<27;i++)r.update(1/30);}
+      try{for(let i=0;i<steps;i++)r.update(reveal*.5/steps);}
       finally{r.sprites.getPlayerGlyph=get;p.speedNow=speed;p.hurtT=hurt;}
-      return {from,to,before,oldHp,state:r.state,species:p.speciesId,count:r.vfx.upgrade.mesh.count,
+      const camera=r.r.camera,rig=r.vfx.upgrade.camera,point=p.pos.clone();point.y+=.08;
+      const view=point.clone().applyMatrix4(camera.matrixWorldInverse),projection=camera.projectionMatrix.elements;
+      const clipW=projection[3]*view.x+projection[7]*view.y+projection[11]*view.z+projection[15];
+      point.project(camera);
+      const framing={x:(point.x+1)*.5*innerWidth,y:(1-point.y)*.5*innerHeight,
+        inkPixels:rig.inkHeight*projection[5]/clipW*.5*innerHeight};
+      return {from,to,before,oldHp,reveal,duration,state:r.state,species:p.speciesId,count:r.vfx.upgrade.mesh.count,
         front:r.vfx.upgrade.mesh.visible,rear:r.vfx.upgrade.rearMesh.visible,
-        lightFrame:r.vfx.upgrade.light.mesh.visible?r.vfx.upgrade.light.pose.getX(0):-1,
+        lightFrame:r.vfx.upgrade.screen.mesh.visible?r.vfx.upgrade.screen.uniforms.frame.value:-1,
+        fullScreen:r.vfx.upgrade.screen.loaded&&!r.vfx.upgrade.light.mesh.visible,
         overlay:!!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-cutin,.zx-evolution-result'),
-        frames,worldPaused:r.time===clock,stationary:p.pos.equals(position)};
+        frames,framing,worldPaused:r.time===clock,stationary:p.pos.equals(position)};
     },{from,to});
     assert.equal(start.state,'evolving');assert.equal(start.species,from);assert.equal(start.count,1);assert.ok(start.front&&start.rear);assert.equal(start.overlay,false);
     assert.equal(start.lightFrame,27,'Golden spiral is loaded and playing on the original form');
+    assert.ok(Math.abs(start.duration-6.2)<1e-8,'Evolution uses the original GIF duration');
+    assert.ok(Math.abs(start.reveal/start.duration-4.4/6.2)<1e-8,'Keep the original GIF charge/release ratio');
+    assert.ok(start.fullScreen,'The supplied full-screen atlas replaces the cropped light');
+    const cover=Math.max(width/390,height/844);
+    assert.ok(Math.abs(start.framing.x-width/2)<.1,'Center the evolution camera on the character');
+    assert.ok(Math.abs(start.framing.y-(height/2-20*cover))<.1,'Match the reference foot position: '+JSON.stringify({width,height,framing:start.framing}));
+    assert.ok(Math.abs(start.framing.inkPixels-80*cover)<.1,'Match the reference character size');
     await draw(`evolution-${from}-${to}-orbit`);
     assert.ok(start.worldPaused&&start.stationary,'Idle animation must not resume combat or movement');
     assert.ok(start.frames.length>1&&start.frames.every(f=>f.action==='idle'&&f.species===from));
     assert.ok(new Set(start.frames.map(f=>f.index)).size>1,'Original form idle frames must advance during evolution');
-    const burst=await page.evaluate(()=>{
-      const r=app.run;for(let i=0;i<27;i++)r.update(1/30);
-      return r.vfx.upgrade.light.pose.getX(0);
-    });
-    assert.equal(burst,63,'The expanding ring coincides with the form change');
+    const burst=await page.evaluate(reveal=>{
+      const r=app.run,steps=Math.ceil(reveal*.5*30);for(let i=0;i<steps;i++)r.update(reveal*.5/steps);
+      return r.vfx.upgrade.screen.sourceFrame;
+    },start.reveal);
+    assert.equal(burst,126,'The expanding ring coincides with the form change');
     if(from===4||to===58)await draw(`evolution-${from}-${to}-burst`);
     const landing=await page.evaluate(()=>{
       const r=app.run;for(let i=0;i<4;i++)r.update(1/30);
-      return {species:r.player.speciesId,lift:r.player.evolutionLift,scale:r.player.renderScale,
+      return {species:r.player.speciesId,lift:r.player.evolutionLift,scale:r.player.renderScale,state:r.state,
         overlay:!!r.ui.root.querySelector('.zx-evolution-cutin,.zx-evolution-result')};
     });
     assert.equal(landing.species,to);assert.equal(landing.scale,1);assert.ok(landing.lift>0&&!landing.overlay,'Let the character finish its animation');
+    assert.equal(landing.state,'evolving','Combat stays paused through the full-screen release');
     const stamped=await page.evaluate(dt=>{
       const r=app.run,root=r.ui.root,frames=new Set();
       let card,landedAt;
@@ -94,7 +112,7 @@ export async function reviewUpgradeEffects(page,dir){
         r.update(dt);
         if(r.player.renderScale!==1||root.querySelector('.zx-evolution-cutin'))throw Error('Unexpected enlarged evolution glyph');
         card=root.querySelector('.zx-evolution-result');
-        if(r.player.evolutionLift>0){
+        if(r.state==='evolving'){
           if(card)throw Error('Result appeared while the character was airborne');
           continue;
         }
@@ -140,19 +158,21 @@ export async function reviewUpgradeEffects(page,dir){
     const end=await page.evaluate(()=>{
       const r=app.run;for(let i=0;i<78;i++)r.update(1/30);
       return {species:r.player.speciesId,state:r.state,evolutions:r.stats.evolutions,scale:r.player.renderScale,
-        expired:!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-result'),gl:app.r.renderer.getContext().getError()};
+        expired:!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-result'),screenCleared:!r.vfx.upgrade.screen.mesh.visible,
+        gl:app.r.renderer.getContext().getError()};
     });
     assert.equal(end.species,to);assert.equal(end.state,'play');assert.equal(end.evolutions,start.before+1);assert.equal(end.scale,1);assert.ok(end.expired);assert.equal(end.gl,0);
+    assert.ok(end.screenCleared);
     report.evolutions.push({...start,end});console.log('Shared evolution',from,to);
   }
   report.settings=await page.evaluate(()=>{
     const r=app.run,fx=r.vfx.upgrade;
     fx.play(r.player,true);fx.play(r.player,true);const coalesced=fx.events.length===1;
-    r.hideOwnFx=true;fx.update(.1);fx.play(r.player,true);const hidden=fx.events.length===0&&!fx.mesh.visible&&!fx.light.mesh.visible;
+    r.hideOwnFx=true;fx.update(.1);fx.play(r.player,true);const hidden=fx.events.length===0&&!fx.mesh.visible&&!fx.light.mesh.visible&&!fx.screen.mesh.visible;
     r.hideOwnFx=false;r.vfx.calm=true;r.vfx.ownFade=.4;r.vfx.fade=.5;fx.play(r.player,true);fx.update(.2);
     const calm=fx.mesh.material.uniforms.calm.value,opacity=fx.timing.getW(0);
-    fx.update(1.6);const calmBurst=fx.light.pose.getY(0);
-    r.vfx.clear();const cleared=fx.events.length===0&&!fx.mesh.visible&&!fx.light.mesh.visible;
+    fx.update(fx.events[0].reveal-.2);const calmBurst=fx.screen.uniforms.strength.value;
+    r.vfx.clear();const cleared=fx.events.length===0&&!fx.mesh.visible&&!fx.light.mesh.visible&&!fx.screen.mesh.visible;
     r.vfx.calm=false;r.vfx.ownFade=1;r.vfx.fade=1;
     // Ordinary upgrades must stay free of orbits in coop and chained choices.
     const coop=r.coop,show=r.ui.showLevelUp;r.coop={};r.nextEvo=null;r.state='play';r.pendingLevels=1;r.ui.showLevelUp=()=>{};
@@ -167,9 +187,54 @@ export async function reviewUpgradeEffects(page,dir){
   assert.ok(report.settings.coalesced&&report.settings.hidden&&report.settings.cleared&&report.settings.cooperative&&report.settings.chained);
   assert.equal(report.settings.calm,1);assert.ok(Math.abs(report.settings.opacity-.14)<1e-6);
   assert.ok(Math.abs(report.settings.calmBurst-.14*.18)<1e-6);
+  report.lowFps=await page.evaluate(()=>{
+    const r=app.run,p=r.player,fx=r.vfx.upgrade;r.state='play';r.anims.length=0;r.ui.showEvolution();
+    p.setSpecies(4);p.renderScale=1;p.evolutionLift=0;r.nextEvo={to:5,level:p.level};
+    const count=r.stats.evolutions,clock=r.time;
+    r.startEvolution();[...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
+    for(let i=0;i<61;i++)r.update(.1);
+    const paused=r.state==='evolving'&&r.time===clock;
+    for(let i=0;i<3;i++)r.update(.1);
+    const complete=r.state==='play'&&p.speciesId===5&&p.evolutionLift===0&&p.flash===0&&r.stats.evolutions===count+1&&!fx.screen.mesh.visible;
+    // A missing optional full-screen texture retains the already loaded local effect.
+    const loaded=fx.screen.loaded;fx.screen.loaded=false;
+    fx.play(p,true);fx.update(.9);
+    const fallback=fx.light.mesh.visible&&!fx.screen.mesh.visible;
+    fx.screen.loaded=loaded;fx.clear();
+    return {paused,complete,fallback};
+  });
+  assert.ok(report.lowFps.paused&&report.lowFps.complete&&report.lowFps.fallback);
+  if(process.argv.includes('--evolution-preview')){
+    const {default:sharp}=await import('sharp');
+    const reference=JSON.parse(fs.readFileSync(new URL('../../resources/public/assets/vfx/evolution-screen.json',import.meta.url)));
+    await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+    await page.evaluate(()=>{
+      const r=app.run,p=r.player;r.state='play';r.anims.length=0;r.vfx.clear();r.ui.showEvolution();
+      r.ui.toastsEl.replaceChildren();p.setSpecies(4);p.renderScale=1;p.evolutionLift=0;p.flash=0;
+      p.moves.forEach(m=>{if(m)m.timer=999;});r.nextEvo={to:5,level:p.level};
+      r.startEvolution();[...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
+    });
+    const frames=[],delays=[];
+    for(let i=0;i<reference.times.length-1;i++){
+      await page.evaluate(dt=>{
+        const r=app.run;r.update(dt);app.r.render(0);inspected.env.drawUI(app.r.renderer);
+      },i===0?0:reference.times[i]-reference.times[i-1]);
+      const screenshot=await page.screenshot();
+      if([0,20,60,120,123,126,136,170].includes(i))fs.writeFileSync(path.join(dir,'preview-'+i+'.png'),screenshot);
+      frames.push(await sharp(screenshot).ensureAlpha().raw().toBuffer());
+      delays.push(Math.round((reference.times[i+1]-reference.times[i])*1000));
+    }
+    const file='evolution-reference-timing.gif';
+    await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
+      .gif({delay:delays,loop:0,effort:4,dither:.5}).toFile(path.join(dir,file));
+    const metadata=await sharp(path.join(dir,file),{animated:true}).metadata();
+    assert.equal(metadata.delay.reduce((total,delay)=>total+delay,0),6200,'Preview must play at the original GIF timing');
+    report.preview={file,duration:6.2};console.log('Reference-timed evolution preview:',file);
+  }
   report.dispose=await page.evaluate(()=>{
     const r=app.run,fx=r.vfx.upgrade;fx.play();app.toMenu();
-    return {disposed:fx.disposed&&fx.light.disposed,detached:!fx.mesh.parent&&!fx.rearMesh.parent&&!fx.light.mesh.parent,empty:fx.events.length===0};
+    return {disposed:fx.disposed&&fx.light.disposed&&fx.screen.disposed,
+      detached:!fx.mesh.parent&&!fx.rearMesh.parent&&!fx.light.mesh.parent&&!fx.screen.mesh.parent&&!app.r.evolutionScreen,empty:fx.events.length===0};
   });
   assert.ok(report.dispose.disposed&&report.dispose.detached&&report.dispose.empty);
   fs.writeFileSync(path.join(dir,'upgrade-effects.json'),JSON.stringify(report,null,2));

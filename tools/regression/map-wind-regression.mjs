@@ -157,7 +157,10 @@ export async function reviewMapWind(page,dir){
   for(const sample of report.damage){
     const expected=[58,59].includes(sample.id)?1+1/15:1;
     near(sample.boosted.stat,expected);near(sample.boosted.hit,expected);near(sample.repeat,expected);near(sample.removed,1);
-    if(sample.id===59){near(sample.active.speed,10);near(sample.active.stat,1.36);near(sample.active.hit,1.36);near(sample.paused,1.36);near(sample.refresh,1.36);near(sample.expired,1);}
+    if(sample.id===59){
+      const damage=1+.4*(1-1/3);
+      near(sample.active.speed,3);near(sample.active.stat,damage);near(sample.active.hit,damage);near(sample.paused,damage);near(sample.refresh,damage);near(sample.expired,1);
+    }
   }
   fs.writeFileSync(path.join(dir,'map-wind.json'),JSON.stringify(report,null,2));
   console.log('Map names, ten filters, three phone sizes and movement-passive combat verified.');

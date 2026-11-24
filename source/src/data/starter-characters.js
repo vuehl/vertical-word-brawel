@@ -2,19 +2,25 @@ import {formCopy, moveCopy} from './form-copy.js';
 
 // Keep species IDs stable for saved unlocks and glyph artwork.
 export const starterSpecies = Object.freeze([4,16]);
-export const starterEvolutionLevels = Object.freeze([10,20]);
+export const starterEvolutionLevels = Object.freeze([18,40]);
+export const singleStageEvolutionLevels = Object.freeze([12,30]);
 export const starterWords = Object.freeze(Object.fromEntries(
   [4,5,6,132,16,17,18,58,59].map(id=>[id,formCopy[id].word])
 ));
 export const windSpeedPassive = '超过基础移速时获得伤害加成，收益逐渐递减，最高 40%。';
+const windRushMultipliers = {58:2, 59:3};
+export const speedDuration = 5;
+function windMoveEffectText(id){
+  const multiplier=windRushMultipliers[id];
+  return `移速变为当前的 ${multiplier} 倍，持续 ${speedDuration} 秒。期间撞到怪物造成当前主攻击 ${multiplier} 倍的伤害。`;
+}
 export const windRoutes = [
   {middle:17, final:18, role:'A · 攻速', note:'首次进阶获得「刮倒一片」，攻速变为 10 倍，持续 5 秒。'},
-  {middle:58, final:59, role:'B · 移速', note:'首次进阶获得「跑得没影」，移速变为 10 倍，持续 5 秒。'+windSpeedPassive},
+  {middle:58, final:59, role:'B · 移速', note:`「跑得没影」持续 ${speedDuration} 秒。飒的移速与撞击伤害为 ${windRushMultipliers[58]} 倍，进阶为飙后为 ${windRushMultipliers[59]} 倍。`+windSpeedPassive},
 ];
 export const attackSpeedBuff = 'ziling-wind-attack-speed';
 export const speedBuff = 'ziling-wind-speed';
-export const speedDuration = 5;
-export const hasWindSpeedPassive = id => id === 58 || id === 59;
+export const hasWindSpeedPassive = id => Object.hasOwn(windRushMultipliers,id);
 export function windSpeedDamageBonus(id,speed,baseSpeed){
   if (!hasWindSpeedPassive(id) || !(speed > baseSpeed && baseSpeed > 0)) return 0;
   return .4 * (1 - baseSpeed / speed);
@@ -55,7 +61,7 @@ export function characterForSpecies(id){
 export function configureStarterRoster(roster){
   const byId=new Map(roster.map(actor=>[actor.id,actor]));
   return starterSpecies.map(id=>({
-    ...byId.get(id),start:true,evoLevels:starterEvolutionLevels,
+    ...byId.get(id),start:true,evoLevels:starterEvolutionLevels,singleStageEvoLevels:singleStageEvolutionLevels,
     ...(id===16?{branch:windRoutes.map(route=>route.middle),evoLevel:starterEvolutionLevels[0]}:{}),
   }));
 }
@@ -63,7 +69,7 @@ export function configureStarterSpecies(species){
   const byId=new Map(species.map(actor=>[actor.id,actor]));
   for(const {middle,final} of windRoutes){
     for(const [id,parent,stage] of [[middle,16,1],[final,middle,2]]){
-      Object.assign(byId.get(id),{evoFrom:parent,evoStage:stage,family:16,evoLevel:stage===1?18:36,
+      Object.assign(byId.get(id),{evoFrom:parent,evoStage:stage,family:16,evoLevel:starterEvolutionLevels[stage-1],
         evoTrigger:'level-up',evoItem:null,types:['flying']});
     }
   }
@@ -84,16 +90,25 @@ export function starterUltimate(id,original){
     def=renamed(original[16],name,0,ctx=>original[16].cast({...ctx,tier:0,form:0}));
   }else if([17,18,58,59].includes(id)){
     const attack=id===17||id===18,key=attack?attackSpeedBuff:speedBuff;
-    def={names:[name],descs:['使当前'+(attack?'攻击':'移动')+'速度变为 10 倍，持续 '+speedDuration+' 秒。重复释放刷新持续时间。'+(attack?'':'被动：'+windSpeedPassive)],
+    const effect=attack?'使当前攻击速度变为 10 倍，持续 '+speedDuration+' 秒。':windMoveEffectText(id);
+    def={names:[name],descs:[effect+'重复释放刷新持续时间。'+(attack?'':'被动：'+windSpeedPassive)],
       type:'flying',cls:'physical',dur:[speedDuration],tint:0xb8e8e0,
-      cast({run}){run.player.addBuff(key,speedDuration,name);run.player.zilingSpeedFx=0;run.player.zilingSpeedPosition=null;}};
+      cast({run}){
+        const player=run.player, active=player.buffs.get(key);
+        if(active)active.t=speedDuration;
+        else player.addBuff(key,speedDuration,name);
+        player.zilingSpeedFx=0;player.zilingSpeedPosition=null;
+      }};
   }
   if(def)ultCache.set(id,def);
   return def;
 }
-export function applyStarterSpeed(stats,buffs){
+export function windRushMultiplier(id){
+  return windRushMultipliers[id] ?? 1;
+}
+export function applyStarterSpeed(stats,buffs,id){
   if(buffs.has(attackSpeedBuff))stats.attackSpeed*=10;
-  if(buffs.has(speedBuff))stats.moveSpeed*=10;
+  if(buffs.has(speedBuff))stats.moveSpeed*=windRushMultiplier(id);
 }
 export function updateStarterSpeed(run,delta,shape){
   const p=run.player;

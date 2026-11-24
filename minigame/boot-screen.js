@@ -67,7 +67,7 @@ function paintWordmark(c, x, y) {
   c.fillText("\u5B57\u884C", 0, 0);
   c.restore();
 }
-function paintMenuScene(c, width, height, hero, wordImage, selectedWord) {
+function paintMenuScene(c, width, height, hero, drawWord, selectedWord) {
   const w = 780, h = hero ? 1040 : 340;
   c.save();
   c.scale(width / w, height / h);
@@ -170,8 +170,7 @@ function paintMenuScene(c, width, height, hero, wordImage, selectedWord) {
   if (hero) {
     const cast = selectedWord ? [[selectedWord, 390, 138, 190]] : [["\u98CE", 286, 143, 143], ["\u708E", 494, 138, 185]];
     for (const [word, x, yy, size] of cast) {
-      const image = wordImage(word);
-      if (image) c.drawImage(image, x - size / 2, yy - size / 2, size, size);
+      drawWord(c, word, x - size / 2, yy - size / 2, size);
     }
   }
   if (!hero) {
@@ -200,7 +199,7 @@ function paintMenuScene(c, width, height, hero, wordImage, selectedWord) {
   c.restore();
   c.restore();
 }
-function paintLoadingBackdrop(ctx, W, H, wordImage, selectedWord) {
+function paintLoadingBackdrop(ctx, W, H, drawWord, selectedWord) {
   const top = Math.min(18, H * 0.0185), height = Math.min(520, H * 0.79 - 68 - top), width = height * 0.75;
   ctx.fillStyle = gradient(ctx, 0, top, 0, top + height, "#292943", "#21253F");
   ctx.fillRect(0, 0, W, H);
@@ -214,7 +213,7 @@ function paintLoadingBackdrop(ctx, W, H, wordImage, selectedWord) {
   ctx.lineTo(0, height - 8);
   ctx.closePath();
   ctx.clip();
-  paintMenuScene(ctx, width, height, true, wordImage, selectedWord);
+  paintMenuScene(ctx, width, height, true, drawWord, selectedWord);
   ctx.restore();
 }
 function paintLoadingSlip(ctx, value, label) {
@@ -250,32 +249,34 @@ var { paintLoadingBackdrop: paintLoadingBackdrop2, paintLoadingSlip: paintLoadin
 module.exports = async function presentBootFrame(gl) {
   let program = gl.createProgram(), texture = gl.createTexture(), vao = gl.createVertexArray();
   let canvas = wx.createCanvas(), patch = wx.createCanvas(), last = "", textureWidth = 0, textureHeight = 0;
-  const heroes = {};
-  for (const [word, src] of Object.entries(require("./boot-hero-art"))) {
-    let loadLocal = function() {
-      image.onerror = null;
-      if (!canvas) return;
-      try {
-        const file = wx.env.USER_DATA_PATH + "/zixing-boot-" + word + ".png";
-        wx.getFileSystemManager().writeFileSync(file, src.slice(src.indexOf(",") + 1), "base64");
-        image.src = file;
-      } catch (error) {
-        console.warn("[\u5B57\u884C] \u542F\u52A8\u5B57\u7075\u56FE\u7247\u8BFB\u53D6\u5931\u8D25", word, error);
-      }
-    };
-    const image = wx.createImage();
-    image.onload = () => {
-      if (canvas) {
-        heroes[word] = image;
-        last = "";
-      }
-    };
-    image.onerror = loadLocal;
-    try {
-      image.src = src;
-    } catch (e) {
-      loadLocal();
+  const { words, src } = require("./boot-hero-art"), image = wx.createImage();
+  let ready = false;
+  image.onload = () => {
+    if (canvas) {
+      ready = true;
+      last = "";
     }
+  };
+  function loadLocal() {
+    image.onerror = null;
+    if (!canvas) return;
+    try {
+      const file = wx.env.USER_DATA_PATH + "/zixing-boot-heroes.webp";
+      wx.getFileSystemManager().writeFileSync(file, src.slice(src.indexOf(",") + 1), "base64");
+      image.src = file;
+    } catch (error) {
+      console.warn("[\u5B57\u884C] \u542F\u52A8\u5B57\u7075\u56FE\u7247\u8BFB\u53D6\u5931\u8D25", error);
+    }
+  }
+  image.onerror = loadLocal;
+  try {
+    image.src = src;
+  } catch (e) {
+    loadLocal();
+  }
+  function drawHero(ctx, word, x, y, size) {
+    const index = words.indexOf(word), tile = image.height;
+    if (ready && index >= 0) ctx.drawImage(image, index * tile, 0, tile, tile, x, y, size, size);
   }
   function attach(type, source) {
     const shader = gl.createShader(type);
@@ -308,7 +309,7 @@ module.exports = async function presentBootFrame(gl) {
     if (full) {
       const ctx2 = canvas.getContext("2d");
       ctx2.setTransform(s, 0, 0, s, 0, 0);
-      paintLoadingBackdrop2(ctx2, W, H, (word) => heroes[word]);
+      paintLoadingBackdrop2(ctx2, W, H, drawHero);
     }
     let y = 0, ctx = canvas.getContext("2d");
     if (strip) {

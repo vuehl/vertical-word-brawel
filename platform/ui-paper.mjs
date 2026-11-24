@@ -177,9 +177,12 @@ export function drawUiPaper(ctx,box){
       cut(ctx,0,3,w,h-3,5,edge);cut(ctx,0,0,w,h-4,5,top);
       poly(ctx,[[0,5],[5,0],[70,0],[60,h-4],[5,h-4],[0,h-9]],bottom);
       poly(ctx,[[0,5],[5,0],[10,0],[7,h-4],[5,h-4],[0,h-9]],accent);break;
-    case 'scene-bulletin':
-      cut(ctx,0,3,w,h-3,6,'#8298B5');cut(ctx,0,0,w,h-3,6,'#E9EEF7');
-      poly(ctx,[[0,6],[6,0],[13,0],[8,h-3],[5,h-3],[0,h-8]],'#7193BC');break;
+    case 'scene-bulletin': {
+      const vars=box.s.vars;
+      cut(ctx,0,3,w,h-3,6,vars?.['--notice-edge']||'#8298B5');
+      cut(ctx,0,0,w,h-3,6,vars?.['--notice-face']||'#E9EEF7');
+      poly(ctx,[[0,6],[6,0],[13,0],[8,h-3],[5,h-3],[0,h-8]],vars?.['--notice-ink']||'#7193BC');break;
+    }
     case 'capture-track':
       cut(ctx,0,2,w,h-2,6,'#5C769B');cut(ctx,0,0,w,h-3,6,'#E5EBF4');
       poly(ctx,[[0,6],[6,0],[52,0],[43,h-3],[5,h-3],[0,h-10]],'#C5D8EA');break;
@@ -192,14 +195,16 @@ export function drawUiPaper(ctx,box){
       const x=w-24,y=h*.5;poly(ctx,[[x-5,y],[x-1,y-1],[x,y-6],[x+2,y-1],[x+6,y],[x+1,y+2],[x,y+6],[x-1,y+2]],'#BBD0E8');break;
     }
     case 'fusion-slip': {
-      const active=has('selected'),spine=active?'#537CB6':'#91A8C4';
-      cut(ctx,0,3,w,h-3,8,'#596C89');cut(ctx,0,0,w,h-4,8,'#EAEFF6');
+      const unavailable=has('unavailable');
+      const spine=unavailable?'#9CA1AA':has('selected')?'#537CB6':'#91A8C4';
+      cut(ctx,0,3,w,h-3,8,unavailable?'#8A8F99':'#596C89');
+      cut(ctx,0,0,w,h-4,8,unavailable?'#D8DADF':'#EAEFF6');
       poly(ctx,[[0,8],[8,0],[12,0],[12,h-5],[7,h-5],[0,h-12]],spine);
       for(const y of [22,32]){
         ctx.fillStyle='#53667D';ctx.fillRect(4,y+1,14,3);
         ctx.fillStyle='#BCCDDD';ctx.fillRect(4,y,14,2);
       }
-      poly(ctx,[[w-15,h-4],[w-2,h-17],[w-2,h-11],[w-9,h-4]],'#B0C2D7');break;
+      poly(ctx,[[w-15,h-4],[w-2,h-17],[w-2,h-11],[w-9,h-4]],unavailable?'#B3B6BD':'#B0C2D7');break;
     }
     case 'fusion-mark':
       cut(ctx,1,4,w-2,h-4,5,'#8298B6');cut(ctx,0,0,w-2,h-4,5,'#D0DFEE');

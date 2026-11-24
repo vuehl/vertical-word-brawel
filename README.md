@@ -28,7 +28,11 @@
 | [resources/public/fonts/](resources/public/fonts/) · [resources/public/overrides/](resources/public/overrides/) | 中文字体与许可、按同路径优先加载的替换素材。`public/` 顶层还包含网页版入口、图标和署名。 |
 | [resources/reference/](resources/reference/) | 桌面布局工具生成的测量参考。 |
 
-原稿和游戏内图集分开维护。例如，调整字形时，先改 `resources/art/glyphs/`，运行 `node tools/art/glyph-atlas.mjs` 生成图集，再运行 `npm run build:assets` 更新微信包。
+启动页的「炎」和「风」取自 `resources/art/glyphs/`，构建时合成一张无损 WebP 图集。`resources/art/fire-stampede/` 的三段 GIF 用于重建烈焰狂奔图集和校验动画来源。修改技能原稿后运行 `node tools/art/build-fire-stampede.mjs`，再运行 `npm run build:assets` 更新微信包。
+
+进化参考 GIF 保存在 `resources/art/upgrade/`。`node tools/art/build-evolution-screen.mjs` 从全屏参考提取透明光效、曝光和动作时间轴，再运行 `npm run build:assets` 更新资源。演出沿用原 GIF 的 6.2 秒时长、居中近景和爆发前暗场，覆盖场景与 HUD，结束后恢复正常镜头；普通升级不触发。`npm run test:upgrade-effects` 验证原始帧时长、六条进化路径、不同竖屏尺寸、低帧率、特效设置和清理。
+
+完整的常规、粗体中文字库以无损 WOFF 存放在 `resources/public/fonts/swei/`。构建会从中提取游戏用字，生成供微信加载的两份 TTF 子集。
 
 旧版的 152 张宝可梦角色精灵图已清理。它们曾用于测量角色的脚底、顶部和宽度，已核对的数值保存在 [actor-metrics.js](source/src/actors/actor-metrics.js)。现有玩法、研究进度和旧存档继续使用角色编号与家族关系，相关数据保存在 `resources/public/data/pokemon.json` 等表中。
 

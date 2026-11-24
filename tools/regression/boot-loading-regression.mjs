@@ -13,14 +13,16 @@ fs.mkdirSync(dir,{recursive:true});
 const source=fs.readFileSync(path.join(root,'minigame/boot-screen.js'),'utf8');
 const artFile=path.join(root,'minigame/boot-hero-art.js'),art=require(artFile);
 const report={art:[],scriptBytes:fs.statSync(artFile).size,samples:[]};
-assert.deepEqual(Object.keys(art).sort(),['炎','风'].sort());
+assert.deepEqual([...art.words].sort(),['炎','风'].sort());
+const output=Buffer.from(art.src.split(',')[1],'base64'),m=await sharp(output).metadata();
+assert.equal(m.width,256*art.words.length);assert.equal(m.height,256);assert.equal(m.hasAlpha,true);
+report.atlasBytes=output.length;
 for(const [id,word] of [[4,'炎'],[16,'风']]){
   const file=path.join(root,'resources/art/glyphs',`hero_${id}_${word}.png`),original=fs.readFileSync(file);
-  const output=Buffer.from(art[word].split(',')[1],'base64'),m=await sharp(output).metadata();
-  assert.equal(m.width,256);assert.equal(m.height,256);assert.equal(m.hasAlpha,true);
+  const tile=sharp(output).extract({left:art.words.indexOf(word)*256,top:0,width:256,height:256});
   const expected=await sharp(original).resize(256,256,{fit:'inside',withoutEnlargement:true}).ensureAlpha().raw().toBuffer();
-  assert.deepEqual(await sharp(output).ensureAlpha().raw().toBuffer(),expected,'Only size changes; retain RGBA without palette loss');
-  report.art.push({word,sourceBytes:original.length,outputBytes:output.length,width:m.width,height:m.height,
+  assert.deepEqual(await tile.ensureAlpha().raw().toBuffer(),expected,'Keep the original resized RGBA in every tile');
+  report.art.push({word,sourceBytes:original.length,width:256,height:256,
     originalSHA256:createHash('sha256').update(original).digest('hex')});
 }
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,
@@ -43,19 +45,20 @@ try{
       const w=screen.width,h=screen.height;
       const pixels=()=>{const bytes=new Uint8Array(w*h*4);gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,bytes);return bytes;};
       const difference=(a,b)=>a.reduce((n,v,i)=>n+(v!==b[i]?1:0),0);
-      async function make(holdLast=false){
-        const canvases=[],images=[],pending=[],loads=[];
+      async function make(holdAtlas=false){
+        const canvases=[],pending=[],loads=[];
         const wx={createCanvas(){const c=document.createElement('canvas');canvases.push(c);return c;},createImage(){
-          const image=new Image();images.push(image);
+          const image=new Image();
           loads.push(new Promise((resolve,reject)=>{image.addEventListener('load',()=>setTimeout(resolve,0),{once:true});image.addEventListener('error',reject,{once:true});}));
-          if(holdLast&&images.length===Object.keys(art).length){const set=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
+          if(holdAtlas){const set=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
             Object.defineProperty(image,'src',{set(value){pending.push(()=>set.call(image,value));}});}
           return image;
         }};
         const factory=new Function('wx','require','const module={exports:{}};'+source+';return module.exports;')(wx,()=>art);
         const splash=await factory(gl);
+        if(loads.length!==1)throw Error('Expected a single splash atlas image');
         async function loaded(){await Promise.all(loads);}
-        if(!holdLast)await loaded();
+        if(!holdAtlas)await loaded();
         return {splash,canvases,release:async()=>{pending.forEach(fn=>fn());await loaded();}};
       }
       const current=await make(),snapshots=new Map(),values=new Set([0,1,49,67,85,94,95,100]);

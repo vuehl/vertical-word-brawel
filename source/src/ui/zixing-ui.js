@@ -13,14 +13,15 @@ import {askCoopCode} from '../network/coop-join-dialog.js';
 import {createPeerHud} from '../network/coop-peer-hud.js';
 import {drawMenuGlyph,drawRouteGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from '../actors/paper-glyph-art.js';
 import {homeWordmark,homeEntryFace,menuSymbol,itineraryStamp} from './menu-paper-art.js';
-import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,drawBattleStatus,drawStageCaption,drawUltimateSeal} from './paper-hud-art.js';
+import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,atlasView,drawBattleStatus,drawStageCaption,drawUltimateSeal} from './paper-hud-art.js';
+import {regionAtlas,atlasSymbol} from './region-atlas-art.js';
 import {paperStages} from '../world/paper-world.js';
 import {zixingStyle} from './zixing-style.js';
 import {laboratory} from '../data/catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from '../performance/loading-work.js';
 import {selectGraphicsQuality} from '../performance/performance-profile.js';
 import {ExperienceRing} from '../combat/experience-ring.js';
-import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus} from '../data/starter-characters.js';
+import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus,windRushMultiplier} from '../data/starter-characters.js';
 import {SINGLE_STAGE,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,QUIT_REWARD_MIN_SECONDS,remainingZoneSeconds} from '../data/lite-rules.js';
 import {sceneAction} from '../combat/scene-action.js';
 import {facilityDwellSeconds,facilityNames} from '../data/active-content.js';
@@ -37,10 +38,10 @@ const destinations=[
   {id:'bookshelf',name:'书架云端',art:'bookshelf',released:false},
 ];
 const difficulties=[
-  {name:'普通（单关）',art:'single',tier:0,mode:SINGLE_STAGE,note:['击败首区镇守后','进入传送门通关']},
-  {name:'普通',art:'normal',tier:0,mode:'standard',note:['完成全部区域','挑战圣地镇守']},
-  {name:'困难',art:'hard',tier:1,mode:'standard',note:['敌人更强，首领更具挑战'],locked:'完整通关普通后解锁'},
-  {name:'噩梦',art:'nightmare',tier:2,mode:'standard',note:['更高强度的进阶挑战'],locked:'通关困难后解锁'},
+  {name:'普通（单关）',tier:0,mode:SINGLE_STAGE,note:['击败首区镇守后','进入传送门通关']},
+  {name:'普通',tier:0,mode:'standard',note:['完成全部区域','挑战圣地镇守']},
+  {name:'困难',tier:1,mode:'standard',note:['敌人更强，首领更具挑战'],locked:'完整通关普通后解锁'},
+  {name:'噩梦',tier:2,mode:'standard',note:['更高强度的进阶挑战'],locked:'通关困难后解锁'},
 ];
 const difficultyName=run=>run.mode===SINGLE_STAGE?difficulties[0].name:difficulties[1+run.tier].name;
 const number=n=>Math.round(Number(n)||0).toLocaleString('en-US');
@@ -145,7 +146,7 @@ function icon(name,size=24,color='#766a88') {
   }
   return canvas;
 }
-function stagePrint(name,style){return el('img',style,[],{src:'assets/ui-paper/'+name+'.png',alt:'','aria-hidden':true});}
+function stagePrint(name,style){return el('img',style,[],{src:'assets/ui-paper/'+name+'.webp',alt:'','aria-hidden':true});}
 function button(label,action,kind='',attrs={}) {
   const node=el('button','zx-button '+kind,label,{type:'button',...attrs});
   standardButton(node,label);
@@ -1522,7 +1523,7 @@ export function createZixingUI(app,api) {
     hud.showSummary=summary;hud.showSlots=slots;
     const hideBattleModal=hud.hideModal.bind(hud);
     hud.hideModal=(...args)=>{
-      hud.root.classList.remove('zx-showing-outcome');
+      hud.root.classList.remove('zx-showing-outcome','zx-showing-atlas');
       return hideBattleModal(...args);
     };
     hud.saving=active=>{
@@ -1546,8 +1547,8 @@ export function createZixingUI(app,api) {
     };
     hud.showMap=(r,fromPause=false)=>{
       const close=fromPause?()=>pause(r):()=>r.resume();
-      const side=Math.max(120,Math.min(352,window.innerWidth-38,window.innerHeight-170));
-      const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'附近地图，拖动查看建筑，轻点建筑图标追踪'});
+      const side=Math.max(120,Math.min(480,window.innerWidth-12,window.innerHeight-190));
+      const canvas=el('canvas','zx-battle-map-art',[],{width:side*2,height:side*2,'data-static':'true','aria-label':'区域地图，拖动查看建筑，轻点建筑图标追踪'});
       const frame=el('div','zx-battle-map-frame',canvas);
       frame.style.width=frame.style.height=side+'px';
       let selectedKind=null;
@@ -1568,34 +1569,38 @@ export function createZixingUI(app,api) {
         filterButtons.set(kind,node);filterRow.append(node);
       }
       const panel=el('section','zx zx-battle-map zx-atlas',[
-        el('header','zx-atlas-key',[el('b','','区域地图'),el('span','',paperStages[Math.min(3,r.stage-1)]+' · 第 '+r.stage+' 区')]),
+        el('header','zx-atlas-key',[atlasSymbol(),el('div','zx-atlas-titles',[
+          el('small','','区域地图'),el('h2','',paperStages[Math.min(3,r.stage-1)])]),
+          el('b','zx-atlas-zone','第 '+r.stage+' 区')]),
         frame,el('div','zx-atlas-legend',[['#657FB7','自己'],['#D4A64B','设施'],['#C76978','敌人']].map(([color,label])=>{
           const mark=el('i');mark.style.background=color;
           if(label!=='设施')return el('span','',[mark,label]);
           const toggle=button([mark,label],()=>{
             filters.hidden=status.hidden=!filters.hidden;
             toggle.setAttribute('aria-expanded',String(!filters.hidden));
-            const size=filters.hidden?side:Math.max(100,Math.min(side,innerHeight-170-filters.children.length*36-20));
+            const size=filters.hidden?side:Math.max(100,Math.min(side,innerHeight-190-filters.children.length*36-20));
             frame.style.width=frame.style.height=size+'px';
           },'zx-atlas-filter-toggle zx-plain',{'data-paper-surface':'flat','aria-label':'筛选建筑','aria-expanded':false});
           return toggle;
         })),
         filters,status,
       ],{role:'dialog','aria-label':'区域地图','data-paper-surface':'flat'});
+      panel.style.width=side+'px';
       const wrap=hud.modal(panel);wrap.className='zx zx-modal-wrap zx-atlas-overlay';
+      hud.root.classList.add('zx-showing-atlas');
       dockDialogClose(wrap,button('返回',close,'',{'data-action':'close-battle-map'}),'关闭区域地图');
-      const viewRatio=Math.max(1,r.terrain.world*mapWorldScale/98);
+      const atlas=regionAtlas(r.terrain);
+      const viewRatio=Math.max(1,Math.max(atlas.x/96,atlas.z/92)*2*mapWorldScale);
       let center={x:0,z:0},drag=null,groups=[];
       function paint(){
-        const result=drawBattleMinimap(canvas,r,{shadow:false,square:true,viewRatio,center,facilityKind:selectedKind});
+        const result=drawBattleMinimap(canvas,r,{shadow:false,square:true,atlas,viewRatio,center,facilityKind:selectedKind});
         groups=result.groups;
         canvas.dataset.filter=selectedKind??'all';
         updateText(status,selectedKind?(result.count?facilityNames[selectedKind]+' · 当前视野 '+result.count+' 处':'当前视野暂无'+facilityNames[selectedKind]+'，可拖动查找'):'显示全部建筑 · 拖动地图查看');
       }
       canvas.addEventListener('pointerdown',event=>{
         if(drag||event.button!==0)return;
-        const origin=center??r.player.pos;
-        drag={id:event.pointerId,x:event.clientX,y:event.clientY,originX:origin.x,originZ:origin.z,moved:false};
+        drag={id:event.pointerId,x:event.clientX,y:event.clientY,originX:center.x,originZ:center.z,moved:false};
         canvas.setPointerCapture(event.pointerId);
       });
       function pan(event){
@@ -1604,9 +1609,10 @@ export function createZixingUI(app,api) {
         if(!drag.moved&&Math.hypot(dx,dy)<4)return;
         drag.moved=true;
         const width=canvas.getBoundingClientRect().width || side;
-        const units=120*viewRatio/(width*mapWorldScale);
-        const limit=r.terrain.play,clamp=value=>Math.max(-limit,Math.min(limit,value));
-        center={x:clamp(drag.originX-dx*units),z:clamp(drag.originZ-dy*units)};
+        const units=atlasView.size*viewRatio/(width*mapWorldScale);
+        const bounds=r.terrain.deskBounds??{x:r.terrain.play,z:r.terrain.play};
+        const clamp=(value,limit)=>Math.max(-limit,Math.min(limit,value));
+        center={x:clamp(drag.originX-dx*units,bounds.x),z:clamp(drag.originZ-dy*units,bounds.z)};
         paint();window.invalidateUI?.();
       }
       canvas.addEventListener('pointermove',pan);
@@ -1615,7 +1621,8 @@ export function createZixingUI(app,api) {
         pan(event);
         if(!drag.moved){
           const rect=canvas.getBoundingClientRect();
-          const x=(event.clientX-rect.left)*120/(rect.width || side),y=(event.clientY-rect.top)*120/(rect.height || side);
+          const x=atlasView.left+(event.clientX-rect.left)*atlasView.size/(rect.width||side);
+          const y=atlasView.top+(event.clientY-rect.top)*atlasView.size/(rect.height||side);
           const hit=groups.slice().reverse().find(({box,hitBoxes})=>(hitBoxes??[box]).some(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h));
           if(hit)selectKind(hit.kind);
         }
@@ -1651,8 +1658,10 @@ export function createZixingUI(app,api) {
       let chosen=false;
       overlay('风起两路','为本局选择一条进阶路线',windRoutes.filter(route=>ids.includes(route.middle)).map(route=>{
         const trait=routeHeading(route);
+        const speedRoute=hasWindSpeedPassive(route.middle);
+        const benefit=speedRoute?`移速 ×${windRushMultiplier(route.middle)} → ×${windRushMultiplier(route.final)}`:trait+' ×10';
         return button([el('div','zx-evo-choice-head',[el('b','',trait+'路线'),routePrint([16,route.middle,route.final])]),
-          el('div','zx-evo-benefit',[el('b','',trait+' ×10'),el('small','','持续 5 秒')]),
+          el('div','zx-evo-benefit',[el('b','',benefit),el('small','',speedRoute?'持续 5 秒 · 撞击同倍率':'持续 5 秒')]),
           el('small','zx-evo-note','首次进阶  ·  '+character(route.middle).word+'  ·  '+character(route.middle).ult),
         ],()=>{if(chosen)return;chosen=true;choose(route.middle);},'zx-branch-choice',{'data-branch-id':route.middle,'data-paper-surface':'info-slip'});
       }),[],hud,'zx-evo-dialog');
@@ -1671,12 +1680,14 @@ export function createZixingUI(app,api) {
     const evolve=run.startEvolution.bind(run);
     run.startEvolution=()=>{
       run.state='modal';
+      run.sprites.prepareHeroForm(run.nextEvo.to,run.r.renderer);
       const route=windRoutes.find(route=>[route.middle,route.final].includes(run.nextEvo.to));
       overlay('字意更进一步',route?routeHeading(route)+'路线':'文字进阶',[
         routePrint([run.player.speciesId,run.nextEvo.to]),
         el('b','zx-evo-confirm-name',character(run.player.speciesId).word+' → '+character(run.nextEvo.to).word),
         small('保留当前招式与已有强化。'),card(statRow('基础成长','提升伤害与生命'),statRow('进阶次数',String(run.player.evoStage+1))),
       ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary')],hud,'zx-evo-dialog');
+      evolutionCard(run.player.speciesId,run.nextEvo.to);
     };
     hud.compact=true;
     const node=el('div','zx zx-hud');node.dataset.hud='true';
@@ -1735,19 +1746,34 @@ export function createZixingUI(app,api) {
     const updatePeers=run.coop?createPeerHud(run,node,el):null;
     hud.prepareEntryIcons=()=>Promise.all(Array.from(node.querySelectorAll('.zx-loadout-icon'),prepareHudImage));
     const combatFeed=installReviewBattle(hud,run,node.querySelector('.zx-hud-top'),{wordFor:glyphWordForSpecies,typeName:api.typeName,typeOf:api.speciesType});
-    let resultSlip=null;
+    let resultSlip=null, preparedResult=null;
     function clearEvolution(){
       resultSlip?.node.remove();resultSlip?.stamp.remove();resultSlip=null;
     }
-    hud.showEvolution=clearEvolution;
+    function evolutionCard(from,to){
+      if(preparedResult?.from!==from || preparedResult?.to!==to){
+        preparedResult={...evolutionResult(character(from),character(to),run.skinLook),from,to};
+      }
+      return preparedResult;
+    }
+    hud.showEvolution=(from,to)=>{
+      clearEvolution();
+      if(from==null)preparedResult=null;
+      else evolutionCard(from,to);
+    };
+    hud.prepareEvolutionResult=(from,to,before,after)=>{
+      const card=evolutionCard(from,to);
+      card.setHealth(before,after);
+      const animate=!run.hideOwnFx&&profile()?.settings.showBanners!==false&&!run.vfx.calm&&!stillMotion?.matches;
+      card.paint(animate?0:1);
+      card.settled=!animate;
+    };
     hud.evolutionReveal=(from,to,before,after)=>{
       clearEvolution();
-      const card=evolutionResult(character(from),character(to),run.skinLook,before,after);
-      const animate=!run.hideOwnFx&&profile()?.settings.showBanners!==false&&!run.vfx.calm&&!stillMotion?.matches;
-      // Landing starts the feedback while the last orbit particles fade.
-      card.paint(animate?0:1);
-      resultSlip={...card,start:run.realTime,settled:!animate};
-      combatFeed.lane.insertBefore(card.node,toastLayer);
+      if(evolutionCard(from,to).settled==null)hud.prepareEvolutionResult(from,to,before,after);
+      resultSlip=preparedResult;preparedResult=null;
+      resultSlip.start=run.realTime;
+      combatFeed.lane.insertBefore(resultSlip.node,toastLayer);
     };
     function placeEvolutionStamp(feet){
       const {node:card,stamp}=resultSlip;

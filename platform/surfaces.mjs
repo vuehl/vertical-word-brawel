@@ -46,7 +46,7 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
         if(type==='2d'&&typeof v!=='function'&&Object.hasOwn(pathFallbacks,k))v=pathFallbacks[k];
         if(typeof v!=='function')return v;
         if(['drawImage','createPattern','texImage2D','texSubImage2D','texImage3D','texSubImage3D','copyImageSubData'].includes(k))
-          cache[k]=(...args)=>v.apply(native,args.map(a=>a?._surface||a));
+          cache[k]=(...args)=>v.apply(native,args.map(a=>a?._icon?.surface()||a?._surface||a));
         // WeChat ignores this browser-only unpack setting and logs a warning
         // for every texture upload. Keep all other native WebGL calls intact.
         else if(type.startsWith('webgl')&&k==='pixelStorei')cache[k]=(parameter,value)=>{
@@ -82,8 +82,8 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
   const ip=D.HTMLImageElement.prototype;
   function setImage(el,src) {
     src=String(src);if(el._src===src)return;el._src=src;el._ready=false;
-    if(el._surface)el._surface.onload=el._surface.onerror=null;
-    el._surface=null;
+    if(el._surface&&!el._icon)el._surface.onload=el._surface.onerror=null;
+    el._surface=null;el._icon=null;el._iconRequest=null;
     // GLTFLoader creates detached HTML images for embedded textures and awaits their load.
     const embedded=LocalURL.objectFiles?.get(src),eager=el._eagerImage||!!embedded;
     // DOM pictures are decoded only when painted. Hidden legacy HUDs and
@@ -91,6 +91,19 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
     el._loadImage=()=>{
       if(!eager&&!el.isConnected)return;
       el._loadImage=null;if(!src)return;
+      const icon=!embedded && host.files.loadIcon?.(src);
+      if(icon){
+        el._iconRequest=icon;
+        icon.then(region=>{
+          if(icon!==el._iconRequest)return;
+          el._icon=region;el._surface=region.image;el._ready=true;
+          if(el.isConnected)invalidate(el);
+          el.dispatchEvent(new D.Event('load'));
+        },()=>{
+          if(icon===el._iconRequest)el.dispatchEvent(new D.Event('error'));
+        });
+        return;
+      }
       const image=wx.createImage();el._surface=image;
       const finish=ok=>{if(image!==el._surface)return;el._ready=ok;if(el.isConnected)invalidate(el);el.dispatchEvent(new D.Event(ok?'load':'error'));};
       image.onload=()=>finish(true);image.onerror=()=>finish(false);
@@ -108,8 +121,8 @@ export function installSurfaces(D,doc,host,view,invalidate=()=>{}) {
   prop(ip,'currentSrc',function(){return this.src;});
   prop(ip,'complete',function(){return !!this._ready;});
   for(const dim of ['width','height']){
-    prop(ip,'natural'+dim[0].toUpperCase()+dim.slice(1),function(){return this._ready?this._surface[dim]:0;});
-    prop(ip,dim,function(){return Number(this.getAttribute(dim))||this._surface?.[dim]||0;},function(v){rawSet.call(this,dim,String(v));});
+    prop(ip,'natural'+dim[0].toUpperCase()+dim.slice(1),function(){return this._ready?(this._icon||this._surface)[dim]:0;});
+    prop(ip,dim,function(){return Number(this.getAttribute(dim))||(this._icon||this._surface)?.[dim]||0;},function(v){rawSet.call(this,dim,String(v));});
   }
   // Explicit Image objects also serve texture/atlas loading without a DOM node.
   function Image(w,h){const img=doc.createElement('img');img._eagerImage=true;if(w)img.width=w;if(h)img.height=h;return img;}

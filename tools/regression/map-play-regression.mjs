@@ -1,4 +1,5 @@
 import {FOREST_ROUTE} from '../../source/src/data/lite-rules.js';
+import {atlasView} from '../../source/src/ui/paper-hud-art.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -59,7 +60,7 @@ export async function reviewMapPlay(page,dir){
       return drawn;
     };
   });
-  report.pan=await page.evaluate(()=>{
+  report.pan=await page.evaluate(view=>{
     const r=app.run,p=r.player.pos,canvas=inspected.doc.querySelector('.zx-battle-map-art');
     const rect=canvas.getBoundingClientRect(),screen=inspected.doc.getElementById('game').getBoundingClientRect();
     const first=mapPlayIconPosition(canvas),playerX=p.x,playerZ=p.z;
@@ -68,12 +69,13 @@ export async function reviewMapPlay(page,dir){
     window.tap(x,y,'down');window.tap(x+dx,y+dy,'move');window.tap(x+dx,y+dy,'up');
     const after=mapPlayIconPosition(canvas);
     if(!after||Math.abs(after.x-first.x)<5)throw Error('Dragging did not pan the building');
-    window.tap(rect.x-screen.x+after.x*rect.width/120,rect.y-screen.y+after.y*rect.height/120);
+    window.tap(rect.x-screen.x+(after.x-view.left)*rect.width/view.size,
+      rect.y-screen.y+(after.y-view.top)*rect.height/view.size);
     const selection=r.ui.mapFacilityKind;
     const text=inspected.doc.querySelector('.zx-battle-map').textContent;
     inspected.env.drawUI(app.r.renderer,true);
     return {first,after,selection,text,stationary:p.x===playerX&&p.z===playerZ};
-  });
+  },atlasView);
   assert.equal(report.pan.selection,'bill');assert.ok(report.pan.stationary);
   assert.doesNotMatch(report.pan.text,/扭蛋|点击类别|附近 \d+ 处/);
   await page.screenshot({path:path.join(dir,'map-after-pan.png')});

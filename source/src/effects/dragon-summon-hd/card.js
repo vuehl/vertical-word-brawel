@@ -6,7 +6,7 @@ const clamp=x=>Math.max(0,Math.min(1,x));
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
 
 export class ReferenceCard {
-  constructor(scene,assets,meta,kind){
+  constructor(scene,assets,meta,kind,linearSampling=false){
     this.assets=assets;this.meta=meta;
     const geometry=new PlaneGeometry(1,1);
     const material=new ShaderMaterial({side:2,transparent:true,premultipliedAlpha:true,depthWrite:false,depthTest:false,lights:false,toneMapped:false,
@@ -38,7 +38,9 @@ export class ReferenceCard {
         }
         vec3 sampleFrame(sampler2D source,float frame,vec2 sourceGrid){
           vec2 tile=vec2(mod(frame,sourceGrid.x),floor(frame/sourceGrid.x));
-          vec2 q=vec2(coord.x,1.-coord.y)*(frameSize-1.), p=floor(q)+.5,t=fract(q),t2=t*t;
+          vec2 q=vec2(coord.x,1.-coord.y)*(frameSize-1.);
+          ${linearSampling?'return texel(source,q+.5,tile,sourceGrid);':`
+          vec2 p=floor(q)+.5,t=fract(q),t2=t*t;
           vec2 w0=t*(-.5+t*(1.-.5*t)),w1=1.+t2*(-2.5+1.5*t);
           vec2 w2=t*(.5+t*(2.-1.5*t)),w3=.5*t2*(t-1.);
           vec2 mid=w1+w2,qm=p+w2/mid;
@@ -46,7 +48,7 @@ export class ReferenceCard {
           vec3 r1=w0.x*texel(source,vec2(p.x-1.,qm.y),tile,sourceGrid)+mid.x*texel(source,qm,tile,sourceGrid)+w3.x*texel(source,vec2(p.x+2.,qm.y),tile,sourceGrid);
           vec3 r2=w0.x*texel(source,p+vec2(-1.,2.),tile,sourceGrid)+mid.x*texel(source,vec2(qm.x,p.y+2.),tile,sourceGrid)+w3.x*texel(source,p+2.,tile,sourceGrid);
           vec3 a=texel(source,p,tile,sourceGrid),b=texel(source,p+vec2(1.,0.),tile,sourceGrid),c=texel(source,p+vec2(0.,1.),tile,sourceGrid),dd=texel(source,p+1.,tile,sourceGrid);
-          return clamp(w0.y*r0+mid.y*r1+w3.y*r2,min(min(a,b),min(c,dd)),max(max(a,b),max(c,dd)));
+          return clamp(w0.y*r0+mid.y*r1+w3.y*r2,min(min(a,b),min(c,dd)),max(max(a,b),max(c,dd)));`}
         }
         void main(){
           vec3 original=sampleFrame(map,currentFrame,grid),c=original;float alpha;

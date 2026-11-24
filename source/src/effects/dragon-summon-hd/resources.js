@@ -72,6 +72,10 @@ export class DragonSummonResources {
   ready=false;
   disposed=false;
 
+  constructor(renderer,prepareEffects){
+    this.renderer=renderer;
+    this.prepareEffects=prepareEffects;
+  }
   prepare(){
     if(this.ready)return Promise.resolve(true);
     if(!this.loading)this.loading=this.load().catch(error=>{
@@ -86,7 +90,15 @@ export class DragonSummonResources {
     const packed=await read(m.arc.mesh,'arrayBuffer');
     if(this.disposed)return false;
     const bytes=unpackMeshBytes(new Uint8Array(packed)).buffer;
-    this.geometry=m.arc.frames.map(frame=>frame.layers.map(layer=>buildGeometry(bytes,layer)));
+    let slice=performance.now();
+    for(const frame of m.arc.frames){
+      this.geometry.push(frame.layers.map(layer=>buildGeometry(bytes,layer)));
+      if(performance.now()-slice>=3){
+        await new Promise(resolve=>setTimeout(resolve,16));
+        if(this.disposed)return false;
+        slice=performance.now();
+      }
+    }
     const files=[...new Set([...m.arc.pages,...m.orb.pages,...m.burst.pages,m.orb.background.file,m.boss.file])];
     // Take ownership only after all in-flight workers finish. On failure, every
     // successfully decoded sibling still goes through the same disposal path.
@@ -102,6 +114,15 @@ export class DragonSummonResources {
     };
     await Promise.all([worker(),worker()]);
     if(failure)throw failure;
+    if(this.disposed)return false;
+    // Upload one atlas at a time during the minute before the summon.
+    for(const [file,texture] of this.textures){
+      if(file===m.boss.file)texture.colorSpace='srgb';
+      this.renderer.initTexture(texture);
+      await new Promise(resolve=>setTimeout(resolve,16));
+      if(this.disposed)return false;
+    }
+    await this.prepareEffects(this);
     if(this.disposed)return false;
     this.ready=true;return true;
   }

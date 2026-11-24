@@ -1,6 +1,7 @@
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/fire-breath.json' with {type:'json'};
 import {ProceduralFireJet} from './procedural-fire-jet.js';
+import {ReferenceFireBreath,isReferenceBreath} from './reference-fire-breath.js';
 
 const vertex=`
 attribute vec4 iFlameOrigin;attribute vec4 iFlameMotion;attribute vec4 iFlameLife;
@@ -88,8 +89,7 @@ function flameGeometry(){
 const TAU=Math.PI*2,clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
 const random=n=>{const x=Math.sin(n*127.1+43.7)*43758.5453;return x-Math.floor(x);};
-// Other fire cones share the original simulation and budget, but retain
-// their existing shader. Test/remote emitters without a move use the spray.
+// Other fire cones retain their existing artwork.
 const painted=emitter=>!emitter.key?.def||['flamethrower','dragon-breath'].includes(emitter.key.def.key);
 
 export class HandDrawnFireJet{
@@ -98,6 +98,7 @@ export class HandDrawnFireJet{
     this.hits=[];this.hitTimes=new Map();this.hitLimit=28;
     this.instances=[];
     this.legacy=new ProceduralFireJet(owner,scene);
+    this.reference=new ReferenceFireBreath(owner,scene);
     const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
     const texture=this.texture=new CanvasTexture(canvas);texture.colorSpace=SRGB;texture.generateMipmaps=false;texture.minFilter=texture.magFilter=1006;
     const image=new Image();
@@ -122,7 +123,7 @@ export class HandDrawnFireJet{
     this.hitMesh=new InstancedMesh(hitGeometry,material,32);this.hitMesh.name='authored-fire-breath-hits';this.hitMesh.count=0;this.hitMesh.visible=false;this.hitMesh.frustumCulled=false;this.hitMesh.renderOrder=7.3;scene.add(this.hitMesh);
   }
   setPerformance(profile){
-    this.legacy.setPerformance(profile);
+    this.legacy.setPerformance(profile);this.reference.setPerformance(profile);
     this.limit=profile.name==='流畅'?40:profile.name==='均衡'?72:112;
     this.rate=profile.name==='流畅'?28:profile.name==='均衡'?38:48;
     this.hitLimit=profile.name==='流畅'?12:profile.name==='均衡'?20:28;
@@ -139,7 +140,7 @@ export class HandDrawnFireJet{
     const angle=emitter.angle+spread,scale=Math.sqrt(emitter.artLength/7);
     this.packets.push({id:n,age,life:.52+b*.19,seed:c*TAU,dx:Math.cos(angle),dz:Math.sin(angle),
       x:emitter.x,y:emitter.y,z:emitter.z,length:emitter.length*(.86+a*.14),
-      radius:(.38+b*.30)*scale,stretch:(.85+c*.35)*scale,lift:.45+c*.7,own:emitter.own!==false,painted:painted(emitter),purple:emitter.type==='dragon'});
+      radius:(.38+b*.30)*scale,stretch:(.85+c*.35)*scale,lift:.45+c*.7,own:emitter.own!==false,painted:painted(emitter),purple:emitter.type==='dragon',reference:isReferenceBreath(emitter)});
     this.spawned++;
   }
   sample(packet,out={}){
@@ -176,6 +177,7 @@ export class HandDrawnFireJet{
   }
   update(dt,emitters){
     const owner=this.owner,run=owner.run;this.clock+=Math.max(0,dt);
+    this.reference.update(dt,emitters);
     this.packetLimit=Math.max(0,this.limit-emitters.length);
     if(!emitters.length&&!this.packets.length&&!this.mesh.count&&!this.legacy.mesh.count){
       if(this.hits.length||this.hitTimes.size||this.hitMesh.count)this.updateHits(dt);
@@ -199,7 +201,7 @@ export class HandDrawnFireJet{
     }
     const camera=run.r.camera.position,instances=this.instances;instances.length=0;
     for(const packet of this.packets){
-      packet.sample=this.sample(packet,packet.sample??={});if(packet.painted&&packet.id%2!==0)continue;
+      packet.sample=this.sample(packet,packet.sample??={});if(packet.reference||packet.painted&&packet.id%2!==0)continue;
       // Keep the old rolling fan, with fewer, larger overlapping tongues.
       const far=packet.painted?smooth((packet.sample.p-.52)/.30):0;
       const scale=packet.painted?1.5*(1-far*.32):1;
@@ -215,6 +217,7 @@ export class HandDrawnFireJet{
     // The original connecting core retains its growth, length, timing and
     // stop envelope. Only its pixels now come from the authored spray frames.
     for(const emitter of emitters){
+      if(isReferenceBreath(emitter))continue;
       const authored=painted(emitter),growth=smooth(emitter.age/.24),length=emitter.artLength*(authored?.66:.55)*growth;
       if(length<.025)continue;
       const dx=Math.cos(emitter.angle),dz=Math.sin(emitter.angle),tail=clamp((this.clock-(emitter.fireLast??this.clock))/.10);
@@ -241,6 +244,6 @@ export class HandDrawnFireJet{
     }
     this.updateHits(dt);
   }
-  clear(){this.packets.length=this.instances.length=0;this.mesh.count=0;this.mesh.visible=false;this.hits.length=0;this.hitTimes.clear();this.hitMesh.count=0;this.hitMesh.visible=false;this.legacy.clear();}
-  dispose(){this.disposed=true;this.clear();this.legacy.dispose();this.mesh.parent?.remove(this.mesh);this.hitMesh.parent?.remove(this.hitMesh);this.mesh.geometry.dispose();this.hitMesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();this.hitMesh.dispose();this.texture.dispose();}
+  clear(){this.packets.length=this.instances.length=0;this.mesh.count=0;this.mesh.visible=false;this.hits.length=0;this.hitTimes.clear();this.hitMesh.count=0;this.hitMesh.visible=false;this.legacy.clear();this.reference.clear();}
+  dispose(){this.disposed=true;this.clear();this.legacy.dispose();this.reference.dispose();this.mesh.parent?.remove(this.mesh);this.hitMesh.parent?.remove(this.hitMesh);this.mesh.geometry.dispose();this.hitMesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();this.hitMesh.dispose();this.texture.dispose();}
 }

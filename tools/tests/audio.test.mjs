@@ -2,14 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {combatClipIds, combatEvolutionSeconds, loadCombatClips} from '../../source/src/combat/audio-clips.js';
+import {combatSoundEvents} from '../art/combat-sound-events.mjs';
+import manifest from '../../resources/public/config/combat-audio.json' with {type:'json'};
 
 // Exercise the shipped synth itself without loading the renderer and game data.
 const source=fs.readFileSync(new URL('../../source/src/game.js',import.meta.url),'utf8');
 const start=source.indexOf('  N = new (class {')+'  N = '.length;
 const end=source.indexOf('  Gs = (e, t, n)',start);
-const synth=source.slice(start,end).trim().replace(/,$/,'');
+const kits=source.slice(source.indexOf('  ts = {'),source.indexOf('var Rs ='));
+const synth='var '+kits+'\n'+source.slice(start,end).trim().replace(/,$/,'');
 
-function fixture() {
+const clipResponse = {ok:true,arrayBuffer:async()=>new ArrayBuffer(8)};
+function fixture(fetchClip = async()=>clipResponse) {
   const contexts=[],timers=new Map();let nextTimer=0;
   const param=()=>({value:1,cancelled:0,cancelScheduledValues(){this.cancelled++;},
     setValueAtTime(value){this.value=value;},exponentialRampToValueAtTime(){},linearRampToValueAtTime(){}});
@@ -22,19 +27,22 @@ function fixture() {
     createBufferSource(){return this.node('buffer');}
     createBiquadFilter(){return this.node('filter');}
     createDynamicsCompressor(){return Object.assign(this.node('compressor'),{threshold:param(),ratio:param(),attack:param(),release:param()});}
-    createBuffer(channels,length){return {getChannelData:()=>new Float32Array(length)};}
+    createBuffer(channels,length,rate){const pcm=new Float32Array(length);return {duration:length/rate,getChannelData:()=>pcm};}
+    decodeAudioData(bytes,success){success(this.createBuffer(1,800,8000));}
     resume(){this.state='running';return Promise.resolve();}
     close(){this.closeCount=(this.closeCount||0)+1;this.state='closed';this.onstatechange?.();return Promise.resolve();}
   }
   const document={hidden:false,addEventListener(){}};
+  const listeners=new Map();
   const env={AudioContext:Context,document,navigator:{},Ws:()=>false,performance:{now:()=>10000},
-    matchMedia:()=>({matches:true}),addEventListener(){},clearTimeout:id=>timers.delete(id),
+    combatClipIds,combatEvolutionSeconds,loadCombatClips,fetch:fetchClip,Zt:path=>path,
+    matchMedia:()=>({matches:true}),addEventListener:(name,fn)=>listeners.set(name,fn),clearTimeout:id=>timers.delete(id),
     setTimeout:callback=>{const id=++nextTimer;timers.set(id,callback);return id;},
     setInterval(){return 1;},clearInterval(){},backgroundMusicEnabled:false};
   env.window=env;
   const audio=vm.runInNewContext(synth,env);
   const timer=()=>{const [id,callback]=timers.entries().next().value;timers.delete(id);callback();};
-  return {audio,contexts,document,timer};
+  return {audio,contexts,document,timer,timers,emit:name=>listeners.get(name)()};
 }
 
 test('synth raises effect output while retaining stored volume and explicit mute',()=>{
@@ -102,4 +110,150 @@ test('late resume from an old context cannot reset the rebuilt master gain',asyn
   previous.state='suspended';previous.resume=()=>new Promise(resolve=>finish=resolve);
   audio.wake();audio.rebuild();audio.master.gain.value=.123;finish();await Promise.resolve();
   assert.equal(audio.master.gain.value,.123);assert.notEqual(audio.ctx,previous);
+});
+
+test('only a run preloads files, individual failures keep synth audio and only missing files retry',async()=>{
+  const reads=[];
+  const {audio}=fixture(async file=>{
+    const first=!reads.includes(file);
+    reads.push(file);
+    if(first && file==='sfx/hit-normal.wav')throw Error('missing file');
+    return clipResponse;
+  });
+  audio.init();await audio.preloadCombat();assert.equal(reads.length,0);
+  audio.beginRun();const pending=audio.preloadCombat();
+  assert.equal(pending,audio.preloadCombat());await pending;
+  assert.equal(audio.voices.size,0);
+  assert.equal(audio.combatClips.size,combatClipIds.length-1);
+  assert.equal(audio.combatClips.has('hit:normal'),false);
+  audio.hit(1,false);
+  assert.equal(audio.voices.size,2);
+  const cached=audio.combatClips.get('coin');
+  audio.beginRun();
+  await audio.preloadCombat();
+  assert.equal(reads.length,combatClipIds.length+1);
+  assert.equal(reads.at(-1),'sfx/hit-normal.wav');
+  assert.equal(audio.combatClips.size,combatClipIds.length);
+  assert.equal(audio.combatClips.get('coin'),cached);
+  audio.hit(1,false);audio.hit(1,false);
+  assert.equal(audio.voices.size,1);
+  const buffer=audio.combatClips.get('hit:normal');
+  audio.beginRun();audio.hit(1,true,true);
+  assert.equal(audio.voices.size,2);
+  assert.equal(audio.combatClips.get('hit:normal'),buffer);
+  assert.equal(reads.length,combatClipIds.length+1);
+});
+
+test('every shipped file plays exactly once for its event, and menu actions do not use the run cache',async()=>{
+  const {audio}=fixture();
+  audio.beginRun();await audio.preloadCombat();
+  assert.deepEqual(combatSoundEvents.map(e=>e.key).sort(),[...combatClipIds].sort());
+  const files=fs.readdirSync(new URL('../../resources/public/assets/sfx/',import.meta.url)).sort();
+  assert.deepEqual(files,Object.values(manifest.files).sort());
+  for(const {key,method,args} of combatSoundEvents){
+    audio.resetEffects();audio.ctx.nodes.length=0;
+    if(key==='mega')audio.lastPlay.set('hit',audio.ctx.currentTime);
+    audio[method](...args);
+    assert.equal(audio.voices.size,1,key);
+    assert.equal(audio.ctx.nodes.filter(n=>n.buffer).length,1,key);
+    assert.equal(audio.ctx.nodes.find(n=>n.buffer).buffer,audio.combatClips.get(key),key);
+    assert.ok(audio.ctx.nodes.every(n=>n.type==='buffer'||n.type==='gain'),key);
+  }
+  audio.endRun();audio.ctx.nodes.length=0;audio.coin();
+  assert.ok(audio.ctx.nodes.some(n=>n.type==='square'));
+  assert.ok(audio.ctx.nodes.every(n=>n.buffer!==audio.combatClips.get('coin')));
+});
+
+test('mid-battle stalled clock rebuilds after startup and interruption recovery respects mute',async()=>{
+  const {audio,contexts,timer,timers,emit}=fixture();
+  audio.beginRun();
+  timer();audio.ctx.currentTime+=.5;timer(); // Healthy startup, then a later stall.
+  timer();timer();
+  await audio.preloadCombat();
+  assert.equal(contexts.length,2);
+  audio.boom(1);
+  assert.equal(audio.voices.size,1);
+  emit('audiointerruptionbegin');
+  assert.equal(timers.size,1);
+  audio.ctx.state='suspended';audio.click();assert.equal(audio.voices.size,1);
+  audio.setVolumes({master:0});
+  emit('audiointerruptionend');audio.click();
+  assert.equal(audio.ctx.state,'running');assert.equal(audio.master.gain.value,0);
+  assert.equal(audio.voices.size,1);
+  audio.setVolumes({master:1});audio.hit(.5,true);
+  assert.equal(audio.voices.size,2);
+  audio.endRun();assert.equal(timers.size,0);assert.equal(audio.voices.size,0);
+});
+
+test('native session can resume without delivering its interruption-end event',async()=>{
+  const {audio,contexts,timer,emit}=fixture();
+  audio.beginRun();await audio.preloadCombat();
+  emit('audiointerruptionbegin');
+  audio.ctx.state='suspended';timer();audio.coin();
+  assert.equal(audio.voices.size,0);assert.equal(contexts.length,1);
+  audio.ctx.state='running';timer();audio.ctx.currentTime+=.5;timer();
+  audio.ctx.currentTime+=.5;audio.coin();assert.equal(audio.voices.size,1);
+  assert.equal(audio.interrupted,false);assert.equal(contexts.length,1);
+});
+
+test('a native clock reset clears stale voice deadlines and combat throttles',async()=>{
+  const {audio}=fixture();audio.beginRun();await audio.preloadCombat();
+  audio.ctx.currentTime=270;audio.hit(1,false);audio.move('ember','cast');
+  const old=Array.from(audio.voices);
+  audio.ctx.currentTime=.02;audio.move('ember','cast');audio.hit(1,false);
+  assert.ok(old.every(voice=>!audio.voices.has(voice)));
+  assert.equal(audio.voices.size,2);
+});
+
+test('repeated native source failures on an advancing clock recover without dropping the files',async()=>{
+  const {audio,contexts,timer}=fixture();audio.beginRun();await audio.preloadCombat();
+  const previous=audio.ctx,clip=audio.combatClips.get('coin');
+  previous.createBufferSource=()=>{throw Error('device out of sources');};
+  for(let i=0;i<3;i++){previous.currentTime+=.1;audio.coin();}
+  assert.equal(audio.combatClips.get('coin'),clip);
+  timer();await audio.preloadCombat();
+  assert.equal(contexts.length,2);audio.coin();assert.equal(audio.voices.size,1);
+});
+
+test('sustained rapid casts remain audible and regain full volume between waves',async()=>{
+  const {audio}=fixture();audio.beginRun();await audio.preloadCombat();
+  for(let i=0;i<2700;i++){
+    audio.ctx.currentTime+=.1;audio.ctx.nodes.length=0;audio.move('ember','cast');
+  }
+  const gain=audio.ctx.nodes.find(n=>n.type==='gain');assert.ok(gain.gain.value>=.40);
+  audio.ctx.currentTime+=3;audio.ctx.nodes.length=0;audio.move('ember','cast');
+  assert.equal(audio.ctx.nodes.length,1);
+});
+
+test('a delayed read from a replaced context cannot overwrite the new clips',async()=>{
+  let finish;
+  const {audio}=fixture(()=>finish?clipResponse:new Promise(resolve=>{finish=resolve;}));
+  audio.beginRun();const oldLoad=audio.clipLoad;await Promise.resolve();
+  audio.rebuild();await audio.preloadCombat();
+  const clips=audio.combatClips;
+  finish(clipResponse);await oldLoad;
+  assert.ok(clips?.size);assert.equal(audio.combatClips,clips);
+});
+
+test('fifteen minutes of hits without native ended callbacks stay bounded and audible after restart',async()=>{
+  const {audio}=fixture();audio.beginRun();await audio.preloadCombat();
+  const ctx=audio.ctx;
+  for(let frame=0;frame<15*60*20;frame++){
+    ctx.currentTime+=.05;ctx.nodes.length=0;
+    audio.hit(frame%3,frame%4===0,frame%20===0);audio.boom(.7);
+    assert.ok(ctx.nodes.some(n=>n.type==='buffer'&&n.buffer),'hit still starts a source');
+    assert.ok(audio.voices.size<=audio.maxVoices);
+  }
+  audio.endRun();audio.beginRun();audio.boom(1);assert.equal(audio.voices.size,1);
+});
+
+test('a temporary native startup failure leaves gameplay running and recovers without another tap',async()=>{
+  const {audio,timer}=fixture();
+  const build=audio.build.bind(audio);
+  let attempts=0;
+  audio.build=()=>{if(++attempts===1)throw Error('device unavailable');build();};
+  audio.beginRun();assert.equal(audio.ctx,null);
+  timer();await audio.preloadCombat();
+  audio.hit(1,false);
+  assert.equal(attempts,2);assert.equal(audio.voices.size,1);
 });

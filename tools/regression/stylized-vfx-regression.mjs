@@ -29,6 +29,10 @@ export async function reviewStylizedVFX(page,dir){
   if(process.argv.includes('--fire-family')){
     const {reviewFireFamily}=await import('./fire-family-regression.mjs');return reviewFireFamily(page,dir,moves);
   }
+  if(process.argv.includes('--fire-breath')){
+    const {reviewFireBreath}=await import('./fire-breath-regression.mjs');
+    return reviewFireBreath(page,dir,moves);
+  }
   if(process.argv.includes('--fire-family-media')){
     const {reviewFireFamilyMedia}=await import('./fire-family-media.mjs');return reviewFireFamilyMedia(page,dir,moves);
   }
@@ -133,10 +137,6 @@ export async function reviewStylizedVFX(page,dir){
   if(process.argv.includes('--hand-drawn-fire-spin')){
     const {reviewFireSpin}=await import('./fire-spin-regression.mjs');
     return reviewFireSpin(page,dir,moves);
-  }
-  if(process.argv.includes('--fire-breath')){
-    const {reviewFireBreath}=await import('./fire-breath-regression.mjs');
-    return reviewFireBreath(page,dir,moves);
   }
   const screenshot=async name=>{await page.screenshot({path:path.join(dir,name+'.png')});report.screens.push(name);};
   if(process.argv.includes('--wind-vortex')){

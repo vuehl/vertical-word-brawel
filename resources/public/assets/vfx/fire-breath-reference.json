@@ -1,0 +1,57 @@
+{
+  "tile": 192,
+  "columns": 8,
+  "rows": 3,
+  "pages": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25
+  ],
+  "crop": {
+    "left": 80,
+    "top": 260,
+    "width": 160,
+    "height": 160
+  },
+  "anchor": [
+    0.53125,
+    0.16145833333333334
+  ],
+  "fps": 15,
+  "source": "resources/art/fire-breath/reference.gif",
+  "sha256": "dfdb40fde94326c4ae61e5954af1e3a07564b011d93b05d519da372a555f695d",
+  "clips": {
+    "start": {
+      "first": 0,
+      "count": 7
+    },
+    "loop": {
+      "first": 7,
+      "count": 10
+    },
+    "tail": {
+      "first": 17,
+      "count": 6
+    }
+  }
+}

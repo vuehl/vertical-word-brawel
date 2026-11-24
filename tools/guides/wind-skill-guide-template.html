@@ -21,16 +21,16 @@ main{padding-bottom:36px}section{margin-top:52px}.section-heading{display:flex;a
 </head>
 <body id="top">
 <header class="topbar"><div class="wrap"><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">风</span><span>字行 <span class="muted">/</span> 技能资料库</span></a><div class="top-actions"><span class="secondary top-date" id="snapshotDate"></span><button type="button" class="quiet-btn" id="printButton">打印 / 存为 PDF</button></div></div></header>
-<div class="hero"><div class="wrap"><div class="hero-main"><div class="hero-copy"><div class="eyebrow">风系字灵档案 · 离线版</div><h1>一字起风<br><span>两路进阶</span></h1><p>风、讽、疯、飒、飙的每一招，<br>以及全部融合配方，都在这里。</p><div class="hero-links"><a class="hero-link primary" href="#moves">查看全部技能</a><a class="hero-link" href="#wind-fusions">查询融合配方</a></div></div><div class="evo-art" id="heroArt" aria-label="风在10级选择讽或飒，20级分别进阶为疯或飙"></div></div><div class="stats" id="heroStats"></div></div></div>
+<div class="hero"><div class="wrap"><div class="hero-main"><div class="hero-copy"><div class="eyebrow">风系字灵档案 · 离线版</div><h1>一字起风<br><span>两路进阶</span></h1><p>风、讽、疯、飒、飙的每一招，<br>以及全部融合配方，都在这里。</p><div class="hero-links"><a class="hero-link primary" href="#moves">查看全部技能</a><a class="hero-link" href="#wind-fusions">查询融合配方</a></div></div><div class="evo-art" id="heroArt" aria-label="风选择讽或飒，再进阶为疯或飙，单关为 12、30 级，多关为 18、40 级"></div></div><div class="stats" id="heroStats"></div></div></div>
 <nav class="nav" aria-label="页面目录"><div class="wrap"><a href="#evolution" class="active">进阶与大招</a><a href="#moves">普通技能</a><a href="#wind-fusions">风系融合</a><a href="#all-fusions">全部融合</a><a href="#notes">整理说明</a><span class="nav-note">单文件 · 无需联网</span></div></nav>
 <main class="wrap">
 <noscript><p class="notice">请在浏览器中允许 JavaScript 后查看图鉴。数据、图片和样式已全部内置，无需联网。</p></noscript>
 <section id="evolution" aria-labelledby="evolutionTitle">
-  <div class="section-heading"><div><div class="section-label">角色成长</div><h2 id="evolutionTitle">五个形态，各有一招</h2><p>10 级选择分支，20 级再次进阶。已有普通技能继承，大招随形态变化。</p></div><span class="pill flying">风 · 讽 · 疯 · 飒 · 飙</span></div>
-  <div class="route-strip"><div class="route"><div><strong>风 → 讽 → 疯</strong><p>攻速路线 · 首次进阶获得十倍攻速大招</p></div><small>Lv.10 讽<br>Lv.20 疯</small></div><div class="route speed"><div><strong>风 → 飒 → 飙</strong><p>移速路线 · 移速转化为伤害</p></div><small>Lv.10 飒<br>Lv.20 飙</small></div></div>
+  <div class="section-heading"><div><div class="section-label">角色成长</div><h2 id="evolutionTitle">五个形态，各有一招</h2><p>单关 12 级选择分支，30 级再次进阶。多关分别为 18 级和 40 级。已有普通技能继承，大招随形态变化。</p></div><span class="pill flying">风 · 讽 · 疯 · 飒 · 飙</span></div>
+  <div class="route-strip"><div class="route"><div><strong>风 → 讽 → 疯</strong><p>攻速路线 · 首次进阶获得十倍攻速大招</p></div><small>多关 Lv.18 讽<br>多关 Lv.40 疯</small></div><div class="route speed"><div><strong>风 → 飒 → 飙</strong><p>移速路线 · 移速转化为伤害</p></div><small>多关 Lv.18 飒<br>多关 Lv.40 飙</small></div></div>
   <div class="form-grid" id="formCards"></div>
   <div class="passives"><div class="passive"><h3>移速分支被动 · 飒 / 飙</h3><p>移速超过当前形态的基础移速时提高伤害。移速越高，额外收益越小。</p><small>达到两倍基础移速时，伤害提高 20%。达到十倍时提高 36%，增伤上限为 40%。</small></div></div>
-  <div class="rule-grid"><div><h3>角色等级与技能等级</h3><p>10 / 20 级是角色进阶等级。融合要求两项材料的技能等级分别达到 4 级。</p></div><div><h3>入池后仍需选择</h3><p>开局自带电光一闪。其余技能从升级或重抽中选择；满足等级和槽位条件的招式与维生素随机混抽。</p></div><div><h3>大招按能量释放</h3><p>基础自然充满约 45 秒，击杀与受击也会加速充能。大招生效期间暂停充能，满能量后手动释放。</p></div></div>
+  <div class="rule-grid"><div><h3>角色等级与技能等级</h3><p>形态与招式表按多关进阶等级列出。融合要求两项材料的技能等级分别达到 4 级。</p></div><div><h3>入池后仍需选择</h3><p>开局自带电光一闪。其余技能从升级或重抽中选择；满足等级和槽位条件的招式与维生素随机混抽。</p></div><div><h3>大招按能量释放</h3><p>基础自然充满约 45 秒，击杀与受击也会加速充能。大招生效期间暂停充能，满能量后手动释放。</p></div></div>
 </section>
 <section id="moves" aria-labelledby="movesTitle">
   <div class="section-heading"><div><div class="section-label">普通技能</div><h2 id="movesTitle">完整技能池，按形态查看</h2><p>切换形态可查看游戏显示名、入池等级和效果；冷却为未加成的配置值。</p></div></div>
@@ -104,12 +104,12 @@ function availability(r){
 function renderOverview(){
   $('snapshotDate').textContent='源码快照 '+DATA.date;
   $('footerDate').textContent=' · '+DATA.date;
-  const artNotes={16:'初始 · 两路共用',17:'Lv.10 · 攻速',18:'Lv.20 · 攻速',58:'Lv.10 · 移速',59:'Lv.20 · 移速'};
+  const artNotes={16:'初始 · 两路共用',17:'多关 Lv.18 · 攻速',18:'多关 Lv.40 · 攻速',58:'多关 Lv.18 · 移速',59:'多关 Lv.40 · 移速'};
   $('heroArt').innerHTML=DATA.forms.map(f=>`<div class="art-form"><img src="${f.portrait}" alt="${f.word}的游戏角色形象" width="180" height="180"><b>${f.word}</b><small>${artNotes[f.id]}</small></div>`).join('');
-  const stats=[[DATA.windMoves.length,'普通技能','五个形态共用技能池'],[new Set(DATA.forms.map(f=>f.ultimate.name)).size,'形态大招','10 / 20 级分支进阶'],[windPairCount,'风系材料组合',`可合成 ${windFusions.length} 种融合结果`],[DATA.allFusions.length,'融合定义','完整配方与可获得性']];
+  const stats=[[DATA.windMoves.length,'普通技能','五个形态共用技能池'],[new Set(DATA.forms.map(f=>f.ultimate.name)).size,'形态大招','单关 12 / 30，多关 18 / 40'],[windPairCount,'风系材料组合',`可合成 ${windFusions.length} 种融合结果`],[DATA.allFusions.length,'融合定义','完整配方与可获得性']];
   $('heroStats').innerHTML=stats.map(([n,t,s])=>`<div class="stat"><strong class="count">${n}</strong><span>${t}</span><small>${s}</small></div>`).join('');
   const changes={16:'开局自带电光一闪。能量充满后可释放一阵风刮来。',17:'首次进阶获得刮倒一片，攻速变为十倍，持续五秒。',18:'继承讽的六项普通技能与攻速大招。',58:'首次进阶获得跑得没影，并按超出基础移速的幅度提高伤害。',59:'继承飒的六项普通技能、移速大招和移速增伤被动。'};
-  const details={16:'主体计时 2 秒 · 单道龙卷风向目标推进并拖拽敌人',17:'增益持续 5 秒 · 当前攻击速度 ×10',18:'增益持续 5 秒 · 当前攻击速度 ×10',58:'增益持续 5 秒 · 当前移动速度 ×10',59:'增益持续 5 秒 · 当前移动速度 ×10'};
+  const details={16:'主体计时 2 秒 · 单道龙卷风向目标推进并拖拽敌人',17:'增益持续 5 秒 · 当前攻击速度 ×10',18:'增益持续 5 秒 · 当前攻击速度 ×10',58:'持续 5 秒 · 移速 ×2 · 撞击造成主攻击的 2 倍伤害',59:'持续 5 秒 · 移速 ×3 · 撞击造成主攻击的 3 倍伤害'};
   $('formCards').innerHTML=DATA.forms.map(f=>`<article class="form-card ${f.route}"><div class="form-head"><div><div class="form-level">${f.id===16?'Lv.1 初始形态':`Lv.${f.level} 进阶 · ${f.route==='attack'?'攻速':'移速'}路线`}</div><h3>${f.word}</h3><p class="secondary">${f.moveCount} 项普通技能 · 风系角色</p></div><img src="${f.portrait}" alt="" width="90" height="90" loading="lazy"></div><div class="form-line"><div class="ultimate-title"><h4>${esc(f.ultimate.name)}</h4><span class="pill flying">形态大招</span></div><p>${esc(f.ultimate.desc)}</p><div class="form-meta">${details[f.id]}</div></div><div class="${f.id===16?'form-line base-summary':'form-change'}"><div class="opening"><b>起手技</b><span>${esc(moveById.get(98).names[f.id])}</span></div><p class="secondary">${changes[f.id]}</p></div></article>`).join('');
   $('formFilters').innerHTML=[{id:'all',word:'全部形态'},...DATA.forms].map(f=>`<button type="button" class="filter-btn${f.id==='all'?' active':''}" data-form="${f.id}" aria-pressed="${f.id==='all'}">${f.word}</button>`).join('');
   $('movesTitle').textContent=`${DATA.windMoves.length} 项普通技能，按形态查看`;

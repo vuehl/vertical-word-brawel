@@ -1,0 +1,64 @@
+局内常用音效
+
+按原始采样时长选格式。1 秒及以内使用 WAV，超过 1 秒使用 AAC（M4A）。
+
+文件名    原始时长    游戏事件
+ember-cast.wav    0.2122 秒    火点拍发动
+fire-blast-cast.wav    0.3356 秒    大字爆炎发动
+fire-blast-impact.wav    0.8670 秒    大字爆炎爆开
+fire-spin-cast.wav    0.5350 秒    火焰漩涡发动
+fire-spin-impact.wav    0.7047 秒    火焰漩涡爆开
+inferno-cast.wav    0.3337 秒    炼狱发动
+inferno-impact.wav    0.6719 秒    炼狱爆开
+flamethrower-cast.m4a    1.0354 秒    喷射火焰发动
+stampede-cast.wav    0.3847 秒    烈焰狂奔发动
+quick-attack-cast.wav    0.2951 秒    电光一闪发动
+tackle-cast.wav    0.2951 秒    撞击发动
+wing-attack-cast.wav    0.2146 秒    翅膀攻击发动
+aerial-ace-cast.wav    0.2151 秒    燕返发动
+twister-cast.wav    0.6296 秒    龙卷风发动
+twister-impact.wav    0.3352 秒    龙卷风爆开
+hit-weak.wav    0.0950 秒    弱命中
+crit-weak.wav    0.1550 秒    弱命中的暴击
+hit-normal.wav    0.0950 秒    普通命中
+crit-normal.wav    0.1550 秒    普通命中的暴击
+hit-strong.wav    0.0950 秒    强命中
+crit-strong.wav    0.1550 秒    强命中的暴击
+mega.wav    0.2150 秒    超级暴击额外提示
+boom-0.35.wav    0.4692 秒    小型通用爆炸
+boom-0.65.wav    0.5379 秒    中型通用爆炸
+boom-1.wav    0.5253 秒    大型通用爆炸
+pop.wav    0.1050 秒    击倒敌人
+coin.wav    0.2650 秒    拾取金币或局内交易成功
+heal.wav    0.4550 秒    获得治疗反馈
+power.wav    0.4250 秒    获得强化或触发增益
+whoosh.wav    0.2751 秒    冲刺或风环掠过
+hurt.wav    0.2250 秒    玩家受伤
+dodge.wav    0.1250 秒    成功闪避
+jump.wav    0.1650 秒    起跳
+land.wav    0.1244 秒    落地
+chest.wav    0.6249 秒    开启宝箱
+levelUp.wav    0.9250 秒    升级
+streakMilestone.wav    0.5250 秒    达成连击里程碑
+evolveDone.m4a    1.9450 秒    进化形态揭晓
+charge.wav    0.2250 秒    祭坛充能，音调跟随进度变化
+jump-high.wav    0.1650 秒    二段跳
+evolve.m4a    4.4250 秒    进化揭晓前的渐强音
+streak-4.wav    0.0850 秒    连续击倒的低音区，音调跟随连击数变化
+streak-12.wav    0.0850 秒    连续击倒的中音区，音调跟随连击数变化
+streak-20.wav    0.0850 秒    连续击倒的高音区，音调跟随连击数变化
+xp-1.wav    0.1050 秒    连续拾取经验的第 1 次
+xp-2.wav    0.1049 秒    连续拾取经验的第 2 次
+xp-3.wav    0.1050 秒    连续拾取经验的第 3 次
+xp-4.wav    0.1050 秒    连续拾取经验的第 4 次
+xp-5.wav    0.1050 秒    连续拾取经验的第 5 次
+xp-6.wav    0.1050 秒    连续拾取经验的第 6 次
+xp-7.wav    0.1050 秒    连续拾取经验的第 7 次
+xp-8.wav    0.1050 秒    连续拾取经验的第 8 次
+xp-9.wav    0.1050 秒    连续拾取经验的第 9 次
+xp-10.wav    0.1050 秒    连续拾取经验的第 10 次
+xp-11.wav    0.1050 秒    连续拾取经验的第 11 次
+xp-12.wav    0.1050 秒    连续拾取经验的第 12 次
+xp-13.wav    0.1050 秒    连续拾取经验的第 13 次
+xp-14.wav    0.1050 秒    连续拾取经验的第 14 次
+xp-15.wav    0.1050 秒    连续拾取经验的第 15 次及以后

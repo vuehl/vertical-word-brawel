@@ -7,12 +7,15 @@ import {isPlayableHeroForm} from '../../source/src/data/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=77;
+export const assetPolicyVersion=85;
 // Full RGBA wind cells use lossless encoding rather than a shared 256-colour palette.
 export const windClarityAtlases=new Set(['wind-ace','wind-moves','wind-skills','wind-vortex'].map(name=>'assets/vfx/'+name+'.png'));
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
+// Imported by the effect modules and compiled into the gameplay scripts.
+const bundledAtlasMetadata=new Set(['fireball','fire-breath','fire-family','fire-mushroom','fire-spin',
+  'fire-breath-reference','fire-stampede','wind-ace','wind-moves','wind-skills','wind-vortex','evolution-screen'].map(name=>'assets/vfx/'+name+'.json'));
 
 // These item IDs occur only in filtered-out item definitions and research.
 // Everything outside this reviewed list, including new artwork, ships by default.
@@ -46,6 +49,7 @@ export function itemIconSelectionChanged(files) {
 // Exclusions are based on the enabled forest-only rules and procedural world,
 // not merely on absence from a short playthrough.
 export function excludedAssetReason(key){
+  if(bundledAtlasMetadata.has(key))return '图集坐标已编入玩法脚本';
   if(key==='assets/env/desk2d/device-boss.png')return '召唤门使用实时倒计时模型';
   if(/^assets\/vfx\/heat-wave\.(?:png|json)$/.test(key))return '热风玩家技能已移除';
   if(/^assets\/cries\/\d+\.ogg$/.test(key))return '旧角色叫声已停用';

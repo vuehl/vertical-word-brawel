@@ -111,7 +111,7 @@ for (let a = 0; a < materialMoves.length; a++) for (let b = a; b < materialMoves
 }
 const sources = [
   ['source/src/game.js', '技能生成、升级候选、伤害参数、被动、大招和融合匹配'],
-  ['source/src/data/starter-characters.js', '两条进阶路线、10 / 20 级、各形态大招与移速转伤害'],
+  ['source/src/data/starter-characters.js', '两条进阶路线、单关与多关进阶等级、各形态大招与移速转伤害'],
   ['source/src/data/skill-availability.js', '当前技能与融合的启用、移除规则'],
   ['source/src/data/form-copy.js', '各形态技能显示名与融合名称'],
   ['source/src/data/config.js', '风系固定技能组和当前出战角色名单'],

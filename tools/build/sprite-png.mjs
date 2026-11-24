@@ -30,6 +30,16 @@ export function restoreSprite(bytes){
       }
     }
   }
+  return encodeScanlines(width,height,scan);
+}
+
+export function encodeImageData({width,height,data}){
+  const rowBytes=width*4,scan=new Uint8Array((rowBytes+1)*height);
+  for(let y=0;y<height;y++)scan.set(data.subarray(y*rowBytes,(y+1)*rowBytes),y*(rowBytes+1)+1);
+  return encodeScanlines(width,height,scan);
+}
+
+function encodeScanlines(width,height,scan){
   const ihdr=new Uint8Array(13),view=new DataView(ihdr.buffer);
   view.setUint32(0,width);view.setUint32(4,height);ihdr[8]=8;ihdr[9]=6;
   const parts=[Uint8Array.of(137,80,78,71,13,10,26,10),chunk('IHDR',ihdr),chunk('IDAT',zlibSync(scan,{level:1})),chunk('IEND',new Uint8Array())];

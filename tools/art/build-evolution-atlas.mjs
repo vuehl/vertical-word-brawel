@@ -4,7 +4,9 @@ import sharp from 'sharp';
 const root = path.resolve(import.meta.dirname, '../..');
 const art = path.join(root, 'resources/art/upgrade');
 const output = path.join(root, 'resources/public/assets/vfx/evolution-light.webp');
-const tile = 160, columns = 8, rows = 9;
+// The full-screen atlas is the primary effect; this compact local atlas is
+// retained only as a load-failure fallback in the mobile package.
+const tile = 96, columns = 8, rows = 9;
 
 async function recording(name) {
   return sharp(path.join(art, name), {animated: true}).removeAlpha().raw()
@@ -50,4 +52,4 @@ for (let cell = 0; cell < columns * rows; cell++) {
   cells.push({input, left: cell % columns * tile, top: Math.floor(cell / columns) * tile});
 }
 await sharp({create: {width: columns * tile, height: rows * tile, channels: 4, background: '#00000000'}})
-  .composite(cells).webp({quality: 83, alphaQuality: 91, effort: 6}).toFile(output);
+  .composite(cells).webp({quality: 72, alphaQuality: 80, effort: 6}).toFile(output);

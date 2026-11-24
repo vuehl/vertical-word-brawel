@@ -31,7 +31,7 @@
     "test:boot": "node tools/regression/boot-loading-regression.mjs",
     "test:startup": "node tools/smoke.mjs --phone-layout --software-render --startup-latency",
     "test:upgrade": "node tools/smoke.mjs --phone-layout --software-render --upgrade-perf",
-    "test:upgrade-effects": "node tools/runtime-performance.mjs --upgrade-effects",
+    "test:upgrade-effects": "node --test tools/tests/evolution-timing.test.mjs && node tools/runtime-performance.mjs --upgrade-effects",
     "test:scenes": "node tools/smoke.mjs --phone-layout --software-render --scene-regression",
     "test:devices": "node tools/smoke.mjs --phone-layout --software-render --device-effects",
     "verify:assets": "node tools/verify-assets.mjs",

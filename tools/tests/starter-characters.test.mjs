@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {roster} from '../../source/src/data/catalogs.js';
-import {constrainLiteProfile,isLiteFamily,validLiteRun} from '../../source/src/data/lite-rules.js';
+import {constrainLiteProfile,isLiteFamily,validLiteRun,rosterForMode} from '../../source/src/data/lite-rules.js';
 import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff,windSpeedDamageBonus,windBossDamage,updateStarterSpeed} from '../../source/src/data/starter-characters.js';
 import {glyphWordForSpecies} from '../../source/src/actors/paper-glyph-art.js';
 import {glyphCatalog} from '../../source/src/actors/glyph-catalog.js';
@@ -28,6 +28,17 @@ test('both wind paths follow the supplied design, and all nine supplied cutouts 
   assert.equal(wind.passive,'');
 });
 
+test('single-stage and multi-stage runs have independent thresholds for both starters',()=>{
+  for(const actor of roster){
+    const single=rosterForMode(actor,'single-stage');
+    for(const mode of ['standard','classic']){
+      const multi=rosterForMode(actor,mode);
+      assert.deepEqual(single.evoLevels,[12,30]);assert.deepEqual(multi.evoLevels,[18,40]);
+      if(actor.branch){assert.equal(single.evoLevel,12);assert.equal(multi.evoLevel,18);}
+    }
+  }
+});
+
 test('legacy starter selection migrates without losing currency, research, settings or records',()=>{
   for(const [old,id] of [[1,4],[132,4],[7,16],[4,4]]){
     const profile={starter:old,lastSpecies:old,team:[old],stardust:987,lab:{dmg:3},research:{59:20},settings:{quality:'high'},times:{'forest-0':321},forms:[4,5,6,9,18,59],classics:[132],captured:{132:123}};
@@ -42,11 +53,11 @@ test('legacy starter selection migrates without losing currency, research, setti
 });
 
 test('rejoining restores wave time, keeps a wind branch and migrates only old evolution levels',()=>{
-  for(const [version,saved,expected] of [[undefined,26,10],[1,26,10],[2,8,10],[2,12,12],[3,12,12]]){
+  for(const [version,saved,expected] of [[undefined,26,18],[1,26,18],[2,8,18],[2,22,22],[3,10,18],[3,23,23],[4,24,24]]){
     const cards=[],timeline=[{kind:'card',t:30},{kind:'card',t:60},{kind:'totem',t:145},
       {kind:'guardian',t:250},{kind:'card',t:275}];
     const player={speciesId:16,hp:10,maxHp:10,moves:[],pos:{set(){}},xpFor:()=>30,recompute(){}};
-    const run={player,coop:{},camTarget:{copy(){}},planEvolution:()=>({to:-1,level:10}),
+    const run={player,coop:{},camTarget:{copy(){}},planEvolution:()=>({to:-1,level:18}),
       director:{timeline,addCard:()=>cards.push(run.stageTime)}};
     const data={v:version,stage:1,player:{speciesId:16,level:7,hp:10},pos:[1,0,1],
       moves:[],run:{nextEvo:{to:58,level:saved}}};
@@ -86,12 +97,13 @@ test('borrowed ultimates keep the original cast, while wind forms use the correc
   }
 });
 
-test('wind ultimates multiply only their designated speed by ten, refresh without stacking, and clean up',()=>{
+test('wind ultimates multiply attack speed by ten or movement speed by form, refresh without stacking, and clean up',()=>{
   for(const [id,name,key,stat,other] of [[17,'刮倒一片',attackSpeedBuff,'attackSpeed','moveSpeed'],[58,'跑得没影',speedBuff,'moveSpeed','attackSpeed'],[18,'刮倒一片',attackSpeedBuff,'attackSpeed','moveSpeed'],[59,'跑得没影',speedBuff,'moveSpeed','attackSpeed']]){
-    const p={buffs:new Map(),stats:{moveSpeed:1.7,attackSpeed:1.7},recompute(){this.stats.moveSpeed=this.stats.attackSpeed=1.7;applyStarterSpeed(this.stats,this.buffs);},addBuff(key,t,label){this.buffs.set(key,{t,label});this.recompute();}};
+    const p={buffs:new Map(),stats:{moveSpeed:1.7,attackSpeed:1.7},recompute(){this.stats.moveSpeed=this.stats.attackSpeed=1.7;applyStarterSpeed(this.stats,this.buffs,id);},addBuff(key,t,label){this.buffs.set(key,{t,label});this.recompute();}};
     const def=starterUltimate(id,{});assert.deepEqual(def.names,[name]);assert.equal(def.dur[0],5);
-    def.cast({run:{player:p}});assert.equal(p.stats[stat],17);assert.equal(p.buffs.get(key).t,5);assert.equal(p.stats[other],1.7);
-    p.buffs.get(key).t=2;def.cast({run:{player:p}});assert.equal(p.stats[stat],17);assert.equal(p.buffs.size,1);assert.equal(p.buffs.get(key).t,5);
+    const expected=1.7*({17:10,18:10,58:2,59:3}[id]);
+    def.cast({run:{player:p}});assert.ok(Math.abs(p.stats[stat]-expected)<1e-10);assert.equal(p.buffs.get(key).t,5);assert.equal(p.stats[other],1.7);
+    p.buffs.get(key).t=2;def.cast({run:{player:p}});assert.ok(Math.abs(p.stats[stat]-expected)<1e-10);assert.equal(p.buffs.size,1);assert.equal(p.buffs.get(key).t,5);
     clearStarterSpeed({player:p});assert.equal(p.stats[stat],1.7);assert.equal(p.buffs.size,0);
   }
 });

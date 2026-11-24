@@ -83,25 +83,25 @@ export async function reviewDeveloperEvolution(page,dir){
     await page.screenshot({path:path.join(dir,'dev-evolution-branch-'+width+'.png')});report.widths.push({width,bounds});
   }
   for(const [choice,end] of [[17,18],[58,59]]){
-    if(choice===58){await dev('evolve-next');assert.equal((await state()).level,10);assert.deepEqual((await state()).choices,[17,58]);}
+    if(choice===58){await dev('evolve-next');assert.equal((await state()).level,18);assert.deepEqual((await state()).choices,[17,58]);}
     await tap('[data-branch-id="'+choice+'"]');
     assert.equal((await state()).id,16,'Branch choice must still require evolution confirmation');
-    const middle=await finish();assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:20});
+    const middle=await finish();assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:40});
     await dev('open');await preview(choice===17?'讽':'飒');
     await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({mode:'timed',time:180,count:0,boss:'none'}));
     await dev('close');assert.equal((await state()).id,choice);assert.deepEqual((await state()).choices,[]);
-    await dev('open');await dev('evolve-next');assert.equal((await state()).level,20);
+    await dev('open');await dev('evolve-next');assert.equal((await state()).level,40);
     const final=await finish();assert.equal(final.id,end);assert.equal(final.next,null);assert.equal(final.stage,2);
     assert.equal(final.ult,end===18?'刮倒一片':'跑得没影');assert.equal(final.ability,'');
     await dev('open');assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-dev-action="evolve-next"]').disabled),true);
     await preview(end===18?'疯':'飙');
     await dev('stop-workload');
-    const restored=await state();assert.equal(restored.id,16);assert.equal(restored.level,1);assert.equal(restored.stage,0);assert.equal(restored.ability,'');assert.deepEqual(restored.next,{to:-1,level:10});
+    const restored=await state();assert.equal(restored.id,16);assert.equal(restored.level,1);assert.equal(restored.stage,0);assert.equal(restored.ability,'');assert.deepEqual(restored.next,{to:-1,level:18});
     report.routes.push({choice,middle,final,restored});
   }
   await start(4);await page.screenshot({path:path.join(dir,'dev-fire-evolution-panel.png')});
   await preview('炎');
-  await dev('evolve-next');assert.equal((await state()).level,10);
+  await dev('evolve-next');assert.equal((await state()).level,18);
   report.fire=[await finish()];assert.equal(report.fire[0].id,5);
   await dev('open');await dev('evolve-next');report.fire.push(await finish());assert.equal(report.fire[1].id,6);assert.equal(report.fire[1].next,null);
   await dev('open');

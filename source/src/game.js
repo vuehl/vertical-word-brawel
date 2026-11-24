@@ -1,6 +1,7 @@
 import {choiceQuality as itemOfferQuality} from './ui/choice-presentation.js';
 import {itemOffer,shopOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './ui/battle-review-ui.js';
 import {createCaptureGourd,gourdIcon} from './combat/capture-gourd.js';
+import {combatClipIds, combatEvolutionSeconds, loadCombatClips} from './combat/audio-clips.js';
 import {deskDevice,deskTexture,disposeDeskDevice} from './world/desk2d.js';
 import {createBerryPickup} from './combat/berry-pickup.js';
 import {deskPitch,deskTilt,deskFrame,deskWalkInset} from './world/desk-framing.js';
@@ -13,11 +14,11 @@ import {createFacilityEffects} from './effects/facility-effects.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat,worldProgress} from './network/coop-resume.js';
 import {RoomMonsters,roomMonster} from './world/room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './network/peer-motion.js';
-import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './data/lite-rules.js';
+import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, rosterForMode, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './data/lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './data/character-rules.js';
 import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './effects/dragon-chant.js';
 import {beginDragonSummon,clearDragonSummon,warmDragonSummon} from './effects/dragon-summon-hd/sequence.js';
-import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage} from './data/starter-characters.js';
+import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage,windRushMultiplier} from './data/starter-characters.js';
 import {windMoveEffect} from './effects/wind-move-art.js';
 import {createWindAceCast,advanceWindAce,windAceImpact} from './effects/wind-ace.js';
 import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './data/skill-availability.js';
@@ -25,6 +26,7 @@ import {mountLiteQA} from './debug/lite-qa.js';
 import {runPlan, planIncludes} from './combat/battle-plan.js';
 import {createZixingUI,paperIcon} from './ui/zixing-ui.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './ui/paper-hud-art.js';
+import {weatherMark,weatherStyle} from './ui/weather-presentation.js';
 import {installGlyphs,glyphPreview} from './actors/zixing-glyphs.js';
 import {heroActionCatalog} from './actors/hero-action-catalog.js';
 import {playerHeroAction,animatedPixelHeight,glyphBillboardSize} from './actors/hero-actions.js';
@@ -36,7 +38,7 @@ import {CrowdGrid} from './performance/crowd-grid.js';
 import {crowdStep,separationBudget} from './performance/crowd-cadence.js';
 import {FramePacer,CombatClock} from './performance/frame-pacing.js';
 import {CombatIdleWarmup,warmCombatShaders,warmCombatDraw} from './performance/combat-warmup.js';
-import {UpgradeEffects,EVOLUTION_REVEAL,EVOLUTION_DURATION} from './effects/upgrade-effects.js';
+import {UpgradeEffects,EVOLUTION_REVEAL,EVOLUTION_DURATION,evolutionPose} from './effects/upgrade-effects.js';
 import {createActorTypeLookup} from './actors/actor-types.js';
 import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './effects/ring-shader.js';
 import {crowdBudgets,updateCrowdBudget} from './performance/crowd-budget.js';
@@ -1825,6 +1827,7 @@ var es = class {
     }
   },
   ts = {
+    stampede: {cast: e => { j(e, 400, .14, .2); fs(e, .12, .3, .05); }},
     "flame-charge": {
       cast: (e) => {
         fs(e, 0.14, 0.25);
@@ -4053,21 +4056,35 @@ var Ws = () =>
     musicBus;
     cryBus;
     noiseBuf;
+    combatClips = null;
+    clipLoad = null;
+    inRun = false;
+    interrupted = false;
     cries = new Map();
     cryGain = new Map();
     lastPlay = new Map();
     voices = new Set();
     lastWake = 0;
+    lastEffectTime = -1;
+    failedClipStarts = 0;
+    effectTime() {
+      const now = this.ctx.currentTime;
+      // A restored native device can restart its clock on the same JS context.
+      if (now + .05 < this.lastEffectTime) this.resetEffects();
+      this.lastEffectTime = now;
+      return now;
+    }
     voiceFree() {
       let e = this.ctx;
-      if (!e || this.hiddenMute || this.vol.master <= 0) return !1;
+      if (!e || this.interrupted || this.hiddenMute || this.vol.master <= 0) return !1;
       if (e.state !== `running`) {
         let e = performance.now();
         return (e - this.lastWake > 1e3 && !document.hidden && ((this.lastWake = e), this.wake()), !1);
       }
       // Native Web Audio can delay onended. Also reclaim by audio time so
       // finished filter/gain chains cannot accumulate across long battles.
-      for (const voice of this.voices) if (voice.end <= e.currentTime) voice.release();
+      const now = this.effectTime();
+      for (const voice of this.voices) if (voice.end <= now) voice.stop();
       return this.voices.size < this.maxVoices;
     }
     addVoice(end, source, nodes, extraSources = []) {
@@ -4091,15 +4108,68 @@ var Ws = () =>
       this.lastPlay.clear();
       this.dens.clear();
       this.kv = this.kp = 1;
+      this.lastEffectTime = -1;
     }
     beginRun() {
+      this.inRun = true;
       this.resetEffects();
       this.init();
+      this.preloadCombat();
       // A new run shares the audio engine, but not the previous run's voices,
       // gain automation or stale native playback state.
       this.setHiddenMute(document.hidden && this.hiddenMute);
       this.applyVolumes();
       this.checkAlive();
+    }
+    endRun() {
+      this.inRun = false;
+      clearTimeout(this.aliveTimer);
+      this.resetEffects();
+    }
+    preloadCombat() {
+      const ctx = this.ctx;
+      if (!ctx || !this.inRun || this.clipLoad || this.combatClips?.size === combatClipIds.length) return this.clipLoad;
+      const clips = this.combatClips ??= new Map();
+      this.clipLoad = loadCombatClips(ctx, clips, async file => {
+        const response = await fetch(Zt('sfx/' + file));
+        if (!response.ok) throw Error(file);
+        return response.arrayBuffer();
+      }, () => this.ctx === ctx && this.inRun).finally(() => {
+        if (this.ctx === ctx) this.clipLoad = null;
+      });
+      return this.clipLoad;
+    }
+    playClip(key, volume = 1, rate = 1) {
+      if (!this.inRun) return false;
+      const buffer = this.combatClips?.get(key);
+      if (!buffer) return false;
+      if (!this.voiceFree() || volume <= 0 || this.vol.sfx <= 0) return true;
+      const ctx = this.ctx;
+      let source, gain;
+      try {
+        source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.value = rate;
+        if (volume === 1) source.connect(this.sfxBus);
+        else {
+          gain = ctx.createGain();
+          gain.gain.value = volume;
+          source.connect(gain);
+          gain.connect(this.sfxBus);
+        }
+        const now = ctx.currentTime;
+        source.start(now);
+        this.addVoice(now + buffer.duration / rate + .05, source, gain ? [source, gain] : [source]);
+        this.failedClipStarts = 0;
+        return true;
+      } catch {
+        try { source?.stop(); } catch {}
+        try { source?.disconnect(); gain?.disconnect(); } catch {}
+        // The buffer was already decoded. A native source failure can affect
+        // every file until the audio device is reopened.
+        this.failedClipStarts++;
+        return false;
+      }
     }
     maxVoices = typeof matchMedia == `function` && matchMedia(`(pointer: coarse)`).matches ? 26 : 56;
     dens = new Map();
@@ -4121,7 +4191,9 @@ var Ws = () =>
     }
     hooked = !1;
     init() {
-      this.ctx ? this.wake() : (this.hook(), this.build());
+      this.hook();
+      if (this.ctx) this.wake();
+      else this.rebuild();
     }
     silentPlay = !1;
     setSilentPlay(e) {
@@ -4134,47 +4206,69 @@ var Ws = () =>
     hook() {
       if (this.hooked) return;
       ((this.hooked = !0), this.setSilentPlay(this.silentPlay));
+      const foreground = () => {
+        if (document.hidden) return;
+        this.interrupted = false;
+        this.setHiddenMute(false);
+        this.wake();
+        this.checkAlive();
+      };
       let e = () => this.wake();
+      addEventListener('audiointerruptionbegin', () => {
+        this.interrupted = true;
+        this.checkAlive(1000);
+      });
+      addEventListener('audiointerruptionend', () => {
+        this.interrupted = false;
+        if (!document.hidden) { this.wake(); this.checkAlive(); }
+      });
       (addEventListener(`pointerdown`, e, !0),
         addEventListener(`keydown`, e, !0),
         addEventListener(`touchend`, e, !0),
         addEventListener(`click`, e, !0),
         document.addEventListener(`visibilitychange`, () => {
-          document.hidden || (e(), this.checkAlive());
+          if (!document.hidden) foreground();
         }),
-        addEventListener(`focus`, e),
-        addEventListener(`pageshow`, () => {
-          (e(), this.checkAlive());
-        }),
+        addEventListener(`focus`, foreground),
+        addEventListener(`pageshow`, foreground),
         addEventListener(`pointerup`, e, !0));
     }
     aliveTimer = 0;
-    checkAlive() {
-      let e = this.ctx;
-      e &&
-        (e.state === `closed`
-          ? this.rebuild()
-          : (clearTimeout(this.aliveTimer),
-            (this.aliveTimer = window.setTimeout(() => {
-              if (this.ctx !== e || document.hidden) return;
-              if (e.state === `closed`) {
-                this.rebuild();
-                return;
-              }
-              if (e.state !== `running`) return;
-              let t = e.currentTime;
-              this.aliveTimer = window.setTimeout(() => {
-                this.ctx === e &&
-                  !document.hidden &&
-                  e.state === `running` &&
-                  e.currentTime - t < 0.1 &&
-                  this.rebuild();
-              }, 500);
-            }, 600))));
+    checkAlive(delay = 600) {
+      clearTimeout(this.aliveTimer);
+      if (document.hidden) return;
+      this.aliveTimer = window.setTimeout(() => {
+        if (document.hidden) return;
+        if (this.vol.master <= 0 || (this.vol.sfx <= 0 && !this.track && !this.musicOn)) {
+          if (this.inRun) this.checkAlive(5000);
+          return;
+        }
+        const ctx = this.ctx;
+        if (!ctx || ctx.state === 'closed') { this.rebuild(); return; }
+        if (this.interrupted && ctx.state !== 'running') {
+          this.wake();
+          if (this.inRun) this.checkAlive(1500);
+          return;
+        }
+        if (this.failedClipStarts >= 3) { this.rebuild(); return; }
+        if (ctx.state !== 'running') this.wake();
+        const before = ctx.currentTime;
+        this.aliveTimer = window.setTimeout(() => {
+          if (this.ctx !== ctx || document.hidden) return;
+          const advancing = ctx.state === 'running' && ctx.currentTime - before >= .1;
+          if (this.interrupted) {
+            if (advancing) this.interrupted = false;
+            else if (ctx.state === 'running') { this.rebuild(); return; }
+            if (this.inRun) this.checkAlive(advancing ? 5000 : 1500);
+          } else if (!advancing) this.rebuild();
+          else if (this.inRun) this.checkAlive(5000);
+        }, 500);
+      }, delay);
     }
     rebuild() {
+      this.failedClipStarts = 0;
+      this.interruptionResume = null;
       let e = this.ctx;
-      if (!e) return;
       let t = this.trackWant,
         n = this.song;
       ((this.track = null),
@@ -4182,16 +4276,22 @@ var Ws = () =>
         (this.trackLoading = !1),
         this.resetEffects());
       clearTimeout(this.aliveTimer);
-      e.onstatechange = null;
+      if (e) e.onstatechange = null;
       this.ctx = null;
+      this.combatClips = this.clipLoad = null;
       try {
-        Promise.resolve(e.close()).catch(() => {});
+        Promise.resolve(e?.close()).catch(() => {});
       } catch {}
       try {
         this.build();
       } catch {
+        const failed = this.ctx;
+        this.ctx = null;
+        try { if (failed) { failed.onstatechange = null; Promise.resolve(failed.close()).catch(() => {}); } } catch {}
+        if (this.inRun) this.checkAlive(5000);
         return;
       }
+      if (this.inRun) { this.preloadCombat(); this.checkAlive(5000); }
       (n && (this.nextNote = this.ctx.currentTime + 0.1), t && this.playTrack(t));
     }
     build() {
@@ -4240,7 +4340,22 @@ var Ws = () =>
     }
     wake() {
       let e = this.ctx;
-      if (!e) return;
+      if (!e || document.hidden) return;
+      if (this.interrupted) {
+        // The OS decides when a suspended device may resume. Never start
+        // sources until its clock advances again or focus is returned.
+        const now=performance.now();
+        if(e.state==='suspended' && this.inRun && !this.hiddenMute && this.vol.master>0 &&
+            this.interruptionResume!==e && now-this.lastWake>=1500){
+          this.interruptionResume=e;this.lastWake=now;
+          try {
+            Promise.resolve(e.resume()).catch(()=>{}).finally(()=>{
+              if(this.interruptionResume===e)this.interruptionResume=null;
+            });
+          } catch { this.interruptionResume=null; }
+        }
+        return;
+      }
       if (e.state === `closed`) {
         this.rebuild();
         return;
@@ -4257,9 +4372,7 @@ var Ws = () =>
           ((t.buffer = e.createBuffer(1, 1, 22050)),
             (t.onended = () => t.disconnect()), t.connect(e.destination), t.start(0));
         } catch {}
-        Promise.resolve(e.resume())
-          .then(t)
-          .catch(() => {});
+        try { Promise.resolve(e.resume()).then(t).catch(() => {}); } catch {}
       }
     }
     setVolumes(e) {
@@ -4289,7 +4402,7 @@ var Ws = () =>
     }
     ok(e, t) {
       if (!this.ctx) return !1;
-      let n = this.ctx.currentTime;
+      let n = this.effectTime();
       return n - (this.lastPlay.get(e) ?? -1) < t ? !1 : (this.lastPlay.set(e, n), !0);
     }
     tone(e, t, n, r, i = 0, a = 0, o, s = 0.004) {
@@ -4346,16 +4459,16 @@ var Ws = () =>
         i = r?.[t];
       if (!i) return !1;
       if (!this.ctx) return !0;
-      let a = e + t,
-        o = this.ctx.currentTime,
+      let a = e + ':' + t,
+        o = this.effectTime(),
         s = this.dens.get(a);
       if (s && o - s.t < (t === `cast` ? (r.gap ?? 0.045) : 0.045)) return !0;
-      let c = s ? Math.max(0, s.n - (o - s.t) * 3) + 1 : 1;
+      let c = s ? Math.min(6, Math.max(0, s.n - (o - s.t) * 3) + 1) : 1;
       return (
         this.dens.set(a, { t: o, n: c }),
         (this.kv = (n.v ?? 1) / Math.sqrt(c)),
         (this.kp = 0.95 + Math.random() * 0.1),
-        i(this, n),
+        this.playClip(a, this.kv, e === 'flamethrower' && t === 'cast' ? 1 / (n.dur || 1) : this.kp) || i(this, n),
         (this.kv = 1),
         (this.kp = 1),
         !0
@@ -4441,39 +4554,41 @@ var Ws = () =>
         this.addVoice(r + t + 0.05, s, [s, c, l]));
     }
     hit(e, t, n = !1) {
-      if (
-        (n &&
-          this.ok(`mega`, 0.09) &&
-          (this.tone(1568, 0.1, `triangle`, 0.13, 1.2),
-          this.tone(2093, 0.14, `sine`, 0.1, 1, 0.05),
-          this.tone(110, 0.16, `sine`, 0.2, 0.5)),
-        !this.ok(`hit`, 0.035))
-      )
-        return;
+      if (n && this.ok('mega', .09) && !this.playClip('mega')) {
+        this.tone(1568, .1, 'triangle', .13, 1.2);
+        this.tone(2093, .14, 'sine', .1, 1, .05);
+        this.tone(110, .16, 'sine', .2, .5);
+      }
+      if (!this.ok('hit', .035)) return;
+      const impact = e > 1.01 ? 'strong' : e < .99 ? 'weak' : 'normal';
+      if (this.combatClips && this.playClip((t ? 'crit:' : 'hit:') + impact, 1, .95 + Math.random() * .1)) return;
       let r = e > 1.01 ? 520 : e < 0.99 ? 220 : 360;
       (this.tone(r * (0.9 + Math.random() * 0.2), 0.07, `square`, 0.12, 0.5),
         this.noise(0.05, 0.15, 3e3, `highpass`),
         t && this.tone(1200, 0.12, `triangle`, 0.12, 1.5, 0.01));
     }
     pop() {
-      this.ok(`pop`, 0.03) && this.tone(700 + Math.random() * 300, 0.08, `sine`, 0.12, 2);
+      if (!this.ok('pop', .03) || this.playClip('pop', 1, .85 + Math.random() * .3)) return;
+      this.tone(700 + Math.random() * 300, 0.08, `sine`, 0.12, 2);
     }
     xp(e = 1) {
       if (!this.ok(`xp`, 0.035)) return;
+      if (this.playClip('xp:' + Math.min(e, 15))) return;
       let t = [0, 2, 4, 7, 9],
         n = Math.min(e - 1, 14),
         r = 784 * 2 ** ((t[n % 5] + 12 * Math.floor(n / 5)) / 12);
       (this.tone(r, 0.08, `triangle`, 0.09, 1.02), this.tone(r * 2, 0.05, `sine`, 0.035, 1, 0.015));
     }
     coin() {
-      this.ok(`coin`, 0.05) &&
-        (this.tone(1319, 0.06, `square`, 0.06), this.tone(1976, 0.18, `square`, 0.06, 1, 0.06));
+      if (!this.ok('coin', .05) || this.playClip('coin')) return;
+      this.tone(1319, 0.06, `square`, 0.06); this.tone(1976, 0.18, `square`, 0.06, 1, 0.06);
     }
     heal() {
+      if (this.playClip('heal')) return;
       this.ctx && [523, 659, 784, 1047].forEach((e, t) => this.tone(e, 0.25, `triangle`, 0.1, 1, t * 0.06));
     }
     charge(e) {
-      if (!this.ok(`charge`, 0.22)) return;
+      if (!this.ok('charge', .22) || this.playClip('charge', 1, 2 ** ((e - .5) * 1.5))) return;
       let t = 330 * 2 ** (e * 1.5);
       (this.tone(t, 0.2, `sine`, 0.05, 1.04), this.tone(t * 1.5, 0.14, `triangle`, 0.02, 1, 0.03));
     }
@@ -4482,13 +4597,18 @@ var Ws = () =>
         (this.tone(880, 0.09, `square`, 0.045), this.tone(1319, 0.16, `square`, 0.045, 1, 0.08));
     }
     power() {
+      if (this.playClip('power')) return;
       this.ctx &&
         [392, 523, 659, 784, 1047].forEach((e, t) => this.tone(e, 0.2, `square`, 0.06, 1, t * 0.05));
     }
     boom(e = 1) {
-      this.ok(`boom`, 0.06) &&
-        (this.noise(0.35 + e * 0.3, 0.4 * (0.5 + e * 0.5), 1200, `lowpass`, 0, 0.1),
-        this.tone(110, 0.3 + e * 0.2, `sine`, 0.35 * e, 0.3));
+      if (!this.ok('boom', .06)) return;
+      if (this.combatClips && e >= .2 && e <= 1.2) {
+        const base = e < .5 ? .35 : e < .85 ? .65 : 1;
+        if (this.playClip('boom:' + base, (1 + e) / (1 + base), (.35 + base * .3) / (.35 + e * .3))) return;
+      }
+      this.noise(.35 + e * .3, .4 * (.5 + e * .5), 1200, 'lowpass', 0, .1);
+      this.tone(110, .3 + e * .2, 'sine', .35 * e, .3);
     }
     shot(e, t = 0.5) {
       this.ok(`shot` + e, 0.05) &&
@@ -4528,23 +4648,28 @@ var Ws = () =>
       this.ok(`melody`, 0.3) && e.forEach((e, n) => this.tone(e, t * 1.6, `triangle`, 0.08, 1, n * t));
     }
     whoosh() {
-      this.ok(`whoosh`, 0.08) && this.noise(0.25, 0.14, 800, `bandpass`, 0, 4);
+      if (!this.ok('whoosh', .08) || this.playClip('whoosh')) return;
+      this.noise(0.25, 0.14, 800, `bandpass`, 0, 4);
     }
     zap() {
       this.ok(`zap`, 0.05) &&
         (this.tone(2e3, 0.12, `sawtooth`, 0.06, 0.2), this.noise(0.1, 0.12, 6e3, `highpass`));
     }
     hurt() {
-      this.ok(`hurt`, 0.1) && (this.tone(220, 0.2, `square`, 0.18, 0.4), this.noise(0.12, 0.2, 1500));
+      if (!this.ok('hurt', .1) || this.playClip('hurt')) return;
+      this.tone(220, 0.2, `square`, 0.18, 0.4); this.noise(0.12, 0.2, 1500);
     }
     dodge() {
-      this.ok(`dodge`, 0.1) && this.tone(1500, 0.1, `sine`, 0.08, 1.5);
+      if (!this.ok('dodge', .1) || this.playClip('dodge')) return;
+      this.tone(1500, 0.1, `sine`, 0.08, 1.5);
     }
     jump(e = 1) {
-      this.ok(`jump`, 0.05) && this.tone(330 * e, 0.14, `square`, 0.06, 2);
+      if (!this.ok('jump', .05) || this.playClip(e === 1.3 ? 'jump-high' : 'jump', 1, e === 1.3 ? 1 : e)) return;
+      this.tone(330 * e, 0.14, `square`, 0.06, 2);
     }
     land() {
-      this.ok(`land`, 0.1) && this.noise(0.1, 0.12, 600);
+      if (!this.ok('land', .1) || this.playClip('land')) return;
+      this.noise(0.1, 0.12, 600);
     }
     dive() {
       this.ok(`dive`, 0.2) &&
@@ -4597,6 +4722,7 @@ var Ws = () =>
         );
     }
     chest() {
+      if (this.playClip('chest')) return;
       this.ctx &&
         ([784, 988, 1175, 1568].forEach((e, t) => this.tone(e, 0.18, `triangle`, 0.1, 1, t * 0.07)),
         this.noise(0.4, 0.08, 6e3, `highpass`, 0.2));
@@ -4649,12 +4775,14 @@ var Ws = () =>
       this.ctx && (this.tone(200, 0.15, `square`, 0.1), this.tone(150, 0.2, `square`, 0.1, 1, 0.12));
     }
     levelUp() {
+      if (this.playClip('levelUp')) return;
       this.ctx &&
         ([523, 659, 784, 1047, 1319].forEach((e, t) => this.tone(e, 0.3, `square`, 0.08, 1, t * 0.07)),
         [262, 330, 392].forEach((e) => this.tone(e, 0.6, `triangle`, 0.1, 1, 0.3)));
     }
     evolve(e = 3.5) {
       if (!this.ctx) return;
+      if (this.inRun && Math.abs(e - combatEvolutionSeconds) < .001 && this.playClip('evolve')) return;
       let t = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31],
         n = 0,
         r = 0;
@@ -4669,6 +4797,7 @@ var Ws = () =>
       (this.noise(e, 0.05, 400, `bandpass`, 0, 12), this.tone(110, e, `sawtooth`, 0.04, 2, 0));
     }
     evolveDone() {
+      if (this.playClip('evolveDone')) return;
       if (this.ctx) {
         (this.noise(0.5, 0.18, 3e3, `highpass`, 0, 0.3),
           [523, 659, 784, 1047].forEach((e, t) => this.tone(e, 0.16, `square`, 0.08, 1, t * 0.07)),
@@ -4714,10 +4843,13 @@ var Ws = () =>
         this.noise(0.7, 0.04, 6e3, `highpass`, 0.5));
     }
     streak(e) {
-      this.ok(`streak`, 0.06) &&
-        this.tone(440 * 2 ** (Math.min(24, e % 25) / 12), 0.06, `square`, 0.025, 1.2);
+      if (!this.ok('streak', .06)) return;
+      const step = e % 25, base = step < 8 ? 4 : step < 16 ? 12 : 20;
+      if (this.playClip('streak:' + base, 1, 2 ** ((step - base) / 12))) return;
+      this.tone(440 * 2 ** (step / 12), 0.06, `square`, 0.025, 1.2);
     }
     streakMilestone() {
+      if (this.playClip('streakMilestone')) return;
       this.ctx &&
         ([784, 988, 1175, 1568].forEach((e, t) => this.tone(e, 0.18, `square`, 0.06, 1, t * 0.06)),
         this.tone(392, 0.4, `triangle`, 0.08, 1, 0.1));
@@ -5389,6 +5521,7 @@ var oc = (e, t) =>
         this.sky.position.copy(this.camera.position));
       this.composer.render(e);
       if (!window.nativeUI) this.dragonFlash?.drawFlash(this.renderer);
+      if (!window.nativeUI) this.evolutionScreen?.draw(this.renderer);
     }
   },
   fc = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
@@ -12614,6 +12747,7 @@ var Df = 0.4,
   Pf = class {
     run;
     n = 0;
+    firstAlive = 0;
     alive = new Uint8Array(xf);
     species = new Int32Array(xf);
     x = new Float32Array(xf);
@@ -12777,6 +12911,7 @@ var Df = 0.4,
         m && (_ *= 14),
         a & 16384 && (_ *= 9),
         (this.alive[s] = 1),
+        (this.firstAlive = Math.min(this.firstAlive,s)),
         this.gen[s]++,
         (this.species[s] = e),
         (this.x[s] = t),
@@ -12867,10 +13002,14 @@ var Df = 0.4,
       ((this.hp[e] *= n), (this.maxHp[e] *= n), (this.xp[e] *= n), (this.wt[e] += t), (this.mass += t));
     }
     kill(e) {
-      this.alive[e] &&
-        ((this.alive[e] = 0),
-        this.flags[e] & 65536 ? this.remotes-- : (this.count--, (this.mass -= this.wt[e])),
-        this.free.push(e));
+      if (!this.alive[e]) return;
+      this.alive[e] = 0;
+      if (this.flags[e] & 65536) this.remotes--;
+      else { this.count--; this.mass -= this.wt[e]; }
+      this.free.push(e);
+      if (e === this.firstAlive) {
+        while (this.firstAlive < this.n && !this.alive[this.firstAlive]) this.firstAlive++;
+      }
     }
     spawnProxy(e, t, n, r, i, a, word = enemySpeciesWord(e,i)) {
       if (this.run.dragonDuel) return -1;
@@ -12883,6 +13022,7 @@ var Df = 0.4,
         c = this.run.sprites.get(e,false,word);
       return (
         (this.alive[o] = 1),
+        (this.firstAlive = Math.min(this.firstAlive,o)),
         this.gen[o]++,
         (this.species[o] = e),
         (this.x[o] = t),
@@ -12960,12 +13100,12 @@ var Df = 0.4,
         l = i ? i.targets : null,
         u = l ? l.length : 0;
       r.steerDeskEnemy?.advance();
-      this.grid.build(this.n, this.x, this.z, this.alive, this.radius, this.dying);
+      this.grid.build(this.n, this.x, this.z, this.alive, this.radius, this.dying, this.firstAlive);
       let d = this.grid,
         f = (this.sepOdd ^= 1),
         p = ++this.lodFrame;
       const proxySquashDecay = this.remotes || t.coop?.monsters ? Math.exp(-e * 10) : 1;
-      for (let i = 0; i < this.n; i++) {
+      for (let i = this.firstAlive; i < this.n; i++) {
         if (!this.alive[i]) continue;
         if (this.dying[i] > 0) {
           ((this.dying[i] -= e), this.dying[i] <= 0 && this.kill(i));
@@ -13394,7 +13534,7 @@ var Df = 0.4,
         t = e.sprites,
         n = e.focusIdx;
       (e.enemyShadowCells??=new Set()).clear();
-      for (let r = 0; r < this.n; r++) {
+      for (let r = this.firstAlive; r < this.n; r++) {
         if (!this.alive[r] || this.flags[r] & 32768) continue;
         if (e.dragonHd?.hides(r) || e.dragonHdPending?.id === r) continue;
         let s = this.lodDt[r],
@@ -13555,6 +13695,7 @@ var Df = 0.4,
         (this.n = 0),
         (this.count = 0),
         (this.mass = 0),
+        (this.firstAlive = 0),
         (this.remotes = 0),
         (this.free.length = 0));
     }
@@ -14559,6 +14700,7 @@ var Yp = 3e3,
       (e[(e.Spin = 512)] = `Spin`),
       (e[(e.Capped = 1024)] = `Capped`),
       (e[(e.Alpha = 2048)] = `Alpha`),
+      (e[(e.PassThroughEnemies = 4096)] = `PassThroughEnemies`),
       e
     );
   })({}),
@@ -14744,7 +14886,8 @@ var Yp = 3e3,
           slot: this.slot[e],
           knock: this.knock[e] * 1.5,
         });
-      t.audio.move(Jp(this.fx[e]), `impact`) || t.audio.boom(Math.min(1, n / 6));
+      const effect = Jp(this.fx[e]);
+      t.audio.move(effect === 'wind-twister' ? 'twister' : effect, `impact`) || t.audio.boom(Math.min(1, n / 6));
     }
     update(e) {
       try {
@@ -14942,13 +15085,12 @@ var Yp = 3e3,
             continue;
           }
           let i = qp(this.fx[c]);
-          if (
-            (++h > 4 ||
-              (i.hit
-                ? i.hit(t, this.x[c], this.y[c], this.z[c], this.color[c])
-                : t.vfx.burst(this.x[c], this.y[c], this.z[c], this.color[c], 5, 4, I.Spark, 0.4, 0.25)),
-            l & 16)
-          ) {
+          if (++h <= 4) {
+            if (i.hit) i.hit(t, this.x[c], this.y[c], this.z[c], this.color[c]);
+            else t.vfx.burst(this.x[c], this.y[c], this.z[c], this.color[c], 5, 4, I.Spark, 0.4, 0.25);
+          }
+          if (l & em.PassThroughEnemies) continue;
+          if (l & em.Explode) {
             (this.explode(c), this.remove(c));
             break;
           }
@@ -27978,7 +28120,10 @@ var e_ = class {
         const authoredBreath=['flamethrower','dragon-breath'].includes(visualMove);
         const authoredFamily=r.vfx.crafted.fireFamily.supports(visualMove)||n.slot===8&&[4,5,6].includes(r.player.speciesId);
         const criticalFx=(u||m)&&r.vfx.criticalImpact(t,a,o);
-        if(authoredBreath)r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),visualMove==='dragon-breath');
+        if(authoredBreath){
+          // The reference spray already contains its contact flames.
+          if(visualMove==='dragon-breath')r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),true);
+        }
         else if(authoredFamily)r.vfx.crafted.fireFamily.impact(visualMove||'ultimate',t,a,o);
         else if(!n.windAceHit && !authoredEmber)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
@@ -28025,6 +28170,35 @@ var e_ = class {
       return (i.hp[e] <= 0 && this.killEnemy(e, n), s);
     }
     windBossBudget = new Map();
+    windRushContacts(buff, fromX, fromZ) {
+      const {player, enemies} = this.run;
+      const {x, y, z} = player.pos;
+      const dx = x - fromX, dz = z - fromZ, lengthSq = dx * dx + dz * dz;
+      const multiplier = windRushMultiplier(player.speciesId);
+      if (multiplier === 1 || player.dead) return;
+      const contacts = buff.contacts ??= new Map();
+      for (const [id, generation] of contacts) {
+        if (!enemies.isAlive(id) || enemies.gen[id] !== generation ||
+            Math.abs(y - enemies.y[id]) >= enemies.hgt[id] + .8 ||
+            (enemies.x[id] - fromX) ** 2 + (enemies.z[id] - fromZ) ** 2 > (player.radius + enemies.radius[id]) ** 2)
+          contacts.delete(id);
+      }
+      if (!lengthSq) return;
+      const candidates = enemies.within(fromX + dx / 2, fromZ + dz / 2, player.radius + Math.sqrt(lengthSq) / 2);
+      let attack;
+      for (const id of candidates) {
+        if (contacts.has(id) || enemies.flags[id] & (R.Object | R.Treasure | R.Capture) || enemies.parked(id)) continue;
+        if (Math.abs(y - enemies.y[id]) >= enemies.hgt[id] + .8) continue;
+        const ex = enemies.x[id] - fromX, ez = enemies.z[id] - fromZ;
+        const along = Gs((ex * dx + ez * dz) / lengthSq, 0, 1);
+        if ((ex - along * dx) ** 2 + (ez - along * dz) ** 2 > (player.radius + enemies.radius[id]) ** 2) continue;
+        contacts.set(id, enemies.gen[id]);
+        attack ??= player.moves.find(Boolean) ?? new M_(formMove(98, player.speciesId));
+        this.hit(id, Ex(attack.def, attack) * multiplier, {
+          type: attack.def.type, cls: attack.def.cls, slot: 8, noReact: true,
+        });
+      }
+    }
     limitWindBossHit(index, damage) {
       const {player, enemies, time} = this.run;
       if (!player.buffs.has(speedBuff)) return damage;
@@ -30721,9 +30895,7 @@ function Q_(e, t, n, r) {
       break;
     case `vortex`: {
       let r = e.aimDir(14, n);
-      const target=r.target;
-      const lifetime=o.effectKey==='wind-twister' && target>=0
-        ? Math.min(p,Math.max(.25,(Math.hypot(E.x[target]-v,E.z[target]-b)+.6)/m)) : p;
+      const flags = em.Pull | em.Explode | em.Spin | (o.effectKey === 'wind-twister' ? em.PassThroughEnemies : 0);
       for (let n = 0; n < f; n++) {
         let i = (n - (f - 1) / 2) * 0.6,
           a = Math.cos(i),
@@ -30735,12 +30907,12 @@ function Q_(e, t, n, r) {
           dx: r.x * a - r.z * s,
           dz: r.x * s + r.z * a,
           speed: m,
-          life: lifetime,
+          life: p,
           radius: 1.2,
           dmg: u,
           type: o.type,
           cls: o.cls,
-          flags: em.Pull | em.Explode | em.Spin,
+          flags,
           explodeR: d,
           explosionArtRadius: artRadius,
           pierce: 99,
@@ -31915,7 +32087,7 @@ var mv = 30,
         (this.data = k.get(t)),
         (this.types = this.data.types),
         (this.evoStage = 0),
-        (this.roster = le(t, (e) => k.root(e).id)),
+        (this.roster = rosterForMode(le(t, (e) => k.root(e).id), e.mode)),
         (this.ability = this.roster?.passive ?? k.abilities[this.data.abilities[0]]?.key ?? `none`),
         this.recompute(),
         (this.hp = this.maxHp));
@@ -32015,7 +32187,7 @@ var mv = 30,
       (rv(e, [t, n, r, i, a, this.run.allies ? this.run.allies.mods() : []]),
         av(e),
         this.run.endless && (e.moveSpeed = de(e.moveSpeed)));
-      applyStarterSpeed(e,this.buffs);
+      applyStarterSpeed(e,this.buffs,this.speciesId);
       e.damage *= 1 + windSpeedDamageBonus(this.speciesId,e.moveSpeed,this.baseSpeed);
       let u = this.maxHp;
       ((this.stats = e),
@@ -33607,6 +33779,7 @@ var mv = 30,
             (t.vfx.ring(this.pos.x, this.pos.y, this.pos.z, 2, 16777215, 0.3),
             (this.pos.x = n.x),
             (this.pos.z = n.z),
+            (fe = n.x), (pe = n.z),
             (this.pos.y = r.height(n.x, n.z)),
             this.vel.set(0, 0, 0),
             (this.kx = this.kz = 0),
@@ -33629,6 +33802,8 @@ var mv = 30,
         if(ce && this.pos.x!==ue)this.vel.x*=Gs((this.pos.x-fe)/ce,0,1);
         if(le && this.pos.z!==de)this.vel.z*=Gs((this.pos.z-pe)/le,0,1);
       }
+      const windRush = this.buffs.get(speedBuff);
+      if (windRush) t.combat.windRushContacts(windRush, fe, pe);
       const platform=r.propTop(this.pos.x,this.pos.z,this.radius,this.pos.y+.0001);
       this.pos.y += this.vel.y * e;
       let ve = Math.max(r.height(this.pos.x, this.pos.z),platform);
@@ -33776,7 +33951,7 @@ var mv = 30,
       }
       (!evolving && this.hurtT > 0 && ((n = `hurt`), (r = 0.6), (i = !0)), this.dead && ((n = `hurt`), (r = 1), (i = !0)));
       let l = e.sprites.dirRow(o, s),
-        u = this.iframes > 0 && Math.floor(e.time * 20) % 2 == 0,
+        u = !evolving && this.iframes > 0 && Math.floor(e.time * 20) % 2 == 0,
         d = this.invisT > 0 ? 0.5 : 0,
         f = e.spectralSkin ? [0.82, 0.66, 1.35, 0.68 + 0.07 * Math.sin(e.time * 3)] : [1, 1, 1, 0];
       t.push(
@@ -33841,7 +34016,8 @@ var mv = 30,
             glow: 1,
             spin: 4,
           }),
-        !t.zxOriginalGlyph && e.sprites.shadows.push(this.pos.x, p, this.pos.z, 1.4),
+        // Original artwork still needs a separate contact shadow on the ground.
+        e.sprites.shadows.push(this.pos.x, p, this.pos.z, 1.4),
         e.playerFootRing ??= e.sprites.clipFootRing(createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr})));
       e.playerFootRing.visible=!this.dead;
       e.playerFootRing.position.set(this.pos.x,p+.09,this.pos.z);
@@ -36398,9 +36574,7 @@ const fireStampedeRecipe = {
   "cls": "physical",
   "cd": 3.6,
   "range": 15,
-  "sfx": function sfx(e) {
-        (j(e, 400, 0.14, 0.2), fs(e, 0.12, 0.3, 0.05));
-      },
+  "sfx": e => e.move('stampede', 'cast'),
   "cast": function cast(e) {
         let t = e.run;
         const ghostForm={species:t.player.speciesId,scale:t.player.renderScale};
@@ -46331,6 +46505,8 @@ var GT = 15,
             }[e],
           }),
           null,
+          undefined,
+          e,
         ));
     }
     applyWeatherLook() {
@@ -47278,7 +47454,8 @@ var GT = 15,
         this.audio.duck(0.2, EVOLUTION_DURATION),
         this.cry(e),
         this.ui.showEvolution(e, t, r));
-      this.sprites.prepareHeroForm(t);
+      this.sprites.prepareHeroForm(t,this.r.renderer);
+      n.heroPlayback=undefined;
       let s = this.camYaw;
       this.setCine({ follow: -2, dist: 3.6, pitch: 0.22, orbit: 0 });
       this.vfx.upgrade.play(n,true,r);
@@ -47286,14 +47463,14 @@ var GT = 15,
         r,
         (progress) => {
           // Only the reveal callback changes species, stats and unlocks.
-          const charge=Math.max(0,(progress-.96)/.04);
-          n.flash=this.hideOwnFx?0:charge*(this.vfx.calm?.18:.65);
+          const pose=evolutionPose(progress*r);
+          n.flash=this.hideOwnFx?0:pose.flash*(this.vfx.calm?.18:1);
           n.renderScale=1;
         },
         () => {
           ((n.speciesId = e),
             n.setSpecies(t),
-            (n.flash = this.hideOwnFx?0:this.vfx.calm?.18:.65),
+            (n.flash = this.hideOwnFx?0:this.vfx.calm?.18:1),
             (n.renderScale = 1),
             (n.iframes = Math.max(n.iframes, 2.6)),
             (this.nextEvo = this.planEvolution(t, n.level + 3)),
@@ -47303,42 +47480,46 @@ var GT = 15,
           let r = n.pos.x,
             c = n.pos.z;
           const evolvedMaxHp=Math.round(n.maxHp);
+          // The world is stationary through landing. Keep the reveal's target
+          // list and damage, but amortize hits, deaths and drops over its frames.
+          const enemies=this.enemies, targets=enemies.within(r,c,18);
+          const generations=targets.map(id=>enemies.gen[id]);
+          const type=n.types[0], damage=80*n.level;
+          let nextTarget=0, resultReady=false;
+          const applyPulse=progress=>{
+            const end=Math.min(targets.length,Math.max(nextTarget+6,Math.ceil(targets.length*progress)));
+            while(nextTarget<end){
+              const index=nextTarget++, id=targets[index];
+              if(enemies.gen[id]!==generations[index]||!enemies.isAlive(id)||enemies.flags[id]&R.Capture)continue;
+              if(enemies.flags[id] & (R.Boss | 12290))
+                this.combat.hit(id,enemies.maxHp[id]*.05,{type,cls:'special',fixed:true,silent:true,noReact:true});
+              else this.combat.hit(id,damage,{type,cls:'special',silent:true,knock:8,noReact:true});
+            }
+          };
+          applyPulse(0);
           this.animate(
-            0.46,
-            (e) => {
-              const lift = Math.sin(e * Math.PI);
-              n.evolutionLift = this.hideOwnFx ? 0 : lift * 0.52;
+            EVOLUTION_DURATION-EVOLUTION_REVEAL,
+            (progress) => {
+              applyPulse(progress);
+              if(!resultReady && progress>=.25){
+                this.ui.prepareEvolutionResult?.(e,t,o,evolvedMaxHp);
+                resultReady=true;
+              }
+              const elapsed=progress*(EVOLUTION_DURATION-EVOLUTION_REVEAL);
+              const pose=evolutionPose(EVOLUTION_REVEAL+elapsed);
+              n.evolutionLift = this.hideOwnFx ? 0 : this.vfx.upgrade.camera.lift(pose.lift);
+              n.flash=(this.hideOwnFx?0:this.vfx.calm?.18:1)*pose.flash;
             },
             () => {
               n.renderScale = 1;
-              n.evolutionLift = 0;
+              n.evolutionLift = 0;n.flash=0;
               this.ui.evolutionReveal(e,t,o,evolvedMaxHp);
+              this.state='play';this.cine.want=0;this.yawBack=s;
+              this.ui.endCinematic();this.evoHold=2.4;
             },
           );
-          for (let e of this.enemies.within(r, c, 18))
-            this.enemies.flags[e] & R.Capture ||
-              (this.enemies.flags[e] & (R.Boss | 12290)
-                ? this.combat.hit(e, this.enemies.maxHp[e] * 0.05, {
-                    type: n.types[0],
-                    cls: `special`,
-                    fixed: !0,
-                    silent: !0,
-                    noReact: !0,
-                  })
-                : this.combat.hit(e, 80 * n.level, {
-                    type: n.types[0],
-                    cls: `special`,
-                    silent: !0,
-                    knock: 8,
-                    noReact: !0,
-                  }));
           (this.cry(t),
-            this.audio.evolveDone(),
-            (this.state = `play`),
-            (this.cine.want = 0),
-            (this.yawBack = s),
-            this.later(0.45, () => this.ui.endCinematic()),
-            (this.evoHold = 2.4));
+            this.audio.evolveDone());
         },
       );
     }
@@ -47591,7 +47772,7 @@ var GT = 15,
       let frozenWorld=false;
       if(this.state === `play` && this.pendingLevels > 0){
         if(finishingUltimate&&!this.coop)this.player.iframes=Math.max(this.player.iframes,r+.1);
-        if(!this.coop&&!finishingUltimate&&this.ui.experienceReady?.() === false){
+        if(!this.coop&&this.evoHold<=0&&!finishingUltimate&&this.ui.experienceReady?.() === false){
           r=0;
           frozenWorld=!this.r.needsDraw&&window.hasFrozenUpgrade?.(this);
         }
@@ -48064,7 +48245,8 @@ var GT = 15,
     }
     shakeOff = new ti();
     updateCamera(e) {
-      if(this.terrain?.zxPaper){updatePaperCamera(this,e);Il.yaw=0;return;}
+      this.vfx?.upgrade.camera.restore();
+      if(this.terrain?.zxPaper){updatePaperCamera(this,e);this.vfx?.upgrade.camera.apply();Il.yaw=0;return;}
       let t = this.coop?.camFocus() ?? null,
         n = this.r.camera,
         r = t ?? this.player.pos;
@@ -48137,6 +48319,7 @@ var GT = 15,
       let E = Gs((this.player.speedNow - 8) * 0.8, 0, 10),
         ee = this.meta.profile.settings.fov + E - (this.capBall ? 18 * a : 0);
       Math.abs(n.fov - ee) > 0.05 && ((n.fov = Js(n.fov, ee, 6, e)), n.updateProjectionMatrix());
+      this.vfx?.upgrade.camera.apply();
     }
     renderWorld(e) {
       let t = this.r.camera;
@@ -48193,7 +48376,7 @@ var GT = 15,
         this.hints.dispose(),
         this.mapEvents.clear(),
         this.audio.stopMusic(),
-        this.audio.resetEffects(),
+        this.audio.endRun(),
         this.r.setAtmos(1, 1, 1, 0, 0.4),
         this.r.setSun(),
         (this.r.shared.uWind.value = 1),
@@ -64213,7 +64396,7 @@ function ZX(app) {
       // The combat resolver selects by the current species and the number of evolutions in this run.
       function visit(speciesId,depth,parent,level){
         const form=k.get(speciesId),def=Xh(speciesId,form.types[0]);
-        forms.push({id:speciesId,word:form.name,parent,level,name:glyphText(Zh(def,depth)),
+        forms.push({id:speciesId,word:form.name,parent,level,singleLevel:actor?.singleStageEvoLevels?.[depth-1],name:glyphText(Zh(def,depth)),
           desc:glyphText(gh(def.descs,depth)),duration:Qh(def,depth),type:def.type,category:kD(def.cls)});
         const next=depth===0&&actor?.branch ? actor.branch : k.evolutionsOf(speciesId).map(next=>next.id);
         for(const child of next){
@@ -72762,10 +72945,16 @@ var JI = class {
       }
       e.style.top = r > 0 ? `${Math.round(r + 8)}px` : ``;
     }
-    toast(message, item, iconFile) {
+    toast(message, item, iconFile, weatherKind) {
       if (!message) return;
-      const tab = X('i', {class: 'zx-note-tab', 'aria-hidden': 'true'});
+      const theme = weatherStyle(weatherKind);
+      const tab = theme ? weatherMark(weatherKind) : X('i', {class: 'zx-note-tab', 'aria-hidden': 'true'});
       const notice = X('div', {class: 'toast'}, tab, X('span', {class: 'zx-note-text'}, message));
+      if (theme) {
+        notice.dataset.weather = weatherKind;
+        notice.style.backgroundColor = theme[1];
+        notice.style.borderLeftColor = theme[0];
+      }
       this.toastsEl.append(notice);
       while (this.toastsEl.children.length > 4) this.toastsEl.firstChild.remove();
       if (item || iconFile) {
@@ -73551,14 +73740,14 @@ var JI = class {
         let t = _.bossIndex,
           r = _.kit,
           i = e.enemies.species[t];
-        const bossKey=i+'-'+_.name;
+        const bossKey=i+'-'+_.name, bossTag=c(r ? `Legendario` : `Guardián`);
         (n.boss.dataset.k !== bossKey &&
           ((n.boss.dataset.k = bossKey),
           $(n.bossPt).append(glyphPreview(i,.75,'pix',_.name)),
           n.boss.style.setProperty(`--c`, YC(Ni[k.get(i).types[0]])),
           (n.bossName.textContent = _.name),
           (this.bossLag = 1)),
-          (n.bossTag.textContent = c(r ? `Legendario` : `Guardián`)),
+          (n.bossTag.textContent !== bossTag && (n.bossTag.textContent = bossTag)),
           (n.bossRage.style.display = _.enraged ? `` : `none`),
           n.boss.classList.toggle(`legend`, !!r),
           n.boss.classList.toggle(`immune`, _.immune),
@@ -73586,16 +73775,32 @@ var JI = class {
           (n.bossFoot.style.display = this.bossSt.update(e.enemies, t) || r || l ? `` : `none`));
       } else ((n.boss.style.display = `none`), this.bossSt.reset());
       (this.miniBars(e, a, _.alive), this.placeToasts());
-      let v = e.events?.def;
-      if (v && e.events.left > 0) {
-        ((n.event.style.display = ``),
-          n.event.dataset.k !== v.name &&
-            ((n.event.dataset.k = v.name),
-            n.event.style.setProperty(`--c`, v.color),
-            (n.event.children[0].textContent = v.name)));
-        let t = c(`{n} s`, { n: Math.ceil(e.events.left) });
-        n.event.children[1].textContent !== t && (n.event.children[1].textContent = t);
-      } else n.event.style.display = `none`;
+      const world = e.events, zone = e.mapEvents, event = n.event;
+      let kind, name, left;
+      if (world?.def && world.left > 0) {
+        kind = world.kind === 'fog' ? 'spectral-fog' : world.kind;
+        name = world.def.name;
+        left = world.left;
+      } else if (zone?.bliz?.t > 0) {
+        kind = 'blizzard';
+        name = c('Ventisca');
+        left = zone.bliz.t;
+      } else if (zone?.spout?.t > 0) {
+        kind = 'spout';
+        name = c('¡Tromba marina!').replace(/[!！]/g, '');
+        left = zone.spout.t;
+      } else if (e.weatherT > 0 && v[e.weather]) {
+        kind = e.weather;
+        name = v[kind].name;
+        left = e.weatherT;
+      }
+      if (kind) {
+        if (event.dataset.kind !== kind) event.dataset.kind = kind;
+        if (event.children[0].textContent !== name) event.children[0].textContent = name;
+        if (event.style.display === 'none') event.style.display = '';
+        const countdown = c(`{n} s`, {n: Math.ceil(left)});
+        if (event.children[1].textContent !== countdown) event.children[1].textContent = countdown;
+      } else if (event.style.display !== 'none') event.style.display = 'none';
       if (e.lockTarget >= 0 && e.enemies.isAlive(e.lockTarget)) {
         let t = e.lockTarget,
           n = e.enemies,
@@ -79081,6 +79286,8 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
         return await this.openRun(e,onLoadProgress);
       } catch (error) {
         this.lastStartError=error;
+        // Loading can fail after audio has started but before a run owns it.
+        if (!this.run && N.inRun) N.endRun();
         console.error('[宝可梦] 森林初始化失败', error);
         if(e.coop?.reconnecting){
           e.coop.room.end(error.message,false);

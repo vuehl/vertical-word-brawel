@@ -1,0 +1,75 @@
+import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
+import atlas from '../../../resources/public/assets/vfx/fire-breath-reference.json' with {type:'json'};
+
+export const isReferenceBreath=e=>e.key?.def?.key==='flamethrower'||String(e.key).startsWith('enemy-cone-flamethrower');
+const vertex=`
+attribute vec4 iOrigin;attribute vec4 iPose;
+varying vec2 vUv;varying float vAlpha;
+void main(){
+  vec4 p=viewMatrix*vec4(iOrigin.xyz,1.);
+  vec3 forward=(viewMatrix*vec4(cos(iPose.x),0.,sin(iPose.x),0.)).xyz;
+  vec2 heading=normalize(forward.xy),side=vec2(heading.y,-heading.x);
+  vec2 local=(uv-vec2(${atlas.anchor[0]},${atlas.anchor[1]}))*iOrigin.w;
+  p.xy+=side*local.x+heading*local.y;
+  vec2 cell=vec2(mod(iPose.y,${atlas.columns}.),${atlas.rows-1}.-floor(iPose.y/${atlas.columns}.));
+  vUv=(cell+mix(vec2(.5/${atlas.tile}.),vec2(1.-.5/${atlas.tile}.),uv))/vec2(${atlas.columns}.,${atlas.rows}.);
+  vAlpha=iPose.z;gl_Position=projectionMatrix*p;
+}`;
+const fragment=`
+uniform sampler2D map;varying vec2 vUv;varying float vAlpha;
+void main(){vec4 c=texture2D(map,vUv);c.a*=vAlpha;if(c.a<.005)discard;gl_FragColor=c;
+#include <colorspace_fragment>
+}`;
+
+// One recorded spray per caster: startup/tail play once, the middle loops.
+// Damage and the continuously simulated packets remain in the original code.
+export class ReferenceFireBreath{
+  constructor(owner,scene){
+    this.owner=owner;this.streams=new Map();this.clock=0;this.limit=28;
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+    const texture=this.texture=new CanvasTexture(canvas);texture.colorSpace=SRGB;
+    texture.generateMipmaps=false;texture.minFilter=texture.magFilter=1006;
+    const image=new Image();
+    this.ready=new Promise(resolve=>{
+      const finish=ok=>{clearTimeout(timer);image.onload=image.onerror=null;this.loadError=!ok;resolve(ok);};
+      const timer=setTimeout(()=>finish(false),12000);
+      image.onload=()=>{if(!this.disposed){texture.image=image;texture.needsUpdate=true;this.loaded=true;}finish(true);};
+      image.onerror=()=>finish(false);image.src='assets/vfx/fire-breath-reference.png';
+    });texture.userData.ready=this.ready;
+    const g=new BufferGeometry();g.setAttribute('position',new BufferAttribute(new Float32Array([0,0,0,1,0,0,1,1,0,0,1,0]),3));
+    g.setAttribute('uv',new BufferAttribute(new Float32Array([0,0,1,0,1,1,0,1]),2));g.setIndex([0,1,2,0,2,3]);
+    this.attributes=['iOrigin','iPose'].map(name=>{const a=new InstanceAttribute(new Float32Array(28*4),4).setUsage(DynamicDraw);g.setAttribute(name,a);return a;});
+    const material=new ShaderMaterial({vertexShader:vertex,fragmentShader:fragment,uniforms:{map:{value:texture}},transparent:true,depthTest:true,depthWrite:false,side:2,toneMapped:false});
+    material.forceSinglePass=true;
+    this.mesh=new InstancedMesh(g,material,28);this.mesh.count=0;this.mesh.visible=false;this.mesh.frustumCulled=false;
+    this.mesh.name='reference-fire-breath';this.mesh.renderOrder=7.2;scene.add(this.mesh);
+  }
+  setPerformance(profile){this.limit=profile.name==='流畅'?10:profile.name==='均衡'?18:28;}
+  update(dt,emitters){
+    dt=Math.max(0,dt);this.clock+=dt;
+    if(dt>0)for(const e of emitters){
+      if(!isReferenceBreath(e)||!e.fireTouched||!this.owner.allowed(e.own!==false))continue;
+      let s=this.streams.get(e.key);
+      if(!s){if(this.streams.size>=this.limit)continue;s={age:0,last:this.clock,own:e.own!==false};this.streams.set(e.key,s);}
+      if(this.clock-s.last>.08)s.age=0;
+      Object.assign(s,{x:e.x,y:e.y,z:e.z,angle:e.angle,size:e.artLength*1.35,last:this.clock});
+    }
+    const [origin,pose]=this.attributes.map(a=>a.array),v=this.owner.vfx;let count=0;
+    for(const [key,s] of this.streams){
+      s.age+=dt;
+      const idle=this.clock-s.last,tail=idle>.05,clip=atlas.clips;
+      if(!this.owner.allowed(s.own)||idle>.05+clip.tail.count/atlas.fps){this.streams.delete(key);continue;}
+      if(count>=this.limit)continue;
+      let frame;
+      if(tail)frame=clip.tail.first+Math.min(clip.tail.count-1,Math.floor((idle-.05)*atlas.fps));
+      else{const t=Math.floor(s.age*atlas.fps);frame=t<clip.start.count?t:clip.loop.first+(t-clip.start.count)%clip.loop.count;}
+      const o=count++*4;
+      origin.set([s.x,s.y,s.z,s.size],o);
+      pose.set([s.angle,frame,v.opacity*(s.own?v.ownOpacity:1)*(v.calm?.78:1),0],o);
+    }
+    this.mesh.count=this.loaded?count:0;this.mesh.visible=this.mesh.count>0;
+    for(const a of this.attributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}
+  }
+  clear(){this.streams.clear();this.mesh.count=0;this.mesh.visible=false;}
+  dispose(){this.disposed=true;this.clear();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();this.texture.dispose();}
+}

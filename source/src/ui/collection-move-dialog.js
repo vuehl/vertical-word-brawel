@@ -100,7 +100,7 @@ export function openUltimateDialog(el,info,trigger,typeName,glyph){
   const dock=forms.length>1?el('div','zc-ult-forms',[],{role:'group','aria-label':'选择大招形态'}):null;
   if(dock){
     for(const form of forms){
-      const tab=el('button','zc-form-tab',[glyph(form.id),el('small','',form.level?'Lv.'+form.level:'初始')],
+      const tab=el('button','zc-form-tab',[glyph(form.id),el('small','',form.level?(form.singleLevel?form.singleLevel+'/'+form.level:'Lv.'+form.level):'初始')],
         {type:'button','data-form':form.id,'aria-label':form.word+' · '+form.name});
       tab.addEventListener('click',()=>{
         if(tab.getAttribute('aria-pressed')!=='true')updateHeader(show(form));
@@ -123,7 +123,7 @@ export function openUltimateDialog(el,info,trigger,typeName,glyph){
       el('section','zc-ult-section zc-ult-rules',[
         el('div','zc-form-heading',[el('b','zc-ult-section-title','释放方式'),el('small','','施放 '+form.duration+' 秒')]),
         el('p','','战斗中随时间、击败敌人或受击蓄能。蓄满后，点击局内「大招」释放。'),
-        el('small','',form.parent?'进阶条件 · '+form.parent+' → '+form.word+' · Lv.'+form.level:'初始形态 · '+form.word),
+        el('small','',form.parent?'进阶条件 · '+form.parent+' → '+form.word+(form.singleLevel?' · 单关 '+form.singleLevel+' 级 / 多关 '+form.level+' 级':' · Lv.'+form.level):'初始形态 · '+form.word),
       ]),
       chart
     );

@@ -43,7 +43,7 @@ export function journeyScene(){
       const image=new Image();
       image.onload=()=>{desk=image;paint();resolve();};
       image.onerror=()=>{deskReady=null;resolve();};
-      image.src='assets/ui-paper/journey-desk.png';
+      image.src='assets/ui-paper/journey-desk.webp';
     });
     return deskReady;
   }
@@ -81,7 +81,7 @@ export function journeyScene(){
       ctx.fillStyle='#292943';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
       ctx.fillStyle='#21253F';ctx.fillRect(-margin,h,w+2*margin,margin);
       ctx.save();ctx.scale(scale,scale);
-      paintLoadingBackdrop(ctx,w/scale,h/scale,()=>actor,word);ctx.restore();
+      paintLoadingBackdrop(ctx,w/scale,h/scale,(c,_word,x,y,size)=>c.drawImage(actor,x,y,size,size),word);ctx.restore();
       window.invalidateUI?.();return;
     }
     ctx.fillStyle='#E5E6D8';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);

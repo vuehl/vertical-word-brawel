@@ -298,7 +298,7 @@ html.zixing .zx-battle-map-art{position:absolute;inset:0;display:block;width:100
 .zx-map-filters .zx-map-filter{width:23.5%;min-height:32px;padding:6px 0;border:1px solid #d7dfdf;border-radius:9px;background:#f4f6f2;color:#496071;font-size:11px;line-height:18px;box-shadow:none}
 .zx-map-filters .zx-map-filter.on{border-color:#719abd;background:#dfedf8;color:#294d70;font-weight:700}
 .zx-map-status{width:100%;text-align:center;font-size:11px;line-height:16px}
-.zx .zx-atlas-legend>.zx-atlas-filter-toggle.zx-plain{display:flex;flex-direction:row;align-items:center;gap:4px;width:auto;height:28px;min-height:28px;padding:0 4px;font-size:12px;color:#354763}
+.zx .zx-atlas-legend>.zx-atlas-filter-toggle.zx-plain{display:flex;flex-direction:row;align-items:center;gap:4px;width:auto;height:28px;min-height:28px;padding:0 4px;font-size:12px;color:#EDF1F7}
 @media(max-width:350px){.zx-battle-map>h2{font-size:20px}.zx-battle-map>.zx-button{padding:8px 12px}}
 .zx-modal-wrap.zx-pause-screen{padding:0;align-items:stretch;background:var(--paper)}
 .zx-modal.zx-pause{width:100%;max-width:none;height:100%;max-height:100%;border:0;border-radius:0;box-shadow:none;padding:0;gap:0;overflow:hidden;background:var(--paper)}

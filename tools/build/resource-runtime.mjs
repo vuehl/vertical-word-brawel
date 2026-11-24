@@ -1,5 +1,5 @@
 export {resourceEntries} from './resource-stream.mjs';
-export {restoreSprite} from './sprite-png.mjs';
+export {restoreSprite,encodeImageData} from './sprite-png.mjs';
 export {strFromU8 as decodeText} from 'fflate';
 
 export function decodeBrotli(bytes, rawSize) {

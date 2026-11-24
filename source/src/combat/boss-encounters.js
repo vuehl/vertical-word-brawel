@@ -8394,6 +8394,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             c(`¡Tromba marina!`),
             c(`Atrapa a los Pokémon y te lanza por los aires: aterriza sobre la horda`),
             `#6ab8ff`,
+            undefined,
+            'spout',
           ),
           e.audio.alarm());
       }
@@ -8621,6 +8623,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               `El viento te empuja y casi no se ve: resguárdate tras rocas y acantilados, y no te quedes quieto`,
             ),
             `#bfeaff`,
+            undefined,
+            'blizzard',
           ),
           e.audio.alarm());
         let r = Je(ib).filter((e) => k.hasSprite(e));
@@ -8740,7 +8744,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             shape: I.Soft,
           });
         }
-        n.t <= 0 && ((this.bliz = null), t.pushLook(), t.ui.toast(c(`La ventisca amaina`), null));
+        n.t <= 0 && ((this.bliz = null), t.pushLook(), t.ui.toast(c(`La ventisca amaina`), null, undefined, 'blizzard'));
       }
       atmos() {
         let e = this.bliz;
@@ -9469,6 +9473,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               n.sub,
               n.color,
               e === `meowth` ? { species: lb } : void 0,
+              e === `fog` ? 'spectral-fog' : e,
             ),
             t.audio.alarm(),
             e === `storm` && t.audio.boom(0.6),
@@ -9487,7 +9492,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               : this.kind === `storm`
                 ? c(`La tormenta se aleja`)
                 : ``;
-          e && t.ui.toast(e, null);
+          e && t.ui.toast(e, null, undefined, this.kind === 'fog' ? 'spectral-fog' : this.kind);
         }
         ((this.kind = null), (this.left = 0));
       }

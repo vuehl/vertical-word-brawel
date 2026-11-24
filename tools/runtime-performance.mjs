@@ -87,7 +87,7 @@ try{
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
   const deskReview=process.argv.includes('--map-play')||process.argv.includes('--illustrated-desk');
-  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
+  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
@@ -119,7 +119,13 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--idle-warmup')){
+  if(process.argv.includes('--late-combat-feedback')){
+    const {reviewLateFeedback}=await import('./regression/late-combat-feedback.mjs');
+    await reviewLateFeedback(page);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--combat-audio')){
+    const {reviewCombatAudio}=await import('./regression/combat-audio-regression.mjs');
+    await reviewCombatAudio(page);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--idle-warmup')){
     const result=await page.evaluate(()=>{
       const run=app.run,sprites=run.sprites,gap=1000/30,clock=run.time,count=run.enemies.count;
       let now=performance.now();

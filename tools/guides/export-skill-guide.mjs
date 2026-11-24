@@ -86,7 +86,7 @@ for (const recipe of allFusions) {
 }
 const sources = [
   ['source/src/game.js', '技能生成、候选池、融合判定、伤害与大招实现'],
-  ['source/src/data/starter-characters.js', '当前出战名单与 10 / 20 级进阶配置'],
+  ['source/src/data/starter-characters.js', '当前出战名单与两种模式的进阶配置'],
   ['source/src/data/form-copy.js', '各形态的技能显示名与融合名称'],
   ['source/src/data/skill-availability.js', '技能移除规则、空气斩归属与融合停用清单'],
   ['source/src/data/config.js', '炎系固定技能组、入池等级与道具'],

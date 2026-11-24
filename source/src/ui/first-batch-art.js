@@ -123,7 +123,7 @@ export function rewardPaper(kind,quality){
 export function headerCutout(family){
   const node=document.createElement('img');
   node.className='zc-header-cutout';
-  node.src='assets/ui-paper/header-'+family+'.png';
+  node.src='assets/ui-paper/header-'+family+'.webp';
   node.dataset.paperBleed='top';
   node.setAttribute('aria-hidden','true');
   node.alt='';
@@ -238,7 +238,7 @@ function drawEvolutionStamp(ctx,progress){
   ctx.restore();
 }
 
-export function evolutionResult(from,to,look,before,after){
+export function evolutionResult(from,to,look){
   const {node:face,ctx}=canvas(320,66,'');
   const edge=[[1,2],[289,2],[301,9],[301,45],[286,60],[0,60]];
   ctx.save();ctx.translate(1,4);polygon(ctx,edge,'#557aa7');ctx.restore();
@@ -250,18 +250,20 @@ export function evolutionResult(from,to,look,before,after){
   ctx.textBaseline='middle';ctx.fillStyle='#233a59';ctx.font='bold 21px "Ziling Swei",sans-serif';
   const route=from.word+' → '+to.word;
   ctx.fillText(route,65,21);
-  const detail='最大生命 '+before+' → ';
-  ctx.font='16px "Ziling Swei",sans-serif';const detailWidth=ctx.measureText(detail).width;
-  ctx.font='bold 20px "Ziling Swei",sans-serif';const valueWidth=ctx.measureText(String(after)).width;
-  ctx.save();ctx.translate(65,0);ctx.scale(Math.min(1,218/(detailWidth+valueWidth)),1);
-  ctx.font='16px "Ziling Swei",sans-serif';ctx.fillStyle='#374f70';ctx.fillText(detail,0,46);
-  ctx.font='bold 20px "Ziling Swei",sans-serif';ctx.fillStyle='#3d6395';ctx.fillText(String(after),detailWidth,45);ctx.restore();
   const {node,ctx:print}=canvas(320,66,'zx-evolution-result');
   const {node:stamp,ctx:seal}=canvas(100,100,'zx-evolution-stamp',3);
   stamp.dataset.uiLayer='evolution-stamp';
   node.dataset.uiLayer='evolution-result';
   node.removeAttribute('aria-hidden');node.setAttribute('role','status');
-  node.setAttribute('aria-label','进阶完成，'+route+'，最大生命 '+before+' → '+after);
+  function setHealth(before,after){
+    const detail='最大生命 '+before+' → ';
+    ctx.font='16px "Ziling Swei",sans-serif';const detailWidth=ctx.measureText(detail).width;
+    ctx.font='bold 20px "Ziling Swei",sans-serif';const valueWidth=ctx.measureText(String(after)).width;
+    ctx.save();ctx.translate(65,0);ctx.scale(Math.min(1,218/(detailWidth+valueWidth)),1);
+    ctx.font='16px "Ziling Swei",sans-serif';ctx.fillStyle='#374f70';ctx.fillText(detail,0,46);
+    ctx.font='bold 20px "Ziling Swei",sans-serif';ctx.fillStyle='#3d6395';ctx.fillText(String(after),detailWidth,45);ctx.restore();
+    node.setAttribute('aria-label','进阶完成，'+route+'，最大生命 '+before+' → '+after);
+  }
   function paint(progress){
     print.clearRect(0,0,320,66);
     const enter=Math.min(1,.65+progress*2.6);
@@ -272,7 +274,7 @@ export function evolutionResult(from,to,look,before,after){
     stamp.dataset.frame=String(progress);
     node.dataset.frame=String(progress);
   }
-  return {node,stamp,paint};
+  return {node,stamp,paint,setHealth};
 }
 
 export function arrivalPennant(){
@@ -410,7 +412,7 @@ export function albumPreviewCorners(){
 export function stagePortrait(character,appearance=null,large=false){
   const portrait=document.createElement('span');
   portrait.className='paper-stage-photo paper-portrait';portrait.dataset.paperSurface='flat';
-  const print=document.createElement('img');print.src='assets/ui-paper/stage-portrait.png';print.alt='';
+  const print=document.createElement('img');print.src='assets/ui-paper/stage-portrait.webp';print.alt='';
   const scale=large?2:1;
   const {node,ctx}=canvas(94*scale,106*scale,'paper-photo-glyph');
   ctx.scale(scale,scale);

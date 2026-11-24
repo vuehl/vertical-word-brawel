@@ -171,13 +171,13 @@ function drawFacilityGuide(ctx,target){
 
 // Only neighbouring places of the same type share an icon. Keep every real
 // location as a dot, and anchor each group at its nearest member, not a new point.
-export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0){
+export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0,square=false){
   const box=group=>{
     const w=Math.max(size,group.labelWidth||0),h=size+(labelSize?labelSize+1.5:0);
-    const limit=Math.sqrt(47**2-(w/2)**2)-h/2;
+    const limit=(square?47:Math.sqrt(47**2-(w/2)**2))-h/2;
     let y=Math.max(58-limit,Math.min(58+limit,group.y));
     const fitX=()=>{
-      const half=Math.sqrt(Math.max(0,47**2-(Math.abs(y-58)+h/2)**2))-w/2;
+      const half=(square?47:Math.sqrt(Math.max(0,47**2-(Math.abs(y-58)+h/2)**2)))-w/2;
       return Math.max(60-half,Math.min(60+half,group.x));
     };
     let x=fitX();
@@ -207,7 +207,8 @@ export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0)
       // Keep different building names apart as well as their icons. The dot
       // and leader line retain the true location when a label needs to move.
       for(let y=12;y+h<=104;y+=2)for(let x=14;x+w<=106;x+=2){
-        if([[x,y],[x+w,y],[x,y+h],[x+w,y+h]].some(([a,b])=>Math.hypot(a-60,b-58)>47))continue;
+        if(!square&&[[x,y],[x+w,y],[x,y+h],[x+w,y+h]].some(([a,b])=>Math.hypot(a-60,b-58)>47))continue;
+        if(square&&x<20&&y<19)continue; // Leave the north arrow clear.
         if(x<player.x+7&&x+w>player.x-7&&y<player.y+8&&y+h>player.y-8)continue;
         const score=(x+w/2-group.x)**2+(y+size/2-group.y)**2;
         choices.push({box:{x,y,w,h},parts:parts({x,y,w,h}),score});
@@ -232,12 +233,12 @@ export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0)
   }
   return groups;
 }
-function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0){
+function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0,square=false){
   if(labelSize){
     ctx.font='bold '+labelSize+'px "Ziling Swei", sans-serif';
     markers=markers.map(marker=>({...marker,labelWidth:ctx.measureText(facilityNames[marker.kind]).width+2}));
   }
-  const groups=layoutBuildingIcons(markers,size,player,labelSize);
+  const groups=layoutBuildingIcons(markers,size,player,labelSize,square);
   for(const marker of markers){
     ctx.beginPath();ctx.arc(marker.x,marker.y,1,0,Math.PI*2);ctx.fillStyle='#517589';ctx.fill();
   }
@@ -274,8 +275,37 @@ function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0){
   return groups;
 }
 
+// Square detail view crops the old dial's margins; picking uses the same viewBox.
+export const atlasView={left:9.5,top:7.5,size:101};
+function atlasEdge(ctx){
+  ctx.beginPath();
+  ctx.moveTo(11,10.8);ctx.lineTo(41,9.2);ctx.quadraticCurveTo(43,9.1,45,9.2);
+  ctx.lineTo(73,10.7);ctx.quadraticCurveTo(75,10.8,77,10.7);
+  ctx.lineTo(109,9.1);ctx.lineTo(109,105.2);
+  ctx.lineTo(77,106.8);ctx.quadraticCurveTo(75,106.9,73,106.8);
+  ctx.lineTo(45,105.3);ctx.quadraticCurveTo(43,105.2,41,105.3);
+  ctx.lineTo(11,106.9);ctx.closePath();
+}
+function finishAtlasPaper(ctx){
+  for(const x of [43,75]){
+    const crease=ctx.createLinearGradient(x-2,0,x+2.8,0);
+    crease.addColorStop(0,'rgba(255,255,255,0)');
+    crease.addColorStop(.48,'rgba(255,255,255,.18)');
+    crease.addColorStop(.52,'rgba(68,92,113,.08)');
+    crease.addColorStop(1,'rgba(68,92,113,0)');
+    ctx.fillStyle=crease;ctx.fillRect(x-2,9,4.8,98);
+  }
+  // Taper only the paper and map ink. All location symbols are painted next.
+  const rim=ctx.createLinearGradient(0,9,0,107);
+  for(const [stop,alpha] of [[0,.02],[.015,.30],[.035,.77],[.055,1],[.945,1],[.965,.77],[.985,.30],[1,.02]]){
+    rim.addColorStop(stop,'rgba(255,255,255,'+alpha+')');
+  }
+  ctx.globalCompositeOperation='destination-in';
+  ctx.fillStyle=rim;ctx.fillRect(0,0,120,120);
+}
+
 // Both map sizes use a north-up projection. In co-op the open map follows peer snapshots.
-export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=false,square=false,facilityKind=run.ui?.mapFacilityKind??null,iconFor=run.ui?.mapFacilityIcon,center=run.player.pos}={}) {
+export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=false,square=false,atlas=null,facilityKind=run.ui?.mapFacilityKind??null,iconFor=run.ui?.mapFacilityIcon,center=run.player.pos}={}) {
   const ctx=canvas.getContext('2d'),p=run.player.pos,scale=mapWorldScale;
   const distances=[],buildings=[];
   const markers=run.interactables.markers();
@@ -292,13 +322,9 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
   };
   ctx.setTransform(canvas.width/120,0,0,canvas.height/120,0,0);ctx.clearRect(0,0,120,120);
   if(square){
-    ctx.fillStyle='#798DA9';ctx.fillRect(2,3,116,116);
-    ctx.fillStyle='#E5ECF6';ctx.fillRect(1,1,116,116);
-    ctx.fillStyle='#CEDBEA';ctx.fillRect(4,4,110,110);
-    ctx.fillStyle='#F3F1FA';ctx.fillRect(6,6,106,106);
-    ctx.fillStyle='#536E96';
-    for(let i=0;i<=10;i++){const a=11+i*9.8,t=i%5===0?2.4:1.2;ctx.fillRect(a,7.2,.45,t);ctx.fillRect(7.5,9+i*9.8,t,.45);}
-    ctx.beginPath();ctx.moveTo(104,110);ctx.lineTo(111,103);ctx.lineTo(111,110);ctx.closePath();ctx.fill();
+    const unit=canvas.width/atlasView.size;
+    ctx.setTransform(unit,0,0,unit,-unit*atlasView.left,-unit*atlasView.top);
+    atlasEdge(ctx);ctx.fillStyle='#E4EAEC';ctx.fill();
   }else{
   if(shadow)dot(60,62,56,hanging?'#445D84':'#527ab2',null);
   dot(60,58,56,hanging?'#7594BC':'#fffdf7',null);dot(60,58,52,hanging?'#F3F1FA':'#c3daeb',null);dot(60,58,49,'#eff5f4',null);
@@ -308,18 +334,37 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
     dot(60,5,2.4,'#E8EEFA',null);
   }
   }
-  ctx.save();ctx.beginPath();if(square)ctx.rect(11,9,98,98);else ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
+  ctx.save();ctx.beginPath();if(square)atlasEdge(ctx);else ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
   // Scale map contents around the player within the fixed circular frame.
   ctx.translate(60,58);ctx.scale(1/viewRatio,1/viewRatio);ctx.translate(-60,-58);
   const left=60-radius,right=60+radius,top=58-radius,bottom=58+radius;
-  const half=run.terrain.world/2,[bx,by]=point(-half,-half);
-  ctx.strokeStyle='#c3cec6';ctx.lineWidth=1;ctx.strokeRect(bx,by,half*2*scale,half*2*scale);
-  for(const prop of run.terrain.zxProps||[]){
-    if(prop.w*prop.d<80)continue;
-    const [x,y]=point(prop.x,prop.z),w=Math.max(2,prop.w*scale),h=Math.max(2,prop.d*scale);
-    if(x+w/2<left||y+h/2<top||x-w/2>right||y-h/2>bottom)continue;
-    ctx.fillStyle='#e4eae3';
-    ctx.fillRect(x-w/2,y-h/2,w,h);
+  if(atlas){
+    const [x,y]=point(-atlas.x,-atlas.z),w=2*atlas.x*scale,h=2*atlas.z*scale;
+    ctx.drawImage(atlas.art,x,y,w,h);
+    // The map and its ruled margin use one world-space grid.
+    const step=Math.max(atlas.x,atlas.z)*scale/4;
+    ctx.strokeStyle='rgba(84,105,127,.10)';ctx.lineWidth=.16*viewRatio;ctx.beginPath();
+    for(let col=60;col<=right;col+=step){
+      ctx.moveTo(col,top);ctx.lineTo(col,bottom);
+      if(col>60){ctx.moveTo(120-col,top);ctx.lineTo(120-col,bottom);}
+    }
+    for(let row=58;row<=bottom;row+=step){
+      ctx.moveTo(left,row);ctx.lineTo(right,row);
+      if(row>58){ctx.moveTo(left,116-row);ctx.lineTo(right,116-row);}
+    }
+    ctx.stroke();
+    ctx.save();ctx.translate(60,58);ctx.scale(viewRatio,viewRatio);ctx.translate(-60,-58);
+    finishAtlasPaper(ctx);ctx.restore();
+  }else{
+    const half=run.terrain.world/2,[bx,by]=point(-half,-half);
+    ctx.strokeStyle='#c3cec6';ctx.lineWidth=1;ctx.strokeRect(bx,by,half*2*scale,half*2*scale);
+    for(const prop of run.terrain.zxProps||[]){
+      if(prop.w*prop.d<80)continue;
+      const [x,y]=point(prop.x,prop.z),w=Math.max(2,prop.w*scale),h=Math.max(2,prop.d*scale);
+      if(x+w/2<left||y+h/2<top||x-w/2>right||y-h/2>bottom)continue;
+      ctx.fillStyle='#e4eae3';
+      ctx.fillRect(x-w/2,y-h/2,w,h);
+    }
   }
   for(const cover of run.sanctuary?.covers||[]){
     if(!cover.alive)continue;const [x,y]=point(cover.x,cover.z);
@@ -345,12 +390,12 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
     const boss=i=>!!(enemies.flags[i]&(4|4096|8192))||(run.boss.alive&&run.boss.bossIndex===i);
     for(let kind=0;kind<3;kind++){
       if(kind<2){ctx.beginPath();ctx.fillStyle=kind?'#f2bd29':'#d76677';}
-      for(let i=0;i<enemies.n;i++){
+      for(let i=enemies.firstAlive??0;i<enemies.n;i++){
         if(!enemies.alive[i]||enemies.dying[i]>0||(enemies.flags[i]&32768))continue;
         const type=(enemies.flags[i]&(128|2048|16384))?3:boss(i)?2:(enemies.flags[i]&3)?1:0;if(type!==kind)continue;
         const x=60+(enemies.x[i]-center.x)*scale,y=58+(enemies.z[i]-center.z)*scale;
         if(!visible(x,y))continue;
-        if(kind>0&&(x-60)**2+(y-58)**2>edgeRadius**2)continue;
+        if(!square&&kind>0&&(x-60)**2+(y-58)**2>edgeRadius**2)continue;
         if(kind===2){
           dot(x,y,6.3,'#fff4dd','#d65b46');
           ctx.drawImage(glyphCanvas(enemies.glyphWords[i]),x-6,y-6,12,12);
@@ -360,9 +405,11 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
       }
       if(kind<2)ctx.fill();
     }
-    for(let i=0;i<enemies.n;i++){
+    for(let i=enemies.firstAlive??0;i<enemies.n;i++){
       if(!enemies.alive[i]||enemies.dying[i]>0||(enemies.flags[i]&32768))continue;
-      const marker=specialMapMarker(enemies.flags[i],(enemies.x[i]-center.x)*scale,(enemies.z[i]-center.z)*scale,boss(i),edgeRadius);
+      const dx=(enemies.x[i]-center.x)*scale,dz=(enemies.z[i]-center.z)*scale;
+      const markerEdge=square&&visible(60+dx,58+dz)?Infinity:edgeRadius;
+      const marker=specialMapMarker(enemies.flags[i],dx,dz,boss(i),markerEdge);
       // Alpha, Totem and Summoner are the three timed miniboss encounters.
       if(marker&&(boss(i)||(enemies.flags[i]&2))){
         const meters=Math.hypot(enemies.x[i]-p.x,enemies.z[i]-p.z);
@@ -382,11 +429,11 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
     const compact=canvas.width<480;
     const size=shadow?14:Math.min(16,Math.max(8,(compact?3840:4320)/canvas.width));
     const labelSize=shadow?9:(compact?2400:2640)/canvas.width;
-    groups=drawBuildingIcons(ctx,buildings,size,iconFor,playerOnDial,labelSize);ctx.restore();
+    groups=drawBuildingIcons(ctx,buildings,size,iconFor,playerOnDial,labelSize,square);ctx.restore();
   }
   for(const peer of run.coop?.visiblePeers()||[]){
     const dx=(peer.x-center.x)*scale,dz=(peer.z-center.z)*scale;
-    const k=Math.min(1,40*viewRatio/(Math.hypot(dx,dz)||1));
+    const k=square?1:Math.min(1,40*viewRatio/(Math.hypot(dx,dz)||1));
     const x=60+dx*k,y=58+dz*k;
     ctx.save();ctx.translate(x,y);ctx.scale(viewRatio,viewRatio);
     const color=friendColor(peer.slot);
@@ -395,7 +442,9 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
     }
     dot(0,0,5.3,color);ctx.font='bold 8px sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('友',0,0);ctx.restore();
   }
-  ctx.save();ctx.translate(px-60,py-58);
+  ctx.save();ctx.translate(px,py);
+  if(square)ctx.scale(.64*viewRatio,.64*viewRatio);
+  ctx.translate(-60,-58);
   dot(60,58,8.3,'#688dc633',null);dot(60,58,5.7,'#647fbb');
   if(guidance&&guidance.distance>.5)drawFacilityGuide(ctx,guidance);
   else{
@@ -404,7 +453,11 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
   ctx.restore();
   ctx.restore();
   if(distances.length)drawBossDistances(ctx,distances,shadow?8:4.5,groups.map(group=>group.box),playerOnDial);
-  if(square)return {count:buildings.length,groups,guidance};
+  if(square){
+    ctx.fillStyle='#526D8D';ctx.beginPath();ctx.moveTo(14.5,13.4);ctx.lineTo(16,17.5);ctx.lineTo(14.5,16.7);ctx.lineTo(13,17.5);ctx.closePath();ctx.fill();
+    ctx.font='bold 2.8px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('N',16.7,15.8);
+    return {count:buildings.length,groups,guidance};
+  }
   // A quiet compass notch lives on the rim, outside the clipped map contents.
   ctx.beginPath();ctx.moveTo(60,3);ctx.lineTo(62.5,8);ctx.lineTo(57.5,8);ctx.closePath();ctx.fillStyle='#527ab2';ctx.fill();
   return {count:buildings.filter(marker=>!facilityKind||marker.kind===facilityKind).length,groups,guidance};

@@ -179,6 +179,8 @@ test('crowd cadence keeps contact immediate and accounts for every elapsed simul
       assert.ok(Math.abs(simulated+pending-5)<1e-10);
       assert.ok(pending<.08);
     }
+    assert.equal(separationBudget(120,profile.enemySeparation),40);
+    assert.equal(separationBudget(200,profile.enemySeparation),24);
     assert.ok(separationBudget(600,profile.enemySeparation)<=24);
     assert.equal(separationBudget(50,profile.enemySeparation),profile.enemySeparation);
   }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 export async function reviewFireFamilyMedia(page,dir,moves){
  await page.setViewport({width:390,height:844,deviceScaleFactor:1});
- await page.evaluate(async()=>{window.dispatchEvent(new Event('resize'));vfxSetup();await Promise.all(['fireFamily','fireJet','fireSpin'].map(key=>app.run.vfx.crafted[key].ready));});
+ await page.evaluate(async()=>{window.dispatchEvent(new Event('resize'));vfxSetup();await Promise.all(['fireFamily','fireJet','fireSpin'].map(key=>app.run.vfx.crafted[key].ready));await app.run.vfx.crafted.fireJet.reference.ready;});
  const report={pictures:[],budgets:[]};
  report.dragon=await page.evaluate(()=>{
   const r=app.run,v=r.vfx.crafted,j=v.fireJet;vfxSetup();
@@ -12,20 +12,25 @@ export async function reviewFireFamilyMedia(page,dir,moves){
    v.clear();v.clock=0;v.refreshes=0;j.clock=0;j.serial=0;
    const key={def:{key:type==='dragon'?'dragon-breath':'flamethrower'}};
    for(let frame=0;frame<15;frame++){v.cone(key,0,1,0,0,-1,7,type,.7);v.update(1/30);}
-   return {samples:j.packets.map(p=>j.sample(p)),origin:Array.from(j.attributes[0].array.slice(0,j.mesh.count*4)),motion:Array.from(j.attributes[1].array.slice(0,j.mesh.count*4)),life:Array.from(j.attributes[2].array.slice(0,j.mesh.count*4))};
+   return {recorded:j.reference.mesh.count,painted:j.mesh.count,samples:j.packets.map(p=>j.sample(p)),origin:Array.from(j.attributes[0].array.slice(0,j.mesh.count*4)),motion:Array.from(j.attributes[1].array.slice(0,j.mesh.count*4)),life:Array.from(j.attributes[2].array.slice(0,j.mesh.count*4))};
   };
   const orange=render('fire'),purple=render('dragon');
-  const same=JSON.stringify(orange.samples)===JSON.stringify(purple.samples)&&JSON.stringify(orange.origin)===JSON.stringify(purple.origin)&&JSON.stringify(orange.life)===JSON.stringify(purple.life);
-  const tintOnly=orange.motion.every((n,i)=>purple.motion[i]===n+(i%4===3?4:0));
+  const same=JSON.stringify(orange.samples)===JSON.stringify(purple.samples);
+  const separateArt=orange.recorded===1&&orange.painted===0&&purple.recorded===0&&purple.painted>0&&purple.motion.filter((_,i)=>i%4===3).every(n=>n>=4);
   const a={def:{key:'flamethrower'}},b={def:{key:'dragon-breath'}};v.clear();
   for(let i=0;i<8;i++){v.cone(a,-2,1,0,0,-1,7,'fire',.7);v.cone(b,2,1,0,0,-1,7,'dragon',.7);v.update(1/30);}
   const kinds=Array.from(j.attributes[1].array.slice(0,j.mesh.count*4)).filter((_,i)=>i%4===3);
   j.impact(-2,1,-2,true,false,false);j.impact(2,1,-2,true,false,true);j.updateHits(0);
   const hitKinds=Array.from(j.hitAttributes[1].array.slice(0,j.hitMesh.count*4)).filter((_,i)=>i%4===3);
   const before=JSON.stringify(j.packets);v.update(0);const paused=before===JSON.stringify(j.packets);
-  vfxDraw();return {same,tintOnly,mixed:kinds.some(n=>n<4)&&kinds.some(n=>n>=4),mixedHits:hitKinds.includes(2)&&hitKinds.includes(6),paused};
- });assert.deepEqual(report.dragon,{same:true,tintOnly:true,mixed:true,mixedHits:true,paused:true});
+  vfxDraw();return {same,separateArt,mixed:j.reference.mesh.count===1&&kinds.some(n=>n>=4),mixedHits:hitKinds.includes(2)&&hitKinds.includes(6),paused};
+ });assert.deepEqual(report.dragon,{same:true,separateArt:true,mixed:true,mixedHits:true,paused:true});
  await page.screenshot({path:path.join(dir,'orange-and-purple.png')});
+ if(process.argv.includes('--fire-breath-compat')){
+  fs.writeFileSync(path.join(dir,'fire-breath-compat.json'),JSON.stringify(report,null,2)+'\n');
+  console.log('Reference flamethrower and dragon breath verified: separate artwork, identical simulation, simultaneous casts and pause.');
+  return report;
+ }
  report.claws=await page.evaluate(()=>{
   const f=app.run.vfx.crafted.fireFamily;vfxSetup();
   const sample=key=>{f.clear();f.strike(key,0,1,-2,0,-1,3);f.impact(key,0,1,-2);return f.events.map(({clip,size,life,angle,palette})=>({clip,size,life,angle,palette}));};

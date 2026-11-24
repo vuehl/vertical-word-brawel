@@ -1,3 +1,4 @@
+import {weatherStyle,weatherFill,drawWeatherMark,weatherMark} from './weather-presentation.js';
 import {glyphPreview} from '../actors/zixing-glyphs.js';
 import {summonerBarColors} from './battle-review-style.js';
 import {planIncludes,runPlan} from '../combat/battle-plan.js';
@@ -230,14 +231,16 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
   const resultMark=recipe=>el('div','zx-fusion-mark',[
     typeIcon(recipe.type,27),recipe.type2&&recipe.type2!==recipe.type?typeIcon(recipe.type2,20):null,
   ],{'aria-hidden':'true','data-paper-surface':'fusion-mark'});
-  const stamp=o=>el('span','zx-fusion-state'+(ready(o)?' ready':''),ready(o)?'可融合':'未满足');
-  const identity=o=>el('div','zx-fusion-identity',[resultMark(o.r),
-    el('div','zx-fusion-name',[planIncludes(runPlan(run),'fusions','m'+o.r.id)?planBadge():el('small','','融合结果'),el('h2','',o.r.name)]),stamp(o)]);
+  const identity=(o,showCaption=false)=>el('div','zx-fusion-identity',[resultMark(o.r),
+    el('div','zx-fusion-name',[planIncludes(runPlan(run),'fusions','m'+o.r.id)?planBadge():showCaption?el('small','','融合结果'):null,el('h2','',o.r.name)])]);
+  const shortLevel=n=>el('span','zx-fusion-short',String(n));
   const ingredients=o=>el('div','zx-fusion-pair',o.names.flatMap((name,i)=>{
     const move=run.player.moves[i?o.b:o.a]||run.player.moves.find(m=>m && m.def.id===o.ingredients[i]);
     const part=el('div','zx-fusion-part',[
       typeIcon(o.types[i],22),el('div','zx-fusion-material',[el('b','',name),
-        el('small',move?.level>=requiredLevel?'ready':'',move?'Lv.'+move.level+' / '+requiredLevel:'未学习')]),
+        el('small',move?.level>=requiredLevel?'ready':'',move&&move.level<requiredLevel
+          ?['Lv.',shortLevel(move.level),' / '+requiredLevel]
+          :move?'Lv.'+move.level+' / '+requiredLevel:'未学习')]),
     ]);
     return i?[el('span','zx-fusion-plus','＋'),part]:[part];
   }));
@@ -257,12 +260,15 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
     }
     return el('div','zx-fusion-stats',rows);
   };
-  const condition=o=>o.need?.join(' · ')||`两项招式均须达到 Lv.${requiredLevel}。`;
+  const condition=o=>{
+    const note=o.need?.join(' · ')||'两项招式均须达到 Lv.'+requiredLevel+'。';
+    return note.split(/(\d+)(?=\s*\/\s*\d+)/).map((part,i)=>i%2&&Number(part)<requiredLevel?shortLevel(part):part);
+  };
   let listScroll=0;
   const preview=index=>{
     const o=offers[index],a=run.player.moves[o.a]?.def,b=run.player.moves[o.b]?.def;
     const confirm=button('确认融合',()=>{session.select(index);session.submit(ready(o));},'primary',{'data-action':'confirm-fusion',disabled:!ready(o)});
-    const record=slip([identity(o),ingredients(o),
+    const record=slip([identity(o,true),ingredients(o),
       el('div','zx-fusion-effect',[tags(o.r),el('p','zx-review-description',o.r.desc),warning(o.r,a,b)]),
       el('div','zx-fusion-figures',[el('h3','','关键数值'),metrics(o.r)]),
       el('p','zx-fusion-footnote',ready(o)?'占用靠前的招式槽，释放另一个槽位。':condition(o)),
@@ -284,9 +290,8 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
           onclick:select,onkeydown:event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select();}}});
       const open=button('查看',()=>{listScroll=content.scrollTop;if(ready(o))session.select(index);preview(index);},
         'secondary',{'data-action':'view-fusion','aria-label':'查看'+o.r.name});
-      content.append(slip([surface,el('div','zx-fusion-rowfoot',[
-        el('small','',selected?'已选配方':'融合后占 1 个槽位'),open,
-      ])],'zx-review-recipe'+(selected?' selected':''),{'data-offer':index}));
+      const stateClass=ready(o)?(selected?' selected':''):' unavailable';
+      content.append(slip([surface,open],'zx-review-recipe'+stateClass,{'data-offer':index}));
     }
     if(!offers.length){
       content.append(slip([el('b','','暂无融合配方'),note('学习两项可组合的招式后，再来使用订书机。')],'zx-fusion-empty'));
@@ -371,42 +376,11 @@ export function drawBossArrival(canvas,{title,word,type,legend=false,kind},progr
   c.font='bold 27px "Ziling Swei",sans-serif';c.fillStyle=colors.subtitle;c.fillText(word+'  /  '+type,14,58);c.restore();
   for(let j=0;j<10;j++){c.save();c.translate((j*109+41)%780,(j*43+24)%350);c.rotate(.5);c.fillStyle=j%2?colors.light:colors.edge;c.fillRect(0,0,5,14);c.restore();}
 }
-// Only the status paper changes brightness; its lettering and icon stay steady.
-const weatherColors={
-  eclipse:{ink:'#E7D7FF',low:[53,40,72],high:[108,73,134]},
-  storm:{ink:'#FFDE89',low:[65,53,36],high:[118,91,35]},
-  blizzard:{ink:'#F1FAFF',low:[49,65,81],high:[93,116,133]},
-  fog:{ink:'#D7E8E9',low:[44,59,68],high:[76,101,111]},
-  spout:{ink:'#CDEAFF',low:[41,57,79],high:[62,97,130]},
-};
-function drawEventMark(canvas,kind){
-  const c=canvas.getContext('2d');
-  c.setTransform(2,0,0,2,0,0);c.clearRect(0,0,16,16);c.lineWidth=1.5;c.lineCap='round';c.lineJoin='round';
-  c.strokeStyle=c.fillStyle=weatherColors[kind]?.ink||'#E5BE78';
-  c.beginPath();
-  if(kind==='eclipse'){
-    c.arc(8,8,4.2,0,Math.PI*2);c.stroke();
-    for(let i=0;i<8;i++){const a=i*Math.PI/4;c.beginPath();c.moveTo(8+Math.cos(a)*6,8+Math.sin(a)*6);c.lineTo(8+Math.cos(a)*7,8+Math.sin(a)*7);c.stroke();}
-  }else if(kind==='storm'){
-    c.moveTo(9,1);c.lineTo(3,9);c.lineTo(7,9);c.lineTo(6,15);c.lineTo(13,6);c.lineTo(9,6);c.closePath();c.fill();
-  }else if(kind==='blizzard'){
-    for(let i=0;i<6;i++){
-      c.save();c.translate(8,8);c.rotate(i*Math.PI/3);
-      c.beginPath();c.moveTo(0,0);c.lineTo(0,-6.5);c.moveTo(-2,-4);c.lineTo(0,-3);c.lineTo(2,-4);c.stroke();c.restore();
-    }
-  }else if(kind==='spout'){
-    c.moveTo(1,4);c.lineTo(14,4);c.moveTo(3,8);c.lineTo(11,8);c.moveTo(5,12);c.lineTo(9,12);c.stroke();
-  }else if(kind==='fog'){
-    for(const [x,y,end] of [[4,4,13],[1,8,12],[5,12,15]]){c.moveTo(x,y);c.lineTo(end,y);}c.stroke();
-  }else{
-    c.arc(8,8,5.8,0,Math.PI*2);c.stroke();c.beginPath();c.moveTo(8,4);c.lineTo(10.5,8);c.lineTo(8,12);c.lineTo(5.5,8);c.closePath();c.fill();
-  }
-  canvas.dataset.frame=kind;
-}
 export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   const queue=new ReviewFeedbackQueue();let timer=0,arrival=null,started=0,session=0,lastSuccess=-1,captureWord='',flag=null,shown=null;
   const feed=el('div','zx-combat-feed'),teamRow=el('div','zx-combat-team'),feedback=el('div','zx-combat-feedback');
   hud.els.boss.classList.add('zx-review-boss');hud.els.boss.dataset.uiLayer='boss';
+  hud.els.bossBar.dataset.uiLayer='boss-health';
   hud.els.boss.dataset.paperSurface='boss-strip';hud.els.bossPt.dataset.paperSurface='boss-seal';
   for(const mini of hud.minis){
     mini.el.classList.add('zx-review-boss');
@@ -432,16 +406,17 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     const active=event.style.display!=='none';
     if(active!==lane.classList.contains('with-event'))lane.classList.toggle('with-event',active);
     if(!active)return;
-    const kind=event.dataset.kind,colors=weatherColors[kind];
+    const kind=event.dataset.kind,colors=weatherStyle(kind);
     if(mark.dataset.frame!==kind){
-      drawEventMark(mark,kind);
+      drawWeatherMark(mark,kind);
+      event.children[0].style.color=colors?.[0]||'#F3F1FA';
       event.style.width=(65+Math.max(2,event.children[0].textContent.length)*14)+'px';
     }
     const calm=run.meta.profile.settings.reduceFlashes;
     const step=colors&&!calm?Math.round(6-6*Math.cos(performance.now()*2*Math.PI/2600)):5;
     const tone=kind+'/'+step;
     if(tone!==paintedTone){
-      event.style.backgroundColor=colors?'rgba('+colors.low.map((v,i)=>Math.round(v+(colors.high[i]-v)*step/12)).join(',')+',.94)':'rgba(25,30,39,.72)';
+      event.style.backgroundColor=colors?weatherFill(kind,step):'rgba(25,30,39,.72)';
       paintedTone=tone;
     }
   }
@@ -477,16 +452,22 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   const wake=()=>{if(!timer)timer=setTimeout(tick,0);};
   let bulletin=null,bulletinTimer=0;
   const clearBulletin=()=>{clearTimeout(bulletinTimer);bulletin?.remove();bulletin=null;};
-  hud.banner=(title,subtitle,color,subject)=>{
+  hud.banner=(title,subtitle,color,subject,weatherKind)=>{
     const rare=subject?.shiny||subject?.classic;
-    if(!hud.bigBanners&&!rare){hud.toast(subtitle?title+' · '+subtitle:title,null);return;}
+    if(!hud.bigBanners&&!rare){hud.toast(subtitle?title+' · '+subtitle:title,null,undefined,weatherKind);return;}
     clearBulletin();
-    const portrait=subject?glyphPreview(subject.species,.75,'pix',subject.glyph||wordFor(subject.species)):null;
+    const theme=weatherStyle(weatherKind);
+    const portrait=theme?weatherMark(weatherKind,true):subject?glyphPreview(subject.species,.75,'pix',subject.glyph||wordFor(subject.species)):null;
     const type=subject?.classic?'经典异色':subject?.shiny?'异色':'';
     bulletin=el('div','zx-scene-bulletin',[portrait,el('div','zx-bulletin-copy',[
       el('div','zx-bulletin-title',[el('b','',title),type?el('small','',type):null]),
       subtitle?el('span','',subtitle):null,
     ])],{role:'status','aria-live':'polite','data-paper-surface':'scene-bulletin'});
+    if(theme){
+      bulletin.dataset.weather=weatherKind;bulletin.style.backgroundColor=theme[3];
+      bulletin.style.setProperty('--notice-edge',theme[2]);bulletin.style.setProperty('--notice-ink',theme[1]);
+      bulletin.style.setProperty('--notice-face',theme[3]);bulletin.querySelector('b').style.color=theme[1];
+    }
     feed.append(bulletin);bulletinTimer=setTimeout(clearBulletin,rare?5200:3200);
   };
   let tracking=null,announcement=null;

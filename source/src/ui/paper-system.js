@@ -88,7 +88,7 @@ export function setAlbumTabActive(tab,active){
   if(face.hasAttribute('src')&&tab.getAttribute('aria-pressed')===String(active))return;
   tab.classList.toggle('active',active);
   tab.setAttribute('aria-pressed',String(active));
-  face.setAttribute('src','assets/ui-paper/album-tab'+(active?'-on':'')+'.png');
+  face.setAttribute('src','assets/ui-paper/album-tab'+(active?'-on':'')+'.webp');
 }
 
 // Shared semantics, independent of page state. Only exact navigation labels

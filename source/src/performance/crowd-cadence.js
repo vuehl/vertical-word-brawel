@@ -9,5 +9,6 @@ export function crowdStep(distanceSquared,radius,count,profile){
 
 // Only decorative crowd steering is sampled. Hit queries remain exhaustive.
 export function separationBudget(count,base){
-  return count>=360?Math.min(base,24):count>=180?Math.min(base,40):base;
+  // Ordinary waves reach 200 actors. Start sampling before the wave cap.
+  return count>=180?Math.min(base,24):count>=100?Math.min(base,40):base;
 }

@@ -4,29 +4,33 @@ import {ReferenceCard,SUMMON_TIMING as T} from './card.js';
 import {DragonSummonResources} from './resources.js';
 import {dragonChantSeconds} from '../dragon-chant.js';
 import {glyphCatalog} from '../../actors/glyph-catalog.js';
-import {remainingStrokes} from '../../data/character-rules.js';
+import {finalBossSpecies,remainingStrokes} from '../../data/character-rules.js';
 
 const gather=1.55;
 const clamp=x=>Math.max(0,Math.min(1,x));
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
 
 export function warmDragonSummon(run){
-  const assets=run.dragonHdAssets??=new DragonSummonResources();
-  if(!assets.ready&&!assets.attempted){assets.attempted=true;assets.prepare();}
+  if(run.dragonHdAssets)return run.dragonHdAssets;
+  const assets=run.dragonHdAssets=new DragonSummonResources(run.r.renderer,async resources=>{
+    const fx=run.preparedDragonSummon=new DragonSummon(run,resources);
+    try{await fx.prepare();}
+    catch(error){
+      if(run.preparedDragonSummon===fx){fx.dispose();run.preparedDragonSummon=null;}
+      throw error;
+    }
+  });
+  assets.prepare();
   return assets;
 }
 
 // Upgrade only the currently selected glyph tile. The other actors sharing
 // its instanced material retain their atlas UVs and original shader.
-function useOriginalGlyph(run,id,assets){
-  const word=run.enemies.glyphWords[id];
-  if(word!==assets.meta.boss.glyph)return;
-  const batch=run.sprites.get(run.enemies.species[id],false,word);
+function useOriginalGlyph(batch,assets){
   const mat=(batch.zxGroup||batch).material, tile=batch.zxGlyphRect;
   const prefix='uniform sampler2D zxGlyph;';
   if(!tile||!mat.fragmentShader.includes(prefix)||!mat.uniforms.zxGlyph)return;
   const tex=assets.textures.get(assets.meta.boss.file);
-  tex.colorSpace=mat.uniforms.zxGlyph.value.colorSpace;tex.needsUpdate=true;
   const previous=mat.fragmentShader;
   mat.uniforms.hdDragonGlyph={value:tex};
   mat.uniforms.hdDragonRect={value:new Float32Array(tile)};
@@ -44,17 +48,54 @@ function useOriginalGlyph(run,id,assets){
 }
 
 class DragonSummon {
-  constructor(run,id,assets){
-    this.run=run;this.id=id;this.assets=assets;this.time=0;this.center=new Vector3();this.victims=[];
+  constructor(run,assets){
+    this.run=run;this.assets=assets;this.time=0;this.center=new Vector3();this.victims=[];
     this.arc=new Arc(run.r.scene,assets,run.r.composer.inputBuffer);
-    this.orb=new ReferenceCard(run.r.scene,assets,assets.meta.orb,0);
-    this.after=new ReferenceCard(run.r.scene,assets,assets.meta.burst,1);
-    run.restoreDragonGlyph?.();run.restoreDragonGlyph=useOriginalGlyph(run,id,assets);
+    const linearSampling=window.nativeDevice?.platform==='ios';
+    this.orb=new ReferenceCard(run.r.scene,assets,assets.meta.orb,0,linearSampling);
+    this.after=new ReferenceCard(run.r.scene,assets,assets.meta.burst,1,linearSampling);
     this.white=new Mesh(new PlaneGeometry(1,1),new ShaderMaterial({transparent:true,depthTest:false,depthWrite:false,toneMapped:false,
       uniforms:{alpha:{value:0}},vertexShader:'void main(){gl_Position=vec4(position.xy*2.,0.,1.);}',
       fragmentShader:'uniform float alpha;void main(){gl_FragColor=vec4(vec3(1.),alpha);}'}));
     this.white.frustumCulled=false;this.white.renderOrder=1000;this.white.name='dragon-summon-white-flash';this.white.visible=false;
-    this.flashScene=new Scene();this.flashScene.add(this.white);run.r.dragonFlash=this;this.update(0);
+    this.flashScene=new Scene();this.flashScene.add(this.white);
+  }
+  async prepare(){
+    const {renderer,scene,camera,composer}=this.run.r;
+    // Compile one material at a time with the target color space it will use.
+    const compile=(mesh,target,world)=>{
+      const previous=renderer.getRenderTarget();
+      try{renderer.setRenderTarget(target);return renderer.compileAsync(mesh,camera,world);}
+      finally{renderer.setRenderTarget(previous);}
+    };
+    const meshes=[this.orb.mesh,...this.arc.layers];
+    if(this.run.vfx.opacity<.9999){this.arc.isolate();meshes.push(this.arc.composite);}
+    for(const mesh of meshes){
+      await compile(mesh,composer.inputBuffer,scene);
+      await new Promise(resolve=>setTimeout(resolve,16));
+      if(this.assets.disposed)return;
+    }
+    await compile(this.white,null,this.flashScene);
+    if(this.assets.disposed)return;
+    const batch=this.run.sprites.get(finalBossSpecies,false,this.assets.meta.boss.glyph);
+    const restore=useOriginalGlyph(batch,this.assets);
+    if(restore){
+      // compileAsync submits synchronously. Restore the shared atlas material
+      // before the next render, retaining the linked variant in its cache.
+      let linked;
+      try{linked=compile((batch.zxGroup||batch).mesh,composer.inputBuffer,scene);}
+      finally{restore();}
+      await linked;
+    }
+  }
+  start(id){
+    const run=this.run,word=run.enemies.glyphWords[id];
+    this.id=id;
+    if(word===this.assets.meta.boss.glyph){
+      run.restoreDragonGlyph?.();
+      run.restoreDragonGlyph=useOriginalGlyph(run.sprites.get(run.enemies.species[id],false,word),this.assets);
+    }
+    run.r.dragonFlash=this;this.update(0);
   }
   beginGather(){
     const r=this.run,en=r.enemies;
@@ -127,7 +168,9 @@ export function beginDragonSummon(run,id,onReady){
     if(run.disposed||run.dragonHdPending!==token)return;
     run.dragonHdPending=null;
     if(!run.boss.live(id)){run.state='play';run.cine.want=0;run.ui.endCinematic();return;}
-    const fx=ready?new DragonSummon(run,id,assets):null;
+    const fx=ready?run.preparedDragonSummon:null;
+    run.preparedDragonSummon=null;
+    fx?.start(id);
     run.dragonHd=fx;
     onReady(fx);
   };
@@ -137,6 +180,7 @@ export function beginDragonSummon(run,id,onReady){
 
 export function clearDragonSummon(run){
   run.dragonHdPending=null;
+  run.preparedDragonSummon?.dispose();run.preparedDragonSummon=null;
   run.dragonHd?.dispose();run.dragonHd=null;
   run.restoreDragonGlyph?.();run.restoreDragonGlyph=null;
   run.dragonHdAssets?.dispose();run.dragonHdAssets=null;

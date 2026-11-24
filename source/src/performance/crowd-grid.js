@@ -17,11 +17,11 @@ export class CrowdGrid {
     return Math.max(0,Math.min(last,Math.floor((z+210)/this.cell)+1))*this.dim+
       Math.max(0,Math.min(last,Math.floor((x+210)/this.cell)+1));
   }
-  build(n,x,z,alive,radius,dying){
+  build(n,x,z,alive,radius,dying,firstAlive=0){
     this.separationCandidates=this.separationVisits=this.buildCells=0;
     for(let i=0;i<this.touchedCount;i++)this.counts[this.touched[i]]=0;
     this.touchedCount=0;this.minX=this.minZ=this.dim;this.maxX=this.maxZ=-1;
-    for(let i=0;i<n;i++){
+    for(let i=firstAlive;i<n;i++){
       if(!alive[i]){this.cellOf[i]=-1;continue;}
       const key=this.key(x[i],z[i]),col=key%this.dim,row=(key-col)/this.dim;
       this.cellOf[i]=key;
@@ -37,7 +37,7 @@ export class CrowdGrid {
       }
       this.starts[right+1]=offset;
     }
-    for(let i=0;i<n;i++){
+    for(let i=firstAlive;i<n;i++){
       const key=this.cellOf[i];if(key<0)continue;
       const index=this.starts[key]+this.counts[key]++;
       this.items[index]=i;this.px[index]=x[i];this.pz[index]=z[i];

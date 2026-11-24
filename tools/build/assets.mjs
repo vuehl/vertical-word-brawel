@@ -6,6 +6,7 @@ import {execFileSync} from 'node:child_process';
 import sharp from 'sharp';
 import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
+import {isAtlasIcon,packIconAtlases} from './icon-atlases.mjs';
 import {writeHeroActions} from '../art/hero-actions.mjs';
 import {writeWindGlyphColors} from '../art/wind-glyph-colors.mjs';
 import {updateDeskDeviceArt} from '../art/desk-device-art.mjs';
@@ -29,11 +30,14 @@ await writeWindGlyphColors(source);
 await writeHeroActions(source);
 await updateDeskDeviceArt(source);
 const hash = data => createHash('sha256').update(data).digest('hex').slice(0, 16);
-function add(pack, key, data, extension = path.extname(key)) {
+function addPage(pack, data, extension) {
   // Content-address files so repeated UI assets only occupy space once.
   const name = hash(data) + extension;
   packs[pack][name] = new Uint8Array(data);
-  index[key] = pack + '/' + name;
+  return pack + '/' + name;
+}
+function add(pack, key, data, extension = path.extname(key)) {
+  index[key] = addPage(pack,data,extension);
 }
 function walk(dir) {
   return fs.readdirSync(dir, {withFileTypes:true}).flatMap(e =>
@@ -44,8 +48,9 @@ function sourceFor(key) {
   return fs.existsSync(override) ? override : path.join(pub, key);
 }
 const buckets = {pmd:'art', icons:'art', portraits:'art', items:'art', front:'art',
-  ui:'world', env:'world', models:'world', glyphs:'art', vfx:'art', music:'sound'};
+  ui:'world', env:'world', models:'world', glyphs:'art', vfx:'art', sfx:'text', music:'sound'};
 const selected = new Set();
+const icons=[];
 const excluded = new Map();
 for (const folder of ['assets', 'overrides/assets']) {
   for (const [category, pack] of Object.entries(buckets)) {
@@ -62,6 +67,7 @@ for (const folder of ['assets', 'overrides/assets']) {
       if (selected.has(key)) continue;
       selected.add(key);
       const input = sourceFor(key);
+      if (isAtlasIcon(key)) { icons.push({pack:targetPack,key,input}); continue; }
       const original = fs.readFileSync(input);
       if (name.endsWith('.png') && original.length > 3000) {
         const options=key==='assets/vfx/portal-screen.png'
@@ -74,6 +80,7 @@ for (const folder of ['assets', 'overrides/assets']) {
     }
   }
 }
+const iconFrames=await packIconAtlases(icons,addPage,index);
 await packDragonSummon(sourceFor,add);
 for (const file of walk(path.join(pub,'data'))) {
   const key = path.relative(pub,file).replaceAll('\\','/');
@@ -117,7 +124,7 @@ for (const [name, entries] of Object.entries(packs)) {
   console.log(name, Object.keys(entries).length, (bytes.length/1048576).toFixed(2)+' MiB');
 }
 const devMetadata=developer?{developerAssetKey:developer.assetKey()}:{};
-fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,...devMetadata,packs:meta,rawSizes,files:index,sprites:generatedSprites})+';\n');
+fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,...devMetadata,packs:meta,rawSizes,files:index,iconFrames,sprites:generatedSprites})+';\n');
 const reportDir=projectRoot===root?path.join(root,'验收'):projectRoot;fs.mkdirSync(reportDir,{recursive:true});
 fs.writeFileSync(path.join(reportDir,'资源打包清单.json'),JSON.stringify({
   policyVersion:assetPolicyVersion,mappedResources:Object.keys(index).length,runtimeSpecies:runtimeSpecies.length,musicTracks,

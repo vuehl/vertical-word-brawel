@@ -11,14 +11,16 @@ export async function reviewCharacters(page,dir) {
     await page.evaluate(()=>{inspected.doc.querySelectorAll('.zx-intro,.evo-reveal,.ultcut').forEach(n=>n.remove());const r=app.run;r.updateCamera(1);r.renderWorld(0);r.ui.hud(r);inspected.env.invalidateUI();app.r.render(0);inspected.env.drawUI(app.r.renderer);});
   };
   for(const [species,branch,finalWord] of [[4,5,'燚'],[16,17,'疯'],[16,58,'飙']]) {
-    const start=await page.evaluate(async species=>{
+    const mode=branch===17?'single-stage':'standard';
+    const start=await page.evaluate(async ({species,mode})=>{
       app.toMenu();
-      if(!await app.startRun({species,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Cannot start '+species);
+      if(!await app.startRun({species,biome:'forest',tier:0,boosts:[],mode}))throw Error('Cannot start '+species);
       app.halted=true;const r=app.run;r.godMode=true;r.queueLevelUp=()=>{};r.state='play';
       r.director.update=()=>{};r.capture.update=()=>{};r.enemies.clear();
       r.ui.hudEl.querySelectorAll('.banner,.run-hint,.zx-intro').forEach(n=>n.remove());
       return {species:r.player.speciesId,word:r.sprites.get(species).zxGlyph,ultimate:r.ult.name,next:r.nextEvo};
-    },species);
+    },{species,mode});
+    assert.equal(start.next.level,mode==='single-stage'?12:18);
     report.heroes.push(start);
     assert.equal(start.word,({4:'炎',16:'风'})[species]);
     assert.equal(start.ultimate,({4:'一点火苗',16:'一阵风刮来'})[species]);
@@ -32,15 +34,15 @@ export async function reviewCharacters(page,dir) {
       const first=await page.evaluate(()=>{
         const r=app.run;const preview=r.ui.modalEl.textContent;
         [...r.ui.modalEl.querySelectorAll('button')].find(n=>n.textContent.includes('确认进阶')).click();
-        for(let i=0;i<140;i++)r.update(1/30);
+        for(let i=0;i<210;i++)r.update(1/30);
         return {preview,species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
-      assert.equal(first.species,branch);report.branches.push(first);
+      assert.equal(first.species,branch);assert.equal(first.next.level,mode==='single-stage'?30:40);report.branches.push(first);
       assert.equal(first.ultimate,({5:'一点火苗',17:'刮倒一片',58:'跑得没影'})[branch]);
       const second=await page.evaluate(()=>{
         const r=app.run;r.state='play';r.player.level=r.nextEvo.level;r.tryEvolve();
         [...r.ui.modalEl.querySelectorAll('button')].find(n=>n.textContent.includes('确认进阶')).click();
-        for(let i=0;i<140;i++)r.update(1/30);
+        for(let i=0;i<210;i++)r.update(1/30);
         return {species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
       assert.equal(second.word,finalWord);assert.equal(second.next,null);report.branches.push(second);
@@ -54,7 +56,7 @@ export async function reviewCharacters(page,dir) {
           r.state='play';for(let i=0;i<240;i++)r.update(1/30);
           return {key,before,during,duration,paused,after:p.stats[key],buffs:[...p.buffs.keys()]};
         });
-        assert.ok(Math.abs(buff.during/buff.before-10)<1e-6,JSON.stringify(buff));assert.equal(buff.paused,buff.during);assert.equal(buff.duration,5);
+        assert.ok(Math.abs(buff.during/buff.before-3)<1e-6,JSON.stringify(buff));assert.equal(buff.paused,buff.during);assert.equal(buff.duration,5);
         assert.ok(Math.abs(buff.after/buff.before-1)<1e-6);report.buffs.push(buff);
       }
     }else{

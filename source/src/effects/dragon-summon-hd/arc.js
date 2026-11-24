@@ -49,7 +49,8 @@ export class Arc {
       const material=new ShaderMaterial({side:2,transparent:true,premultipliedAlpha:true,depthTest:false,depthWrite:false,toneMapped:false,
         uniforms:this.uniforms,vertexShader:i?meshVertex:planeVertex,
         fragmentShader:(i?'varying float fillCoverage;':'')+'uniform float viewportHeight;'+paint+'void main(){'+fragments[i]+'}'});
-      const mesh=new Mesh(this.plane,material);mesh.frustumCulled=false;mesh.renderOrder=21+i;mesh.visible=false;
+      const geometry=i?assets.geometry[0][i-1]:this.plane;
+      const mesh=new Mesh(geometry,material);mesh.frustumCulled=false;mesh.renderOrder=21+i;mesh.visible=false;
       mesh.name=['dragon-summon-white-glow','dragon-summon-dark-arc','dragon-summon-bright-arc'][i];
       mesh.onBeforeRender=renderer=>{const target=renderer.getRenderTarget(),gl=renderer.getContext();this.uniforms.renderSize.value.x=target?.width||gl.drawingBufferWidth;this.uniforms.renderSize.value.y=this.uniforms.viewportHeight.value=target?.height||gl.drawingBufferHeight;};
       scene.add(mesh);this.layers.push(mesh);
@@ -69,7 +70,7 @@ export class Arc {
       vertexShader:'varying vec2 coord;void main(){coord=uv;gl_Position=vec4(position.xy*2.,0.,1.);}',
       fragmentShader:'uniform sampler2D image;uniform float fade;varying vec2 coord;void main(){gl_FragColor=texture2D(image,coord)*fade;}'});
     const mesh=this.composite=new Mesh(this.plane,material);this.scene.add(mesh);
-    mesh.name='dragon-summon-opacity';mesh.frustumCulled=false;mesh.renderOrder=23;
+    mesh.name='dragon-summon-opacity';mesh.frustumCulled=false;mesh.renderOrder=23;mesh.visible=false;
     const clearColor=new Color();
     mesh.onBeforeRender=(renderer,scene,camera)=>{
       const previous=renderer.getRenderTarget(),gl=renderer.getContext();

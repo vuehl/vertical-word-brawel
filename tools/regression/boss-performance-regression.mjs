@@ -28,7 +28,11 @@ export async function reviewBossPerformance(page, dir, baseline = false, program
       enemies.flags[id] &= ~131072;
     }
     await run.sprites.prepareGlyphTextures(host.renderer);
-    run.update(0); host.render(0); inspected.env.drawUI(host.renderer);
+    run.update(1/30);
+    // The clock jumped to minute five. Let the scheduled pre-summon warmup finish.
+    await run.dragonHdAssets?.loading;
+    if(!run.dragonHdAssets?.ready)throw Error('Dragon summon warmup did not finish');
+    host.render(0); inspected.env.drawUI(host.renderer);
     let screen;
     vortex.model.traverse(mesh => {
       if (mesh.userData.portalPart === 'screen' && mesh.userData.portalPhase === 1) screen = mesh;
@@ -137,6 +141,11 @@ export async function reviewBossPerformance(page, dir, baseline = false, program
     const battle = await sample('battle',90);
     assert.equal(battle.finalState,'play');assert.equal(battle.finalEnemies,1);assert.equal(battle.dock,'open');
     const settled = await sample('battle-steady',60);
+    report.duelSlots=await page.evaluate(()=>{
+      const e=bossPerf.run.enemies;
+      return {slots:e.n,visited:e.n-e.firstAlive,alive:e.count};
+    });
+    if(!baseline)assert.equal(report.duelSlots.visited,1);
     report.health = await page.evaluate(() => {
       const {run,host}=bossPerf, enemies=run.enemies, id=run.boss.bossIndex;
       const source=run.sprites.get(enemies.species[id],false,enemies.glyphWords[id]);
@@ -155,6 +164,22 @@ export async function reviewBossPerformance(page, dir, baseline = false, program
     });
     for(const health of report.health) {assert.equal(health.count,1);assert.deepEqual(health.uv,health.expected);}
     if(!baseline) {
+      report.bossHud=await page.evaluate(async()=>{
+        const {run,host}=bossPerf, ui=run.ui, bar=ui.els.bossBar;
+        ui.hud(run);inspected.env.invalidateUI();inspected.env.drawUI(host.renderer);
+        const before=auditUIUploads;
+        for(const fraction of [.75,.5,.25]){
+          ui.updateBossHealth(bar,fraction,1);
+          await new Promise(resolve=>setTimeout(resolve,100));
+          inspected.env.drawUI(host.renderer);
+        }
+        const tile=inspected.hudLayers.find(layer=>layer.id==='boss-health')?.canvas;
+        return {fullUploads:auditUIUploads-before,label:bar.lastElementChild.textContent,
+          size:tile&&[tile.width,tile.height],screen:[inspected.uiCanvas.width,inspected.uiCanvas.height]};
+      });
+      assert.equal(report.bossHud.fullUploads,0);
+      assert.equal(report.bossHud.label,'25.0%');
+      assert.ok(report.bossHud.size[0]>0&&report.bossHud.size[1]>0&&report.bossHud.size[1]<report.bossHud.screen[1]/4);
       assert.equal(report.samples.reduce((n,sample)=>n+sample.programs,0),0,'Boss summon shaders must be prepared during loading');
       assert.equal(settled.readbacks,0,'An open guardian screen must not read Canvas pixels every frame');
       assert.equal(settled.paintPaths,0,'An open guardian screen must use the prepared animation');

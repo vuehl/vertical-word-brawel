@@ -4,7 +4,7 @@ import * as D from 'linkedom/worker';
 import {installSurfaces} from '../../platform/surfaces.mjs';
 import {paint} from '../../platform/paint.mjs';
 
-function fixture(t,resolvePath){
+function fixture(t,resolvePath,loadIcon){
   const previous=globalThis.wx,images=[],requests=[],draws=[];
   const context=new Proxy({drawImage:(...args)=>draws.push(args)},{get:(obj,key)=>obj[key]??(()=>{})});
   globalThis.wx={createImage(){const image={width:40,height:32};images.push(image);return image;},
@@ -12,7 +12,7 @@ function fixture(t,resolvePath){
   t.after(()=>{globalThis.wx=previous;});
   const {document:doc}=D.parseHTML('<html><body><canvas id="game"></canvas></body></html>');
   const view={x:0,y:0,w:100,h:100,width:100,height:100};
-  const api=installSurfaces(D,doc,{canvas:{},files:{resolvePath:src=>{
+  const api=installSurfaces(D,doc,{canvas:{},files:{loadIcon,resolvePath:src=>{
     requests.push(src);return resolvePath?resolvePath(src):Promise.resolve('/local/'+src);
   }}},view);
   const draw=(img,options={})=>paint({context},[{el:img,tag:'img',x:0,y:0,w:32,h:32,
@@ -39,6 +39,18 @@ test('standalone Image loads eagerly for atlases and WebGL textures',async t=>{
   assert.deepEqual(f.requests,['atlas.png']);assert.equal(f.images.length,1);
   await Promise.resolve();f.images[0].onload();
   assert.ok(loaded&&img.complete);assert.equal(img.naturalHeight,32);
+});
+
+test('packed UI icons draw just their tile and expose its size to canvas users',async t=>{
+  const page={width:128,height:64},tileCanvas={width:32,height:32};
+  const region={image:page,x:96,y:32,width:32,height:32,surface:()=>tileCanvas};
+  const f=fixture(t,null,()=>Promise.resolve(region)),img=f.doc.createElement('img');
+  img.src='assets/ui/icons/coin.png';f.doc.body.append(img);f.draw(img);
+  await Promise.resolve();f.draw(img);
+  assert.equal(img.naturalWidth,32);assert.equal(img.height,32);
+  assert.deepEqual(f.draws,[[page,96,32,32,32,0,0,32,32]]);
+  f.doc.createElement('canvas').getContext('2d').drawImage(img,10,15);
+  assert.deepEqual(f.draws[1],[tileCanvas,10,15]);
 });
 
 test('replaced image sources discard unused work and ignore stale async loads',async t=>{

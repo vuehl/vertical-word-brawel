@@ -28,6 +28,83 @@ export async function reviewWindSkills(page,dir){
       process.env.WIND_REFERENCE_OUT||path.join(import.meta.dirname,'../../验收/风系GIF逐项对照'));
     if(process.argv.includes('--wind-record-only'))return;
   }
+  report.rushContacts=await page.evaluate(()=>{
+    const samples=[];
+    for(const species of [58,59]){
+      setupWind();
+      const r=app.run,p=r.player,e=r.enemies,{x,z}=windLane;
+      p.setSpecies(species);p.addMove(98);
+      const move=p.moves[0];
+      move.mods.dmg=1.5;move.level=3;
+      const baseSpeed=p.stats.moveSpeed;
+      e.clear();const target=e.spawn(19,x,z-2,1,1,0);
+      e.hp[target]=e.maxHp[target]=5000;e.radius[target]=.6;e.y[target]=p.pos.y;
+      e.update();r.camYaw=0;
+      const reset=()=>{p.pos.set(x,r.terrain.surface(x,z),z);p.vel.set(0,0,0);p.grounded=true;};
+      const walk=frames=>{r.input.stickY=1;for(let i=0;i<frames;i++)p.update(1/120);r.input.stickY=0;};
+      reset();walk(50);
+      const beforeCast=5000-e.hp[target];
+      reset();r.ult.def.cast({run:r});
+      const speed=p.stats.moveSpeed/baseSpeed;
+      p.stats.critChance=p.stats.megaCrit=0;
+      const base=move.def.dmg*1.3*move.mods.dmg*(1+(move.level-1)*.04);
+      const basic=r.combat.hit(target,base,{type:move.def.type,cls:move.def.cls,noReact:true,knock:0});
+      const before=e.hp[target];
+      for(let frame=0;frame<60&&e.hp[target]===before;frame++)walk(1);
+      const first=before-e.hp[target];
+      r.ult.def.cast({run:r});walk(4);
+      const sustained=before-e.hp[target]-first;
+      reset();walk(45);
+      const second=before-e.hp[target]-first-sustained;
+      reset();p.vel.set(0,0,0);
+      for(let i=0;i<601;i++)p.update(1/120);
+      const expiredSpeed=p.stats.moveSpeed/baseSpeed,after=e.hp[target];
+      reset();walk(50);
+      samples.push({species,speed,basic,first,sustained,second,beforeCast,expiredSpeed,afterExpiry:after-e.hp[target]});
+    }
+    return samples;
+  });
+  for(const sample of report.rushContacts){
+    const multiplier=sample.species===58?2:3;
+    assert.equal(sample.speed,multiplier);assert.ok(sample.basic>0);
+    for(const damage of [sample.first,sample.second])
+      assert.ok(Math.abs(damage-sample.basic*multiplier)<.002,JSON.stringify(sample));
+    assert.equal(sample.beforeCast,0);assert.equal(sample.sustained,0);
+    assert.equal(sample.expiredSpeed,1);assert.equal(sample.afterExpiry,0);
+  }
+  console.log('Wind rush speed and collision damage verified',report.rushContacts);
+  report.twister=await page.evaluate(async()=>{
+    setupWind();
+    const r=app.run,p=r.player,e=r.enemies,pool=r.projectiles;
+    p.setSpecies(16);p.addMove(239);
+    const move=p.moves[0];
+    move.mods.count+=2;
+    const duration=move.def.dur*move.mods.dur*p.stats.duration;
+    await r.vfx.crafted.prepareMoveTexture(move.def.effectKey);
+    e.clear();
+    const targets=[2,6].map(distance=>{
+      const id=e.spawn(74,p.pos.x,p.pos.z-distance,1,1,0);
+      e.y[id]=r.terrain.surface(e.x[id],e.z[id]);
+      e.hp[id]=e.maxHp[id]=1e7;
+      return id;
+    });
+    e.update();r.lockTarget=targets[0];move.timer=0;
+    vfxAdvance(1,1/60,false);move.timer=999;
+    const shots=Array.from({length:pool.n},(_,id)=>id).filter(id=>pool.slot[id]===0);
+    const center=shots.reduce((a,b)=>Math.abs(pool.vx[a])<Math.abs(pool.vx[b])?a:b);
+    for(let frame=0;frame<duration*60 && pool.alive[center] && pool.z[center]>p.pos.z-6.5;frame++)
+      vfxAdvance(1,1/60,false);
+    const result={count:shots.length,fullLifetime:shots.every(id=>Math.abs(pool.maxLife[id]-duration)<.001),
+      allAlive:shots.every(id=>pool.alive[id]),visible:r.vfx.crafted.windMoves.mesh.count,
+      passedBoth:pool.z[center]<p.pos.z-6,
+      hitBoth:targets.every(id=>pool.alreadyHit(center,id)&&e.hp[id]<e.maxHp[id])};
+    vfxAdvance(Math.ceil(duration*60)+1,1/60,false);
+    return {...result,remaining:pool.used,remainingArt:r.vfx.crafted.windMoves.mesh.count};
+  });
+  assert.ok(report.twister.count>=3 && report.twister.fullLifetime && report.twister.allAlive &&
+    report.twister.visible===report.twister.count && report.twister.passedBoth && report.twister.hitBoth,
+    JSON.stringify(report.twister));
+  assert.equal(report.twister.remaining,0);assert.equal(report.twister.remainingArt,0);
   for(const hz of [30,60]){
     const flight=await page.evaluate(async hz=>{
       setupWind();const r=app.run,e=r.enemies,p=r.player,pool=r.projectiles;
@@ -125,7 +202,7 @@ export async function reviewWindSkills(page,dir){
       const attack=[17,18].includes(species);
       assert.equal(result.name,attack?'刮倒一片':'跑得没影');
       assert.ok(result.opening.includes(attack?'attackLoops':'gust'));
-      assert.ok(Math.abs(result.move-(attack?1:10))<1e-6);
+      assert.ok(Math.abs(result.move-({17:1,18:1,58:2,59:3})[species])<1e-6);
       assert.ok(Math.abs(result.attack-(attack?10:1))<1e-6);
     }
     report.ultimates.push(result);
@@ -154,7 +231,7 @@ export async function reviewWindSkills(page,dir){
     vfxDraw();return window.windSpeedReview;
   });
   fs.writeFileSync(path.join(dir,'wind-skills.json'),JSON.stringify(report,null,2));
-  assert.ok(Math.abs(report.speed.boosted/report.speed.base-10)<1e-8,JSON.stringify(report.speed));
+  assert.ok(Math.abs(report.speed.boosted/report.speed.base-3)<1e-8,JSON.stringify(report.speed));
   assert.ok(report.speed.ghosts.length>0&&report.speed.ghosts.length<=5);
   assert.ok(report.speed.ghosts.every(g=>g.species===59&&Number.isFinite(g.scale)));
   assert.equal(report.speed.word,'飙');assert.ok(report.speed.visible>0);

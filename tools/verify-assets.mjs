@@ -18,6 +18,7 @@ import {glyphSpeciesFromImage} from '../source/src/data/zixing-identity.js';
 import {runtimeData,runtimeSpecies} from './build/runtime-data.mjs';
 import {unpackMeshBytes} from '../source/src/effects/dragon-summon-hd/mesh-bytes.js';
 import {dragonDirectory} from './build/dragon-summon-pack.mjs';
+import {isAtlasIcon} from './build/icon-atlases.mjs';
 import {portalScreenAtlas} from '../source/src/effects/portal-screen-atlas.js';
 const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'resources/public');
 const packs={};
@@ -45,6 +46,17 @@ for(const [group,expected] of Object.entries(index.packs)){
   if(group==='art')for(const [name,recipe] of Object.entries(index.sprites))files[name]=restoreSprite(files[recipe]);
 }
 function bytes(key){const [group,file]=index.files[key].split('/');return packs[group][file];}
+const iconErrors={tiles:0,maxVisibleChannelError:0};
+for(const [key,ref] of Object.entries(index.files)){
+  if(!isAtlasIcon(key))continue;
+  const [group,entry]=ref.split('/'),[page,tile]=entry.split('#');
+  assert.ok(/^\d+$/.test(tile),key);
+  const [left,top,width,height]=index.iconFrames[page][tile];
+  const atlas=packs[group][page];
+  assert.equal(digest(atlas).slice(0,16),path.basename(page,'.webp'));
+  packs[group][entry]=await sharp(atlas).extract({left,top,width,height}).png().toBuffer();
+  iconErrors.tiles++;
+}
 for(const key of windClarityAtlases){
   const source=await sharp(path.join(pub,key)).ensureAlpha().raw().toBuffer();
   const decoded=await sharp(bytes(key)).ensureAlpha().raw().toBuffer();
@@ -92,7 +104,8 @@ assert.equal(digest(bytes(chantAsset)),digest(fs.readFileSync(path.join(pub,chan
   'Keep the summon data atlas byte-for-byte');
 for(const [key,ref] of Object.entries(index.files)){
   assert.equal(excludedAssetReason(key),null,'Unused asset still packaged: '+key);
-  const data=bytes(key);assert.ok(data,'Missing '+key);assert.equal(digest(data).slice(0,16),path.basename(ref,path.extname(ref)));
+  const data=bytes(key);assert.ok(data,'Missing '+key);
+  if(!isAtlasIcon(key))assert.equal(digest(data).slice(0,16),path.basename(ref,path.extname(ref)));
 }
 assert.equal(musicTracks.length,0);
 assert.deepEqual([...declaredPacks].filter(name=>name==='sound'||name.startsWith('music_')),[]);
@@ -177,7 +190,18 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
     continue;
   }
   assert.deepEqual(a.info,b.info,key);
-  if(key==='assets/vfx/portal-screen.png'){
+  if(isAtlasIcon(key)&&category==='items'&&a.info.width===256&&a.info.height===256){
+    for(let i=0;i<a.data.length;i+=4){
+      const alpha=a.data[i+3];
+      if(b.data[i+3]!==alpha)throw Error('Changed alpha: '+key+' @ '+i/4);
+      if(!alpha)continue;
+      for(let c=0;c<3;c++){
+        const error=Math.abs(b.data[i+c]-a.data[i+c]);
+        if(error>4)throw Error('Changed visible colour beyond four levels: '+key+' @ '+i/4);
+        iconErrors.maxVisibleChannelError=Math.max(iconErrors.maxVisibleChannelError,error);
+      }
+    }
+  }else if(key==='assets/vfx/portal-screen.png'){
     const {rows,columns,pad}=portalScreenAtlas,w=portalScreenAtlas.width+2*pad,h=portalScreenAtlas.height+2*pad;
     assert.equal(a.info.width,columns*w);assert.equal(a.info.height,rows*h);
     let worst=0;
@@ -214,8 +238,16 @@ for(const [name] of deskTiles){
   const key='assets/env/desk2d/'+name;
   assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed desk tile '+name);
 }
-const journeyDesk='assets/ui-paper/journey-desk.png';
-assert.equal(digest(bytes(journeyDesk)),digest(fs.readFileSync(path.join(pub,journeyDesk))));
+const paperDirectory='assets/ui-paper/';
+const paperImages=fs.readdirSync(path.join(pub,paperDirectory)).filter(name=>/\.(png|webp)$/.test(name));
+assert.ok(paperImages.includes('journey-desk.webp'),'Missing menu backdrop');
+assert.deepEqual(Object.keys(index.files).filter(key=>key.startsWith(paperDirectory)).sort(),
+  paperImages.map(name=>paperDirectory+name).sort());
+for(const name of paperImages){
+  const key=paperDirectory+name;
+  assert.ok(index.files[key].startsWith('text/'),key);
+  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),key);
+}
 assert.ok(index.files['assets/env/desk2d/shelf-depth.png'],'Missing shelf occlusion texture');
 const billPrefix='assets/env/desk2d/device-bill/';
 assert.deepEqual(Object.keys(index.files).filter(key=>key.startsWith(billPrefix)).map(key=>key.slice(billPrefix.length)).sort(),
@@ -260,7 +292,7 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }
-const report={mappedResources:Object.keys(index.files).length,RGBA:count,fireColorError,originalModels:models.length-1,
+const report={mappedResources:Object.keys(index.files).length,RGBA:count,iconErrors,fireColorError,originalModels:models.length-1,
   deviceModels:1,deviceAdapterSha256:adapterHash,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:[],
   removedSceneAssetsVerified:removedSceneAssets.length,

@@ -25,14 +25,14 @@ function routes(id,actor,api){
   });
 }
 // Both faces share the same paper edge and the raised tab in its upper right.
-function indexPaper(c,face){
+function indexPaper(c,face,modeLevels){
   shape(c,[[1,12],[5,8],[252,8],[259,1],[352,1],[359,7],[359,78],[355,82],[1,82]],'#9AAFC4');
   shape(c,[[1,10],[5,6],[252,6],[259,0],[352,0],[359,6],[359,77],[355,79],[1,79]],'#EDF1F6');
   shape(c,[[247,6],[252,6],[259,0],[352,0],[359,6],[359,27],[249,27],[243,22]],'#D8E4EF');
   shape(c,[[352,0],[359,6],[352,6]],'#A4B9CE');
   c.fillStyle='#BCCDDC';c.fillRect(12,32,336,1);
   c.fillStyle='#B86F7D';c.fillRect(13,13,3,12);
-  text(c,face==='stats'?'基础属性':'进阶路线',22,19.5,14,'#2D435D','bold');
+  text(c,face==='stats'?'基础属性':modeLevels?'进阶路线（单关 / 多关）':'进阶路线',22,19.5,14,'#2D435D','bold');
   c.strokeStyle='#506A85';c.lineWidth=1.5;c.lineJoin='round';c.lineCap='round';
   c.beginPath();c.moveTo(260,10);c.lineTo(273,10);c.lineTo(269.5,7);
   c.moveTo(273,16);c.lineTo(260,16);c.lineTo(263.5,19);c.stroke();
@@ -94,7 +94,7 @@ function drawRoute(c,id,rows){
 }
 export function profilePrint(id,actor,api,face){
   const {art,ctx}=paper(360,82,'journey-profile-print');
-  indexPaper(ctx,face);
+  indexPaper(ctx,face,actor?.singleStageEvoLevels);
   let label;
   if(face==='stats'){
     const stats=id==null?null:api.speciesInfo(id).stats;
@@ -102,9 +102,14 @@ export function profilePrint(id,actor,api,face){
     label='基础属性，'+attributes.map(([key,name])=>name+' '+(stats?.[key]??'—')).join('，');
   }else{
     const rows=routes(id,actor,api);
+    if(actor?.singleStageEvoLevels)for(const row of rows){
+      row.level=actor.singleStageEvoLevels[0]+'/'+row.level;
+      if(row.last!=null)row.lastLevel=actor.singleStageEvoLevels[1]+'/'+row.lastLevel;
+    }
     drawRoute(ctx,id,rows);
     const step=(species,level)=>(level==null?'':'Lv.'+level+' ')+wordFor(species);
-    label=rows.map(r=>wordFor(id)+' → '+step(r.mid,r.level)+(r.last==null?'':' → '+step(r.last,r.lastLevel))).join(' / ')
+    label=rows.length&&actor?.singleStageEvoLevels?'单关 / 多关，':'';
+    label+=rows.map(r=>wordFor(id)+' → '+step(r.mid,r.level)+(r.last==null?'':' → '+step(r.last,r.lastLevel))).join(' / ')
       ||(id==null?'请先选择字灵':'没有进阶路线');
   }
   art.setAttribute('role','img');art.setAttribute('aria-label',label);

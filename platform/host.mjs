@@ -71,6 +71,7 @@ export async function setup(host) {
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
   const soloLayers=['counters','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
   const skillLayer=soloLayers[2];
+  soloLayers.push(createHUDLayer(makeCanvas,'boss-health',27));
   soloLayers.push(createHUDLayer(makeCanvas,'streak',22));
   soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
   soloLayers.push(createHUDLayer(makeCanvas,'stage-intro',20));
@@ -218,6 +219,8 @@ export async function setup(host) {
     if(hide){draw?.releaseFrozen();for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
   }
   wx.onHide(()=>show(true));wx.onShow(()=>show(false));
+  wx.onAudioInterruptionBegin?.(()=>win.dispatchEvent(new D.Event('audiointerruptionbegin')));
+  wx.onAudioInterruptionEnd?.(()=>win.dispatchEvent(new D.Event('audiointerruptionend')));
   let lastGC=-Infinity;
   wx.onMemoryWarning?.(()=>{
     draw?.releaseUnused();
@@ -427,6 +430,7 @@ export async function setup(host) {
       const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
       draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
       run?.dragonHd?.drawFlash(renderer);
+      run?.vfx?.upgrade?.screen?.draw(renderer);
       if(finishedJourney)draw.releaseUnused();
       if(overlay)modalTransition.presented(perf.now());
     },

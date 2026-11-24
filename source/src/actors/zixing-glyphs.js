@@ -41,7 +41,8 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     shelfUniforms.uShelfDepth.value=texture??null;
   };
   shadow.transparent=true;shadow.blending=1;shadow.depthWrite=false;
-  shadow.fragmentShader='varying vec2 vUv; void main(){float d=length((vUv-.5)*2.); float a=smoothstep(1.,.25,d)*.34;gl_FragColor=vec4(.07,.10,.12,a);}';shadow.needsUpdate=true;
+  // Linear-space ink must stay darker than the illustrated desk's dark mat.
+  shadow.fragmentShader='varying vec2 vUv; void main(){float d=length((vUv-.5)*2.); float a=(1.-smoothstep(.25,1.,d))*.34;gl_FragColor=vec4(.007,.010,.012,a);}';shadow.needsUpdate=true;
   applyShelfMaterial(shadow,shelfUniforms,'p','iS.xyz',false);
   run.sprites.clipFootRing=ring=>{
     applyShelfMaterial(ring.material,shelfUniforms,'(modelMatrix*vec4(position,1.)).xyz','modelMatrix[3].xyz',false);
@@ -145,7 +146,11 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     allyColor.value=allyColors['风讽疯'.includes(word)?'wind':'炎焱燚飒飙'.includes(word)?'fire':'ink'];
     return skin(get(id,false,'ally'),undefined,undefined,true);
   };
-  run.sprites.prepareHeroForm=id=>Promise.all([prepareHeroStrokes(id),prepareHeroAnimation(id)]);
+  run.sprites.prepareHeroForm=async (id,renderer)=>{
+    await Promise.all([prepareHeroStrokes(id),prepareHeroAnimation(id)]);
+    const texture=animations.get(id)?.texture;
+    if(!disposed && texture?.image)renderer?.initTexture(texture);
+  };
   run.sprites.heroFrame=(actor,id,action,nowMs)=>{
     if(action&&heroActionCatalog[id]&&!animations.get(id)?.texture.image){
       prepareHeroAnimation(id);

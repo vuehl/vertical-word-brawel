@@ -17,7 +17,8 @@ for file in [*source.joinpath("src").rglob("*.js"), *data]:
 dest.mkdir(exist_ok=True, parents=True)
 for weight in ("Regular", "Bold"):
     # Unchanged text must produce the same hash and reuse the phone's cache.
-    font = TTFont(source / ("../resources/public/fonts/swei/SweiGothicCJKsc-" + weight + ".ttf"), recalcTimestamp=False)
+    font = TTFont(source / ("../resources/public/fonts/swei/SweiGothicCJKsc-" + weight + ".woff"), recalcTimestamp=False)
+    font.flavor = None  # wx.loadFont receives the subset as a plain TTF.
     # All game labels use horizontal layout, including the portrait HUD.
     options = subset.Options()
     options.drop_tables.extend(["vhea", "vmtx"])

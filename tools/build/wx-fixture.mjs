@@ -141,6 +141,8 @@ wx.setPreferredFramesPerSecond=fps=>{(window.fixtureFrameRates??=[]).push(fps);}
 wx.onMemoryWarning=listener=>{window.fixtureMemoryWarning=listener;};
 wx.triggerGC=()=>{window.fixtureGCs=(window.fixtureGCs||0)+1;};
 wx.onShow=fn=>showCallbacks.push(fn);
+wx.onAudioInterruptionBegin=fn=>{window.fixtureAudioInterruptionBegin=fn;};
+wx.onAudioInterruptionEnd=fn=>{window.fixtureAudioInterruptionEnd=fn;};
 window.fixtureShow=options=>showCallbacks.forEach(fn=>fn(options));
 for(const [key,event] of Object.entries({TouchStart:'touchstart',TouchEnd:'touchend',TouchMove:'touchmove',TouchCancel:'touchcancel',Hide:'pagehide'})){
   wx['on'+key]=fn=>{events[key]=fn;if(event.startsWith('touch'))document.addEventListener(event,fn,{passive:false});};

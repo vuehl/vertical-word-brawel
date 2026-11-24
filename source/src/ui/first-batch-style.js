@@ -121,25 +121,27 @@ export const firstBatchStyle=`
 .zx .zx-fusion-list .zx-review-fusion-list,.zx .zx-fusion-preview .zx-review-content{flex:0 1 auto;gap:10px;padding:0 2px 3px;scrollbar-width:none}
 .zx .zx-fusion-slip{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:12px 12px 14px 23px;background:#EAEFF6;border:0;border-left:5px solid #91A8C4;border-radius:3px;flex:none;min-width:0}
 .zx .zx-fusion-slip.selected{border-left-color:#537CB6}
-.zx .zx-fusion-list .zx-fusion-slip.zx-review-recipe{min-height:0}
-.zx .zx-fusion-slip .zx-review-recipe-select{display:flex;flex-direction:column;gap:8px;align-items:stretch}
-.zx .zx-fusion-identity,.zx .zx-fusion-pair,.zx .zx-fusion-part,.zx .zx-fusion-rowfoot,.zx .zx-fusion-mark{display:flex;flex-direction:row;align-items:center}
+.zx .zx-fusion-list .zx-fusion-slip.zx-review-recipe{min-height:0;padding:8px 12px 10px 23px}
+.zx .zx-fusion-slip.unavailable{background:#D8DADF;border-left-color:#9CA1AA}
+.zx .zx-review-recipe .zx-fusion-identity{min-height:36px;padding-right:72px}
+.zx .zx-review-recipe .zx-fusion-mark{width:36px;height:32px}
+.zx .zx-review-recipe .zx-fusion-pair{padding:5px 0 0;border-bottom:0}
+.zx .zx-fusion-slip .zx-review-recipe-select{display:flex;flex-direction:column;gap:4px;align-items:stretch}
+.zx .zx-fusion-identity,.zx .zx-fusion-pair,.zx .zx-fusion-part,.zx .zx-fusion-mark{display:flex;flex-direction:row;align-items:center}
 .zx .zx-fusion-identity{gap:9px}
 .zx .zx-fusion-mark{width:47px;height:41px;align-items:center;justify-content:center;gap:0;flex:none;background:#D0DFEE}
 .zx .zx-fusion-mark>img{max-width:48%;object-fit:contain}.zx .zx-fusion-mark>img:only-child{max-width:85%}
 .zx .zx-fusion-name,.zx .zx-fusion-material{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start}
-.zx .zx-fusion-name>small,.zx .zx-fusion-material>small,.zx .zx-fusion-rowfoot>small{font-size:12px;line-height:17px;color:#526780}
+.zx .zx-fusion-name>small,.zx .zx-fusion-material>small{font-size:12px;line-height:17px;color:#526780}
 html.zixing .zx .zx-fusion-name>h2{font-size:18px;line-height:23px;color:#253853;margin:0}
-.zx .zx-fusion-state{align-self:flex-start;flex:none;padding:2px 7px;background:#D6DEE9;color:#536077;font-size:12px;line-height:17px;font-weight:800}
-.zx .zx-fusion-state.ready{background:#D2E6D9;color:#365F4F}
 .zx .zx-fusion-pair{gap:5px;padding:7px 3px;border-top:1px solid #BECCDC;border-bottom:1px solid #BECCDC}
 .zx .zx-fusion-part{flex:1;min-width:0;gap:5px}
 .zx .zx-fusion-part>img{width:22px;height:22px;object-fit:contain;flex:none}
 .zx .zx-fusion-material>b{font-size:14px;line-height:19px;color:#334660}
+.zx .zx-fusion-slip .zx-fusion-short{color:#A13346;font-weight:700}
 .zx .zx-fusion-material>small.ready{color:#3F6C57}
 .zx .zx-fusion-plus{color:#6581A5;font-size:16px;line-height:20px;margin:0 4px}
-.zx .zx-fusion-rowfoot{justify-content:space-between;gap:8px}
-html.zixing .zx .zx-fusion-rowfoot>.zx-review-button{min-height:36px;width:74px;padding:0 6px;font-size:14px;flex:none}
+html.zixing .zx .zx-review-recipe>.zx-review-button{position:absolute;right:12px;top:8px;width:64px;height:36px;min-height:36px!important;padding:0 6px;font-size:15px!important;line-height:20px!important}
 .zx .zx-fusion-effect,.zx .zx-fusion-figures{display:flex;flex-direction:column;align-items:stretch;gap:6px}
 .zx .zx-fusion-record .zx-review-description,.zx .zx-fusion-footnote,.zx .zx-fusion-empty .zx-review-note{font-size:14px;line-height:21px;margin:0;color:#455971}
 .zx .zx-fusion-figures>h3,.zx .zx-fusion-empty>b{font-size:16px;line-height:22px;margin:0;color:#2F415B}
@@ -316,10 +318,10 @@ html.zixing .zx .zx-shop-shelves .zx-review-footer>button{width:0;min-width:0;he
 .zx .zx-combat-shell .zx-review-shop{background:transparent}
 .zx .zx-combat-shell .zx-review-shop>.help{color:#F3F1FA}
 .zx .zx-paper-upgrade-head.long-title>h1,.zx .zx-paper-upgrade-head.long-title>h2{font-size:20px;line-height:29px}
-.zx.zx-modal-wrap.zx-arcade-overlay,.zx.zx-modal-wrap.zx-atlas-overlay{background:rgba(22,31,52,.72);padding:16px 12px}
+.zx.zx-modal-wrap.zx-arcade-overlay{background:rgba(22,31,52,.72);padding:16px 12px}
 .zx-arcade{position:relative;width:100%;max-width:334px;display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:0 18px 16px;background:#AFC4DC;border-radius:9px}
 .zx-arcade-header{display:flex;flex-direction:row;align-items:center;justify-content:space-between;height:48px;padding:0 7px}
-.zx-arcade-header>h2,.zx-atlas-key>b{margin:0;font-size:21px;line-height:28px;font-weight:800;color:#F3F1FA}
+.zx-arcade-header>h2{margin:0;font-size:21px;line-height:28px;font-weight:800;color:#F3F1FA}
 .zx-arcade-header>span{display:flex;align-items:center;gap:4px;color:#F3F1FA;font-size:15px}
 .zx-arcade-window{display:flex;flex-direction:row;align-items:stretch;gap:4px;background:#3D506D;border-bottom:4px solid #7591B0;padding:5px}
 .zx-arcade-reel{flex:1;min-width:0;height:94px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:#ECEDF5;border-top:4px solid #BCCCE0;border-bottom:4px solid #A9BDD5}
@@ -329,13 +331,20 @@ html.zixing .zx .zx-shop-shelves .zx-review-footer>button{width:0;min-width:0;he
 .zx-arcade-tray>b{color:#283C5E;font-size:18px}.zx-arcade-caption{margin:0;color:#354966;font-size:14px;line-height:20px;text-align:center}
 .zx-arcade-controls{display:flex;gap:8px;align-items:center;flex-direction:row;padding:2px 0 0}
 .zx-arcade-controls>.primary{flex:1;min-width:0}
-.zx.zx-atlas{width:100%;max-width:352px;padding:0;gap:0;display:flex;flex-direction:column;align-items:center;background:transparent}
-.zx-atlas-key{width:100%;height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:#526D91;border-bottom:2px solid #9FB7D1}
-.zx-atlas-key>span{font-size:12px;color:#E5EDF8}
-.zx-atlas .zx-battle-map-frame{background:#E4EBF6}
-.zx-atlas-legend{width:100%;padding:7px 8px;display:flex;flex-direction:row;justify-content:center;gap:18px;background:#DEE6F2}
-.zx-atlas-legend>span{display:flex;align-items:center;gap:4px;font-size:12px;color:#354763}
+.zx.zx-modal-wrap.zx-atlas-overlay{padding:12px 6px 76px;background:rgba(21,29,46,.84)}
+.zx.zx-atlas{width:100%;max-width:480px;min-height:0;padding:0;gap:0;display:flex;flex-direction:column;align-items:center;background:transparent;border:0}
+.zx-atlas-key{width:100%;min-height:55px;display:flex;flex-direction:row;align-items:center;gap:9px;padding:0 5px 7px;background:transparent}
+.zx-atlas-key>.zx-atlas-symbol{width:33px;height:33px;flex:none}
+.zx-atlas-titles{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.zx-atlas-titles>small{font-size:11px;line-height:14px;font-weight:700;color:#C3D6E9}
+.zx-atlas-titles>h2{margin:0;padding:0;font-size:22px;line-height:26px;font-weight:800;color:#F4F4F6;text-align:left}
+.zx-atlas-key>.zx-atlas-zone{flex:none;padding:3px 7px;border-left:2px solid #CC8790;color:#EDF1F7;font-size:13px;line-height:17px;font-weight:700}
+.zx-atlas .zx-battle-map-frame{background:transparent}
+.zx-atlas-legend{width:100%;display:flex;flex-direction:row;justify-content:center;gap:18px}
+.zx-atlas-legend>span{display:flex;align-items:center;gap:4px;font-size:12px;color:#EDF1F7}
 .zx-atlas-legend i{width:8px;height:8px;border-radius:4px}
+.zx-atlas .zx-map-status{color:#EDF1F7}
+.zx-showing-atlas>#hud,.zx-showing-atlas>.tc,.zx-showing-atlas>.zx-hud{display:none}
 .zx .zx-paper-upgrade-head.single-line{height:47px;min-height:47px}
 .zx-showing-outcome>#hud,.zx-showing-outcome>.tc,.zx-showing-outcome>.zx-hud{display:none}
 .zx.zx-modal-wrap.zx-outcome-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:20px 19px;background:rgba(23,29,49,.78)}
@@ -586,6 +595,7 @@ html.zixing .toasts{left:12px;right:12px;width:auto;transform:none;align-items:f
 html.zixing .toasts[hidden]{display:none}
 html.zixing .toasts .toast{display:flex;flex-direction:row;align-items:center;width:auto;max-width:100%;min-height:25px;padding:4px 9px;gap:5px;background:rgba(38,52,72,.9);color:#F0F2F8;border:0;border-left:2px solid #A8C4DF;border-radius:2px;box-shadow:none;font-size:13px;line-height:18px}
 html.zixing .toasts .toast[data-priority="urgent"]{border-left-color:#DF969E}
+html.zixing .toasts .toast>.zx-weather-mark{width:18px;height:18px;flex:none}
 html.zixing .toasts .toast img{width:19px;height:19px;flex:none}
 html.zixing .toasts .toast-copy{min-width:0;flex:0 1 auto;white-space:normal;line-height:18px}
 html.zixing .zx-battle-lane>.zx-evolution-result{position:relative;inset:auto;width:100%;max-width:320px;height:65px;flex:none;margin:2px 0 3px;pointer-events:none}

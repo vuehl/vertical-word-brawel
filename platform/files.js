@@ -2,7 +2,7 @@
 const fs = () => wx.getFileSystemManager();
 const info = require('./assets');
 const {restoreModel} = require('./resource-codec');
-const {restoreSprite,resourceEntries,decodeBrotli,decodeText} = require('./resource-runtime');
+const {restoreSprite,encodeImageData,resourceEntries,decodeBrotli,decodeText} = require('./resource-runtime');
 const hydratedSprites = new Set();
 const installs = new Map();
 const packStates = new Map();
@@ -151,12 +151,45 @@ function resourceFor(raw) {
     .replace(/^(\.\/|\/)+/,'').replace(/^(assets\/)+assets\//,'assets/').replace(/^(data\/)+data\//,'data/'));
   return info.files[key];
 }
+const iconPages=new Map();
+function loadIcon(url) {
+  const raw=String(url);
+  if(raw.startsWith('data:')||raw.startsWith(wx.env.USER_DATA_PATH+'/'))return null;
+  const ref=resourceFor(raw);
+  if(!ref || !ref.includes('#'))return null;
+  const [page,tile]=ref.split('#'),[pack,file]=page.split('/');
+  const [x,y,width,height]=info.iconFrames[file][tile];
+  let job=iconPages.get(page);
+  if(!job){
+    job=ensurePack(pack).then(()=>new Promise((resolve,reject)=>{
+      const image=wx.createImage();
+      image.onload=()=>resolve(image);
+      image.onerror=()=>reject(Error('无法读取图集 '+file));
+      image.src=base+'/'+pack+'-'+info.packs[pack]+'/'+file;
+    }));
+    job.catch(()=>{if(iconPages.get(page)===job)iconPages.delete(page);});
+  }
+  iconPages.delete(page);iconPages.set(page,job);
+  if(iconPages.size>3)iconPages.delete(iconPages.keys().next().value);
+  return job.then(image=>{
+    let crop;
+    return {image,x,y,width,height,surface(){
+      if(!crop){
+        crop=wx.createOffscreenCanvas?wx.createOffscreenCanvas({type:'2d',width,height}):wx.createCanvas();
+        crop.width=width;crop.height=height;
+        crop.getContext('2d').drawImage(image,x,y,width,height,0,0,width,height);
+      }
+      return crop;
+    }};
+  });
+}
 function pathFor(url) {
   const raw = String(url);
   if (raw.startsWith(wx.env.USER_DATA_PATH + '/') || raw.startsWith('data:')) return raw;
   const file = resourceFor(raw);
   if (!file) return null;
   const [name, hash] = file.split('/');
+  if(hash.includes('#'))return base+'/'+name+'-'+info.packs[name]+'/'+hash.replace('#','-')+'.png';
   const dir=base + '/' + name + '-' + info.packs[name],path=dir+'/'+hash;
   const recipe=info.sprites[hash];
   if(recipe&&!hydratedSprites.has(path)){
@@ -185,6 +218,19 @@ async function resolvePath(url) {
     const file = resourceFor(raw);
     if (!file) return null;
     const [name,hash]=file.split('/');
+    if(hash.includes('#')){
+      const target=pathFor(raw);
+      // Raw file callers (e.g. fetch) get a standalone PNG. Normal image
+      // elements draw the region directly and never write individual files.
+      if(!exists(target)){
+        const icon=await loadIcon(raw);
+        if(exists(target))return target;
+        const pixels=icon.surface().getContext('2d').getImageData(0,0,icon.width,icon.height);
+        fs().writeFileSync(target+'.next',encodeImageData(pixels).buffer);
+        fs().renameSync(target+'.next',target);
+      }
+      return target;
+    }
     await ensurePack(name);
     await ensureModel(name,hash,pathFor(raw));
   }
@@ -209,4 +255,4 @@ async function prepareForest(onProgress) {
   try {return await Promise.all(names.map(name=>ensurePack(name)));}
   finally {if(onProgress)for(const name of names)listeners.get(name).delete(onProgress);}
 }
-module.exports = {init,pathFor,resolvePath,loadPackage,prepareForest,diagnostics};
+module.exports = {init,pathFor,resolvePath,loadIcon,loadPackage,prepareForest,diagnostics};

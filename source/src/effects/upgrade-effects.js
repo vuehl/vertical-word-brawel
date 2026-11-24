@@ -1,17 +1,17 @@
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw} from '../vendor/three-DmSYIDKK.js';
 import {WindAtlasBatch} from './wind-vortex.js';
+import {EvolutionScreen} from './evolution-screen.js';
+import {EvolutionCamera} from './evolution-camera.js';
+import {EVOLUTION_DURATION,EVOLUTION_REVEAL,evolutionFrame} from './evolution-timing.js';
+export {EVOLUTION_DURATION,EVOLUTION_REVEAL,EVOLUTION_LANDING,evolutionPose} from './evolution-timing.js';
 
 // jinhua.gif flashes into the new form at frame 126. The game clock drives
 // both the effect and the actual species change, including at low frame rates.
-export const EVOLUTION_REVEAL=1.8;
-export const EVOLUTION_DURATION=3.3;
-
 // Frames 92–123 have a 20 ms delay. The rest use 40 ms. Preserve those
 // relative speeds while aligning frame 126 with the gameplay reveal.
-function lightFrame(age,reveal,duration){
+function sourceFrame(age,reveal,duration){
   const time=age<reveal?4.4*age/reveal:4.4+1.8*(age-reveal)/(duration-reveal);
-  const frame=time<3.68?time*25:time<4.32?92+(time-3.68)*50:124+(time-4.32)*25;
-  return Math.floor(frame/2+1e-6);
+  return evolutionFrame(time);
 }
 
 function geometry(){
@@ -36,9 +36,11 @@ export class UpgradeEffects {
   constructor(run,scene){
     this.run=run;this.events=[];
     const g=geometry(),capacity=8;
-    this.light=new WindAtlasBatch(scene,capacity,'assets/vfx/evolution-light.webp',8,9,160,'evolution-light');
+    this.light=new WindAtlasBatch(scene,capacity,'assets/vfx/evolution-light.webp',8,9,96,'evolution-light');
     this.light.mesh.renderOrder=7.1;
     this.light.mesh.material.depthTest=false;
+    this.screen=new EvolutionScreen(run);
+    this.camera=new EvolutionCamera(run);
     this.origin=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
     this.timing=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
     g.setAttribute('originSize',this.origin);g.setAttribute('effectTime',this.timing);
@@ -167,10 +169,10 @@ export class UpgradeEffects {
     this.clear();scene.add(this.rearMesh,this.mesh);
   }
   prepare(){
-    return this.loading??=this.light.texture.userData.load().then(loaded=>{
+    return Promise.all([this.screen.prepare(),this.loading??=this.light.texture.userData.load().then(loaded=>{
       if(loaded&&!this.disposed)this.run.r.renderer.initTexture(this.light.texture);
       else this.loading=null;
-    });
+    })]);
   }
   play(actor=this.run.player,evolution=false,reveal=EVOLUTION_REVEAL){
     if(this.disposed||this.run.hideOwnFx)return;
@@ -179,7 +181,8 @@ export class UpgradeEffects {
     if(previous>=0)this.events.splice(previous,1);
     if(this.events.length>=this.origin.count)this.events.shift();
     const height=Math.max(1.9,Math.min(2.55,this.run.sprites.get(actor.speciesId).bodyHeight()*1.3));
-    if(evolution&&!this.light.loaded)this.prepare();
+    if(evolution&&(!this.light.loaded||!this.screen.loaded))this.prepare();
+    if(evolution&&actor===this.run.player)this.camera.start(actor);
     this.events.push({actor,height,evolution,age:0,reveal:evolution?reveal:.9,duration:evolution?reveal+EVOLUTION_DURATION-EVOLUTION_REVEAL:1.45});
     this.update(0);
   }
@@ -189,6 +192,7 @@ export class UpgradeEffects {
     this.mesh.material.uniforms.calm.value=fx.calm?1:0;
     this.mesh.count=0;
     this.light.clear();
+    this.screen.clear();
     for(let i=this.events.length-1;i>=0;i--){
       const e=this.events[i];e.age+=Math.max(0,dt);
       if(e.age>=e.duration||e.actor.dead){this.events.splice(i,1);continue;}
@@ -197,7 +201,8 @@ export class UpgradeEffects {
       const opacity=fx.opacity*fx.ownOpacity*(fx.calm?.7:1);
       this.timing.setXYZW(j,e.age,e.reveal,e.duration,opacity);
       if(e.evolution){
-        const frame=lightFrame(e.age,e.reveal,e.duration);
+        const source=sourceFrame(e.age,e.reveal,e.duration),frame=Math.floor(source/2);
+        if(e.actor===this.run.player)this.screen.update(e,source,opacity);
         if(frame<72){
           // In the padded square image the center sits 0.48 actor heights
           // above the ground, matching the procedural orbit.
@@ -208,14 +213,18 @@ export class UpgradeEffects {
       }
     }
     this.light.end();
+    // The full recording includes the same local gold light. Keep the local
+    // atlas as a load-failure fallback, without doubling the central burst.
+    if(this.screen.mesh.visible)this.light.mesh.visible=false;
     this.mesh.visible=this.mesh.count>0;
     this.rearMesh.count=this.mesh.count;this.rearMesh.visible=this.mesh.visible;
     if(this.mesh.visible)this.origin.needsUpdate=this.timing.needsUpdate=true;
   }
-  clear(){this.events.length=0;this.mesh.count=this.rearMesh.count=0;this.mesh.visible=this.rearMesh.visible=false;this.light.clear();}
+  clear(){this.events.length=0;this.mesh.count=this.rearMesh.count=0;this.mesh.visible=this.rearMesh.visible=false;this.light.clear();this.screen.clear();this.camera.clear();}
   dispose(){
     this.disposed=true;this.clear();this.mesh.geometry.dispose();
     this.light.dispose();
+    this.screen.dispose();
     for(const mesh of [this.mesh,this.rearMesh]){mesh.parent?.remove(mesh);mesh.material.dispose();mesh.dispose();}
   }
 }

@@ -122,19 +122,23 @@ export function paint(layout,boxes,view,scale) {
     } else if(tag==='img'||tag==='canvas'){
       const image=el._surface;
       if(image&&(tag==='canvas'||el.complete)&&image.width&&image.height){
-        const fit=s['object-fit'],ratio=(fit==='cover'?Math.max:Math.min)(w/image.width,h/image.height);
-        const dw=fit==='fill'?w:ratio*image.width,dh=fit==='fill'?h:ratio*image.height;
+        const icon=el._icon,{width,height}=icon||image;
+        const fit=s['object-fit'],ratio=(fit==='cover'?Math.max:Math.min)(w/width,h/height);
+        let dw=fit==='fill'?w:ratio*width,dh=fit==='fill'?h:ratio*height;
         if(el.dataset?.paperTilt){
           ctx.translate(x+w/2,y+h/2);ctx.rotate(Number(el.dataset.paperTilt)*Math.PI/180);ctx.translate(-x-w/2,-y-h/2);
         }
         rounded(ctx,x,y,w,h,parseFloat(s['border-radius'])||0);ctx.clip();
         ctx.imageSmoothingEnabled=s['image-rendering']!=='pixelated';
+        let left=x+(w-dw)/2,top=y+(h-dh)/2;
         if(view.originalPixels&&el.hasAttribute('data-original-pixels')){
-          const left=Math.round((view.x+x+w/2)*scale-image.width/2);
-          const top=Math.round((view.y+y+h/2)*scale-image.height/2);
+          left=Math.round((view.x+x+w/2)*scale-width/2);
+          top=Math.round((view.y+y+h/2)*scale-height/2);
           ctx.setTransform(1,0,0,1,0,0);
-          ctx.drawImage(image,left,top);
-        }else ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+          dw=width;dh=height;
+        }
+        if(icon)ctx.drawImage(image,icon.x,icon.y,width,height,left,top,dw,dh);
+        else ctx.drawImage(image,left,top,dw,dh);
       }
     } else if(tag==='input'||tag==='select'){
       ctx.font=layout.font(s);ctx.fillStyle=s.color;

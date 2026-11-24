@@ -58,7 +58,7 @@ export function createCollectionUI(app,api,kit){
     view='library';render();
   }
   const albumArt=(asset,cls='zc-control-face')=>el('img',cls,[],{
-    src:'assets/ui-paper/album-'+asset+'.png',alt:'','aria-hidden':true,
+    src:'assets/ui-paper/album-'+asset+'.webp',alt:'','aria-hidden':true,
   });
   function albumTab(label,active,onClick,attrs){
     return paperTab(el,button,label,active,onClick,attrs);
@@ -287,7 +287,7 @@ export function createCollectionUI(app,api,kit){
     const unknown=s==='unknown',ready=s==='ready',available=s==='owned',tracked=p().collection?.track===id;
     const finished=pr.parts.filter(part=>part.value>=part.goal).length;
     const hero=el('div','zc-unlock-identity',[
-      unknown?el('span','paper-stage-photo zc-unknown-print',[el('img','',[],{src:'assets/ui-paper/stage-portrait.png',alt:''}),el('b','','?')],{'aria-hidden':true,'data-paper-surface':'flat'}):portrait(id),
+      unknown?el('span','paper-stage-photo zc-unknown-print',[el('img','',[],{src:'assets/ui-paper/stage-portrait.webp',alt:''}),el('b','','?')],{'aria-hidden':true,'data-paper-surface':'flat'}):portrait(id),
       el('div','zc-unlock-name',[el('h2','',unknown?'未知字灵':c.word),
         unknown?null:el('span','',api.typeName(api.speciesType(id))+'属性'),
         tracked&&!unknown?el('b','zc-tracking-mark','已追踪'):null]),

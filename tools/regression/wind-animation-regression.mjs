@@ -40,7 +40,7 @@ export async function reviewWindAnimation(page,dir){
         if(r.nextEvo.to===-1)r.ui.modalEl.querySelector('[data-branch-id="'+branch+'"]').click();
         const target=r.nextEvo.to;
         [...r.ui.modalEl.querySelectorAll('button')].find(button=>button.textContent.includes('确认进阶')).click();
-        for(let i=0;i<140&&r.state==='evolving';i++)r.update(1/30);
+        for(let i=0;i<210&&r.state==='evolving';i++)r.update(1/30);
         if(p.speciesId!==target||r.state!=='play')throw Error('Evolution did not finish: '+target);
         if(!heroImageRequests.includes('assets/glyphs/hero-actions/'+target+'.png'))throw Error('Missing evolution atlas request: '+target);
         await r.sprites.prepareHeroForm(target);

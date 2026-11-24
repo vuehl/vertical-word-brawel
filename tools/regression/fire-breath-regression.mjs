@@ -8,12 +8,15 @@ import baselines from './fire-vfx-baselines.json' with {type:'json'};
 // Called by runtime-performance.mjs --vfx --fire-breath. Exercise the real
 // compiled move, damage fan and game renderer, with deterministic enemy inputs.
 export async function reviewFireBreath(page,dir,moves){
-  const id=moves.find(m=>m.key==='flamethrower').id,baseline=process.argv.includes('--baseline');
+  const id=moves.find(m=>m.key==='flamethrower').id,baseline=process.argv.includes('--capture-fire-baseline');
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.evaluate(async()=>{
     window.dispatchEvent(new Event('resize'));app.run.player.setSpecies(4);
+    // Hold the caster still so random desktop colliders cannot move the damage fan.
+    app.run.player.update=()=>{};
     await Promise.all([...app.run.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));
     const jet=app.run.vfx.crafted.fireJet;if(jet.ready&&!await jet.ready)throw Error('Fire breath atlas failed to load');
+    if(jet.reference&&!await jet.reference.ready)throw Error('Reference fire breath failed to load');
   });
   const setup=async(angle=-Math.PI/2,quality='high',frames=15,duration=3)=>page.evaluate(({id,angle,quality,frames,duration})=>{
     Math.random=()=>.5;app.meta.profile.settings.quality=quality;app.applySettings();vfxSetup();
@@ -30,7 +33,7 @@ export async function reviewFireBreath(page,dir,moves){
     return {hits:[...e.hp.slice(0,4)].map(h=>h<1e7),damage:r.player.moves[0].damageDone,
       volumes:r.vfx.crafted.entries.map(e=>({mode:e.mode,type:e.type,length:e.length})),
       camera:r.camDist,particles:r.vfx.norm.n+r.vfx.add.n,limit:r.performance.particles+r.performance.normalParticles,
-      trace:fireTrace(),fire:{count:r.vfx.crafted.fireJet.mesh.count,limit:r.vfx.crafted.fireJet.limit,textured:Object.values(r.vfx.crafted.fireJet.mesh.material.uniforms).some(u=>u.value?.isTexture)}};
+      trace:fireTrace(),fire:{count:r.vfx.crafted.fireJet.mesh.count+r.vfx.crafted.fireJet.legacy.mesh.count+(r.vfx.crafted.fireJet.reference?.mesh.count||0),limit:r.vfx.crafted.fireJet.limit,reference:r.vfx.crafted.fireJet.reference?.mesh.count||0,textured:!!r.vfx.crafted.fireJet.reference?.texture.isTexture}};
   },{id,angle,quality,frames,duration});
   const report={baseline,environment:'Actual compiled WeChat game in Chrome SwiftShader; controlled targets, original gameplay camera. Not phone FPS.',directions:[],qualities:[]};
   for(const quality of ['low','medium','high']){
@@ -38,7 +41,7 @@ export async function reviewFireBreath(page,dir,moves){
     assert.deepEqual(sample.hits,[true,true,true,false],'Both sides and centre hit; target behind caster stays unharmed');
     assert.ok(sample.damage>0&&sample.volumes.some(e=>e.mode===8));
     assert.equal(sample.camera,42);assert.ok(sample.particles<=sample.limit);
-    assert.ok(sample.fire.count>0&&sample.fire.count<=sample.fire.limit);assert.equal(sample.fire.textured,!baseline);
+    assert.ok(sample.fire.count>0&&sample.fire.count<=sample.fire.limit);if(!baseline){assert.equal(sample.fire.textured,true);assert.equal(sample.fire.reference,1);}
     report.qualities.push({quality,...sample});
     await page.screenshot({path:path.join(dir,'fire-'+quality+'.png')});
   }
@@ -59,7 +62,7 @@ export async function reviewFireBreath(page,dir,moves){
       const first=jet.packets.find(p=>p.id===window.firstFlamePacket)||jet.packets.reduce((a,b)=>!a||b.id<a.id?b:a,null);
       if(window.firstFlamePacket==null&&first)window.firstFlamePacket=first.id;
       const tracked=jet.packets.find(p=>p.id===window.firstFlamePacket);
-      return {active:app.run.player.moves[0].active,count:jet.mesh.count,spawned:jet.spawned,trace:fireTrace(),
+      return {active:app.run.player.moves[0].active,count:jet.mesh.count+jet.legacy.mesh.count+(jet.reference?.mesh.count||0),spawned:jet.spawned,trace:fireTrace(),
         first:tracked?{age:tracked.age,life:tracked.life,...jet.sample(tracked)}:null};
     });
     sample.time=(i+1)*2/30;report.lifecycle.push(sample);if(sample.first)report.packet.push(sample.first);
@@ -81,10 +84,10 @@ export async function reviewFireBreath(page,dir,moves){
     const before=v.fireJet.packets.map(p=>p.age).join('/'),births=v.fireJet.spawned;
     v.update(0);const paused=e.age===age&&before===v.fireJet.packets.map(p=>p.age).join('/')&&births===v.fireJet.spawned;
     app.run.player.moves.fill(null);for(let i=0;i<30;i++)v.update(1/30);
-    return {paused,expired:v.entries.length===0,count:v.mesh.count,keys:v.keys.size,fire:v.fireJet.mesh.count};
+    return {paused,expired:v.entries.length===0,count:v.mesh.count,keys:v.keys.size,fire:v.fireJet.mesh.count+v.fireJet.legacy.mesh.count+(v.fireJet.reference?.mesh.count||0)};
   });
   assert.deepEqual(report.motion,{paused:true,expired:true,count:0,keys:0,fire:0});
-  await setup();report.hidden=await page.evaluate(()=>{app.run.hideOwnFx=true;app.run.vfx.crafted.update(0);const count=app.run.vfx.crafted.fireJet.mesh.count;app.run.hideOwnFx=false;app.run.vfx.clear();return count;});assert.equal(report.hidden,0);
+  await setup();report.hidden=await page.evaluate(()=>{app.run.hideOwnFx=true;app.run.vfx.crafted.update(0);const j=app.run.vfx.crafted.fireJet;const count=j.mesh.count+j.legacy.mesh.count+(j.reference?.mesh.count||0);app.run.hideOwnFx=false;app.run.vfx.clear();return count;});assert.equal(report.hidden,0);
   report.enemy=await page.evaluate(()=>{
     const r=app.run,v=r.vfx.crafted;v.cone('enemy-fire-check',0,1,-5,0,1,6,'fire',.7,false);v.update(1/30);
     r.hideOwnFx=true;v.update(0);const own=v.fireJet.packets.filter(p=>p.own).length,enemy=v.fireJet.packets.filter(p=>!p.own).length;
@@ -116,7 +119,7 @@ export async function reviewFireBreath(page,dir,moves){
     const sample=await page.evaluate(async({id,key})=>{
       app.meta.profile.settings.quality='high';app.applySettings();vfxSetup();const r=app.run;r.player.addMove(id);r.player.moves[0].timer=0;
       await r.vfx.crafted.prepareMoveTexture?.(key);
-      vfxAdvance(key==='hydro-pump'?28:19);return {key,particles:r.vfx.norm.n+r.vfx.add.n,volumes:r.vfx.crafted.mesh.count,authored:r.vfx.crafted.fireSpin.mesh.count+r.vfx.crafted.fireball.mesh.count,fire:r.vfx.crafted.fireJet.mesh.count,legacyFire:r.vfx.crafted.fireJet.legacy?.mesh.count||0,projectiles:r.projectiles.used};
+      vfxAdvance(key==='hydro-pump'?28:19);return {key,particles:r.vfx.norm.n+r.vfx.add.n,volumes:r.vfx.crafted.mesh.count,authored:r.vfx.crafted.fireSpin.mesh.count+r.vfx.crafted.fireball.mesh.count,fire:r.vfx.crafted.fireJet.mesh.count+r.vfx.crafted.fireJet.legacy.mesh.count+(r.vfx.crafted.fireJet.reference?.mesh.count||0),legacyFire:r.vfx.crafted.fireJet.legacy?.mesh.count||0,projectiles:r.projectiles.used};
     },{id:move.id,key});
     assert.ok(sample.particles+sample.volumes+sample.authored+sample.fire+sample.legacyFire+sample.projectiles>0,key);
     report.otherMoves.push(sample);
@@ -124,6 +127,40 @@ export async function reviewFireBreath(page,dir,moves){
   report.ultimate=await page.evaluate(()=>{vfxSetup();const r=app.run;r.ult.charge=1;r.ult.fire();vfxAdvance(14);const v=r.vfx.crafted,mode=v.fireFamily?v.fireFamily.mesh.count>0:v.entries.some(e=>e.mode===3&&e.type==='fire');r.vfx.clear();return {mode,fireCleared:r.vfx.crafted.fireJet.mesh.count===0};});
   assert.ok(report.ultimate.mode&&report.ultimate.fireCleared);
   if(!baseline){
+    report.reference=await page.evaluate(()=>{
+      const r=app.run,v=r.vfx.crafted,j=v.fireJet,art=j.reference;
+      const key={def:{key:'flamethrower'}},frames=new Set();v.clear();
+      for(let i=0;i<45;i++){
+        v.cone(key,i/45,1,0,1,0,7,'fire',.7);v.update(1/30);
+        if(art.mesh.count)frames.add(art.attributes[1].array[1]);
+      }
+      const follows=Math.abs(art.attributes[0].array[0]-44/45)<.0001;
+      const before=JSON.stringify([...art.streams.values()]),pose=JSON.stringify(art.attributes.map(a=>[...a.array]));
+      v.update(0);const paused=before===JSON.stringify([...art.streams.values()])&&pose===JSON.stringify(art.attributes.map(a=>[...a.array]));
+      for(let i=0;i<6;i++)v.update(1/30);
+      const tail=art.mesh.count===1&&art.attributes[1].array[1]>=17;
+      for(let i=0;i<20;i++)v.update(1/30);
+      const expired=art.mesh.count===0&&art.streams.size===0;
+      v.cone(key,0,1,0,0,-1,7,'fire',.7);v.update(1/30);
+      const restarted=art.attributes[1].array[1]===0;
+      r.hideOwnFx=true;v.update(0);const hidden=art.mesh.count===0;
+      v.cone('enemy-cone-flamethrower-check',0,1,0,0,-1,7,'fire',.7,false);v.update(1/30);
+      const enemyVisible=art.mesh.count===1;
+      r.hideOwnFx=false;v.clear();const cleared=art.mesh.count===0&&art.streams.size===0;
+      return {frames:[...frames],follows,paused,tail,expired,restarted,hidden,enemyVisible,cleared};
+    });
+    assert.ok(report.reference.frames.length>=16,'The recording must animate through startup and sustain');
+    for(const [key,value] of Object.entries(report.reference))if(key!=='frames')assert.equal(value,true,key);
+    report.referencePressure=[];
+    for(const quality of ['low','medium','high']){
+      const sample=await page.evaluate(quality=>{
+        app.meta.profile.settings.quality=quality;app.applySettings();const v=app.run.vfx.crafted,j=v.fireJet.reference;v.clear();
+        const keys=Array.from({length:36},()=>({def:{key:'flamethrower'}}));
+        for(let f=0;f<20;f++){for(const key of keys)v.cone(key,0,1,0,0,-1,7,'fire',.7);v.update(1/30);}
+        const result={quality,count:j.mesh.count,limit:j.limit,finite:j.attributes.every(a=>[...a.array].every(Number.isFinite))};v.clear();return result;
+      },quality);
+      assert.ok(sample.count>0&&sample.count<=sample.limit&&sample.finite);report.referencePressure.push(sample);
+    }
     await setup();
     report.paintedHits=await page.evaluate(()=>{
       const r=app.run,j=r.vfx.crafted.fireJet;
@@ -137,7 +174,7 @@ export async function reviewFireBreath(page,dir,moves){
       j.updateHits(1);const expired=j.hitMesh.count===0;
       return {realHit,paused,hidden,enemyVisible,expired};
     });
-    assert.deepEqual(report.paintedHits,{realHit:true,paused:true,hidden:true,enemyVisible:true,expired:true});
+    assert.deepEqual(report.paintedHits,{realHit:false,paused:true,hidden:true,enemyVisible:true,expired:true});
     await setup();
     await page.evaluate(()=>{const r=app.run;r.combat.hit(1,20,{type:'fire',cls:'special',slot:0,silent:false,chance:0});r.vfx.crafted.fireJet.updateHits(.1);vfxDraw(false);});
     await page.screenshot({path:path.join(dir,'fire-painted-hit.png')});
@@ -160,9 +197,9 @@ export async function reviewFireBreath(page,dir,moves){
     }
     report.behaviorComparison={exact:true,qualities:report.qualities.length,directions:report.directions.length,timedFrames:report.lifecycle.length};
     report.disposal=await page.evaluate(()=>{
-      const j=app.run.vfx.crafted.fireJet,resources=[j.mesh.geometry,j.hitMesh.geometry,j.mesh.material,j.texture,j.legacy.mesh.geometry,j.legacy.mesh.material];let disposed=0;
+      const j=app.run.vfx.crafted.fireJet,resources=[j.mesh.geometry,j.hitMesh.geometry,j.mesh.material,j.texture,j.legacy.mesh.geometry,j.legacy.mesh.material,j.reference.mesh.geometry,j.reference.mesh.material,j.reference.texture];let disposed=0;
       for(const r of resources)r.addEventListener('dispose',()=>disposed++);j.dispose();
-      return {released:disposed,expected:resources.length,detached:!j.mesh.parent&&!j.hitMesh.parent&&!j.legacy.mesh.parent};
+      return {released:disposed,expected:resources.length,detached:!j.mesh.parent&&!j.hitMesh.parent&&!j.legacy.mesh.parent&&!j.reference.mesh.parent};
     });
     assert.ok(report.disposal.released===report.disposal.expected&&report.disposal.detached);
   }
