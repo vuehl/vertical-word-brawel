@@ -4,11 +4,11 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {roster,biomes,events,heldItems,vitamins} from '../src/catalogs.js';
-import {Jn as itemInPool} from '../src/config.js';
-import {createProfile} from '../src/progression.js';
+import {roster,biomes,events,heldItems,vitamins} from '../src/data/catalogs.js';
+import {Jn as itemInPool} from '../src/data/config.js';
+import {createProfile} from '../src/data/progression.js';
 import {settleRun,applyAction} from '../local/progression.mjs';
-import {constrainLiteProfile} from '../src/lite-rules.js';
+import {constrainLiteProfile} from '../src/data/lite-rules.js';
 
 test('a new profile can roll every configured official item without a research purchase',()=>{
  const profile=createProfile('test');
@@ -96,6 +96,6 @@ test('best-time records retain the client object schema and fastest splits',()=>
 });
 test('retired sanctuary GLBs are absent from the source assets',async()=>{
  for(const name of ['sanct_pillar','sanct_gate','shrine']){
-  await assert.rejects(fs.access(new URL('../public/assets/models/'+name+'.glb',import.meta.url)),{code:'ENOENT'});
+  await assert.rejects(fs.access(new URL('../../resources/public/assets/models/'+name+'.glb',import.meta.url)),{code:'ENOENT'});
  }
 });

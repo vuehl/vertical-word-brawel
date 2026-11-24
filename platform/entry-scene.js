@@ -1,6 +1,6 @@
-import {polygon,paintWordmark} from '../source/src/menu-scene.js';
+import {polygon,paintWordmark} from '../source/src/ui/menu-scene.js';
 import {gameViewport} from './viewport.mjs';
-import {deskFrame,deskPixelsPerUnit as ppu,deskTilt,entryHeroScale,entryFootOffset} from '../source/src/desk-framing.js';
+import {deskFrame,deskPixelsPerUnit as ppu,deskTilt,entryHeroScale,entryFootOffset} from '../source/src/world/desk-framing.js';
 
 function decodeImage(src,name){
   return new Promise((resolve,reject)=>{

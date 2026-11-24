@@ -25,7 +25,7 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// source/src/menu-scene.js
+// source/src/ui/menu-scene.js
 var menu_scene_exports = {};
 __export(menu_scene_exports, {
   gradient: () => gradient,
@@ -239,7 +239,7 @@ function paintLoadingSlip(ctx, value, label) {
 }
 var paper, ink;
 var init_menu_scene = __esm({
-  "source/src/menu-scene.js"() {
+  "source/src/ui/menu-scene.js"() {
     paper = "#F4F3F8";
     ink = "#2B2A49";
   }

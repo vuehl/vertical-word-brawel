@@ -1,6 +1,7 @@
-import {setChineseText} from './chinese-text.js';
+import {setChineseText} from './data/chinese-text.js';
 
 async function start(){
+  window.backgroundMusicEnabled ??= false;
   const response=await fetch(new URL('../text/ui.json',import.meta.url));
   if(!response.ok)throw Error('无法读取中文界面文字');
   setChineseText(await response.json());

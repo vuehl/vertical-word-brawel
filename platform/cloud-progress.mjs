@@ -1,4 +1,4 @@
-import {multiplayerConfig as config} from '../source/src/multiplayer-config.js';
+import {multiplayerConfig as config} from '../source/src/network/multiplayer-config.js';
 
 let initialized, initializing;
 export function initGameCloud(cloud) {

@@ -1,5 +1,5 @@
 'use strict';
-const {paintLoadingBackdrop,paintLoadingSlip}=require('../source/src/menu-scene.js');
+const {paintLoadingBackdrop,paintLoadingSlip}=require('../source/src/ui/menu-scene.js');
 
 // Native stationery and splash-sized hero copies are bundled in the main pack.
 module.exports = async function presentBootFrame(gl) {

@@ -5,9 +5,9 @@ import {build} from 'esbuild';
 export async function auditGeometry(page,dir){
   const root=path.resolve(import.meta.dirname,'../..');
   const bundled=await build({bundle:true,platform:'node',format:'cjs',write:false,stdin:{resolveDir:root,contents:`
-    import {paperProp} from './source/src/paper-props.js';
-    import {paperPropNames} from './source/src/paper-prop-names.js';
-    import {createPaperAssets,disposePaperAssets} from './source/src/paper-world.js';
+    import {paperProp} from './source/src/world/paper-props.js';
+    import {paperPropNames} from './source/src/world/paper-prop-names.js';
+    import {createPaperAssets,disposePaperAssets} from './source/src/world/paper-world.js';
     const triangles=g=>(g.index?.count??g.attributes.position.count)/3;
     export function inspect(){
       const props=paperPropNames.map(name=>{
@@ -20,7 +20,7 @@ export async function auditGeometry(page,dir){
       });
       const assets=createPaperAssets(),primitives=Object.fromEntries(['boxes','planes','cylinders','cones'].map(k=>[k,triangles(assets[k])]));disposePaperAssets(assets);
       return {props,primitives};
-    }`},plugins:[{name:'source-three',setup(b){b.onResolve({filter:/assets\/three-[^/]+\.js$/},args=>({path:path.join(root,'source/public/assets',path.basename(args.path))}));}}]});
+    }`}});
   const module={exports:{}};new Function('module','exports',bundled.outputFiles[0].text)(module,module.exports);
   const report={basis:'Geometry index count / 3. Scene counts include submitted instances; full-frame counts include post-processing passes, exclude native UI GL draws.',...module.exports.inspect(),scenes:[]};
   for(let stage=1;stage<=4;stage++){

@@ -96,6 +96,6 @@ try{
   await page.evaluate(()=>{const r=__portraitApp.run;r.ui.hideModal();r.state='play';r.update(.016);});await sleep(1000);
   await capture('play');
   await page.evaluate(()=>__portraitApp.run.pause());await capture('paused');
-  if(!process.argv.includes('--verify-only'))fs.writeFileSync(path.join(root,'platform','layout.bin'),deflateSync(JSON.stringify(result),{level:9}));
-  console.log('CSS metrics bytes',fs.statSync(path.join(root,'platform/layout.bin')).size);
+  if(!process.argv.includes('--verify-only'))fs.writeFileSync(path.join(root,'resources/reference/layout.bin'),deflateSync(JSON.stringify(result),{level:9}));
+  console.log('CSS metrics bytes',fs.statSync(path.join(root,'resources/reference/layout.bin')).size);
 }finally{await browser?.close();server.kill();const clean=path.resolve(temp);if(!clean.startsWith(path.resolve(os.tmpdir())+path.sep))throw Error('Invalid temporary directory');fs.rmSync(clean,{recursive:true,force:true});}

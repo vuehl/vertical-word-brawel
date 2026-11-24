@@ -2,13 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import esbuild from 'esbuild';
-import {buildPlay} from './play-chunks.mjs';
+import {buildPlay} from './build/play-chunks.mjs';
 import {bindPortalZoneClock} from '../source/tools/portal-zone-clock.mjs';
 import {parse} from '../source/tools/vendor/acorn.mjs';
-import {addBootAssets,bootAssets,writeBootHeroArt} from './boot-assets.mjs';
-import {lowerUnicodeRegexes} from './device-syntax.mjs';
-import {assetPolicyVersion,itemIconSelectionChanged} from './asset-policy.mjs';
-import {gameProject} from './project-target.mjs';
+import {addBootAssets,bootAssets,writeBootHeroArt} from './build/boot-assets.mjs';
+import {lowerUnicodeRegexes} from './build/device-syntax.mjs';
+import {assetPolicyVersion,itemIconSelectionChanged} from './build/asset-policy.mjs';
+import {gameProject} from './build/project-target.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
 const development=process.argv.includes('--dev');
@@ -20,7 +20,7 @@ const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
 if(installedAssets?.policyVersion!==assetPolicyVersion||itemIconSelectionChanged(installedAssets.files)||
   (developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
-  execFileSync(process.execPath,[path.join(import.meta.dirname,'assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
+  execFileSync(process.execPath,[path.join(import.meta.dirname,'build/assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{
   if(!s.includes(from)||s.indexOf(from)!==s.lastIndexOf(from))throw Error('Source anchor changed: '+from.slice(0,80));
@@ -95,9 +95,8 @@ const sources={
     }));
     build.onLoad({filter:/local[\\/]progression\.mjs$/},()=>({resolveDir:path.join(src,'local'),contents:
       read('local/progression.mjs').replace("import fs from 'node:fs';",'import {cloneData as structuredClone} from "pokebonk:clone";')
-        .replace(/^const pokemon = new Map\(.+;$/m,'const pokemon=new Map('+JSON.stringify(JSON.parse(read('public/data/pokemon.json')).map(p=>[p.id,{family:p.family}]))+');')
+        .replace(/^const pokemon = new Map\(.+;$/m,'const pokemon=new Map('+JSON.stringify(JSON.parse(read('../resources/public/data/pokemon.json')).map(p=>[p.id,{family:p.family}]))+');')
     }));
-    build.onResolve({filter:/^\.\.\/assets\/three-.+\.js$/},args=>({path:path.join(src,'public/assets',path.basename(args.path))}));
     build.onLoad({filter:/src[\\/]game-font\.js$/},()=>({contents:'export const gameFontsReady=Promise.resolve();'}));
     build.onLoad({filter:/linkedom[\\/]worker\.js$/},args=>{
       let code=fs.readFileSync(args.path,'utf8').replace(/\r\n/g,'\n');
@@ -115,7 +114,7 @@ const sources={
       code+='\nexport const compileStyleSelector=selector=>compile(selector,{adapter,strict:true,xmlMode:false,cacheResults:false});';
       return {contents:code,resolveDir:path.dirname(args.path)};
     });
-    build.onLoad({filter:/src[\\/](config|move-effects|boss-encounters)\.js$/},args=>({
+    build.onLoad({filter:/[\\/](config|move-effects|boss-encounters)\.js$/},args=>({
       contents:lowerUnicodeRegexes(fs.readFileSync(args.path,'utf8')),resolveDir:path.dirname(args.path)
     }));
     build.onLoad({filter:/src[\\/]game\.js$/},()=>{
@@ -127,7 +126,7 @@ const sources={
         'await new Promise((e) => setTimeout(e, 500)));\n          if (t >= 2) throw Error("WebGL 2 初始化失败：" + (e.message || e));');
       code=replace(code,'(ac(), installImageRetries(), await new AL().boot());','export async function launch(){ac();installImageRetries();const app=new AL();window.onApp?.(app);await app.boot();return app;}');
       // Browser-only legacy QA is never part of a native release.
-      code=replace(code,"import {mountLiteQA} from './lite-qa.js';",'');
+      code=replace(code,"import {mountLiteQA} from './debug/lite-qa.js';",'');
       code=replace(code,'  mountLiteQA(e);','');
       if(developer)code=developer.instrumentGame(code);
       code=replace(code,'if ((this.r.render(n), this.run?.state === \x60play\x60))','if ((this.r.render(n), window.drawUI(this.r.renderer), this.run?.state === \x60play\x60))');
@@ -141,7 +140,7 @@ const previewESVersion=2017;
 const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es'+previewESVersion,charset:'utf8',legalComments:'eof',metafile:process.argv.includes('--analyze'),
   nodePaths:[path.join(import.meta.dirname,'node_modules')],plugins:[...(developer?[developer.isolatedStoragePlugin(platform)]:[]),sources],logLevel:'warning'};
 const hostBundle=await esbuild.build({...common,define:{document:'undefined'},entryPoints:[path.join(platform,'host.mjs')],write:false});
-await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
+await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'build/resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
 const result=await buildPlay(common,src,hostBundle.outputFiles[0].text);
 result.files.set('game.js',fs.readFileSync(path.join(platform,'play-entry.js'),'utf8'));
@@ -182,7 +181,7 @@ for(const name of runtimePackages){
   const pkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json')));
   const license=fs.readdirSync(dir).find(file=>/^licen[sc]e(?:$|[.])/i.test(file));
   if(license)notices.push(name+' '+pkg.version+'\n'+fs.readFileSync(path.join(dir,license),'utf8'));
-  else if(name==='brotli')notices.push(name+' '+pkg.version+'\n'+fs.readFileSync(path.join(import.meta.dirname,'brotli-NOTICE.txt'),'utf8'));
+  else if(name==='brotli')notices.push(name+' '+pkg.version+'\n'+fs.readFileSync(path.join(import.meta.dirname,'build/brotli-NOTICE.txt'),'utf8'));
   for(const dep of Object.keys(pkg.dependencies||{}))if(fs.existsSync(path.join(import.meta.dirname,'node_modules',dep,'package.json')))runtimePackages.add(dep);
 }
 fs.writeFileSync(path.join(out,'packs','text','licenses.txt'),notices.join('\n\n'));
@@ -191,7 +190,7 @@ for(const file of ['game.js','host.js','original.js','licenses.txt','layout.bin'
 function files(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(f=>f.isDirectory()?files(path.join(dir,f.name)):[path.join(dir,f.name)]);}
 const built=files(out),size=list=>list.reduce((n,f)=>n+fs.statSync(f).size,0);
 if(!development){
-  if(Object.keys(result.metafile.inputs).some(file=>/tools[\\/]developer[\\/]|src[\\/]lite-qa\.js$/.test(file)))
+  if(Object.keys(result.metafile.inputs).some(file=>/tools[\\/]developer[\\/]|src[\\/]debug[\\/]lite-qa\.js$/.test(file)))
     throw Error('Developer module included in release dependency graph.');
   const release=[...result.files.values()].join('\n');
   for(const marker of ['__zixingDeveloper','zx-dev-panel','pokebonk-dev-save','mountLiteQA','隔离 QA'])

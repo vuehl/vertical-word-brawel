@@ -1,5 +1,5 @@
-import {paintPaperWaves as blueWaves,paintPhotoWaves,paperPalette} from '../source/src/paper-shapes.js';
-import {qualityPaper} from '../source/src/choice-presentation.js';
+import {paintPaperWaves as blueWaves,paintPhotoWaves,paperPalette} from '../source/src/ui/paper-shapes.js';
+import {qualityPaper} from '../source/src/ui/choice-presentation.js';
 const white=paperPalette.paper;
 
 function gradient(ctx,w,h,top,bottom){

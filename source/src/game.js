@@ -1,65 +1,65 @@
-import {choiceQuality as itemOfferQuality} from './choice-presentation.js';
-import {itemOffer,shopOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './battle-review-ui.js';
-import {createCaptureGourd,gourdIcon} from './capture-gourd.js';
-import {deskDevice,deskTexture,disposeDeskDevice} from './desk2d.js';
-import {createBerryPickup} from './berry-pickup.js';
-import {deskPitch,deskTilt,deskFrame,deskWalkInset} from './desk-framing.js';
-import {MapSpawnError,mapRulesFor} from './map-rules.js';
-import {altarPalette} from './desk-altar-art.js';
-import {ALTAR_RING_EMISSIVE,altarRingFragment} from './altar-ring-vfx.js';
-import {formCopy, moveCopy, specialNames} from './form-copy.js';
-import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,summonDockModel,facilityNames,isActiveFacility,springShoesKey} from './active-content.js';
-import {createFacilityEffects} from './facility-effects.js';
-import {saveProgress,restoreProgress,forgetSeat,savedSeat,worldProgress} from './coop-resume.js';
-import {RoomMonsters,roomMonster} from './room-monsters.js';
-import {acceptPeerSample,advancePeerMotion} from './peer-motion.js';
-import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './lite-rules.js';
-import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './character-rules.js';
-import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './dragon-chant.js';
-import {beginDragonSummon,clearDragonSummon,warmDragonSummon} from './dragon-summon-hd/sequence.js';
-import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage} from './starter-characters.js';
-import {windMoveEffect} from './wind-move-art.js';
-import {createWindAceCast,advanceWindAce,windAceImpact} from './wind-ace.js';
-import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './skill-availability.js';
-import {mountLiteQA} from './lite-qa.js';
-import {runPlan, planIncludes} from './battle-plan.js';
-import {createZixingUI,paperIcon} from './zixing-ui.js';
-import {bossDistanceText,buildingMapName,drawCompassDial} from './paper-hud-art.js';
-import {installGlyphs,glyphPreview} from './zixing-glyphs.js';
-import {heroActionCatalog} from './hero-action-catalog.js';
-import {playerHeroAction,animatedPixelHeight,glyphBillboardSize} from './hero-actions.js';
-import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './paper-glyph-art.js';
-import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './zixing-identity.js';
-import {createPlayerFootRing,createFacilityDwellRing,createDeskAltarRing} from './player-foot-ring.js';
-import {EnemyTelegraphs} from './enemy-telegraphs.js';
-import {CrowdGrid} from './crowd-grid.js';
-import {crowdStep,separationBudget} from './crowd-cadence.js';
-import {FramePacer,CombatClock} from './frame-pacing.js';
-import {CombatIdleWarmup,warmCombatShaders,warmCombatDraw} from './combat-warmup.js';
-import {UpgradeEffects,EVOLUTION_REVEAL,EVOLUTION_DURATION} from './upgrade-effects.js';
-import {createActorTypeLookup} from './actor-types.js';
-import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './ring-shader.js';
-import {crowdBudgets,updateCrowdBudget} from './crowd-budget.js';
-import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE,ENEMY_HEALTH_SCALE,ENEMY_DAMAGE_SCALE,ENEMY_XP_SCALE,SPECIAL_ACTORS} from './spawn-budget.js';
-import {ParticleBudget,CriticalImpactBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './effect-budget.js';
-import {createStylizedEffectAtlas,EFFECT_CELL,STAMPEDE_FLAME} from './stylized-effect-atlas.js';
-import {StylizedSkillFX} from './stylized-skill-vfx.js';
-import {actorMetrics} from './actor-metrics.js';
-import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera,updateWorkshopScene} from './paper-world.js';
-import {moveShelfAlly} from './desk-shelf.js';
-import {updateLooseMarbles} from './workshop-marbles.js';
-import {createSceneAntialias} from './scene-antialias.js';
-import {paperProp} from './paper-props.js';
-import {runLoadingSteps,waitForLoadingPaint} from './loading-work.js';
-import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './paper-pickups.js';
-import {performanceProfile,selectGraphicsQuality,targetFrameRate} from './performance-profile.js';
-import {deviceFramePolicy,applyFrameRatePolicy,setFrameRateLock,resetFrameRatePolicy,frameRateHelp} from './frame-policy.js';
-import {portalGuidance} from './portal-guidance.js';
-import {UpgradeTiming} from './upgrade-timing.js';
-import {updatePaperVisibility} from './paper-visibility.js';
-import {paperBox,hitsPaperBox,resolvePaperBox,moveDeskPlayer,moveEnemyPastProps,obstacleJumpSpeed} from './paper-collision.js';
-import './customize.js';
-import {chineseMessage as t,formatChineseNumber as n,chineseText as c} from "./chinese-text.js";
+import {choiceQuality as itemOfferQuality} from './ui/choice-presentation.js';
+import {itemOffer,shopOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './ui/battle-review-ui.js';
+import {createCaptureGourd,gourdIcon} from './combat/capture-gourd.js';
+import {deskDevice,deskTexture,disposeDeskDevice} from './world/desk2d.js';
+import {createBerryPickup} from './combat/berry-pickup.js';
+import {deskPitch,deskTilt,deskFrame,deskWalkInset} from './world/desk-framing.js';
+import {MapSpawnError,mapRulesFor} from './world/map-rules.js';
+import {altarPalette} from './world/desk-altar-art.js';
+import {ALTAR_RING_EMISSIVE,altarRingFragment} from './effects/altar-ring-vfx.js';
+import {formCopy, moveCopy, specialNames} from './data/form-copy.js';
+import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,summonDockModel,facilityNames,isActiveFacility,springShoesKey} from './data/active-content.js';
+import {createFacilityEffects} from './effects/facility-effects.js';
+import {saveProgress,restoreProgress,forgetSeat,savedSeat,worldProgress} from './network/coop-resume.js';
+import {RoomMonsters,roomMonster} from './world/room-monsters.js';
+import {acceptPeerSample,advancePeerMotion} from './network/peer-motion.js';
+import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './data/lite-rules.js';
+import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './data/character-rules.js';
+import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './effects/dragon-chant.js';
+import {beginDragonSummon,clearDragonSummon,warmDragonSummon} from './effects/dragon-summon-hd/sequence.js';
+import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage} from './data/starter-characters.js';
+import {windMoveEffect} from './effects/wind-move-art.js';
+import {createWindAceCast,advanceWindAce,windAceImpact} from './effects/wind-ace.js';
+import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './data/skill-availability.js';
+import {mountLiteQA} from './debug/lite-qa.js';
+import {runPlan, planIncludes} from './combat/battle-plan.js';
+import {createZixingUI,paperIcon} from './ui/zixing-ui.js';
+import {bossDistanceText,buildingMapName,drawCompassDial} from './ui/paper-hud-art.js';
+import {installGlyphs,glyphPreview} from './actors/zixing-glyphs.js';
+import {heroActionCatalog} from './actors/hero-action-catalog.js';
+import {playerHeroAction,animatedPixelHeight,glyphBillboardSize} from './actors/hero-actions.js';
+import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './actors/paper-glyph-art.js';
+import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './data/zixing-identity.js';
+import {createPlayerFootRing,createFacilityDwellRing,createDeskAltarRing} from './effects/player-foot-ring.js';
+import {EnemyTelegraphs} from './combat/enemy-telegraphs.js';
+import {CrowdGrid} from './performance/crowd-grid.js';
+import {crowdStep,separationBudget} from './performance/crowd-cadence.js';
+import {FramePacer,CombatClock} from './performance/frame-pacing.js';
+import {CombatIdleWarmup,warmCombatShaders,warmCombatDraw} from './performance/combat-warmup.js';
+import {UpgradeEffects,EVOLUTION_REVEAL,EVOLUTION_DURATION} from './effects/upgrade-effects.js';
+import {createActorTypeLookup} from './actors/actor-types.js';
+import {ringEmptyPixels,ringStripGeometry,ringStripPosition,ringSquareClip} from './effects/ring-shader.js';
+import {crowdBudgets,updateCrowdBudget} from './performance/crowd-budget.js';
+import {allowOrdinarySpawn,runOrdinaryLimit,countOrdinary,naturalCreditRate,SPAWN_RATE_SCALE,ENEMY_HEALTH_SCALE,ENEMY_DAMAGE_SCALE,ENEMY_XP_SCALE,SPECIAL_ACTORS} from './performance/spawn-budget.js';
+import {ParticleBudget,CriticalImpactBudget,accumulateDamage,flushDamage,enemyShadow,applyCrowdEffects} from './performance/effect-budget.js';
+import {createStylizedEffectAtlas,EFFECT_CELL,STAMPEDE_FLAME} from './effects/stylized-effect-atlas.js';
+import {StylizedSkillFX} from './effects/stylized-skill-vfx.js';
+import {actorMetrics} from './actors/actor-metrics.js';
+import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera,updateWorkshopScene} from './world/paper-world.js';
+import {moveShelfAlly} from './world/desk-shelf.js';
+import {updateLooseMarbles} from './world/workshop-marbles.js';
+import {createSceneAntialias} from './performance/scene-antialias.js';
+import {paperProp} from './world/paper-props.js';
+import {runLoadingSteps,waitForLoadingPaint} from './performance/loading-work.js';
+import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from './combat/paper-pickups.js';
+import {performanceProfile,selectGraphicsQuality,targetFrameRate} from './performance/performance-profile.js';
+import {deviceFramePolicy,applyFrameRatePolicy,setFrameRateLock,resetFrameRatePolicy,frameRateHelp} from './performance/frame-policy.js';
+import {portalGuidance} from './world/portal-guidance.js';
+import {UpgradeTiming} from './combat/upgrade-timing.js';
+import {updatePaperVisibility} from './world/paper-visibility.js';
+import {paperBox,hitsPaperBox,resolvePaperBox,moveDeskPlayer,moveEnemyPastProps,obstacleJumpSpeed} from './world/paper-collision.js';
+import './ui/customize.js';
+import {chineseMessage as t,formatChineseNumber as n,chineseText as c} from "./data/chinese-text.js";
 import {
   $ as l,
   $n as u,
@@ -257,7 +257,7 @@ import {
   zn as dr,
   zr as fr,
   zt as pr,
-} from "./config.js";
+} from "./data/config.js";
 import {
   $ as mr,
   A as hr,
@@ -329,9 +329,9 @@ import {
   x as Di,
   y as Oi,
   z as ki,
-} from "../assets/three-DmSYIDKK.js";
-import {createBossEncounters} from './boss-encounters.js';
-import {createMoveEffects} from './move-effects.js';
+} from "./vendor/three-DmSYIDKK.js";
+import {createBossEncounters} from './combat/boss-encounters.js';
+import {createMoveEffects} from './combat/move-effects.js';
 var Ai = Object.defineProperty,
   ji = (e, t) => {
     let n = {};

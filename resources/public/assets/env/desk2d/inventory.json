@@ -1,0 +1,283 @@
+{
+  "reference": "desk_map.png",
+  "width": 5142,
+  "height": 2892,
+  "objects": [
+    {
+      "name": "bags.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        0,
+        865,
+        634,
+        1635
+      ],
+      "walkable": false
+    },
+    {
+      "name": "bell.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        3249,
+        2524,
+        3440,
+        2643
+      ],
+      "walkable": false
+    },
+    {
+      "name": "bottle.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        3367,
+        470,
+        3501,
+        922
+      ],
+      "walkable": false
+    },
+    {
+      "name": "box.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        3406,
+        387,
+        3734,
+        902
+      ],
+      "walkable": false
+    },
+    {
+      "name": "cup.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        740,
+        457,
+        1197,
+        1130
+      ],
+      "walkable": false
+    },
+    {
+      "name": "hushoushuang.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        3425,
+        2044,
+        4068,
+        2354
+      ],
+      "walkable": false
+    },
+    {
+      "name": "ID-card.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        1394,
+        689,
+        2262,
+        1236
+      ],
+      "walkable": false
+    },
+    {
+      "name": "keyboard.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        1817,
+        713,
+        3615,
+        1483
+      ],
+      "walkable": false
+    },
+    {
+      "name": "medicine.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        1550,
+        1620,
+        1964,
+        2200
+      ],
+      "walkable": false
+    },
+    {
+      "name": "mouse.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        3933,
+        1613,
+        4351,
+        2106
+      ],
+      "walkable": false
+    },
+    {
+      "name": "notebook.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        975,
+        1016,
+        1678,
+        1736
+      ],
+      "walkable": false
+    },
+    {
+      "name": "pen.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        3582,
+        1316,
+        3864,
+        1859
+      ],
+      "walkable": false
+    },
+    {
+      "name": "shelf.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        902,
+        0,
+        5141,
+        906
+      ],
+      "walkable": false
+    },
+    {
+      "name": "tea-bag.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        2929,
+        613,
+        3302,
+        982
+      ],
+      "walkable": false
+    },
+    {
+      "name": "teethpicks.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        2919,
+        1512,
+        3409,
+        1926
+      ],
+      "walkable": false
+    },
+    {
+      "name": "toy0.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        4064,
+        0,
+        5141,
+        513
+      ],
+      "walkable": false
+    },
+    {
+      "name": "toy1.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        2248,
+        1254,
+        2590,
+        1644
+      ],
+      "walkable": false
+    },
+    {
+      "name": "toy2.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        2510,
+        466,
+        2673,
+        605
+      ],
+      "walkable": false
+    },
+    {
+      "name": "toy3.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        2643,
+        85,
+        2987,
+        484
+      ],
+      "walkable": false
+    },
+    {
+      "name": "wacom.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        1615,
+        1290,
+        3426,
+        2387
+      ],
+      "walkable": false
+    },
+    {
+      "name": "wires.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        3179,
+        247,
+        5141,
+        2016
+      ],
+      "walkable": true
+    },
+    {
+      "name": "xiangdai.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        1243,
+        0,
+        1546,
+        545
+      ],
+      "walkable": false
+    },
+    {
+      "name": "zhi.png",
+      "width": 5142,
+      "height": 2892,
+      "bounds": [
+        348,
+        1842,
+        1377,
+        2515
+      ],
+      "walkable": false
+    }
+  ]
+}

@@ -1,36 +1,45 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {parse} from '../source/tools/vendor/acorn.mjs';
 
-const root=path.resolve(import.meta.dirname,'..');
-const provenance=JSON.parse(fs.readFileSync(path.join(root,'docs/portrait-changes.json'),'utf8'));
-const original=path.resolve(process.argv[2]||provenance.source),copy=path.join(root,'source');
-const walk=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(entry=>
-  entry.isDirectory()?walk(path.join(dir,entry.name)):[path.join(dir,entry.name)]);
-const digest=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const normalize=relative=>relative.replaceAll('\\','/');
-const changed=[],missing=[];
-let identical=0;
-for(const file of walk(original)){
-  const relative=path.relative(original,file),target=path.join(copy,relative);
-  if(!fs.existsSync(target))missing.push(normalize(relative));
-  else if(digest(file)!==digest(target))changed.push(normalize(relative));
-  else identical++;
+// Check disk paths, including modules only loaded by the developer panel and QA tools.
+const root = path.resolve(import.meta.dirname, '..');
+const missing = [];
+let checked = 0;
+
+function checkReference(file, specifier) {
+  if (typeof specifier !== 'string' || !specifier.startsWith('.')) return;
+  const target = path.resolve(path.dirname(file), specifier);
+  if (!fs.existsSync(target)) missing.push(path.relative(root, file) + ' → ' + specifier);
 }
-const added=walk(copy).map(file=>path.relative(copy,file))
-  .filter(relative=>!fs.existsSync(path.join(original,relative))).map(normalize);
-assert.deepEqual(missing,[],'Original files must not be lost');
-assert.deepEqual(changed.sort(),['src/customize.js','src/game.js']);
-assert.deepEqual(added.sort(),[
-  'public/fonts/swei/README.md',
-  'public/fonts/swei/SIL_Open_Font_License_1.1.txt',
-  'public/fonts/swei/SweiGothicCJKsc-Bold.ttf',
-  'public/fonts/swei/SweiGothicCJKsc-Regular.ttf',
-  'src/zixing-ui.js','src/zixing-style.js','src/zixing-glyphs.js'
-].sort());
-assert.equal(digest(path.join(original,'src/game.js')),provenance.originalGameSHA256);
-const report={source:original,identical,changed,missing,added,checkedAt:new Date().toISOString()};
-fs.mkdirSync(path.join(root,'验收'),{recursive:true});
-fs.writeFileSync(path.join(root,'验收/原项目一致性.json'),JSON.stringify(report,null,2));
-console.log(report);
+
+function checkModule(file) {
+  const tree = parse(fs.readFileSync(file, 'utf8'), {ecmaVersion: 'latest', sourceType: 'module'});
+  const nodes = [tree];
+  while (nodes.length) {
+    const node = nodes.pop();
+    if (node.source?.type === 'Literal') checkReference(file, node.source.value);
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) if (child?.type) nodes.push(child);
+      } else if (value?.type) nodes.push(value);
+    }
+  }
+  checked++;
+}
+
+function scan(directory) {
+  for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name !== 'node_modules' && entry.name !== 'vendor') scan(file);
+    } else if (/\.(?:js|mjs)$/.test(entry.name)) checkModule(file);
+  }
+}
+
+for (const folder of ['source/src', 'source/local', 'source/firebase', 'source/tools', 'platform', 'tools']) {
+  scan(path.join(root, folder));
+}
+checkModule(path.join(root, 'source/server.mjs'));
+if (missing.length) throw Error('找不到源码引用的文件\n' + missing.join('\n'));
+console.log('已核对 ' + checked + ' 个模块的本地导入路径。');

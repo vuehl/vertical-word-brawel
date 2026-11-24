@@ -1,13 +1,11 @@
 // DEV ONLY: injected by tools/developer/build-support.mjs, never imported by
 // source/. No settings, debug actions or test rewards enter the release save.
-import {itemCardContent,itemDialog} from '../../source/src/zixing-ui.js';
-import sizes from './items/sizes.json' with {type:'json'};
 import {createWorkload,workloadPreset} from './workload.mjs';
 import {createEncounterTest,encounterAt,nextEncounter} from './encounters.mjs';
-import {ordinaryLimit} from '../../source/src/spawn-budget.js';
-import {zoneDuration} from '../../source/src/lite-rules.js';
-import {heroActionCatalog} from '../../source/src/hero-action-catalog.js';
-import heroRigs from '../../source/src/hero-rigs.json' with {type:'json'};
+import {ordinaryLimit} from '../../source/src/performance/spawn-budget.js';
+import {zoneDuration} from '../../source/src/data/lite-rules.js';
+import {heroActionCatalog} from '../../source/src/actors/hero-action-catalog.js';
+import heroRigs from '../../resources/public/config/hero-rigs.json' with {type:'json'};
 const SPECIAL=2|4|128|2048|4096|8192|16384|32768|65536|131072;
 const MAX_COUNT=1000;
 const ordinary=(enemies,i)=>enemies.alive[i]&&!(enemies.flags[i]&SPECIAL);
@@ -99,58 +97,24 @@ export function installDeveloperMode(app,{skills,speciesName}){
   const doc=window.document;
   const node=(tag,text,style='')=>{const el=doc.createElement(tag);if(text)el.textContent=text;el.style.cssText=style;return el;};
   const text=(el,value)=>{if(el&&el.textContent!==value)el.textContent=value;};
-  const action=(label,fn,id,cls)=>{
-    const el=node('button',label,cls?'':'min-height:36px;padding:6px 9px;border:1px solid #c4c9c2;border-radius:9px;background:#fffdf7;color:#36443e;font-size:12px;font-weight:700;pointer-events:auto;');
-    if(cls)el.className=cls;
+  const action=(label,fn,id)=>{
+    const el=node('button',label,'min-height:36px;padding:6px 9px;border:1px solid #c4c9c2;border-radius:9px;background:#fffdf7;color:#36443e;font-size:12px;font-weight:700;pointer-events:auto;');
     el.type='button';if(id)el.dataset.devAction=id;
     el.addEventListener('click',async event=>{event.stopPropagation();try{await fn();}catch(e){text(error,e.message||String(e));console.error('Developer action:',e);}});
     return el;
   };
   const row=(...children)=>{const el=node('div','','display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;');el.append(...children);return el;};
-  let itemPreview=null;
-  function closeItemPreview(){
-    if(!itemPreview)return;
-    itemPreview.remove();itemPreview=null;
-    window.developerPreviewPixels(false);app.r.resize();invalidate();
-  }
-  function showItemPreview(){
-    if(itemPreview)return;
-    const wrap=node('div');wrap.className='zx zx-modal-wrap';wrap.id='zx-item-preview';
-    wrap.style.zIndex='1100';wrap.setAttribute('role','dialog');wrap.setAttribute('aria-label','道具原图预览');
-    const originalHeight=Math.ceil(Math.max(...sizes)/window.devicePixelRatio);
-    if(window.innerWidth-originalHeight<80)wrap.style.padding='10px 6px';
-    let index=0;
-    // Reserve the same area in every card. The painter places decoded pixels
-    // at integer framebuffer coordinates independently of this layout box.
-    const picture=node('img','','width:100%;height:'+Math.max(128,originalHeight)+'px;flex:none;image-rendering:pixelated;');
-    picture.className='zx-item-image';picture.setAttribute('data-original-pixels','');
-    const dimensions=node('p');dimensions.className='zx-item-effect';
-    const card=node('div');card.className='zx-item-card';
-    card.append(...itemCardContent(picture,'原图','',[dimensions]));
-    const next=action('',()=>{index=(index+1)%sizes.length;show();},'item-preview-next','zx-button primary');
-    const back=action('关闭',closeItemPreview,'item-preview-back','zx-button zx-item-sell');
-    const show=()=>{
-      const size=sizes[index],name=size+'.png';
-      picture.alt=name;picture.src='/developer/items/'+name;
-      text(card.querySelector('.zx-item-rarity'),size===64?'缩小版':'原图');
-      text(card.querySelector('h3'),name);text(dimensions,size+' × '+size+' 像素');
-      text(next,'下一张（'+sizes[(index+1)%sizes.length]+'.png）');invalidate();
-    };
-    wrap.append(itemDialog('你发现了一件道具！',[card],[next,back]));
-    itemPreview=wrap;(panel||app.screen).append(wrap);
-    window.developerPreviewPixels(true);app.r.resize();show();
-  }
   // Visible identity is deliberately confined to this separately built module.
   const markHome=()=>{
     const home=app.screen;if(!home?.classList.contains('zx-home'))return;
     const bar=home.querySelector('.zx-home-top .zx-row');
     if(bar&&!bar.querySelector('#zx-dev-version')){
       const label=node('small','开发测试版 DEV 8','padding:5px 8px;border-radius:8px;background:#ffe0ad;color:#855329;font-weight:700;');
-      label.id='zx-dev-version';bar.prepend(label,action('道具对比',showItemPreview,'item-preview'));
+      label.id='zx-dev-version';bar.prepend(label);
     }
   };
   const setScreen=app.setScreen.bind(app);
-  app.setScreen=(...args)=>{closeItemPreview();const result=setScreen(...args);Promise.resolve().then(markHome);return result;};
+  app.setScreen=(...args)=>{const result=setScreen(...args);Promise.resolve().then(markHome);return result;};
   markHome();let showOnEntry=true;
   function snapshot(){
     if(!run)return null;
@@ -207,7 +171,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
   }
   function removePanel(){
     restoreHeroRender?.();restoreHeroRender=null;
-    closeItemPreview();panel?.remove();panel=null;values=null;error=null;
+    panel?.remove();panel=null;values=null;error=null;
   }
   function close(){
     if(!panel)return;removePanel();
@@ -283,7 +247,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
       scenery.setAttribute('aria-pressed',String(options.hideScenery));
     });
     card.append(action('测试死亡动作',()=>previewDeath(shell),'preview-hero-death'),
-      action('道具对比',showItemPreview,'item-preview'),action('大招连升测试',testUltimateUpgrade,'ultimate-upgrade'),
+      action('大招连升测试',testUltimateUpgrade,'ultimate-upgrade'),
       node('small','替换普通怪并立即放大招。击败整组测试怪、吸收经验可连升两级。','font-size:11px;'),scenery);
     card.append(modes,values.preset,values.skills);
     values.evolution=node('small','','font-size:12px;line-height:1.45;');

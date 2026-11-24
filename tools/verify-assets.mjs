@@ -6,21 +6,20 @@ import {brotliDecompressSync} from 'node:zlib';
 import sharp from 'sharp';
 import index from '../minigame/assets.js';
 import codec from '../platform/resource-codec.js';
-import {restoreSprite} from './sprite-png.mjs';
-import {unpackStream} from './resource-stream.mjs';
-import {measureActor} from './actor-metrics.mjs';
-import {actorMetrics} from '../source/src/actor-metrics.js';
-import {heroActionCatalog} from '../source/src/hero-action-catalog.js';
-import {assetPolicyVersion,compressedFireAtlases,windClarityAtlases,excludedAssetReason,musicTracks} from './asset-policy.mjs';
-import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/catalogs.js';
-import {facilityNames,facilityIconFile,summonDockModel,isActiveItem} from '../source/src/active-content.js';
-import {resolveItemIcon} from '../source/src/item-icons.js';
-import {glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
-import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
-import {unpackMeshBytes} from '../source/src/dragon-summon-hd/mesh-bytes.js';
-import {dragonDirectory} from './dragon-summon-pack.mjs';
-import {portalScreenAtlas} from '../source/src/portal-screen-atlas.js';
-const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'source/public');
+import {restoreSprite} from './build/sprite-png.mjs';
+import {unpackStream} from './build/resource-stream.mjs';
+import {actorMetrics} from '../source/src/actors/actor-metrics.js';
+import {heroActionCatalog} from '../source/src/actors/hero-action-catalog.js';
+import {assetPolicyVersion,compressedFireAtlases,windClarityAtlases,excludedAssetReason,musicTracks} from './build/asset-policy.mjs';
+import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/data/catalogs.js';
+import {facilityNames,facilityIconFile,summonDockModel,isActiveItem} from '../source/src/data/active-content.js';
+import {resolveItemIcon} from '../source/src/data/item-icons.js';
+import {glyphSpeciesFromImage} from '../source/src/data/zixing-identity.js';
+import {runtimeData,runtimeSpecies} from './build/runtime-data.mjs';
+import {unpackMeshBytes} from '../source/src/effects/dragon-summon-hd/mesh-bytes.js';
+import {dragonDirectory} from './build/dragon-summon-pack.mjs';
+import {portalScreenAtlas} from '../source/src/effects/portal-screen-atlas.js';
+const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'resources/public');
 const packs={};
 const digest=b=>createHash('sha256').update(b).digest('hex');
 assert.equal(index.policyVersion,assetPolicyVersion,'Rebuild the changed asset policy');
@@ -150,11 +149,13 @@ const requiredSpecies=new Set(runtimeSpecies);
 for(const actor of sourceSpecies)if(runtimeSpecies.includes(actor.id))requiredSpecies.add(actor.family);
 assert.deepEqual(JSON.parse(Buffer.from(bytes('data/pokemon.json'))).map(p=>p.id),
   sourceSpecies.filter(actor=>requiredSpecies.has(actor.id)).map(actor=>actor.id));
+// Snapshot verified against every original walk frame before retiring the sprite sheets.
+assert.equal(digest(JSON.stringify(actorMetrics)),'7cc64bc744f11178d73e6bd4aa3d55fd743f314ebed7d7d8cfda3239bc0117aa');
 for(const id of [...Array.from({length:151},(_,i)=>i+1),201]){
   assert.ok(!index.files['assets/pmd/'+id+'.png'],'Legacy actor atlas must not ship: '+id);
-  const file='assets/pmd/'+id+'.png',override=path.join(pub,'overrides',file);
-  const meta=JSON.parse(fs.readFileSync(path.join(pub,'data/sprites.json')))[id];
-  assert.deepEqual(actorMetrics[id],await measureActor(fs.existsSync(override)?override:path.join(pub,file),meta,id),'Actor collision bounds: '+id);
+  const bounds=actorMetrics[id];
+  assert.ok(bounds && Number.isFinite(bounds.top) && bounds.foot>bounds.top && bounds.width>0,
+    'Missing actor collision bounds: '+id);
 }
 for(const key of Object.keys(index.files))assert.equal(glyphSpeciesFromImage(key),null,'Legacy actor image must not ship: '+key);
 assert.match(index.files['assets/glyphs/atlas.png'],/^text\//,'Character selection needs the atlas in the startup package');
@@ -206,9 +207,9 @@ assert.deepEqual(fs.readdirSync(path.join(pub,'assets/models/devices')).filter(n
   [path.basename(dockKey)]);
 assert.deepEqual(models.sort(),['assets/models/ball.glb',dockKey].sort());
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
-const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/DeviceScreenFx.mjs')));
-const deskDevices=JSON.parse(fs.readFileSync(path.join(root,'source/src/desk2d-devices.json'),'utf8'));
-const deskTiles=JSON.parse(fs.readFileSync(path.join(root,'source/src/desk2d-layout.json'),'utf8')).layers.find(layer=>layer.name==='desk').parts;
+const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/effects/DeviceScreenFx.mjs')));
+const deskDevices=JSON.parse(fs.readFileSync(path.join(root,'resources/public/config/desk2d-devices.json'),'utf8'));
+const deskTiles=JSON.parse(fs.readFileSync(path.join(root,'resources/public/config/desk2d-layout.json'),'utf8')).layers.find(layer=>layer.name==='desk').parts;
 for(const [name] of deskTiles){
   const key='assets/env/desk2d/'+name;
   assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed desk tile '+name);

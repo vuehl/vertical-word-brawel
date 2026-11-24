@@ -1,9 +1,9 @@
-import {constrainLiteProfile, isLiteSpecies, isLiteFamily, SINGLE_STAGE, QUIT_REWARD_MIN_SECONDS, runRecordKey} from '../src/lite-rules.js';
+import {constrainLiteProfile, isLiteSpecies, isLiteFamily, SINGLE_STAGE, QUIT_REWARD_MIN_SECONDS, runRecordKey} from '../src/data/lite-rules.js';
 import fs from 'node:fs';
-import '../src/customize.js';
-import * as rules from '../src/progression.js';
-import {jr as itemMap, yr as taskById, zr as biomes, Kt as events, Dt as looks} from '../src/config.js';
-const pokemon = new Map(JSON.parse(fs.readFileSync(new URL('../public/data/pokemon.json', import.meta.url))).map(p=>[p.id,p]));
+import '../src/ui/customize.js';
+import * as rules from '../src/data/progression.js';
+import {jr as itemMap, yr as taskById, zr as biomes, Kt as events, Dt as looks} from '../src/data/config.js';
+const pokemon = new Map(JSON.parse(fs.readFileSync(new URL('../../resources/public/data/pokemon.json', import.meta.url))).map(p=>[p.id,p]));
 export const refreshTasks = rules.refreshTasks;
 export function applyAction(p, a) {
   if (!a || typeof a.k !== 'string') return false;

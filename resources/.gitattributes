@@ -1,0 +1,2 @@
+# Preserve the original bytes of images, archives and mirrored web assets.
+public/assets/** -text

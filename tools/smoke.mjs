@@ -1,4 +1,4 @@
-import {FOREST_ROUTE} from '../source/src/lite-rules.js';
+import {FOREST_ROUTE} from '../source/src/data/lite-rules.js';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,23 +7,23 @@ import os from 'node:os';
 import {build} from 'esbuild';
 import puppeteer from 'puppeteer-core';
 import sharp from 'sharp';
-import {reviewMenus} from './menu-regression.mjs';
-import {reviewUIPerformance} from './ui-perf.mjs';
-import {reviewZixing} from './zixing-regression.mjs';
-import {reviewPaper} from './paper-regression.mjs';
-import {reviewLoading,reviewNetworkActions} from './loading-regression.mjs';
-import {reviewScenes} from './scene-regression.mjs';
-import {reviewStarters} from './starter-regression.mjs';
-import {reviewUpgrade} from './upgrade-regression.mjs';
-import {reviewBattleFeedback} from './battle-feedback-regression.mjs';
-import {fixtureSubpackage} from './fixture-play-chunks.mjs';
-import {reviewAltarRing} from './altar-ring-regression.mjs';
-import {reviewRunSettlement,reviewStartupLatency} from './startup-regression.mjs';
-import {gameProject} from './project-target.mjs';
+import {reviewMenus} from './regression/menu-regression.mjs';
+import {reviewUIPerformance} from './regression/ui-perf.mjs';
+import {reviewZixing} from './regression/zixing-regression.mjs';
+import {reviewPaper} from './regression/paper-regression.mjs';
+import {reviewLoading,reviewNetworkActions} from './regression/loading-regression.mjs';
+import {reviewScenes} from './regression/scene-regression.mjs';
+import {reviewStarters} from './regression/starter-regression.mjs';
+import {reviewUpgrade} from './regression/upgrade-regression.mjs';
+import {reviewBattleFeedback} from './regression/battle-feedback-regression.mjs';
+import {fixtureSubpackage} from './build/fixture-play-chunks.mjs';
+import {reviewAltarRing} from './regression/altar-ring-regression.mjs';
+import {reviewRunSettlement,reviewStartupLatency} from './regression/startup-regression.mjs';
+import {gameProject} from './build/project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(gameProject(root,process.argv.includes('--dev')),'minigame');
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
-const fixture=(await build({bundle:true,entryPoints:[path.join(import.meta.dirname,'wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
+const fixture=(await build({bundle:true,entryPoints:[path.join(import.meta.dirname,'build/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
 // On the phone the main CommonJS loader cannot see modules inside a subpackage.
 const config=JSON.parse(fs.readFileSync(path.join(game,'game.json'),'utf8'));
 assert.equal(config.deviceOrientation,'portrait');
@@ -54,7 +54,7 @@ await new Promise(r=>srv.listen(0,'127.0.0.1',r));
 const b=await puppeteer.launch({executablePath:chrome,headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling']});
 if(process.argv.includes('--coop')){
   try {
-    const {reviewCoop}=await import('./coop-regression.mjs');
+    const {reviewCoop}=await import('./regression/coop-regression.mjs');
     await reviewCoop(b,srv.address().port);
   } finally { await b.close();srv.close(); }
   process.exit(0);
@@ -284,8 +284,8 @@ async function verifyStartup(){
   if(await page.evaluate(()=>!!app.zixing)){
     if(process.argv.includes('--startup-latency'))await reviewStartupLatency({page,dir,baseline:process.argv.includes('--baseline')});
     else if(process.argv.includes('--run-settlement'))await reviewRunSettlement({page,dir});
-    else if(process.argv.includes('--entry-flow'))await (await import('./entry-regression.mjs')).verifyEntry({page,tap,dir});
-    else if(process.argv.includes('--battle-plan'))await (await import('./battle-plan-regression.mjs')).reviewBattlePlan({page,tap,dir});
+    else if(process.argv.includes('--entry-flow'))await (await import('./regression/entry-regression.mjs')).verifyEntry({page,tap,dir});
+    else if(process.argv.includes('--battle-plan'))await (await import('./regression/battle-plan-regression.mjs')).reviewBattlePlan({page,tap,dir});
     else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
     else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
@@ -293,7 +293,7 @@ async function verifyStartup(){
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--device-effects')){
-      const {reviewDeviceEffects}=await import('./device-effects-regression.mjs');
+      const {reviewDeviceEffects}=await import('./regression/device-effects-regression.mjs');
       await reviewDeviceEffects(page,dir);
     }
     else if(process.argv.includes('--paper-art'))await reviewPaper({page,tap,resize,dir,sleep});
@@ -507,11 +507,11 @@ async function verifyStartup(){
 }
 try{
   if(process.argv.includes('--joystick-only')){
-    const {verifyJoystick}=await import('./joystick-regression.mjs');
+    const {verifyJoystick}=await import('./regression/joystick-regression.mjs');
     await verifyJoystick(page,dir);
     if(errors.length)throw Error(errors[0]);
   }else if(process.argv.includes('--desk2d')){
-    const {verifyDesk}=await import('./desk2d-regression.mjs');
+    const {verifyDesk}=await import('./regression/desk2d-regression.mjs');
     await verifyDesk(page,dir);
   }else await verifyStartup();
 }

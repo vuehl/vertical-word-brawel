@@ -3,35 +3,35 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {reviewGlyphCrowd} from './glyph-crowd-regression.mjs';
-import {reviewCharacters} from './character-regression.mjs';
-import {reviewWorkshop} from './workshop-regression.mjs';
-import {reviewStylizedVFX} from './stylized-vfx-regression.mjs';
-import {reviewPaperBatching} from './paper-batching-regression.mjs';
-import {profileRuntime} from './runtime-profile.mjs';
-import {reviewLateCrowd} from './late-crowd-regression.mjs';
-import {reviewRingShader} from './ring-shader-regression.mjs';
-import {reviewMapEffects} from './map-effects-regression.mjs';
-import {reviewQuality} from './quality-regression.mjs';
-import {reviewClarity} from './clarity-regression.mjs';
-import {reviewExperiencePerformance} from './experience-performance.mjs';
+import {reviewGlyphCrowd} from './regression/glyph-crowd-regression.mjs';
+import {reviewCharacters} from './regression/character-regression.mjs';
+import {reviewWorkshop} from './regression/workshop-regression.mjs';
+import {reviewStylizedVFX} from './regression/stylized-vfx-regression.mjs';
+import {reviewPaperBatching} from './regression/paper-batching-regression.mjs';
+import {profileRuntime} from './build/runtime-profile.mjs';
+import {reviewLateCrowd} from './regression/late-crowd-regression.mjs';
+import {reviewRingShader} from './regression/ring-shader-regression.mjs';
+import {reviewMapEffects} from './regression/map-effects-regression.mjs';
+import {reviewQuality} from './regression/quality-regression.mjs';
+import {reviewClarity} from './regression/clarity-regression.mjs';
+import {reviewExperiencePerformance} from './regression/experience-performance.mjs';
 import {reviewDeveloper,enterDeveloperFromHome} from './developer/regression.mjs';
 import {auditGeometry} from './developer/geometry-audit.mjs';
-import {reviewOptimizations} from './optimization-regression.mjs';
-import {reviewCrowdRender} from './crowd-render-regression.mjs';
-import {reviewBattleLoad} from './battle-load-regression.mjs';
-import {reviewBattleVisual} from './battle-visual-regression.mjs';
-import {reviewIOSBudget,installNativePerformanceFixture,reviewNativePerformance} from './ios-budget-regression.mjs';
-import {reviewPhonePerformance} from './phone-performance-regression.mjs';
-import {fixtureSubpackage} from './fixture-play-chunks.mjs';
-import {gameProject} from './project-target.mjs';
+import {reviewOptimizations} from './regression/optimization-regression.mjs';
+import {reviewCrowdRender} from './regression/crowd-render-regression.mjs';
+import {reviewBattleLoad} from './regression/battle-load-regression.mjs';
+import {reviewBattleVisual} from './regression/battle-visual-regression.mjs';
+import {reviewIOSBudget,installNativePerformanceFixture,reviewNativePerformance} from './regression/ios-budget-regression.mjs';
+import {reviewPhonePerformance} from './regression/phone-performance-regression.mjs';
+import {fixtureSubpackage} from './build/fixture-play-chunks.mjs';
+import {gameProject} from './build/project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
 const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development),'minigame');
 const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion','--fusion-cleanup'].some(arg=>process.argv.includes(arg));
 const dir=process.env.POKEBONK_QA||path.join(root,process.argv.includes('--summon-mode')?'验收/召唤门蓝红双版':process.argv.includes('--skill-availability')?'验收/技能移除与空气斩':fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
 const {default:puppeteer}=await import(pathToFileURL(path.join(root,'tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js')));
-const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
+const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/build/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
 const config=JSON.parse(fs.readFileSync(path.join(game,'game.json'),'utf8'));
 assert.equal(config.iOSHighPerformance,true);assert.equal(config['iOSHighPerformance+'],true);
 assert.equal(config.plugins?.MiniGameCommon,undefined,'Build must not declare the removed power-mode plugin');
@@ -139,57 +139,57 @@ try{
     assert.ok(result.pending<=6&&result.reused&&result.unmoved&&result.kept&&result.discarded);
     assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--gourd-offscreen')){
-    const {reviewGourdOffscreen}=await import('./gourd-offscreen-regression.mjs');
+    const {reviewGourdOffscreen}=await import('./regression/gourd-offscreen-regression.mjs');
     await reviewGourdOffscreen(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--berry-pickup')){
-    const {verifyBerryPickup}=await import('./berry-pickup-regression.mjs');
+    const {verifyBerryPickup}=await import('./regression/berry-pickup-regression.mjs');
     await verifyBerryPickup(page,dir);
     await page.evaluate(()=>app.run.changeZone());
     assert.equal(await page.evaluate(()=>app.run.stage),2);
     await verifyBerryPickup(page,dir);
     assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--facility-grey-rings')){
-    const {reviewFacilityGreyRings}=await import('./facility-grey-rings-regression.mjs');
+    const {reviewFacilityGreyRings}=await import('./regression/facility-grey-rings-regression.mjs');
     await reviewFacilityGreyRings(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--countdown-dock')){
-    const {reviewCountdownDock}=await import('./countdown-dock-regression.mjs');
+    const {reviewCountdownDock}=await import('./regression/countdown-dock-regression.mjs');
     await reviewCountdownDock(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--upgrade-effects')){
-    const {reviewUpgradeEffects}=await import('./upgrade-effects-regression.mjs');
+    const {reviewUpgradeEffects}=await import('./regression/upgrade-effects-regression.mjs');
     await reviewUpgradeEffects(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--summon-mode')){
-    const {reviewSummonModes}=await import('./summon-mode-regression.mjs');
+    const {reviewSummonModes}=await import('./regression/summon-mode-regression.mjs');
     await reviewSummonModes(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--frame-stability')){
-    const {reviewFrameStability}=await import('./frame-stability-regression.mjs');
+    const {reviewFrameStability}=await import('./regression/frame-stability-regression.mjs');
     await reviewFrameStability(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--portal-crossing')){
-    const {reviewPortalCrossing}=await import('./exit-guidance-regression.mjs');
+    const {reviewPortalCrossing}=await import('./regression/exit-guidance-regression.mjs');
     for(const stage of [2,4]){
       assert.deepEqual(await reviewPortalCrossing(page),{stage,cleared:false,hidden:true});
       console.log('Portal crossed without a blank frame, destination stage',stage);
     }
     assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--exit-guidance')){
-    const {reviewExitGuidance}=await import('./exit-guidance-regression.mjs');
+    const {reviewExitGuidance}=await import('./regression/exit-guidance-regression.mjs');
     await reviewExitGuidance(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--android-stability')){
-    const {reviewAndroidStability}=await import('./android-stability-regression.mjs');
+    const {reviewAndroidStability}=await import('./regression/android-stability-regression.mjs');
     await reviewAndroidStability(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--map-wind')||process.argv.includes('--polaroid')){
-    const {reviewMapWind}=await import('./map-wind-regression.mjs');
+    const {reviewMapWind}=await import('./regression/map-wind-regression.mjs');
     await reviewMapWind(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--boss-telegraphs')){
-    const {reviewBossTelegraphs}=await import('./boss-telegraph-regression.mjs');
+    const {reviewBossTelegraphs}=await import('./regression/boss-telegraph-regression.mjs');
     await reviewBossTelegraphs(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--boss-performance')){
-    const {reviewBossPerformance}=await import('./boss-performance-regression.mjs');
+    const {reviewBossPerformance}=await import('./regression/boss-performance-regression.mjs');
     await reviewBossPerformance(page,dir,process.argv.includes('--baseline'),process.argv.includes('--boss-programs'));assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--battle-pacing')){
-    const {reviewBattlePacing}=await import('./battle-pacing-regression.mjs');
+    const {reviewBattlePacing}=await import('./regression/battle-pacing-regression.mjs');
     await reviewBattlePacing(page);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--android-performance')&&process.argv.includes('--startup-soak')){
-    const {reviewAndroidStartup}=await import('./android-startup-regression.mjs');
+    const {reviewAndroidStartup}=await import('./regression/android-startup-regression.mjs');
     await reviewAndroidStartup(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--android-performance')){
     const samples=await page.evaluate(()=>{
@@ -223,27 +223,27 @@ try{
   }else if(process.argv.includes('--native-performance')){
     await reviewNativePerformance(page,dir);assert.deepEqual(errors,[]);
   }else if(upgradeResume){
-    const {reviewUpgradeResume}=await import('./upgrade-resume-regression.mjs');
+    const {reviewUpgradeResume}=await import('./regression/upgrade-resume-regression.mjs');
     await reviewUpgradeResume(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
   }else if(fiveMinute){
-    const {reviewFiveMinute,playFiveMinutes}=await import('./five-minute-regression.mjs');
+    const {reviewFiveMinute,playFiveMinutes}=await import('./regression/five-minute-regression.mjs');
     if(process.argv.includes('--soak'))await playFiveMinutes(page,dir);
     else await reviewFiveMinute(page,dir,process.argv.includes('--baseline'));
     assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--wind-animation')){
-    const {reviewWindAnimation}=await import('./wind-animation-regression.mjs');
+    const {reviewWindAnimation}=await import('./regression/wind-animation-regression.mjs');
     await reviewWindAnimation(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--spring-shoes')){
-    const {reviewSpringShoes}=await import('./spring-shoes-regression.mjs');
+    const {reviewSpringShoes}=await import('./regression/spring-shoes-regression.mjs');
     await reviewSpringShoes(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--illustrated-desk')){
-    const {reviewIllustratedDesk}=await import('./illustrated-desk-regression.mjs');
+    const {reviewIllustratedDesk}=await import('./regression/illustrated-desk-regression.mjs');
     await reviewIllustratedDesk(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--desktop-layout')){
-    const {reviewDesktopLayout}=await import('./desktop-layout-regression.mjs');
+    const {reviewDesktopLayout}=await import('./regression/desktop-layout-regression.mjs');
     await reviewDesktopLayout(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--map-play')){
-    const {reviewMapPlay}=await import('./map-play-regression.mjs');
+    const {reviewMapPlay}=await import('./regression/map-play-regression.mjs');
     await reviewMapPlay(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--vfx')){
     await reviewStylizedVFX(page,dir);assert.deepEqual(errors,[]);

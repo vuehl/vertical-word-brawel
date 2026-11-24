@@ -1,9 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'public');
+const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'../resources/public');
 const missing=new Set(), checked=new Set();
-const queue=['src/boot.js','src/game.js','src/config.js','src/chinese-text.js'];
+const queue=['src/boot.js','src/game.js','src/data/config.js','src/data/chinese-text.js'];
 while(queue.length){
  const name=queue.shift();if(checked.has(name))continue;checked.add(name);
  const file=name.startsWith('src/')?path.join(root,name):path.join(pub,name);

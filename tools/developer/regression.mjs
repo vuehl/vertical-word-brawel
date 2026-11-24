@@ -4,7 +4,7 @@ import path from 'node:path';
 import {reviewEncounters} from './encounters-regression.mjs';
 import {reviewDeveloperSkills} from './skills-regression.mjs';
 import {reviewDeveloperEvolution} from './evolution-regression.mjs';
-import {heroActionCatalog} from '../../source/src/hero-action-catalog.js';
+import {heroActionCatalog} from '../../source/src/actors/hero-action-catalog.js';
 
 async function reviewDeathPreview(page,dir,tap){
   for(const species of [4,16,17,18,58,59,5,6]){

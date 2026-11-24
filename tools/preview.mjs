@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {buildHashes} from './preview-files.mjs';
+import {buildHashes} from './build/preview-files.mjs';
 import {verifyDeveloperPreview,writeDeveloperPreviewPage} from './developer/preview-support.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');

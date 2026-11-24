@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {vitamins} from '../../source/src/catalogs.js';
+import {vitamins} from '../../source/src/data/catalogs.js';
 
 export async function reviewDeveloperSkills(page,dir){
   const report=[];

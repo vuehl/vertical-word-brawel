@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {verifyDeveloperBundle,verifyDeveloperPreview} from './preview-support.mjs';
-import {buildHashes} from '../preview-files.mjs';
+import {buildHashes} from '../build/preview-files.mjs';
 
 test('developer preview refuses release, mismatched and incomplete gameplay packages',()=>{
   const main='if(api.developerBuild==="dev8-fixture")resolve(api);';

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {brotliDecompressSync} from 'node:zlib';
-import {unpackStream} from './resource-stream.mjs';
+import {unpackStream} from './build/resource-stream.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame');
 const index=createRequire(import.meta.url)(path.join(game,'assets.js'));

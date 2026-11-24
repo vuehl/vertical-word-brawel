@@ -1,0 +1,72 @@
+{
+  "tile": 512,
+  "columns": 8,
+  "rows": 4,
+  "padding": 4,
+  "clips": {
+    "pillar": {
+      "first": 0,
+      "count": 16,
+      "fps": 24,
+      "source": "醉拳-技能12-醉腾云/龙头受击",
+      "sourceFrames": 67,
+      "activeFrames": 36,
+      "frames": [
+        "ltsj_00031.png",
+        "ltsj_00034.png",
+        "ltsj_00036.png",
+        "ltsj_00039.png",
+        "ltsj_00040.png",
+        "ltsj_00043.png",
+        "ltsj_00045.png",
+        "ltsj_00048.png",
+        "ltsj_00049.png",
+        "ltsj_00052.png",
+        "ltsj_00054.png",
+        "ltsj_00057.png",
+        "ltsj_00058.png",
+        "ltsj_00061.png",
+        "ltsj_00063.png",
+        "ltsj_00066.png"
+      ],
+      "crop": {
+        "left": 95,
+        "top": 38,
+        "width": 1166,
+        "height": 973
+      }
+    },
+    "eruption": {
+      "first": 16,
+      "count": 16,
+      "fps": 24,
+      "source": "醉拳-技能11-醉千坛/酒坛爆炸/jiutanbaozha",
+      "sourceFrames": 99,
+      "activeFrames": 24,
+      "frames": [
+        "jiutanbaozha_00075.png",
+        "jiutanbaozha_00076.png",
+        "jiutanbaozha_00078.png",
+        "jiutanbaozha_00079.png",
+        "jiutanbaozha_00082.png",
+        "jiutanbaozha_00083.png",
+        "jiutanbaozha_00084.png",
+        "jiutanbaozha_00086.png",
+        "jiutanbaozha_00087.png",
+        "jiutanbaozha_00089.png",
+        "jiutanbaozha_00090.png",
+        "jiutanbaozha_00091.png",
+        "jiutanbaozha_00094.png",
+        "jiutanbaozha_00095.png",
+        "jiutanbaozha_00097.png",
+        "jiutanbaozha_00098.png"
+      ],
+      "crop": {
+        "left": 52,
+        "top": 151,
+        "width": 1455,
+        "height": 1088
+      }
+    }
+  }
+}

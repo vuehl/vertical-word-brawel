@@ -1,0 +1,29 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import http from 'node:http';
+import assert from 'node:assert/strict';
+import puppeteer from 'puppeteer-core';
+const root=path.resolve(import.meta.dirname,'../..'),out=path.join(root,'验收/蓝色充能光圈');fs.mkdirSync(out,{recursive:true});
+const source=fs.readFileSync(path.join(root,'source/src/game.js'),'utf8');
+const begin=source.indexOf('      let c = new Kr({',source.indexOf('class zl'));
+const block=source.slice(begin,source.indexOf('      ((this.mesh = new Sr',begin));
+const vertex=block.match(/vertexShader: `([\s\S]*?)`,/)[1],fragment=block.match(/fragmentShader: `([\s\S]*?)`,/)[1];
+const method=source.slice(source.indexOf('    altarRing(e, t, n, r, i, a ='),source.indexOf('    slash(',source.indexOf('    altarRing(e, t, n, r, i, a =')));
+const calls=[];new Function('ALTAR_RING_EMISSIVE','I','return ({'+method+'});')(-1,{Ring:3,Soft:0}).altarRing.call({vfx:{ground:{spawn:o=>calls.push(o)}}},0,0,0,6,.14);
+assert.equal(calls[0].size,12);assert.equal(calls[0].endSize,12);assert.equal(calls[0].color,5959935);assert.equal(calls[0].glow,-1);assert.equal(calls[1].size,12*.14);
+const server=http.createServer((req,res)=>{if(req.url==='/favicon.ico'){res.statusCode=204;return res.end();}if(req.url==='/'){res.setHeader('Content-Type','text/html');return res.end('<body style="margin:0"></body>');}let url=decodeURIComponent(req.url);url=url.replace('/source/assets/','/resources/public/assets/');const file=path.join(root,url);if(!fs.existsSync(file)){res.statusCode=404;return res.end();}res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':'application/octet-stream');fs.createReadStream(file).pipe(res);});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+const browser=await puppeteer.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--no-sandbox','--disable-background-timer-throttling']});
+console.log('Browser ready');try{const page=await browser.newPage();await page.setViewport({width:512,height:512});const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});await page.goto('http://127.0.0.1:'+server.address().port);
+console.log('Page ready');const report=await page.evaluate(async({vertex,fragment})=>{
+ const T=await import('/source/src/vendor/three-DmSYIDKK.js');const {altarRingFragment}=await import('/source/src/effects/altar-ring-vfx.js');const {createStylizedEffectAtlas}=await import('/source/src/effects/stylized-effect-atlas.js');
+ const vs=new Function('i','return `'+vertex+'`;')(true),fs=new Function('r','Ml','altarRingFragment','return `'+fragment+'`;')(true,'float wh=clamp(min(c.r,min(c.g,c.b)),0.,1.);c*=(1.-.45*wh)/(1.+vGlow*.5);',altarRingFragment);
+ const renderer=new T.h({antialias:true,preserveDrawingBuffer:true});renderer.setSize(512,512);document.body.append(renderer.domElement);const scene=new T.st();scene.background=new T.w('#c99d72');const camera=new T.$(50,1,.1,100);camera.position.set(0,10,0);camera.lookAt(0,0,0);
+ const geo=new T.et(1,1);geo.rotateX(-Math.PI/2);geo.setAttribute('iA',new T.B(new Float32Array([0,0,0,8]),4));const color=new T.w(5959935);geo.setAttribute('iB',new T.B(new Float32Array([color.r,color.g,color.b,1]),4));const params=new T.B(new Float32Array([3,0,-1,0]),4);geo.setAttribute('iC',params);
+ const mat=new T.ct({vertexShader:vs,fragmentShader:fs,transparent:true,depthWrite:false,uniforms:{map:{value:await createStylizedEffectAtlas()},uFogColor:{value:new T.w()},uFogNear:{value:100},uFogFar:{value:200}}});const mesh=new T.H(geo,mat,1);scene.add(mesh);
+ const capture=marker=>{params.array[2]=marker;params.needsUpdate=true;renderer.render(scene,camera);return renderer.domElement.toDataURL().split(',')[1];};
+ const before=capture(.3),after=capture(-1);const gl=renderer.getContext(),pixels=new Uint8Array(512*512*4);gl.readPixels(0,0,512,512,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+ const at=x=>Array.from(pixels.slice((256*512+x)*4,(256*512+x)*4+3));return {before,after,glError:gl.getError(),center:at(256),band:at(421),halo:at(440),background:at(490),shaderRunnable:renderer.info.programs.every(p=>p.diagnostics?.runnable!==false)};
+},{vertex,fragment});
+fs.writeFileSync(path.join(out,'ring-before.png'),Buffer.from(report.before,'base64'));fs.writeFileSync(path.join(out,'ring-after.png'),Buffer.from(report.after,'base64'));delete report.before;delete report.after;
+assert.equal(report.glError,0);assert.ok(report.shaderRunnable);assert.deepEqual(errors,[]);assert.ok(report.band[2]>report.band[0]&&report.band[1]>220,'bright cyan band');assert.ok(report.halo[2]>report.background[2],'blue outer glow');assert.deepEqual(report.center,report.background,'interior stays transparent');report.preserved={radius:6,diameter:12,color:5959935,chargeFill:12*.14};fs.writeFileSync(path.join(out,'shader-report.json'),JSON.stringify(report,null,2));console.log(report);
+}finally{await browser.close();server.close();}

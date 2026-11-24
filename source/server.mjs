@@ -1,10 +1,10 @@
-import {constrainLiteProfile, validLiteRun, isLiteSpecies, SINGLE_STAGE, runRecordKey} from './src/lite-rules.js';
+import {constrainLiteProfile, validLiteRun, isLiteSpecies, SINGLE_STAGE, runRecordKey} from './src/data/lite-rules.js';
 // PokéBonk — local server.
 // Serves editable client code and local assets without upstream fallback.
 // Implements the client's HTTP API against a local JSON store.
 import http from 'node:http';
 import { applyAction as applyProfileAction, refreshTasks, rerollTask, settleRun, claimEvent } from './local/progression.mjs';
-import { Zn as medalFor, cn as bagItems } from './src/config.js';
+import { Zn as medalFor, cn as bagItems } from './src/data/config.js';
 import { writeFileSync, mkdirSync, renameSync, copyFileSync } from 'node:fs';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
@@ -17,7 +17,7 @@ import {
 } from './firebase/shared.mjs';
 
 const PORT = Number(process.env.PORT || 18086);
-const ROOT = path.resolve(import.meta.dirname, 'public');
+const ROOT = path.resolve(import.meta.dirname, '../resources/public');
 const DATA = path.resolve(process.env.STORE_DIR || path.join(import.meta.dirname, 'lite-data'));
 const SOURCE_ROOT = path.resolve(import.meta.dirname, 'src');
 const NET_ROOT = path.resolve(import.meta.dirname, 'net');
@@ -509,6 +509,7 @@ async function sendFile(res, file, patch) {
 async function serveStatic(req, res, pathname) {
   let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
   rel = rel.replace(/^(?:assets\/)+assets\//, 'assets/').replace(/^(?:data\/)+data\//, 'data/');
+  if (rel.startsWith('resources/public/')) rel = rel.slice('resources/public/'.length);
   if (rel === '') rel = 'index.html';
   if (rel.endsWith('/')) rel += 'index.html';
 
@@ -523,7 +524,7 @@ async function serveStatic(req, res, pathname) {
 
   if (inside && existsSync(file)) {
     const ext = path.extname(file);
-    if (rel === 'src/PortalDock.mjs') {
+    if (rel === 'src/effects/PortalDock.mjs') {
       return sendFile(res, file, Buffer.from(bindPortalZoneClock(await readFile(file, 'utf8'))));
     }
     if (ext === '.html' && rel === 'index.html') {

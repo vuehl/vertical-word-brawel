@@ -1,19 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import itemSizes from './items/sizes.json' with {type:'json'};
 
-export function itemPreviewImages(){
-  return itemSizes.map(name=>({
-    key:'developer/items/'+name+'.png',
-    bytes:fs.readFileSync(path.join(import.meta.dirname,'items',name+'.png'))
-  }));
-}
 export function assetKey(){
   const chars=[...new Set(fs.readFileSync(path.join(import.meta.dirname,'panel.mjs'),'utf8'))].sort().join('');
-  const hash=createHash('sha256').update(chars);
-  for(const {key,bytes} of itemPreviewImages())hash.update(key).update(bytes);
-  return hash.digest('hex').slice(0,16);
+  return createHash('sha256').update(chars).digest('hex').slice(0,16);
 }
 
 // This file is imported by the build tool only for --dev. Game sources never
@@ -40,7 +31,7 @@ export function instrumentGame(code){
 }
 export function isolatedStoragePlugin(platform){
   return {name:'isolated-developer-storage',setup(build){
-    build.onLoad({filter:/src[\\/]zixing-ui\.js$/},args=>({resolveDir:path.dirname(args.path),
+    build.onLoad({filter:/ui[\\/]zixing-ui\.js$/},args=>({resolveDir:path.dirname(args.path),
       contents:replaceOnce(fs.readFileSync(args.path,'utf8'),'hud.experienceReady=()=>xpRing.ready;',
         'hud.experienceReady=()=>xpRing.ready;hud.developerSyncExperience=()=>{Object.assign(xpRing,new ExperienceRing(run.player,performance.now()));last=-Infinity;};')}));
     build.onLoad({filter:/platform[\\/]store\.mjs$/},args=>({resolveDir:platform,
@@ -50,11 +41,7 @@ export function isolatedStoragePlugin(platform){
       code=replaceOnce(code,"storage('pokebonk.web.')","storage('pokebonk.dev.web.')");
       code=replaceOnce(code,"storage('pokebonk.session.')","storage('pokebonk.dev.session.')");
       code=replaceOnce(code,'invalidateUI:()=>uiFrames.invalidate(false,true),',
-        `invalidateUI:()=>uiFrames.invalidate(false,true),developerInvalidateUI:()=>uiFrames.invalidate(true,true),
-        developerPreviewPixels(enabled){
-          view.originalPixels=enabled;
-          env.setUIPerformance();
-        },`);
+        'invalidateUI:()=>uiFrames.invalidate(false,true),developerInvalidateUI:()=>uiFrames.invalidate(true,true),');
       return {contents:code,resolveDir:platform};
     });
   }};

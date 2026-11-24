@@ -1,4 +1,4 @@
-import {constrainLiteProfile} from '../src/lite-rules.js';
+import {constrainLiteProfile} from '../src/data/lite-rules.js';
 // PokéBonk — shared, mode-agnostic backend helpers.
 // Imported by BOTH `server.mjs` (JSON store mode) and `firebase/backend.mjs`
 // (Firebase mode) so the account/profile/season/response shapes stay identical
