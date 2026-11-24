@@ -5,13 +5,17 @@ import {createHash} from 'node:crypto';
 
 export async function recordWindReference(page,sourceDir,destination){
   fs.mkdirSync(destination,{recursive:true});
+  // Optional local iteration only. Delivery/audit always runs without this
+  // filter and records every original exposure.
+  const selectedFrames=process.env.WIND_RECORD_FRAMES?new Set(process.env.WIND_RECORD_FRAMES.split(',').map(Number)):null;
   const capture=await page.evaluate(()=>({scale:window.devicePixelRatio,
     worldWidth:app.r.composer.inputBuffer.width,worldHeight:app.r.composer.inputBuffer.height,
     canvasWidth:app.r.canvas.width,canvasHeight:app.r.canvas.height}));
   if(capture.scale<2||capture.worldWidth<780)throw Error('Review must render at least 780 px wide, not enlarge a low-resolution capture: '+JSON.stringify(capture));
+  const buildRoot=path.resolve(process.env.POKEBONK_GAME||path.join(import.meta.dirname,'../minigame'));
   const buildFiles=['assets.js','play/combat.js','play/game-data.js','play/gameplay.js','play/presentation.js'];
   const report={environment:'编译后的微信运行包，桌面 Chrome SwiftShader 模拟；真实技能与伤害。场景、HUD、角色位置不同，未宣称全屏像素相等。',
-    capture,build:Object.fromEntries(buildFiles.map(file=>[file,createHash('sha256').update(fs.readFileSync(path.join(import.meta.dirname,'../minigame',file))).digest('hex')])),clips:[]};
+    capture,buildRoot,previewOnly:!!selectedFrames,build:Object.fromEntries(buildFiles.map(file=>[file,createHash('sha256').update(fs.readFileSync(path.join(buildRoot,file))).digest('hex')])),clips:[]};
   const prior=process.env.WIND_RECORD_SKILLS&&fs.existsSync(path.join(destination,'逐帧索引.json'))
     ?JSON.parse(fs.readFileSync(path.join(destination,'逐帧索引.json'))):null;
   if(prior&&JSON.stringify(prior.build)!==JSON.stringify(report.build))throw Error('Cannot combine recordings from different builds');
@@ -81,9 +85,10 @@ export async function recordWindReference(page,sourceDir,destination){
     // Every original exposure is retained, including 20/30/60/70 ms frames and
     // the entire ending. No nominal-FPS sampling or truncated previews.
     const exposures=frameStart;
-    for(const ms of exposures){
+    for(const [exposureIndex,ms] of exposures.entries()){
+      const captureFrame=!selectedFrames||selectedFrames.has(exposureIndex);
       const fire=!fired&&ms>=castTime;
-      const state=await page.evaluate(({ms,previous,castTime,fire,id,species})=>{
+      const state=await page.evaluate(({ms,previous,castTime,fire,id,species,captureFrame})=>{
         const r=app.run,p=r.player;
         const advance=delta=>{
           if(delta<=0)return;
@@ -93,7 +98,9 @@ export async function recordWindReference(page,sourceDir,destination){
             if(ms>castTime+930&&ms<castTime+1070)r.input.keys.add('KeyA');
           }
           const steps=Math.ceil(delta*.06);
-          vfxAdvance(steps,delta/(steps*1000));
+          // Present exactly once below, after simulation and HUD update. The
+          // intermediate GPU draw was identical and not a recorded exposure.
+          vfxAdvance(steps,delta/(steps*1000),false);
         };
         if(fire){
           advance(castTime-previous);
@@ -108,12 +115,13 @@ export async function recordWindReference(page,sourceDir,destination){
         }else advance(ms-previous);
         if(id&&ms>castTime)p.moves[0].timer=999;
         if(species===59)speedCaptureTravel.max=Math.max(speedCaptureTravel.max,Math.abs(p.pos.x-speedCaptureTravel.origin));
-        vfxDraw();
+        vfxDraw(captureFrame,captureFrame);
         return {gameTime:r.time,projectiles:r.projectiles.used,moveTimer:p.moves[0]?.timer??null,
           attackSpeed:p.stats.attackSpeed,windFrames:[r.vfx.crafted.windSkills,r.vfx.crafted.windMoves,r.vfx.crafted.windAce,r.vfx.crafted.windVortex].filter(Boolean).flatMap(a=>Array.from({length:a.mesh.count},(_,i)=>a.pose.getX(i)))};
-      },{ms,previous,castTime,fire,id,species});
+      },{ms,previous,castTime,fire,id,species,captureFrame});
       fired||=fire;previous=ms;
       while(refFrame+1<delays.length&&frameStart[refFrame+1]<=ms)refFrame++;
+      if(!captureFrame)continue;
       const source=await sharp(file,{page:refFrame}).extract({left:0,top,width,height}).png().toBuffer();
       const live=await page.screenshot({clip:{x:0,y:52,width,height}});
       const stem=String(refFrame).padStart(3,'0');
@@ -134,13 +142,13 @@ export async function recordWindReference(page,sourceDir,destination){
       const travel=await page.evaluate(()=>speedCaptureTravel.max);
       if(travel<3)throw Error('Speed recording did not traverse the open lane: '+travel);
     }
-    await sharp(Buffer.concat(raw),{raw:{width:width*2+2,height:height*raw.length,channels:3,pageHeight:height}})
+    if(!selectedFrames)await sharp(Buffer.concat(raw),{raw:{width:width*2+2,height:height*raw.length,channels:3,pageHeight:height}})
       .gif({delay:delays,loop:0,dither:.2,effort:3}).toFile(path.join(destination,path.basename(name)+'.gif'));
     report.clips.push(record);
     fs.writeFileSync(path.join(destination,'逐帧索引.json'),JSON.stringify(report,null,2));
     console.log('Recorded',name,record.frames.length,'/',delays.length,'frames');
   }
-  fs.writeFileSync(path.join(destination,'逐帧对照.html'),frameViewer(report));
+  if(!selectedFrames)fs.writeFileSync(path.join(destination,'逐帧对照.html'),frameViewer(report));
 }
 
 function frameViewer(report){

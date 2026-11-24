@@ -68,17 +68,6 @@ export function drawMenuGlyph(canvas,word,tone,large){
 }
 export function drawRouteGlyph(canvas,word,tone){
   drawMenuGlyph(canvas,word,tone);
-  if(word!=='飒'&&word!=='飙')return;
-  const ctx=canvas.getContext('2d'),image=ctx.getImageData(0,0,canvas.width,canvas.height);
-  const pixels=image.data;
-  // Map the cutout fill (#ff5933) to 风's blue (#87bbff), preserving the neutral ink.
-  for(let i=0;i<pixels.length;i+=4){
-    const fill=Math.max(0,pixels[i]-pixels[i+2])/(255-51);
-    pixels[i]+=(135-255)*fill;
-    pixels[i+1]+=(187-89)*fill;
-    pixels[i+2]+=(255-51)*fill;
-  }
-  ctx.putImageData(image,0,0);
 }
 export function glyphCanvas(word,tone=glyphTone(word),{battle=false}={}){
   const key=word+'-'+tone+(battle?'-battle':'');if(cache.has(key))return cache.get(key);

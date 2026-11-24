@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
+import {sampleWindInk,unmixWindInk,clarifyWindFrame,windClarity,writeWindAtlas} from './wind-art-clarity.mjs';
 
 const directory=process.argv[2];
 if(!directory)throw Error('Pass the directory containing the eleven wind GIFs');
@@ -42,17 +43,26 @@ async function clip(key,file,pages,fps,pivot,crop,matte){
         }
       }
     }
-    const pixels=Buffer.alloc(tile*tile*4);
-    for(let y=1;y<tile-1;y++)for(let x=1;x<tile-1;x++){
-      const px=(x+.5-tile/2)*size/tile,py=(y+.5-tile/2)*size/tile;
-      const sx=Math.round(cx+px*Math.cos(angle)-py*Math.sin(angle)),sy=Math.round(cy+px*Math.sin(angle)+py*Math.cos(angle));
-      if(sx<0||sx>=390||sy<0||sy>=892)continue;
+    const pixels=Buffer.alloc(tile*tile*4),native=new Map();
+    const readInk=(sx,sy)=>{
+      if(sx<0||sx>=390||sy<0||sy>=892)return;
+      const pixel=sy*390+sx;
+      if(native.has(pixel))return native.get(pixel);
       const j=(sy*390+sx)*3,r=rgb[j],g=rgb[j+1],b=rgb[j+2],br=background[j],bg=background[j+1],bb=background[j+2];
       const diff=Math.abs(r-br)+Math.abs(g-bg)+Math.abs(b-bb);
       const alpha=matte({r,g,b,br,bg,bb,diff,sx,sy,cx,cy,page,index});
-      if(alpha>0)pixels.set([r,g,b,Math.min(255,alpha)],(y*tile+x)*4);
+      const ink=alpha>0?unmixWindInk([r,g,b],[br,bg,bb],Math.min(255,alpha)):undefined;
+      native.set(pixel,ink);return ink;
+    };
+    for(let y=1;y<tile-1;y++)for(let x=1;x<tile-1;x++){
+      const px=(x+.5-tile/2)*size/tile,py=(y+.5-tile/2)*size/tile;
+      const sx=cx+px*Math.cos(angle)-py*Math.sin(angle),sy=cy+px*Math.sin(angle)+py*Math.cos(angle);
+      const ink=sampleWindInk(sx,sy,readInk);
+      if(ink)pixels.set(ink,(y*tile+x)*4);
     }
-    const pose=sharp(pixels,{raw:{width:tile,height:tile,channels:4}});
+    const profile=/Halo|Launch/.test(key)?{detail:.3,edge:.05}:
+      /wingHit|tackleRush/.test(key)?{detail:.5,edge:.12}:{detail:.65,edge:.22};
+    const pose=sharp(clarifyWindFrame(pixels,tile,tile,{...profile,radius:Math.max(1,Math.round(tile/size))}),{raw:{width:tile,height:tile,channels:4}});
     if(key==='gust'&&index>=2)pose.flop();
     frames.push(await pose.png().toBuffer());
   }
@@ -73,7 +83,10 @@ await clip('attackLoops','大招/刮倒一片',range(4,14),15,.10,()=>({cx:166,c
 // the HUD. Use its existing complete isolated spin cycle for both fusions.
 const typhoon=path.resolve(import.meta.dirname,'../source/art/wind-vfx/typhoon.png');
 clips.typhoon={first:frames.length,count:8,fps:20,pivot:.08,source:'typhoon.png'};
-for(let i=0;i<8;i++)frames.push(await sharp(typhoon).extract({left:i*256,top:0,width:256,height:256}).resize(tile,tile).png().toBuffer());
+for(let i=0;i<8;i++){
+  const pixels=await sharp(typhoon).extract({left:i*256,top:0,width:256,height:256}).resize(tile,tile).ensureAlpha().raw().toBuffer();
+  frames.push(await sharp(clarifyWindFrame(pixels,tile,tile),{raw:{width:tile,height:tile,channels:4}}).png().toBuffer());
+}
 
 const blue=o=>(o.b-o.r>16&&o.b-o.g>2)||Math.min(o.r,o.g,o.b)>226;
 // The wing spell's halo belongs to this 20 fps recording, not to the
@@ -122,7 +135,5 @@ await clip('quickHalo','电光一闪',range(5,12),20,.5,()=>({cx:204,cy:511,size
   return radius>55&&radius<69&&o.sy<533&&o.r-o.g>9&&o.g-o.b>8?Math.min(230,o.diff*2):0;
 });
 const rows=Math.ceil(frames.length/columns);
-await sharp({create:{width:columns*tile,height:rows*tile,channels:4,background:'#00000000'}})
-  .composite(frames.map((input,i)=>({input,left:i%columns*tile,top:Math.floor(i/columns)*tile})))
-  .png({palette:true,colours:256,dither:0}).toFile(path.join(output,'wind-skills.png'));
-fs.writeFileSync(path.join(output,'wind-skills.json'),JSON.stringify({tile,columns,rows,clips},null,2)+'\n');
+await writeWindAtlas(frames.map((input,i)=>({input,left:i%columns*tile,top:Math.floor(i/columns)*tile})),tile,columns,rows,path.join(output,'wind-skills.png'));
+fs.writeFileSync(path.join(output,'wind-skills.json'),JSON.stringify({tile,columns,rows,clips,clarity:windClarity},null,2)+'\n');

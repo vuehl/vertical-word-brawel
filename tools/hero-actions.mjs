@@ -3,6 +3,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import rigs from '../source/src/hero-rigs.json' with {type:'json'};
 import {isPlayableHeroForm,starterWords} from '../source/src/starter-characters.js';
+import {blueWindPixels} from './wind-glyph-colors.mjs';
 
 const size=160, columns=8;
 const inkRadius=14/192, margin=inkRadius+.025;
@@ -110,6 +111,8 @@ export async function writeHeroActions(source){
     const stem=path.join(art,id,starterWords[id]+'_待机行走死亡_优化');
     const data=JSON.parse(fs.readFileSync(stem+'.json','utf8'));
     const atlas=await sharp(stem+'.png').ensureAlpha().raw().toBuffer({resolveWithObject:true});
+    if(rigs[id].sheet==='wind')blueWindPixels(atlas.data,atlas.info.width,
+      [{left:0,top:0,width:atlas.info.width,height:atlas.info.height}]);
     if(data.name!==rigs[id].word||data.size.w!==atlas.info.width||data.size.h!==atlas.info.height)
       throw Error('动作图集与角色不匹配：'+id);
     const clips={},frames=[];

@@ -22,8 +22,8 @@ export async function reviewStylizedVFX(page,dir){
         const n=r.enemies.spawn(i,x,z,1,1,0);r.enemies.hp[n]=r.enemies.maxHp[n]=1e7;r.enemies.y[n]=0;
       }r.enemies.update();r.vfxPeaks={particles:0,volumes:0,firePackets:0,projectiles:0,modes:[]};
     };
-    window.vfxDraw=(ui=true)=>{const r=app.run;app.r.renderer.resetState();r.updateCamera(1/30);r.renderWorld(0);r.vfx.update(0);app.r.render(0);if(ui){r.ui.hud(r);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);}};
-    window.vfxAdvance=(frames,dt=1/30)=>{const r=app.run;for(let i=0;i<frames;i++){r.realTime+=dt;r.simulate(dt);r.updateCamera(dt);r.renderWorld(dt);r.vfx.update(dt);r.vfxPeaks.particles=Math.max(r.vfxPeaks.particles,r.vfx.add.n+r.vfx.norm.n);r.vfxPeaks.volumes=Math.max(r.vfxPeaks.volumes,r.vfx.crafted.mesh.count);r.vfxPeaks.firePackets=Math.max(r.vfxPeaks.firePackets,r.vfx.crafted.fireJet.mesh.count);r.vfxPeaks.projectiles=Math.max(r.vfxPeaks.projectiles,r.projectiles.used);for(const e of r.vfx.crafted.entries)if(!r.vfxPeaks.modes.includes(e.mode))r.vfxPeaks.modes.push(e.mode);}vfxDraw(false);};
+    window.vfxDraw=(ui=true,present=true)=>{const r=app.run;app.r.renderer.resetState();r.updateCamera(1/30);r.renderWorld(0);r.vfx.update(0);if(present)app.r.render(0);if(ui&&present){r.ui.hud(r);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);}};
+    window.vfxAdvance=(frames,dt=1/30,present=true)=>{const r=app.run;for(let i=0;i<frames;i++){r.realTime+=dt;r.simulate(dt);r.updateCamera(dt);r.renderWorld(dt);r.vfx.update(dt);r.vfxPeaks.particles=Math.max(r.vfxPeaks.particles,r.vfx.add.n+r.vfx.norm.n);r.vfxPeaks.volumes=Math.max(r.vfxPeaks.volumes,r.vfx.crafted.mesh.count);r.vfxPeaks.firePackets=Math.max(r.vfxPeaks.firePackets,r.vfx.crafted.fireJet.mesh.count);r.vfxPeaks.projectiles=Math.max(r.vfxPeaks.projectiles,r.projectiles.used);for(const e of r.vfx.crafted.entries)if(!r.vfxPeaks.modes.includes(e.mode))r.vfxPeaks.modes.push(e.mode);}vfxDraw(false,present);};
     vfxSetup();vfxDraw();
   });
   if(process.argv.includes('--fire-family')){

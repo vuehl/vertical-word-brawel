@@ -8,8 +8,9 @@ import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
 import {writeActorMetrics} from './actor-metrics.mjs';
 import {writeHeroActions} from './hero-actions.mjs';
+import {writeWindGlyphColors} from './wind-glyph-colors.mjs';
 import {updateDeskDeviceArt} from './desk-device-art.mjs';
-import {assetPolicyVersion,compressedFireAtlases,musicTracks,excludedAssetReason} from './asset-policy.mjs';
+import {assetPolicyVersion,compressedFireAtlases,windClarityAtlases,musicTracks,excludedAssetReason} from './asset-policy.mjs';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
 import {gameProject} from './project-target.mjs';
 import {dragonDirectory,packDragonSummon} from './dragon-summon-pack.mjs';
@@ -26,6 +27,7 @@ const index = {};
 const generatedSprites={};
 const fontText=[];
 await writeActorMetrics(source);
+await writeWindGlyphColors(source);
 await writeHeroActions(source);
 await updateDeskDeviceArt(source);
 const hash = data => createHash('sha256').update(data).digest('hex').slice(0, 16);
@@ -66,7 +68,7 @@ for (const folder of ['assets', 'overrides/assets']) {
       if (name.endsWith('.png') && original.length > 3000) {
         const options=key==='assets/vfx/portal-screen.png'
           ? {quality:87,alphaQuality:100,smartSubsample:true,effort:6}
-          : {lossless:true,effort:category==='glyphs'||compressedFireAtlases.has(key)?6:4};
+          : {lossless:true,effort:category==='glyphs'||compressedFireAtlases.has(key)||windClarityAtlases.has(key)?6:4};
         const webp = await sharp(original).webp(options).toBuffer();
         if (webp.length < original.length) { add(targetPack, key, webp, '.webp'); continue; }
       }

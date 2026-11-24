@@ -29,6 +29,9 @@ export async function verifyDeskNavigation(page){
     }
     const cardError=Math.hypot(end[0]-p.pos.x,end[1]-p.pos.z);
     const tissue=xy(800,2200),approach=xy(800,2600);
+    // This part checks ordinary walking. Equipped spring shoes can now cross
+    // the illustrated props, including the tissue pack.
+    const shoes=p.items.get('air-balloon');p.items.delete('air-balloon');
     p.pos.set(approach[0],0,approach[1]);p.vel.set(0,0,0);
     for(let i=0;i<180;i++){
       r.input.stickX=0;r.input.stickY=1;r.realDt=1/60;p.update(1/60);r.input.endFrame();
@@ -45,6 +48,7 @@ export async function verifyDeskNavigation(page){
       if(id<0||!t.placeSpawn(enemies.x[id],enemies.z[id],enemies.radius[id]))throw Error('Invalid monster spawn '+flags);
       enemies.kill(id);
     }
+    if(shoes)p.items.set('air-balloon',shoes);
     p.pos.copy(saved);p.vel.set(0,0,0);r.input.releaseAll();r.state=was;
     return {routes,cardError,cardColliders:t.colliders.filter(c=>c.kind==='ID-card').length};
   });

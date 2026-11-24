@@ -535,19 +535,22 @@ html.zixing .zx.zx-square-hud .zx-hud-pause,.zx.zx-square-hud .zx-battle-lane{to
 .zx.zx-square-hud .zx-battle-lane.with-event{top:88px}
 }
 
-/* The two compact groups follow the portrait. Quantities and cooldowns keep their native layers. */
-.zx.zx-square-hud .zx-loadout{position:absolute;left:0;top:59px;right:auto;bottom:auto;width:211px;height:28px;display:flex;flex-direction:row;align-items:flex-start;justify-content:flex-start;gap:6px;pointer-events:none;overflow:visible}
-.zx.zx-square-hud.hud-loadout-wrap .zx-loadout{height:61px;flex-direction:column;gap:4px}
-.zx.zx-square-hud.hud-loadout-wrap .zx-battle-lane{top:125px}
-.zx.zx-square-hud.hud-loadout-wrap .zx-battle-lane.with-event{top:124px}
-.zx.zx-square-hud .zx-hud-supplies,.zx.zx-square-hud .zx-skill-slots{position:relative;left:auto;right:auto;top:auto;bottom:auto;flex:none;height:28px;margin:0;padding:0;align-items:center;justify-content:flex-start;flex-direction:row;gap:2px}
-.zx.zx-square-hud .zx-inventory-items,.zx.zx-square-hud .vitamin-rail{width:100%;height:28px;align-items:center;gap:2px;margin:0;padding:0;background:transparent}
+/* Vitamins stay beside skills; items use one row with a final overflow count. */
+.zx.zx-square-hud .zx-loadout{position:absolute;left:0;top:59px;right:auto;bottom:auto;width:218px;height:28px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:4px;pointer-events:none;overflow:visible}
+.zx.zx-square-hud .zx-loadout-top{display:flex;flex:none;flex-direction:row;align-items:center;gap:6px;width:100%;height:28px}
+.zx.zx-square-hud .zx-hud-supplies,.zx.zx-square-hud .zx-hud-vitamins,.zx.zx-square-hud .zx-skill-slots{position:relative;display:flex;left:auto;right:auto;top:auto;bottom:auto;flex:none;height:28px;margin:0;padding:0;align-items:center;justify-content:flex-start;flex-direction:row;gap:2px;background:transparent}
+.zx.zx-square-hud .zx-hud-supplies{width:100%;flex-wrap:nowrap;align-items:flex-start}
 .zx.zx-square-hud .zx-loadout [data-paper-surface="hud-cell"]{position:relative;display:flex;flex:none;width:25px;min-width:25px;height:25px;min-height:25px;align-items:center;justify-content:center;margin:0;padding:0;border:0;border-radius:0;box-shadow:none;background:rgba(23,29,36,.56)}
 .zx.zx-square-hud .zx-loadout .zx-loadout-icon{width:20px;height:20px;object-fit:contain;margin:0}
+.zx.zx-square-hud .zx-loadout .zx-loadout-more{color:#F3F1FA;font-size:10px;line-height:12px;white-space:nowrap}
 .zx.zx-square-hud .zx-mini-slot>.zx-slot-count{right:0;bottom:0;min-width:9px;height:11px;padding:0 1px;background:#384655;color:#F3F1FA;font-size:9px;line-height:10px}
 .zx.zx-square-hud .zx-skill-slot>.zx-skill-cooldown{width:25px;height:25px;top:0;left:0;transform:none}
 .zx.zx-square-hud .zx-skill-slot>.zx-slot-level{right:0;bottom:0;min-width:10px;height:11px;padding:0 1px;border:0;border-radius:1px;background:#D8E4EF;color:#263B55;font-size:9px;line-height:11px}
-@media(max-width:350px){.zx.zx-square-hud .zx-loadout{top:55px;width:195px}.zx.zx-square-hud.hud-loadout-wrap .zx-battle-lane{top:120px}}
+@media(max-width:350px){
+.zx.zx-square-hud .zx-loadout{top:55px;width:194px}
+.zx.zx-square-hud .zx-loadout [data-paper-surface="hud-cell"]{width:22px;min-width:22px;height:22px;min-height:22px}
+.zx.zx-square-hud .zx-skill-slot>.zx-skill-cooldown{width:22px;height:22px}
+}
 
 
 

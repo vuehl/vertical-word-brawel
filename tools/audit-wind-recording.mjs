@@ -10,8 +10,22 @@ const out=process.argv[3]||path.resolve('验收/风系逐帧校准/逐帧对照'
 const report=JSON.parse(fs.readFileSync(path.join(out,'逐帧索引.json')));
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 assert.equal(report.clips.length,11);
+assert.equal(!!report.previewOnly,false,'Selected-frame previews cannot pass a complete recording audit');
 assert.ok(report.capture.scale>=2&&report.capture.worldWidth>=780,'The game must actually render in high resolution');
-for(const [file,digest] of Object.entries(report.build))assert.equal(hash(path.resolve('minigame',file)),digest,'Recording uses stale build: '+file);
+const buildRoot=report.buildRoot||path.resolve('minigame'),contextChanges=[];
+for(const [file,digest] of Object.entries(report.build)){
+  assert.equal(hash(path.join(buildRoot,file)),digest,'Recorded build was modified: '+file);
+  if(hash(path.resolve('minigame',file))!==digest)contextChanges.push(file);
+}
+// An isolated capture can outlive an unrelated HUD/font rebuild in the shared
+// workspace. Wind code and every wind asset must still match the current game.
+// Keep any context differences explicit instead of calling the entire build current.
+for(const file of contextChanges)assert.ok(['assets.js','play/presentation.js'].includes(file),'Wind runtime changed: '+file);
+const manifest=folder=>JSON.parse(fs.readFileSync(path.join(folder,'assets.js'),'utf8').replace(/^module\.exports\s*=\s*/,'').replace(/;\s*$/,''));
+const recordedAssets=manifest(buildRoot),currentAssets=manifest(path.resolve('minigame'));
+const windAssets=Object.keys(recordedAssets.files).filter(file=>/^assets\/vfx\/wind-/.test(file));
+assert.ok(windAssets.length>=9);
+for(const file of windAssets)assert.equal(recordedAssets.files[file],currentAssets.files[file],'Wind artwork changed: '+file);
 let frames=0,maxClockErrorMs=0;
 for(const clip of report.clips){
   const original=path.join(source,clip.name+'.gif'),meta=await sharp(original,{animated:true}).metadata();
@@ -34,7 +48,8 @@ for(const clip of report.clips){
 }
 assert.equal(frames,844);
 const result={clips:report.clips.length,frames,missingFrames:0,maxClockErrorMs,
-  originalHashesVerified:true,currentBuildHashesVerified:true,pngDimensionsVerified:true,highResolution:report.capture,
+  originalHashesVerified:true,recordedBuildHashesVerified:true,currentBuildHashesVerified:contextChanges.length===0,
+  currentWindAssetsAndRuntimeVerified:true,contextChanges,pngDimensionsVerified:true,highResolution:report.capture,
   scope:'Verifies coverage and time alignment, not visual pixel equality. Background, camera, enemies and HUD differ. Occluded artwork uses reconstructed poses.'};
 fs.writeFileSync(path.join(out,'逐帧完整性检查.json'),JSON.stringify(result,null,2)+'\n');
 console.log(result);

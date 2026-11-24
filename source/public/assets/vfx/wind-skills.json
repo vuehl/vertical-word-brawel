@@ -338,5 +338,11 @@
       ],
       "sha256": "6bc43d4726588065f4df82849c6cf11f6a4fc961f9b07926b6bea73b2a3cfd4f"
     }
+  },
+  "clarity": {
+    "version": 1,
+    "encoding": "RGBA8, lossless PNG/WebP",
+    "sampling": "premultiplied cubic",
+    "processing": "bounded local contrast; colour precision error at most 1/255 after compositing; original frame timing and geometry"
   }
 }

@@ -13,6 +13,9 @@ import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,d
 const xAt=px=>(px-layout.width/2)/pixelsPerUnit;
 const zAt=py=>(py-layout.height/2)/(pixelsPerUnit*tilt);
 const halfWidth=xAt(layout.width),halfDepth=zAt(layout.height);
+// The artwork lies on one plane; ordinary props use a shallow gameplay top
+// so spring shoes can lift the player across their silhouettes and land safely.
+const propHeight=1.2;
 export const isDeskStage=t=>t.biome.zxStage===1&&!t.arena;
 export function initDesk(t){
   t.desk2d=true;t.zxPaper=true;t.zxStage=1;t.group.name='desk-map-2d';
@@ -28,7 +31,7 @@ export function initDesk(t){
   t.deskOwned=[];t.deskTextures=new Map();
   for(const [kind,l,rawTop,r,rawBottom] of layout.rects){
     const offset=kind==='mouse'?-160:0,top=rawTop+offset,b=rawBottom+offset;
-    const box=paperBox(xAt((l+r)/2),zAt((top+b)/2),(r-l)/pixelsPerUnit,(b-top)/(pixelsPerUnit*tilt),1000,0);
+    const box=paperBox(xAt((l+r)/2),zAt((top+b)/2),(r-l)/pixelsPerUnit,(b-top)/(pixelsPerUnit*tilt),propHeight,0,propHeight);
     box.kind=kind;
     if(surfaces.has(kind))surfaces.get(kind).push(box);
     else if(!['pen','ID-card'].includes(kind)) t.addCollider(box);

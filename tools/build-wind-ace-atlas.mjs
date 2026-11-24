@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import {sampleWindInk,clarifyWindFrame,windClarity,writeWindAtlas} from './wind-art-clarity.mjs';
 
 // Registered luminous tips in 燕返.gif, in source pixels. Left/right identify
 // the launch side; the blades cross and return on the opposite sides.
@@ -24,6 +25,7 @@ for(const dt of delay)time.push(time.at(-1)+dt);
 const output=path.resolve(import.meta.dirname,'../source/public/assets/vfx'),tile=128,columns=8,layers=[];
 const index=(x,y,page)=>((page*info.pageHeight+y)*info.width+x)*3;
 function rgba(x,y,page,bg=4){
+  if(x<0||y<0||x>=info.width||y>=info.pageHeight)return;
   const j=index(x,y,page),k=index(x,y,bg),r=data[j],g=data[j+1],b=data[j+2];
   if(Math.abs(r-data[k])+Math.abs(g-data[k+1])+Math.abs(b-data[k+2])<10)return;
   // Unmix the paper colour from the translucent blue trail and wash.
@@ -52,7 +54,7 @@ function frame(paint,onlyBlade=false){
     for(let k=0;k<keep.length;k++)if(!keep[k])pixels[k*4+3]=0;
   }
   const slot=layers.length;
-  layers.push({input:pixels,raw:{width:tile,height:tile,channels:4},left:slot%columns*tile,top:Math.floor(slot/columns)*tile});
+  layers.push({input:clarifyWindFrame(pixels,tile,tile,{detail:.6,edge:onlyBlade?.22:.08}),raw:{width:tile,height:tile,channels:4},left:slot%columns*tile,top:Math.floor(slot/columns)*tile});
 }
 function tip(page,side){return tips[page-5].slice(side*2,side*2+2);}
 const origin=[194,522],contact=[249,359],groundRatio=.81;
@@ -70,10 +72,10 @@ for(let side=0;side<2;side++)for(const pose of flightShots){
   frame((x,y)=>{
     const u=x-64,v=y-24;
     if(v < -12 || v>Math.min(87,(pose-5)*12) || Math.abs(u)>8+Math.max(0,v)*.67)return;
-    const sx=Math.round(x0+u*cos-v*sin),sy=Math.round(y0+u*sin+v*cos);
+    const sx=x0+u*cos-v*sin,sy=y0+u*sin+v*cos;
     if(Math.hypot(sx-194,(sy-524)*1.12)<51 || sy<343&&sx>228)return;
     if(page>=36 && sy<404 && sx>194 && sx<291)return;
-    return rgba(sx,sy,page);
+    return sampleWindInk(sx,sy,(x,y)=>rgba(x,y,page));
   },true);
 }
 const haloFirst=layers.length;
@@ -115,9 +117,8 @@ for(let page=20;page<=52;page++)frame((x,y)=>{
   return rgba(sx,sy,page,55);
 });
 const rows=Math.ceil(layers.length/columns);
-await sharp({create:{width:columns*tile,height:rows*tile,channels:4,background:'#00000000'}})
-  .composite(layers).png({palette:true,colours:256,dither:0}).toFile(path.join(output,'wind-ace.png'));
+await writeWindAtlas(layers,tile,columns,rows,path.join(output,'wind-ace.png'));
 const json={tile,columns,rows,flightShots,pathFrames,
   launch:{first:haloFirst,times:time.slice(6,15).map(t=>t-time[5])},
-  hit:{first:hitFirst,times:time.slice(20,54).map(t=>t-time[20])}};
+  hit:{first:hitFirst,times:time.slice(20,54).map(t=>t-time[20])},clarity:windClarity};
 fs.writeFileSync(path.join(output,'wind-ace.json'),JSON.stringify(json)+'\n');

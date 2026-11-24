@@ -11,7 +11,7 @@ import {unpackStream} from './resource-stream.mjs';
 import {measureActor} from './actor-metrics.mjs';
 import {actorMetrics} from '../source/src/actor-metrics.js';
 import {heroActionCatalog} from '../source/src/hero-action-catalog.js';
-import {assetPolicyVersion,compressedFireAtlases,excludedAssetReason,musicTracks} from './asset-policy.mjs';
+import {assetPolicyVersion,compressedFireAtlases,windClarityAtlases,excludedAssetReason,musicTracks} from './asset-policy.mjs';
 import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/catalogs.js';
 import {facilityNames,facilityIconFile,summonDockModel,isActiveItem} from '../source/src/active-content.js';
 import {resolveItemIcon} from '../source/src/item-icons.js';
@@ -46,6 +46,15 @@ for(const [group,expected] of Object.entries(index.packs)){
   if(group==='art')for(const [name,recipe] of Object.entries(index.sprites))files[name]=restoreSprite(files[recipe]);
 }
 function bytes(key){const [group,file]=index.files[key].split('/');return packs[group][file];}
+for(const key of windClarityAtlases){
+  const source=await sharp(path.join(pub,key)).ensureAlpha().raw().toBuffer();
+  const decoded=await sharp(bytes(key)).ensureAlpha().raw().toBuffer();
+  assert.equal(decoded.length,source.length,key);
+  // Lossless WebP may choose any RGB underneath exactly zero alpha. Compare
+  // every alpha byte and every visible RGB byte, including the faint edges.
+  for(let k=0;k<source.length;k+=4)if(source[k+3]===0){source.fill(0,k,k+3);decoded.fill(0,k,k+3);}
+  assert.equal(digest(decoded),digest(source),'Keep wind coverage and visible colours in the runtime pack: '+key);
+}
 // This WebP encodes palette indices as pixels. Any transcoding corrupts both themes.
 const chantAsset='assets/vfx/dragon-chant.webp';
 const meshAsset='assets/vfx/dragon-summon-hd/arc-mesh.bin';

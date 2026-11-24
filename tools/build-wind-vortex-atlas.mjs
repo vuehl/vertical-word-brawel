@@ -2,6 +2,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
+import {clarifyWindFrame,windClarity,writeWindAtlas} from './wind-art-clarity.mjs';
 
 // Input is the artist's full-screen GIF recording of 一阵刮来.
 const input = process.argv[2];
@@ -41,10 +42,8 @@ for (let page = 5; page <= 24; page++) {
     clean.copy(pixels);for(let k=3;k<pixels.length;k+=4)pixels[k]=Math.round(pixels[k]*fade);
   }
   const frame = page - 5;
-  layers.push({input: pixels, raw: {width:tile,height:tile,channels:4}, left:frame%columns*tile, top:Math.floor(frame/columns)*tile});
+  layers.push({input:clarifyWindFrame(pixels,tile,tile,{detail:.65,edge:.22}),raw:{width:tile,height:tile,channels:4},left:frame%columns*tile,top:Math.floor(frame/columns)*tile});
 }
 const rows=Math.ceil(layers.length/columns);
-const atlas = sharp({create:{width:tile*columns,height:tile*rows,channels:4,background:'#00000000'}});
-await atlas.composite(layers).png({palette:true,colours:256}).toFile(
-  path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-vortex.png'));
-fs.writeFileSync(path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-vortex.json'),JSON.stringify({tile,columns,rows,pages,times,count:pages.length,source:'大招/一阵风刮来.gif',reconstructedRegions:'Frames 16–24 are occluded by HUD/damage numbers; replay registered clean rotation poses with the source fade. Not exact recovered pixels.',sha256:createHash('sha256').update(fs.readFileSync(input)).digest('hex')})+'\n');
+await writeWindAtlas(layers,tile,columns,rows,path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-vortex.png'));
+fs.writeFileSync(path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-vortex.json'),JSON.stringify({tile,columns,rows,pages,times,count:pages.length,source:'大招/一阵风刮来.gif',reconstructedRegions:'Frames 16–24 are occluded by HUD/damage numbers; replay registered clean rotation poses with the source fade. Not exact recovered pixels.',sha256:createHash('sha256').update(fs.readFileSync(input)).digest('hex'),clarity:windClarity})+'\n');

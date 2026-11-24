@@ -233,6 +233,9 @@ try{
   }else if(process.argv.includes('--wind-animation')){
     const {reviewWindAnimation}=await import('./wind-animation-regression.mjs');
     await reviewWindAnimation(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--spring-shoes')){
+    const {reviewSpringShoes}=await import('./spring-shoes-regression.mjs');
+    await reviewSpringShoes(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--illustrated-desk')){
     const {reviewIllustratedDesk}=await import('./illustrated-desk-regression.mjs');
     await reviewIllustratedDesk(page,dir);assert.deepEqual(errors,[]);

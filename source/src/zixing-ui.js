@@ -1235,24 +1235,28 @@ export function createZixingUI(app,api) {
   }
   function supplyIcons(run) {
     const p=run.player;
-    const capacity=6;
-    const entries=Array.from(p.vitamins,([id,value])=>({
+    const vitamins=Array.from(p.vitamins,([id,value])=>({
       id,count:value.level,kind:'vitamin',name:api.vitaminName(id),src:api.vitaminIcon(id),
     }));
+    const items=[];
     if(profile().settings.showItems!==false)for(const [id,count] of p.items){
-      entries.push({id,count,kind:'item',name:api.itemName(id),src:api.itemIcon(id)});
+      items.push({id,count,kind:'item',name:api.itemName(id),src:api.itemIcon(id)});
     }
-    const visible=entries.length>capacity?capacity-1:capacity;
-    const cells=entries.slice(0,visible).map(({id,count,kind,name,src})=>el('div','zx-mini-slot filled',[
+    const cells=entries=>entries.map(({id,count,kind,name,src})=>el('div','zx-mini-slot filled',[
       loadoutIcon(src,name),count>1?el('b','zx-slot-count',String(count)):null,
     ],{'data-paper-surface':'hud-cell',['data-'+kind]:id,'data-count':count,'aria-label':name+' ×'+count}));
-    if(entries.length>visible)cells.push(button('+'+(entries.length-visible),()=>{
-      run.pause();
-      const modal=run.ui.modalEl;
-      modal?.querySelector('[data-pause-tab="build"]')?.click();
-      modal?.querySelector('[data-pause-section="supplies"]')?.scrollIntoView();
-    },'zx-mini-slot zx-loadout-more',{'data-paper-surface':'hud-cell','aria-label':'查看全部道具与强化','data-action':'inventory-more'}));
-    return el('div','zx-inventory-items',el('div','zx-supply-row vitamin-rail',cells));
+    const capacity=8,visible=items.length>capacity?capacity-1:capacity;
+    const itemCells=cells(items.slice(0,visible));
+    if(items.length>visible){
+      const remaining=items.length-visible;
+      itemCells.push(button('+'+remaining,()=>{
+        run.pause();
+        const modal=run.ui.modalEl;
+        modal?.querySelector('[data-pause-tab="build"]')?.click();
+        modal?.querySelector('[data-pause-section="supplies"]')?.scrollIntoView();
+      },'zx-mini-slot zx-loadout-more',{'data-paper-surface':'hud-cell','aria-label':'另有 '+remaining+' 种道具，查看全部道具','data-action':'inventory-more'}));
+    }
+    return {vitamins:cells(vitamins),items:itemCells};
   }
   function effectRow(value,tone='neutral',scope='') {
     const label=tone==='boon'?'增益':tone==='bane'?'代价':'效果';
@@ -1681,8 +1685,9 @@ export function createZixingUI(app,api) {
     const skillSlots=el('div','zx-skill-slots',[],{'data-ui-layer':'skills','aria-label':'本局技能'});
     const c=character(run.startSpecies),coin=hudPaperIcon('coin',18);
     const stageCaption=el('canvas','zx-stage-caption',[],{width:368,height:52,role:'img','data-ui-region':'hud-top','data-static':'true'});
-    const supplies=el('div','zx-hud-supplies',[],{'aria-label':'本局道具与强化','data-ui-layer':'items'});
-    inventory.append(skillSlots,supplies);
+    const vitamins=el('div','zx-hud-vitamins vitamin-rail',[],{'aria-label':'本局维生素','data-ui-layer':'items'});
+    const supplies=el('div','zx-hud-supplies zx-inventory-items',[],{'aria-label':'本局道具','data-ui-layer':'items'});
+    inventory.append(el('div','zx-loadout-top',[skillSlots,vitamins]),supplies);
     const health=el('canvas','zx-player-health',[],{width:176,height:40,'data-static':'true','data-ui-layer':'health',role:'progressbar','aria-label':'角色生命','aria-valuemin':0});
     node.classList.add('zx-hud-'+c.tone,'zx-hud-paper','zx-square-hud');
     const portrait=el('canvas','zx-profile-art',[],{width:420,height:104,role:'progressbar','aria-label':c.name+' · 升级经验','aria-valuemin':0,'aria-valuemax':100});
@@ -1918,21 +1923,28 @@ export function createZixingUI(app,api) {
       updateSkillSlots(skillSlots,run);
       const supplyKey=JSON.stringify([[...p.vitamins].map(([id,v])=>[id,v.level]),[...p.items],profile().settings.showItems,innerWidth]);
       if(supplyKey!==lastSupplies){
-        lastSupplies=supplyKey;const items=supplyIcons(run),images=new Map();
-        for(const image of supplies.querySelectorAll('img')){const src=image.getAttribute('src');if(!images.has(src))images.set(src,[]);images.get(src).push(image);}
-        for(const image of items.querySelectorAll('img')){const reused=images.get(image.getAttribute('src'))?.shift();if(reused){reused.alt=image.alt;image.replaceWith(reused);}}
-        supplies.replaceChildren(items);
+        lastSupplies=supplyKey;const cells=supplyIcons(run),images=new Map();
+        for(const root of [vitamins,supplies])for(const image of root.querySelectorAll('img')){const src=image.getAttribute('src');if(!images.has(src))images.set(src,[]);images.get(src).push(image);}
+        for(const cell of [...cells.vitamins,...cells.items])for(const image of cell.querySelectorAll('img')){const reused=images.get(image.getAttribute('src'))?.shift();if(reused){reused.alt=image.alt;image.replaceWith(reused);}}
+        vitamins.replaceChildren(...cells.vitamins);supplies.replaceChildren(...cells.items);
+        // Replaced cells need fresh native bounds even when the row stays at eight slots.
+        inventory.dataset.supplies=supplyKey;
       }
-      const vitaminSlots=supplies.querySelectorAll('.zx-mini-slot').length,skillCount=skillSlots.children.length;
+      const vitaminSlots=vitamins.children.length,itemCount=supplies.children.length,skillCount=skillSlots.children.length;
       const compact=window.innerWidth<=350;
-      const arrangement=vitaminSlots+'/'+skillCount+'/'+compact;
+      const arrangement=vitaminSlots+'/'+itemCount+'/'+skillCount+'/'+compact;
       if(arrangement!==previousArrangement){
-        const groupWidth=count=>Math.max(0,count*27-2); // 25px cells separated by 2px.
+        const cellSize=compact?22:25,groupWidth=count=>Math.max(0,count*(cellSize+2)-2);
         const vitaminWidth=groupWidth(vitaminSlots),skillWidth=groupWidth(skillCount);
-        supplies.style.width=vitaminWidth+'px';supplies.hidden=vitaminSlots===0;
+        vitamins.style.width=vitaminWidth+'px';vitamins.hidden=vitaminSlots===0;
         skillSlots.style.width=skillWidth+'px';
-        node.classList.toggle('hud-loadout-wrap',vitaminWidth+skillWidth+(vitaminSlots?6:0)>(compact?195:211));
-        // Both native tiles share this row. Invalidate the parent when either changes width.
+        const itemHeight=itemCount?cellSize:0;
+        supplies.hidden=itemCount===0;supplies.style.height=itemHeight+'px';
+        const loadoutHeight=28+(itemCount?4+itemHeight:0);
+        inventory.style.height=loadoutHeight+'px';
+        // Keep event, team and boss notices below the single item row.
+        combatFeed.lane.style.top=itemCount?(compact?55:59)+loadoutHeight+8+'px':'';
+        // Invalidate the shared parent when either native item tile changes size.
         inventory.dataset.arrangement=arrangement;
         previousArrangement=arrangement;
       }

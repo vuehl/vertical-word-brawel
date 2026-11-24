@@ -2,6 +2,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
+import {clarifyWindFrame,windClarity,writeWindAtlas} from './wind-art-clarity.mjs';
 
 // Only live consumers: dash ghost and the complete twister sequence.
 const directory = process.argv[2];
@@ -70,7 +71,6 @@ for(const page of pages){
 const rows=Math.ceil(layers.length/columns),file=path.join(directory,'龙卷风.gif');
 const {delay}=await sharp(file,{animated:true}).metadata(),times=[0];
 for(const page of pages)times.push(times.at(-1)+delay[page]);
-fs.writeFileSync(path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-moves.json'),JSON.stringify({tile,columns,rows,dashGhost:0,twister:{first,count:pages.length,pages,times,source:'龙卷风.gif',reconstructedRegions:'Frames 18–23 use registered clean poses to replace the HUD and damage-label occlusion.',sha256:createHash('sha256').update(fs.readFileSync(file)).digest('hex')}})+'\n');
-await sharp({create:{width:tile*columns,height:tile*rows,channels:4,background:'#00000000'}})
-  .composite(layers).png({palette:true,colours:256,dither:0}).toFile(
-    path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-moves.png'));
+fs.writeFileSync(path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-moves.json'),JSON.stringify({tile,columns,rows,dashGhost:0,twister:{first,count:pages.length,pages,times,source:'龙卷风.gif',reconstructedRegions:'Frames 18–23 use registered clean poses to replace the HUD and damage-label occlusion.',sha256:createHash('sha256').update(fs.readFileSync(file)).digest('hex')},clarity:windClarity})+'\n');
+for(const layer of layers)layer.input=clarifyWindFrame(layer.input,tile,tile,{detail:.65,edge:.22});
+await writeWindAtlas(layers,tile,columns,rows,path.resolve(import.meta.dirname,'../source/public/assets/vfx/wind-moves.png'));
