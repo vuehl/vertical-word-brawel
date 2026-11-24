@@ -32,3 +32,19 @@ export class FramePacer {
     return true;
   }
 }
+
+// Quantize combat time at the selected cadence. A stalled frame starts a new
+// interval so a late joystick sample never moves the player through a backlog.
+export class CombatClock {
+  run=null;
+  gap=0;
+  next=0;
+  ticks(run,now,gap){
+    if(this.run!==run||this.gap!==gap||now-this.next>=Math.max(60,2*gap)){
+      this.run=run;this.gap=gap;this.next=now;
+    }
+    const count=Math.min(2,Math.max(0,Math.floor((now-this.next+gap*.5)/gap)+1));
+    this.next+=count*gap;
+    return count;
+  }
+}

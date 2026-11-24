@@ -89,7 +89,7 @@ export async function reviewExitGuidance(page,dir){
     assert.deepEqual(s.saved,{quality:'medium',locked:true,legacy:false});assert.equal(s.reset,60);assert.ok(s.visible);
     assert.match(s.text,/如果手机出现卡顿/);assert.doesNotMatch(s.text,/省电模式/);
   }
-  for(const m of report.maps)for(const name of ['扭蛋','免费扭蛋','传送门'])assert.ok(m.labels.includes(name),name);
+  for(const m of report.maps)for(const name of ['红骰子','免费蓝骰子','传送门'])assert.ok(m.labels.includes(name),name);
   const [boss,noBanner,single,sanctuary,final,paused,resumed]=report.guidance;
   assert.ok(boss.cleared&&boss.portal&&!boss.hidden);assert.match(boss.text,/进入下一关/);
   assert.equal(noBanner.hidden,false);assert.match(single.text,/即可通关/);assert.match(sanctuary.text,/圣地/);assert.match(final.text,/即可通关/);

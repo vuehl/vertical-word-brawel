@@ -17,12 +17,12 @@ import {setFrameRateLock,resetFrameRatePolicy,frameRateHelp} from './frame-polic
 import {portalGuidance} from './portal-guidance.js';
 import {ExperienceRing} from './experience-ring.js';
 import {characters,characterForSpecies,starterEvolutionLevels,windRoutes,hasWindSpeedPassive,windSpeedPassive,windSpeedDamageBonus} from './starter-characters.js';
-import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,zoneDuration,remainingZoneSeconds} from './lite-rules.js';
+import {defaultStarter,isLiteSpecies,playableStarter,SINGLE_STAGE,FOREST_COMBAT_ZONES,zoneDuration,remainingZoneSeconds,formatGameTime as time} from './lite-rules.js';
 
 export {characters};
 const character=characterForSpecies;
 const difficulties=[
-  {name:'普通（单关）',glyph:'单',tier:0,mode:SINGLE_STAGE,note:'击败第一区镇守，进入木门「门？」即可通关。'},
+  {name:'普通（单关）',glyph:'单',tier:0,mode:SINGLE_STAGE,note:'击败第一区镇守，进入传送门「门？」即可通关。'},
   {name:'普通',glyph:'壹',tier:0,mode:'standard',note:'熟悉走位与招式，完成旅程。'},
   {name:'困难',glyph:'贰',tier:1,mode:'standard',note:'敌人更强，首领带来更多挑战。'},
   {name:'噩梦',glyph:'叁',tier:2,mode:'standard',note:'更高强度的进阶挑战。'},
@@ -30,7 +30,6 @@ const difficulties=[
 const difficultyName=run=>run.mode===SINGLE_STAGE?difficulties[0].name:difficulties[1+run.tier].name;
 const number=n=>Math.round(Number(n)||0).toLocaleString('en-US');
 const percent=n=>Number(((Number(n)||0)*100).toFixed(1))+'%';
-const time=n=>Math.floor((n||0)/60).toString().padStart(2,'0')+':'+Math.floor((n||0)%60).toString().padStart(2,'0');
 function el(tag,cls='',children=[],attrs={}) {
   const node=document.createElement(tag);if(cls)node.className=cls;
   for(const [k,v] of Object.entries(attrs)) {
@@ -875,7 +874,7 @@ export function createZixingUI(app,api) {
     coords.forEach(([x,y],i)=>{ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,46,0,Math.PI*2);ctx.fill();ctx.fillStyle=colors[i];ctx.fillText(symbols[i],x,y);});
     ctx.fillStyle='#62586f';ctx.font='36px "Ziling Swei", sans-serif';ctx.fillText('字灵',340,230);chart.dataset.static='true';
     screen('help','一字入局','走位避险，把握大招时机',[
-      chart,...[['移动与避险','按住战场空白处即可出现摇杆，轻推慢走，推到外圈全速移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。在扭蛋等设施旁停留 ${facilityDwellSeconds} 秒可触发互动。桌上世界区域 1 开战满 ${bossSummonUnlockSeconds() / 60} 分钟、区域 2 开战满 ${bossSummonUnlockSeconds({biome:{id:'forest'},stage:2}) / 60} 分钟后，在倒计时装置「${facilityNames.boss}」的光圈内停留 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟仍未召唤时，龘会自动现身。击败镇守后，从木门前往下一区域或通关；区域 2 的木门通向圣地终战。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，在光圈内停留 ${altarChargeSeconds} 秒即可选择祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招充满后会保留能量。看到按钮显示「就绪」时，点击即可释放。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
+      chart,...[['移动与避险','按住战场空白处即可出现摇杆，轻推慢走，推到外圈全速移动，松手停止并隐藏摇杆。移动时可用另一根手指释放大招。'],['攻击与拾取',`靠近掉落的经验、金币与道具即可拾取。碰到蓝骰子即可免费抽取道具，红骰子消耗标价金币。其他设施按提示停留互动。桌上世界区域 1 开战满 ${bossSummonUnlockSeconds() / 60} 分钟、区域 2 开战满 ${bossSummonUnlockSeconds({biome:{id:'forest'},stage:2}) / 60} 分钟后，在倒计时装置「${facilityNames.boss}」旁停留 ${bossSummonSeconds} 秒可召唤龘。满 ${zoneDuration() / 60} 分钟仍未召唤时，龘会自动现身。击败镇守后，从传送门前往下一区域或通关；区域 2 的传送门通向圣地终战。建筑底座的圆环显示进度。多肉是${facilityNames.altar}，在光圈内停留 ${altarChargeSeconds} 秒即可选择祝福，离开光圈后蓄能会逐渐回落。`],['把握大招','大招充满后会保留能量。看到按钮显示「就绪」时，点击即可释放。']].map(([title,desc],i)=>el('div','zx-help-row',[el('h3','',String(i+1).padStart(2,'0')+'  '+title),text(desc)])),
       button('署名与法律声明',()=>{const popup=overlay('署名与法律声明','素材与代码来源',[api.credits()],[button('返回',()=>popup.remove())]);},'zx-plain'),
     ],[button('返回',()=>{app.setScreen(null);back();})]);
   }
@@ -1247,7 +1246,7 @@ export function createZixingUI(app,api) {
     minimap.dataset.uiLayer='minimap';
     minimap.setAttribute('aria-label','附近地图，点击查看更大范围');
     const portalCopy=small('');
-    const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 木门已开启'),portalCopy],{'aria-live':'polite'});
+    const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 传送门已开启'),portalCopy],{'aria-live':'polite'});
     portalGuide.hidden=true;
     node.append(el('div','zx-hud-location',[icon('pin',13,'#5277a4'),area,stageLabel],{'data-ui-region':'hud-top'}),el('div','zx-hud-top',[
       el('div','zx-hud-counters',[

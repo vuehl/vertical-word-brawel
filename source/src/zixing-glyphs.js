@@ -34,7 +34,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   run.sprites.begin=(...args)=>{begin(...args);batches.begin();};
   run.sprites.end=()=>{end();batches.flush();};
   const shadow=run.sprites.shadows.mesh.material;
-  const shelfUniforms={uShelfActive:{value:false},uShelfDepth:{value:null}};
+  const shelfUniforms=run.sprites.shelfUniforms={uShelfActive:{value:false},uShelfDepth:{value:null}};
   run.sprites.setShelfDepth=texture=>{
     shelfUniforms.uShelfActive.value=!!texture;
     shelfUniforms.uShelfDepth.value=texture??null;

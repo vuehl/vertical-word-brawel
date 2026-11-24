@@ -13,7 +13,7 @@ import {actorMetrics} from '../source/src/actor-metrics.js';
 import {heroActionCatalog} from '../source/src/hero-action-catalog.js';
 import {assetPolicyVersion,compressedFireAtlases,excludedAssetReason,musicTracks} from './asset-policy.mjs';
 import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/catalogs.js';
-import {facilityNames,facilityIconFile,facilityModelFile,isActiveItem} from '../source/src/active-content.js';
+import {illustratedFacilityFiles,facilityNames,facilityIconFile,facilityModelFile,isActiveItem} from '../source/src/active-content.js';
 import {resolveItemIcon} from '../source/src/item-icons.js';
 import {glyphSpeciesFromImage} from '../source/src/zixing-identity.js';
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
@@ -149,21 +149,22 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
   count[category]=(count[category]||0)+1;
 }
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
-const modelKinds=Object.keys(facilityNames).filter(kind=>kind!=='bill');
+const modelKinds=Object.keys(facilityNames).filter(kind=>kind!=='bill'&&!illustratedFacilityFiles[kind]);
 const deviceKeys=modelKinds.map(kind=>'assets/models/'+facilityModelFile(kind)+'.glb');
-assert.equal(deviceKeys.length,9);
+assert.equal(deviceKeys.length,2);
 assert.deepEqual(fs.readdirSync(path.join(pub,'assets/models/devices')).filter(name=>name.endsWith('.glb')).sort(),
-  Object.values(facilityNames).map(name=>name+'.glb').sort(),'Each building name must match its source model');
+  Object.keys(facilityNames).map(kind=>path.basename(facilityModelFile(kind))+'.glb').sort(),'Each building name must match its source model');
 assert.deepEqual(models.sort(),['assets/models/ball.glb',...deviceKeys].sort());
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
-const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/DeviceScreenFx.mjs')));
 const deskDevices=JSON.parse(fs.readFileSync(path.join(root,'source/src/desk2d-devices.json'),'utf8'));
-const deskTiles=JSON.parse(fs.readFileSync(path.join(root,'source/src/desk2d-layout.json'),'utf8')).layers.find(layer=>layer.name==='desk').parts;
-for(const [name] of deskTiles){
-  const key='assets/env/desk2d/'+name;
-  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed desk tile '+name);
-}
+const deskLayout=JSON.parse(fs.readFileSync(path.join(root,'source/src/desk2d-layout.json'),'utf8'));
+const deskTiles=deskLayout.layers.flatMap(layer=>layer.parts.map(([name])=>'assets/env/desk2d/'+name));
+assert.deepEqual(Object.keys(index.files).filter(key=>/^assets\/env\/desk2d\/[^/]+-\d+\.webp$/.test(key)).sort(),
+  [...deskTiles].sort(),'Packed map tiles must match the current layout');
+for(const key of deskTiles)
+  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed map tile '+key);
 const entryData=(await import('../minigame/entry-data.js')).default;
+assert.deepEqual(entryData.mapSize,[deskLayout.width,deskLayout.height],'Entry and battle must share the same map extent');
 for(const [name,, ,w,h] of entryData.layers){
   const image=await sharp(Buffer.from(entryData.images[name],'base64')).metadata();
   assert.equal(image.format,'jpeg');
@@ -180,38 +181,20 @@ assert.deepEqual(Object.keys(index.files).filter(key=>key.startsWith(billPrefix)
   ['device-bill_default.png','eyeball.png','face.png','highlight_eye.png']);
 assert.ok(index.files['assets/'+facilityIconFile('bill')]);
 assert.ok(!index.files['assets/env/desk2d/device-bill.png']&&!index.files['assets/models/'+facilityModelFile('bill')+'.glb']);
+assert.ok(index.files['assets/env/desk2d/device-magnet-shadow.png'] && deskDevices.magnet.shadowStrips.length);
+for(const [kind,stem] of Object.entries(illustratedFacilityFiles)){
+  const key='assets/env/desk2d/device-'+stem+'.png',device=deskDevices[kind];
+  assert.ok(index.files[key]&&index.files['assets/'+facilityIconFile(kind)],kind);
+  const {width,height}=await sharp(bytes(key)).metadata();
+  assert.deepEqual(device.frame,{width,height},key);
+  assert.ok(device.strips.length>0,key);
+  if(['freechest','chest','ditto','magnet'].includes(kind))assert.equal(device.pickup.resolution,width);
+}
 for(const kind of modelKinds){
   const key='assets/models/'+facilityModelFile(kind)+'.glb',glb=Buffer.from(bytes(key));
   const gltf=JSON.parse(glb.toString('utf8',20,20+glb.readUInt32LE(12)));
-  const adapter=gltf.asset.extras.deviceScreenFxAdapter,scene=gltf.scenes[gltf.scene??0].extras;
-  assert.equal(digest(adapter.source),adapter.sha256,key);
-  if(kind==='boss'){
-    const dock=gltf.asset.extras.portalDockAdapter;
-    // The model embeds its original adapter pair. The game imports the
-    // optimised compositor and animated-screen implementation from src.
-    assert.equal(adapter.sha256,'d0fbc0f794e316abc3c99c4fa0ace0c0a474bdcf0e8a8eb5bfa7a8b4f47fb905',key);
-    assert.equal(dock.requiresDeviceScreenFxSha256,adapter.sha256,key);
-    assert.equal(digest(dock.source),dock.sha256,key);
-    assert.equal(dock.sha256,'5c2a3ca204d395f2bbbb2ebfd1b999f51ec162fea6180582d9cb301e5289f726',key);
-    assert.equal(scene.portalDock.version,1,key);
-  }else{
-    // These GLBs embed the original compatible v2 compositor.
-    assert.equal(adapter.sha256,'4eda06e489fe6ddc4e96e8d35716b72faecb4e0a3d6b20cffef999ab72488273',key);
-  }
-  assert.equal(scene.deviceModel,({bill:'billpc',boss:'portal',portal:'boss'})[kind]??kind,key);
-  if(kind==='boss'||kind==='portal')assert.equal(facilityIconFile(kind),'ui/devices/'+scene.deviceModel+'.png');
-  assert.ok(index.files['assets/'+facilityIconFile(kind)],'Missing model thumbnail for '+kind);
-  assert.equal(adapter.apiVersion,2,key);
-  assert.equal(scene.deviceScreenFx.version,2,key);
-  assert.equal(scene.deviceScreenFx.cycleSeconds,3,key);
-  assert.equal(scene.deviceScreenFx.stars.sharedOrigin,true,key);
-  assert.equal(scene.deviceScreenFx.stars.scatter.tracks,8,key);
-  assert.ok(scene.deviceScreenFx.supportXYZ.length>=12,key);
-  if(kind==='boss'){
-    assert.ok(!deskDevices.boss&&!index.files['assets/env/desk2d/device-boss.png']);
-    continue;
-  }
-  assert.deepEqual(deskDevices[kind].fx,scene.deviceScreenFx,'Desk sprite effects for '+kind);
+  assert.equal(gltf.scenes[gltf.scene??0].extras.deviceModel,kind);
+  assert.ok(index.files['assets/'+facilityIconFile(kind)]);
   if(kind==='altar'){
     const prefix='assets/env/desk2d/device-altar/';
     assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)).sort(),
@@ -228,7 +211,7 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }
 const report={mappedResources:Object.keys(index.files).length,RGBA:count,fireColorError,originalModels:models.length-deviceKeys.length,
-  deviceModels:deviceKeys.length,deviceAdapterSha256:adapterHash,
+  deviceModels:deviceKeys.length,illustratedDevices:Object.keys(illustratedFacilityFiles).length,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:[],
   removedSceneAssetsVerified:removedSceneAssets.length,
   actorBoundsVerified:152,itemIconsVerified:verifiedCatalogItems,excludedCatalogIcons,cries:0,locales:['zh'],legacyActorImages:0,

@@ -77,7 +77,7 @@ export async function verifyEntry({page,tap,dir}){
       if(!next&&app.screen?.dataset.entryPage==='departure'){
         const camera=app.r.camera,position=camera.position.clone(),projection=camera.projectionMatrix.clone();
         app.run.updateCamera(0);
-        const bounds=app.run.terrain.deskBounds,ppu=5142/(2*bounds.x);
+        const bounds=app.run.terrain.deskBounds,ppu=window.deskArtSize.width/(2*bounds.x);
         audit.finished={sameTerrain:entryWorld===app.run.terrain,sameSprites:entrySprites===app.run.sprites,
           samePosition:position.equals(camera.position),sameProjection:projection.equals(camera.projectionMatrix),
           width:2*ppu/projection.elements[0],height:2*ppu/projection.elements[5],
@@ -113,7 +113,8 @@ export async function verifyEntry({page,tap,dir}){
   await capture('04-entry-play');
   const corners=await page.evaluate(()=>{
     const r=app.run,b=r.terrain.deskBounds,c=r.r.camera,target=r.camTarget.clone();
-    const point=(x,y)=>target.clone().set((2*x/5142-1)*b.x,-.05,(2*y/2892-1)*b.z);
+    const {width,height}=window.deskArtSize;
+    const point=(x,y)=>target.clone().set((2*x/width-1)*b.x,-.05,(2*y/height-1)*b.z);
     try{
       // Compare the art at the same player location as the supplied reference.
       r.camTarget.copy(point(1982,1379));r.updateCamera(0);c.updateMatrixWorld();

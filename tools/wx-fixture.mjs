@@ -1,6 +1,8 @@
 // Local-only test adapter. Uses Chrome's real WebGL2, Canvas 2D, image decoder and touch events.
 import {strFromU8,strToU8} from 'fflate';
 import {toByteArray} from 'base64-js';
+import {width,height} from '../source/src/desk2d-layout.json';
+window.deskArtSize={width,height};
 const storage=new Map(),dirs=new Set(['/userdata']),data=new Map(),archives=new Map(),events={};
 // Simulate optional downloads stalling until the guest screen is usable.
 const optionalDownloadGate = new Promise(resolve => { window.releaseOptionalDownloads=resolve; });

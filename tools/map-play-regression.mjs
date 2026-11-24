@@ -75,7 +75,7 @@ export async function reviewMapPlay(page,dir){
     return {first,after,selection,text,stationary:p.x===playerX&&p.z===playerZ};
   });
   assert.equal(report.pan.selection,'bill');assert.ok(report.pan.stationary);
-  assert.doesNotMatch(report.pan.text,/扭蛋|点击类别|附近 \d+ 处/);
+  assert.doesNotMatch(report.pan.text,/骰子|点击类别|附近 \d+ 处/);
   await page.screenshot({path:path.join(dir,'map-after-pan.png')});
   await page.evaluate(()=>app.run.resume());
   report.icons=[];

@@ -37,7 +37,7 @@ export async function reviewMapWind(page,dir){
     const markers=kinds.map((kind,i)=>({kind,x:p.x+Math.cos(i/kinds.length*Math.PI*2)*36,z:p.z+Math.sin(i/kinds.length*Math.PI*2)*36}));
     markers.push({kind:'chest',data:{gift:true},x:p.x-5,z:p.z+7});
     r.interactables.markers=()=>markers;
-    window.mapNames=['扭蛋','免费扭蛋','时尚小垃圾','传送门','门？','磁铁','QQ糖','拍立得','鹌鹑蛋','订书机'];
+    window.mapNames=['红骰子','免费蓝骰子','时尚小垃圾','传送门','门？','磁铁','QQ糖','拍立得','鹌鹑蛋','订书机'];
   });
   const compact=process.argv.includes('--map-compact');
   for(const [width,height] of (compact?[[320,568]]:[[320,568],[390,844],[430,932]])){
@@ -58,7 +58,7 @@ export async function reviewMapWind(page,dir){
     const close=layout.buttons.at(-1);assert.ok(close.y+close.h<=layout.modal.y+layout.modal.h-6,JSON.stringify(layout));
     console.log('Map controls fit at '+width+'px.');
     await page.screenshot({path:path.join(dir,`map-names-${width}.png`)});
-    for(const [kind,name] of [['chest','扭蛋'],['freechest','免费扭蛋'],['altar','时尚小垃圾'],['boss','传送门'],['portal','门？'],['magnet','磁铁'],['berry','QQ糖'],['ditto','拍立得'],['nest','鹌鹑蛋'],['bill','订书机']]){
+    for(const [kind,name] of [['chest','红骰子'],['freechest','免费蓝骰子'],['altar','时尚小垃圾'],['boss','传送门'],['portal','门？'],['magnet','磁铁'],['berry','QQ糖'],['ditto','拍立得'],['nest','鹌鹑蛋'],['bill','订书机']]){
       await page.evaluate(()=>drawnNames.length=0);
       await tap(`[data-map-filter="${kind}"]`);
       const filtered=await page.evaluate(()=>({names:[...new Set(drawnNames)],filter:inspected.doc.querySelector('.zx-battle-map-art').dataset.filter,selected:inspected.doc.querySelectorAll('.zx-map-filter.on').length,tracked:app.run.ui.mapFacilityKind}));

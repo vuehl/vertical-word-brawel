@@ -31,6 +31,7 @@ export function normalOpeningWaves(mode, firstHorde, honey) {
   if (honey) waves.unshift([waves[0][0] - 25,'alpha']);
   return waves.map(([t,kind]) => ({t,kind}));
 }
+export const formatGameTime = seconds => Math.floor((seconds||0)/60).toString().padStart(2,'0')+':'+Math.floor((seconds||0)%60).toString().padStart(2,'0');
 export const remainingZoneSeconds = run => Math.ceil(zoneDuration(run.mode) - run.stageTime);
 export const runRecordKey = run => run.biome + '-' + (run.mode === SINGLE_STAGE ? SINGLE_STAGE : (run.tier ?? 0));
 export const isLiteSpecies = id => LITE_SPECIES.includes(Number(id));

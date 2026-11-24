@@ -58,7 +58,7 @@ export async function reviewItems({page,tap,resize,dir,snapshot}) {
       const r=app.run,h=r.hints;h.seen.delete('b');h.busyUntil=0;h.scanT=0;
       h.tick(r,0);qaItemFrames(0);
     });
-    await checkHint('chest','扭蛋');
+    await checkHint('chest','红骰子');
     await snapshot('14-interaction-'+width);
   }
   await resize(390,844);

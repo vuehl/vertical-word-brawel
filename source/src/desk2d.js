@@ -1,3 +1,5 @@
+import {installMagnet} from './desk-magnet-art.js';
+import {illustratedFacilityFiles} from './active-content.js';
 import layout from './desk2d-layout.json';
 import shelf from './desk2d-shelf.json';
 import deviceSizes from './desk2d-devices.json';
@@ -26,16 +28,30 @@ export function initDesk(t){
   t.inBounds=(x,z,n=0)=>Math.abs(x)<halfWidth-n&&Math.abs(z)<halfDepth-n;
   t.isFlatOpen=(x,z)=>t.inBounds(x,z,1)&&!t.hitProp(x,.3,z,1);
   t.deskOwned=[];t.deskTextures=new Map();
-  for(const [kind,l,rawTop,r,rawBottom] of layout.rects){
-    const offset=kind==='mouse'?-160:0,top=rawTop+offset,b=rawBottom+offset;
+  t.deskFadeMaterials={cup:[],zhi:[]};
+  const walkThroughProps=[];
+  for(const [kind,l,top,r,b] of layout.rects){
     const box=paperBox(xAt((l+r)/2),zAt((top+b)/2),(r-l)/pixelsPerUnit,(b-top)/(pixelsPerUnit*tilt),1000,0);
     box.kind=kind;
     if(surfaces.has(kind))surfaces.get(kind).push(box);
+    else if(kind==='cup'||kind==='zhi'){
+      box.playerPassable=true;walkThroughProps.push(box);t.addCollider(box);
+    }
     else if(!['pen','ID-card'].includes(kind)) t.addCollider(box);
   }
   // Facility surfaces and flat paper props can be walked on; raised objects
   // lying on top of them remain in the ordinary collision grid.
+  t.blocksFacility=(x,z,radius)=>walkThroughProps.some(box=>hitsPaperBox(box,x,z,radius));
+  t.crossesNpcProp=(ax,az,bx,bz,radius)=>{
+    const dx=(bx-ax)/2,dz=(bz-az)/2,mx=ax+dx,mz=az+dz;
+    return walkThroughProps.some(box=>{
+      const x=mx-box.x,z=mz-box.z,w=box.halfX+radius,h=box.halfZ+radius;
+      return Math.abs(x)<=w+Math.abs(dx) && Math.abs(z)<=h+Math.abs(dz) &&
+        Math.abs(dx*z-dz*x)<=w*Math.abs(dz)+h*Math.abs(dx);
+    });
+  };
   t.fitsFacilitySurface=(x,z,radius,surface)=>{
+    if(t.blocksFacility(x,z,radius))return false;
     for(const [name,boxes] of surfaces){
       if(name!==surface && boxes.some(box=>hitsPaperBox(box,x,z,radius)))return false;
     }
@@ -90,10 +106,11 @@ export function initDesk(t){
         const texture=await deskTexture(t,file);
         if(t.disposed)return;
         const material=new BasicMaterial({map:texture,transparent:layer!==0,depthWrite:false,fog:false,toneMapped:false});
+        t.deskFadeMaterials[name]?.push(material);
         t.deskOwned.push(material);
         const sheet=new Mesh(geometry,material);sheet.name='desk2d/'+name;
         sheet.scale.set(w/pixelsPerUnit,1,h/(pixelsPerUnit*tilt));
-        sheet.position.set(xAt(x+w/2),-.05,zAt(y+h/2+(name==='mouse'?-160:0)));
+        sheet.position.set(xAt(x+w/2),-.05,zAt(y+h/2));
         sheet.renderOrder=-100+layer;t.group.add(sheet);
       }
     }
@@ -130,13 +147,13 @@ export function deskCamera(run,progress,bend=0){
   c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
   t.deskCamera=c;run.camYaw=0;run.camPitch=pitch;run.camDist=distance;run.camLift=0;
 }
-function deskGeometry(t,key,strips,resolution=128){
+function deskGeometry(t,key,strips,resolution=128,rows=resolution){
   t.deskDeviceGeometries??=new Map();
   if(!t.deskDeviceGeometries.has(key)){
     const points=[],uv=[];
     for(const [left,y,right] of strips){
       for(const [x,row] of [[left,y],[left,y+1],[right,y],[right,y],[left,y+1],[right,y+1]]){
-        points.push(x/resolution-.5,.5-row/resolution,0);uv.push(x/resolution,1-row/resolution);
+        points.push(x/resolution-.5,.5-row/rows,0);uv.push(x/resolution,1-row/rows);
       }
     }
     const geometry=new BufferGeometry();
@@ -158,17 +175,17 @@ function deskSprite(t,key,strips,size,texture,layer=0){
   return sprite;
 }
 export async function deskDevice(t,kind,tier=0){
-  const {size,height,footprintRadius,strips,fx,layers}=deviceSizes[kind];
+  const {size,height,footprintRadius,strips,layers,frame,pickup}=deviceSizes[kind];
   const root=new Group();root.name='desk2d/device-'+kind;root.userData.displayHeight=height;
   root.userData.footprintRadius=footprintRadius;
-  // Centre the ground rings on visible artwork, excluding transparent padding.
-  const outline=strips??layers.base;
-  const left=Math.min(...outline.map(s=>s[0])),right=Math.max(...outline.map(s=>s[2]));
-  const top=Math.min(...outline.map(s=>s[1])),bottom=Math.max(...outline.map(s=>s[1]+1));
-  const centreY=size*(.3+.5-(top+bottom)/256);
-  const aspect=kind==='bill'?deviceSizes.bill.frame.width/deviceSizes.bill.frame.height:1;
-  root.userData.ringAnchor={x:size*((left+right)/256-.5)*aspect,y:centreY*Math.cos(pitch),z:-centreY*tilt};
-  root.userData.deviceScreenFx=fx;
+  const aspect=frame ? frame.width/frame.height : 1;
+  if(kind==='altar'){
+    const outline=layers.base;
+    const left=Math.min(...outline.map(s=>s[0])),right=Math.max(...outline.map(s=>s[2]));
+    const top=Math.min(...outline.map(s=>s[1])),bottom=Math.max(...outline.map(s=>s[1]+1));
+    const centreY=size*(.8-(top+bottom)/256);
+    root.userData.ringAnchor={x:size*((left+right)/256-.5),y:centreY*Math.cos(pitch),z:-centreY*tilt};
+  }
   if(kind==='bill'){
     const entries=await Promise.all(Object.entries(billLayers).map(async ([name,file])=>[name,await deskTexture(t,file)]));
     if(t.disposed)return null;
@@ -191,9 +208,20 @@ export async function deskDevice(t,kind,tier=0){
     root.add(sprite);return root;
   }
   if(kind!=='altar'){
-    const map=await deskTexture(t,'device-'+kind+'.png');
+    const file='device-'+illustratedFacilityFiles[kind]+'.png';
+    const [map,shadowMap]=await Promise.all([deskTexture(t,file),
+      kind==='magnet' ? deskTexture(t,'device-magnet-shadow.png') : null]);
     if(t.disposed)return null;
-    root.add(deskSprite(t,kind,strips,size,map));
+    const sprite=deskSprite(t,kind,strips,size,map,shadowMap?1:0);
+    sprite.scale.x*=aspect;
+    if(pickup)sprite.userData.pickupGeometry=deskGeometry(t,kind+'-pickup',pickup.strips,pickup.resolution,pickup.height);
+    root.add(sprite);
+    if(shadowMap){
+      const shadow=deskSprite(t,'magnet-shadow',deviceSizes.magnet.shadowStrips,size,shadowMap);
+      shadow.scale.x*=aspect;
+      root.add(shadow);
+      installMagnet(root,sprite,shadow,frame);
+    }
     return root;
   }
   const textures=await Promise.all(Object.values(altarLayers).map(file=>deskTexture(t,file)));

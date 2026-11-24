@@ -2,23 +2,43 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 import numpy as np, json, sys
 from scipy.ndimage import binary_fill_holes
+from skimage.measure import find_contours, approximate_polygon
 root=Path(sys.argv[1]);out=Path('source/public/assets/env/desk2d');out.mkdir(exist_ok=True,parents=True)
 with Image.open(root/'desk.png') as ref: W,H=ref.size
 manifest=Path('source/src/desk2d-layout.json')
 shelf=json.loads(Path('source/src/desk2d-shelf.json').read_text())
 above_desk={'shelf',*shelf['hanging']}
 desk_only='--desk-only' in sys.argv[2:]
-previous=json.loads(manifest.read_text()) if desk_only else None
-if previous and (W,H)!=(previous['width'],previous['height']):
+previous=json.loads(manifest.read_text()) if manifest.exists() else None
+if desk_only and (not previous or (W,H)!=(previous['width'],previous['height'])):
  raise ValueError('Map registration changed. Regenerate all layers.')
-layers=[];rows=[];S=12
-order=['desk','shelf','wires','wacom','ID-card','tea-bag','keyboard','bags','bell','box','cup','hushoushuang','mouse','pen','medicine','teethpicks','toy0','toy1','toy2','toy3','xiangdai','zhi','notebook','bottle']
+layers=[];rows=[];contours={};S=12
+order=['desk','shelf','wires','wacom','ID-card','tea-bag','keyboard','bell','box','cup','hushoushuang','mouse','pen','medicine','teethpicks','toy0','toy1','toy2','toy3','xiangdai','zhi','notebook','bottle']
+
+def registered_layer(name):
+ with Image.open(root/(name+'.png')) as source:
+  if source.width!=W or source.height>H:
+   raise ValueError(f'{name}: incompatible canvas {source.size} for {(W,H)}')
+  # Legacy exports share the new map's top-left origin. These two sprites
+  # have a different registration in the approved desk_map2 composition.
+  if source.size==(W,H):return source.convert('RGBA')
+  l,t,r,b=source.getbbox()
+  part=source.crop((l,t,r,b)).convert('RGBA')
+  if name=='cup':
+   l,t=683,638
+   part=part.resize((475,544),Image.Resampling.LANCZOS)
+  elif name=='wacom':
+   l-=13;t+=5
+  image=Image.new('RGBA',(W,H))
+  image.paste(part,(l,t))
+  return image
+
 # Preserve source coordinates including the footprints and painted shadows.
 for name in order:
  if desk_only and name!='desk':
   layers.append(next(layer for layer in previous['layers'] if layer['name']==name))
   continue
- im=Image.open(root/(name+'.png')).convert('RGBA');assert im.size==(W,H)
+ im=registered_layer(name)
  x0,y0,x1,y1=im.getbbox();parts=[]
  for y in range(y0,y1,1440):
   for x in range(x0,x1,1440):
@@ -27,7 +47,14 @@ for name in order:
    tile=tile.crop(bounds);file=f'{name}-{len(parts)}.webp';tile.save(out/file,'WEBP',quality=96,method=5,alpha_quality=100);parts.append([file,x+bounds[0],y+bounds[1],*tile.size]);
  layers.append(dict(name=name,parts=parts))
  if name in ('desk','wires') or name in above_desk:continue
- mask=np.asarray(im.getchannel('A'))[S//2::S,S//2::S]>210
+ alpha=im.getchannel('A')
+ mask=np.asarray(alpha)[S//2::S,S//2::S]>210
+ if name in ('cup','zhi'):
+  # Use the registered body for both the fade boundary and collision strips.
+  body=binary_fill_holes(np.asarray(alpha.crop((x0,y0,x1,y1)))>210)
+  boundary=max(find_contours(np.pad(body,1),.5),key=len)
+  points=approximate_polygon(boundary,.8)[:-1]
+  contours[name]=[[int(round(x0+x-.5)),int(round(y0+y-.5))] for y,x in points]
  if name in ('cup','teethpicks'):mask=binary_fill_holes(mask)
  active={}
  for j,row in enumerate(mask):
@@ -38,6 +65,9 @@ for name in order:
  for k,start in active.items():rows.append([name,k[0]*S,start*S,k[1]*S,H]);
 if desk_only: rows=[rect for rect in previous['rects'] if rect[0] not in above_desk]
 manifest.write_text(json.dumps(dict(width=W,height=H,layers=layers,rects=rows),separators=(',',':')))
+
+if not desk_only:
+ Path('source/src/desk-fade-contours.json').write_text(json.dumps(contours,separators=(',',':')))
 
 # Red stores sorting depth, green stores artwork coverage. Rear braces stay
 # behind the actors. Use the original painted alpha for legs and decorations.
@@ -70,4 +100,10 @@ packing=np.zeros((*cover.shape,3),dtype='uint8')
 packing[:,:,0]=np.clip(np.rint(depth*255/shelf['maskDepthRange']),0,255).astype('uint8')
 packing[:,:,1]=cover
 Image.fromarray(packing).resize((2048,440),Image.Resampling.BOX).save(out/'shelf-depth.png',optimize=True)
+if previous and not desk_only:
+ current_files={part[0] for layer in layers for part in layer['parts']}
+ for layer in previous['layers']:
+  for file,*_ in layer['parts']:
+   if file not in current_files and Path(file).name==file and file.endswith('.webp'):
+    (out/file).unlink(missing_ok=True)
 print(len(layers),'layers,',len(rows),'collision rectangles,',sum(p.stat().st_size for p in out.glob('*.webp')),'image bytes')

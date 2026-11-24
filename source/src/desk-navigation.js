@@ -5,21 +5,42 @@ export function createDeskNavigation(terrain) {
   const fields=new Map(), directions=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
   const cell=(x,z)=>[Math.round((x+width)/step),Math.round((z+depth)/step)];
   const inside=(x,z)=>x>=0&&z>=0&&x<cols&&z<rows;
-  return (x,z,targetX,targetZ,radius,out)=>{
+  // All monster sizes and co-op targets share one queue per zone.
+  const jobs=[];
+  function* mapFloor(field,size){
+    const clearance=size+step*Math.SQRT1_2;
+    for(let id=0;id<field.open.length;id++){
+      const px=(id%cols)*step-width,pz=Math.floor(id/cols)*step-depth;
+      field.open[id]=terrain.inBounds(px,pz,clearance)&&!terrain.hitProp(px,0,pz,clearance);
+      if((id+1)%128===0)yield;
+    }
+    field.ready=true;
+  }
+  function* buildRoute(open,route,goal){
+    const distance=route.spare,queue=route.queue;
+    distance.fill(-1);distance[goal]=0;queue[0]=goal;
+    let tail=1;
+    for(let head=0;head<tail;head++){
+      const id=queue[head],cx=id%cols,cz=Math.floor(id/cols);
+      for(const [dx,dz] of directions){
+        const nx=cx+dx,nz=cz+dz,next=nz*cols+nx;
+        if(!inside(nx,nz)||!open[next]||distance[next]>=0)continue;
+        if(dx&&dz&&(!open[cz*cols+nx]||!open[nz*cols+cx]))continue;
+        distance[next]=distance[id]+1;queue[tail++]=next;
+      }
+      if((head+1)%128===0)yield;
+    }
+    route.spare=route.distance;route.distance=distance;route.goal=goal;route.pending=false;
+  }
+  function steer(x,z,targetX,targetZ,radius,out,targetSlot=0){
     const size=Math.ceil(radius*2)/2;
     let field=fields.get(size);
     if(!field){
-      const open=new Uint8Array(cols*rows);
-      // The extra half diagonal keeps whole cells clear of silhouette seams.
-      const clearance=size+step*Math.SQRT1_2;
-      for(let iz=0;iz<rows;iz++)for(let ix=0;ix<cols;ix++){
-        const px=ix*step-width,pz=iz*step-depth;
-        open[iz*cols+ix]=terrain.inBounds(px,pz,clearance)&&!terrain.hitProp(px,0,pz,clearance);
-      }
-      field={open,distance:new Int32Array(open.length),queue:new Int32Array(open.length),goal:-1};
-      fields.set(size,field);
+      field={open:new Uint8Array(cols*rows),ready:false,targets:new Map(),edgeCells:new Map()};
+      fields.set(size,field);jobs.push(mapFloor(field,size));
     }
-    const {open,distance,queue}=field;
+    if(!field.ready)return false;
+    const {open}=field;
     const clear=(ax,az,bx,bz)=>{
       const n=Math.max(1,Math.ceil(Math.hypot(bx-ax,bz-az)/(step*.4)));
       for(let i=0;i<=n;i++){
@@ -29,45 +50,74 @@ export function createDeskNavigation(terrain) {
       return true;
     };
     if(clear(x,z,targetX,targetZ))return false;
-    let [gx,gz]=cell(targetX,targetZ),goal=-1,best=Infinity;
-    // A player can stand closer to a prop than a large monster can.
-    for(let dz=-6;dz<=6;dz++)for(let dx=-6;dx<=6;dx++){
-      const cx=gx+dx,cz=gz+dz,d=dx*dx+dz*dz;
-      if(inside(cx,cz)&&open[cz*cols+cx]&&d<best){goal=cz*cols+cx;best=d;}
+    const [gx,gz]=cell(targetX,targetZ);
+    if(!inside(gx,gz))return false;
+    const targetCell=gz*cols+gx;
+    let goal=open[targetCell]?targetCell:field.edgeCells.get(targetCell);
+    // A player can stand deep inside an obstacle. Cache the closest open
+    // cell so all pursuing NPCs of this size use the same edge.
+    if(goal===undefined){
+      goal=-1;
+      let best=Infinity;
+      function consider(dx,dz){
+        const x=gx+dx,z=gz+dz,id=z*cols+x,d=dx*dx+dz*dz;
+        if(inside(x,z)&&open[id]&&d<best){best=d;goal=id;}
+      }
+      for(let ring=1;ring<Math.max(cols,rows);ring++){
+        for(let n=-ring;n<=ring;n++){
+          consider(n,-ring);consider(n,ring);
+          if(Math.abs(n)<ring){consider(-ring,n);consider(ring,n);}
+        }
+        if(best<=(ring+1)**2)break;
+      }
+      field.edgeCells.set(targetCell,goal);
     }
     if(goal<0)return false;
-    if(field.goal!==goal){
-      field.goal=goal;distance.fill(-1);distance[goal]=0;queue[0]=goal;
-      let tail=1;
-      for(let head=0;head<tail;head++){
-        const id=queue[head],cx=id%cols,cz=Math.floor(id/cols);
-        for(const [dx,dz] of directions){
-          const nx=cx+dx,nz=cz+dz,next=nz*cols+nx;
-          if(!inside(nx,nz)||!open[next]||distance[next]>=0)continue;
-          if(dx&&dz&&(!open[cz*cols+nx]||!open[nz*cols+cx]))continue;
-          distance[next]=distance[id]+1;queue[tail++]=next;
-        }
-      }
+    let target=field.targets.get(targetSlot);
+    if(!target){
+      target={goal:-1,pending:false,distance:new Int32Array(open.length),spare:new Int32Array(open.length),queue:new Int32Array(open.length)};
+      field.targets.set(targetSlot,target);
     }
+    if(target.goal!==goal&&!target.pending){
+      target.pending=true;jobs.push(buildRoute(open,target,goal));
+    }
+    if(target.goal<0)return false;
+    const distance=target.distance;
     const [cx,cz]=cell(x,z);
     let waypoint=-1,score=Infinity;
+    function clearWaypoint(id){
+      const dx=(id%cols)*step-width-x,dz=Math.floor(id/cols)*step-depth-z;
+      const n=Math.ceil(Math.hypot(dx,dz)/(step*.4));
+      for(let q=1;q<=n;q++){
+        if(terrain.hitProp(x+dx*q/n,0,z+dz*q/n,radius+.02))return false;
+      }
+      return true;
+    }
     // Look ahead across several cells to avoid a stop at each grid corner.
-    for(let dz=-3;dz<=3;dz++)for(let dx=-3;dx<=3;dx++){
-      const nx=cx+dx,nz=cz+dz,id=nz*cols+nx;
-      if(!inside(nx,nz)||distance[id]<0)continue;
-      const px=nx*step-width,pz=nz*step-depth,d=Math.hypot(px-x,pz-z);
-      const cost=distance[id]+d*.01;
-      if(d<.1||cost>=score)continue;
-      // Allow entry from the narrow margin outside the conservative grid.
-      let safe=true;
-      for(let q=1,n=Math.ceil(d/(step*.4));q<=n;q++)
-        if(terrain.hitProp(x+(px-x)*q/n,0,z+(pz-z)*q/n,radius+.02)){safe=false;break;}
-      if(safe){waypoint=id;score=cost;}
+    // Usually the best candidate is clear. Check just that segment first.
+    for(let pass=0;pass<2;pass++){
+      for(let dz=-3;dz<=3;dz++)for(let dx=-3;dx<=3;dx++){
+        const nx=cx+dx,nz=cz+dz,id=nz*cols+nx;
+        if(!inside(nx,nz)||distance[id]<0)continue;
+        const px=nx*step-width,pz=nz*step-depth,d=Math.hypot(px-x,pz-z);
+        const cost=distance[id]+d*.01;
+        if(d<.1||cost>=score)continue;
+        if(!pass||clearWaypoint(id)){waypoint=id;score=cost;}
+      }
+      if(waypoint<0||pass||clearWaypoint(waypoint))break;
+      waypoint=-1;score=Infinity;
     }
     if(waypoint<0)return false;
     const dx=waypoint%cols*step-width-x,dz=Math.floor(waypoint/cols)*step-depth-z,d=Math.hypot(dx,dz);
     out.x=dx/d;out.z=dz/d;return true;
+  }
+  steer.advance=()=>{
+    for(let chunk=0;chunk<8&&jobs.length;chunk++){
+      const job=jobs.shift();
+      if(!job.next().done)jobs.push(job);
+    }
   };
+  return steer;
 }
 
 // Placement uses the entry-connected floor for each body size. A half-cell
@@ -106,10 +156,10 @@ export function createSpawnPlacement(terrain) {
     }
     fields.set(size,open);return open;
   }
-  return function place(x,z,radius,out){
+  return function place(x,z,radius,out,blocked){
     const open=fieldFor(radius);
     const col=Math.round((x+bounds.x)/step),row=Math.round((z+bounds.z)/step);
-    const clear=(px,pz)=>!terrain.hitProp(px,terrain.height(px,pz)+.01,pz,radius);
+    const clear=(px,pz)=>!terrain.hitProp(px,terrain.height(px,pz)+.01,pz,radius) && !blocked?.(px,pz,radius);
     if(col>=0&&row>=0&&col<cols&&row<rows&&open[row*cols+col]===2&&clear(x,z)){
       if(out){out.x=x;out.z=z;}
       return true;

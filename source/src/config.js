@@ -1583,7 +1583,7 @@ var u = { season: 2, name: t(`Temporada 2`), maxDex: 151, biomes: [`forest`] },
     {
       key: `dowsing-machine`,
       rarity: 2,
-      desc: t(`从下一区域起，每个区域多出 2 个扭蛋。`),
+      desc: t(`从下一区域起，每个区域多出 2 个骰子。`),
       mods: [],
       max: 2,
     },

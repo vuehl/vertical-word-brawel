@@ -32,16 +32,16 @@ export function moveDeskPlayer(terrain,x,z,endX,endZ,radius,feet,out){
   const dx=(endX-x)/steps,dz=(endZ-z)/steps;
   for(let i=0;i<steps;i++){
     const nextX=x+dx,nextZ=z+dz;
-    terrain.resolve(nextX,nextZ,radius,feet,out);
+    terrain.resolve(nextX,nextZ,radius,feet,out,true);
     if(out.x!==nextX||out.z!==nextZ){
       // Allow the usual separation if a spawn or teleport already overlapped a prop.
-      if(!terrain.hitProp(x,feet,z,radius)){
+      if(!terrain.hitProp(x,feet,z,radius,true)){
         out.x=clamp(out.x,Math.min(x,nextX),Math.max(x,nextX));
         out.z=clamp(out.z,Math.min(z,nextZ),Math.max(z,nextZ));
       }
-      if(terrain.hitProp(out.x,feet,out.z,radius)){
-        if(dx&&!terrain.hitProp(nextX,feet,z,radius)){out.x=nextX;out.z=z;}
-        else if(dz&&!terrain.hitProp(x,feet,nextZ,radius)){out.x=x;out.z=nextZ;}
+      if(terrain.hitProp(out.x,feet,out.z,radius,true)){
+        if(dx&&!terrain.hitProp(nextX,feet,z,radius,true)){out.x=nextX;out.z=z;}
+        else if(dz&&!terrain.hitProp(x,feet,nextZ,radius,true)){out.x=x;out.z=nextZ;}
         else {out.x=x;out.z=z;break;}
       }
     }

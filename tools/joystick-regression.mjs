@@ -234,6 +234,14 @@ export async function verifyJoystick(page,dir){
     if(t.stickId!==11||r.input.stickX<.99)throw Error('Ending the second contact released the stick');
     inspected.touches('cancel',{touches:[],changedTouches:[]});
     results.push({kind:'missing-changed-touches',stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
+    inspected.touches('down',{touches:[stick,second],changedTouches:[stick,second]});
+    stick.clientX+=50;
+    inspected.touches('move',{touches:[stick,second],changedTouches:[stick]});
+    for(let frame=0;frame<12;frame++)r.input.endFrame();
+    if(t.stickId!==11||r.input.stickX<.99)throw Error('Stationary thumb lost its heading');
+    inspected.touches('move',{touches:[second],changedTouches:[second]});
+    results.push({kind:'missed-stick-release',stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
+    inspected.touches('up',{touches:[],changedTouches:[second]});
     for(const kind of ['cancel','lostpointercapture','pause','hide']){
       r.state='play';t.update(r,'');env.drawUI(app.r.renderer);
       window.tap(x,y,'down',11);window.tap(x+100,y,'move',11);
@@ -265,6 +273,36 @@ export async function verifyJoystick(page,dir){
     return result;
   });
   assert.deepEqual(cast,{casts:1,held:true,heading:1});
-  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,southEdge,circles,controls:report,interruptions,cast},null,2));
+  const stall=await page.evaluate(()=>{
+    const r=app.run,p=r.player,env=inspected.env,screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
+    r.enemies.clear();r.godMode=true;r.ult.clear();r.state='play';r.timeScale=1;r.hitstopT=0;
+    p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.kx=p.kz=p.crowdX=p.crowdZ=0;p.grounded=true;
+    for(let i=0;i<200;i++){
+      const angle=i*2.39996;
+      const id=r.enemies.spawn(19,p.pos.x+Math.cos(angle)*18,p.pos.z+Math.sin(angle)*18,1e6,1,131072);
+      if(id<0)throw Error('Could not seed joystick crowd');
+      r.enemies.flags[id]&=~131072;
+    }
+    const count=r.enemies.count,gap=app.frameGap(),now=performance.now(),loop=app.loop;
+    const samples=[],dt=[],simulate=r.simulate;
+    r.simulate=function(seconds,...args){dt.push(seconds);return simulate.call(this,seconds,...args);};
+    app.loop=()=>{};app.pacer.reset();app.combatClock.run=null;app.last=now-gap;app.halted=false;
+    try{
+      window.tap(x,y,'down',11);window.tap(x+60,y,'move',11);
+      for(const [delay,action] of [[0,'hold'],[gap,'hold'],[gap+250,'reverse'],[2*gap+250,'release']]){
+        if(action==='reverse')window.tap(x-60,y,'move',11);
+        if(action==='release')window.tap(x-60,y,'up',11);
+        const start=p.pos.x;loop(now+delay);samples.push(p.pos.x-start);
+      }
+    }finally{app.halted=true;app.loop=loop;r.simulate=simulate;}
+    return {count,gap,samples,dt};
+  });
+  assert.equal(stall.count,200);
+  assert.equal(stall.dt.length,4,JSON.stringify(stall));
+  assert.ok(stall.dt.every(dt=>Math.abs(dt-stall.gap/1000)<1e-6),JSON.stringify(stall));
+  const [first,held,reverse,released]=stall.samples;
+  assert.ok(first>0&&held>0&&Math.abs(held+reverse)<.001&&Math.abs(released)<.001,JSON.stringify(stall));
+  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,southEdge,circles,controls:report,interruptions,cast,stall},null,2));
   console.log('Joystick contact damage during clockwise/counterclockwise turns, short and full drags, reversals, multitouch and release passed:',report.length,'screen/scale combinations');
 }

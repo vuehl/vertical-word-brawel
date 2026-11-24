@@ -284,6 +284,8 @@ async function verifyStartup(){
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--scene-regression'))await reviewScenes({page,tap,resize,dir,sleep});
+    else if(process.argv.includes('--dice-art'))await (await import('./device-effects-regression.mjs')).verifyDice(page,dir);
+    else if(process.argv.includes('--desk-visibility'))await (await import('./desk-prop-visibility-regression.mjs')).verifyDeskVisibility(page,dir);
     else if(process.argv.includes('--device-effects')){
       const {reviewDeviceEffects}=await import('./device-effects-regression.mjs');
       await reviewDeviceEffects(page,dir);

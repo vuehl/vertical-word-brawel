@@ -1,5 +1,6 @@
 # Installed dependencies and generated build output.
 node_modules/
+/.pnpm-store/
 
 # Local verification output, screenshots and preview QR codes.
 /验收/

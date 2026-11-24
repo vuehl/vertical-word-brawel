@@ -32,22 +32,15 @@ function touchesTriangle(a,b,c){
   return edgeDistanceSq(a,b)<=1||edgeDistanceSq(b,c)<=1||edgeDistanceSq(c,a)<=1;
 }
 
-export function createBerryPickup(model,graphics){
+export function createPickupContact(model,graphics){
   const meshes=[];
   model.updateWorldMatrix(true,true);
-  const bounds=new Box3();
   model.traverse(mesh=>{
     if(!mesh.isMesh)return;
     const geometry=mesh.userData.pickupGeometry??mesh.geometry;
     meshes.push({mesh,geometry,blocks:faceChunks(geometry)});
-    bounds.union(geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld));
   });
-  const home=model.position.clone(),scale=model.scale.clone(),parent=model.parent;
-  // Animate around the painted candy, including its off-centre transparent padding.
-  const center=bounds.getCenter(new Vector3());
-  parent.worldToLocal(center);
-  const offset=center.clone().sub(home),kicked=new Vector3(),target=new Vector3(),pos=new Vector3();
-  let elapsed=0;
+  const pos=new Vector3();
   function inReach(player){
     const {canvas,camera}=graphics;
     const w=canvas.clientWidth,h=canvas.clientHeight;
@@ -78,6 +71,21 @@ export function createBerryPickup(model,graphics){
     }
     return false;
   }
+  return inReach;
+}
+
+export function createBerryPickup(model,graphics){
+  const inReach=createPickupContact(model,graphics);
+  const bounds=new Box3();
+  model.traverse(mesh=>{
+    if(mesh.isMesh)bounds.union((mesh.userData.pickupGeometry??mesh.geometry).boundingBox.clone().applyMatrix4(mesh.matrixWorld));
+  });
+  const home=model.position.clone(),scale=model.scale.clone(),parent=model.parent;
+  // Animate around the painted candy, including its off-centre transparent padding.
+  const center=bounds.getCenter(new Vector3());
+  parent.worldToLocal(center);
+  const offset=center.clone().sub(home),kicked=new Vector3(),target=new Vector3(),pos=new Vector3();
+  let elapsed=0;
   function bodyPosition(player){
     return target.setFromMatrixColumn(graphics.camera.matrixWorld,1)
       .multiplyScalar(player.radius*1.8).add(player.pos);

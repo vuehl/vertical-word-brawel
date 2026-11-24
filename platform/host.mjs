@@ -229,24 +229,41 @@ export async function setup(host) {
   wx.onKeyboardInput?.(r=>{if(active){active.value=r.value;active.dispatchEvent(new InputEvent('input'));uiFrames.invalidate(true,true);}});
   wx.onKeyboardConfirm?.(r=>{if(active){active.value=r.value;active.dispatchEvent(new InputEvent('change'));active.blur();}wx.hideKeyboard?.({});});
   function setRange(el,x){const b=rect(el);if(b.width<=0)return;el.value=String(rangeValueAt(el,(x-b.x)/b.width));el.dispatchEvent(new InputEvent('input'));}
+  function cancelPointer(id,p){
+    const target=captured.get(id)||p.target;
+    const options={pointerId:id,pointerType:'touch',buttons:0,clientX:p.lastX,clientY:p.lastY};
+    target.dispatchEvent(new InputEvent('pointercancel',{...options,bubbles:true}));
+    win.dispatchEvent(new InputEvent('pointercancel',options));
+    pointers.delete(id);captured.delete(id);
+  }
   function touches(kind,event){
     // A press begun in combat must not select a card while it is appearing.
-    if(modalTransition.active){pointers.clear();captured.clear();return;}
+    if(modalTransition.active){for(const [id,p] of pointers)cancelPointer(id,p);return;}
     // Menus still react immediately. In battle, DOM mutations invalidate the
     // controls that actually changed; an empty-space swipe needs no UI upload.
     if(kind!=='move'&&win.__pb?.run?.state!=='play'&&!modalTransition.element)uiFrames.invalidate(false,true);
     const local=t=>{
-      const x=(t.clientX??t.pageX)-view.x,y=(t.clientY??t.pageY)-view.y;
+      const x=(t.clientX??t.pageX??t.x)-view.x,y=(t.clientY??t.pageY??t.y)-view.y;
       return {...t,identifier:t.identifier,clientX:x,clientY:y,pageX:x,pageY:y};
     };
     const all=Array.from(event.touches||[],local);
     let changed=Array.from(event.changedTouches||[],local);
+    // A later snapshot can be the only evidence of a missed native touchend.
+    // Reconcile before new presses so their controls can claim the released ID.
+    if(event.touches!=null && (changed.length||kind==='move'||kind==='down')){
+      for(const [id,p] of pointers){
+        const listed=changed.some(t=>(t.identifier??0)===id);
+        if((kind==='down'&&listed) || (!listed&&!all.some(t=>(t.identifier??0)===id))){
+          cancelPointer(id,p);
+        }
+      }
+    }
     if(!changed.length){
       if(kind==='up'||kind==='cancel'){
         // A remaining contact still owns its control. Only cancel missing IDs
         // when the platform omits the final coordinates; never synthesize a tap.
         const live=new Set(all.map(t=>t.identifier??0));
-        changed=Array.from(pointers,([identifier,p])=>({identifier,clientX:p.x,clientY:p.lastY}))
+        changed=Array.from(pointers,([identifier,p])=>({identifier,clientX:p.lastX,clientY:p.lastY}))
           .filter(t=>!live.has(t.identifier));
         kind='cancel';
       }else changed=kind==='down'?all.filter(t=>!pointers.has(t.identifier??0)):all;
@@ -261,18 +278,18 @@ export async function setup(host) {
         if(entry?.dataset.entryPage && entry!==entryHitScreen){
           layout.refresh('entry');entryHitScreen=entry;
         }
-        const target=layout.hit(x,y);p={target,x,y,lastY:y,scrolled:false};pointers.set(id,p);
+        const target=layout.hit(x,y);p={target,x,y,lastX:x,lastY:y,scrolled:false};pointers.set(id,p);
       }
       if(!p)continue;
       const target=captured.get(id)||p.target,options={pointerId:id,pointerType:'touch',clientX:x,clientY:y,pageX:x,pageY:y,button:0,buttons:kind==='up'?0:1,isPrimary:pointers.keys().next().value===id,bubbles:true};
-      if(kind==='move'&&p.target.type!=='range'){
+      if(kind==='move'&&target!==win.__pb?.run?.ui?.touch?.el&&p.target.type!=='range'){
         for(let sc=p.target;sc;sc=sc.parentElement){
           if(sc._scrollMax>0&&/auto|scroll/.test([layout.box(sc)?.s.overflow,layout.box(sc)?.s['overflow-y']].join(' '))&&Math.abs(y-p.y)>5){
             sc.scrollTop+=p.lastY-y;p.scrolled=true;break;
           }
         }
       }
-      p.lastY=y;
+      p.lastX=x;p.lastY=y;
       target.dispatchEvent(new InputEvent('pointer'+kind,options));
       win.dispatchEvent(new InputEvent('pointer'+kind,{...options,bubbles:false}));
       const contact={touches:all,changedTouches:[t]};

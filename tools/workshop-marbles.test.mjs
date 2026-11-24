@@ -49,7 +49,9 @@ test('marbles bounce off thin scenery and map edges, slow down and can be kicked
 test('both map sizes draw model thumbnails for functional buildings',()=>{
   assert.equal(buildingMapName({kind:'bill'}),'订书机');
   assert.equal(buildingMapName({kind:'tower',data:{sub:'stairs'}}),'');
-  const icons=[],ctx=new Proxy({drawImage:image=>icons.push(image.kind)},{get:(t,k)=>t[k]??(()=>{})});
+  const icons=[],ctx=new Proxy({
+    drawImage:image=>icons.push(image.kind),measureText:text=>({width:text.length*5}),
+  },{get:(t,k)=>t[k]??(()=>{})});
   const canvas={width:240,height:240,getContext:()=>ctx};
   const run={player:{pos:{x:0,z:0}},terrain:{world:240},boss:{alive:false},enemies:{n:0},allies:{list:[]},
     interactables:{markers:()=>[{kind:'bill',x:10,z:0},{kind:'nest',x:-25,z:-20}]}};
