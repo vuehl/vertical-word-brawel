@@ -54,7 +54,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
       return {index,title:card.querySelector('b').textContent,text:card.textContent};
     }finally{Object.assign(ui,{showLevelUp,experienceReady});Math.random=random;}
   });
-  assert.equal(ringCard.title,'环形扩散');
+  assert.equal(ringCard.title,'起风');
   assert.doesNotMatch(ringCard.text,/新招式/);
   assert.match(ringCard.text,/扩散|波/);
   await page.waitForFunction(()=>{
@@ -64,7 +64,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
   await snapshot('wind-ring-wave-offer');
   await tap('[data-offer="'+ringCard.index+'"]');
   await draw(); // The halted game needs a UI frame to complete the exit and apply the choice.
-  assert.deepEqual(await page.evaluate(()=>app.run.player.moves.filter(Boolean).map(m=>m.def.name)),['电光一闪','环形扩散']);
+  assert.deepEqual(await page.evaluate(()=>app.run.player.moves.filter(Boolean).map(m=>m.def.name)),['电光一闪','起风']);
   await page.evaluate(()=>{
     app.halted=true;
     window.starterTestSetup=()=>{

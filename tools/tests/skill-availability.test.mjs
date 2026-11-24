@@ -32,7 +32,9 @@ test('each wind form learns six moves and has exactly four unordered fusion pair
     ['33:98','卷着打转'],['98:49001','卷着打转']]);
   for (const species of [16,17,18,58,59]) {
     const defs = ids.map(id => ctx.formMove(id,species));
-    assert.deepEqual(defs.map(d => d.name), ['电光一闪','撞击','环形扩散','翅膀攻击','燕返','龙卷风']);
+    assert.deepEqual(defs.map(d => d.name), ['电光一闪','撞击','起风','翅膀攻击','羽毛舞','龙卷风']);
+    assert.equal(defs[2].arch,'vortex');
+    assert.equal(defs[4].count,3);
     for (const a of defs) for (const b of defs) {
       const pair = [a.id,b.id].sort((x,y) => x-y).join(':');
       assert.equal(ctx._S(a,b,species)?.name,pairs.get(pair));
@@ -165,7 +167,7 @@ test('fusion menu skips unsupported pairs and still offers the surviving fire an
   assert.equal(ctx.yS(run)[0].ready, true);
 });
 
-test('level-up and reroll selection can offer Ring Wave only to wind', () => {
+test('level-up and reroll selection can offer the new gust only to wind', () => {
   ctx.m = [];
   ctx.F = {shuffle: list => list};
   for (const species of [4, 5, 6, 16, 17, 18, 58, 59]) {
@@ -203,7 +205,7 @@ test('old wind loadouts drop all four scoped removals and recover the opening sk
   }
 });
 
-test('old co-op loadouts discard retired skills, preserve Ring Wave and keep a usable opening attack', () => {
+test('old co-op loadouts discard retired skills, upgrade Ring Wave to Gust and keep a usable opening attack', () => {
   for (const species of [4, 6, 16, 18, 59]) {
     const opening = species < 7 ? 52 : 98;
     const p = {speciesId:species, hp:10, maxHp:10, moves:[{def:ctx.formMove(opening, species)}, null, null, null],
@@ -221,6 +223,7 @@ test('old co-op loadouts discard retired skills, preserve Ring Wave and keep a u
     assert.equal(kept.length,1);
     assert.equal(kept[0].def.id,species < 7 ? opening : 49001);
     if (species >= 16) {
+      assert.equal(p.moves[2].def.name,'起风');
       assert.equal(p.moves[2].level,5);
       assert.equal(p.moves[2].damageDone,123);
     }

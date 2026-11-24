@@ -1,53 +1,36 @@
 import {WindAtlasBatch} from './wind-vortex.js';
 import {starterForSpecies} from '../data/starter-characters.js';
 import {installWindSkillArt} from './wind-skill-art.js';
+import {installWindReplacements} from './wind-replacements.js';
 import atlas from '../../../resources/public/assets/vfx/wind-moves.json' with {type:'json'};
 import {windFrameAt} from './wind-frame-time.js';
 
-const moveKeys=new Set(['quick-attack','aerial-ace','twister','wing-attack','tackle']);
+const moveKeys=new Set(['quick-attack','twister','wing-attack','tackle']);
 export function windMoveEffect(key,species) {
-  if(moveKeys.has(key) && starterForSpecies(species).id===16) return 'wind-'+key;
+  if(starterForSpecies(species).id!==16)return;
+  if(key==='wind-ring-wave')return 'wind-gust';
+  if(key==='aerial-ace')return 'wind-feather-dance';
+  if(moveKeys.has(key))return 'wind-'+key;
 }
 
 export class WindMoveArt extends WindAtlasBatch {
   constructor(owner) {
     super(owner.mesh.parent,96,'assets/vfx/wind-moves.png',atlas.columns,atlas.rows,atlas.tile,'wind-move-frames');
     this.owner=owner;
-    this.events=[];
-  }
-  play(first,count,fps,x,y,z,size,alpha=1) {
-    if(!this.owner.allowed() || !this.loaded) return;
-    if(this.events.length>=64)this.events.shift();
-    this.events.push({first,count,fps,x,y,z,size,alpha,start:this.owner.run.time});
   }
   begin() {
-    super.clear();
-    const owner=this.owner;
-    this.opacity=owner.vfx.opacity*owner.vfx.ownOpacity*(owner.vfx.calm?.8:1);
-    for(let i=this.events.length-1;i>=0;i--){
-      const e=this.events[i],frame=(owner.run.time-e.start)*e.fps;
-      if(frame>=e.count || !owner.allowed()){
-        this.events.splice(i,1);
-        continue;
-      }
-      if(owner.vfx.view && !owner.vfx.view.visible(e.x,e.y,e.z,e.size))continue;
-      const fade=1-frame/e.count;
-      this.push(e.x,e.y,e.z,e.size,e.first+Math.floor(frame),this.opacity*e.alpha*fade);
-    }
+    this.clear();
+    const {vfx}=this.owner;
+    this.opacity=vfx.opacity*vfx.ownOpacity*(vfx.calm?.8:1);
   }
   dash(run,x,y,z,dx,dz,length) {
     if(!this.owner.allowed())return;
     this.owner.windSkillArt().play('quickHalo',x,y+.75,z,4.9);
-    this.owner.windSkillArt().play('quickSpark',x+dx*.18,y+1.28,z+dz*.18,2.65);
-    for(let step=1;step<=5;step++){
-      const t=step/5,xx=x+dx*length*t,zz=z+dz*length*t;
-      if(run.player.speciesId===16){
-        this.play(atlas.dashGhost,1,1/(.52-.06*t),xx,run.terrain.surface(xx,zz)+.9,zz,5.8,1.05-.65*t);
-      }else{
-        const p=run.player;
-        run.ghosts.push({dashGlyph:true,species:p.speciesId,scale:p.renderScale,x:xx,y:run.terrain.surface(xx,zz),z:zz,
-          dir:run.sprites.dirRow(dx,dz),start:run.time,life:.52-.06*t});
-      }
+    const p=run.player,ghostCount=p.speciesId===16?3:5;
+    for(let step=1;step<=ghostCount;step++){
+      const t=step/ghostCount,xx=x+dx*length*t,zz=z+dz*length*t;
+      run.ghosts.push({dashGlyph:true,species:p.speciesId,scale:p.renderScale,x:xx,y:run.terrain.surface(xx,zz),z:zz,
+        dir:run.sprites.dirRow(dx,dz),start:run.time,life:.52-.06*t});
     }
     const endY=run.terrain.surface(x+dx*length,z+dz*length);
     for(const side of [-.075,.075]){
@@ -65,19 +48,15 @@ export class WindMoveArt extends WindAtlasBatch {
     this.push(x,pool.run.terrain.height(x,z)+.1,z,Math.max(4,size*2.7),clip.first+pose,
       this.opacity*Math.min(1,pool.life[id]*8),.085);
   }
-  reset() {this.events.length=0;this.clear();}
 }
 
 export function installWindMoveArt(registry) {
   const art=run=>run.vfx.crafted.windMoveArt();
   registry['wind-quick-attack']={...registry['quick-attack'],sourceKey:'quick-attack',
     replacesDash:true,dash:(run,...args)=>art(run).dash(run,...args)};
-  registry['wind-aerial-ace']={...registry['aerial-ace'],sourceKey:'aerial-ace',
-    trail(){},cast:(run,x,y,z)=>run.vfx.crafted.windAceArt().play('launch',x,y,z,4.25),
-    draw:(pool,id,size)=>pool.run.vfx.crafted.windAceArt().blade(pool,id,size),
-    hit:(run,x,y,z)=>run.vfx.crafted.windAceArt().play('hit',x,y,z,4.7),hitCover:true};
   registry['wind-twister']={...registry.twister,sourceKey:'twister',
     trail(){},hit(){},draw:(pool,id,size)=>art(pool.run).twister(pool,id,size),
     boom(){}};
   installWindSkillArt(registry);
+  installWindReplacements(registry);
 }

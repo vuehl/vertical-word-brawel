@@ -88,6 +88,7 @@ export function starterUltimate(id,original){
   }else if(id===132)def=renamed(original[132],name);
   else if(id===16){
     def=renamed(original[16],name,0,ctx=>original[16].cast({...ctx,tier:0,form:0}));
+    def.descs=['三道旋风从身边向三个方向吹出，牵引并击打沿途敌人。'];
   }else if([17,18,58,59].includes(id)){
     const attack=id===17||id===18,key=attack?attackSpeedBuff:speedBuff;
     const effect=attack?'使当前攻击速度变为 10 倍，持续 '+speedDuration+' 秒。':windMoveEffectText(id);

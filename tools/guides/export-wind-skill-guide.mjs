@@ -118,7 +118,8 @@ const sources = [
   ['resources/public/data/learnsets.json', '经运行代码过滤的进化链学习表'],
   ['resources/public/data/moves.json', '普通技能原名、编号和底层属性'],
   ['resources/public/text/ui.json', '游戏中文文案'],
-  ['source/src/effects/wind-move-art.js', '电光一闪、燕返、龙卷风的风系表现'],
+  ['source/src/effects/wind-move-art.js', '电光一闪、龙卷风的风系表现'],
+  ['source/src/effects/wind-replacements.js', '起风与羽毛舞的特效'],
 ].map(([file,note]) => ({file,note,sha256:crypto.createHash('sha256').update(read(file)).digest('hex').slice(0,12)}));
 const types = JSON.parse(read('resources/public/data/types.json')).names;
 types.flying = '风';

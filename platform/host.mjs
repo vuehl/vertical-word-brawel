@@ -24,6 +24,7 @@ import {dispatchApi} from 'pokebonk:api';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
 import {createControlLayer,createCanvasLayer,createHUDLayer} from './control-layer.mjs';
+import {createReadyBlink} from './ultimate-ready-blink.mjs';
 import {createModalTransition} from './modal-transition.mjs';
 import {gameViewport} from './viewport.mjs';
 import {createMutationTargets} from './mutation-targets.mjs';
@@ -60,6 +61,7 @@ export async function setup(host) {
     if(tile)tile.invalidate();else uiFrames.invalidate();
   });
   const controls=createControlLayer(makeCanvas);
+  const readyBlink=createReadyBlink(makeCanvas);
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
   readDevicePerformance(wx,device).then(()=>win.dispatchEvent(new D.Event('deviceperformancechange')));
@@ -428,6 +430,7 @@ export async function setup(host) {
       modalTransition.prepare(layout,view,scale);
       const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
       const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
+      if(playing&&state==='play')layers.push(...readyBlink(run,view,scale));
       draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
       run?.dragonHd?.drawFlash(renderer);
       run?.vfx?.upgrade?.screen?.draw(renderer);

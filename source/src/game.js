@@ -20,7 +20,6 @@ import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './effects/
 import {beginDragonSummon,clearDragonSummon,warmDragonSummon} from './effects/dragon-summon-hd/sequence.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage,windRushMultiplier} from './data/starter-characters.js';
 import {windMoveEffect} from './effects/wind-move-art.js';
-import {createWindAceCast,advanceWindAce,windAceImpact} from './effects/wind-ace.js';
 import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './data/skill-availability.js';
 import {mountLiteQA} from './debug/lite-qa.js';
 import {runPlan, planIncludes} from './combat/battle-plan.js';
@@ -30,6 +29,8 @@ import {weatherMark,weatherStyle} from './ui/weather-presentation.js';
 import {installGlyphs,glyphPreview} from './actors/zixing-glyphs.js';
 import {heroActionCatalog} from './actors/hero-action-catalog.js';
 import {playerHeroAction,animatedPixelHeight,glyphBillboardSize} from './actors/hero-actions.js';
+import {blinkDuration,applyReadyShake} from './effects/ultimate-ready-timing.js';
+import {readyPaletteForType} from './effects/effect-colors.js';
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies} from './actors/paper-glyph-art.js';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from './data/zixing-identity.js';
 import {createPlayerFootRing,createFacilityDwellRing,createDeskAltarRing} from './effects/player-foot-ring.js';
@@ -6106,7 +6107,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         fx[index*4]=s;fx[index*4+1]=c;fx[index*4+2]=l;fx[index*4+3]=u;
         tint[index*4]=d;tint[index*4+1]=f;tint[index*4+2]=p;tint[index*4+3]=m;
         look[index*2]=g&15;look[index*2+1]=g>>4;
-        return;
+        return index;
       }
       this.count >= this.cap && this.grow();
       let _ = this.anim(r),
@@ -14709,7 +14710,6 @@ var Yp = 3e3,
     n = 0;
     tmpHit = [];
     tmpBoom = [];
-    aceFlights = new Map();
     tmpPull = [];
     tmpBounce = [];
     alive = new Uint8Array(Yp);
@@ -14844,7 +14844,6 @@ var Yp = 3e3,
     }
     remove(e) {
       ((this.alive[e] = 0), this.free.push(e), this.used--);
-      if(this.aceFlights.size)this.aceFlights.delete(e);
       let t = this.slot[e];
       t >= 0 && t < 16 && this.perSlot[t]--;
     }
@@ -14911,9 +14910,7 @@ var Yp = 3e3,
           (l & 16 && this.explode(c), this.remove(c));
           continue;
         }
-        const ace=this.aceFlights.size && this.aceFlights.get(c);
-        if(ace && e>0)advanceWindAce(this,c,ace,e);
-        else if (l & 2 && l & 1) {
+        if (l & 2 && l & 1) {
           let t = r.pos.x - this.x[c],
             n = r.pos.y + 0.8 - this.y[c],
             i = r.pos.z - this.z[c],
@@ -15042,19 +15039,10 @@ var Yp = 3e3,
               o = n.flags[t] & 4 ? 0.5 : 9;
             ((n.kx[t] += (r / a) * o * e * 6), (n.kz[t] += (i / a) * o * e * 6));
           }
-        if(ace && ace.hitsLeft<=0)continue;
         let p = this.rad[c],
-          travelX=ace?this.vx[c]*e:0,travelZ=ace?this.vz[c]*e:0,
-          travel2=travelX*travelX+travelZ*travelZ,
-          m = ace ? n.within(this.x[c]-travelX*.5,this.z[c]-travelZ*.5,p+Math.sqrt(travel2)*.5,this.tmpHit)
-            : n.within(this.x[c], this.z[c], p, this.tmpHit),
+          m = n.within(this.x[c], this.z[c], p, this.tmpHit),
           h = 0;
         for (let e of m) {
-          if(ace && travel2>0){
-            const dx=this.x[c]-n.x[e],dz=this.z[c]-n.z[e];
-            const f=Math.max(0,Math.min(1,(dx*travelX+dz*travelZ)/travel2));
-            if((dx-travelX*f)**2+(dz-travelZ*f)**2>(p+n.radius[e])**2)continue;
-          }
           if (
             Math.abs(n.y[e] + n.hgt[e] * 0.5 - this.y[c]) > n.hgt[e] * 0.6 + p + 0.6 ||
             this.alreadyHit(c, e)
@@ -15070,7 +15058,6 @@ var Yp = 3e3,
           t.combat.hit(e, this.dmg[c], {
             type: this.types[c],
             cls: this.cls[c],
-            windAceHit: !!ace,
             status: this.status[c],
             statusChance: this.statusChance[c],
             slot: this.slot[c],
@@ -15079,11 +15066,6 @@ var Yp = 3e3,
             dirZ: this.vz[c] / r,
             drain: this.drain[c],
           });
-          if(ace){
-            windAceImpact(t,ace.cast,e);
-            if(--ace.hitsLeft<=0)break;
-            continue;
-          }
           let i = qp(this.fx[c]);
           if (++h <= 4) {
             if (i.hit) i.hit(t, this.x[c], this.y[c], this.z[c], this.color[c]);
@@ -15141,7 +15123,7 @@ var Yp = 3e3,
     render() {
       (this.pool.begin(), this.glow.begin());
       this.run.vfx.crafted.windMoves?.begin();
-      this.run.vfx.crafted.windAce?.begin();
+      this.run.vfx.crafted.windReplacements?.begin();
       this.run.vfx.crafted.windSkills?.begin();
       let e = this.run.vfx.ownOpacity,
         t = this.run.hideOwnFx;
@@ -15197,12 +15179,11 @@ var Yp = 3e3,
                     ));
       }
       this.run.vfx.crafted.windMoves?.end();
-      this.run.vfx.crafted.windAce?.end();
+      this.run.vfx.crafted.windReplacements?.end();
       this.run.vfx.crafted.windSkills?.end();
       (this.pool.end(), this.glow.end());
     }
     clear() {
-      this.aceFlights.clear();
       (this.alive.fill(0),
         (this.n = 0),
         (this.free.length = 0),
@@ -23096,18 +23077,25 @@ var J = {
       tint: 12114160,
       preload: [18],
       cast(e) {
+        if(e.run.player.speciesId===16){
+          const range=16*e.R,heading=-Math.PI/2-e.run.camYaw;
+          for(let i=0;i<3;i++){
+            const direction=heading+i*H/3;
+            Lh(e,Math.cos(direction),Math.sin(direction),range,Math.max(.55,range/8.7),.4,1.8,
+              {status:'confusion',statusChance:.2},1.8,true);
+          }
+          J.whoosh(e.run.audio,2,.16,260);
+          return;
+        }
         let t = e.run,
           n = [1, 2, 3][e.tier],
           r = Math.atan2(e.az, e.ax);
-        const opening=t.player.speciesId===16;
         for (let index = 0; index < n; index++) {
           let i = r + (index - (n - 1) / 2) * 0.55;
-          const target=opening?t.aimTarget(16*e.R):-1;
-          const range=target>=0?Math.min(16*e.R,Math.hypot(t.enemies.x[target]-e.x,t.enemies.z[target]-e.z)+.8):16*e.R;
-          Lh(e, Math.cos(i), Math.sin(i), range, opening?Math.max(.55,range/8.7):2.2, 0.4, 1.8 + e.tier * 0.35, {
+          Lh(e, Math.cos(i), Math.sin(i), 16*e.R, 2.2, 0.4, 1.8 + e.tier * 0.35, {
             status: `confusion`,
             statusChance: 0.2,
-          }, 1.8, e.run.player.speciesId === 16);
+          }, 1.8);
         }
         if ((J.whoosh(t.audio, 2, 0.16, 260), e.tier >= 1)) {
           (xh(t, e.x, e.y + 1, e.z, I.PixFeather, 24, 14, 0.7, 0.7, 6),
@@ -28117,6 +28105,7 @@ var e_ = class {
         const continuousFire=n.type==='fire'&&n.slot!=null&&r.player.moves[n.slot]?.def.arch==='cone'&&r.player.moves[n.slot]?.active>0&&!u&&!m;
         const visualMove=n.slot!=null?r.player.moves[n.slot]?.def.key:null;
         const authoredEmber=visualMove==='ember';
+        const authoredFeather=n.slot!=null&&r.player.moves[n.slot]?.def.effectKey==='wind-feather-dance';
         const authoredBreath=['flamethrower','dragon-breath'].includes(visualMove);
         const authoredFamily=r.vfx.crafted.fireFamily.supports(visualMove)||n.slot===8&&[4,5,6].includes(r.player.speciesId);
         const criticalFx=(u||m)&&r.vfx.criticalImpact(t,a,o);
@@ -28125,9 +28114,9 @@ var e_ = class {
           if(visualMove==='dragon-breath')r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),true);
         }
         else if(authoredFamily)r.vfx.crafted.fireFamily.impact(visualMove||'ultimate',t,a,o);
-        else if(!n.windAceHit && !authoredEmber)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
+        else if(!authoredEmber&&!authoredFeather)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
-          !n.windAceHit && !continuousFire && !authoredEmber && !authoredBreath && !authoredFamily && Math.random() < 0.6 &&
+          !authoredFeather && !continuousFire && !authoredEmber && !authoredBreath && !authoredFamily && Math.random() < 0.6 &&
             (u || this.hitFxN++ < Yg) &&
             r.vfx.burst(t, a, o, d, u ? 9 : 4, u ? 7 : 4, am(n.type), u ? 0.55 : 0.4, 0.3),
           m
@@ -28156,10 +28145,7 @@ var e_ = class {
                   ? 11053240
                   : 16777215;
         const numberY=i.y[e]+i.hgt[e]+.3,numberKey=e+"/"+i.gen[e];
-        if(n.windAceHit){
-          // The first four contact exposures show the slash before the damage label.
-          r.later(.10,()=>r.vfx.number(t,numberY,o,s,f,m?2:u,numberKey));
-        }else r.vfx.number(t,numberY,o,s,f,m?2:u,numberKey);
+        r.vfx.number(t,numberY,o,s,f,m?2:u,numberKey);
         (
           l > 1.01 &&
             F.chance(0.25) &&
@@ -29363,7 +29349,7 @@ var e_ = class {
   ]),
   y_ = new Set([`spikes`, `toxic-spikes`, `stealth-rock`, `sticky-web`]),
   b_ = {
-    "wind-ring-wave": `nova`,
+    "wind-ring-wave": `vortex`,
     metronome: `random`,
     "cotton-spore": `cone`,
     "razor-wind": `wave`,
@@ -29786,7 +29772,6 @@ var e_ = class {
     "weather-ball": `orb`,
   },
   x_ = {
-    "wind-ring-wave": {pulses:3, status:null},
     outrage: { pulses: 3 },
     "shadow-bone": { count: 3, spread: 0.32, dmgMul: 0.7 },
     "cotton-spore": { statusChance: 0.3 },
@@ -29944,6 +29929,8 @@ function formMove(id, species) {
     dmg:g_.fusion.dmg*.94,cd:fireStampedeRecipe.cd,castRecipe:fireStampedeRecipe};
   const name = moveCopy(species, def.name, def.key);
   const effectKey = windMoveEffect(def.key,species);
+  if(effectKey==='wind-gust')return {...def,name,effectKey,dur:1.2,speed:10,desc:'向前吹出一道旋风，牵引并伤害沿途的敌人。'};
+  if(effectKey==='wind-feather-dance')return {...def,name:'羽毛舞',effectKey,count:3,spread:.28,desc:'射出三枚青色羽毛追击敌人，命中时迸开碎羽。'};
   if(effectKey)return {...def,name,effectKey};
   return name === def.name ? def : {...def, name};
 }
@@ -30310,24 +30297,6 @@ function Q_(e, t, n, r) {
   // Range upgrades move the hit boundary and the points where effects appear.
   // Each painted frame keeps the dimensions authored for the base move.
   const artRadius = o.area;
-  if(o.key==='wind-ring-wave'){
-    n.timer-=r;
-    if(n.timer<=0){
-      n.timer=h;
-      i.attackAnim();
-      Bg(i.ability)?.onMoveFired?.(e,n,t);
-      const fieldRadius=d*1.85;
-      e.vfx.crafted.windRingArt().start(fieldRadius);
-      const pos=i.pos;
-      for(let pulse=0;pulse<3;pulse++){
-        const hit=new Set();
-        const wave=()=>e.animate(.85,progress=>Oh({run:e,dmg:u*.4,base:x},hit,pos.x,pos.z,fieldRadius*progress,1,{knock:1}));
-        if(pulse)e.later(.22*pulse,wave);else wave();
-      }
-      Y_(e,o.key,`cast`,void 0,()=>e.audio.whoosh());
-    }
-    return;
-  }
   if (o.arch === `orbit`) {
     if (((n.timer -= r), n.active > 0)) {
       ((n.active -= r), (n.phase += r * m));
@@ -30527,8 +30496,7 @@ function Q_(e, t, n, r) {
         n.timer = 0.2; n.waitingForTarget = true;
         return;
       }
-      const aceCast=o.effectKey==='wind-aerial-ace'?createWindAceCast(e,r,m,p):null;
-      let i = o.arch === `homing` ? 0.9 : (o.spread ?? 0.18);
+      let i = o.arch === `homing` && o.effectKey !== 'wind-feather-dance' ? 0.9 : (o.spread ?? 0.18);
       for (let s = 0; s < f; s++) {
         let c = (s - (f - 1) / 2) * i,
           l = Math.cos(c),
@@ -30541,7 +30509,7 @@ function Q_(e, t, n, r) {
                 : o.arch === `boomerang`
                   ? em.Boomerang | em.Spin
                   : 0;
-        const shot=e.projectiles.fire({
+        e.projectiles.fire({
           x: v,
           y,
           z: b,
@@ -30549,7 +30517,7 @@ function Q_(e, t, n, r) {
           dz: r.x * h + r.z * l,
           dy: r.y,
           speed: m,
-          life: aceCast?.duration??p,
+          life: p,
           radius: o.arch === `boomerang` ? d : o.arch === `orb` ? 0.55 : d,
           dmg: u,
           type: o.type,
@@ -30569,12 +30537,9 @@ function Q_(e, t, n, r) {
           target: r.target,
           fx: S,
         });
-        if(aceCast && shot>=0)e.projectiles.aceFlights.set(shot,{
-          cast:aceCast,side:s%2,bend:1+Math.floor(s/2)*.18,index:0,hitsLeft:1+o.pierce+n.mods.pierce
-        });
       }
       (C.cast?.(e, v, y, b, r.x, r.z, c, artRadius),
-        o.key !== 'ember' && o.effectKey !== 'wind-aerial-ace' && o.effectKey !== 'wind-wing-attack' && e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
+        o.key !== 'ember' && o.effectKey !== 'wind-feather-dance' && o.effectKey !== 'wind-wing-attack' && e.vfx.flash(v + r.x, y, b + r.z, c, 1.4, 0.1),
         Y_(e, o.key, `cast`, { k: f }, () => e.audio.shot(o.type, 0.6)));
       break;
     }
@@ -30895,7 +30860,12 @@ function Q_(e, t, n, r) {
       break;
     case `vortex`: {
       let r = e.aimDir(14, n);
-      const flags = em.Pull | em.Explode | em.Spin | (o.effectKey === 'wind-twister' ? em.PassThroughEnemies : 0);
+      if(o.effectKey==='wind-gust'&&!r.has){
+        n.timer=.2;n.waitingForTarget=true;
+        return;
+      }
+      const windPassThrough=o.effectKey==='wind-twister'||o.effectKey==='wind-gust';
+      const flags = em.Pull | em.Explode | em.Spin | (windPassThrough ? em.PassThroughEnemies : 0);
       for (let n = 0; n < f; n++) {
         let i = (n - (f - 1) / 2) * 0.6,
           a = Math.cos(i),
@@ -33954,7 +33924,7 @@ var mv = 30,
         u = !evolving && this.iframes > 0 && Math.floor(e.time * 20) % 2 == 0,
         d = this.invisT > 0 ? 0.5 : 0,
         f = e.spectralSkin ? [0.82, 0.66, 1.35, 0.68 + 0.07 * Math.sin(e.time * 3)] : [1, 1, 1, 0];
-      t.push(
+      const glyphIndex = t.push(
         this.pos.x,
         this.pos.y + (this.evolutionLift ?? 0),
         this.pos.z,
@@ -33971,6 +33941,13 @@ var mv = 30,
         e.skinGl,
         heroFrame?.rect,
       );
+      if (e.ult.readyBlinkAt != null && glyphIndex != null && !this.dead) {
+        this.readyBatch = t;
+        this.readyIndex = glyphIndex;
+        this.readyFrame = heroFrame;
+      } else {
+        this.readyBatch = this.readyFrame = null;
+      }
       let p = Math.max(e.terrain.surface(this.pos.x, this.pos.z),
         e.terrain.propTop(this.pos.x,this.pos.z,this.radius,this.pos.y+.0001));
       (e.skinGl &&
@@ -43654,6 +43631,8 @@ var iT = Math.PI / 180,
   NT = class {
     run;
     charge = 0;
+    readyBlinkAt = null;
+    readyFlashAt = null;
     active = 0;
     uses = 0;
     killRoom = jT;
@@ -43669,6 +43648,9 @@ var iT = Math.PI / 180,
     }
     get ready() {
       return this.charge >= 1;
+    }
+    get readyPalette() {
+      return readyPaletteForType(this.run.player.types?.[0]);
     }
     get def() {
       let e = this.run.player;
@@ -43695,10 +43677,15 @@ var iT = Math.PI / 180,
     }
     add(e) {
       if (this.active > 0) return;
-      let t = this.ready;
-      if (((this.charge = Math.min(1, this.charge + e * this.rate())), !t && this.ready)) {
+      const wasReady = this.ready, rate = this.rate();
+      this.charge = Math.min(1, this.charge + e * rate);
+      if (this.readyBlinkAt == null && (1 - this.charge) * ultimateRechargeSeconds <= blinkDuration * rate) {
+        this.readyBlinkAt = this.run.time;
+      }
+      if (this.ready && this.readyFlashAt == null) this.readyFlashAt = this.run.time;
+      if (!wasReady && this.ready) {
         let e = this.run.player.pos;
-        (this.run.vfx.ring(e.x, e.y, e.z, 3, 16765498, 0.5, 0.3),
+        (this.run.vfx.ring(e.x, e.y, e.z, 3, this.readyPalette.ring, 0.5, 0.3),
           this.run.ui.toast(
             Da
               ? aa(c(`¡Ultimate lista! Pulsa Y: {name}`, { name: this.name }), `Y`, Pa(`R`))
@@ -43766,6 +43753,7 @@ var iT = Math.PI / 180,
           dmg: MT * (1 + 0.1 * t.level) * Fg(e) * (1 + 0.15 * i),
           R: Math.sqrt(t.stats.area),
         };
+      this.readyBlinkAt = this.readyFlashAt = null;
       ((this.charge = 0),
         (this.active = a),
         e.upgradeTiming.beginUltimate(),
@@ -47816,7 +47804,7 @@ var GT = 15,
         this.realDt=e;
       }
       if (
-        (!frozenWorld&&this.updateCamera(e),
+        (!frozenWorld&&(this.updateCamera(e),applyReadyShake(this)),
         this.state === `capturing` && this.clearCaptureView(),
         !frozenWorld&&this.renderWorld(i ? r : 0),
         !frozenWorld&&this.vfx.update(i ? r : a ? e : 0),

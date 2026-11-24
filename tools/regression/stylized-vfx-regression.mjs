@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import aceAtlas from '../../resources/public/assets/vfx/wind-ace.json' with {type:'json'};
-import moveAtlas from '../../resources/public/assets/vfx/wind-moves.json' with {type:'json'};
+import replacements from '../../resources/public/assets/vfx/wind-replacements.json' with {type:'json'};
 
 export async function reviewStylizedVFX(page,dir){
   const moves=JSON.parse(fs.readFileSync(new URL('../../resources/public/data/moves.json',import.meta.url),'utf8'));
@@ -64,9 +63,9 @@ export async function reviewStylizedVFX(page,dir){
       }
       throw Error('No clear wind review lane');
     });
-    for(const key of ['quick-attack','aerial-ace','twister']){
-      const {id,name}=moves.find(move=>move.key===key);
-      await page.evaluate(async id=>{
+    for(const key of ['quick-attack','wind-ring-wave','aerial-ace','twister']){
+      const {id}=moves.find(move=>move.key===key);
+      const name=await page.evaluate(async id=>{
         vfxSetup();
         const r=app.run,e=r.enemies,{x,z}=windReviewStart;
         r.player.pos.set(x,r.terrain.surface(x,z),z);r.camTarget.copy(r.player.pos);
@@ -77,11 +76,14 @@ export async function reviewStylizedVFX(page,dir){
         if(!r.player.addMove(id))throw Error('Missing wind move');
         await r.vfx.crafted.prepareMoveTexture(r.player.moves[0].def.effectKey);
         r.player.moves[0].timer=0;
+        return r.player.moves[0].def.name;
       },id);
       const frames=[],poses=new Set();
       for(let i=0;i<22;i++){
         const indices=await page.evaluate(i=>{
-          vfxAdvance(i===0?1:2);const r=app.run,art=r.player.moves[0].def.id===332?r.vfx.crafted.windAce:r.vfx.crafted.windMoves;
+          vfxAdvance(i===0?1:2);const r=app.run,key=r.player.moves[0].def.effectKey;
+          const art=key==='wind-quick-attack'?r.vfx.crafted.windSkills:
+            key==='wind-twister'?r.vfx.crafted.windMoves:r.vfx.crafted.windReplacements;
           r.player.moves[0].timer=999;
           return Array.from({length:art.mesh.count},(_,j)=>art.pose.getX(j));
         },i);
@@ -89,11 +91,11 @@ export async function reviewStylizedVFX(page,dir){
         frames.push(await sharp(await page.screenshot()).ensureAlpha().raw().toBuffer());
       }
       assert.ok(poses.size>=3,name+' must display animated frames');
-      if(key==='aerial-ace')assert.ok([...poses].some(n=>n>=aceAtlas.hit.first),'Wind blades must play their contact frames');
-      if(key==='quick-attack')assert.ok(poses.has(moveAtlas.dashGhost),'Wind dash must show its recorded ghost');
+      if(key==='aerial-ace')assert.ok([...poses].some(n=>n>=replacements.clips.hit.first),'Feathers must play their contact frames');
       await page.evaluate(()=>vfxAdvance(100));
       const result=await page.evaluate(()=>{
-        const r=app.run;return {damage:r.player.moves[0].damageDone,visible:r.vfx.crafted.windMoves.mesh.visible||!!r.vfx.crafted.windAce?.mesh.visible};
+        const r=app.run;return {damage:r.player.moves[0].damageDone,
+          visible:[r.vfx.crafted.windMoves,r.vfx.crafted.windSkills,r.vfx.crafted.windReplacements].some(art=>art?.mesh.visible)};
       });
       assert.ok(result.damage>0,name+' must hit');assert.equal(result.visible,false,name+' must clear');
       await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})

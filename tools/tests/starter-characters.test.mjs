@@ -7,6 +7,26 @@ import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSp
 import {glyphWordForSpecies} from '../../source/src/actors/paper-glyph-art.js';
 import {glyphCatalog} from '../../source/src/actors/glyph-catalog.js';
 import {restoreProgress} from '../../source/src/network/coop-resume.js';
+import {effectColors,readyPaletteForType} from '../../source/src/effects/effect-colors.js';
+import {PAL,fit} from '../../source/src/vendor/pixelfx-blink-in.js';
+
+test('ultimate charge palettes cover the game types and preserve the supplied fire colors',()=>{
+  const {types}=JSON.parse(fs.readFileSync(new URL('../../resources/public/data/types.json',import.meta.url)));
+  for(const type of types){
+    assert.ok(Object.hasOwn(effectColors,type),type);
+    const palette=readyPaletteForType(type);
+    assert.equal(palette.base,effectColors[type]);
+    assert.equal(palette.ramp.length,8);
+    assert.equal(palette,readyPaletteForType(type));
+  }
+  const fire=readyPaletteForType('fire'),wind=readyPaletteForType('flying');
+  assert.deepEqual(fire.ramp,fit(PAL.fire,8));
+  assert.equal(fire.rim,'#ffdc91');
+  assert.equal(fire.ring,0xffd23a);
+  assert.notEqual(wind.rim,fire.rim);
+  assert.notEqual(wind.ramp[5],fire.ramp[5]);
+  assert.equal(readyPaletteForType(undefined),readyPaletteForType('normal'));
+});
 
 test('both wind paths follow the supplied design, and all nine supplied cutouts override old artwork',()=>{
   const data=JSON.parse(fs.readFileSync(new URL('../../resources/public/data/pokemon.json',import.meta.url)));

@@ -30,7 +30,7 @@ export async function recordWindReference(page,sourceDir,destination){
     window.windRecordingOrigin=windLane;
   });
   const spells=[
-    ['电光一闪',98],['撞击',33],['环形扩散.讽',49001],['翅膀攻击',17],['燕返',332],['龙卷风',239],
+    ['电光一闪',98],['撞击',33],['起风',49001],['翅膀攻击',17],['羽毛舞',332],['龙卷风',239],
     ['大招/一阵风刮来',0,16],['大招/刮倒一片',0,18],['大招/跑得没影',0,59],
     ['融合/残气乱刮',50006],['融合/卷着打转',50106]
   ];
@@ -38,7 +38,9 @@ export async function recordWindReference(page,sourceDir,destination){
     if(process.env.WIND_RECORD_SKILLS&&!process.env.WIND_RECORD_SKILLS.split(',').includes(name)){
       const saved=prior?.clips.find(clip=>clip.name===name);if(saved)report.clips.push(saved);continue;
     }
-    const file=path.join(sourceDir,name+'.gif'),meta=await sharp(file,{animated:true}).metadata();
+    const local=id===49001||id===332;
+    const referenceDir=local?path.resolve(import.meta.dirname,'../../resources/art/wind-supplement'):sourceDir;
+    const file=path.join(referenceDir,name+'.gif'),meta=await sharp(file,{animated:true}).metadata();
     const delays=meta.delay,frameStart=[];let total=0;
     for(const duration of delays){frameStart.push(total);total+=duration;}
     const top=name.includes('融合')||species!==16?96:190;
@@ -117,7 +119,7 @@ export async function recordWindReference(page,sourceDir,destination){
         if(species===59)speedCaptureTravel.max=Math.max(speedCaptureTravel.max,Math.abs(p.pos.x-speedCaptureTravel.origin));
         vfxDraw(captureFrame,captureFrame);
         return {gameTime:r.time,projectiles:r.projectiles.used,moveTimer:p.moves[0]?.timer??null,
-          attackSpeed:p.stats.attackSpeed,windFrames:[r.vfx.crafted.windSkills,r.vfx.crafted.windMoves,r.vfx.crafted.windAce,r.vfx.crafted.windVortex].filter(Boolean).flatMap(a=>Array.from({length:a.mesh.count},(_,i)=>a.pose.getX(i)))};
+          attackSpeed:p.stats.attackSpeed,windFrames:[r.vfx.crafted.windSkills,r.vfx.crafted.windMoves,r.vfx.crafted.windReplacements,r.vfx.crafted.windVortex].filter(Boolean).flatMap(a=>Array.from({length:a.mesh.count},(_,i)=>a.pose.getX(i)))};
       },{ms,previous,castTime,fire,id,species,captureFrame});
       fired||=fire;previous=ms;
       while(refFrame+1<delays.length&&frameStart[refFrame+1]<=ms)refFrame++;

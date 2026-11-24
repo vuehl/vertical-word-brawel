@@ -125,12 +125,7 @@ await clip('tackleRush','撞击',range(5,20),20,pivot,
     if(o.sy<485&&o.b>148&&Math.min(o.g,o.b)-o.r>0&&o.br-o.bb>25)return o.diff*2;
     return 0;
   });
-await clip('quickSpark','电光一闪',range(5,28),20,.5,
-  ()=>({cx:201,cy:510,size:72}),o=>{
-    if(Math.hypot(o.sx-201,o.sy-510)>31||o.r<140||o.r-o.b<26||o.r-o.g<7||o.diff<10)return 0;
-    return Math.min(230,o.diff*2.6);
-  });
-await clip('quickHalo','电光一闪',range(5,12),20,.5,()=>({cx:204,cy:511,size:144}),o=>{
+await clip('quickHalo','电光一闪',range(5,8),20,.5,()=>({cx:204,cy:511,size:144}),o=>{
   const radius=Math.hypot(o.sx-204,(o.sy-511)*1.1);
   return radius>55&&radius<69&&o.sy<533&&o.r-o.g>9&&o.g-o.b>8?Math.min(230,o.diff*2):0;
 });

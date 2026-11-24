@@ -57,7 +57,7 @@ export async function reviewSkillAvailability(page, dir) {
     assert.equal(state.ultimate,({16:'一阵风刮来',17:'刮倒一片',18:'刮倒一片',58:'跑得没影',59:'跑得没影'})[species]);
     assert.ok(Math.abs(state.attack-([17,18].includes(species)?10:1))<1e-6);
     assert.ok(Math.abs(state.move-([58,59].includes(species)?10:1))<1e-6);
-    assert.deepEqual(state.accepted,['撞击','环形扩散','翅膀攻击','燕返','电光一闪','龙卷风','残气乱刮','卷着打转']);
+    assert.deepEqual(state.accepted,['撞击','起风','翅膀攻击','羽毛舞','电光一闪','龙卷风','残气乱刮','卷着打转']);
     report.forms.push(state);
   }
   fs.writeFileSync(path.join(dir,'skill-availability.json'),JSON.stringify(report,null,2));

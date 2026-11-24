@@ -5,6 +5,7 @@ import {setChineseText, chineseText} from '../../source/src/data/chinese-text.js
 import {configureGlyphNames} from '../../source/src/data/zixing-identity.js';
 import {moveCopy, specialNames} from '../../source/src/data/form-copy.js';
 import {configureStarterSpecies} from '../../source/src/data/starter-characters.js';
+import {windMoveEffect} from '../../source/src/effects/wind-move-art.js';
 import {runPlan,planIncludes,plannedUpgrade} from '../../source/src/combat/battle-plan.js';
 import {retiredMoveIds, moveAvailableForSpecies, configureSkillLearnsets} from '../../source/src/data/skill-availability.js';
 
@@ -42,7 +43,7 @@ export async function loadSkillCatalog() {
     Gs: (x, min, max) => Math.max(min, Math.min(max, x)),
     ji: entries => Object.defineProperties({}, Object.fromEntries(
       Object.entries(entries).map(([key, get]) => [key, {get, enumerable: true}]))),
-    moveCopy, specialNames, windMoveEffect: () => null,
+    moveCopy, specialNames, windMoveEffect,
     retiredMoveIds, moveAvailableForSpecies, runPlan, planIncludes, plannedUpgrade,
   });
   const evaluate = code => vm.runInContext(code, ctx, {timeout: 5000});

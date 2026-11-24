@@ -7,15 +7,15 @@ import {isPlayableHeroForm} from '../../source/src/data/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=86;
+export const assetPolicyVersion=87;
 // Full RGBA wind cells use lossless encoding rather than a shared 256-colour palette.
-export const windClarityAtlases=new Set(['wind-ace','wind-moves','wind-skills','wind-vortex'].map(name=>'assets/vfx/'+name+'.png'));
+export const windClarityAtlases=new Set(['wind-replacements','wind-moves','wind-skills','wind-vortex'].map(name=>'assets/vfx/'+name+'.png'));
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
 // Imported by the effect modules and compiled into the gameplay scripts.
 const bundledAtlasMetadata=new Set(['fireball','fire-breath','fire-family','fire-mushroom','fire-spin',
-  'fire-breath-reference','fire-stampede','wind-ace','wind-moves','wind-skills','wind-vortex','evolution-screen'].map(name=>'assets/vfx/'+name+'.json'));
+  'fire-breath-reference','fire-stampede','wind-replacements','wind-moves','wind-skills','wind-vortex','evolution-screen'].map(name=>'assets/vfx/'+name+'.json'));
 
 // These item IDs occur only in filtered-out item definitions and research.
 // Everything outside this reviewed list, including new artwork, ships by default.

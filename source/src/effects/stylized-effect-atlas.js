@@ -8,7 +8,7 @@ export const EFFECT_CELL=128;
 export const STAMPEDE_FLAME=139;
 export const PAINT_SHAPES=Object.freeze({splash:141,stroke:142,drop:143});
 const TAU=Math.PI*2;
-export const effectColors={fire:0xff641c,water:0x169bea,grass:0x63c848,electric:0xffcc20,ice:0x57cbe8,ground:0xc99560,rock:0xa88764,steel:0x9db6cc,poison:0xb55ae0,ghost:0x9b88ce,psychic:0xe46fdb,fairy:0xf782bd,bug:0xa7c665,flying:0x5dd7d6,dragon:0x8995da,dark:0x8a739e,fighting:0xe8a276,normal:0xffcf89};
+export {effectColors} from './effect-colors.js';
 export const effectShapes={fire:5,water:15,grass:4,electric:8,ice:7,ground:9,rock:9,steel:29,poison:28,ghost:31,psychic:13,fairy:10,bug:4,flying:24,dragon:32,dark:19,fighting:18,normal:2};
 const aliases={33:5,34:0,35:17,36:29,37:30,38:5,39:19,40:8,41:9,42:15,43:18,44:16,45:23,46:26,47:29,48:28,49:6,50:12,51:7,63:27,64:4,65:24,66:29,67:1,68:22,69:23,70:4,71:17,72:28,73:28,74:10,75:13,76:21,77:9,78:25,79:4,80:28,81:19,82:12,83:13,84:27,85:32,126:6,127:0,128:6,129:13,130:19,131:15,132:6,138:6};
 const tinted={33:'#ff883f',34:'#e8dcc7',35:'#fff1d0',36:'#f5d5a2',37:'#fff0d8',38:'#f5a45c',39:'#fff7d9',40:'#ffd45c',41:'#b99b79',42:'#60b9eb',43:'#ffc575',44:'#ffdab2',45:'#8cdbed',46:'#c39c70',47:'#b5ddf2',48:'#b5cb6d',49:'#a2e3f0',50:'#ddd0f1',51:'#caf2f6',63:'#9ab97b',64:'#8cc575',65:'#d5f1e5',66:'#eecb75',67:'#ffe390',68:'#ffe2a9',69:'#d4e9e7',70:'#d0a0e9',71:'#ffe8c9',72:'#c38ada',73:'#b29bcf',74:'#f7bad0',75:'#c4e5df',76:'#ffdc83',77:'#dcb888',78:'#ffeab9',79:'#f4b7cf',80:'#b2bf70',81:'#d6d8e2',82:'#f7b8d7',83:'#cab7ec',84:'#b9dced',85:'#e497c6',126:'#69bdee',127:'#e3f5ed',128:'#85cde8',129:'#88cce3',130:'#c6f0f1',131:'#a2def2',132:'#6fb8dc',138:'#fff0ce'};

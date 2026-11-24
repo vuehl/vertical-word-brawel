@@ -14,6 +14,7 @@ import {createPeerHud} from '../network/coop-peer-hud.js';
 import {drawMenuGlyph,drawRouteGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from '../actors/paper-glyph-art.js';
 import {homeWordmark,homeEntryFace,menuSymbol,itineraryStamp} from './menu-paper-art.js';
 import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,atlasView,drawBattleStatus,drawStageCaption,drawUltimateSeal} from './paper-hud-art.js';
+import {readyBreathPhase,breathPeriod} from '../effects/ultimate-ready-timing.js';
 import {regionAtlas,atlasSymbol} from './region-atlas-art.js';
 import {paperStages} from '../world/paper-world.js';
 import {zixingStyle} from './zixing-style.js';
@@ -1869,18 +1870,26 @@ export function createZixingUI(app,api) {
     hud.touch.ult.append(ultimateRing);
     hud.touch.ult.setAttribute('role','button');
     const stillMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    let lastSeal='',lastActionLabel='';
+    let lastSeal='',lastActionLabel='',lastUltReady=false;
     hud.ultHud=r=>{
+      lastUltReady=r.ult.ready;
       const active=r.ult.active>0,ready=r.ult.ready&&!active&&!r.player.dead;
       for(const [name,on] of [['ready',ready],['active',active],['deny',r.ult.denyT>0]])hud.touch.ult.classList.toggle(name,on);
-      const progress=Math.round(Math.max(0,Math.min(1,r.ult.charge))*1000)/1000;
+      const rounded=Math.round(Math.max(0,Math.min(1,r.ult.charge))*1000)/1000;
+      const progress=r.ult.ready?rounded:Math.min(.999,rounded);
       const word=glyphWordForSpecies(r.player.speciesId??r.startSpecies);
-      const pulse=ready&&!stillMotion?.matches?Math.floor(performance.now()/85)%18:0;
+      let pulse=0,arcFrame=0;
+      if(ready&&!stillMotion?.matches){
+        const fullAt=r.ult.readyFlashAt??r.time;
+        pulse=(9+Math.round(18*readyBreathPhase(r.time,fullAt)))%18;
+        arcFrame=(9+Math.floor((r.time-fullAt)*18/breathPeriod))%18;
+      }
       const state=active?'active':ready?'ready':'charging',look=r.skinLook;
-      const key=[word,look,state,progress,pulse].join('/');
+      const palette=ready?r.ult.readyPalette:null;
+      const key=[word,look,state,progress,pulse,arcFrame,palette?.base].join('/');
       if(lastSeal!==key){
         lastSeal=key;
-        drawUltimateSeal(ultimateRing,word,character(r.player.speciesId).tone,look,progress,state,pulse);
+        drawUltimateSeal(ultimateRing,word,character(r.player.speciesId).tone,look,progress,state,pulse,arcFrame,palette);
         ultimateRing.dataset.frame=key;ultimateRing.dataset.progress=String(progress);
       }
       const label=word+'的大招，'+(ready?'可释放':active?'释放中':Math.floor(progress*100)+'%');
@@ -1934,6 +1943,8 @@ export function createZixingUI(app,api) {
       refreshPortrait();
       const remaining=remainingZoneSeconds(run);
       updateText(clock,run.sanctuary?time(run.stageTime):run.endless||run.tower?time(run.time):remaining>=0?time(remaining):'+'+time(-remaining));
+      // Update the action label on the same frame as the full-charge flash.
+      if(run.ult.ready!==lastUltReady)hud.ultHud(run);
       if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
       last=now;lastState=run.state;
       original(...args);

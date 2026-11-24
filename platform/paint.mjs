@@ -238,10 +238,14 @@ export function compositor(gl,canvas) {
       const {canvas:tile}=control;
       gl.bindTexture(gl.TEXTURE_2D,cache.texture);
       if(control.changed||cache.width!==tile.width||cache.height!==tile.height){
-        prepareUpload(!control.uploadPixels);
+        prepareUpload(!control.uploadPixels&&!control.pixels);
         const resized=cache.width!==tile.width||cache.height!==tile.height;
         if(resized)textureParameters();
-        if(control.uploadPixels){
+        if(control.pixels){
+          // Preserve additive light in pixels with zero coverage alpha.
+          if(resized)gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,tile.width,tile.height,0,gl.RGBA,gl.UNSIGNED_BYTE,control.pixels);
+          else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,tile.width,tile.height,gl.RGBA,gl.UNSIGNED_BYTE,control.pixels);
+        }else if(control.uploadPixels){
           // The iOS health tile bypasses the native offscreen-canvas upload.
           // getImageData returns straight alpha; the HUD blends premultiplied RGB.
           const {data}=tile.getContext('2d').getImageData(0,0,tile.width,tile.height);

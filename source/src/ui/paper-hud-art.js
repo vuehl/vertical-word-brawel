@@ -537,7 +537,7 @@ function mutedSeal(source){
   }
   ctx.putImageData(pixels,0,0);mutedSeals.set(source,tile);return tile;
 }
-export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame){
+export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame,arcFrame,palette){
   const ctx=canvas.getContext('2d'),ready=state==='ready',active=state==='active';
   const wave=(1-Math.cos(frame*Math.PI/9))/2,turn=Math.PI*2,start=-Math.PI/2;
   ctx.setTransform(canvas.width/84,0,0,canvas.height/84,0,0);ctx.clearRect(0,0,84,84);
@@ -547,26 +547,31 @@ export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame){
   };
   ctx.lineCap='round';
   disk(40,ready?'#293859':active?'#4C536F':'#606E86');
-  disk(37.6,ready?'#FFDC91':'#D4DAE5');
+  disk(37.6,ready?palette.rim:'#D4DAE5');
   disk(34.7,ready?'#314971':active?'#D7DEEB':'#E1E4EB');
   if(ready){
     // A moving glint and breathing cutout are confined to the button's hit area.
-    const a=start+turn*frame/18;
-    arc(37.7,3.4,'#FFF3CC',a,a+.55);
-    arc(40.8,1.4,'rgba(255,216,139,'+(.28+.6*wave)+')',0,turn);
+    const a=start+turn*arcFrame/18;
+    arc(37.7,8.2,palette.outerGlow,a,a+.55);
+    arc(37.7,6.2,palette.innerGlow,a,a+.55);
+    arc(37.7,3.4,palette.glint,a,a+.55);
+    arc(37.7,1.5,palette.core,a,a+.55);
+    arc(40.8,1.4,'rgba('+palette.rimChannels+','+(.28+.6*wave)+')',0,turn);
   }else if(progress>0){
     arc(37.1,3.4,active?'#B28394':'#668FC3',start,start+turn*progress);
   }
   const image=appearanceGlyphCanvas(word,tone,look),size=ready?53+2.6*wave:51;
+  canvas.readyFace=image;
+  canvas.readyFaceSize=size;
   if(ready){
     for(const [x,y,r] of [[16,32,2.7],[67,46,2.2]]){
       const reach=r*(.72+.42*wave);
       ctx.beginPath();ctx.moveTo(x,y-reach*1.6);ctx.lineTo(x+reach*.54,y);
-      ctx.lineTo(x,y+reach*1.6);ctx.lineTo(x-reach*.54,y);ctx.closePath();ctx.fillStyle='#F8DBA0';ctx.fill();
+      ctx.lineTo(x,y+reach*1.6);ctx.lineTo(x-reach*.54,y);ctx.closePath();ctx.fillStyle=palette.spark;ctx.fill();
     }
   }
   ctx.drawImage(state==='charging'?mutedSeal(image):image,42-size/2,34.5-size/2,size,size);
-  ctx.fillStyle=ready?'#F8D694':active?'#58667B':'#52647C';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle=ready?palette.label:active?'#58667B':'#52647C';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.font='bold 12px "Ziling Swei", sans-serif';
   ctx.fillText(ready?'释放':active?'释放中':Math.floor(progress*100)+'%',42,62);
 }
