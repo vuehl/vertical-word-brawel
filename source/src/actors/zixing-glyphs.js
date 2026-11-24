@@ -133,13 +133,13 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       m.fragmentShader='uniform sampler2D zxGlyph; uniform vec3 zxAllyColor; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;float fill=smoothstep(.035,.08,max(c.r,max(c.g,c.b)));c.rgb=mix(c.rgb,zxAllyColor,fill);c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
       m.transparent=true;m.depthWrite=false;
     }else if(batch.zxOriginalGlyph){
-      // No palette/skin, outline, light ramp or fog recoloring on supplied art.
-      // Retain the brief hit flash as combat feedback.
-      m.fragmentShader='uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
+      // Match the appearance swatches on both static and animated cutouts.
+      const recolor=batch.id!==batch.sid?'c.rgb=c.brg;':'if(vFx.z>8.9 || (vFx.z>4.9 && vFx.z<6.5))c.rgb=c.gbr;';
+      m.fragmentShader=`uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;${recolor}c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}`;
       m.transparent=true;m.depthWrite=false;
     }
     applyShelfMaterial(m,shelfUniforms);
-    m.needsUpdate=true;batches.add(batch,t.uuid+(heroEntry?.ghost?'-ghost-'+heroEntry.ghost:ally?'-ally':batch.zxOriginalGlyph?'-original':''),heroEntry?.ghost?96:heroEntry?1:ally?8:1024);return batch;
+    m.needsUpdate=true;batches.add(batch,t.uuid+(heroEntry?.ghost?'-ghost-'+heroEntry.ghost:ally?'-ally':batch.zxOriginalGlyph?(batch.id===batch.sid?'-original':'-classic'):''),heroEntry?.ghost?96:heroEntry?1:ally?8:1024);return batch;
   }
   run.sprites.getAllyGlyph=(id,playerSpecies)=>{
     const word=glyphWordForSpecies(playerSpecies);

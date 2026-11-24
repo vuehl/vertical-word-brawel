@@ -92,7 +92,7 @@ for (const file of walk(path.join(pub,'data'))) {
 }
 const uiText=fs.readFileSync(path.join(pub,'text/ui.json'));
 add('text','text/ui.json',uiText);fontText.push(uiText.toString('utf8'));
-for (const name of ['version.json','creditos.txt','legal']) add('text',name,fs.readFileSync(path.join(pub,name)));
+for (const name of ['version.json','creditos.txt']) add('text',name,fs.readFileSync(path.join(pub,name)));
 const python = process.env.POKEBONK_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
 const developer=development?await import('../developer/build-support.mjs'):null;
 if(developer){

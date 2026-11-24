@@ -29,7 +29,7 @@ const replace=(s,from,to)=>{
 const shellServer=read('server.mjs');
 function serverCode() {
   const imports=shellServer.slice(0,shellServer.indexOf('const PORT')).replace(/^import .+ from 'node:(?:fs(?:\/promises)?|http|path)';\n/gm,'');
-  let routes=shellServer.slice(shellServer.indexOf('function accountByToken'),shellServer.indexOf('async function sendFile'));
+  const routes=shellServer.slice(shellServer.indexOf('function accountByToken'),shellServer.indexOf('// Standalone loopback-only HTTP server.'));
   return imports + `
 import {readStore,writeStore} from "pokebonk:store";
 import {progressDispatcher,callProgress} from "pokebonk:progress";
@@ -97,7 +97,6 @@ const sources={
       read('local/progression.mjs').replace("import fs from 'node:fs';",'import {cloneData as structuredClone} from "pokebonk:clone";')
         .replace(/^const pokemon = new Map\(.+;$/m,'const pokemon=new Map('+JSON.stringify(JSON.parse(read('../resources/public/data/pokemon.json')).map(p=>[p.id,{family:p.family}]))+');')
     }));
-    build.onLoad({filter:/src[\\/]game-font\.js$/},()=>({contents:'export const gameFontsReady=Promise.resolve();'}));
     build.onLoad({filter:/linkedom[\\/]worker\.js$/},args=>{
       let code=fs.readFileSync(args.path,'utf8').replace(/\r\n/g,'\n');
       code=replace(code,'const formatter = new Intl.NumberFormat("en-US", {\n\tuseGrouping: false,\n\tminimumFractionDigits: 0,\n\tmaximumFractionDigits: 6\n});',
@@ -118,16 +117,12 @@ const sources={
       contents:lowerUnicodeRegexes(fs.readFileSync(args.path,'utf8')),resolveDir:path.dirname(args.path)
     }));
     build.onLoad({filter:/src[\\/]game\.js$/},()=>{
-      let code=read('src/game.js').replace('await gameFontsReady;','');
+      let code=read('src/game.js');
       // The DOM retry screen cannot be drawn before the WeChat renderer exists.
       code=replace(code,'((n.lastChild.textContent = c(`Error cargando datos: {msg}`, { msg: t(e.message) })),\n          r.append(X(`button`, { class: `btn big red`, onclick: () => location.reload() }, c(`Reintentar`))));\n        return;',
         'throw Error("游戏数据读取失败：" + (e.message || e));');
       code=replace(code,'await new Promise((e) => setTimeout(e, Math.min(5e3, 1e3 + t * 500))));',
         'await new Promise((e) => setTimeout(e, 500)));\n          if (t >= 2) throw Error("WebGL 2 初始化失败：" + (e.message || e));');
-      code=replace(code,'(ac(), installImageRetries(), await new AL().boot());','export async function launch(){ac();installImageRetries();const app=new AL();window.onApp?.(app);await app.boot();return app;}');
-      // Browser-only legacy QA is never part of a native release.
-      code=replace(code,"import {mountLiteQA} from './debug/lite-qa.js';",'');
-      code=replace(code,'  mountLiteQA(e);','');
       if(developer)code=developer.instrumentGame(code);
       code=replace(code,'if ((this.r.render(n), this.run?.state === \x60play\x60))','if ((this.r.render(n), window.drawUI(this.r.renderer), this.run?.state === \x60play\x60))');
       code=replace(code,'(this.failing++ % 60 == 0','(window.onBootRenderError?.(e), this.failing++ % 60 == 0');
@@ -190,7 +185,7 @@ for(const file of ['game.js','host.js','original.js','licenses.txt','layout.bin'
 function files(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(f=>f.isDirectory()?files(path.join(dir,f.name)):[path.join(dir,f.name)]);}
 const built=files(out),size=list=>list.reduce((n,f)=>n+fs.statSync(f).size,0);
 if(!development){
-  if(Object.keys(result.metafile.inputs).some(file=>/tools[\\/]developer[\\/]|src[\\/]debug[\\/]lite-qa\.js$/.test(file)))
+  if(Object.keys(result.metafile.inputs).some(file=>/tools[\\/]developer[\\/]/.test(file)))
     throw Error('Developer module included in release dependency graph.');
   const release=[...result.files.values()].join('\n');
   for(const marker of ['__zixingDeveloper','zx-dev-panel','pokebonk-dev-save','mountLiteQA','隔离 QA'])

@@ -12,7 +12,7 @@ const bindings=('globalThis window self document navigator location history loca
 export async function buildPlay(common,src,hostCode){
   const resolveDir=path.join(src,'src');
   const entries={
-    gameplay:'import "../../resources/public/turnstile-stub.js"; import {setChineseText} from "./data/chinese-text.js";'+
+    gameplay:'import "../../platform/turnstile-stub.js"; import {setChineseText} from "./data/chinese-text.js";'+
       'export async function start(){setChineseText(window.readChineseText());return require("./game.js").launch();}',
     // These build-only entries give esbuild boundaries for shared modules. Their
     // lazy references preserve initialization order and are never shipped.

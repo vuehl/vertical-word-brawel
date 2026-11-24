@@ -9360,8 +9360,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (t.stats.totems++,
             t.ui.banner(c(`¡Dominante derrotado!`), c(`Su aura es tuya: elige una bendición`), `#c25aff`, {
               species: t.player.speciesId,
-            }),
-            t.spawnChestAt(i, o, `free`));
+            }));
           for (let e = 0; e < 10; e++) t.pickups.spawn(`coin`, i, a, o, Math.ceil((3 + t.stage * 3) * s.gold));
           t.queueBlessing(c(`Aura del Dominante`), 1);
         } else {
@@ -9371,13 +9370,12 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             n.gen[i] === a &&
               n.isAlive(i) &&
               ((n.dying[i] = 0.35), (n.hp[i] = 0), t.combat.credit(i, {}, !1), e++);
-          (t.ui.banner(
+          t.ui.banner(
             c(`¡Invocador derrotado!`),
             e ? c(`Sus {n} esbirros se desmayan con él`, { n: e }) : c(`Se acabaron los refuerzos`),
             `#3ac85a`,
             { species: r.species },
-          ),
-            t.pickups.spawn(`candy`, i, a, o, 1));
+          );
           for (let e = 0; e < 8; e++) t.pickups.spawn(`coin`, i, a, o, Math.ceil((3 + t.stage * 3) * s.gold));
         }
         t.audio.power();

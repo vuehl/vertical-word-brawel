@@ -1,7 +1,7 @@
 import {choiceQuality as itemOfferQuality} from './ui/choice-presentation.js';
 import {itemOffer,shopOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './ui/battle-review-ui.js';
 import {createCaptureGourd,gourdIcon} from './combat/capture-gourd.js';
-import {combatClipIds, combatEvolutionSeconds, loadCombatClips} from './combat/audio-clips.js';
+import {combatClipIds, combatEvolutionSeconds, loadAudioClips, loadCombatClips} from './combat/audio-clips.js';
 import {deskDevice,deskTexture,disposeDeskDevice} from './world/desk2d.js';
 import {createBerryPickup} from './combat/berry-pickup.js';
 import {deskPitch,deskTilt,deskFrame,deskWalkInset} from './world/desk-framing.js';
@@ -14,16 +14,16 @@ import {createFacilityEffects} from './effects/facility-effects.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat,worldProgress} from './network/coop-resume.js';
 import {RoomMonsters,roomMonster} from './world/room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './network/peer-motion.js';
-import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, rosterForMode, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './data/lite-rules.js';
+import {defaultStarter, LITE_SPECIES, isLiteSpecies, isLiteFamily, heroAppearanceOwned, rosterForMode, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, wavePace, remainingZoneSeconds, isSoloNormalOpening, normalOpeningWaves} from './data/lite-rules.js';
 import {enemyWord,enemySpeciesWord,remainingStrokes,finalBossSpecies,finalBossWord} from './data/character-rules.js';
 import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './effects/dragon-chant.js';
 import {beginDragonSummon,clearDragonSummon,warmDragonSummon} from './effects/dragon-summon-hd/sequence.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage,windRushMultiplier} from './data/starter-characters.js';
 import {windMoveEffect} from './effects/wind-move-art.js';
 import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './data/skill-availability.js';
-import {mountLiteQA} from './debug/lite-qa.js';
 import {runPlan, planIncludes} from './combat/battle-plan.js';
 import {createZixingUI,paperIcon} from './ui/zixing-ui.js';
+import {buttonSoundFiles,buttonSoundFor} from './ui/button-audio.js';
 import {bossDistanceText,buildingMapName,drawCompassDial} from './ui/paper-hud-art.js';
 import {weatherMark,weatherStyle} from './ui/weather-presentation.js';
 import {installGlyphs,glyphPreview} from './actors/zixing-glyphs.js';
@@ -4059,6 +4059,8 @@ var Ws = () =>
     noiseBuf;
     combatClips = null;
     clipLoad = null;
+    uiClips = new Map();
+    uiClipLoad = null;
     inRun = false;
     interrupted = false;
     cries = new Map();
@@ -4127,22 +4129,35 @@ var Ws = () =>
       clearTimeout(this.aliveTimer);
       this.resetEffects();
     }
+    async readSoundClip(file) {
+      const response = await fetch(Zt('sfx/' + file));
+      if (!response.ok) throw Error(file);
+      return response.arrayBuffer();
+    }
+    preloadUi() {
+      const ctx = this.ctx;
+      if (!ctx || this.uiClipLoad || this.uiClips.size === Object.keys(buttonSoundFiles).length) return this.uiClipLoad;
+      this.uiClipLoad = loadAudioClips(ctx, this.uiClips, buttonSoundFiles,
+        file => this.readSoundClip(file), () => this.ctx === ctx).finally(() => {
+        if (this.ctx === ctx) this.uiClipLoad = null;
+      });
+      return this.uiClipLoad;
+    }
     preloadCombat() {
       const ctx = this.ctx;
       if (!ctx || !this.inRun || this.clipLoad || this.combatClips?.size === combatClipIds.length) return this.clipLoad;
       const clips = this.combatClips ??= new Map();
-      this.clipLoad = loadCombatClips(ctx, clips, async file => {
-        const response = await fetch(Zt('sfx/' + file));
-        if (!response.ok) throw Error(file);
-        return response.arrayBuffer();
-      }, () => this.ctx === ctx && this.inRun).finally(() => {
+      this.clipLoad = loadCombatClips(ctx, clips, file => this.readSoundClip(file),
+        () => this.ctx === ctx && this.inRun).finally(() => {
         if (this.ctx === ctx) this.clipLoad = null;
       });
       return this.clipLoad;
     }
     playClip(key, volume = 1, rate = 1) {
       if (!this.inRun) return false;
-      const buffer = this.combatClips?.get(key);
+      return this.playSoundBuffer(this.combatClips?.get(key), volume, rate);
+    }
+    playSoundBuffer(buffer, volume, rate) {
       if (!buffer) return false;
       if (!this.voiceFree() || volume <= 0 || this.vol.sfx <= 0) return true;
       const ctx = this.ctx;
@@ -4280,6 +4295,8 @@ var Ws = () =>
       if (e) e.onstatechange = null;
       this.ctx = null;
       this.combatClips = this.clipLoad = null;
+      this.uiClips.clear();
+      this.uiClipLoad = null;
       try {
         Promise.resolve(e?.close()).catch(() => {});
       } catch {}
@@ -4373,7 +4390,7 @@ var Ws = () =>
           ((t.buffer = e.createBuffer(1, 1, 22050)),
             (t.onended = () => t.disconnect()), t.connect(e.destination), t.start(0));
         } catch {}
-        try { Promise.resolve(e.resume()).then(t).catch(() => {}); } catch {}
+        try { return Promise.resolve(e.resume()).then(t).catch(() => {}); } catch {}
       }
     }
     setVolumes(e) {
@@ -4866,8 +4883,17 @@ var Ws = () =>
         n.setValueAtTime(i * e, r + t),
         n.linearRampToValueAtTime(i, r + t + 0.8));
     }
-    click() {
-      this.ctx && this.tone(900, 0.04, `square`, 0.05);
+    click(kind = 'tap') {
+      if (this.vol.sfx <= 0 || !this.voiceFree() || !this.ok('ui-click', .035)) return;
+      if (this.playSoundBuffer(this.uiClips.get(kind), 1, 1)) return;
+      if (kind === 'confirm') {
+        this.tone(660, .055, 'triangle', .09);
+        this.tone(990, .07, 'sine', .08, 0, .037);
+      } else if (kind === 'back') {
+        this.tone(610, .065, 'triangle', .09, .67);
+      } else {
+        this.tone(830, .053, 'triangle', .11, .78);
+      }
     }
     hover() {
       this.ok(`hover`, 0.04) && this.tone(1300, 0.025, `sine`, 0.03);
@@ -12870,7 +12896,7 @@ var Df = 0.4,
             );
         }
       }
-      const captureCandidate = !!(a & (R.Capture | R.Alpha)) &&
+      const captureCandidate = !!(a & R.Capture) && !!(a & (R.Shiny | R.Classic)) &&
         !this.run.captureEncounter && e === this.run.captureTarget;
       if ((a & R.Capture) && !captureCandidate) return -1;
       const word = captureCandidate ? glyphWordForSpecies(e) : enemyWord(e,a);
@@ -16160,8 +16186,8 @@ var Pm = class {
             ` · ` +
             c(
               r
-                ? `{key} cerca: Amigo Ball para que luche contigo esta partida (tu equipo está lleno: tendrás que liberar a uno; no se une a tu Liga) · si no, soltará su premio`
-                : `{key} cerca: Amigo Ball para que luche contigo esta partida (no se une a tu Liga) · si no, soltará su premio`,
+                ? `{key} cerca: Amigo Ball para que luche contigo esta partida (tu equipo está lleno: tendrás que liberar a uno; no se une a tu Liga)`
+                : `{key} cerca: Amigo Ball para que luche contigo esta partida (no se une a tu Liga)`,
               { key: Lo(`E`) },
             ),
           `#5af0ff`,
@@ -28735,8 +28761,7 @@ var e_ = class {
       }
       (a & R.Alpha && r.stats.alphas++,
         n &&
-          (o && this.drops(s, c, l, a, i.wt[e]),
-          a & R.Alpha && (r.spawnChestAt(s, l, `free`), r.pickups.spawn(`candy`, s, c, l, 1)),
+          (o && this.dropCoins(s, c, l, i.wt[e]),
           a & R.Boss && r.onBossKilled(e),
           a & (R.Totem | R.Summoner) && r.minibosses.onKilled(e),
           a & R.Treasure && r.events.onKilled(e),
@@ -28761,7 +28786,7 @@ var e_ = class {
       (s.pickups.spawnXp(r, i, a, u),
         s.coop?.shareXp(u),
         l >= 10 && s.allies.onAllyKill(l),
-        this.drops(r, i, a, n),
+        this.dropCoins(r, i, a),
         e >= 0 && s.player.onKill(e, `normal`),
         s.audio.pop());
     }
@@ -28787,26 +28812,13 @@ var e_ = class {
           (s.vfx.burst(e, t + r * 0.5, n, a, o ? 40 : 8, o ? 14 : 6, I.Star, 0.45, 0.5),
           s.vfx.flash(e, t + r * 0.5, n, 16769184, 1.5 * i, 0.12)));
     }
-    drops(e, t, n, r, i = 1) {
+    dropCoins(e, t, n, i = 1) {
       let a = this.run,
         o = a.player.stats;
       if (((a.goldFrac += Wg * o.gold * i), a.goldFrac >= 1)) {
         let r = Math.floor(a.goldFrac);
         ((a.goldFrac -= r), a.pickups.spawnCoin(e, t, n, r));
       }
-      if (
-        (F.chance(0.006 * o.powerup * i) && a.pickups.spawn(`heal`, e, t, n, 1),
-        !a.director.finalSwarm && a.time >= a.powerUpAt && F.chance(0.0018 * o.luckMult * o.powerup * i))
-      ) {
-        a.pickups.spawn(F.pick([`magnet`, `repel`]), e, t, n, 1);
-        a.powerUpAt = a.time + Math.max(18, 40 / o.powerup);
-      }
-      r & R.Elite &&
-        !a.director.eliteChest &&
-        !a.sanctuary &&
-        ((a.director.eliteChest = !0),
-        a.interactables.spawnChest(e, n, !1, !0) &&
-          a.ui.toast(c(`¡El primer élite de la zona suelta una Poké Ball gratis!`), null));
     }
   },
   t_ = ji({ OVERRIDES: () => n_, SPECIAL: () => r_ }),
@@ -34009,7 +34021,6 @@ var mv = 30,
     timeline = [];
     finalSwarm = !1;
     finalSwarmAt = 0;
-    eliteChest = !1;
     rng;
     swarmUntil = 0;
     spawnedTotal = 0;
@@ -34341,7 +34352,6 @@ var mv = 30,
               i = k.evolutionsOf(r);
             if(i.length && t.stage >= 1)r = this.rng.pick(i).id;
             if(!k.hasSprite(r))r = e.id;
-            if (!t.captureEncounter) r = t.captureTarget;
             const index=t.enemies.spawn(r, n.x, n.z, this.hpMult(), this.dmgMult(), R.Alpha);
             if(index<0)return;
             const word=t.enemies.glyphWords[index];
@@ -34715,7 +34725,6 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     family = -1;
     weakT = 0;
     attempts = 0;
-    spawnAt;
     escapeT = 0;
     ball;
     mode = `league`;
@@ -34727,7 +34736,8 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
     shinyAt = 1 / 0;
     shinyStage = 0;
     constructor(e) {
-      ((this.run = e), (this.ball = new Om(e)), (this.spawnAt = F.range(50, 120) / wavePace(e.mode)));
+      this.run = e;
+      this.ball = new Om(e);
     }
     beam = null;
     beamShiny = !1;
@@ -34793,10 +34803,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         ((this.shinyAt = 1 / 0), this.spawnShiny());
       else if ((this.state === `idle` || this.state === `done`) && t.stageTime >= this.classicAt)
         ((this.classicAt = 1 / 0), this.spawnClassic());
-      else if (this.state === `idle`) {
-        if (t.stageTime < this.spawnAt) return;
-        this.spawnEncounter(t.captureTarget);
-      } else if (this.state === `roaming`) {
+      else if (this.state === `roaming`) {
         if (!n.alive[this.index] || n.species[this.index] !== this.species) {
           this.state = `done`;
           return;
@@ -34827,62 +34834,6 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
           Math.random() < e * 4 &&
             t.vfx.trail(n.x[this.index], n.y[this.index] + 1.5, n.z[this.index], 9109503, 0.5, I.Star, 0.6),
           this.weakT <= 0 && (this.mirror ? this.fadeMirror() : this.recover()));
-    }
-    spawnEncounter(e) {
-      if(this.run.captureEncounter || e !== this.run.captureTarget)return;
-      let t = this.run,
-        n = e;
-      t.sprites.get(n);
-      let r = t.terrain.randomPoint(F, t.player.pos.x, t.player.pos.z, 25, 45),
-        i = pt.get(e) ? ot(pt.get(e)) : `common`,
-        a = { common: 0.8, uncommon: 0.8, rare: 1.6, legendary: 5 }[i],
-        o = i === `legendary` && this.rollLegendShiny(),
-        s = t.enemies.spawn(
-          n,
-          r.x,
-          r.z,
-          t.director.hpMult() * a,
-          t.director.dmgMult() * (i === `legendary` ? 1.5 : 1),
-          R.Capture | (o ? R.Shiny : 0),
-        );
-      s < 0 ||
-        ((this.mode = `league`),
-        (this.sure = !1),
-        (this.mirror = !1),
-        (this.shiny = o),
-        (this.classic = !1),
-        (this.index = s),
-        (this.species = n),
-        (this.family = e),
-        (this.state = `roaming`),
-        (this.escapeT = i === `legendary` ? 240 : 150),
-        (this.attempts = 0),
-        t.coop?.captureFound(n),
-        o
-          ? (this.shinyEntrance(
-              n,
-              r.x,
-              t.enemies.y[s],
-              r.z,
-              c(`Es muy resistente y huirá si tardas: debilítalo y captúralo`),
-            ),
-            t.audio.bossStart())
-          : i === `legendary`
-            ? (t.ui.banner(
-                c(`传说字灵「{name}」现身！`, { name: this.word }),
-                c(`Es muy resistente y huirá si tardas: debilítalo y captúralo`),
-                `#ffb21a`,
-                { species: n, glyph: this.word },
-              ),
-              t.audio.bossStart())
-            : t.ui.banner(
-                c(`字灵「{name}」现身！`, { name: this.word }),
-                c(`击败并收服，加入字灵队伍`),
-                `#36c9ff`,
-                { species: n, glyph: this.word },
-              ),
-        t.cry(n),
-        t.audio.encounter());
     }
     spawnShiny() {
       let t = this.run;
@@ -35022,7 +34973,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         : (t.onBossKilled(e), t.boss.release(), this.takeOver(e, n.species[e], `shiny`), !0);
     }
     takeOver(e, t, n = `league`) {
-      if(this.run.captureEncounter || t !== this.run.captureTarget || this.run.enemies.species[e] !== t)return;
+      if(this.run.captureEncounter || t !== this.run.captureTarget || this.run.enemies.species[e] !== t || !(this.run.enemies.flags[e] & R.Shiny))return;
       this.run.captureEncounter = {index:e, generation:this.run.enemies.gen[e], stage:this.run.stage};
       this.run.enemies.glyphWords[e] = glyphWordForSpecies(t);
       let r = this.run,
@@ -35076,30 +35027,23 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         this.state === `roaming` ||
         this.state === `weakened` ||
         this.state === `throwing` ||
-        o.captureEncounter || e !== o.captureTarget || t !== e ||
+        o.captureEncounter || e !== o.captureTarget || t !== e || n !== 'shiny' || !r ||
         !Number.isFinite(i + a)
       )
         return !1;
-      let l = n === `shiny` ? `shiny` : `league`;
-      if (l === `league`) {
-        if (!pt.has(t) || t === 150 || !o.meta.leagueReady().includes(t)) {
-          if (r) l = `shiny`;
-          else return !1;
-        }
-      } else if (!r) return !1;
       o.sprites.get(e);
-      let u = s.spawn(e, i, a, 1, 1, R.Capture | (r ? R.Shiny : 0));
+      let u = s.spawn(e, i, a, 1, 1, R.Capture | R.Shiny);
       return u < 0
         ? !1
         : ((s.hp[u] = s.maxHp[u] * 0.01),
-          (this.mode = l),
+          (this.mode = `shiny`),
           (this.sure = !1),
           (this.mirror = !0),
           (this.shiny = r),
           (this.classic = !1),
           (this.index = u),
           (this.species = e),
-          (this.family = l === `league` ? t : e),
+          (this.family = e),
           (this.state = `weakened`),
           (this.weakT = 20),
           (this.attempts = 0),
@@ -35479,10 +35423,9 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
         t.later(e * 0.15, () =>
           t.vfx.ring(r, t.terrain.height(r, i), i, 10 + e * 10, e === 1 ? 16777215 : 12618495, 0.7),
         );
-      t.spawnChestAt(r + 3, i + 2, `free`, r, i);
       for (let a = 0; a < 16; a++)
         t.pickups.spawn(`coin`, r, n.y[e], i, Math.ceil(6 * t.stage * t.player.stats.gold));
-      return (t.pickups.spawn(`candy`, r, n.y[e], i, 1), !0);
+      return !0;
     }
     onPhase(e) {
       this.flash = 1;
@@ -41786,7 +41729,6 @@ var kw = class {
       ((t.stage = e),
         t.director.onPhase(),
         t.minibosses.resetUsed(),
-        (t.director.eliteChest = !1),
         t.ui.banner(
           c(`Fase {ph}`, { ph: e }),
           c(
@@ -42938,7 +42880,6 @@ var iT = Math.PI / 180,
       t.audio.victory();
       for (let e = 0; e < 16; e++)
         t.pickups.spawn(`coin`, i, a, o, Math.ceil(5 * this.curveStage * t.player.stats.gold));
-      t.pickups.spawn(`candy`, i, a, o, 1);
     }
     clearFloor() {
       let e = this.run,
@@ -45673,7 +45614,6 @@ var GT = 15,
     streak = 0;
     streakT = 0;
     streakPaid = new Set();
-    powerUpAt = 0;
     egg = null;
     evoHold = 0;
     godMode = !1;
@@ -46927,17 +46867,11 @@ var GT = 15,
         }));
       let o = t.x[e],
         s = t.z[e];
-      (this.coop
+      this.coop
         ? this.coop.placePortal(o, s, !!n && this.stage >= FOREST_COMBAT_ZONES)
-        : this.interactables.spawnPortal(o, s, !!n && this.stage >= FOREST_COMBAT_ZONES),
-        this.spawnChestAt(o + 3, s + 2, `free`, o, s));
-      for (let e = 0; e < this.boss.roars; e++) {
-        let t = (e / this.boss.roars) * Math.PI * 2 + 0.6;
-        this.spawnChestAt(o + 3 + Math.cos(t) * 3.2, s + 2 + Math.sin(t) * 3.2, `free`, o, s);
-      }
+        : this.interactables.spawnPortal(o, s, !!n && this.stage >= FOREST_COMBAT_ZONES);
       for (let n = 0; n < 20; n++)
         this.pickups.spawn(`coin`, o, t.y[e], s, Math.ceil(5 * this.stage * this.player.stats.gold));
-      this.pickups.spawn(`candy`, o, t.y[e], s, 1);
     }
     onMilestoneKilled(e) {
       this.dragonDuel = false;
@@ -46966,10 +46900,9 @@ var GT = 15,
         this.audio.victory());
       let r = t.x[e],
         i = t.z[e];
-      this.spawnChestAt(r + 3, i + 2, `free`, r, i);
       for (let n = 0; n < 20; n++)
         this.pickups.spawn(`coin`, r, t.y[e], i, Math.ceil(5 * this.stage * this.player.stats.gold));
-      (this.pickups.spawn(`candy`, r, t.y[e], i, 1), this.endless.onMilestoneKilled());
+      this.endless.onMilestoneKilled();
     }
     cineDeadT = 0;
     async enterPortal(portal = null) {
@@ -47537,7 +47470,7 @@ var GT = 15,
     openMap() {
       this.state === `play` &&
         this.ui.showMap &&
-        ((this.state = `paused`), this.input.releaseLock(), this.ui.showMap(this));
+        ((this.state = `paused`), this.input.releaseLock(), this.audio.click(), this.ui.showMap(this));
     }
     pause() {
       this.state === `play` && ((this.state = `paused`), this.input.releaseLock(), this.ui.showPause(this));
@@ -52003,7 +51936,8 @@ var KO = 300,
         (e.lastBiome = this.profile.lastBiome),
         (e.skins = this.profile.skins.filter((t) => {
           let n = Pe(t);
-          return !!n && Zn(e, n.member, n.look, (e) => XO.family(e));
+          return !!n && (n.look === 'shiny' || n.look === 'classic'
+            ? heroAppearanceOwned(e,n.member,n.look) : Zn(e,n.member,n.look,id=>XO.family(id)));
         })),
         (e.team = (this.profile.team ?? []).filter((t) => e.league.includes(t)))),
         this.snap && this.profile && this.rebase(e),
@@ -52166,6 +52100,7 @@ var KO = 300,
       return n && this.lookAvailable(t, n) ? n : null;
     }
     lookAvailable(e, t) {
+      if(t === 'shiny' || t === 'classic')return heroAppearanceOwned(this.profile,e,t);
       return Zn(this.profile, e, t, (e) => this.family(e));
     }
     setSkin(e, t) {
@@ -52286,7 +52221,7 @@ var KO = 300,
       };
     }
     leagueReady() {
-      return [...LITE_SPECIES]; // Repeatable encounters use the currently playable partners.
+      return [...LITE_SPECIES];
     }
     joinLeague(e) {
       if(!isLiteSpecies(e))return;
@@ -63553,7 +63488,7 @@ var UN = `https://discord.gg/X7KusQqx8X`,
       GN(),
       X(`span`, {}, X(`b`, {}, c(`Únete al Discord`)), X(`small`, {}, c(`Comunidad de PokéBonk`))),
     ),
-  QN = `legal.html`,
+  QN = `https://pokebonk.com/legal`,
   $N = `contacto@pokebonk.com`,
   eP = (e, t = ``) =>
     X(`a`, { href: QN + t, target: `_blank`, rel: `noopener`, onclick: () => N.click() }, e);
@@ -64427,8 +64362,6 @@ function ZX(app) {
 }
 function CP(e) {
   return ZX(e).home();
-  if (location.hostname === "127.0.0.1" && location.port === "18189" && new URLSearchParams(location.search).get("qa") === "portrait") window.__portraitApp = e;
-  mountLiteQA(e);
   const meta=e.meta, p=meta.profile;
   if(!p.starter){wP(e);return;}
   e.pendingRoom=null;
@@ -77772,28 +77705,12 @@ function ZI(e, t = !1, n = e) {
   return GC(e, t === !0 ? `shiny` : t || null, n);
 }
 var QI = (e) => e.skinLook,
-  $I = `/turnstile-stub.js`,
   eL = () =>
     /(^|\.)pokebonk\.com$/.test(location.hostname) ? `0x4AAAAAAFd_J1oqkWPASY2_` : `1x00000000000000000000AA`,
-  tL = 2e4,
-  nL = null;
-function rL() {
-  return window.turnstile
-    ? Promise.resolve(window.turnstile)
-    : (nL ??= new Promise((e) => {
-        let t = document.createElement(`script`);
-        ((t.src = $I),
-          (t.async = !0),
-          (t.onload = () => e(window.turnstile ?? null)),
-          (t.onerror = () => {
-            ((nL = null), t.remove(), e(null));
-          }),
-          document.head.append(t));
-      }));
-}
+  tL = 2e4;
 async function iL() {
   if (typeof document > `u`) return;
-  let e = await Promise.race([rL(), new Promise((e) => setTimeout(() => e(null), tL))]);
+  const e = window.turnstile;
   if (!e) return;
   let t = document.createElement(`div`);
   ((t.className = `captcha-box`), document.body.append(t));
@@ -78915,6 +78832,23 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     inviteOnly = !1;
     constructor() {
       this.ui = document.getElementById(`ui`);
+      const playButton = target => {
+        const kind = buttonSoundFor(this.ui, target);
+        if (!kind) return;
+        if (!N.ctx || N.ctx.state === 'closed') N.init();
+        N.preloadUi();
+        if (N.running) N.click(kind);
+        else {
+          const ctx = N.ctx;
+          N.wake()?.then(() => { if (N.ctx === ctx) N.click(kind); });
+        }
+      };
+      // The native DOM only bubbles. Its touch bridge runs this before handlers
+      // so navigation cannot remove or change the button before classification.
+      if (window.nativeUI) window.onUiControlClick = playButton;
+      else this.ui.addEventListener('click', event => {
+        if (event.isTrusted) playButton(event.target);
+      }, true);
     }
     get screen() {
       return this.screenEl;
@@ -78979,7 +78913,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       let i = !1,
         a = () => {
           // Waking audio uses the stored volumes. A gesture must not reconfigure the renderer.
-          (N.init(),
+          (N.init(), N.preloadUi(),
             !this.run && !i && ((i = !0), N.playTrack(EL())),
             setTimeout(() => {
               N.running &&
@@ -79604,5 +79538,12 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       }
     };
   };
-(ac(), installImageRetries(), await new AL().boot());
+export async function launch() {
+  ac();
+  installImageRetries();
+  const app = new AL();
+  window.onApp?.(app);
+  await app.boot();
+  return app;
+}
 export { AL as App };

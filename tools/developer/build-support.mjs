@@ -21,13 +21,15 @@ export function instrumentGame(code){
   code=replaceOnce(code,'await this.run.openStage(onLoadProgress),',
     'await this.run.openStage(onLoadProgress),window.__zixingDeveloper.attachRun(this.run),');
   return 'import {installDeveloperMode} from "../../tools/developer/panel.mjs";\n'+
-    replaceOnce(code,'await app.boot();return app;',`await app.boot();installDeveloperMode(app,{
+    replaceOnce(code,'  await app.boot();\n  return app;',`  await app.boot();
+  installDeveloperMode(app,{
       skills:{
         pool:run=>Vb(run.player.speciesId,run.player.roster,run.player.types,id=>run.meta.inLeague(id)),
         move:(id,species)=>formMove(id,species),
         upgrade:(run,slot)=>Gb(run,{kind:'upMove',slot,ups:P_(run.player.moves[slot],E[0])})
       },speciesName:id=>k.get(id).name
-    });return app;`);
+  });
+  return app;`);
 }
 export function isolatedStoragePlugin(platform){
   return {name:'isolated-developer-storage',setup(build){

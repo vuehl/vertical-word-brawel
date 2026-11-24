@@ -1,52 +1,19 @@
 import {constrainLiteProfile, validLiteRun, isLiteSpecies, SINGLE_STAGE, runRecordKey} from './src/data/lite-rules.js';
-// PokéBonk — local server.
-// Serves editable client code and local assets without upstream fallback.
-// Implements the client's HTTP API against a local JSON store.
+// Local progression API and loopback test server. The WeChat build embeds these routes.
 import http from 'node:http';
 import { applyAction as applyProfileAction, refreshTasks, rerollTask, settleRun, claimEvent } from './local/progression.mjs';
 import { Zn as medalFor, cn as bagItems } from './src/data/config.js';
-import { writeFileSync, mkdirSync, renameSync, copyFileSync } from 'node:fs';
-import { createReadStream, existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
+import { writeFileSync, mkdirSync, renameSync, copyFileSync, existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {bindPortalZoneClock} from './tools/portal-zone-clock.mjs';
 import {
   now, token, newProfile, newAccount, hashPassword, checkPassword,
   SEASON, EVENTS, seasonPayload, boardFor, json, body,
 } from './firebase/shared.mjs';
 
 const PORT = Number(process.env.PORT || 18086);
-const ROOT = path.resolve(import.meta.dirname, '../resources/public');
 const DATA = path.resolve(process.env.STORE_DIR || path.join(import.meta.dirname, 'lite-data'));
-const SOURCE_ROOT = path.resolve(import.meta.dirname, 'src');
-const NET_ROOT = path.resolve(import.meta.dirname, 'net');
-const FIREBASE_ROOT = path.resolve(import.meta.dirname, 'firebase');
-
-// --firebase (or FIREBASE=true) routes /api through the stateless Firebase
-// backend (Firebase Auth + Firestore + RTDB) instead of the JSON store.
-const firebaseMatch = null;
-
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.webmanifest': 'application/manifest+json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.ico': 'image/x-icon',
-  '.glb': 'model/gltf-binary',
-  '.ogg': 'audio/ogg',
-  '.mp3': 'audio/mpeg',
-  '.woff2': 'font/woff2',
-  '.woff': 'font/woff',
-  '.txt': 'text/plain; charset=utf-8',
-  '.svg': 'image/svg+xml',
-};
 
 // ---------------------------------------------------------------- store ----
 
@@ -495,57 +462,10 @@ function matchRoute(method, pathname) {
   return null;
 }
 
-async function sendFile(res, file, patch) {
-  const st = await stat(file);
-  res.writeHead(200, {
-    'content-type': MIME[path.extname(file)] || 'application/octet-stream',
-    'content-length': patch ? patch.length : st.size,
-    'cache-control': 'no-cache',
-  });
-  if (patch) res.end(patch);
-  else createReadStream(file).pipe(res);
-}
-
-async function serveStatic(req, res, pathname) {
-  let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
-  rel = rel.replace(/^(?:assets\/)+assets\//, 'assets/').replace(/^(?:data\/)+data\//, 'data/');
-  if (rel.startsWith('resources/public/')) rel = rel.slice('resources/public/'.length);
-  if (rel === '') rel = 'index.html';
-  if (rel.endsWith('/')) rel += 'index.html';
-
-  const base = rel.startsWith('src/') ? SOURCE_ROOT : ROOT;
-  const relative = rel.startsWith('src/') ? rel.slice(4) : rel;
-  let file = path.resolve(base, relative);
-  const inside = file.startsWith(base + path.sep);
-  if(!inside){res.writeHead(403);return res.end('Forbidden');}
-  const override = path.resolve(ROOT,'overrides',rel);
-  if(override.startsWith(path.join(ROOT,'overrides')+path.sep)&&existsSync(override))file=override;
-  let buf = null;
-
-  if (inside && existsSync(file)) {
-    const ext = path.extname(file);
-    if (rel === 'src/effects/PortalDock.mjs') {
-      return sendFile(res, file, Buffer.from(bindPortalZoneClock(await readFile(file, 'utf8'))));
-    }
-    if (ext === '.html' && rel === 'index.html') {
-      let src = await readFile(file, 'utf8');
-      const before = src;
-      src = src.replace(/<script[^>]*static\.cloudflareinsights\.com[\s\S]*?<\/script>/g, '');
-      if (src !== before) return sendFile(res, file, Buffer.from(src));
-    }
-    return sendFile(res, file);
-  }
-  if (!path.extname(rel)) return sendFile(res, path.join(ROOT, 'index.html'));
-  console.warn('[missing-local-asset]', rel);
-  res.writeHead(404, {'content-type':'text/plain'});
-  return res.end('Not found');
-}
-
 // Standalone loopback-only HTTP server.
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  res.setHeader('Content-Security-Policy', "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: data:; img-src 'self' data: blob:; media-src 'self' data: blob:; worker-src 'self' blob:;");
   if(url.pathname==='/api/coop/access')return json(res,200,{show:false,play:false});
   if(/^\/(?:signaling|net)(?:\/|$)/.test(url.pathname)||/^\/api\/(?:coop|friends|rooms|invites|clans|mail|events|seasons|leaderboard)(?:\/|$)/.test(url.pathname))return json(res,404,{error:'Not included in Forest Lite.'});
   if(url.pathname==='/local/health')return json(res,200,{name:'pokebonk-forest-lite',version:'0.8.34',offline:true});
@@ -561,7 +481,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname.startsWith('/api/')) {
     const apiPath = url.pathname.slice(4) || '/';
-    const m = firebaseMatch ? firebaseMatch(req.method, apiPath) : matchRoute(req.method, apiPath);
+    const m = matchRoute(req.method, apiPath);
     if (!m) return json(res, 404, { error: 'Not found.' });
     try {
       const out = await m.handler(req, res, url, m.params);
@@ -573,15 +493,9 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  try {
-    return await serveStatic(req, res, url.pathname);
-  } catch (e) {
-    console.error('static', url.pathname, e);
-    res.writeHead(500, { 'content-type': 'text/plain' });
-    res.end('Internal error');
-  }
+  return json(res, 404, { error: 'Not found.' });
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`PokéBonk local → http://127.0.0.1:${PORT}/`);
+  console.log(`PokéBonk local API → http://127.0.0.1:${PORT}/api/`);
 });

@@ -1498,6 +1498,7 @@ export function createZixingUI(app,api) {
       ]),
       win?text(single?'完整通关普通模式可解锁困难。':(app.meta.biomeTier('forest')>result.tier?'桌上世界下一难度已开放。':'已完成当前桌面挑战。'),'zx-outcome-note'):null,
       captured.length?text('新收录 · '+captured.map(entry=>glyphWordForSpecies(entry.id)+(entry.look==='shiny'?'（异色）':entry.look==='classic'?'（经典异色）':'')).join('、'),'zx-outcome-note'):null,
+      captured.length?text('下次出发时，在「选择字灵」选中对应字灵，再点「换色」。','zx-outcome-note'):null,
       build,
     ]);
     const playAgain=run.coop?()=>{leave();multiplayer();}:()=>app.startRun(app.lastCfg);

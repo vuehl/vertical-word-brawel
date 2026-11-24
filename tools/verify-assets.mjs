@@ -154,6 +154,9 @@ assert.equal(Object.keys(index.files).filter(k=>k.startsWith('assets/cries/')).l
 assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('locale/')),[]);
 assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith('data/i18n/')),[]);
 assert.ok(index.files['text/ui.json']);
+for(const key of ['index.html','index-0.8.13.html','legal','manifest.webmanifest','favicon.ico']){
+  assert.ok(!index.files[key],'Legacy web asset must not ship: '+key);
+}
 assert.equal(Object.keys(index.sprites).length,0,'Actor atlases must not be reconstructed on the phone');
 assert.ok(!index.files['engine/layout.bin'],'Unused desktop layout references must not ship');
 // Research reads family roots even when the root is not a spawnable actor.

@@ -322,6 +322,7 @@ export async function setup(host) {
         if(kind==='up'&&releasedOnButton&&!p.scrolled&&Math.hypot(x-p.x,y-p.y)<15&&!p.target.closest?.('[disabled]')){
           if(input){if(input.type==='checkbox'){input.checked=!input.checked;input.dispatchEvent(new InputEvent('change'));}
             else if(input.type==='range')input.dispatchEvent(new InputEvent('change'));else if(!['button','submit'].includes(input.type))keyboard(input);}
+          env.onUiControlClick?.(p.target);
           p.target.dispatchEvent(new InputEvent('click',options));
         }
         captured.delete(id);pointers.delete(id);

@@ -7,9 +7,9 @@
 | 目录或文件 | 职责 |
 | --- | --- |
 | [resources/](resources/) | 统一维护的资源包。原画、运行素材、游戏数据和布局参考的存放位置见下表。 |
-| [source/src/](source/src/) | 游戏源码。主入口 `game.js` 组装各模块，`boot.js` 启动网页版。 |
-| [source/local/](source/local/) · [source/firebase/](source/firebase/) | 进度结算、账号和存档相关规则。网页本地服务入口是 [source/server.mjs](source/server.mjs)。 |
-| [source/tools/](source/tools/) · [source/reports/](source/reports/) | 网页源工程的测试、素材审计、目录导出脚本与报告。 |
+| [source/src/](source/src/) | 玩法和界面源码。`game.js` 组装各模块，由微信玩法分包调用。 |
+| [source/local/](source/local/) · [source/firebase/](source/firebase/) | 进度结算、账号和存档规则。[source/server.mjs](source/server.mjs) 提供构建时嵌入小游戏的本地接口，以及测试用的本地 HTTP 接口。 |
+| [source/tools/](source/tools/) · [source/reports/](source/reports/) | 玩法测试、素材审计、目录导出脚本与报告。 |
 | [platform/](platform/) | 微信运行环境适配，包括 Canvas 绘制、触摸、界面布局、文件读取、存档和联机接口。 |
 | [tools/](tools/) | 工程工具。顶层是构建、预览和验收命令的入口，各类实现见下文。 |
 | [minigame/](minigame/) | 构建生成的微信工程。`play/` 放编译后的玩法代码，`packs/` 放手机按需加载的资源分包。修改对应的源码或素材后重新构建。 |
@@ -25,8 +25,7 @@
 | [resources/public/assets/](resources/public/assets/) | 运行时贴图和模型。`glyphs/` 放角色图集，`env/` 放场景，`vfx/` 放技能与演出，`items/` 放道具，`models/` 放模型，`ui/` 和 `ui-paper/` 放界面图。 |
 | [resources/public/config/](resources/public/config/) | 源码直接导入的布局、角色骨架和动画描述。 |
 | [resources/public/data/](resources/public/data/) · [resources/public/text/](resources/public/text/) | 游戏读取的角色、招式、道具等数据表，以及中文界面文案。 |
-| [resources/public/fonts/](resources/public/fonts/) · [resources/public/overrides/](resources/public/overrides/) | 中文字体与许可、按同路径优先加载的替换素材。`public/` 顶层还包含网页版入口、图标和署名。 |
-| [resources/reference/](resources/reference/) | 桌面布局工具生成的测量参考。 |
+| [resources/public/fonts/](resources/public/fonts/) · `resources/public/overrides/` | 中文字体与许可、按同路径优先加载的替换素材。`public/` 顶层保留游戏版本和素材署名。 |
 
 启动页的「炎」和「风」取自 `resources/art/glyphs/`，构建时合成一张无损 WebP 图集。`resources/art/fire-stampede/` 的三段 GIF 用于重建烈焰狂奔图集和校验动画来源。修改技能原稿后运行 `node tools/art/build-fire-stampede.mjs`，再运行 `npm run build:assets` 更新微信包。
 
@@ -47,11 +46,11 @@
 | `data/` | 角色与道具目录、进阶与技能可用性、玩法配置及文案规则。 |
 | `world/` | 桌面关卡、地图生成、场景物件、导航、碰撞与交互设施。 |
 | `effects/` | 火风技能、设施和进阶特效。`dragon-summon-hd/` 负责「龘」的高清出场演出。 |
-| `ui/` | 首页、选字、图鉴、战斗信息、弹窗和纸张界面样式。 |
+| `ui/` | 首页、选字、图鉴、战斗信息、弹窗和纸张界面样式。构建时把 `base.css` 等样式转成 Canvas 界面使用的布局规则。 |
 | `network/` | 联机配置、组队、队友同步与断线恢复。 |
 | `performance/` | 帧率策略、怪群更新、生成预算和战斗预热。 |
 | `virtual-stick/` | 虚拟摇杆的输入、过滤、移动和绘制。 |
-| `debug/` · `vendor/` | 网页调试入口，以及随工程提供的 Three.js 和 Earcut 库。 |
+| `vendor/` | 随工程提供的 Three.js 和 Earcut 库。 |
 
 ## 工具与常用命令
 

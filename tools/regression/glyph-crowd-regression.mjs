@@ -32,9 +32,10 @@ export async function reviewGlyphCrowd(page,dir){
   report.encounter=await page.evaluate(async()=>{
     const run=app.run,target=run.captureTarget,capture=run.capture;
     run.enemies.clear();
-    capture.spawnEncounter(run.startSpecies);
+    const {x,z}=run.player.pos;
+    run.enemies.spawn(run.startSpecies,x+3,z,1,1,128|2048);
     if(run.captureEncounter)throw Error('Own character became a capture target');
-    capture.spawnEncounter(target);
+    capture.spawnShiny();
     const index=capture.index,word=capture.word;
     run.enemies.x[index]=run.player.pos.x+3;run.enemies.z[index]=run.player.pos.z-3;
     run.ui.hud(run);run.renderWorld(0);run.vfx.update(0);
@@ -42,16 +43,15 @@ export async function reviewGlyphCrowd(page,dir){
     await new Promise(resolve=>setTimeout(resolve,200));
     const banner=inspected.doc.querySelector('.banner'),icon=banner?.querySelector('canvas');
     return {text:banner?.textContent,word:icon?.dataset.glyph,static:icon?.dataset.static,
-      target,expectedWord:target===4?'炎':'风',spawnedWord:word,species:run.enemies.species[index]};
+      target,expectedWord:({4:'炎',16:'风',132:'摹'})[target],spawnedWord:word,species:run.enemies.species[index]};
   });
   const {text,word,static:isStatic,target,expectedWord,spawnedWord,species}=report.encounter;
-  assert.ok(text.includes('字灵「'+expectedWord+'」现身'));
+  assert.ok(text.includes(expectedWord));
   assert.equal(word,expectedWord);assert.equal(spawnedWord,word);
   assert.equal(isStatic,'true');assert.equal(species,target);
   await page.screenshot({path:path.join(dir,'glyph-encounter-'+target+'.png')});
   report.map=await page.evaluate(async()=>{
     const run=app.run;run.capture.state='done';run.capture.index=-1;run.enemies.clear();
-    run.capture.spawnEncounter(run.captureTarget);
     run.capture.spawnShiny();
     run.capture.spawnClassic(run.captureTarget);
     if(run.enemies.count || run.capture.index !== -1)throw Error('Capture encounter appeared twice');

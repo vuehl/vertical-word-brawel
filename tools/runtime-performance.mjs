@@ -119,7 +119,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--late-combat-feedback')){
+  if(process.argv.includes('--capture-rewards')){
+    const {reviewCaptureRewards}=await import('./regression/capture-rewards-regression.mjs');
+    await reviewCaptureRewards(page);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--late-combat-feedback')){
     const {reviewLateFeedback}=await import('./regression/late-combat-feedback.mjs');
     await reviewLateFeedback(page);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--combat-audio')){

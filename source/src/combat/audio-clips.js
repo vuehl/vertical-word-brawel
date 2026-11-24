@@ -10,15 +10,19 @@ function decode(ctx, bytes) {
   });
 }
 
-export async function loadCombatClips(ctx, clips, read, current) {
-  const missing = combatClipIds.filter(key => !clips.has(key));
+export function loadCombatClips(ctx, clips, read, current) {
+  return loadAudioClips(ctx, clips, manifest.files, read, current);
+}
+
+export async function loadAudioClips(ctx, clips, files, read, current) {
+  const missing = Object.keys(files).filter(key => !clips.has(key));
   let next = 0;
   async function worker() {
     while (current() && next < missing.length) {
       const key = missing[next++];
       let timer;
       try {
-        const bytes = read(manifest.files[key]);
+        const bytes = read(files[key]);
         const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(Error(key)), 5000); });
         const buffer = await Promise.race([bytes.then(data => current() && decode(ctx, data)), timeout]);
         if (current() && buffer?.duration > 0) clips.set(key, buffer);

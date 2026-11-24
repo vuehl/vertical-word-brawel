@@ -89,7 +89,7 @@ export function createCollectionUI(app,api,kit){
     return el('div','zc-dossier-controls journey-commands',[
       action('招式','moves',()=>moves(selected)),
       action('计划','plan',()=>plan(selected)),
-      action('外观','looks',()=>appearances(selected)),
+      action(['shiny','classic'].some(look=>appearanceOwned(p(),selected,look))?'换色':'外观','looks',()=>appearances(selected)),
     ],{'aria-label':'所选字灵的功能'});
   }
 
@@ -240,7 +240,7 @@ export function createCollectionUI(app,api,kit){
         'aria-pressed':selected,'aria-label':appearanceName(value)+' · '+(used?'使用中':available?'已获得':'未获得'),
         onclick:()=>{if(!selected)appearances(id,back,value);}});
     });
-    const hint=has?'切换外观仅改变字形配色，招式与出战资格相同。':
+    const hint=has?'所选配色会用于接下来的对局。':
       look?'抓获'+name+'的'+c.word+'，即可解锁此外观。':'抓获普通或异色的'+c.word+'，即可解锁普通外观。';
     const sheet=el('div','zc-look-sheet',el('div','zc-look-scroll',[hero,
       el('div','zc-look-index',[el('b','','外观选择'),el('span','','已获得  '+total+' / '+options.length)]),
@@ -250,7 +250,9 @@ export function createCollectionUI(app,api,kit){
     const actions=footer(async()=>{
       if(!base){unlock(id,()=>appearances(id,back,look));return;}
       if(!appearanceOwned(p(),id,look))return;
-      app.meta.setSkin(id,look);await app.meta.saveNow();back();
+      app.meta.setSkin(id,look);
+      try{await app.meta.saveNow(true);}catch(error){app.meta.setSkin(id,equipped);throw error;}
+      back();
     },!base?'查看解锁方式':current?'使用中':has?'使用'+name:'尚未解锁',base&&(!has||current),back);
     if(actions[1].disabled)actions[1].dataset.paperSurface='button-muted';
     const node=mount('collection-looks','字灵外观','',[sheet],actions);

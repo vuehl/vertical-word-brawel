@@ -1,5 +1,6 @@
 import {roster} from '../data/catalogs.js';
 import {starterSpecies,starterWords,characters} from '../data/starter-characters.js';
+import {isLiteSpecies,heroAppearanceOwned} from '../data/lite-rules.js';
 import {familyOf} from './collection-species.js';
 import {glyphWordForSpecies,glyphTone} from '../actors/paper-glyph-art.js';
 import {formCopy} from '../data/form-copy.js';
@@ -12,11 +13,9 @@ const previewGlyphs=Object.entries(formCopy).filter(([id,{word}])=>{
   .sort((a,b)=>glyphCatalog.enemies[a.word].index-glyphCatalog.enemies[b.word].index);
 export const collectionRoster=[...starterSpecies.map(id=>roster.find(c=>c.id===id)),...roster.filter(c=>!starterSpecies.includes(c.id)),...previewGlyphs];
 export const appearanceName=look=>look==='shiny'?'异色':look==='classic'?'经典异色':'普通';
-export const canDeploy=(profile,id)=>roster.some(c=>c.id===Number(id))&&(starterSpecies.includes(Number(id))||(profile.league??[]).includes(Number(id))||appearanceOwned(profile,id,'shiny')||appearanceOwned(profile,id,'classic'));
+export const canDeploy=(profile,id)=>isLiteSpecies(id);
 export function appearanceOwned(profile,id,look){
-  if(!look)return canDeploy(profile,id);
-  if(!['shiny','classic'].includes(look))return false;
-  return (profile[look==='shiny'?'shinies':'classics']??[]).some(s=>familyOf(s)===familyOf(id));
+  return look?heroAppearanceOwned(profile,id,look):canDeploy(profile,id);
 }
 export function collectionCharacter(id,api){
   id=Number(id);

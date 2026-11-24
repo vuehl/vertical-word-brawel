@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {combatClipIds, combatEvolutionSeconds, loadCombatClips} from '../../source/src/combat/audio-clips.js';
+import {combatClipIds, combatEvolutionSeconds, loadAudioClips, loadCombatClips} from '../../source/src/combat/audio-clips.js';
+import {buttonSoundFiles} from '../../source/src/ui/button-audio.js';
 import {combatSoundEvents} from '../art/combat-sound-events.mjs';
 import manifest from '../../resources/public/config/combat-audio.json' with {type:'json'};
 
@@ -35,7 +36,7 @@ function fixture(fetchClip = async()=>clipResponse) {
   const document={hidden:false,addEventListener(){}};
   const listeners=new Map();
   const env={AudioContext:Context,document,navigator:{},Ws:()=>false,performance:{now:()=>10000},
-    combatClipIds,combatEvolutionSeconds,loadCombatClips,fetch:fetchClip,Zt:path=>path,
+    combatClipIds,combatEvolutionSeconds,loadAudioClips,loadCombatClips,buttonSoundFiles,fetch:fetchClip,Zt:path=>path,
     matchMedia:()=>({matches:true}),addEventListener:(name,fn)=>listeners.set(name,fn),clearTimeout:id=>timers.delete(id),
     setTimeout:callback=>{const id=++nextTimer;timers.set(id,callback);return id;},
     setInterval(){return 1;},clearInterval(){},backgroundMusicEnabled:false};
@@ -67,7 +68,7 @@ test('every synth path releases sources, gains, filters and vibrato when finishe
 
 test('native missing onended cannot leak effect chains or exceed the voice budget',()=>{
   const {audio}=fixture();audio.init();const index=audio.ctx.nodes.length;
-  for(let i=0;i<100;i++)audio.click();
+  for(let i=0;i<100;i++)audio.tone(830,.053,'triangle',.11);
   assert.equal(audio.voices.size,audio.maxVoices);
   assert.equal(audio.ctx.nodes.length-index,audio.maxVoices*2);
   const ended=audio.ctx.nodes.slice(index);audio.ctx.currentTime+=2;audio.click();
@@ -148,7 +149,8 @@ test('every shipped file plays exactly once for its event, and menu actions do n
   const {audio}=fixture();
   audio.beginRun();await audio.preloadCombat();
   assert.deepEqual(combatSoundEvents.map(e=>e.key).sort(),[...combatClipIds].sort());
-  const files=fs.readdirSync(new URL('../../resources/public/assets/sfx/',import.meta.url)).sort();
+  const files=fs.readdirSync(new URL('../../resources/public/assets/sfx/',import.meta.url),{withFileTypes:true})
+    .filter(entry=>entry.isFile()).map(entry=>entry.name).sort();
   assert.deepEqual(files,Object.values(manifest.files).sort());
   for(const {key,method,args} of combatSoundEvents){
     audio.resetEffects();audio.ctx.nodes.length=0;
@@ -162,6 +164,37 @@ test('every shipped file plays exactly once for its event, and menu actions do n
   audio.endRun();audio.ctx.nodes.length=0;audio.coin();
   assert.ok(audio.ctx.nodes.some(n=>n.type==='square'));
   assert.ok(audio.ctx.nodes.every(n=>n.buffer!==audio.combatClips.get('coin')));
+});
+
+test('menu buttons use their own local sounds before, during and after a run',async()=>{
+  const reads=[];
+  const {audio}=fixture(async file=>{
+    reads.push(file);
+    if(file.startsWith('sfx/ui/')){
+      const wav=fs.readFileSync(new URL('../../resources/public/assets/'+file,import.meta.url));
+      assert.equal(wav.toString('ascii',8,12),'WAVE');
+    }
+    return clipResponse;
+  });
+  audio.init();audio.click('tap');
+  assert.equal(audio.voices.size,1,'the first tap has a sound while files are loading');
+  const load=audio.preloadUi();
+  assert.equal(audio.preloadUi(),load);
+  await load;
+  assert.deepEqual(reads,Object.values(buttonSoundFiles).map(file=>'sfx/'+file));
+  for(const [kind,transition] of [['confirm',()=>{}],['tap',()=>audio.beginRun()],['back',()=>audio.endRun()]]){
+    transition();audio.ctx.currentTime+=.2;
+    audio.click(kind);audio.click();
+    assert.equal(audio.voices.size,1,'a legacy click handler shares the same feedback');
+    const source=audio.ctx.nodes.findLast(node=>node.buffer);
+    assert.equal(source.buffer,audio.uiClips.get(kind));
+  }
+  await audio.preloadCombat();
+  for(const settings of [{sfx:0},{sfx:1,master:0}]){
+    audio.ctx.currentTime+=.2;audio.setVolumes(settings);
+    const count=audio.ctx.nodes.length;
+    audio.click('confirm');assert.equal(audio.ctx.nodes.length,count);
+  }
 });
 
 test('mid-battle stalled clock rebuilds after startup and interruption recovery respects mute',async()=>{

@@ -33,7 +33,7 @@ test('both forest summoning points and the sanctuary use the same final boss',()
 });
 test('settlement preserves enemy research and evolution, excludes removed captures and maps',()=>{
  const p=constrainLiteProfile(createProfile('test'));
- const result={species:16,biome:'forest',mode:'standard',tier:0,stage:4,victory:true,kills:100,time:600,level:45,progress:{league:[10,25,132,16],shinies:[25,4],classics:[10,132,16],forms:[59,150],seen:[25,151],research:{25:10}}};
+ const result={species:16,biome:'forest',mode:'standard',tier:0,stage:4,victory:true,kills:100,time:600,level:45,progress:{league:[10,25,132,16],shinies:[25,132,4],classics:[10,132,16],forms:[59,150],seen:[25,151],research:{25:10}}};
  const dust=settleRun(p,result);
  assert.ok(dust>0);assert.deepEqual(p.league,[4,16]);assert.deepEqual(p.unlocked,[4,16]);
  assert.deepEqual(p.shinies,[4]);assert.deepEqual(p.classics,[16]);assert.deepEqual(p.forms,[59]);
@@ -61,7 +61,12 @@ test('HTTP blocks removed content, saves valid play once, and restores progressi
  const stop=()=>new Promise(resolve=>{proc.once('exit',resolve);proc.kill();});
  const call=async(route,data,status=200)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method:data===undefined?'GET':'POST',headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});assert.equal(r.status,status,route);return r.json();};
  try{
-  await start();token=(await call('/auth/guest',{})).token;
+  await start();
+  for(const file of ['/','/index.html','/legal','/manifest.webmanifest','/src/game.js']){
+    const response=await fetch(`http://127.0.0.1:${port}${file}`);
+    assert.equal(response.status,404,file);
+  }
+  token=(await call('/auth/guest',{})).token;
   assert.deepEqual((await call('/profile')).profile.league,[4,16]);await call('/profile/starter',{id:132},400);await call('/profile/starter',{id:16});
   assert.deepEqual(await call('/coop/access'),{show:false,play:false});
   for(const route of ['/coop/rooms','/clans/board','/events/halloween26','/seasons/awards'])await call(route,undefined,404);
@@ -75,14 +80,16 @@ test('HTTP blocks removed content, saves valid play once, and restores progressi
   const short=await call('/runs',{...base,mode:'single-stage'});
   const finishShort='/runs/'+short.id+'/finish';
   await call(finishShort,{result},400);
-  const singleResult={...base,mode:'single-stage',stage:1,bosses:1,kills:40,time:100,splits:[100],victory:true};
+  const singleResult={...base,mode:'single-stage',stage:1,bosses:1,kills:40,time:100,splits:[100],victory:true,progress:{league:[132],shinies:[16]}};
   const single=await call(finishShort,{result:singleResult});
   const retry=await call(finishShort,{result:singleResult});
   assert.ok(single.stardust>0);assert.equal(single.profile.stardust,retry.profile.stardust);
+  await call('/runs',{...base,species:132},400);
   await stop();await start();const saved=(await call('/profile')).profile;
   assert.equal(saved.research[25],5);assert.equal(saved.stardust,single.profile.stardust);
   assert.equal(saved.times['forest-0'].time,600);assert.equal(saved.times['forest-single-stage'].time,100);
   assert.equal(saved.runs[0].mode,'single-stage');assert.equal(saved.counters.runs,2);
+  assert.deepEqual(saved.league,[4,16]);assert.deepEqual(saved.shinies,[16]);
  }finally{if(proc&&proc.exitCode===null)await stop();assert.equal(path.dirname(path.resolve(dir)),path.resolve(os.tmpdir()));assert.ok(path.basename(dir).startsWith('pokebonk-lite-test-'));await fs.rm(dir,{recursive:true,force:true});}
 });
 

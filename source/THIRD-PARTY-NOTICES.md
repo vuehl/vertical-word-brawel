@@ -5,7 +5,7 @@ The MIT license in `LICENSE` covers ONLY the original code in this repository, w
 - `server.mjs`
 - `tools/` (`pull.mjs`, `probe.mjs`, `mirror.mjs`)
 - `firebase/` (`backend.mjs`, `shared.mjs`, `backend.test.mjs`, rules + config files)
-- `public/turnstile-stub.js`
+- `../platform/turnstile-stub.js` (previously `public/turnstile-stub.js`)
 
 Everything else is third-party or upstream content, listed below, and is NOT covered by the MIT license.
 
@@ -17,7 +17,7 @@ Required Notice: Copyright 2026 JPTER78 (https://github.com/JPTER78/pokesurvivor
 
 The `net/` modules (`net.mjs`, `codec.mjs`, `coop.mjs`, `codec.test.mjs`, `INTEGRATION.md`) are derivative of that code and remain under PolyForm Noncommercial 1.0.0. They are NOT MIT-licensed. Non-commercial use, study, and modification are permitted; commercial use is not.
 
-## 2. PokéBonk client bundle (`public/assets/`, `public/index.html`, `public/legal`)
+## 2. PokéBonk client bundle
 
 The PokéBonk game client (build `mvilprw2`, v0.8.13) is the proprietary, unlicensed work of the PokéBonk project author ("Charcher", https://pokebonk.com). No license is granted for it. It is mirrored here verbatim for local study and interoperability testing only, and must not be redistributed or used commercially. It includes the Vite bundle (`main-*.js`, `news-*.js`, `three-*.js`, CSS, fonts) and the HTML pages.
 

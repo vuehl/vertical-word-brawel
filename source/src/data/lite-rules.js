@@ -46,6 +46,11 @@ export function playableStarter(id) {
   return isLiteSpecies(migrated) ? migrated : defaultStarter;
 }
 export const isLiteFamily = id => Object.hasOwn(heroWords, Number(id));
+export function heroAppearanceOwned(profile,id,look) {
+  if(!isLiteSpecies(id) || !['shiny','classic'].includes(look)) return false;
+  const captures=profile?.[look==='shiny'?'shinies':'classics']??[];
+  return captures.some(form=>isLiteFamily(form) && starterForSpecies(form).id===Number(id));
+}
 export function validLiteRun(run) {
   return !!run && isLiteSpecies(run.species) && run.biome === LITE_BIOME &&
     (!run.mode || run.mode === 'standard' || run.mode === 'classic' || (run.mode === SINGLE_STAGE && (run.tier ?? 0) === 0)) &&

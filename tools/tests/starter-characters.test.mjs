@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {roster} from '../../source/src/data/catalogs.js';
-import {constrainLiteProfile,isLiteFamily,validLiteRun,rosterForMode} from '../../source/src/data/lite-rules.js';
+import {constrainLiteProfile,heroAppearanceOwned,isLiteFamily,validLiteRun,rosterForMode} from '../../source/src/data/lite-rules.js';
 import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff,windSpeedDamageBonus,windBossDamage,updateStarterSpeed} from '../../source/src/data/starter-characters.js';
 import {glyphWordForSpecies} from '../../source/src/actors/paper-glyph-art.js';
 import {glyphCatalog} from '../../source/src/actors/glyph-catalog.js';
@@ -70,6 +70,17 @@ test('legacy starter selection migrates without losing currency, research, setti
     assert.deepEqual(profile.team,[1,132].includes(old)?[]:[id]);
   }
   for(const species of [1,7,17,18,58,59,132])assert.equal(validLiteRun({species,biome:'forest'}),false);
+});
+
+test('captured appearances unlock only the corresponding fire or wind hero',()=>{
+  const profile=constrainLiteProfile({league:[132],lastSpecies:132,shinies:[59,132],classics:[5,132]});
+  assert.deepEqual(profile.league,[4,16]);
+  assert.equal(profile.lastSpecies,4);
+  assert.ok(heroAppearanceOwned(profile,16,'shiny'));
+  assert.ok(heroAppearanceOwned(profile,4,'classic'));
+  assert.equal(heroAppearanceOwned(profile,4,'shiny'),false);
+  assert.equal(heroAppearanceOwned(profile,16,'classic'),false);
+  assert.equal(heroAppearanceOwned(profile,132,'shiny'),false);
 });
 
 test('rejoining restores wave time, keeps a wind branch and migrates only old evolution levels',()=>{
