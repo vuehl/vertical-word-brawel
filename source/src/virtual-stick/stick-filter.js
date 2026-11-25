@@ -37,12 +37,15 @@ export class StickFilter {
       this.history.length = 0;
       this.history.push({ t: sample.t, x: 0, y: 0 });
     } else {
-      const last = this.history[this.history.length - 1];
-      if (!last || last.t !== sample.t || last.x !== x || last.y !== y) {
-        this.history.push({ t: sample.t, x, y });
-        const taps = cfg.filterTaps || cfg.filterWeights.length;
-        while (this.history.length > taps) this.history.shift();
-      }
+      // 每个物理步都入队（哪怕样本没变）。历史窗口代表“最近 N 个物理步”，
+      // 手指甩过去后停住不动、不再有 touchmove 时，旧方向会在 N 步内被挤出窗口；
+      // 如果只在样本变化时入队，旧方向会永久残留在平均值里 = 方向与摇杆不同步。
+      const taps = cfg.filterTaps || cfg.filterWeights.length;
+      const slot = this.history.length >= taps ? this.history.shift() : {};  // 复用对象，不产生垃圾
+      slot.t = sample.t;
+      slot.x = x;
+      slot.y = y;
+      this.history.push(slot);
     }
 
     let ax = 0;
@@ -51,10 +54,11 @@ export class StickFilter {
       const w = cfg.filterWeights;
       const n = this.history.length;
       const h = this.history;
-      // 样本不足时只取最新 n 条，权重按“最新优先”从权重表尾部对齐，最后归一化。
+      // history 是旧 → 新，权重表是新 → 旧：最新样本（i = n-1）取 w[0]。
+      // 样本不足时只用权重表的前 n 项，最后归一化。
       let wsum = 0;
       for (let i = 0; i < n; i++) {
-        const wi = w[w.length - n + i];
+        const wi = w[n - 1 - i];
         ax += h[i].x * wi;
         ay += h[i].y * wi;
         wsum += wi;

@@ -284,3 +284,153 @@ test('压力：单帧卡 1 秒，人不会飞出屏幕', () => {
   assert.ok(jump < cfg.maxSpeed * cfg.maxFrameDelta + cfg.maxStepDistance, `单帧位移 ${jump} 过大`);
 });
 
+/* ------------------------------------------------------------------ *
+ * 回归：方向不同步 / 输入滞后 / 联机断流 等缺陷的最小复现
+ * ------------------------------------------------------------------ */
+
+const RECT = { left: 0, top: 0, width: 400, height: 800 };
+function makeCtl(extra = {}) {
+  const env = { clock: 0 };
+  env.ctl = new VirtualStickController({ now: () => env.clock, rectProvider: () => RECT, ...extra });
+  return env;
+}
+// 微信小游戏真实事件形状：timeStamp 在 event 上，Touch 只有 identifier/clientX/clientY。
+const wxEv = (x, y, ts, up = false) => ({
+  timeStamp: ts,
+  changedTouches: [{ identifier: 0, clientX: x, clientY: y }],
+  touches: up ? [] : [{ identifier: 0, clientX: x, clientY: y }],
+});
+
+test('回归：一帧跑多步时，插值区间仍然只是“最后一步”', () => {
+  const env = makeCtl();
+  const { ctl } = env;
+  ctl.handle('start', wxEv(100, 600, 0));
+  for (let i = 0; i < 120; i++) {
+    env.clock += 20;
+    ctl.handle('move', wxEv(164, 600, env.clock));
+    ctl.update(0.02);
+  }
+  env.clock += 45;
+  const n = ctl.update(0.045);
+  assert.ok(n >= 2, `这一帧应补多步，实际 ${n}`);
+  const span = ctl.view.cx - ctl.view.px;
+  const one = cfg.maxSpeed * cfg.fixedStep;
+  assert.ok(Math.abs(span - one) < one * 0.2, `插值跨度 ${span} 应约等于一步 ${one}`);
+});
+
+test('回归：teleport 之后渲染不从原点插值过来', () => {
+  const env = makeCtl();
+  const { ctl } = env;
+  ctl.teleport(10, 0, 5);
+  assert.equal(ctl.render().x, 10);
+  env.clock += 20;
+  ctl.update(0.02);
+  const p = ctl.render();
+  assert.equal(p.x, 10);
+  assert.equal(p.z, 5);
+});
+
+test('回归：暂停一段时间 / 调用方传钳位 dt，输入也必须下一步就生效', () => {
+  const env = makeCtl();
+  const { ctl } = env;
+  // 高负载：真实每帧 100ms，但游戏主循环把 dt 钳到 33ms 再传进来。
+  for (let i = 0; i < 20; i++) {
+    env.clock += 100;
+    ctl.update(0.033);
+  }
+  env.clock += 300;                        // 再叠一段完全没调 update 的暂停
+  ctl.handle('start', wxEv(100, 600, env.clock));
+  ctl.handle('move', wxEv(164, 600, env.clock));
+  env.clock += 20;
+  ctl.update(0.02);
+  assert.equal(ctl.input.held, true, '按下必须在下一步被消费');
+  assert.equal(ctl.sampler.queue.length - ctl.sampler.cursor, 0, '队列不应有“未到点”的积压');
+});
+
+test('回归：微信事件的 timeStamp 在 event 上，也要参与时序映射', () => {
+  const env = makeCtl();
+  const { ctl } = env;
+  env.clock = 1000;
+  ctl.handle('start', wxEv(100, 600, 5000));
+  env.clock = 1100;                        // 事件实际发生在按下后 40ms，却拖到 100ms 才投递
+  ctl.handle('move', wxEv(164, 600, 5040));
+  const q = ctl.sampler.queue;
+  assert.equal(q[q.length - 1].t, 1040, '应按事件间隔还原时间，而不是到达时间');
+  assert.ok(ctl.sampler.stats.late >= 1, '迟到应被统计');
+});
+
+test('回归：快速甩向后停住不动，方向必须收敛到手指当前位置', () => {
+  const f = new StickFilter(cfg);
+  let r;
+  for (let i = 0; i < 60; i++) r = f.update({ t: 1, x: 1, y: 0, held: true }, cfg.fixedStep);
+  r = f.update({ t: 2, x: 0.7, y: 0.7, held: true }, cfg.fixedStep);
+  // 手指停住后不再有 touchmove，采样器每步返回同一个样本。
+  for (let i = 0; i < 120; i++) r = f.update({ t: 3, x: 0, y: 1, held: true }, cfg.fixedStep);
+  assert.ok(Math.abs(r.x) < 0.02, `不应残留旧方向，实际 x=${r.x}`);
+  assert.ok(r.y > 0.95, `应指向正上，实际 y=${r.y}`);
+});
+
+test('回归：滤波权重“由新到旧”，最新样本权重最大', () => {
+  const c = createStickConfig({ smoothAlpha: 0.001, deadZone: 0, deadZoneRelease: 0 });
+  const f = new StickFilter(c);
+  f.update({ t: 1, x: 0, y: 0, held: true }, c.fixedStep);
+  f.update({ t: 2, x: 0, y: 0, held: true }, c.fixedStep);
+  const r = f.update({ t: 3, x: 1, y: 0, held: true }, c.fixedStep);
+  assert.ok(Math.abs(r.x - 0.5) < 0.01, `最新样本权重应为 0.5，实际 ${r.x}`);
+});
+
+test('回归：联机松手——不补发旧向量，下一步立刻发 held=false', () => {
+  const sent = [];
+  const env = makeCtl({ netMode: 'coop-local', onSendInput: (s) => sent.push(s) });
+  const { ctl } = env;
+  ctl.handle('start', wxEv(100, 600, 0));
+  for (let i = 0; i < 30; i++) {
+    env.clock += 20;
+    ctl.handle('move', wxEv(164, 600, env.clock));
+    ctl.update(0.02);
+  }
+  const n = sent.length;
+  ctl.handle('end', wxEv(164, 600, env.clock, true));
+  assert.equal(sent.length, n, '松手瞬间不应把还按着的旧输入再发一遍');
+  env.clock += 20;
+  ctl.update(0.02);
+  assert.equal(sent.length, n + 1, '松手后的第一步必须立刻发，不等节流窗口');
+  assert.equal(sent[sent.length - 1].held, false);
+  assert.ok(Number.isInteger(sent[sent.length - 1].tick), '快照带固定步 tick');
+});
+
+test('回归：切后台（wx.onHide 不带参数）立刻发零输入', () => {
+  const sent = [];
+  const env = makeCtl({ netMode: 'coop-local', onSendInput: (s) => sent.push(s) });
+  const { ctl } = env;
+  ctl.handle('start', wxEv(100, 600, 0));
+  for (let i = 0; i < 30; i++) {
+    env.clock += 20;
+    ctl.handle('move', wxEv(164, 600, env.clock));
+    ctl.update(0.02);
+  }
+  assert.equal(ctl.handle('hide'), true);
+  const last = sent[sent.length - 1];
+  assert.equal(last.held, false);
+  assert.equal(last.x, 0);
+  assert.equal(last.y, 0);
+});
+
+test('回归：远端序号 16 位回绕后仍然收包，旧包仍然丢', () => {
+  const r = new RemoteStick(cfg);
+  assert.equal(r.receive({ s: 65535, t: 0, x: 1, y: 0, held: true }, 1000), true);
+  assert.equal(r.receive({ s: 0, t: 50, x: 1, y: 0, held: true }, 1050), true, '回绕后的新包');
+  assert.equal(r.receive({ s: 65535, t: 60, x: 0, y: 1, held: true }, 1060), false, '旧包');
+});
+
+test('回归：远端断流超时后输入归零，不会一直跑下去', () => {
+  const r = new RemoteStick(cfg);
+  r.receive({ s: 1, t: 0, x: 1, y: 0, held: true }, 1000);
+  assert.ok(r.advance(1200).x > 0.9, '短时间内保持输入');
+  const out = r.advance(1000 + cfg.remoteTimeoutMs + 500);
+  assert.equal(out.x, 0);
+  assert.equal(out.held, false);
+  // 对端重连后序号/时钟都重置，也必须能重新接上。
+  assert.equal(r.receive({ s: 1, t: 0, x: 0, y: 1, held: true }, 9000), true);
+});
+

@@ -14,12 +14,15 @@ import { FixedStepRunner, RenderState } from './stick-render.js';
 import { InputSender, RemoteStick } from './stick-net.js';
 
 // 把微信小游戏 / 浏览器两种触摸事件统一成 {id, x, y, t}。
-// 微信的 x/y 已经相对 canvas；DOM 的需要减掉画布矩形。
-export function readTouchPoint(touch, rect, dpr = 1) {
+// 注意：timeStamp 在“事件对象”上，不在 Touch 上（微信与 DOM 都是如此），
+// 所以必须由调用方把 event.timeStamp 传进来，否则时序映射永远拿不到时间戳。
+// 微信 Touch 只有 identifier / clientX / clientY / pageX / pageY；
+// x/y 分支留给已经换算好画布坐标的自定义事件。
+export function readTouchPoint(touch, rect, dpr = 1, eventStamp) {
   if (!touch) return null;
+  const t = Number.isFinite(touch.timeStamp) ? touch.timeStamp : eventStamp;
   if (Number.isFinite(touch.x) && Number.isFinite(touch.y)) {
-    // 微信小游戏：x/y 是逻辑像素
-    return { id: touch.identifier ?? 0, x: touch.x * dpr, y: touch.y * dpr, t: touch.timeStamp };
+    return { id: touch.identifier ?? 0, x: touch.x * dpr, y: touch.y * dpr, t };
   }
   const cx = Number.isFinite(touch.clientX) ? touch.clientX : 0;
   const cy = Number.isFinite(touch.clientY) ? touch.clientY : 0;
@@ -27,7 +30,7 @@ export function readTouchPoint(touch, rect, dpr = 1) {
     id: touch.identifier ?? 0,
     x: (cx - (rect?.left || 0)) * dpr,
     y: (cy - (rect?.top || 0)) * dpr,
-    t: touch.timeStamp,
+    t,
   };
 }
 
@@ -52,6 +55,8 @@ export class VirtualStickController {
     // 联机开关：mode = 'solo' | 'coop-local' | 'coop-authority'
     this.netMode = options.netMode || 'solo';
     this.onSendInput = options.onSendInput || null;
+    this.tick = 0;                 // 固定步序号，随输入快照一起导出，供帧同步对齐
+    this._flushPending = false;    // 松手后，消费到 held=false 的那一步立刻补发
 
     this.runner = new FixedStepRunner(this.cfg, (dt) => this._step(dt));
     this.view.reset();
@@ -61,14 +66,32 @@ export class VirtualStickController {
 
   // 统一入口。返回 true 表示这次事件被摇杆消费（调用方应 preventDefault）。
   handle(type, event) {
+    if (type === 'blur' || type === 'hide') {
+      // 切后台/失焦（wx.onHide 不带事件参数）：立刻松手，避免回来时“旧方向还在走”。
+      // 后台期间主循环不跑，所以零输入必须在这里直接发出去，不能等下一个物理步。
+      this.sampler.abort();
+      this.filter.reset();
+      this.input.x = this.input.y = 0;
+      this.input.held = false;
+      this._flushPending = false;
+      if (this.netMode !== 'solo') {
+        const snap = this.sender.flush(this.input, this.now());
+        if (snap) {
+          snap.tick = this.tick;
+          this.onSendInput?.(snap);
+        }
+      }
+      return true;
+    }
     if (!event) return false;
+    const stamp = event.timeStamp;
     const rect = this.rectProvider();
     const list = event.changedTouches || event.touches || [event];
     let consumed = false;
 
     if (type === 'start') {
       for (const t of list) {
-        const p = readTouchPoint(t, rect, this.dpr);
+        const p = readTouchPoint(t, rect, this.dpr, stamp);
         if (!p) continue;
         if (this.sampler.active) continue;                  // 只认第一根手指
         if (!this._inZone(p.x, p.y)) continue;
@@ -85,7 +108,7 @@ export class VirtualStickController {
 
     if (type === 'move') {
       for (const t of list) {
-        const p = readTouchPoint(t, rect, this.dpr);
+        const p = readTouchPoint(t, rect, this.dpr, stamp);
         if (!p) continue;
         if (this.sampler.move(p.id, p.x, p.y, p.t)) consumed = true;
       }
@@ -94,29 +117,22 @@ export class VirtualStickController {
 
     if (type === 'end' || type === 'cancel') {
       // touchend 里手指已不在 touches 中，必须用 changedTouches 拿到 id。
+      // 松手事件此刻只是进了队列，this.input 还是“按着”的旧向量，不能在这里发；
+      // 置标记，等物理步真正消费到 held=false 时再跳过节流立刻发。
       const touches = event.touches;
       if (touches && touches.length === 0 && this.sampler.active) {
-        this.sampler.end(undefined, undefined);
-        if (this.netMode !== 'solo') this._flushInput(true);
+        this.sampler.end(undefined, stamp);
+        this._flushPending = true;
         return true;
       }
       for (const t of list) {
         const id = t.identifier ?? t.id ?? 0;
-        if (this.sampler.end(id, t.timeStamp)) {
+        if (this.sampler.end(id, Number.isFinite(t.timeStamp) ? t.timeStamp : stamp)) {
           consumed = true;
-          if (this.netMode !== 'solo') this._flushInput(true);
+          this._flushPending = true;
         }
       }
       return consumed;
-    }
-
-    if (type === 'blur' || type === 'hide') {
-      // 切后台/失焦：立刻松手，避免回来时“旧方向还在走”。
-      this.sampler.abort();
-      this.sampler.end(undefined, undefined);
-      this.filter.reset();
-      if (this.netMode !== 'solo') this._flushInput(true);
-      return true;
     }
     return false;
   }
@@ -185,18 +201,23 @@ export class VirtualStickController {
   // 每帧调用一次：frameDeltaSeconds 建议用真实 elapsed（未钳位），内部再钳。
   update(frameDeltaSeconds) {
     const rawDt = Math.max(0, frameDeltaSeconds || 0);
-    // 仿真时钟必须跟着真实时间走，否则采样队列里的事件会“永远还没到点”。
-    // 超过 0.5s 视为切后台/严重卡顿：直接把时钟对齐回真实时间。
-    if (rawDt > 0.5) this.clockMs = this.now();
-    else this.clockMs += rawDt * 1000;
+    // 仿真时钟每帧直接对齐采样器用的同一个时钟，不用 dt 累加：
+    // 暂停期间不调 update、或调用方传进来的是钳位/缩放后的 dt 时，累加出来的时钟
+    // 会落后于事件时间戳，队列里的输入“永远还没到点”→ 方向滞后、越卡越不同步。
+    this.clockMs = this.now();
 
     // 物理步长本身仍由 runner 钳位，卡顿不会变成“一步走很远”。
-    const steps = this.runner.advance(rawDt);
-    if (steps > 0) this.view.capture(this.body);
-    return steps;
+    return this.runner.advance(rawDt);
+  }
+
+  // 传送/出生/复活：物理与渲染快照一起重置，否则首帧会从旧位置插值滑过来。
+  teleport(x, y, z) {
+    this.body.teleport(x, y, z);
+    this.view.reset(x, y, z, this.body.facing);
   }
 
   _step(dt) {
+    this.tick++;
     const simMs = this.clockMs;
     const raw = this.sampler.consume(simMs);
     const filtered = this.filter.update(raw, dt);
@@ -206,10 +227,21 @@ export class VirtualStickController {
     this.input.held = raw.held;
 
     this.body.step(filtered, dt);
+    // 每个物理步都推进一次快照：prev/curr 始终是“相邻两步”。
+    // 若一帧跑 N 步只推一次，prev 会退到 N 步之前，帧率在 1 步/2 步间波动时画面忽快忽慢。
+    this.view.capture(this.body);
 
     if (this.netMode !== 'solo') {
-      const snap = this.sender.sample({ x: filtered.x, y: filtered.y, held: raw.held }, simMs);
-      if (snap) this.onSendInput?.(snap);
+      // 只导出滤波后的输入向量（+ 序号/时间/tick），绝不带渲染插值坐标。
+      const flush = this._flushPending && !raw.held;
+      if (flush) this._flushPending = false;
+      const snap = flush ? this.sender.flush(this.input, simMs) : this.sender.sample(this.input, simMs);
+      if (snap) {
+        snap.tick = this.tick;
+        this.onSendInput?.(snap);
+      }
+    } else {
+      this._flushPending = false;
     }
   }
 
@@ -242,23 +274,13 @@ export class VirtualStickController {
     return r.advance(this.clockMs, out);
   }
 
-  // 强制补发一次（松手、暂停时调用，确保对端立刻停住）。
-  _flushInput(force) {
-    if (!force) return;
-    const snap = this.sender.flush(
-      { x: this.input.x, y: this.input.y, held: this.input.held },
-      this.clockMs,
-    );
-    if (snap) this.onSendInput?.(snap);
-  }
-
   // 给服务端/调试面板的完整状态。
   debugState() {
     return {
       sampler: { active: this.sampler.active, queued: this.sampler.queue.length - this.sampler.cursor, ...this.sampler.stats },
       input: { ...this.input },
       body: { x: this.body.x, z: this.body.z, speed: this.body.speed, facing: this.body.facing },
-      clock: { simMs: this.clockMs, steps: this.runner.steps, dropped: this.runner.dropped, alpha: this.runner.alpha },
+      clock: { simMs: this.clockMs, tick: this.tick, steps: this.runner.steps, dropped: this.runner.dropped, alpha: this.runner.alpha },
     };
   }
 }

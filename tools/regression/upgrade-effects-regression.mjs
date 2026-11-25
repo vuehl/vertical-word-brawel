@@ -56,8 +56,13 @@ export async function reviewUpgradeEffects(page,dir){
       await r.sprites.prepareHeroForm(from);await r.sprites.prepareHeroForm(to);
       p.moves.forEach(m=>{if(m)m.timer=999;});
       r.nextEvo={to,level:p.level};const before=r.stats.evolutions,oldHp=Math.round(p.maxHp);
+      const camera=r.r.camera;
+      r.updateCamera(0);
+      const wide=camera.projectionMatrix.elements[5];
       r.startEvolution();
       [...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
+      r.updateCamera(0);
+      const entrance=[camera.projectionMatrix.elements[5]];
       const {reveal,duration}=r.vfx.upgrade.events[0],steps=Math.ceil(reveal*.5*30);
       const frames=[],get=r.sprites.getPlayerGlyph,clock=r.time,position=p.pos.clone();
       const speed=p.speedNow,hurt=p.hurtT;p.speedNow=4;p.hurtT=.2;
@@ -65,9 +70,14 @@ export async function reviewUpgradeEffects(page,dir){
         const frame=args[3];frames.push({action:frame?.action,index:frame?.index,species:frame?.species});
         return get(...args);
       };
-      try{for(let i=0;i<steps;i++)r.update(reveal*.5/steps);}
+      try{
+        for(let i=0;i<steps;i++){
+          r.update(reveal*.5/steps);
+          if(i===0||i===4)entrance.push(camera.projectionMatrix.elements[5]);
+        }
+      }
       finally{r.sprites.getPlayerGlyph=get;p.speedNow=speed;p.hurtT=hurt;}
-      const camera=r.r.camera,rig=r.vfx.upgrade.camera,point=p.pos.clone();point.y+=.08;
+      const rig=r.vfx.upgrade.camera,point=p.pos.clone();point.y+=.08;
       const view=point.clone().applyMatrix4(camera.matrixWorldInverse),projection=camera.projectionMatrix.elements;
       const clipW=projection[3]*view.x+projection[7]*view.y+projection[11]*view.z+projection[15];
       const focus=p.pos.clone().setY(p.pos.y+.5).project(camera);
@@ -78,7 +88,7 @@ export async function reviewUpgradeEffects(page,dir){
         lightFrame:r.vfx.upgrade.screen.mesh.visible?r.vfx.upgrade.screen.uniforms.frame.value:-1,
         fullScreen:r.vfx.upgrade.screen.loaded&&!r.vfx.upgrade.light.mesh.visible,
         overlay:!!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-cutin,.zx-evolution-result'),
-        frames,framing,worldPaused:r.time===clock,stationary:p.pos.equals(position)};
+        frames,framing,zoom:{wide,entrance,close:projection[5]},worldPaused:r.time===clock,stationary:p.pos.equals(position)};
     },{from,to});
     assert.equal(start.state,'evolving');assert.equal(start.species,from);assert.equal(start.count,0);assert.ok(!start.front&&!start.rear);assert.equal(start.overlay,false);
     assert.equal(start.lightFrame,55,'Golden spiral is loaded and playing on the original form');
@@ -86,6 +96,9 @@ export async function reviewUpgradeEffects(page,dir){
     assert.ok(Math.abs(start.reveal/start.duration-4.4/6.2)<1e-8,'Keep the original GIF charge/release ratio');
     assert.ok(start.fullScreen,'The supplied full-screen atlas replaces the cropped light');
     const cover=Math.max(width/390,height/844);
+    const {wide,entrance:[initial,first,midway],close}=start.zoom;
+    assert.equal(initial,wide,'Start the evolution at the gameplay zoom');
+    assert.ok(wide<first&&first<midway&&midway<close,'Ease the camera into the close-up across several frames');
     assert.ok(Math.abs(start.framing.x-width/2)<.1,'Center the evolution camera on the character');
     assert.ok(Math.abs(start.framing.y-height/2)<.1,'Keep the gameplay camera center during evolution: '+JSON.stringify({width,height,framing:start.framing}));
     assert.ok(Math.abs(start.framing.inkPixels-80*cover)<.1,'Match the reference character size');
@@ -135,10 +148,11 @@ export async function reviewUpgradeEffects(page,dir){
       const sealInk=inkCount(seal.getContext('2d').getImageData(0,0,seal.width,seal.height).data);
       const cardInk=inkCount(card.getContext('2d').getImageData(238*2,0,58*2,64*2).data);
       return {lift:r.player.evolutionLift,sealInk,cardInk,frames:frames.size,settleTime:r.realTime-landedAt,cards:root.querySelectorAll('.zx-evolution-result').length,
-        healthHidden:root.querySelector('.zx-player-health').hidden};
+        healthHidden:root.querySelector('.zx-player-health').hidden,returningZoom:r.r.camera.projectionMatrix.elements[5]};
     },from===16?1/60:1/30);
     assert.ok(stamped.settleTime<=.24,'Stamp should settle within the short entrance animation');
     assert.equal(stamped.lift,0);assert.equal(stamped.cards,1);assert.equal(stamped.cardInk,0);assert.ok(!stamped.healthHidden&&stamped.sealInk>100&&stamped.frames>1);
+    assert.ok(wide<stamped.returningZoom&&stamped.returningZoom<close,'Ease the camera back to the gameplay view');
     await page.evaluate(()=>app.run.ui.toast('终极技已就绪！',null));
     await draw(`evolution-${from}-${to}-result`);
     const result=await page.evaluate(()=>{
@@ -160,11 +174,12 @@ export async function reviewUpgradeEffects(page,dir){
       const r=app.run;for(let i=0;i<78;i++)r.update(1/30);
       return {species:r.player.speciesId,state:r.state,evolutions:r.stats.evolutions,scale:r.player.renderScale,
         expired:!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-result'),screenCleared:!r.vfx.upgrade.screen.mesh.visible,
-        gl:app.r.renderer.getContext().getError()};
+        zoom:r.r.camera.projectionMatrix.elements[5],gl:app.r.renderer.getContext().getError()};
     });
+    assert.equal(end.zoom,wide,'Restore the gameplay zoom after evolution');
     assert.equal(end.species,to);assert.equal(end.state,'play');assert.equal(end.evolutions,start.before+1);assert.equal(end.scale,1);assert.ok(end.expired);assert.equal(end.gl,0);
     assert.ok(end.screenCleared);
-    report.evolutions.push({...start,end});console.log('Shared evolution',from,to);
+    report.evolutions.push({...start,returningZoom:stamped.returningZoom,end});console.log('Shared evolution',from,to);
   }
   report.settings=await page.evaluate(()=>{
     const r=app.run,fx=r.vfx.upgrade;

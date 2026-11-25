@@ -107,7 +107,8 @@ export class RemoteStick {
     this.id = id;
     this.buf = [];            // 按本地时间升序的输入快照
     this.lastSeq = -1;
-    this.clockOffset = null;  // 远端时间 - 本地时间
+    this.lastRecvMs = null;   // 最近一次收包的本地时间，用于断流超时
+    this.clockOffset = null;  // 本地时间 - 远端时间
     this.playing = { x: 0, y: 0, held: false };
     this.jitterMs = 0;
     this.starved = 0;
@@ -123,6 +124,7 @@ export class RemoteStick {
   reset() {
     this.buf.length = 0;
     this.lastSeq = -1;
+    this.lastRecvMs = null;
     this.clockOffset = null;
     this.playing.x = this.playing.y = 0;
     this.playing.held = false;
@@ -137,8 +139,14 @@ export class RemoteStick {
   //   {..., ax, az, localX, localZ}     附带权威位置时的校正面
   receive(snap, localMs, localX, localZ) {
     const s = decodeInput(snap);
-    if (s.seq <= this.lastSeq) return false;   // 旧包/重复包直接丢，绝不回放
+    if (this.lastSeq >= 0) {
+      // 序号只有 16 位，会回绕（20Hz 约 55 分钟一圈）：按“环形距离”判断新旧，
+      // 落在后半圈的才是旧包/重复包，直接丢，绝不回放。
+      const ahead = (s.seq - this.lastSeq) & 0xffff;
+      if (ahead === 0 || ahead >= 0x8000) return false;
+    }
     this.lastSeq = s.seq;
+    this.lastRecvMs = localMs;
 
     // 时钟对齐：远端 t 与本地时钟可能不同源，用慢速跟随估计偏移。
     if (this.clockOffset === null) this.clockOffset = localMs - s.t;
@@ -188,12 +196,23 @@ export class RemoteStick {
     const delayMs = Math.min(cfg.maxBufferMs, cfg.interpBufferMs + Math.min(80, this.jitterMs * 0.5));
     const targetTime = localMs - delayMs;
 
+    // 断流超时：对端掉线/切后台时不能让他按最后一个方向一直跑下去。
+    // 输入归零（物理层会平滑减速），并重置流状态，对端重连后序号/时钟从头来也能接上。
+    if (this.lastRecvMs !== null && localMs - this.lastRecvMs > cfg.remoteTimeoutMs) {
+      this.buf.length = 0;
+      this.lastSeq = -1;
+      this.clockOffset = null;
+      this.lastRecvMs = null;
+      this.playing.x = this.playing.y = 0;
+      this.playing.held = false;
+    }
+
     while (this.buf.length >= 2 && this.buf[1].t <= targetTime) this.buf.shift();
     const a = this.buf[0];
     const b = this.buf[1] || a;
 
     if (!a) {
-      // 断流：保持上一个输入方向，不做“突然停住再突然走”的抽搐。
+      // 还没收到包 / 已超时归零：维持 playing 当前值。
       this.starved++;
     } else if (a === b) {
       this.playing.x = a.x;

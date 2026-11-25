@@ -58,6 +58,7 @@ export class RenderState {
     this.pz = this.cz = z;
     this.pf = this.cf = f;
     this.ready = true;
+    if (this._tmp) this._tmp._init = false;   // 传送后视觉二次平滑也要重新起步
   }
 
   capture(body) {

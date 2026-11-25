@@ -4,6 +4,8 @@ import {glyphBillboardSize} from '../actors/hero-actions.js';
 import reference from '../../../resources/public/assets/vfx/evolution-screen.json' with {type:'json'};
 import {EVOLUTION_DURATION} from './evolution-timing.js';
 
+const CAMERA_TRANSITION_SECONDS=.35;
+
 // Match the reference's 80 px character size by changing the actual camera
 // projection so the desk, glyph and world-space orbits share the same zoom.
 export class EvolutionCamera {
@@ -24,7 +26,8 @@ export class EvolutionCamera {
   apply(){
     if(!this.actor)return;
     const age=this.run.realTime-this.started;
-    if(age>=EVOLUTION_DURATION+.35||this.actor.dead){this.actor=null;return;}
+    const end=EVOLUTION_DURATION+CAMERA_TRANSITION_SECONDS;
+    if(age>=end||this.actor.dead){this.actor=null;return;}
     const c=this.run.r.camera;
     c.updateMatrixWorld();
     this.base=this.savedProjection.copy(c.projectionMatrix);this.aspect=c.aspect;
@@ -37,7 +40,8 @@ export class EvolutionCamera {
     const anchorX=(p[0]*this.point.x+p[4]*this.point.y+p[8]*this.point.z+p[12])/w;
     const anchorY=(p[1]*this.point.x+p[5]*this.point.y+p[9]*this.point.z+p[13])/w;
     const targetY=(1-2*reference.camera.feetY/reference.height)/spanY;
-    let blend=Math.max(0,Math.min(1,(EVOLUTION_DURATION+.35-age)/.35));blend=blend*blend*(3-2*blend);
+    const transition=Math.max(0,Math.min(1,age/CAMERA_TRANSITION_SECONDS,(end-age)/CAMERA_TRANSITION_SECONDS));
+    const blend=transition*transition*(3-2*transition);
     // The paper camera already puts the player at the center of the projection.
     const centered=this.run.terrain.zxPaper;
     const scale=1+(zoom-1)*blend,dx=centered?0:-anchorX*zoom*blend,dy=centered?0:(targetY-anchorY*zoom)*blend;

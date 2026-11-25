@@ -32,6 +32,7 @@ export const DEFAULT_STICK_CONFIG = Object.freeze({
   inputEpsilon: 0.02,      // 输入变化超过该值才发（配合间隔做节流）
   interpBufferMs: 90,      // 远端播放缓冲时长，抗网络抖动
   maxBufferMs: 320,        // 远端缓冲上限，超过就丢最旧包
+  remoteTimeoutMs: 1000,   // 远端超过该时长没来包（约 4 个心跳）视为断流：输入归零，等重连
   correctionHalfLifeMs: 120, // 位置校正的半衰期：越小回滚越快
   correctionMaxSpeed: 9,   // 校正的最大贴回速度（单位/秒），保证“柔和拉扯”
   snapThreshold: 6,        // 误差超过该值才允许瞬移（复活/换区等真实传送）
