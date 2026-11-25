@@ -168,13 +168,18 @@ async function verifyStartup(){
   await page.waitForFunction(()=>window.textRequested&&window.playDownloaded||window.problem,{timeout:20000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
   const baseline=process.argv.includes('--baseline');
-  await page.waitForFunction(floor=>bootPercentages[bootPercentages.length-1]>=floor,{},baseline?35:60);
+  await page.waitForFunction(floor=>bootPercentages[bootPercentages.length-1]>=floor,{},baseline?35:40);
   const playReady=await page.evaluate(()=>bootPercentages[bootPercentages.length-1]);
-  assert.ok(baseline ? playReady===35||playReady===50 : playReady>=60&&playReady<90);
-  const halfText=baseline?(playReady===35?42:67):68;
+  assert.ok(baseline ? playReady===35||playReady===50 : playReady===40);
+  if(!baseline){
+    const labels=await page.evaluate(()=>bootLabels.map(parseFloat));
+    assert.ok(labels.every((v,i)=>!i||v-labels[i-1]<=3.01),'A single download callback must not jump the displayed bar');
+  }
+  const halfText=baseline?(playReady===35?42:67):48;
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
   await page.evaluate(()=>window.reportTextProgress(50));
   await page.waitForFunction(p=>bootPercentages[bootPercentages.length-1]>=p,{},halfText);
+  if(!baseline)await page.waitForFunction(()=>bootLabels[bootLabels.length-1]==='48.3%');
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])),'00-loading.png');
   async function verifyMotion(){
     if(baseline||!process.argv.includes('--boot-only'))return;
@@ -199,8 +204,7 @@ async function verifyStartup(){
     assert.ok(samples>3&&longest<1000,'Moving bar must update within every second, longest gap '+longest+'ms');
     assert.ok(labels.every(label=>/^\d+\.\d%$/.test(label)),'Boot percentages must have one decimal place');
     const values=labels.map(parseFloat);
-    assert.ok(values.at(-1)>values[0]&&values.every((n,i)=>n<100&&(!i||n>=values[i-1])),
-      'The visible percentage must advance while callbacks are paused: '+labels);
+    assert.ok(values.every(n=>n===values[0]&&n<100),'Only the sweep should animate while real work is paused: '+labels);
     console.log('Stalled boot progress animation:',samples,'updates, longest gap',longest,'ms');
   }
   await verifyMotion();
@@ -245,7 +249,7 @@ async function verifyStartup(){
   if(checkGlyphGate){
     await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
     await page.evaluate(()=>releaseHomeStatus());
-    await page.waitForFunction(()=>bootPercentages.includes(95));
+    await page.waitForFunction(()=>bootPercentages.includes(82));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
     assert.equal(await page.evaluate(()=>!!app.screen?.querySelector('button')||bootPercentages.includes(100)),false);
     await page.evaluate(()=>releaseGlyphAtlas());
@@ -259,7 +263,7 @@ async function verifyStartup(){
     return;
   }
   if(!checkGlyphGate){
-    await page.waitForFunction(()=>window.homeStatusRequested && window.bootPercentages.at(-1)>=97 ||window.problem,{timeout:60000});
+    await page.waitForFunction(floor=>window.homeStatusRequested && window.bootPercentages.at(-1)>=floor ||window.problem,{timeout:60000},baseline?97:95);
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels.at(-1))),'00-background.png');
     await verifyMotion();

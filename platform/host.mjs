@@ -53,7 +53,7 @@ function viewport(info) {
 }
 export async function setup(host) {
   await initCrypto();
-  host.bootStage?.('装载字体与界面',91);
+  host.bootStage?.('正在加载字体与界面',74);
   const {document:doc}=D.parseHTML('<!doctype html><html><head></head><body><canvas id="game"></canvas><div id="ui"></div></body></html>');
   const win=new D.EventTarget(),system=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();
   const view=viewport(system);
@@ -65,8 +65,7 @@ export async function setup(host) {
   });
   const controls=createControlLayer(makeCanvas);
   const readyBlink=createReadyBlink(makeCanvas);
-  const ultimateCast=createUltimateCast(()=>wx.createImage(),makeCanvas,
-    host.files.pathFor,path=>wx.getFileSystemManager().readFileSync(path));
+  let ultimateCast,comboNameplate;
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
   readDevicePerformance(wx,device).then(()=>win.dispatchEvent(new D.Event('deviceperformancechange')));
@@ -108,8 +107,12 @@ export async function setup(host) {
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
-  const castFont=wx.loadFont(host.files.pathFor('fonts/cast-title.ttf'))||fonts.bold;
-  const comboNameplate=createComboNameplate(makeCanvas,castFont,()=>wx.createImage(),host.files.pathFor('fonts/cast-title-glyphs.webp'));
+  function prepareCastArt(){
+    const castFont=wx.loadFont(host.files.pathFor('fonts/cast-title.ttf'))||fonts.bold;
+    comboNameplate=createComboNameplate(makeCanvas,castFont,()=>wx.createImage(),host.files.pathFor('fonts/cast-title-glyphs.webp'));
+    ultimateCast=createUltimateCast(()=>wx.createImage(),makeCanvas,
+      host.files.pathFor,path=>wx.getFileSystemManager().readFileSync(path));
+  }
   const uiAssets=await readUIAssets(host.files);
   uiAssets.compileStyleSelector=D.compileStyleSelector;
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
@@ -417,6 +420,7 @@ export async function setup(host) {
       modalTransition.advance(now);
       mutations(observer.takeRecords());
       const run=env.__pb?.run,state=run?.state;
+      if(run&&!ultimateCast)prepareCastArt();
       const captureTrack=drawCapture(renderer,env.__zixingApp?.run);
       const overlay=modalTransition.element;
       layout.setOverlay(overlay);

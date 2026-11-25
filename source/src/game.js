@@ -83,7 +83,7 @@ export class App {
     } catch (error) {
       throw Error("游戏数据读取失败：" + (error.message || error));
     }
-    window.bootStage?.('游戏数据已就绪',96);
+    window.bootStage?.('游戏数据已就绪',90);
     for (let t = 0; !this.r; t++)
       try {
         this.r = new SceneRenderer(canvas);
@@ -92,7 +92,7 @@ export class App {
         await new Promise(resolve => setTimeout(resolve, 500));
         if (t >= 2) throw Error("WebGL 2 初始化失败：" + (error.message || error));
       }
-    window.bootStage?.('画面引擎已就绪',97,this.r.renderer);
+    window.bootStage?.('画面引擎已就绪',95,this.r.renderer);
     ((this.r.onLost = (e) => this.contextLost(e)),
       initializeControls(),
       (this.input = new GameInput(canvas)),

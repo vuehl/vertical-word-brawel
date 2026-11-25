@@ -299,7 +299,7 @@ module.exports = async function presentBootFrame(gl) {
       patch = null;
     }
   }
-  function paint(value, w, h, full) {
+  function paint(value, w, h, full, label) {
     if (full) {
       canvas.width = w;
       canvas.height = h;
@@ -327,16 +327,16 @@ module.exports = async function presentBootFrame(gl) {
     ctx.setTransform(s, 0, 0, s, left * s, -y);
     ctx.save();
     ctx.translate(0, track);
-    const label = value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 90 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90";
     paintLoadingSlip2(ctx, value, label);
     ctx.restore();
     return strip ? y : null;
   }
   try {
-    let draw = function(value, overlay = false, sweepPhase = 0) {
+    let draw = function(value, overlay = false, sweepPhase = 0, phase) {
       if (!program) return;
       value = Math.max(0, Math.min(100, value));
-      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value;
+      const label = value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : phase || (value >= 90 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90");
+      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value + "/" + label;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.SCISSOR_TEST);
       gl.disable(gl.DEPTH_TEST);
@@ -351,7 +351,7 @@ module.exports = async function presentBootFrame(gl) {
       gl.bindTexture(gl.TEXTURE_2D, texture);
       if (key !== last) {
         const full = !last || textureWidth !== w || textureHeight !== h || h / (w / 390) < 600;
-        const stripY = paint(value, w, h, full);
+        const stripY = paint(value, w, h, full, label);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         if (textureWidth !== w || textureHeight !== h) {

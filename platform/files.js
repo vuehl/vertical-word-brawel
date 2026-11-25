@@ -12,6 +12,7 @@ const modelSources = new Map();
 const diagnostics = {packs:{},modelsRestored:0};
 const base = wx.env.USER_DATA_PATH + '/pokebonk-assets';
 const yieldTask = () => new Promise(resolve => setTimeout(resolve, 0));
+let cleanupJob;
 function exists(path) { try { fs().accessSync(path); return true; } catch (error) { return false; } }
 function report(name,phase,completed=0,total=0) {
   const state={name,phase,completed,total};packStates.set(name,state);
@@ -21,7 +22,7 @@ function fileCall(method,options) {
   return new Promise((resolve,reject)=>{
     let done=false;
     const finish=(error,result)=>{if(done)return;done=true;clearTimeout(timer);error?reject(error instanceof Error?error:Error(error.errMsg||String(error))):resolve(result);};
-    const action=method==='rmdir'?'清理':method==='writeFile'?'保存':method==='readCompressedFile'?'解压':'读取';
+    const action=method==='writeFile'?'保存':method==='readCompressedFile'?'解压':'读取';
     const timer=setTimeout(()=>finish(Error('资源'+action+'超时，请重试')),30000);
     try {fs()[method](Object.assign({},options,{success:result=>finish(null,result),fail:finish}));}catch(error){finish(error);}
   });
@@ -33,10 +34,6 @@ async function readFile(filePath,encoding) {
 async function writeFile(filePath,data,encoding) {
   if(typeof fs().writeFile==='function')await fileCall('writeFile',Object.assign({filePath,data},encoding?{encoding}:{}));
   else fs().writeFileSync(filePath,data,encoding);
-}
-async function removePackDirectory(dirPath) {
-  if(typeof fs().rmdir==='function')await fileCall('rmdir',{dirPath,recursive:true});
-  else {await yieldTask();fs().rmdirSync(dirPath,true);}
 }
 async function readBrotli(archive,expected) {
   const manager=fs();let raw;
@@ -110,12 +107,13 @@ async function loadPackage(name, progress) {
 async function unpack(name, revision, progress) {
   const dir = base + '/' + name + '-' + revision;
   const began=Date.now(),stats=diagnostics.packs[name]={cached:false,writes:0,rawBytes:info.rawSizes[name]};
-  if (exists(dir + '/.ready')) {stats.cached=true;report(name,'ready',1,1);return;}
+  if (exists(dir + '/.ready')) {stats.cached=true;stats.totalMs=Date.now()-began;report(name,'ready',1,1);return;}
   report(name,'download',0,100);
   await loadPackage(name,p=>{if(progress)progress(p);report(name,'download',p,100);});
-  // Only an interrupted install can leave an unmarked hash directory.
-  if (exists(dir)) await removePackDirectory(dir);
-  fs().mkdirSync(dir, true);
+  stats.loadMs=Date.now()-began;
+  // A retry overwrites every file of this same immutable revision. Only the
+  // final ready marker makes the installation visible to other callers.
+  if (!exists(dir)) fs().mkdirSync(dir, true);
   const archive = 'packs/' + name + '/assets.br';
   report(name,'unpack');await yieldTask();
   const unpackAt=Date.now(),raw=await readBrotli(archive,info.rawSizes[name]);
@@ -229,7 +227,12 @@ function pathFor(url) {
 }
 function ensurePack(name, progress) {
   if (!installs.has(name)) {
-    installs.set(name, unpack(name,info.packs[name],progress).catch(error => {
+    const install=()=>unpack(name,info.packs[name],progress);
+    installs.set(name, install().catch(async error=>{
+      if (/ENOSPC|quota|storage.*limit|exceed.*(?:storage|size)|no space|空间不足/i.test(error.errMsg||error.message)
+        && await cleanObsoletePacks()) return install();
+      throw error;
+    }).catch(error => {
       installs.delete(name);
       report(name,'error');
       throw error;
@@ -261,17 +264,37 @@ async function resolvePath(url) {
   }
   return pathFor(raw);
 }
-async function init(progress, onState) {
-  if (!exists(base)) fs().mkdirSync(base, true);
+async function removeObsoletePacks() {
+  await yieldTask();
+  let removed=0;
   // Only known, content-addressed resource folders inside this game's cache.
   // Removed music packages are obsolete too; player saves live elsewhere.
   for (const entry of fs().readdirSync(base)) {
     const match=/^(art|world|text|dragon_summon|capture_bag|sound|music_(?:boss|ingame[1-4]))-([a-f0-9]{16})$/.exec(entry);
     if(match&&info.packs[match[1]]!==match[2]){
-      try {await removePackDirectory(base+'/'+entry);}
-      catch(error){console.warn('[字行] 旧资源缓存暂未清理',entry,error);}
+      const dir=base+'/'+entry;
+      try {
+        // Pack directories contain flat files. Yield between small batches
+        // instead of depending on a native recursive-delete callback.
+        const files=fs().readdirSync(dir);
+        for(let i=0;i<files.length;i++){
+          fs().unlinkSync(dir+'/'+files[i]);
+          if((i+1)%4===0)await yieldTask();
+        }
+        fs().rmdirSync(dir,false);
+        removed++;
+      }catch(error){console.info('[字行] 保留未清理的旧缓存',entry,error.message||error.errMsg);}
+      await yieldTask();
     }
   }
+  return removed;
+}
+function cleanObsoletePacks() {
+  if(!cleanupJob)cleanupJob=removeObsoletePacks();
+  return cleanupJob;
+}
+async function init(progress, onState) {
+  if (!exists(base)) fs().mkdirSync(base, true);
   await preparePacks(['text'],onState,progress);
 }
 async function preparePacks(names,onProgress,downloadProgress) {
@@ -296,4 +319,4 @@ async function readCompressedAsset(url,expected){
   const raw=await readBrotli(path,expected);
   return raw instanceof Uint8Array?raw:new Uint8Array(raw);
 }
-module.exports = {init,pathFor,resolvePath,readCompressedAsset,loadIcon,loadPackage,prepareForest,preloadForest,diagnostics};
+module.exports = {init,pathFor,resolvePath,readCompressedAsset,loadIcon,loadPackage,prepareForest,preloadForest,cleanObsoletePacks,diagnostics};

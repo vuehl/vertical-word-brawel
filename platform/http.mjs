@@ -28,10 +28,10 @@ export class Response {
 export function createFetch(files,api) {
   const fs=wx.getFileSystemManager(),tmp=wx.env.USER_DATA_PATH+'/pokebonk-images';
   // Embedded GLB textures are released by GLTFLoader after the image has loaded.
-  try{fs.rmdirSync(tmp,true);}catch{}fs.mkdirSync(tmp,true);
   let seq=0;
   LocalURL.objectFiles=new Map();
   LocalURL.createObjectURL=blob=>{
+    if(!seq){try{fs.rmdirSync(tmp,true);}catch{}fs.mkdirSync(tmp,true);}
     const path=tmp+'/'+(++seq)+(blob.type==='image/png'?'.png':blob.type==='image/webp'?'.webp':'.jpg');
     const url='blob:pokebonk/'+seq;
     fs.writeFileSync(path,blob.data.buffer);LocalURL.objectFiles.set(url,path);return url;

@@ -49,24 +49,22 @@ test('cooperative model expansion preserves every byte and yields between batche
 function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSubpackage}={}){
   const {pool,recipes}=models(),data=new Map(),dirs=new Set(),downloads={};
   const archives={world:[['model-parts.bin',pool],['model-map.json',Buffer.from(JSON.stringify(recipes))]],art:[],text:[]};
-  let failFile=null,yields=0,asyncReads=0,syncReads=0,asyncWrites=0,asyncRemovals=0;
+  let failFile=null,writeError,yields=0,asyncReads=0,syncReads=0,asyncWrites=0,asyncRemovals=0;
   const compressed=filePath=>Uint8Array.of(filePath.includes('world')?1:filePath.includes('text')?3:2,0,0,0).buffer;
   const manager={
     accessSync(p){if(!data.has(p)&&!dirs.has(p))throw Error('ENOENT');},
     mkdirSync(p){dirs.add(p);},
-    readdirSync(p){return [...dirs].filter(d=>d.startsWith(p+'/')&&!d.slice(p.length+1).includes('/')).map(d=>d.slice(p.length+1));},
-    rmdirSync(p){dirs.delete(p);for(const key of data.keys())if(key.startsWith(p+'/'))data.delete(key);},
+    readdirSync(p){return [...dirs,...data.keys()].filter(d=>d.startsWith(p+'/')&&!d.slice(p.length+1).includes('/')).map(d=>d.slice(p.length+1));},
+    unlinkSync(p){data.delete(p);},
+    rmdirSync(p){if(lockedCache)throw Error('busy');assert.equal(manager.readdirSync(p).length,0);dirs.delete(p);},
     readCompressedFileSync({filePath}){syncReads++;return compressed(filePath);},
     readFileSync(p){const bytes=data.get(p);if(bytes===undefined)throw Error('ENOENT '+p);return Uint8Array.from(typeof bytes==='string'?Buffer.from(bytes):bytes).buffer;},
-    writeFileSync(p,bytes){if(failFile&&p.endsWith(failFile)){failFile=null;throw Error('simulated disk error');}data.set(p,typeof bytes==='string'?bytes:new Uint8Array(bytes));},
+    writeFileSync(p,bytes){if(failFile&&p.endsWith(failFile)){failFile=null;throw Error(writeError);}data.set(p,typeof bytes==='string'?bytes:new Uint8Array(bytes));},
     renameSync(from,to){data.set(to,data.get(from));data.delete(from);}
   };
   if(nativeAsync){
-    manager.rmdir=({dirPath,recursive,success,fail})=>{
-      assert.equal(recursive,true);asyncRemovals++;
-      if(lockedCache)return fail({errMsg:'busy'});
-      setImmediate(()=>{manager.rmdirSync(dirPath);success({});});
-    };
+    // Reproduce a native recursive deletion that never delivers a callback.
+    manager.rmdir=()=>{asyncRemovals++;};
     manager.readCompressedFile=({filePath,success})=>{asyncReads++;queueMicrotask(()=>success({data:compressed(filePath)}));};
     manager.writeFile=({filePath,data:bytes,success,fail})=>{asyncWrites++;if(stalledWrite)return;
       queueMicrotask(()=>{try{manager.writeFileSync(filePath,bytes);success({});}catch(error){fail(error);}});};
@@ -86,16 +84,18 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
   };
   vm.runInNewContext(fs.readFileSync(new URL('../../platform/files.js',import.meta.url),'utf8'),context);
   return {api:context.module.exports,data,dirs,downloads,info,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
-    get io(){return {asyncReads,syncReads,asyncWrites};},failNext(file){failFile=file;}};
+    get io(){return {asyncReads,syncReads,asyncWrites};},failNext(file,message='simulated disk error'){failFile=file;writeError=message;}};
 }
 
-test('removed music caches are evicted without touching saves or current resources',async()=>{
+test('a cold launch with obsolete archives completes even if recursive deletion never calls back',{timeout:2000},async()=>{
   const f=installer(),base='/userdata/pokebonk-assets';
-  const removed=[base+'/sound-aaaaaaaaaaaaaaaa',base+'/music_boss-bbbbbbbbbbbbbbbb',base+'/text-cccccccccccccccc'];
+  const removed=[base+'/sound-aaaaaaaaaaaaaaaa',base+'/music_boss-bbbbbbbbbbbbbbbb',base+'/text-cccccccccccccccc',base+'/art-89c24aead3d2160a'];
   const kept=['/userdata/saves',base+'/player-data',base+'/world-'+f.info.packs.world];
   for(const dir of [...removed,...kept]){f.dirs.add(dir);f.data.set(dir+'/test',new Uint8Array([42]));}
   await f.api.init();
-  assert.equal(f.asyncRemovals,removed.length);
+  for(const dir of removed)assert.ok(f.dirs.has(dir));
+  assert.equal(await f.api.cleanObsoletePacks(),removed.length);
+  assert.equal(f.asyncRemovals,0);
   for(const dir of removed){assert.ok(!f.dirs.has(dir));assert.ok(!f.data.has(dir+'/test'));}
   for(const dir of kept){assert.ok(f.dirs.has(dir));assert.equal(f.data.get(dir+'/test')[0],42);}
   assert.deepEqual(f.downloads,{text:1});
@@ -110,6 +110,7 @@ test('a locked obsolete cache does not prevent text installation, and byte-only 
   f.dirs.add('/userdata/pokebonk-assets/text-cccccccccccccccc');
   const progress=[],states=[];
   await f.api.init(percent=>progress.push(percent),state=>states.push(state));
+  assert.equal(await f.api.cleanObsoletePacks(),0);
   assert.deepEqual(progress,[25]);
   assert.deepEqual([...new Set(states.map(s=>s.phase))],['download','unpack','write','ready']);
 });
@@ -119,6 +120,28 @@ test('an already mounted archive installs without requesting the package again',
   await f.api.init();
   assert.deepEqual(f.downloads,{});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
+});
+test('a second launch skips downloads, decoding, writes and obsolete cache cleanup until home',async()=>{
+  const f=installer(),base='/userdata/pokebonk-assets',old=base+'/world-aaaaaaaaaaaaaaaa';
+  f.dirs.add(base);f.dirs.add(old);
+  f.data.set(base+'/text-'+f.info.packs.text+'/.ready',f.info.packs.text);
+  await f.api.init();
+  assert.equal(f.api.diagnostics.packs.text.cached,true);
+  assert.deepEqual(f.downloads,{});
+  assert.deepEqual(f.io,{asyncReads:0,syncReads:0,asyncWrites:0});
+  assert.equal(f.asyncRemovals,0);
+  await f.api.preloadForest();
+  await f.api.cleanObsoletePacks();
+  assert.ok(!f.dirs.has(old));
+});
+test('a full disk reclaims obsolete pack files and retries the interrupted install once',async()=>{
+  const f=installer(),old='/userdata/pokebonk-assets/art-89c24aead3d2160a';
+  f.dirs.add(old);f.data.set(old+'/old.webp',new Uint8Array(4));
+  f.failNext('model-map.json','ENOSPC: no space left on device');
+  await f.api.prepareForest();
+  assert.ok(!f.dirs.has(old));
+  assert.equal(f.api.diagnostics.packs.world.writes,2);
+  assert.equal(f.asyncRemovals,0);
 });
 test('an archive mounted without a completion callback is picked up during the first download',{timeout:5000},async()=>{
   const f=installer({loadSubpackage(){queueMicrotask(()=>f.data.set('packs/text/assets.br',new Uint8Array(4)));}});

@@ -41,7 +41,6 @@ function wechatShareCard() {
 
 async function launchEngine(host, play, showProgress) {
   const env = await play.setup(host);
-  showProgress(95);
   if (host.onApp) env.onApp = host.onApp;
   let booted = false;
   const firstFrame = new Promise((resolve, reject) => {
@@ -69,7 +68,7 @@ async function launchEngine(host, play, showProgress) {
       resolve();
     };
   });
-  host.bootStage('读取玩法与字形',95);
+  host.bootStage('读取玩法与字形',82);
   const engine = play.run(env).then(() => { booted = true; });
   await Promise.all([firstFrame, engine]);
 }
@@ -97,7 +96,7 @@ async function start() {
   if (wx.getLaunchOptionsSync) receiveInvite(wx.getLaunchOptionsSync());
   wx.onShow(receiveInvite);
   let phase = '创建画面', splash, shown = 0, animationTimer, activeRenderer;
-  let lastPaint = 0, lastAdvance = began, displayed = 0, animationFrom = 0, waitingForRetry = false;
+  let lastPaint = began, lastStep = began, displayed = 0, waitingForRetry = false;
   function stage(title) {
     phase = title;
     const ms=Date.now()-began;
@@ -107,14 +106,15 @@ async function start() {
   function paintProgress(renderer) {
     if (!splash || waitingForRetry) return;
     lastPaint = Date.now();
-    const elapsedMs = Math.max(0, lastPaint - lastAdvance);
-    // Estimate within the current stage between native callbacks. The next
-    // stage and the completed home frame can only be reached by real work.
-    const ceiling = shown < 90 ? 90 : 100;
-    const estimate = animationFrom + (ceiling - animationFrom) * elapsedMs / (40000 + elapsedMs);
-    displayed = shown === 100 ? 100 : Math.max(displayed, Math.min(ceiling - .1, Math.round(estimate * 10) / 10));
+    // Spread batched callbacks over visible updates. Keep the sweep moving
+    // at a stalled milestone and hand off immediately on a successful frame.
+    if (shown === 100) displayed = 100;
+    else if (lastPaint - lastStep >= 90) {
+      displayed = Math.min(Math.round(shown * 10) / 10, displayed + 3);
+      lastStep = lastPaint;
+    }
     try {
-      splash.draw(displayed, !!renderer, ((lastPaint - began) % 1800) / 1800);
+      splash.draw(displayed, !!renderer, ((lastPaint - began) % 1800) / 1800, phase);
     } catch (error) {
       console.warn('[宝可梦启动] 无法更新加载进度', error);
       splash.dispose();
@@ -125,11 +125,7 @@ async function start() {
   }
   function showProgress(value = shown, renderer) {
     if (!splash) return;
-    if (value > shown) {
-      shown = value;
-      animationFrom = Math.max(displayed, shown);
-      lastAdvance = Date.now();
-    }
+    shown = Math.max(shown, value);
     // The renderer can cover the splash on any frame. Restore its GL state
     // after both overlays and timer-driven paints between game frames.
     if (renderer) {
@@ -163,8 +159,6 @@ async function start() {
         else wx.exitMiniProgram({});
         return false;
       }
-      animationFrom = Math.max(shown, displayed);
-      lastAdvance = Date.now();
       waitingForRetry = false;
       pending = failed;
     }
@@ -189,9 +183,13 @@ async function start() {
     console.info('[宝可梦启动] 启动画面已提交', Date.now() - began, 'ms');
     const files = require('./files');
     GameGlobal.pokebonk = Object.assign(host, {canvas, files});
-    stage('准备游戏资源');
+    stage('正在准备游戏资源');
     const prepared = {play:0, text:0};
     function installProgress(state) {
+      if(state.phase==='unpack')phase='正在解压界面资源';
+      if(state.phase==='write')phase='正在保存界面资源';
+      if(state.phase==='ready'&&!play)phase='正在加载玩法';
+      if(state.phase==='download')phase='正在加载游戏资源';
       const ratio = state.total ? Math.min(1, state.completed / state.total) : 0;
       const value = state.phase === 'ready' ? 1 : state.phase === 'write' ? .7 + .3*ratio :
         state.phase === 'unpack' ? .6 : .55*ratio;
@@ -199,7 +197,7 @@ async function start() {
       updateDownloads();
     }
     function updateDownloads() {
-      showProgress(Math.min(89.9, 5 + 55*prepared.play + 30*prepared.text));
+      showProgress(5 + 35*prepared.play + 30*prepared.text);
     }
     showProgress(5);
     let play;
@@ -207,24 +205,31 @@ async function start() {
     // per-call timeouts. Slow installs that keep advancing can finish.
     const resourcesReady = await prepareResources([
       ['玩法包', async () => {
+        const started = Date.now();
         await files.loadPackage('play', p => {
           prepared.play = Math.max(prepared.play, Math.min(1, p / 100));
           updateDownloads();
         });
+        host.bootDiagnostics.playLoadMs = Date.now() - started;
+        const mounted = Date.now();
+        play = await withTimeout(waitForPlayEntry(),15000,'玩法分包已下载，但微信未执行入口。');
+        host.bootDiagnostics.playEntryMs = Date.now() - mounted;
         prepared.play = 1;
         updateDownloads();
-        play = await withTimeout(waitForPlayEntry(),15000,'玩法分包已下载，但微信未执行入口。');
       }],
       ['文字资源', () => files.init(undefined, installProgress)]
     ]);
     if (!resourcesReady) return;
-    stage('绘制游戏首页');
-    showProgress(90);
+    stage('正在打开首页');
+    showProgress(70);
     await withTimeout(launchEngine(host,play,showProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
     host.bootDiagnostics.completed=true;
     host.bootDiagnostics.totalMs=Date.now()-began;
+    host.bootDiagnostics.text = files.diagnostics.packs.text;
+    console.info('[字行启动耗时]', JSON.stringify(host.bootDiagnostics));
     console.info('[宝可梦启动] 游戏首页已绘制', Date.now() - began, 'ms');
     files.preloadForest().catch(error=>console.warn('[字行] 后台准备场景资源失败',error));
+    files.cleanObsoletePacks().catch(error=>console.info('[字行] 无法读取旧缓存目录',error.message));
   } catch (error) {
     console.error('[宝可梦] ' + phase + '失败', error);
     const restart = typeof wx.restartMiniProgram === 'function';
