@@ -18,7 +18,19 @@ export function disposePaperAssets(assets){
 }
 export function disposePaperWorld(terrain){
   terrain.deskCamera?.updateProjectionMatrix();
-  for(const value of terrain.deskOwned||[])value.dispose();
+  // The run still references the old terrain while the next zone is built.
+  // Texture.dispose() releases WebGL storage but retains the decoded image.
+  if(terrain.deskOwned){
+    for(const value of terrain.deskOwned){
+      value.dispose();
+      if(value.isTexture)value.image=null;
+    }
+    terrain.deskOwned.length=0;
+    terrain.deskTextures.clear();
+    terrain.deskDeviceGeometries?.clear();
+    terrain.deskAtlas.art=null;
+    terrain.shelfDepth=null;
+  }
   disposeForegroundLights(terrain);
   const sun=terrain.workshopShadowLight;
   if(sun){

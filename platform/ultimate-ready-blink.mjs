@@ -1,8 +1,9 @@
+import {VFX_SCALE} from '../source/src/effects/visual-scale.js';
 import {clearFrame,createFrame,painterFor} from '../source/src/vendor/pixelfx-blink-in.js';
 import {blinkDuration,flashTail,readyBreathPhase} from '../source/src/effects/ultimate-ready-timing.js';
 import {tile,silhouette,drawReadyPixels,packLightPixels,createReadyEmbers} from './ultimate-ready-pixels.mjs';
 
-const width=136,height=136,margin=(width-tile)/2,fullRect=[0,0,1,1];
+const margin=Math.ceil(48*VFX_SCALE),width=tile+2*margin,height=width,fullRect=[0,0,1,1];
 
 // Project the same instance and camera-facing plane as the glyph vertex shader.
 function heroBounds(run,batch,index){

@@ -1,7 +1,8 @@
+import {VFX_SCALE} from '../effects/visual-scale.js';
 import {I as Group,K as Mesh,ut as SphereGeometry,E as CylinderGeometry,q as Material} from '../vendor/three-DmSYIDKK.js';
 
 export function createCaptureGourd(color){
-  const root=new Group();root.name='capture-gourd';
+  const root=new Group();root.name='capture-gourd';root.scale.setScalar(VFX_SCALE);
   const part=(geometry,tint,x,y,z,sx=1,sy=1,sz=1)=>{
     const mesh=new Mesh(geometry,new Material({color:tint}));
     mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);root.add(mesh);return mesh;

@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {fireFootprints,fireFootprintGLSL,fireSurfaceGeometry} from './fire-footprint.js';
 import {B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/fire-family.json' with {type:'json'};
@@ -6,6 +7,7 @@ import mushroomAtlas from '../../../resources/public/assets/vfx/fire-mushroom.js
 export const fireFamilyMoves=new Set(['scratch','slash','dragon-claw','fire-fang','flare-blitz','air-slash','inferno','fire-blast','fu-4']);
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
+const ringCycleHz=atlas.clips.ring.fps/atlas.clips.ring.count;
 // Measured lower-ring aspect and tilt in the packed eruption / meteor drawings.
 const burstFootprints={eruption:{depthRatio:.56,shear:.16,pivotY:.46},meteorHit:{depthRatio:.48,shear:.02,pivotY:.42}};
 const vertex=layout=>`
@@ -244,7 +246,7 @@ export class HandDrawnFireFamily{
    // Its impact stays at the strike centre for every attack direction.
    this.play('fang',x,y+.55,z,clamp(size*1.6,5.8,8.2),{life:.43,angle:-.10,priority:2,fadeIn:.035,fadeOut:.15,blend:true,bite:true});
    this.play('burst',x,y+.35,z,size*.68,{delay:.11,life:.28,alpha:.9,fadeIn:.015,fadeOut:.19,blend:true});
-   this.play('shockwave',x,y+.20,z,size*.72,{delay:.12,life:.18,mode:1,height:size*.72,alpha:.68,clarity:4,scaleFrom:.25,scaleTo:1.15,fadeOut:.14,blend:true});
+   this.play('ring',x,y+.20,z,size*.72,{delay:.12,life:.18,mode:1,alpha:.68,clarity:4,scaleFrom:.25,scaleTo:1.15,fadeOut:.14});
    this.play('curl',x,y+.45,z,size*.52,{delay:.22,life:.27,alpha:.40,fadeIn:.035,fadeOut:.20,blend:true});
   }else if(key==='scratch'||key==='dragon-claw')this.play('rake',x,y+.45,z,Math.max(5.5,size*1.55),{life:.44,angle:-.35,palette:key==='dragon-claw'?3:4,clarity:3,priority:2});
   else if(key==='slash')this.play('blade',x,y+.55,z,Math.max(7,size*1.9),{life:.48,angle:this.slashAngle(dx,dz),palette:4,priority:2});
@@ -275,51 +277,45 @@ export class HandDrawnFireFamily{
   this.touch(zone,'crack',zone.x,zone.y+.10,zone.z,artRadius*2,{mode:1,height:artRadius*2,alpha:.52,clarity:1,cycleHz:.65,priority:0});
  }
  ring(x,y,z,radius,life=.6){
-  this.play('ring',x,y+.14,z,radius*2.1,{life,loop:true,mode:1,height:radius*2.1,grow:true,alpha:.72,clarity:2,priority:2});
+  this.play('ring',x,y+.14,z,radius*2.1,{life,mode:1,grow:true,alpha:.85,clarity:2,priority:2});
  }
  crack(x,y,z,size=2.5){this.play('crack',x,y+.12,z,size,{mode:1,height:size,life:.65,loop:true,alpha:.54,clarity:1,priority:0});}
  meteor(x,y,z,delay){
   this.play('meteor',x,y+12,z,20,{life:delay,anchorY:.12,fall:12,priority:2});
-  this.play('seal',x,y+12,z,3.1,{life:delay,fall:12,loop:true,priority:2});
+  this.play('ring',x,y+12,z,3.1,{life:delay,fall:12,mode:1,priority:2});
  }
  meteorImpact(x,y,z){
   this.play('meteorHit',x,y,z,8.6,{life:.64,anchorY:.22,priority:2});
-  this.play('shockwave',x,y+.16,z,9,{life:.46,mode:1,height:11.5,alpha:.86,priority:1});
+  this.play('ring',x,y+.16,z,9,{life:.46,mode:1,grow:true,alpha:.86,priority:1});
   this.crack(x,y,z,6);
- }
- ultimateRing(x,y,z,radius,life=.6){
-  this.ring(x,y,z,radius,life);
-  this.play('shockwave',x,y+.19,z,radius*2.15,{life:life*.65,mode:1,height:radius*2.15,alpha:.36,clarity:2,priority:2,delay:.07});
  }
  finale(x,y,z,radius){
   // The final strike uses the Inferno blast, not a second mushroom cloud.
   this.play('eruption',x,y+.15,z,26,{life:1.15,anchorY:.22,priority:2,foreground:true,layer:1,fadeIn:.04,fadeOut:.45,blend:true});
   this.play('pillar',x,y,z,11,{height:19,life:1.08,delay:.10,alpha:.62,anchorY:.18,priority:2,foreground:true,layer:0,fadeIn:.08,fadeOut:.5,blend:true});
-  this.play('sweepRing',x,y+.2,z,radius*1.85,{life:.52,mode:1,height:radius*1.85,spin:1.1,delay:.10,alpha:.48,clarity:2,priority:2});
-  this.play('shockwave',x,y+.22,z,radius*2.15,{life:.5,mode:1,height:radius*2.15,delay:.17,alpha:.4,clarity:2,priority:2});
+  this.play('ring',x,y+.2,z,radius*2.15,{life:.52,mode:1,grow:true,delay:.10,alpha:.60,clarity:2,priority:2});
  }
  ultimate(ctx){
   const {x,y,z,tier}=ctx;
-  this.play('seal',x,y+.22,z,8,{life:.25,mode:1,height:11,priority:2,scaleFrom:1.1,scaleTo:.45});
+  this.play('ring',x,y+.22,z,8,{life:.25,mode:1,priority:2,scaleFrom:1.1,scaleTo:.45});
   this.play('charge',x,y+.45,z,3.8,{life:.18,priority:2});
   this.mushroom(x,y,z,1.25+tier*.14,.10);
-  this.play('sweepRing',x,y+.22,z,7.5,{delay:.14,life:.55,mode:1,height:10,spin:1.3,priority:2});
  }
  mushroom(x,y,z,life=1.4,delay=0){
   const scale=.60;
   // A narrow rising stem and a broad rolling cap share the library drawing.
   // The dedicated last scene pass cannot be covered by actors or other VFX.
   this.play('pillar',x,y,z,7.6*scale,{height:23*scale,life,delay,anchorY:.14,cutUpper:.59,frameStart:.04,frameEnd:.46,mushroomPart:'stem',mode:5,foreground:true,layer:0,priority:2,fadeIn:.08,fadeOut:.35,blend:true});
-  this.play('pillar',x,y+12.8*scale,z,21.2*scale,{height:24*scale,life:life-.12,delay:delay+.20,anchorY:.50,cutLower:.47,frameStart:.13,frameEnd:.46,mushroomPart:'cap',mode:6,foreground:true,layer:2,priority:2,fadeIn:.12,fadeOut:.42,blend:true});
-  this.play('sweepRing',x,y+10.2*scale,z,11.2*scale,{height:6.3*scale,life:1.1,delay:delay+.25,mode:1,spin:.7,priority:2,alpha:.36,scaleFrom:.65,scaleTo:1.05,fadeIn:.10,fadeOut:.5,blend:true});
+  this.play('pillar',x,y+12.8*scale*VFX_SCALE,z,21.2*scale,{height:24*scale,life:life-.12,delay:delay+.20,anchorY:.50,cutLower:.47,frameStart:.13,frameEnd:.46,mushroomPart:'cap',mode:6,foreground:true,layer:2,priority:2,fadeIn:.12,fadeOut:.42,blend:true});
+  this.play('ring',x,y+10.2*scale*VFX_SCALE,z,11.2*scale,{life:1.1,delay:delay+.25,mode:1,priority:2,alpha:.36,scaleFrom:.65,scaleTo:1.05,fadeIn:.10,fadeOut:.5,loop:true,cycleHz:ringCycleHz});
  }
  fusionVortex(key,x,y,z,radius,main){
   this.owner.touch(key,{x,y,z,radius:radius*(main?1.05:.95),height:radius*3,mode:3,type:'fire',handDrawn:true,own:true});
-  this.touch(key,'sweepRing',x,y+.18,z,radius*2.5,{height:radius*2.5,mode:1,spin:-1.8,priority:2,alpha:.32,clarity:2});
+  this.touch(key,'ring',x,y+.18,z,radius*2.5,{mode:1,priority:2,alpha:.32,clarity:2,cycleHz:ringCycleHz});
  }
  fusionSpoke(x,y,z,dx,dz,vortexRadius){
   // Match the rendered funnel width at the emission height.
-  const width=vortexRadius*1.05*2.4,start=width*.17,travel=width*.55+4.4;
+  const width=vortexRadius*1.05*2.4*VFX_SCALE,start=width*.17,travel=width*.55+4.4*VFX_SCALE;
   this.play('wake',x+dx*start,y+width*.60,z+dz*start,5.7,{
    life:.42,mode:4,angle:Math.atan2(-dz,-dx),anchorX:.32,height:4.8,
    travelX:dx*travel,travelZ:dz*travel,rise:.75,priority:1,
@@ -329,21 +325,21 @@ export class HandDrawnFireFamily{
  fusionBurst(x,y,z,radius,main){
   this.play('eruption',x,y,z,main?12:8,{life:.65,anchorY:.2,priority:2});
   this.play('pillar',x,y,z,main?8:5,{height:main?12:8,life:.6,delay:.08,alpha:.7,anchorY:.18,priority:2});
-  this.ultimateRing(x,y,z,radius*(main?1.25:1.1),.8);
+  this.ring(x,y,z,radius*(main?1.25:1.1),.8);
  }
  fireBlast(x,y,z,radius){
   const f=this,s=clamp(radius,2.8,5.5);
   f.play('eruption',x,y,z,s*2.7,{foreground:true,life:.64,anchorY:.22,priority:2,fadeIn:.025,fadeOut:.28,blend:true});
   // Five broad flame arms preserve the original star-shaped explosion.
   for(const a of [Math.PI/2,Math.PI*.08,Math.PI*.92,Math.PI*1.27,Math.PI*1.73])f.play('wake',x,y+1.8,z,s*1.4,{height:s*.72,angle:a+Math.PI,mode:0,life:.48,delay:.055,alpha:.86,scaleFrom:.50,scaleTo:1.3,anchorX:.88,frameStart:.08,frameEnd:.46,fadeIn:.025,fadeOut:.22,blend:true,priority:2});
-  f.play('shockwave',x,y+.16,z,s*2.3,{mode:1,height:s*2.3,life:.42,alpha:.45,fadeIn:.025,fadeOut:.28,scaleFrom:.5,scaleTo:1.15,blend:true});
+  f.play('ring',x,y+.16,z,s*2.3,{mode:1,life:.42,alpha:.45,fadeIn:.025,fadeOut:.28,scaleFrom:.5,scaleTo:1.15});
  }
  sun(ctx,x,y,z,age,artScale=1){
   const continuing=ctx.sunArtStarted&&age>=ctx.sunArtAge;ctx.sunArtAge=age;
   if(continuing)return;ctx.sunArtStarted=true;
   const floor=this.owner.run.terrain.height(x,z);
   this.solarBlast(x,floor,z,3.2,.65);
-  this.play('ring',x,floor+.15,z,9.5*artScale,{mode:1,height:9.5*artScale,life:1.8*(ctx.D||1),loop:true,alpha:.30,clarity:2,fadeIn:.15,fadeOut:.35,blend:true});
+  this.play('ring',x,floor+.15,z,9.5*artScale,{mode:1,life:1.8*(ctx.D||1),loop:true,cycleHz:ringCycleHz,alpha:.30,clarity:2,fadeIn:.15,fadeOut:.35});
  }
  sunRain(x,sky,z,floor,startX=x,startZ=z){
   this.play('meteor',startX,sky,startZ,2.3,{height:3.5,life:.30,travelX:x-startX,travelZ:z-startZ,fall:sky-floor,anchorY:.14,frameStart:.05,frameEnd:.64,priority:1,fadeIn:.05,fadeOut:.04,blend:true});
@@ -353,7 +349,7 @@ export class HandDrawnFireFamily{
  }
  sunBurst(x,y,z,radius){
   this.solarBlast(x,y,z,radius,.80);
-  this.ultimateRing(x,y,z,radius*1.35,.65);
+  this.ring(x,y,z,radius*1.35,.65);
  }
  solarBlast(x,y,z,radius,life){
   // The same burst + flame pillar as Inferno, sampled from the large atlas.
@@ -404,10 +400,10 @@ export class HandDrawnFireFamily{
    const birth=e.spoke?Math.min(1,t/.095):e.fadeIn?smooth(e.age/e.fadeIn):1,fade=e.fadeOut?smooth((e.life-e.age)/e.fadeOut):e.key||e.mushroomPart?1:Math.min(1,(1-t)*5);
    const alpha=e.alpha*(e.own?v.ownOpacity:1)*v.opacity*(v.calm?.76:1)*birth*fade;
    const o=count++*4;
-   origin[o]=e.x+(e.travelX||0)*t+(e.releasing?(e.tailVX||0)*e.life*smooth(t):0);origin[o+1]=e.y-(e.fall||0)*t+(e.rise||0)*t;origin[o+2]=e.z+(e.travelZ||0)*t+(e.releasing?(e.tailVZ||0)*e.life*smooth(t):0);origin[o+3]=e.size*growth;
+   origin[o]=e.x+(e.travelX||0)*t+(e.releasing?(e.tailVX||0)*e.life*smooth(t):0);origin[o+1]=e.y-(e.fall||0)*t+(e.rise||0)*t;origin[o+2]=e.z+(e.travelZ||0)*t+(e.releasing?(e.tailVZ||0)*e.life*smooth(t):0);origin[o+3]=e.size*growth*VFX_SCALE;
    frame[o]=spec.first+index;frame[o+1]=alpha;frame[o+2]=e.clarity||0;frame[o+3]=e.own&&(e.palette===0||e.heroOpening)?1:0;
    const footprint=fireFootprints[e.clip],burst=burstFootprints[e.clip];
-   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=footprint?origin[o+3]:(e.height||e.size)*vertical;
+   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=footprint?origin[o+3]:(e.height||e.size)*vertical*VFX_SCALE;
    pose[o]=e.anchorX;pose[o+1]=footprint?footprint.pivotY:e.anchorY;pose[o+2]=burst?burst.pivotY:e.cutLower;pose[o+3]=e.cutUpper;tween[o]=spec.first+next;tween[o+1]=e.blend?position-index:0;tween[o+2]=burst?-burst.depthRatio:(footprint?.depthRatio??0);tween[o+3]=(burst??footprint)?.shear??0;
   }
   mesh.count=(foreground?this.mushroomLoaded:this.loaded)?count:0;mesh.visible=mesh.count>0;
@@ -433,7 +429,7 @@ export function installFireFamilyVFX(registry){
     if(key==='fire-blast'){f.fireBlast(x,floor,z,artRadius);return;}
     f.play('eruption',x,floor,z,Math.max(8,artRadius*2.4),{life:.6,anchorY:.22,priority:2});
     f.play('pillar',x,floor,z,Math.max(5,artRadius*1.5),{height:Math.max(8,artRadius*2.5),life:.55,delay:.08,alpha:.65,anchorY:.18});
-    f.ultimateRing(x,floor,z,artRadius*1.35,.55);
+    f.ring(x,floor,z,artRadius*1.35,.55);
    },
    dash(r,x,y,z,dx,dz,length,color,artLength=length){
     fx(r).play('wake',x+dx*length*.35,y+.6,z+dz*length*.35,Math.min(16,artLength*1.7),{mode:2,angle:Math.atan2(-dz,-dx),life:.5});

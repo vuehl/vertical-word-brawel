@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 // The chant artwork is authored on a 488-unit-wide canvas.
 export const chantScale=(width,height)=>Math.min(width/488,height/645);
 
@@ -7,7 +8,7 @@ export function flameOpeningBand({x,y,width,height}){
 }
 
 // Luminous blade envelope in its 736 x 414 GIF, scaled to the chant backplate.
-export const bladeScaleX=437/598,bladeScaleY=316/215;
+export const bladeScaleX=437/598*VFX_SCALE,bladeScaleY=316/215*VFX_SCALE;
 export function bladeTime(ms){
   return ms<400?ms*.6:240+(ms-400)*720/560;
 }

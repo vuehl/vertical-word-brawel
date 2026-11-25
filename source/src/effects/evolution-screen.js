@@ -1,4 +1,5 @@
-import {K as Mesh,st as Scene,et as PlaneGeometry,ct as ShaderMaterial,dt as Texture,ht as Vector3} from '../vendor/three-DmSYIDKK.js';
+import {VFX_SCALE} from './visual-scale.js';
+import {K as Mesh,st as Scene,et as PlaneGeometry,ct as ShaderMaterial,ht as Vector3,DeviceFxThree as T} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/evolution-screen.json' with {type:'json'};
 import {evolutionTile} from './evolution-timing.js';
 import {exteriorBrush,goldPalette} from './evolution-brush.js';
@@ -8,7 +9,7 @@ export class EvolutionScreen {
   constructor(run){
     this.run=run;this.center=new Vector3();this.scene=new Scene();
     // The silhouette, filament and wash are independent luminance fields.
-    this.texture=new Texture();
+    this.texture=new T.DataTexture(null,...atlas.textureSize,T.RedFormat);
     this.texture.generateMipmaps=false;this.texture.minFilter=this.texture.magFilter=1006;
     this.uniforms={map:{value:this.texture},frame:{value:0},seconds:{value:0},strength:{value:0},
       focus:{value:{x:.5,y:.5}},span:{value:{x:1,y:1}},exposure:{value:[1,0,0,0]}};
@@ -86,23 +87,21 @@ export class EvolutionScreen {
   prepare(){
     if(this.disposed)return Promise.resolve(false);
     return this.loading??=new Promise(resolve=>{
-      const image=new Image();
-      const finish=ok=>{clearTimeout(timer);image.onload=image.onerror=null;if(!ok)this.loading=null;resolve(ok);};
+      let done=false;
+      const finish=ok=>{if(done)return;done=true;clearTimeout(timer);if(!ok)this.loading=null;resolve(ok);};
       const timer=setTimeout(()=>finish(false),12000);
-      image.onload=async()=>{
-        if(this.disposed){finish(false);return;}
-        try{
-          this.texture.image=image;this.texture.needsUpdate=true;
-          const {renderer,camera}=this.run.r;
-          renderer.initTexture(this.texture);
-          const target=renderer.getRenderTarget();let linked;
-          try{renderer.setRenderTarget(null);linked=renderer.compileAsync(this.scene,camera);}
-          finally{renderer.setRenderTarget(target);}
-          await linked;
-          this.loaded=!this.disposed;finish(this.loaded);
-        }catch{finish(false);}
-      };
-      image.onerror=()=>finish(false);image.src='assets/vfx/evolution-screen.webp';
+      const {width,height}=this.texture.image;
+      window.readCompressedAsset('assets/vfx/evolution-screen.r8.br',width*height).then(async pixels=>{
+        if(done||this.disposed){finish(false);return;}
+        this.texture.image.data=pixels;this.texture.needsUpdate=true;
+        const {renderer,camera}=this.run.r;
+        renderer.initTexture(this.texture);
+        const target=renderer.getRenderTarget();let linked;
+        try{renderer.setRenderTarget(null);linked=renderer.compileAsync(this.scene,camera);}
+        finally{renderer.setRenderTarget(target);}
+        await linked;
+        if(!done){this.loaded=!this.disposed;finish(this.loaded);}
+      }).catch(()=>finish(false));
     });
   }
   update(event,sourceFrame,opacity){
@@ -127,8 +126,8 @@ export class EvolutionScreen {
     this.uniforms.focus.value.x=this.center.x*.5+.5;this.uniforms.focus.value.y=this.center.y*.5+.5;
     // Uniform cover scaling preserves circular bursts on tall and short phones.
     const aspect=camera.aspect,sourceAspect=atlas.width/atlas.height;
-    this.uniforms.span.value.x=Math.min(1,aspect/sourceAspect);
-    this.uniforms.span.value.y=Math.min(1,sourceAspect/aspect);
+    this.uniforms.span.value.x=Math.min(1,aspect/sourceAspect)/VFX_SCALE;
+    this.uniforms.span.value.y=Math.min(1,sourceAspect/aspect)/VFX_SCALE;
     const target=renderer.getRenderTarget(),auto=renderer.autoClear;
     try{renderer.setRenderTarget(null);renderer.autoClear=false;renderer.render(this.scene,camera);}
     finally{renderer.autoClear=auto;renderer.setRenderTarget(target);}
@@ -140,5 +139,6 @@ export class EvolutionScreen {
     this.dimmer.removeFromParent();this.dimmer.material.dispose();
     this.streaks.removeFromParent();this.streaks.geometry.dispose();this.streaks.material.dispose();this.streaks.dispose();
     this.mesh.removeFromParent();this.mesh.geometry.dispose();this.mesh.material.dispose();this.texture.dispose();
+    this.texture.image.data=null;
   }
 }

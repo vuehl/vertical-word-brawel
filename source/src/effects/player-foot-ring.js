@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 // Ground markers persist independently of the combat particle budget.
 function groundRing(parent, {PlaneGeometry, ShaderMaterial, Mesh}, name, diameter, fragmentShader, uniforms = {}) {
   const geometry = new PlaneGeometry(diameter, diameter).rotateX(-Math.PI / 2);
@@ -17,7 +18,7 @@ function groundRing(parent, {PlaneGeometry, ShaderMaterial, Mesh}, name, diamete
   return mesh;
 }
 export function createPlayerFootRing(scene, three) {
-  return groundRing(scene, three, 'player-foot-ring', 2.1, `
+  return groundRing(scene, three, 'player-foot-ring', 2.1 * VFX_SCALE, `
     varying vec2 vUv;
     void main(){
       float d=length((vUv-.5)*2.);
@@ -37,7 +38,7 @@ export function createFacilityDwellRing(parent, three) {
     void main(){
       const float tau=6.2831853;
       vec2 p=(vUv-.5)*2.;
-      float edge=abs(length(p)-.83);
+      float edge=abs(length(p)-.83)/${VFX_SCALE};
       float rim=1.-smoothstep(.043,.058,edge);
       float path=1.-smoothstep(.023,.036,edge);
       vec3 track=mix(vec3(.23),vec3(.76),path);
@@ -61,7 +62,7 @@ export function createDeskAltarRing(parent, three, core, glow, breathOpacity) {
     uniform float dwell, breathOpacity;
     varying vec2 vUv;
     void main(){
-      float edge=abs(length((vUv-.5)*2.)-.83);
+      float edge=abs(length((vUv-.5)*2.)-.83)/${VFX_SCALE};
       float aa=max(fwidth(edge),.001);
       float band=1.-smoothstep(.052-aa,.052+aa,edge);
       float falloff=max(0.,edge-.052)/.050;

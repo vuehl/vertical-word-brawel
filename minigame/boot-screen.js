@@ -299,7 +299,7 @@ module.exports = async function presentBootFrame(gl) {
       patch = null;
     }
   }
-  function paint(value, w, h, full) {
+  function paint(value, w, h, full, waitSeconds) {
     if (full) {
       canvas.width = w;
       canvas.height = h;
@@ -327,15 +327,18 @@ module.exports = async function presentBootFrame(gl) {
     ctx.setTransform(s, 0, 0, s, left * s, -y);
     ctx.save();
     ctx.translate(0, track);
-    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 90 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 50 ? "\u6B63\u5728\u51C6\u5907\u573A\u666F\u4E0E\u89D2\u8272" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90");
+    let label = value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 90 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 50 ? "\u6B63\u5728\u51C6\u5907\u573A\u666F\u4E0E\u89D2\u8272" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90";
+    if (waitSeconds) label += " \xB7 " + waitSeconds + " \u79D2";
+    paintLoadingSlip2(ctx, value, label);
     ctx.restore();
     return strip ? y : null;
   }
   try {
-    let draw = function(value, overlay = false, sweepPhase = 0) {
+    let draw = function(value, overlay = false, sweepPhase = 0, seconds = 0) {
       if (!program) return;
-      value = Math.max(0, Math.min(100, Math.floor(value)));
-      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value;
+      value = Math.max(0, Math.min(100, value));
+      const waitSeconds = value < 100 && seconds >= 3 ? seconds : 0;
+      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value + "/" + waitSeconds;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.SCISSOR_TEST);
       gl.disable(gl.DEPTH_TEST);
@@ -350,7 +353,7 @@ module.exports = async function presentBootFrame(gl) {
       gl.bindTexture(gl.TEXTURE_2D, texture);
       if (key !== last) {
         const full = !last || textureWidth !== w || textureHeight !== h || h / (w / 390) < 600;
-        const stripY = paint(value, w, h, full);
+        const stripY = paint(value, w, h, full, waitSeconds);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         if (textureWidth !== w || textureHeight !== h) {
@@ -365,7 +368,7 @@ module.exports = async function presentBootFrame(gl) {
         if (stripY !== null) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, stripY, gl.RGBA, gl.UNSIGNED_BYTE, patch);
         last = key;
       }
-      gl.uniform1i(percent, value);
+      gl.uniform1i(percent, Math.floor(value));
       gl.uniform1i(overScene, overlay ? 1 : 0);
       const scale = Math.min(w / 390, h / 550);
       gl.uniform4f(trackRect, 0.5 + (61 - 195) * scale / w, 0.79, 268 * scale / w, 5 * scale / h);

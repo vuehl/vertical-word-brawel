@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw} from '../vendor/three-DmSYIDKK.js';
 import {WindAtlasBatch} from './wind-vortex.js';
 import {EvolutionScreen} from './evolution-screen.js';
@@ -77,6 +78,7 @@ export class UpgradeEffects {
           alpha=effectTime.w*smoothstep(0.,.12,age)*ending;
           vec4 p=viewMatrix*vec4(originSize.xyz,1.);
           p.y+=h*.48;
+          h*=${VFX_SCALE};
           head=1.;depthSide=1.;
           if(part<1.5){
             vec3 pose=orbitPose(frame);
@@ -216,7 +218,7 @@ export class UpgradeEffects {
           // above the ground, matching the procedural orbit.
           const isBurst=frame>=61&&frame<=66;
           const fade=fx.calm?(isBurst?.18:.55):1;
-          this.light.push(p.x,p.y+.08,p.z,e.height*scale*4,frame,opacity*fade,.38);
+          this.light.push(p.x,p.y+.08,p.z,e.height*scale*4,frame,opacity*fade,.5-(.5-.38)/VFX_SCALE);
         }
       }
       const j=this.mesh.count++;

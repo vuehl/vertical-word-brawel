@@ -222,7 +222,10 @@ export function createZixingUI(app,api) {
   const scene=journeyScene();
   const ui=app.zixing={home,choose,map,difficulty:map,multiplayer:()=>openProfilePage(coopTitle,()=>multiplayer()),lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready,prepareHomeArt:scene.prepare,savedCard,settlementSaved};
   const character=characterForSpecies;
-  window.addEventListener('memorywarning',releaseGlyphCanvasCache);
+  window.addEventListener('memorywarning',()=>{
+    releaseGlyphCanvasCache();
+    app.run?.sprites?.discardUnusedWarmGlyphs?.();
+  });
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
   // Older local saves have run history. A restored cloud save may only have dust or stage progress.

@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../effects/visual-scale.js';
 import {
   I as Cr,
   K as Tr,
@@ -371,8 +372,8 @@ var KS = Math.PI / 180,
           a = i.range(6, 38),
           o = i.range(3, 6);
         for (let i of [0, Math.PI / 2]) {
-          let s = new Yr(o, 34)
-            .translate(0, 17, 0)
+          let s = new Yr(o * VFX_SCALE, 34 * VFX_SCALE)
+            .translate(0, 17 * VFX_SCALE, 0)
             .rotateZ(-0.32)
             .rotateY(i + 0.6)
             .translate(Math.cos(t) * a, n.height(Math.cos(t) * a, Math.sin(t) * a) - 1, Math.sin(t) * a);
@@ -764,7 +765,7 @@ var nC = Math.PI / 180,
         }
         for (let e = 0; e < r.length; e += 3) n.reserve(r[e].x, r[e].z, 1.6);
         let i = this.magmaMat(),
-          a = new Tr(this.ribbon(r, 2.4), i);
+          a = new Tr(this.ribbon(r, 2.4 * VFX_SCALE), i);
         ((a.renderOrder = 2),
           (a.visible = !1),
           this.group.add(a),

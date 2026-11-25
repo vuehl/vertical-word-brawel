@@ -46,7 +46,7 @@ test('cooperative model expansion preserves every byte and yields between batche
   assert.equal(timedYields,11,'The time budget can yield before the four-file limit');
 });
 
-function installer({nativeAsync=true,stalledWrite=false}={}){
+function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSubpackage}={}){
   const {pool,recipes}=models(),data=new Map(),dirs=new Set(),downloads={};
   const archives={world:[['model-parts.bin',pool],['model-map.json',Buffer.from(JSON.stringify(recipes))]],art:[],text:[]};
   let failFile=null,yields=0,asyncReads=0,syncReads=0,asyncWrites=0,asyncRemovals=0;
@@ -62,8 +62,9 @@ function installer({nativeAsync=true,stalledWrite=false}={}){
     renameSync(from,to){data.set(to,data.get(from));data.delete(from);}
   };
   if(nativeAsync){
-    manager.rmdir=({dirPath,recursive,success})=>{
+    manager.rmdir=({dirPath,recursive,success,fail})=>{
       assert.equal(recursive,true);asyncRemovals++;
+      if(lockedCache)return fail({errMsg:'busy'});
       setImmediate(()=>{manager.rmdirSync(dirPath);success({});});
     };
     manager.readCompressedFile=({filePath,success})=>{asyncReads++;queueMicrotask(()=>success({data:compressed(filePath)}));};
@@ -74,7 +75,11 @@ function installer({nativeAsync=true,stalledWrite=false}={}){
     files:Object.fromEntries(Object.keys(recipes).map(file=>['assets/models/'+file,'world/'+file])),sprites:{}};
   const context={module:{exports:{}},console,Uint8Array,Date,clearTimeout,
     setTimeout:(fn,ms)=>{if(ms===0)yields++;return setTimeout(fn,ms===30000&&stalledWrite?10:ms);},
-    wx:{env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>manager,loadSubpackage({name,success}){downloads[name]=(downloads[name]||0)+1;queueMicrotask(success);}},
+    wx:{env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>manager,loadSubpackage(options){
+      downloads[options.name]=(downloads[options.name]||0)+1;
+      if(loadSubpackage)return loadSubpackage(options);
+      queueMicrotask(options.success);
+    }},
     require(name){if(name==='./assets')return info;if(name==='./resource-codec')return codec;
       if(name==='./resource-runtime')return {decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text'}[new Uint8Array(raw)[0]]]};
       throw Error(name);}
@@ -94,6 +99,26 @@ test('removed music caches are evicted without touching saves or current resourc
   for(const dir of removed){assert.ok(!f.dirs.has(dir));assert.ok(!f.data.has(dir+'/test'));}
   for(const dir of kept){assert.ok(f.dirs.has(dir));assert.equal(f.data.get(dir+'/test')[0],42);}
   assert.deepEqual(f.downloads,{text:1});
+});
+test('a locked obsolete cache does not prevent text installation, and byte-only downloads report progress',async()=>{
+  const f=installer({lockedCache:true,loadSubpackage({success}){
+    return {onProgressUpdate(notify){
+      notify({totalBytesWritten:50,totalBytesExpectedToWrite:200});
+      queueMicrotask(success);
+    }};
+  }});
+  f.dirs.add('/userdata/pokebonk-assets/text-cccccccccccccccc');
+  const progress=[],states=[];
+  await f.api.init(percent=>progress.push(percent),state=>states.push(state));
+  assert.deepEqual(progress,[25]);
+  assert.deepEqual([...new Set(states.map(s=>s.phase))],['download','unpack','write','ready']);
+});
+test('a mounted text archive remains usable when the package callback reports failure',async()=>{
+  const f=installer({loadSubpackage({fail}){queueMicrotask(()=>fail({errMsg:'download interrupted'}));}});
+  f.data.set('packs/text/assets.br',new Uint8Array(4));
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:1});
+  assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
 });
 test('native async installs coalesce, report progress and leave unused models on disk as recipes',async()=>{
   const fixture=installer(),progressA=[],progressB=[];

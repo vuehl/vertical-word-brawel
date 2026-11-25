@@ -92,7 +92,7 @@ await page.evaluateOnNewDocument(()=>{
   window.bootPercentages=[];window.bootLabels=[];
   const fillText=CanvasRenderingContext2D.prototype.fillText;
   CanvasRenderingContext2D.prototype.fillText=function(label,...args){
-    if(/^\d+%$/.test(label))window.bootLabels.push(label);
+    if(/^\d+(\.\d+)?%$/.test(label))window.bootLabels.push(label);
     return fillText.call(this,label,...args);
   };
   window.holdHomeStatus=true;
@@ -169,15 +169,16 @@ async function verifyStartup(){
   const baseline=process.argv.includes('--baseline');
   await page.waitForFunction(()=>bootPercentages[bootPercentages.length-1]>=35);
   const playReady=await page.evaluate(()=>bootPercentages[bootPercentages.length-1]);
-  assert.ok(playReady===35||(baseline&&playReady===50));
-  const halfText=playReady===35?42:67;
+  assert.ok(baseline ? playReady===35||playReady===50 : playReady>=35&&playReady<50);
+  const halfText=baseline?(playReady===35?42:67):39;
   await verifyProgressImage(playReady);
   await page.evaluate(()=>window.reportTextProgress(50));
-  await page.waitForFunction(p=>bootPercentages.includes(p),{},halfText);
-  await verifyProgressImage(halfText,'00-loading.png');
+  await page.waitForFunction(p=>bootPercentages[bootPercentages.length-1]>=p,{},halfText);
+  await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])),'00-loading.png');
   async function verifyMotion(){
     if(baseline||!process.argv.includes('--boot-only'))return;
-    const {gaps,samples}=await page.evaluate(async()=>{
+    const {gaps,samples,labels}=await page.evaluate(async()=>{
+      const firstLabel=bootLabels.length-1;
       const gl=WebGL2RenderingContext.prototype,original=gl.uniform1f;
       let lastValue,lastChange=performance.now(),samples=0;
       const gaps=[];
@@ -191,10 +192,12 @@ async function verifyStartup(){
       try {await new Promise(resolve=>setTimeout(resolve,3100));}
       finally {gl.uniform1f=original;}
       gaps.push(performance.now()-lastChange);
-      return {gaps,samples};
+      return {gaps,samples,labels:bootLabels.slice(firstLabel).map(parseFloat)};
     });
     const longest=Math.round(Math.max(...gaps));
     assert.ok(samples>3&&longest<1000,'Moving bar must update within every second, longest gap '+longest+'ms');
+    assert.ok(labels.at(-1)>labels[0]&&labels.every((n,i)=>n<100&&(!i||n>=labels[i-1])),
+      'The visible percentage must advance while callbacks are paused: '+labels);
     console.log('Stalled boot progress animation:',samples,'updates, longest gap',longest,'ms');
   }
   await verifyMotion();
@@ -209,7 +212,26 @@ async function verifyStartup(){
       return resolve(url);
     };
   });
+  const retryInstall=process.argv.includes('--boot-only')&&!baseline&&!failFrame;
+  if(retryInstall)await page.evaluate(()=>{
+    const manager=wx.getFileSystemManager(),write=manager.writeFile,modal=wx.showModal;
+    manager.writeFile=function(options){
+      if(!options.filePath.includes('/text-'))return write.call(this,options);
+      manager.writeFile=write;
+      options.fail({errMsg:'测试文字资源写入中断'});
+    };
+    wx.showModal=function(options){
+      wx.showModal=modal;
+      if(!options.content.includes('测试文字资源写入中断'))return modal(options);
+      window.retryBootInstall=options;
+    };
+  });
   await page.evaluate(()=>{window.releaseTextDownload();window.releaseOptionalDownloads();});
+  if(retryInstall){
+    await page.waitForFunction(()=>window.retryBootInstall||window.problem);
+    assert.deepEqual(await page.evaluate(()=>[retryBootInstall.confirmText,bootPercentages.includes(100)]),['重试',false]);
+    await page.evaluate(()=>retryBootInstall.success({confirm:true}));
+  }
   if(checkGlyphGate){
     await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
     await page.evaluate(()=>releaseHomeStatus());
@@ -229,12 +251,13 @@ async function verifyStartup(){
   if(!checkGlyphGate){
     await page.waitForFunction(()=>window.homeStatusRequested && window.bootPercentages.at(-1)>=97 ||window.problem,{timeout:60000});
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-    await verifyProgressImage(await page.evaluate(()=>bootPercentages.at(-1)),'00-background.png');
+    await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels.at(-1))),'00-background.png');
     await verifyMotion();
     await page.evaluate(()=>window.releaseHomeStatus());
   }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
+  if(retryInstall)assert.equal(await page.evaluate(()=>requestedPackages.filter(name=>name==='play').length),1);
   await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
   if(process.argv.includes('--software-render')){
     await page.evaluate(()=>{window.productionFrameGap=app.frameGap.bind(app);app.frameGap=()=>250;app.r.setDynRes(.6);});

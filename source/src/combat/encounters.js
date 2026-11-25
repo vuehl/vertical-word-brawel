@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../effects/visual-scale.js';
 import {h as Zt, Rr as Je, Tn as et, Un as it, gr as Yt, un as Gn} from "../data/config.js";
 import {
   Y as zr,
@@ -1471,7 +1472,7 @@ var iT = Math.PI / 180,
           u = s,
           d = { x: s * 29.6, y: n.height(0, 0) + 9.5, z: c * 29.6 },
           f = { x: s * 19, y: n.height(s * 19, c * 19) - 0.2, z: c * 19 },
-          p = 2.2,
+          p = 2.2 * VFX_SCALE,
           m = r.length / 3;
         for (let [e, t] of [
           [d, 1],
@@ -2527,7 +2528,7 @@ var iT = Math.PI / 180,
           R: Math.sqrt(t.stats.area),
         };
       this.readyBlinkAt = this.readyFlashAt = null;
-      this.castBanner = {start: performance.now(), color: this.readyPalette.base};
+      this.castBanner = {start: performance.now(), color: this.readyPalette.base, evoStage: r};
       ((this.charge = 0),
         (this.active = a),
         e.upgradeTiming.beginUltimate(),

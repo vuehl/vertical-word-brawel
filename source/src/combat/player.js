@@ -9,7 +9,7 @@ import {rosterForMode} from "../data/lite-rules.js";
 import {finalBossSpecies} from "../data/character-rules.js";
 import {applyStarterSpeed, windSpeedDamageBonus, speedBuff} from "../data/starter-characters.js";
 import {heroActionCatalog} from "../actors/hero-action-catalog.js";
-import {playerHeroAction} from "../actors/hero-actions.js";
+import {playerGlyphScale, playerHeroAction} from "../actors/hero-actions.js";
 import {createPlayerFootRing} from "../effects/player-foot-ring.js";
 import {steerVelocity} from "../virtual-stick/stick-physics.js";
 import {RenderState} from "../virtual-stick/stick-render.js";
@@ -2999,7 +2999,7 @@ var mv = 30,
         n,
         r,
         l,
-        this.renderScale * (heroFrame?.renderScale ?? 1),
+        this.renderScale * playerGlyphScale * (heroFrame?.renderScale ?? 1),
         this.dead && heroFrame ? 0 : Math.max(this.flash, u ? 0.5 : 0),
         d,
         e.shinySkin ? Zc(this.speciesId) : 0,

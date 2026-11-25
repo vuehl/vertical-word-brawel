@@ -22,6 +22,7 @@ import {reviewCrowdRender} from './regression/crowd-render-regression.mjs';
 import {reviewBattleLoad} from './regression/battle-load-regression.mjs';
 import {reviewBattleVisual} from './regression/battle-visual-regression.mjs';
 import {reviewIOSBudget,installNativePerformanceFixture,reviewNativePerformance} from './regression/ios-budget-regression.mjs';
+import {iphoneCases,reviewIOSLateGame} from './regression/ios-late-game.mjs';
 import {reviewPhonePerformance} from './regression/phone-performance-regression.mjs';
 import {fixtureSubpackage} from './build/fixture-play-chunks.mjs';
 import {gameProject} from './build/project-target.mjs';
@@ -59,7 +60,12 @@ try{
   const page=await browser.newPage(),errors=[];
   page.on('pageerror',e=>{errors.push(String(e));console.error('Runtime error:',String(e));});
   page.on('console',m=>{if(m.type()==='error'&&/WebGLProgram|Shader Error|VALIDATE_STATUS/.test(m.text())){errors.push(m.text());if(process.argv.includes('--debug-shaders'))console.error(m.text().slice(0,1800));}});
-  await page.setViewport({width:390,height:844,deviceScaleFactor:3});
+  const iphone=process.argv.includes('--ios-late-game')?iphoneCases[process.env.POKEBONK_IPHONE||'13']:null;
+  if(process.argv.includes('--ios-late-game')&&!iphone)throw Error('Unknown iPhone fixture');
+  await page.setViewport(iphone?.viewport||{width:390,height:844,deviceScaleFactor:3});
+  if(iphone)await page.evaluateOnNewDocument(model=>{
+    window.fixtureDeviceInfo={model};window.fixtureBenchmark=null;
+  },iphone.model);
   if(process.argv.includes('--native-performance'))await page.evaluateOnNewDocument(installNativePerformanceFixture);
   await page.evaluateOnNewDocument(platform=>{
     window.fixturePlatform=platform;
@@ -73,7 +79,7 @@ try{
         return original.apply(this,args);
       };
     }
-  },process.argv.includes('--android-performance')?'android':process.argv.some(arg=>['--ios-budget','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
+  },process.argv.includes('--android-performance')?'android':iphone||process.argv.some(arg=>['--ios-budget','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
@@ -87,7 +93,7 @@ try{
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
   const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects'].includes(arg));
-  const repeatableMap=deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
+  const repeatableMap=!!iphone||deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
@@ -111,7 +117,7 @@ try{
     app.run.update(1/60);
     return initial;
   },{development,repeatableMap,upgradeResume});
-  assert.equal(initial.quality,'high');assert.equal(initial.locked,false);assert.equal(initial.fpsCap,60);
+  assert.equal(initial.quality,'high');assert.equal(initial.locked,iphone?.lock30??false);assert.equal(initial.fpsCap,iphone?.lock30?30:60);
   if(development)await enterDeveloperFromHome(page,dir);
   if(development&&(fireReview||process.argv.some(arg=>['--illustrated-desk','--hand-drawn-fire-spin','--fire-breath'].includes(arg)))){
     // Art reviews must show the actual desktop, not the default developer
@@ -119,7 +125,9 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--region-atlas')){
+  if(iphone){
+    await reviewIOSLateGame(page,dir,iphone);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--region-atlas')){
     const {reviewRegionAtlas}=await import('./regression/region-atlas-regression.mjs');
     await reviewRegionAtlas(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--ultimate-cast')){

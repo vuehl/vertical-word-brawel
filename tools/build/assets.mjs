@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
+import {brotliCompressSync,constants} from 'node:zlib';
 import {execFileSync} from 'node:child_process';
 import sharp from 'sharp';
 import {writeDeskMapAtlas} from '../art/desk-map-atlas.mjs';
@@ -72,6 +73,15 @@ for (const folder of ['assets', 'overrides/assets']) {
       if (selected.has(key)) continue;
       selected.add(key);
       const input = sourceFor(key);
+      if(key==='assets/vfx/evolution-screen.webp'){
+        // Store the exact sampled channel in GPU row order. Native image decoding
+        // otherwise keeps a full RGBA bitmap alive for this single-channel mask.
+        const red=await sharp(input).flip().extractChannel(0).raw().toBuffer();
+        add(targetPack,'assets/vfx/evolution-screen.r8.br',brotliCompressSync(red,{params:{
+          [constants.BROTLI_PARAM_QUALITY]:9,[constants.BROTLI_PARAM_LGWIN]:20
+        }}));
+        continue;
+      }
       if (isAtlasIcon(key)) { icons.push({pack:targetPack,key,input}); continue; }
       const original = fs.readFileSync(input);
       if (name.endsWith('.png') && original.length > 3000) {

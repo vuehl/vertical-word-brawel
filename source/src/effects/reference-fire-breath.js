@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/fire-breath-reference.json' with {type:'json'};
 
@@ -13,7 +14,7 @@ void main(){
   vec2 heading=normalize(forward.xy),side=vec2(heading.y,-heading.x);
   vec2 local=(uv-vec2(${atlas.anchor[0]},${atlas.anchor[1]}))*iOrigin.w;
   // For an upward cast, place the nozzle at the leading stroke as in the GIF.
-  local.y+=iPose.w*max(heading.y,0.)*iOrigin.w*(14./${atlas.tile}.);
+  local.y+=iPose.w*max(heading.y,0.)*(iOrigin.w/${VFX_SCALE})*(14./${atlas.tile}.);
   p.xy+=side*local.x+heading*local.y;
   vec2 cell=vec2(mod(iPose.y,${atlas.columns}.),${atlas.rows-1}.-floor(iPose.y/${atlas.columns}.));
   vUv=(cell+mix(vec2(.5/${atlas.tile}.),vec2(1.-.5/${atlas.tile}.),uv))/vec2(${atlas.columns}.,${atlas.rows}.);
@@ -70,7 +71,7 @@ export class ReferenceFireBreath{
       if(count>=this.limit)continue;
       const frame=frameEndMs.findIndex(end=>elapsedMs<end);
       const o=count++*4;
-      origin.set([s.x,s.y,s.z,s.size],o);
+      origin.set([s.x,s.y,s.z,s.size*VFX_SCALE],o);
       pose.set([s.angle,frame,v.opacity*(s.own?v.ownOpacity:1)*(v.calm?.78:1),s.own?1:0],o);
     }
     this.mesh.count=this.loaded?count:0;this.mesh.visible=this.mesh.count>0;

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import fireAtlas from '../../resources/public/assets/vfx/fire-family.json' with {type:'json'};
 export async function reviewFireFamily(page,dir,moves){
  const baseline=process.argv.includes('--record-fire-family'), report={moves:[],ultimates:[]};
  await page.setViewport({width:390,height:844,deviceScaleFactor:1});
@@ -8,8 +9,9 @@ export async function reviewFireFamily(page,dir,moves){
   const generator=Object.values(app.run).find(x=>x?.rng?.next)?.rng;if(!generator)throw Error('Gameplay RNG missing');
   window.familyRngPrototype=Object.getPrototypeOf(generator);window.familyRngNext=familyRngPrototype.next;familyRngPrototype.next=()=>.43;
   const r=app.run,t=r.terrain;
-  for(let z=-24;z<=24;z+=3)for(let x=-24;x<=24;x+=3){
-   if(!Array.from({length:28},(_,i)=>z-i*.4).every(zz=>t.inBounds(x,zz,2)&&t.isFlatOpen(x,zz)&&!t.hitProp(x,t.surface(x,zz)+.5,zz,2)))continue;
+  // The reference traces include absolute positions. Cast from their recorded lane.
+  const x=-24,z=-15;
+  if(Array.from({length:28},(_,i)=>z-i*.4).every(zz=>t.inBounds(x,zz,2)&&t.isFlatOpen(x,zz)&&!t.hitProp(x,t.surface(x,zz)+.5,zz,2))){
    window.placeFireTargets=()=>{
     const p=r.player,e=r.enemies;
     p.pos.set(x,t.surface(x,z),z);r.camTarget.copy(p.pos);p.facing.set(0,-1);
@@ -23,7 +25,7 @@ export async function reviewFireFamily(page,dir,moves){
    };
    return;
   }
-  throw Error('No open lane for fire skill targets');
+  throw Error('The reference lane for fire skill targets is obstructed');
  });
  const keys=['growl','ember','flamethrower','fire-spin','smokescreen','scary-face','inferno'];
  keys.push('fu-4');
@@ -58,10 +60,22 @@ export async function reviewFireFamily(page,dir,moves){
    return {species,name:r.ult.name,tier:r.ult.tier,duration:r.ult.active};
   },species);
   info.trace=[];
+  let sawFireRing=false;
   for(let i=0;i<12;i++){
    info.trace.push(await page.evaluate(()=>{vfxAdvance(12);const r=app.run;return {active:Math.round(r.ult.active*1e5)/1e5,hp:[...r.enemies.hp.slice(0,4)],zones:r.zones.list?.length,timers:r.timers.length};}));
+   if(!baseline){
+    const sample=await page.evaluate(()=>{
+     const art=app.run.vfx.crafted.fireFamily;
+     return {clips:art.events.map(e=>e.clip),frames:Array.from({length:art.mesh.count},(_,j)=>art.attributes[1].array[j*4])};
+    });
+    assert.ok(!sample.clips.some(clip=>['seal','sweepRing','shockwave'].includes(clip)),'Legacy ring in fire ultimate '+species);
+    const {first,count}=fireAtlas.clips.ring;
+    sawFireRing ||= sample.frames.some(index=>index>=first&&index<first+count);
+   }
    if([0,2,6].includes(i))await page.screenshot({path:path.join(dir,(baseline?'before-':'after-')+'ultimate-'+species+'-'+i+'.png')});
-  }assert.equal(info.tier,species-4);report.ultimates.push(info);
+  }
+  if(!baseline)assert.ok(sawFireRing,'Missing rendered fire ring in form '+species);
+  assert.equal(info.tier,species-4);report.ultimates.push(info);
  }
  await page.evaluate(()=>{Math.random=window.familyRandom;familyRngPrototype.next=window.familyRngNext;});
  const baselineFile=process.env.POKEBONK_FIRE_BASELINE||new URL('./fire-family-baseline.json',import.meta.url);

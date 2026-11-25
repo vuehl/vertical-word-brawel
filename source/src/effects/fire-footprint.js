@@ -30,7 +30,6 @@ export function fireSurfaceGeometry(segments, withFloor=false, backSegments=0) {
 // rotating in the world's horizontal plane; the scene camera then projects it.
 export const fireFootprints = {
   ring:      {depthRatio:.52, shear:0,   pivotY:.44},
-  shockwave: {depthRatio:.64, shear:.07, pivotY:.51},
   sweepRing: {depthRatio:.72, shear:.17, pivotY:.51},
   seal:      {depthRatio:1,   shear:0,   pivotY:.50},
   crack:     {depthRatio:.63, shear:.07, pivotY:.51},

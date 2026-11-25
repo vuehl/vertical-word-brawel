@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../effects/visual-scale.js';
 import {formCopy, moveCopy} from '../data/form-copy.js';
 import {ENEMY_DANGER_COLOR} from './enemy-telegraphs.js';
 import {finalBossSpecies} from '../data/character-rules.js';
@@ -8404,6 +8405,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           height = paper ? 12 : 21,
           u = new Tr(new yr(paper ? 4.4 : 6.5, 1.3, height, 28, 10, !0).translate(0, height / 2, 0), l);
         u.name = 'weather-waterspout';
+        u.scale.setScalar(VFX_SCALE);
         u.position.set(r, t.surface(r, i) - 0.3, i);
         ((u.renderOrder = 4),
           e.r.scene.add(u),
@@ -8460,9 +8462,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             n = 1 + e * 0.28,
             i = t.time * 5 + e * 0.6 + F.range(0, Math.PI * 2);
           t.vfx.norm.spawn({
-            x: r.x + Math.cos(i) * n,
-            y: p + e,
-            z: r.z + Math.sin(i) * n,
+            x: r.x + Math.cos(i) * n * VFX_SCALE,
+            y: p + e * VFX_SCALE,
+            z: r.z + Math.sin(i) * n * VFX_SCALE,
             vx: -Math.sin(i) * n * 3,
             vy: F.range(2, 5),
             vz: Math.cos(i) * n * 3,

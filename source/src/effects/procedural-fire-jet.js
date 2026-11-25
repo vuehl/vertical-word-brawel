@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw} from '../vendor/three-DmSYIDKK.js';
 
 const TAU=Math.PI*2,clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
@@ -157,7 +158,7 @@ export class ProceduralFireJet{
     const [origin,motion,life]=this.attributes.map(a=>a.array);
     instances.forEach((p,i)=>{
       const o=i*4,opacity=owner.vfx.opacity*(p.own?owner.vfx.ownOpacity:1)*(owner.vfx.calm?.78:1);
-      origin.set([p.x,p.y,p.z,p.radius],o);motion.set([p.dx,p.dz,p.length,p.core||0],o);
+      origin.set([p.x,p.y,p.z,p.radius*VFX_SCALE],o);motion.set([p.dx,p.dz,p.length*VFX_SCALE,p.core||0],o);
       life.set([p.p,p.alpha*opacity,p.seed,p.age],o);
     });
     this.mesh.count=instances.length;this.mesh.visible=this.mesh.count>0;

@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/fireball.json' with {type:'json'};
 
@@ -83,7 +84,7 @@ export class HandDrawnFireball{
     const v=this.owner.vfx,[origin,frame,heading]=this.attributes.map(a=>a.array);let count=0;
     const push=(x,y,z,width,height,index,anchorX,dx,dy,dz,alpha,kind=0)=>{
       if(count>=this.limit)return;const offset=count++*4;
-      origin.set([x,y,z,width],offset);frame.set([height,index,anchorX,kind],offset);heading.set([dx,dy,dz,alpha*v.opacity*(v.calm?.8:1)],offset);
+      origin.set([x,y,z,width*VFX_SCALE],offset);frame.set([height*VFX_SCALE,index,anchorX,kind],offset);heading.set([dx,dy,dz,alpha*v.opacity*(v.calm?.8:1)],offset);
     };
     // Advance existing events before adding new wakes, so a born wake starts at frame zero.
     this.events=this.events.filter(e=>{e.age+=dt;return this.owner.allowed(e.own)&&e.age<atlas.clips[e.clip].count/(e.clip==='wake'?36:30);});

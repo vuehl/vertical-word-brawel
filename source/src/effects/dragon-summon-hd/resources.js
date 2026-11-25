@@ -43,26 +43,28 @@ function buildGeometry(bytes,layer){
       normal[0]+=dy/length;normal[1]-=dx/length;normals.set(id,normal);
     }
   }
-  const vertices=n+normals.size,positions=new Float32Array(vertices*2),offset=new Float32Array(vertices*2),
-        coverage=new Float32Array(vertices),indices=Array.from(triangles),outer=new Map();
-  positions.set(xy);coverage.fill(1,0,n);let next=n;
+  const vertices=n+normals.size,xyz=new Float32Array(vertices*3),offset=new Float32Array(vertices*2),
+        coverage=new Float32Array(vertices),indices=new Uint16Array(triangles.length+6*boundary.size),outer=new Map();
+  for(let i=0;i<n;i++){xyz[3*i]=xy[2*i];xyz[3*i+1]=xy[2*i+1];}
+  indices.set(triangles);coverage.fill(1,0,n);let next=n,end=triangles.length;
   for(const [id,[x,y]] of normals){
     const divisor=Math.max(.001,Math.hypot(x,y)),nx=x/divisor,ny=y/divisor;
-    positions[next*2]=xy[id*2];positions[next*2+1]=xy[id*2+1];
+    xyz[next*3]=xy[id*2];xyz[next*3+1]=xy[id*2+1];
     offset[id*2]=-.45*nx;offset[id*2+1]=-.45*ny;
     offset[next*2]=.55*nx;offset[next*2+1]=.55*ny;
     outer.set(id,next++);
   }
   for(const [a,b] of boundary.values()){
-    if(outer.has(a)&&outer.has(b))indices.push(a,b,outer.get(b),a,outer.get(b),outer.get(a));
+    if(!outer.has(a)||!outer.has(b))continue;
+    const oa=outer.get(a),ob=outer.get(b);
+    indices[end++]=a;indices[end++]=b;indices[end++]=ob;
+    indices[end++]=a;indices[end++]=ob;indices[end++]=oa;
   }
   const geometry=new BufferGeometry();
-  const xyz=new Float32Array(vertices*3);
-  for(let i=0;i<vertices;i++){xyz[i*3]=positions[i*2];xyz[i*3+1]=positions[i*2+1];}
   geometry.setAttribute('position',new BufferAttribute(xyz,3));
   geometry.setAttribute('edgeOffset',new BufferAttribute(offset,2));
   geometry.setAttribute('inkCoverage',new BufferAttribute(coverage,1));
-  geometry.setIndex(new BufferAttribute(new Uint16Array(indices),1));
+  geometry.setIndex(new BufferAttribute(indices.subarray(0,end),1));
   return geometry;
 }
 
@@ -100,23 +102,13 @@ export class DragonSummonResources {
       }
     }
     const files=[...new Set([...m.arc.pages,...m.orb.pages,...m.burst.pages,m.orb.background.file,m.boss.file])];
-    // Take ownership only after all in-flight workers finish. On failure, every
-    // successfully decoded sibling still goes through the same disposal path.
-    let cursor=0,failure;
-    const worker=async()=>{
-      while(cursor<files.length&&!failure&&!this.disposed){
-        const file=files[cursor++];if(this.textures.has(file))continue;
-        try{
-          const t=await loadTexture(file);
-          if(this.disposed)t.dispose();else this.textures.set(file,t);
-        }catch(error){failure=error;}
-      }
-    };
-    await Promise.all([worker(),worker()]);
-    if(failure)throw failure;
-    if(this.disposed)return false;
-    // Upload one atlas at a time during the minute before the summon.
-    for(const [file,texture] of this.textures){
+    // Finish the decode and upload of each original atlas before starting the
+    // next native decoder. The cinematic starts only when every page is ready.
+    for(const file of files){
+      if(this.textures.has(file))continue;
+      const texture=await loadTexture(file);
+      if(this.disposed){texture.dispose();texture.image=null;return false;}
+      this.textures.set(file,texture);
       if(file===m.boss.file)texture.colorSpace='srgb';
       this.renderer.initTexture(texture);
       await new Promise(resolve=>setTimeout(resolve,16));
@@ -132,7 +124,7 @@ export class DragonSummonResources {
   release(keepBoss=false){
     for(const [file,t] of this.textures){
       if(keepBoss&&file===this.meta?.boss.file)continue;
-      t.dispose();this.textures.delete(file);
+      t.dispose();t.image=null;this.textures.delete(file);
     }
     for(const frame of this.geometry)for(const g of frame)g.dispose();
     this.geometry=[];this.ready=false;

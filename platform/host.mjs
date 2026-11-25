@@ -369,7 +369,7 @@ export async function setup(host) {
     cancelAnimationFrame:typeof cancelAnimationFrame==='function'?cancelAnimationFrame:clearTimeout,
     addEventListener:win.addEventListener.bind(win),removeEventListener:win.removeEventListener.bind(win),dispatchEvent:win.dispatchEvent.bind(win),
     alert:msg=>wx.showModal({title:'字行',content:String(msg),showCancel:false}),open:()=>null,
-    prepareForest:host.files.prepareForest,repairVolumeSettings,
+    prepareForest:host.files.prepareForest,readCompressedAsset:host.files.readCompressedAsset,repairVolumeSettings,
     entryViewport:()=>view,
     entryHint:title=>wx.showToast?.({title,icon:'none'}),
     createCoopSocket:events=>cloudSocket(wx,events),

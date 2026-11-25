@@ -40,11 +40,12 @@ export function createComboNameplate(makeCanvas,font,makeImage,atlasPath){
         ctx.beginPath();ctx.rect(edgeX,0,reveal,layout.height);ctx.clip();
         ctx.globalAlpha=alpha;ctx.font=titleFont+'px '+font;
         ctx.textBaseline='middle';ctx.textAlign='center';ctx.lineJoin='round';
-        const rng=new Rng(step+1),hit=(ms-500)/320;
-        if(ms<500){
+        const fullCast=cue.evoStage>=2,hit=(ms-500)/320;
+        if(fullCast&&ms<500){
+          const rng=new Rng(step+1);
           ctx.fillStyle=tip;
           for(let i=0;i<9;i++)ctx.fillRect(edgeX+rng.range(8,60),layout.height/2+rng.range(-44,44),-rng.range(4,21),1.5);
-        }else if(hit<1){
+        }else if(fullCast&&hit<1){
           ctx.save();ctx.globalAlpha=(1-hit)*.65;ctx.strokeStyle=tip;ctx.lineWidth=2;
           ctx.beginPath();
           ctx.save();ctx.translate(titleCenter,layout.height/2);ctx.scale(36+60*hit,18+32*hit);
@@ -66,7 +67,7 @@ export function createComboNameplate(makeCanvas,font,makeImage,atlasPath){
           }
           ctx.restore();
         }
-        if(ms>600&&ms<castDurationMs-200){
+        if(fullCast&&ms>600&&ms<castDurationMs-200){
           const length=Math.min(2,Array.from(cue.name).length)*titleFont;
           const x=titleCenter+offset-length/2,y=layout.height-8;
           ctx.fillStyle=shade;ctx.fillRect(x,y,length,4);

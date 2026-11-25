@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,w as Color} from '../vendor/three-DmSYIDKK.js';
 import {effectColors,effectShapes,PAINT_SHAPES} from './stylized-effect-atlas.js';
 import {HandDrawnFireJet} from './hand-drawn-fire-jet.js';
@@ -71,6 +72,7 @@ void main(){
     normal=vec3(0.,1.,0.);
   }
   vUv=uv;vColor=iColor;vTime=iTime;vMode=mode;vNormal=normal;
+  p *= ${VFX_SCALE};
   vView=cameraPosition-(iOrigin.xyz+p);
   gl_Position=projectionMatrix*viewMatrix*vec4(iOrigin.xyz+p,1.);
 }`;
@@ -260,7 +262,7 @@ export class StylizedSkillFX{
   impact(type,x,y,z,strength=1,critical=false,own=true,continuous=false){
     if(!this.allowed(own))return;
     const r=this.run;if(!r)return;
-    if(r.sprites&&!r.sprites.visible(x,y,z,6))return;
+    if(this.vfx.view&&!this.vfx.view.visible(x,y,z,6))return;
     // Spatial/frame budget prevents a crowd or a DOT tick from hiding the game.
     if(this.impactClock!==this.clock){this.impactClock=this.clock;this.impactCount=0;}
     if(this.impactCount++>=(r.performance.name==='流畅'?3:7))return;

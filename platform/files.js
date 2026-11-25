@@ -38,22 +38,22 @@ async function removePackDirectory(dirPath) {
   if(typeof fs().rmdir==='function')await fileCall('rmdir',{dirPath,recursive:true});
   else {await yieldTask();fs().rmdirSync(dirPath,true);}
 }
-async function readArchive(name,archive) {
-  const manager=fs(),expected=info.rawSizes[name];let raw;
+async function readBrotli(archive,expected) {
+  const manager=fs();let raw;
   if(typeof manager.readCompressedFile==='function'){
     try {raw=(await fileCall('readCompressedFile',{filePath:archive,compressionAlgorithm:'br'})).data;}
-    catch(error){console.warn('[字行] 异步解压失败',name,error);}
+    catch(error){console.warn('[字行] 异步解压失败',archive,error);}
   }
   if((!raw||raw.byteLength!==expected)&&typeof manager.readCompressedFileSync==='function'){
     await yieldTask();
     try {raw=manager.readCompressedFileSync({filePath:archive,compressionAlgorithm:'br'});}
-    catch(error){console.warn('[字行] 原生解压失败，使用备用解码器',name,error);}
+    catch(error){console.warn('[字行] 原生解压失败，使用备用解码器',archive,error);}
   }
   if(!raw||raw.byteLength!==expected){
     const bytes=new Uint8Array(await readFile(archive));await yieldTask();
     raw=decodeBrotli(bytes,expected);
   }
-  if(!raw||raw.byteLength!==expected)throw Error('资源包长度不符 '+name);
+  if(!raw||raw.byteLength!==expected)throw Error('解压后长度不符 '+archive);
   return raw;
 }
 function downloadPackage(name, progress) {
@@ -68,14 +68,15 @@ function downloadPackage(name, progress) {
     }
     function resetTimer() {
       clearTimeout(timer);
-      timer = setTimeout(() => finish('下载长时间没有进展，请检查网络并重新进入'), 45000);
+      timer = setTimeout(() => finish('下载长时间没有进展，请检查网络后重试'), 45000);
     }
     resetTimer();
     try {
       const task = wx.loadSubpackage({name, success: () => finish(), fail: finish});
       if (task && task.onProgressUpdate) task.onProgressUpdate(event => {
         const bytes = Number.isFinite(event.totalBytesWritten) ? event.totalBytesWritten : 0;
-        const percent = Number.isFinite(event.progress) ? event.progress : 0;
+        const bytePercent = event.totalBytesExpectedToWrite > 0 ? 100 * bytes / event.totalBytesExpectedToWrite : 0;
+        const percent = Math.min(100,Math.max(bytePercent,Number.isFinite(event.progress) ? event.progress : 0));
         if (done || (bytes <= lastBytes && percent <= lastPercent)) return;
         lastBytes = Math.max(lastBytes, bytes);
         lastPercent = Math.max(lastPercent, percent);
@@ -86,12 +87,19 @@ function downloadPackage(name, progress) {
   });
 }
 async function loadPackage(name, progress) {
+  // A packaged archive can already be mounted even if WeChat missed the
+  // download callback. The normal unpacker still validates its contents.
+  const available = () => name === 'play'
+    ? !!(GameGlobal.pokebonkPlayEntry && GameGlobal.pokebonkPlayEntry.api)
+    : exists('packs/' + name + '/assets.br');
   try {
     await downloadPackage(name, progress);
   } catch (error) {
+    if (available()) return;
     console.warn('[宝可梦] 重试下载分包', name, error);
     await new Promise(resolve => setTimeout(resolve, 500));
-    await downloadPackage(name, progress);
+    try { await downloadPackage(name, progress); }
+    catch (retryError) { if (!available()) throw retryError; }
   }
 }
 async function unpack(name, revision, progress) {
@@ -105,7 +113,7 @@ async function unpack(name, revision, progress) {
   fs().mkdirSync(dir, true);
   const archive = 'packs/' + name + '/assets.br';
   report(name,'unpack');await yieldTask();
-  const unpackAt=Date.now(),raw=await readArchive(name,archive);
+  const unpackAt=Date.now(),raw=await readBrotli(archive,info.rawSizes[name]);
   stats.unpackMs=Date.now()-unpackAt;
   // Advancing the iterator decodes each filtered file. Give the splash
   // time to present frames even before the first native write begins.
@@ -248,23 +256,32 @@ async function resolvePath(url) {
   }
   return pathFor(raw);
 }
-async function init(progress) {
+async function init(progress, onState) {
   if (!exists(base)) fs().mkdirSync(base, true);
   // Only known, content-addressed resource folders inside this game's cache.
   // Removed music packages are obsolete too; player saves live elsewhere.
   for (const entry of fs().readdirSync(base)) {
     const match=/^(art|world|text|dragon_summon|capture_bag|sound|music_(?:boss|ingame[1-4]))-([a-f0-9]{16})$/.exec(entry);
-    if(match&&info.packs[match[1]]!==match[2])await removePackDirectory(base+'/'+entry);
+    if(match&&info.packs[match[1]]!==match[2]){
+      try {await removePackDirectory(base+'/'+entry);}
+      catch(error){console.warn('[字行] 旧资源缓存暂未清理',entry,error);}
+    }
   }
-  await ensurePack('text', progress);
+  await preparePacks(['text'],onState,progress);
 }
-async function prepareForest(onProgress) {
-  const names=['world','art'];
+async function preparePacks(names,onProgress,downloadProgress) {
   if(onProgress)for(const name of names){
     if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name).add(onProgress);
     if(packStates.has(name))onProgress(packStates.get(name));
   }
-  try {return await Promise.all(names.map(name=>ensurePack(name)));}
+  try {return await Promise.all(names.map(name=>ensurePack(name,downloadProgress)));}
   finally {if(onProgress)for(const name of names)listeners.get(name).delete(onProgress);}
 }
-module.exports = {init,pathFor,resolvePath,loadIcon,loadPackage,prepareForest,diagnostics};
+function prepareForest(onProgress) {return preparePacks(['world','art'],onProgress);}
+async function readCompressedAsset(url,expected){
+  const path=await resolvePath(url);
+  if(!path)throw Error('找不到压缩资源 '+url);
+  const raw=await readBrotli(path,expected);
+  return raw instanceof Uint8Array?raw:new Uint8Array(raw);
+}
+module.exports = {init,pathFor,resolvePath,readCompressedAsset,loadIcon,loadPackage,prepareForest,diagnostics};

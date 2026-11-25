@@ -1,6 +1,6 @@
 import {ht as Vector3} from '../vendor/three-DmSYIDKK.js';
 import {heroActionCatalog} from '../actors/hero-action-catalog.js';
-import {glyphBillboardSize} from '../actors/hero-actions.js';
+import {glyphBillboardSize,playerGlyphScale} from '../actors/hero-actions.js';
 import reference from '../../../resources/public/assets/vfx/evolution-screen.json' with {type:'json'};
 import {EVOLUTION_DURATION} from './evolution-timing.js';
 
@@ -13,7 +13,7 @@ export class EvolutionCamera {
   start(actor){
     this.actor=actor;this.started=this.run.realTime;
     const id=actor.speciesId;
-    this.inkHeight=glyphBillboardSize(this.run.sprites.get(id).bodyHeight())*
+    this.inkHeight=playerGlyphScale*glyphBillboardSize(this.run.sprites.get(id).bodyHeight())*
       (heroActionCatalog[id]?.scale??1)*(reference.camera.inkHeights[id]??.6);
     this.focusHeight=this.inkHeight*(reference.camera.feetY-368)/reference.camera.inkPixels;
   }

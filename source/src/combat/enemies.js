@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../effects/visual-scale.js';
 import {FOREST_COMBAT_ZONES, zoneDuration, wavePace, isSoloNormalOpening, normalOpeningWaves} from "../data/lite-rules.js";
 import {enemySpeciesWord} from "../data/character-rules.js";
 import {runOrdinaryLimit, countOrdinary, naturalCreditRate, SPAWN_RATE_SCALE} from "../performance/spawn-budget.js";
@@ -686,7 +687,7 @@ var {wy, ay, gy, Iy, sb, ub, Gy, ab} =
   createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv, Ol});
 function fb(e, t = 1.4, n = 5, r = 70, i = {}) {
   let [a, o] = i.near ?? [14, 40],
-    s = new yr(t, t * 1.3, r, 18, 1, !0).translate(0, n + r / 2, 0),
+    s = new yr(t * VFX_SCALE, t * 1.3 * VFX_SCALE, r * VFX_SCALE, 18, 1, !0).translate(0, n + r * VFX_SCALE / 2, 0),
     c = new Kr({
       transparent: !0,
       depthWrite: !1,

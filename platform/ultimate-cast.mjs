@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../source/src/effects/visual-scale.js';
 import {unzlibSync} from 'fflate';
 import clip from './ultimate-cast-frames.json' with {type:'json'};
 import blade from './nameplate-blade.json' with {type:'json'};
@@ -9,7 +10,7 @@ export const castDurationMs=clip.duration;
 
 export function castHidesUI(run,now){
   const cue=run?.ult?.castBanner;
-  if(!cue)return false;
+  if(!cue||cue.evoStage<2)return false;
   const elapsed=now-cue.start;
   return elapsed>=castHudLeadMs&&elapsed<castDurationMs;
 }
@@ -131,7 +132,10 @@ export function createUltimateCast(makeImage,makeCanvas,pathFor,readFile){
     const elapsed=now-cue.start;
     if(elapsed>=castDurationMs){run.ult.castBanner=null;return null;}
     const time=Math.floor(Math.max(0,elapsed)*30/1000)*1000/30;
-    const rect={x:0,y:0,width:view.width,height:view.height},band=flameOpeningBand(rect);
-    return {band,flame:flameLayer(cue,rect,scale,time),blade:bladeLayer(cue,band,scale,time)};
+    const band=flameOpeningBand({x:0,y:0,width:view.width,height:view.height});
+    const rect={x:band.x*(1-VFX_SCALE),y:band.y*(1-VFX_SCALE),width:view.width*VFX_SCALE,height:view.height*VFX_SCALE};
+    return {band,
+      flame:cue.evoStage>=2?flameLayer(cue,rect,scale,time):null,
+      blade:cue.evoStage>=1?bladeLayer(cue,band,scale,time):null};
   };
 }

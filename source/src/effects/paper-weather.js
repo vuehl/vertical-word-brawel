@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {K as Mesh,et as PlaneGeometry,ct as ShaderMaterial} from '../vendor/three-DmSYIDKK.js';
 
 // The illustrated tabletop materials ignore scene fog. Composite weather over
@@ -32,7 +33,7 @@ export class PaperWeather {
           return (1.-smoothstep(.035,.092,length(vec2(along,across))))*(.45+.55*flake.x);
         }
         void main(){
-          vec2 p=vec2(coord.x*aspect,coord.y);
+          vec2 p=(.5+(coord-.5)/${VFX_SCALE})*vec2(aspect,1.);
           vec3 color;
           float alpha;
           if(kind<1.5){

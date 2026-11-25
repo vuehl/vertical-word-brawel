@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../visual-scale.js';
 import {K as Mesh,st as Scene,w as Color,et as PlaneGeometry,ct as ShaderMaterial,ht as Vector3} from '../../vendor/three-DmSYIDKK.js';
 
 const projection=`
@@ -6,7 +7,7 @@ const projection=`
   float aspect=projectionMatrix[1][1]/projectionMatrix[0][0];
   vec2 span=vec2(aspect*frameSize.y/frameSize.x,1.);
   vec2 low=span*focus/(anchor-.006),high=span*(1.-focus)/(1.-.006-anchor);
-  float zoom=max(max(low.x,low.y),max(high.x,high.y));
+  float zoom=max(max(low.x,low.y),max(high.x,high.y))*${VFX_SCALE};
 `;
 const vertexHeader='uniform vec3 center;uniform vec2 anchor,frameSize;varying vec2 sourceUV;';
 const planeVertex=vertexHeader+`void main(){`+projection+`

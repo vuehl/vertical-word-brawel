@@ -26,14 +26,13 @@ export async function reviewUltimateCast(page,dir){
       window.tap(x+60,y,'move',11);
       const before=run.ult.uses;
       window.tap(button.x+button.width/2-screen.x,button.y+button.height/2-screen.y);
-      run.simulate(1/60);
-      run.input.endFrame();
+      const tick=()=>{run.update(1/60);run.input.endFrame();};
+      tick();
       const cue=run.ult.castBanner,p=run.player;
       const step=(frames=1)=>{
-        run.realDt=1/60;
-        for(let i=1;i<frames;i++){run.simulate(1/60);run.input.endFrame();}
+        for(let i=1;i<frames;i++)tick();
         const {x,z}=p.pos;
-        run.simulate(1/60);run.input.endFrame();
+        tick();
         return [p.pos.x-x,p.pos.z-z];
       };
       cue.start=env.performance.now()-700;
@@ -47,13 +46,14 @@ export async function reviewUltimateCast(page,dir){
       window.tap(x,y+60,'move',12);
       const [,restarted]=step(8);
       window.tap(x,y+60,'up',12);
-      return {uses:run.ult.uses-before,name:cue.name,color:cue.color,
+      return {uses:run.ult.uses-before,name:cue.name,color:cue.color,evoStage:cue.evoStage,
         held:held>0,turned:turned<0,released,restarted:restarted>0};
     },route);
-    assert.deepEqual(started,{uses:1,name,color,held:true,turned:true,released:true,restarted:true},'Cast and steer: '+species);
-    if(route.length>1)continue;
+    const evoStage=route.length-1;
+    assert.deepEqual(started,{uses:1,name,color,evoStage,held:true,turned:true,released:true,restarted:true},'Cast and steer: '+species);
+    const expectedLayers=[...(evoStage>=2?['flame']:[]),...(evoStage>=1?['blade']:[])];
     const titleX=[];
-    for(const [ms,hidden] of [[200,false],[333,true],[500,true],[700,true],[2010,false]]){
+    for(const [ms,hidden] of [[200,false],[333,true],[500,true],[700,true],[1000,true],[2010,false]]){
       const frame=await page.evaluate(ms=>{
         const run=app.run,env=inspected.env,renderer=app.r.renderer,gl=renderer.getContext();
         const cue=run.ult.castBanner;
@@ -88,12 +88,13 @@ export async function reviewUltimateCast(page,dir){
         assert.equal(frame.positions.length,Math.ceil(Array.from(name).length/2),'Draw every title row from the supplied glyphs');
         titleX.push(frame.positions[0]);
       }
-      assert.equal(frame.hidden,hidden);
+      assert.equal(frame.hidden,evoStage>=2&&hidden,'HUD visibility: '+species+' at '+ms);
       assert.equal(frame.finished,ms>=2000);
-      if(ms===700){
-        assert.deepEqual(frame.layers,['flame','blade']);
-        await page.screenshot({path:path.join(dir,(species===4?'炎':'风')+'-释放.png')});
-      }else if(ms>=2000)assert.deepEqual(frame.layers,[]);
+      assert.ok(frame.layers.every(layer=>expectedLayers.includes(layer)),'Unexpected layer: '+species+' at '+ms);
+      if(ms===500||ms===700)assert.deepEqual(frame.layers,expectedLayers,'Cast layers: '+species+' at '+ms);
+      if(ms===(evoStage>=2?333:500))await page.screenshot({path:path.join(dir,formCopy[species].word+'-释放.png')});
+      if(ms===1000)assert.deepEqual(frame.layers,evoStage>=2?['flame']:[],'Blade sweep has ended: '+species);
+      if(ms>=2000)assert.deepEqual(frame.layers,[]);
     }
     assert.ok(titleX[0]>titleX[2]&&titleX[1]<titleX[2],'Travel left, overshoot and rebound');
     assert.ok(Math.abs(titleX[2]-titleX[1]-5.2)<.8,'Rebound by 10% of the 52-unit travel');

@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {fireFootprints,fireFootprintGLSL,fireSurfaceGeometry} from './fire-footprint.js';
 import {DeviceFxThree as T,PostprocessingPass,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/fire-spin.json' with {type:'json'};
@@ -176,7 +177,7 @@ export class HandDrawnFireSpin{
       if(count>=this.limit)return;
       const contact=clip==='contact',dust=clip==='dust',spec=atlas.clips[contact?'cast':dust?'vortex':clip],index=spec.first+(contact?4:clip==='vortex'||dust?Math.floor(e.age*spec.fps)%spec.count:Math.min(spec.count-1,Math.floor(e.age*spec.fps)));
       const offset=count++*4;
-      position.set([e.x,e.y,e.z,width],offset);frame.set([height,index,dust?4:contact?3:clip==='vortex'?0:clip==='cast'?1:2,0],offset);
+      position.set([e.x,e.y,e.z,width*VFX_SCALE],offset);frame.set([height*VFX_SCALE,index,dust?4:contact?3:clip==='vortex'?0:clip==='cast'?1:2,0],offset);
       style.set([alpha*v.opacity*(e.own===false?1:v.ownOpacity)*(v.calm?.8:1),contact?-e.age*1.4:0,pivot,e.age],offset);
     };
     this.events=this.events.filter(e=>{

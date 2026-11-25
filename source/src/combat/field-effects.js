@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../effects/visual-scale.js';
 import {Dn as T} from "../data/config.js";
 import {typeColors as Ni, typeNames as Pi, gameData as k} from "../data/game-database.js";
 import {random as F, I, Fl, ql} from "../effects/battle-particles.js";
@@ -459,7 +460,7 @@ var Yp = 3e3,
         t = this.run.hideOwnFx;
       for (let n = 0; n < this.n; n++) {
         if (!this.alive[n] || (t && !(this.flags[n] & 1))) continue;
-        if(!this.fx[n]&&!this.run.sprites.visible(this.x[n],this.y[n],this.z[n],Math.max(8,this.size[n]*2)))continue;
+        if(!this.fx[n]&&!this.run.sprites.visible(this.x[n],this.y[n],this.z[n],Math.max(8,this.size[n]*2*VFX_SCALE)))continue;
         let r = !(this.flags[n] & 1);
         this.glow.fade = r ? e : 1;
         let i = r ? Math.min(this.size[n], im) : this.size[n],
@@ -633,7 +634,7 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
     coinT = 0;
     constructor(e) {
       ((this.run = e),
-        (this.pool = new ql(e.r.scene, e.vfx.atlas, cm, !1, e.r.shared)),
+        (this.pool = new ql(e.r.scene, e.vfx.atlas, cm, !1, e.r.shared, 1)),
         (this.glow = new ql(e.r.scene, e.vfx.atlas, cm, !0, e.r.shared)));
       const world='iA.xyz + vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0])*p2.x + vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1])*p2.y';
       for(const pool of [this.pool,this.glow]){

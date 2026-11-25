@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {et as PlaneGeometry, H as InstancedMesh, B as InstanceAttribute, j as DynamicDraw,
   ct as ShaderMaterial, dt as Texture, ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import vortexAtlas from '../../../resources/public/assets/vfx/wind-vortex.json' with {type:'json'};
@@ -75,7 +76,7 @@ export class WindAtlasBatch {
   push(x,y,z,size,frame,alpha,pivot=.5,dx=0,dz=0) {
     const i=this.mesh.count;
     if(!this.loaded || i>=this.origin.count || alpha<=0) return;
-    this.origin.setXYZW(i,x,y,z,size);
+    this.origin.setXYZW(i,x,y,z,size * VFX_SCALE);
     this.pose.setXYZ(i,frame,alpha,pivot);
     this.heading.setXY(i,dx,dz);
     this.mesh.count++;

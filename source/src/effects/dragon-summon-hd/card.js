@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../visual-scale.js';
 import {et as PlaneGeometry,H as InstancedMesh,ct as ShaderMaterial}
   from '../../vendor/three-DmSYIDKK.js';
 
@@ -22,13 +23,13 @@ export class ReferenceCard {
             vec2 cover=screenAspect<sourceAspect?vec2(screenAspect/sourceAspect,1.):vec2(1.,sourceAspect/screenAspect);
             vec4 focus=projectionMatrix*viewMatrix*vec4(center,1.);
             vec2 focusUV=focus.xy/focus.w*.5+.5;
-            coord=clamp(.5+(uv-focusUV)*cover/1.04,vec2(0.),vec2(1.));
+            coord=clamp(.5+(uv-focusUV)*cover/(1.04*${VFX_SCALE}),vec2(0.),vec2(1.));
             return;
           }
           vec3 right=vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]);
           vec3 up=vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1]);
           vec2 anchor=kind<.5?vec2(.5,1.-.455):vec2(.5,.5);
-          vec2 p=(uv-anchor)*size;
+          vec2 p=(uv-anchor)*size*${VFX_SCALE};
           gl_Position=projectionMatrix*viewMatrix*vec4(center+right*p.x+up*p.y,1.);coord=uv;
         }`,
       fragmentShader:`uniform sampler2D map,bgMap;uniform vec2 grid,frameSize;uniform float currentFrame,kind,opacity;varying vec2 coord;

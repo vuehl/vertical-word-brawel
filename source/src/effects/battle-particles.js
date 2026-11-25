@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {w as Ei, B as gr, H as Sr, ct as Kr, et as Yr, j as ii, b as Wr, ot as pi, I as Cr} from "../vendor/three-DmSYIDKK.js";
 import {createStylizedEffectAtlas, EFFECT_CELL} from "./stylized-effect-atlas.js";
 import {h as Zt, Lt as Ee, Mt as Ae} from "../data/config.js";
@@ -824,8 +825,9 @@ var Rl = 20,
         (this.life[t] = e.life),
         (this.max[t] = e.life));
       let n = !this.flat && Fl.own ? Rl : 1 / 0;
-      ((this.s0[t] = Math.min(e.size, n)),
-        (this.s1[t] = Math.min(e.endSize ?? e.size * 0.2, n)),
+      const visualScale = e.essential ? 1 : VFX_SCALE;
+      ((this.s0[t] = Math.min(e.size, n) * visualScale),
+        (this.s1[t] = Math.min(e.endSize ?? e.size * 0.2, n) * visualScale),
         (this.r[t] = e.rot ?? F.range(0, 6.28)),
         (this.rv[t] = e.spin ?? 0),
         (this.g[t] = e.gravity ?? 0),
@@ -993,7 +995,7 @@ var Rl = 20,
         this.col.set([d.r, d.g, d.b], u * 3),
         (this.life[u] = c),
         (this.max[u] = c),
-        (this.width[u] = o),
+        (this.width[u] = o * VFX_SCALE),
         (this.op[u] = l * (Fl.own ? Fl.ownFade : this.fade)),
         (this.once[u] = +(c <= 0.06)));
     }
@@ -1197,14 +1199,16 @@ var Ul = class {
   }
   spawn(e, t, n, r, i, a, o, s, c, l = 1, u = !1) {
     if (this.n >= this.cap || (Fl.on && !u)) return;
+    // Held warnings and live boundary markers must meet their gameplay radius.
+    const radiusScale = u || o === 0 ? 1 : VFX_SCALE;
     let d = this.n++,
       f = Al.set(a);
     ((this.px[d] = e),
       (this.py[d] = Math.max(t,this.surface?.(e,n)??t)),
       (this.pz[d] = n),
-      (this.r0[d] = r),
-      (this.r1[d] = i),
-      (this.th[d] = c),
+      (this.r0[d] = r * radiusScale),
+      (this.r1[d] = i * radiusScale),
+      (this.th[d] = c * VFX_SCALE),
       (this.life[d] = o),
       (this.max[d] = o),
       (this.once[d] = +(o <= 0.06)),
@@ -1678,7 +1682,7 @@ var Gl = class {
             ((t[i * 4] = o.x),
             (t[i * 4 + 1] = o.y),
             (t[i * 4 + 2] = o.z),
-            (t[i * 4 + 3] = o.size * c),
+            (t[i * 4 + 3] = o.size * c * VFX_SCALE),
             (n[i * 4] = a),
             (n[i * 4 + 1] = o.impact ? o.offsets[e] : e - (u - 1) / 2),
             (n[i * 4 + 2] = o.impact),
@@ -1750,12 +1754,13 @@ var Gl = class {
     }
     setPerformance(profile,view){
       for(const pool of [this.add,this.norm,this.ground,this.groundN,this.beams])pool.lockVisualQuality=!!profile.lockVisualQuality;
-      this.crafted.setPerformance(profile,view);
+      const effectView = view && {visible: (x,y,z,radius) => view.visible(x,y,z,radius * VFX_SCALE)};
+      this.crafted.setPerformance(profile,effectView);
       this.particleBudget??=new ParticleBudget();this.particleBudget.limit=profile.particleCell;
       this.criticalBudget??=new CriticalImpactBudget();
       this.criticalBudget.limit=profile.name==='流畅'?4:profile.name==='均衡'?6:8;
       this.add.densityBudget=this.norm.densityBudget=this.particleBudget;
-      this.add.view=this.norm.view=this.text.view=view;
+      this.add.view=this.norm.view=this.text.view=effectView;
       applyCrowdEffects(this,profile);
     }
     update(e) {
@@ -1899,7 +1904,7 @@ var Gl = class {
         p = Math.hypot(r - e, i - t, a - n);
       for (let m = 1; m <= c; m++) {
         let h = m / c,
-          g = m === c ? 0 : p * 0.12,
+          g = m === c ? 0 : p * 0.12 * VFX_SCALE,
           _ = e + (r - e) * h + F.range(-g, g),
           v = t + (i - t) * h + F.range(-g, g),
           y = n + (a - n) * h + F.range(-g, g);
@@ -1932,7 +1937,8 @@ var Gl = class {
     aB;
     aC;
     tmp = new Ei();
-    constructor(e, t, n, r, i) {
+    constructor(e, t, n, r, i, visualScale = VFX_SCALE) {
+      this.visualScale = visualScale;
       ((this.cap = n),
         (this.additive = r),
         (this.A = new Float32Array(n * 4)),
@@ -1976,7 +1982,7 @@ var Gl = class {
       ((this.A[l * 4] = e),
         (this.A[l * 4 + 1] = t),
         (this.A[l * 4 + 2] = n),
-        (this.A[l * 4 + 3] = r),
+        (this.A[l * 4 + 3] = r * this.visualScale),
         (this.B[l * 4] = u.r),
         (this.B[l * 4 + 1] = u.g),
         (this.B[l * 4 + 2] = u.b),

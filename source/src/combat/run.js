@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../effects/visual-scale.js';
 import {MapSpawnError} from "../world/map-rules.js";
 import {ALTAR_RING_EMISSIVE} from "../effects/altar-ring-vfx.js";
 import {bossSummonUnlockSeconds, springShoesKey} from "../data/active-content.js";
@@ -417,6 +418,8 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
       this.buildingStage=true;
       let terrain;
       try {
+        // Cancel the previous area's warmup before allocating the next terrain.
+        clearDragonSummon(this);
         const metrics={stage:this.stage};this.loadingMetrics.push(metrics);
         const check=()=>{if(this.disposed)throw Error('本局已结束');};
         this.onLoadProgress?.({phase:'绘制桌面与纸张',detail:'正在生成场景',progress:.5});
@@ -436,7 +439,6 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
       finally {this.buildingStage=false;}
     }
     buildStage(e, preparedTerrain, deferred = false) {
-      clearDragonSummon(this);
       this.dragonDuel = false;
       let t = this.r,
         r = this.stage === 4 ? (this.biome.sanctuary ?? null) : null;
@@ -2828,7 +2830,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
           const age=this.time-r.start;
           if(age>=r.life||!this.vfx.crafted.allowed()){this.ghosts.splice(t,1);continue;}
           const glyph=this.sprites.getHeroGhostGlyph(r.species,'wind');
-          glyph?.push(r.x,r.y,r.z,'walk',.1,r.dir,r.scale*glyph.zxGhostScale,0,
+          glyph?.push(r.x,r.y,r.z,'walk',.1,r.dir,r.scale*glyph.zxGhostScale*VFX_SCALE,0,
             .36*(1-age/r.life)*this.vfx.opacity*this.vfx.ownOpacity,0,0,1,1,1,0,false);
           continue;
         }
@@ -2836,14 +2838,14 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
           r.t-=e;
           if(r.t<=0||!this.vfx.crafted.allowed()){this.ghosts.splice(t,1);continue;}
           const glyph=this.sprites.getHeroGhostGlyph(r.species);
-          glyph?.push(r.x,r.y,r.z,'walk',.1,r.dir,r.scale*glyph.zxGhostScale,.25,
+          glyph?.push(r.x,r.y,r.z,'walk',.1,r.dir,r.scale*glyph.zxGhostScale*VFX_SCALE,.25,
             Math.min(.46,r.t/.5*.46)*this.vfx.opacity*this.vfx.ownOpacity,0,0,1,.65,.35,0,false);
           continue;
         }
         ((r.t -= e),
           r.t <= 0
             ? this.ghosts.splice(t, 1)
-            : n.push(r.x, r.y, r.z, `walk`, 0.1, r.dir, 1, 0.8, 1 - r.t / 0.5, 0, 0, 1, 1, 1, 0, !1));
+            : n.push(r.x, r.y, r.z, `walk`, 0.1, r.dir, VFX_SCALE, 0.8, 1 - r.t / 0.5, 0, 0, 1, 1, 1, 0, !1));
       }
       (this.interactables.render(e),
         this.pickups.render(this.time),

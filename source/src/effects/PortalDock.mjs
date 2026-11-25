@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {createPortalScreenAnimation} from './portal-screen-atlas.js';
 const fxRGB=[72,45,154],fxOnBlack=level=>'rgb('+fxRGB.map(v=>Math.round(v*level)).join(',')+')';
 function screenPainter(canvas){
@@ -122,7 +123,7 @@ function eachShard(w,unit,center,t,charge,emit){
 }
 function flashPlacement(bounds,index){
  const bw=bounds.right-bounds.left+1,bh=bounds.bottom-bounds.top+1;
- const scale=index<flashFrames?Math.max(bw/74,bh/53):Math.min(bw,bh)*.70/96;
+ const scale=(index<flashFrames?Math.max(bw/74,bh/53):Math.min(bw,bh)*.70/96)*VFX_SCALE;
  return {scale,x:(bounds.left+bounds.right+1)*.5-scale*51.5,y:(bounds.top+bounds.bottom+1)*.5-scale*51.5};
 }
 // The emitting point is sampled at the upper-right extreme of the visible white fill in each vector pose.
@@ -130,7 +131,7 @@ const flashEmitters=[[53,49.389,0.11],[55.444,47.389,0.21],[60.667,44.167,0.27],
 function flashLight(bounds,index,placement){
  const emitter=flashEmitters[index];if(!emitter)return null;
  return {x:placement.x+emitter[0]*placement.scale,y:placement.y+emitter[1]*placement.scale,
-  reach:Math.hypot(bounds.right-bounds.left+1,bounds.bottom-bounds.top+1),energy:emitter[2]};
+  reach:Math.hypot(bounds.right-bounds.left+1,bounds.bottom-bounds.top+1)*VFX_SCALE,energy:emitter[2]};
 }
 function sweepMetrics(t,top,bottom){
  const extent=Math.max(1,bottom-top+1),unit=Math.max(2.2,extent*.021);

@@ -97,7 +97,7 @@ async function start() {
   if (wx.getLaunchOptionsSync) receiveInvite(wx.getLaunchOptionsSync());
   wx.onShow(receiveInvite);
   let phase = '创建画面', splash, shown = 0, animationTimer, activeRenderer;
-  let lastPaint = 0;
+  let lastPaint = 0, lastAdvance = began, displayed = 0, animationFrom = 0, waitingForRetry = false;
   function stage(title) {
     phase = title;
     const ms=Date.now()-began;
@@ -105,10 +105,16 @@ async function start() {
     console.info('[宝可梦启动]', title, ms, 'ms');
   }
   function paintProgress(renderer) {
-    if (!splash) return;
+    if (!splash || waitingForRetry) return;
     lastPaint = Date.now();
+    const seconds = Math.max(0, Math.floor((lastPaint - lastAdvance) / 1000));
+    // Estimate within the current stage between native callbacks. The next
+    // stage and the completed home frame can only be reached by real work.
+    const ceiling = shown < 50 ? 50 : shown < 90 ? 90 : 100;
+    const estimate = animationFrom + (ceiling - animationFrom) * seconds / (60 + seconds);
+    displayed = shown === 100 ? 100 : Math.max(displayed, Math.min(ceiling - .01, Math.floor(estimate * 100) / 100));
     try {
-      splash.draw(shown, !!renderer, ((lastPaint - began) % 1800) / 1800);
+      splash.draw(displayed, !!renderer, ((lastPaint - began) % 1800) / 1800, seconds);
     } catch (error) {
       console.warn('[宝可梦启动] 无法更新加载进度', error);
       splash.dispose();
@@ -119,7 +125,11 @@ async function start() {
   }
   function showProgress(value = shown, renderer) {
     if (!splash) return;
-    shown = Math.max(shown, value);
+    if (value > shown) {
+      shown = value;
+      animationFrom = Math.max(displayed, shown);
+      lastAdvance = Date.now();
+    }
     // The renderer can cover the splash on any frame. Restore its GL state
     // after both overlays and timer-driven paints between game frames.
     if (renderer) {
@@ -128,6 +138,37 @@ async function start() {
     }
   }
   host.bootStage=(title,value,renderer)=>{stage(title);showProgress(value,renderer);};
+  async function prepareResources(jobs) {
+    let pending = jobs;
+    while (pending.length) {
+      const failed = [], messages = [];
+      await Promise.all(pending.map(async ([name, run]) => {
+        try { await run(); }
+        catch (error) {
+          failed.push([name, run]);
+          messages.push(name + '：' + (error.errMsg || error.message || String(error)));
+        }
+      }));
+      if (!failed.length) return true;
+      const content = messages.join('\n');
+      console.warn('[字行启动]', content);
+      waitingForRetry = true;
+      const restart = typeof wx.restartMiniProgram === 'function';
+      const choice = await new Promise((resolve, reject) => wx.showModal({
+        title:'资源准备失败', content, confirmText:'重试', cancelText:restart ? '重新进入' : '退出游戏',
+        success:resolve, fail:() => reject(Error(content))
+      }));
+      if (!choice.confirm) {
+        if (restart) wx.restartMiniProgram({});
+        else wx.exitMiniProgram({});
+        return false;
+      }
+      animationFrom = Math.max(shown, displayed);
+      lastAdvance = Date.now();
+      waitingForRetry = false;
+      pending = failed;
+    }
+  }
   try {
     stage('字行 · 打开纸上世界');
     const canvas = wx.createCanvas();
@@ -149,29 +190,38 @@ async function start() {
     const files = require('./files');
     GameGlobal.pokebonk = Object.assign(host, {canvas, files});
     stage('准备游戏资源');
-    const downloaded = {play:0, text:0};
-    function packageProgress(name, percent) {
-      if (!Number.isFinite(percent)) return;
-      downloaded[name] = Math.max(downloaded[name], Math.min(100, percent));
-      showProgress(5 + Math.floor((30 * downloaded.play + 15 * downloaded.text) / 100));
+    const prepared = {play:0, text:0, world:0, art:0};
+    function installProgress(state) {
+      const ratio = state.total ? Math.min(1, state.completed / state.total) : 0;
+      const value = state.phase === 'ready' ? 1 : state.phase === 'write' ? .7 + .3*ratio :
+        state.phase === 'unpack' ? .6 : .55*ratio;
+      prepared[state.name] = Math.max(prepared[state.name], value);
+      if (state.name === 'text') updateDownloads();
+      else showProgress(Math.min(89, 50 + Math.floor(12*prepared.world + 28*prepared.art)));
+    }
+    function updateDownloads() {
+      showProgress(Math.min(49, 5 + Math.floor(30*prepared.play + 15*prepared.text)));
     }
     showProgress(5);
-    const [play] = await withTimeout(Promise.all([
-      files.loadPackage('play', p=>packageProgress('play',p)).then(()=>{
-        packageProgress('play',100);
-        return withTimeout(waitForPlayEntry(),15000,'玩法分包已下载，但微信未执行入口。');
-      }),
-      files.init(p=>packageProgress('text',p)).then(()=>packageProgress('text',100))
-    ]), 120000, '准备游戏数据超时，请重新进入。');
+    let play;
+    // Downloads have their own inactivity watchdog, and file operations have
+    // per-call timeouts. Slow installs that keep advancing can finish.
+    const resourcesReady = await prepareResources([
+      ['玩法包', async () => {
+        await files.loadPackage('play', p => {
+          prepared.play = Math.max(prepared.play, Math.min(1, p / 100));
+          updateDownloads();
+        });
+        prepared.play = 1;
+        updateDownloads();
+        play = await withTimeout(waitForPlayEntry(),15000,'玩法分包已下载，但微信未执行入口。');
+      }],
+      ['文字资源', () => files.init(undefined, installProgress)]
+    ]);
+    if (!resourcesReady) return;
     stage('准备桌面场景与角色');
-    const prepared={world:0,art:0};
-    await withTimeout(files.prepareForest(state=>{
-      const ratio=state.total?Math.min(1,state.completed/state.total):0;
-      const value=state.phase==='ready'?1:state.phase==='write'?.7+.3*ratio:state.phase==='unpack'?.6:.55*ratio;
-      prepared[state.name]=Math.max(prepared[state.name]||0,value);
-      // The character art is the largest download on a cold launch.
-      showProgress(50+Math.floor(12*prepared.world+28*prepared.art));
-    }),120000,'桌面场景与角色资源准备超时，请重新进入。');
+    showProgress(50);
+    if (!await prepareResources([['场景与角色', () => files.prepareForest(installProgress)]])) return;
     stage('绘制游戏首页');
     showProgress(90);
     await withTimeout(launchEngine(host,play,showProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');

@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../source/src/effects/visual-scale.js';
 import {Rng,clamp,ease,WHITE,flare} from '../source/src/vendor/pixelfx-blink-in.js';
 import {blinkDuration,lineAt,openAt,flashAt,flashTail} from '../source/src/effects/ultimate-ready-timing.js';
 
@@ -36,7 +37,7 @@ export function silhouette(rgba){
 // Timings from Blink In. The short incoming paths end on the outside contour.
 const rng=new Rng(12);
 const bits=Array.from({length:18},()=>({
-  point:rng.next(),distance:rng.range(12,28),spin:rng.range(.6,1.4)*rng.sign(),
+  point:rng.next(),distance:rng.range(12,28)*VFX_SCALE,spin:rng.range(.6,1.4)*rng.sign(),
   start:rng.range(0,.1),end:rng.range(lineAt-.02,openAt),shade:rng.pick([4,5,6])
 }));
 
@@ -68,7 +69,7 @@ export function createReadyEmbers(){
         const y=launch.y+launch.dy*distance-5*t*t;
         const strength=alpha*(1-trail/4)**2;
         p.blend(x,y,ramp[bit.shade],strength);
-        if(trail===0)p.glow(x,y,2.5,ramp[5],strength*.32);
+        if(trail===0)p.glow(x,y,2.5*VFX_SCALE,ramp[5],strength*.32);
       }
     }
   };
@@ -76,7 +77,7 @@ export function createReadyEmbers(){
 
 function outline(p,shape,strength,ramp){
   for(const {x,y} of shape.edge){
-    p.glow(x,y,3.1,ramp[4],.23*strength);
+    p.glow(x,y,3.1*VFX_SCALE,ramp[4],.23*strength);
     p.blend(x,y,ramp[6],strength);
   }
 }
@@ -90,7 +91,7 @@ function converge(p,shape,t,ramp){
     const x=edge.x+Math.cos(angle)*bit.distance*remaining,y=edge.y+Math.sin(angle)*bit.distance*remaining*.85;
     const alpha=Math.min(1,k*8)*clamp((bit.end+.02-t)/.04);
     p.blend(x,y,ramp[bit.shade],alpha);
-    p.glow(x,y,2.5,ramp[5],alpha*.32);
+    p.glow(x,y,2.5*VFX_SCALE,ramp[5],alpha*.32);
   }
 }
 
@@ -98,6 +99,7 @@ function converge(p,shape,t,ramp){
 // zero along the ray. Alpha and emitted light remain separate all the way to GL.
 function horizontalRay(p,shape,ramp,reach,power,color=WHITE){
   const {cx,cy}=shape;
+  reach*=VFX_SCALE;
   if(reach<1||power<=0)return;
   for(let x=-Math.ceil(reach);x<=Math.ceil(reach);x++){
     const u=Math.abs(x)/reach;
@@ -121,20 +123,20 @@ function drawCharge(p,shape,elapsed,ramp){
   if(t<openAt)converge(p,shape,t,ramp);
   if(t<lineAt){
     const point=clamp((t-lineAt+.06)/.06);
-    p.glow(cx,cy,7,ramp[6],point*.55);
+    p.glow(cx,cy,7*VFX_SCALE,ramp[6],point*.55);
     return;
   }
   if(t<openAt){
     const q=ease.outCubic((t-lineAt)/(openAt-lineAt));
     horizontalRay(p,shape,ramp,(shape.face ? tile*.95 : face.span*.95+5)*q,shape.face ? .85 : .62,ramp[5]);
-    p.glow(cx,cy,26,ramp[5],.76*q);
-    p.glow(cx,cy,7,ramp[6],.4*q);
+    p.glow(cx,cy,26*VFX_SCALE,ramp[5],.76*q);
+    p.glow(cx,cy,7*VFX_SCALE,ramp[6],.4*q);
     return;
   }
   const opening=ease.outCubic(clamp((t-openAt)/(flashAt-openAt)));
   for(const {x,y,alpha} of face.ink)p.blend(x,face.cy+(y-face.cy)*opening,ramp[5],alpha*.32*opening);
   horizontalRay(p,shape,ramp,shape.face ? tile*(.95+.12*opening) : face.span*(1+.3*opening)+6,shape.face ? .85 : .62,ramp[5]);
-  p.glow(cx,cy,30,ramp[5],.68);
+  p.glow(cx,cy,30*VFX_SCALE,ramp[5],.68);
 }
 
 export function drawReadyPixels(p,shape,stage,since,ramp){
@@ -148,9 +150,9 @@ export function drawReadyPixels(p,shape,stage,since,ramp){
       p.blend(x,y,WHITE,alpha*clamp((heat-.45)/.4));
       p.light(x,y,ramp[6],alpha*heat*heat*.8);
     }
-    p.glow(cx,cy,29,ramp[5],.5*heat);
-    p.glow(cx,cy,46*(.55+.45*halo),ramp[5],.74*halo*halo);
-    const core=clamp(1-since/.1);p.glow(cx,cy,21*(.55+.45*core),WHITE,.7*core*core);
+    p.glow(cx,cy,29*VFX_SCALE,ramp[5],.5*heat);
+    p.glow(cx,cy,46*VFX_SCALE*(.55+.45*halo),ramp[5],.74*halo*halo);
+    const core=clamp(1-since/.1);p.glow(cx,cy,21*VFX_SCALE*(.55+.45*core),WHITE,.7*core*core);
     if(since<.2){
       const k=1-since/.2;
       flare(p,cx,cy,18*Math.pow(k,1.5)+2,k,ramp);
@@ -159,7 +161,7 @@ export function drawReadyPixels(p,shape,stage,since,ramp){
     horizontalRay(p,shape,ramp,shape.face?tile*1.07:face.span*1.3+7,rayFade);
   }
   const tail=clamp(1-since/flashTail);
-  p.glow(cx,cy,22,ramp[4],.2*tail*tail);
+  p.glow(cx,cy,22*VFX_SCALE,ramp[4],.2*tail*tail);
   // As the broad light recedes, leave the same lit contour that starts the breath.
   const settled=1-tail*tail*(3-2*tail);
   outline(p,shape,.55+.45*settled,ramp);

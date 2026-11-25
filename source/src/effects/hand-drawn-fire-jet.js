@@ -1,3 +1,4 @@
+import {VFX_SCALE} from './visual-scale.js';
 import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/fire-breath.json' with {type:'json'};
 import {ProceduralFireJet} from './procedural-fire-jet.js';
@@ -145,9 +146,9 @@ export class HandDrawnFireJet{
   }
   sample(packet,out={}){
     const p=clamp(packet.age/packet.life),grow=smooth(p/.58),shrink=1.-smooth((p-.65)/.35)*.64;
-    const travel=packet.length*p*(1.3-.3*p),sway=(Math.sin(p*7.+packet.seed)-Math.sin(packet.seed))*p*.22;
+    const travel=packet.length*p*(1.3-.3*p)*VFX_SCALE,sway=(Math.sin(p*7.+packet.seed)-Math.sin(packet.seed))*p*.22*VFX_SCALE;
     const birth=smooth(packet.age/.07),fade=1.-smooth((p-.62)/.38);
-    out.p=p;out.x=packet.x+packet.dx*travel-packet.dz*sway;out.y=packet.y+.06+Math.pow(p,1.7)*packet.lift;
+    out.p=p;out.x=packet.x+packet.dx*travel-packet.dz*sway;out.y=packet.y+.06+Math.pow(p,1.7)*packet.lift*VFX_SCALE;
     out.z=packet.z+packet.dz*travel+packet.dx*sway;out.radius=packet.radius*(.10+grow*.90)*shrink;
     out.length=packet.stretch*(.45+grow*(1.20+Math.sin(p*Math.PI)*.60))*shrink;out.alpha=birth*fade;
     return out;
@@ -168,7 +169,7 @@ export class HandDrawnFireJet{
     const origin=this.hitAttributes[0].array,motion=this.hitAttributes[1].array,life=this.hitAttributes[2].array,v=this.owner.vfx;let count=0;
     for(const h of this.hits){
       if(count>=this.hitLimit)break;const o=count++*4;
-      origin[o]=h.x;origin[o+1]=h.y;origin[o+2]=h.z;origin[o+3]=h.size;
+      origin[o]=h.x;origin[o+1]=h.y;origin[o+2]=h.z;origin[o+3]=h.size*VFX_SCALE;
       motion[o]=1;motion[o+1]=0;motion[o+2]=h.size;motion[o+3]=2+(h.purple?4:0);
       life[o]=h.age*48/atlas.clips.hit.count;life[o+1]=.66*v.opacity*(h.own?v.ownOpacity:1)*(v.calm?.78:1);life[o+2]=0;life[o+3]=h.age;
     }
@@ -222,7 +223,7 @@ export class HandDrawnFireJet{
       if(length<.025)continue;
       const dx=Math.cos(emitter.angle),dz=Math.sin(emitter.angle),tail=clamp((this.clock-(emitter.fireLast??this.clock))/.10);
       const instance=emitter.fireInstance??={};
-      instance.x=emitter.x+dx*length*.5;instance.y=emitter.y+.20;instance.z=emitter.z+dz*length*.5;instance.radius=length*.36;
+      instance.x=emitter.x+dx*length*.5*VFX_SCALE;instance.y=emitter.y+.20;instance.z=emitter.z+dz*length*.5*VFX_SCALE;instance.radius=length*.36;
       instance.length=length;instance.dx=dx;instance.dz=dz;instance.p=tail;instance.alpha=(authored?.86:.78)*growth*(1.-smooth((tail-.6)/.4));
       instance.seed=emitter.seed;instance.age=emitter.age;instance.core=1;instance.own=emitter.own!==false;instance.painted=authored;instance.purple=emitter.type==='dragon';
       instances.push(instance);
@@ -235,8 +236,8 @@ export class HandDrawnFireJet{
       for(const p of instances){
         if(p.painted!==authored)continue;
         const o=count++*4,opacity=owner.vfx.opacity*(p.own?owner.vfx.ownOpacity:1)*(owner.vfx.calm?.78:1);
-        origin[o]=p.x;origin[o+1]=p.y;origin[o+2]=p.z;origin[o+3]=p.radius;
-        motion[o]=p.dx;motion[o+1]=p.dz;motion[o+2]=p.length;motion[o+3]=(p.core||0)+(p.purple?4:0);
+        origin[o]=p.x;origin[o+1]=p.y;origin[o+2]=p.z;origin[o+3]=p.radius*VFX_SCALE;
+        motion[o]=p.dx;motion[o+1]=p.dz;motion[o+2]=p.length*VFX_SCALE;motion[o+3]=(p.core||0)+(p.purple?4:0);
         life[o]=p.p;life[o+1]=p.alpha*opacity;life[o+2]=p.seed;life[o+3]=p.age;
       }
       renderer.mesh.count=authored&&!this.loaded?0:count;renderer.mesh.visible=renderer.mesh.count>0;

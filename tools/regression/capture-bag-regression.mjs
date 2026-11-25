@@ -3,7 +3,9 @@ import path from 'node:path';
 
 export async function reviewCaptureBag(page,dir){
   await page.waitForFunction(()=>window.nativeImageLoads.filter(image=>
-    image.path.includes('/capture_bag-') && image.width>0).length>=4);
+    image.path.includes('/capture_bag-') && image.width>0).length>=1);
+  const preloaded=await page.evaluate(()=>nativeImageLoads.filter(image=>image.path.includes('/capture_bag-')).map(image=>image.path));
+  assert.deepEqual(preloaded, [await page.evaluate(()=>GameGlobal.pokebonk.files.pathFor('assets/vfx/capture-bag/p00.webp'))]);
   await page.evaluate(()=>{
     const run=app.run;
     run.enemies.clear();

@@ -1,3 +1,4 @@
+import {VFX_SCALE} from '../effects/visual-scale.js';
 import {et as PlaneGeometry, ct as ShaderMaterial, K as Mesh, w as Color} from '../vendor/three-DmSYIDKK.js';
 
 export const ENEMY_DANGER_COLOR = 0xff3028;
@@ -26,6 +27,7 @@ const fragmentShader = `
       filled=(1.-smoothstep(progress-.008,progress+.008,radius))*step(.001,progress);
       front=(1.-smoothstep(.045,.12,abs(radius-progress)*extent.x))*step(.001,progress);
     }
+    edge /= ${VFX_SCALE};
     float rim=(1.-smoothstep(.06,.16,edge))*inside;
     float halo=(1.-smoothstep(.14,.34,edge))*inside;
     float alpha=(.075+.22*filled+.32*front+.58*rim+.08*halo)*inside*opacity;

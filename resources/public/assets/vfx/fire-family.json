@@ -1,7 +1,7 @@
 {
   "tile": 256,
   "columns": 16,
-  "rows": 16,
+  "rows": 15,
   "padding": 4,
   "clips": {
     "wake": {
@@ -115,38 +115,42 @@
     },
     "ring": {
       "first": 45,
-      "count": 16,
+      "count": 20,
       "fps": 24,
-      "source": "醉拳-技能11-醉千坛/火圈/huoquan",
+      "source": "huoquan/huoquan",
       "sourceFrames": 20,
       "activeFrames": 20,
       "frames": [
         "huoquan_00000.png",
         "huoquan_00001.png",
+        "huoquan_00002.png",
         "huoquan_00003.png",
         "huoquan_00004.png",
         "huoquan_00005.png",
         "huoquan_00006.png",
+        "huoquan_00007.png",
         "huoquan_00008.png",
         "huoquan_00009.png",
         "huoquan_00010.png",
         "huoquan_00011.png",
+        "huoquan_00012.png",
         "huoquan_00013.png",
         "huoquan_00014.png",
         "huoquan_00015.png",
         "huoquan_00016.png",
+        "huoquan_00017.png",
         "huoquan_00018.png",
         "huoquan_00019.png"
       ],
       "crop": {
-        "left": 16,
-        "top": 30,
-        "width": 929,
-        "height": 669
+        "left": 0,
+        "top": 0,
+        "width": 962,
+        "height": 723
       }
     },
     "crack": {
-      "first": 61,
+      "first": 65,
       "count": 12,
       "fps": 24,
       "source": "醉拳-技能05-醉狂舞/地裂",
@@ -174,7 +178,7 @@
       }
     },
     "eruption": {
-      "first": 73,
+      "first": 77,
       "count": 18,
       "fps": 24,
       "source": "醉拳-技能11-醉千坛/酒坛爆炸/jiutanbaozha",
@@ -208,7 +212,7 @@
       }
     },
     "meteorHit": {
-      "first": 91,
+      "first": 95,
       "count": 16,
       "fps": 24,
       "source": "醉拳-技能11-醉千坛/下落爆炸/xialuobaozha",
@@ -240,7 +244,7 @@
       }
     },
     "meteor": {
-      "first": 107,
+      "first": 111,
       "count": 12,
       "fps": 24,
       "source": "醉拳-技能11-醉千坛/子弹/zidan",
@@ -268,7 +272,7 @@
       }
     },
     "pillar": {
-      "first": 119,
+      "first": 123,
       "count": 24,
       "fps": 24,
       "source": "醉拳-技能12-醉腾云/龙头受击",
@@ -307,36 +311,8 @@
         "height": 973
       }
     },
-    "shockwave": {
-      "first": 143,
-      "count": 12,
-      "fps": 24,
-      "source": "醉拳-技能12-醉腾云/龙头受击扩散波",
-      "sourceFrames": 54,
-      "activeFrames": 22,
-      "frames": [
-        "ltsjksb_00031.png",
-        "ltsjksb_00033.png",
-        "ltsjksb_00035.png",
-        "ltsjksb_00037.png",
-        "ltsjksb_00039.png",
-        "ltsjksb_00041.png",
-        "ltsjksb_00042.png",
-        "ltsjksb_00044.png",
-        "ltsjksb_00046.png",
-        "ltsjksb_00048.png",
-        "ltsjksb_00050.png",
-        "ltsjksb_00052.png"
-      ],
-      "crop": {
-        "left": 58,
-        "top": 38,
-        "width": 932,
-        "height": 632
-      }
-    },
     "seal": {
-      "first": 155,
+      "first": 147,
       "count": 10,
       "fps": 24,
       "source": "醉拳-技能12-醉腾云/上踢牵引",
@@ -361,36 +337,8 @@
         "height": 914
       }
     },
-    "sweepRing": {
-      "first": 165,
-      "count": 12,
-      "fps": 24,
-      "source": "醉拳-技能10-醉旋踢/施法",
-      "sourceFrames": 12,
-      "activeFrames": 12,
-      "frames": [
-        "1_00.png",
-        "1_01.png",
-        "1_02.png",
-        "1_03.png",
-        "1_04.png",
-        "1_05.png",
-        "1_06.png",
-        "1_07.png",
-        "1_08.png",
-        "1_09.png",
-        "1_10.png",
-        "1_11.png"
-      ],
-      "crop": {
-        "left": 30,
-        "top": 28,
-        "width": 741,
-        "height": 557
-      }
-    },
     "blade": {
-      "first": 177,
+      "first": 157,
       "count": 12,
       "fps": 24,
       "source": "形意拳-技能6-螳螂削腕/刀光",
@@ -418,7 +366,7 @@
       }
     },
     "fang": {
-      "first": 189,
+      "first": 169,
       "count": 14,
       "fps": 40,
       "source": "tools/fire-fang-drawing.mjs; existing game Fang silhouette",
@@ -427,7 +375,7 @@
       "revision": "closed-jaw-impact-20261117"
     },
     "rake": {
-      "first": 203,
+      "first": 183,
       "count": 12,
       "fps": 30,
       "source": "tools/fire-scratch-drawing.mjs; code-drawn melee ink strokes",
@@ -435,7 +383,7 @@
       "height": 512
     },
     "scratchHit": {
-      "first": 215,
+      "first": 195,
       "count": 10,
       "fps": 40,
       "source": "tools/fire-scratch-drawing.mjs; single wound",
@@ -443,7 +391,7 @@
       "height": 512
     },
     "windCut": {
-      "first": 225,
+      "first": 205,
       "count": 10,
       "fps": 30,
       "source": "如来神掌-技能7-金波震岳/如来神掌_技能7_金波震岳/弹道",
@@ -468,7 +416,7 @@
       }
     },
     "windHit": {
-      "first": 235,
+      "first": 215,
       "count": 16,
       "fps": 30,
       "source": "形意拳-技能6-螳螂削腕/爆点",

@@ -5997,7 +5997,7 @@ var J = {
         const rings=e.tier>=1?3:1;
         for(let index=0;index<rings;index++)t.later(.18+index*.22,()=>{
           const p=t.player.pos, ringRadius=8+index*3, radius=ringRadius*e.R;
-          art.ultimateRing(p.x,p.y,p.z,ringRadius,.6);
+          art.ring(p.x,p.y,p.z,ringRadius,.6);
           q(e,p.x,p.z,radius,1.3,{status:'burn',statusChance:.9,knock:4});
           for(let j=0;j<8;j++){
             const angle=j/8*H+index, x=p.x+Math.cos(angle)*radius*.6,z=p.z+Math.sin(angle)*radius*.6;

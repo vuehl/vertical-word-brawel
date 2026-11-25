@@ -73,6 +73,15 @@ for(const name of ['ultimate-cast.webp','nameplate-blade.webp','ultimate-cast-in
 }
 // This WebP encodes palette indices as pixels. Any transcoding corrupts both themes.
 const chantAsset='assets/vfx/dragon-chant.webp';
+const evoKey='assets/vfx/evolution-screen.webp';
+const evoInput=fs.existsSync(path.join(pub,'overrides',evoKey))?path.join(pub,'overrides',evoKey):path.join(pub,evoKey);
+const {data:red,info:evo}=await sharp(evoInput).extractChannel(0).raw().toBuffer({resolveWithObject:true});
+const mask=brotliDecompressSync(bytes('assets/vfx/evolution-screen.r8.br'));
+assert.ok(!index.files[evoKey]);assert.equal(mask.length,evo.width*evo.height);
+for(let y=0;y<evo.height;y++){
+  const src=(evo.height-1-y)*evo.width;
+  assert.ok(mask.subarray(y*evo.width,(y+1)*evo.width).equals(red.subarray(src,src+evo.width)),'Evolution mask row '+y);
+}
 const meshAsset='assets/vfx/dragon-summon-hd/arc-mesh.bin';
 assert.equal(digest(unpackMeshBytes(bytes(meshAsset))),digest(fs.readFileSync(path.join(pub,meshAsset))));
 const sourceDragon=JSON.parse(fs.readFileSync(path.join(pub,dragonDirectory,'manifest.json')));
