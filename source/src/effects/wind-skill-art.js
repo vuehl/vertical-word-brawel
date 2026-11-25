@@ -2,6 +2,8 @@ import {WindAtlasBatch} from './wind-vortex.js';
 import atlas from '../../../resources/public/assets/vfx/wind-skills.json' with {type:'json'};
 import {windFrameAt} from './wind-frame-time.js';
 
+export const quickHaloSeconds=atlas.clips.quickHalo.times.at(-1)/1000;
+
 export class WindSkillArt extends WindAtlasBatch {
   constructor(owner){
     super(owner.mesh.parent,128,'assets/vfx/wind-skills.png',atlas.columns,atlas.rows,atlas.tile,'wind-skill-frames');
@@ -11,6 +13,9 @@ export class WindSkillArt extends WindAtlasBatch {
     if(!this.owner.allowed())return;
     if(this.events.length>=64)this.events.shift();
     this.events.push({clip,x,y,z,size,dx,dz,start:this.owner.run.time});
+  }
+  stop(clip){
+    this.events=this.events.filter(event=>event.clip!==clip);
   }
   track(key,clip,x,y,z,size){
     if(!this.owner.allowed())return;

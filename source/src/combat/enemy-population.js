@@ -468,9 +468,9 @@ var Df = 0.4,
       return this.lookupTypes(this.t1[e],this.t2[e]);
     }
     glyphWords = new Array(2200);
-    spawn(e, t, n, r, i, a = 0, o = 1) {
+    spawn(e, t, n, r, i, a = 0, o = 1, waveSlots = 0) {
       if (this.run.dragonDuel && !(a & R.Object)) return -1;
-      if(!allowOrdinarySpawn(this.run,a))return -1;
+      if(!allowOrdinarySpawn(this.run,a,waveSlots))return -1;
       if (a & 1536) {
         let e = this.run;
         if (this.mass >= e.maxEnemies + 200) return -1;

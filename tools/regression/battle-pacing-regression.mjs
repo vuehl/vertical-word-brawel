@@ -65,6 +65,7 @@ export async function reviewBattlePacing(page) {
         }
         if (r.bossSpawned && bossAt == null) {
           bossAt = r.stageTime;
+          await r.dragonHdAssets?.loading;
           if (!r.dragonDuel || !r.ui.dragonChant || r.boss.name !== '龘' || r.director.finalSwarm)
             throw Error('Expected the summoned dragon cinematic at the zone deadline');
           bossHp = r.enemies.maxHp[r.boss.bossIndex];

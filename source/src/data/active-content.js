@@ -12,6 +12,8 @@ export const isActiveItem = id => itemIds.has(id);
 
 export const isContactFacility=kind=>['chest','freechest','magnet','ditto'].includes(kind);
 export const facilityDwellSeconds = 0;
+export const staplerDwellSeconds = 1;
+export const staplerInteractionRadius = 2.6;
 export const altarChargeSeconds = 3;
 export const bossSummonSeconds = 0;
 export const bossSummonUnlockSeconds = run =>

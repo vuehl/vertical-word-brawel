@@ -293,7 +293,7 @@ var kv = 12,
       }
       let r = n.stageTime;
       for (const event of this.timeline) {
-        if (!event.done && r >= event.t) event.done = this.fire(event.kind) !== false;
+        if (!event.done && r >= event.t) event.done = this.fire(event.kind, event.sizeScale) !== false;
         if (n.dragonDuel) return;
       }
       let i = this.effTime();
@@ -338,7 +338,7 @@ var kv = 12,
           this.spawnCard(this.rng.pick(this.cards), R.Elite, this.weight);
       this.full() ? (this.credits = Math.min(this.credits, 10 * this.weight)) : this.spend();
     }
-    fire(e) {
+    fire(e, sizeScale = 1) {
       let t = this.run;
       if (t.dragonDuel) return;
       if (e === 'guardian') {
@@ -391,15 +391,17 @@ var kv = 12,
             let e = this.rng.pick(this.cards),
               n = t.player.pos,
               r = Math.round(
-                (t.stage === 1 && t.stageTime * this.pace < 300 ? 40 : 46 + t.stage * 12) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE,
+                (t.stage === 1 && t.stageTime * this.pace < 300 ? 40 : 46 + t.stage * 12) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE * sizeScale,
               );
+            // Let the opening horde arrive even when natural spawns fill their budget.
+            const waveSlots = sizeScale > 1 ? r : 0;
             for (let i = 0; i < r; i++) {
               let a = (i / r) * Math.PI * 2,
                 o = 26 + this.rng.range(-2, 2),
                 s = n.x + Math.cos(a) * o,
                 c = n.z + Math.sin(a) * o;
               t.terrain.inBounds(s, c, 5) &&
-                t.enemies.spawn(e.id, s, c, this.hpMult() * 0.6, this.dmgMult(), R.Swarm);
+                t.enemies.spawn(e.id, s, c, this.hpMult() * 0.6, this.dmgMult(), R.Swarm, 1, waveSlots);
             }
             const word = enemySpeciesWord(e.id);
             (t.ui.banner(
@@ -424,15 +426,16 @@ var kv = 12,
               s = -o,
               l = a,
               u = Math.round(
-                (t.stage === 1 && t.stageTime * this.pace < 300 ? 30 : 34 + t.stage * 8) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE,
+                (t.stage === 1 && t.stageTime * this.pace < 300 ? 30 : 34 + t.stage * 8) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE * sizeScale,
               );
+            const waveSlots = sizeScale > 1 ? u : 0;
             for (let e = 0; e < u; e++) {
               let i = ((e % 17) - 8) * 2.2,
                 c = Math.floor(e / 17) * 3 + this.rng.range(0, 2),
                 u = r.x - a * (34 + c) + s * i,
                 d = r.z - o * (34 + c) + l * i;
               if (!t.terrain.inBounds(u, d, 5)) continue;
-              let f = t.enemies.spawn(n, u, d, this.hpMult() * 0.8, this.dmgMult() * 1.3, R.Stampede);
+              let f = t.enemies.spawn(n, u, d, this.hpMult() * 0.8, this.dmgMult() * 1.3, R.Stampede, 1, waveSlots);
               f >= 0 && ((t.enemies.dirX[f] = a), (t.enemies.dirZ[f] = o));
             }
             const word = enemySpeciesWord(n);

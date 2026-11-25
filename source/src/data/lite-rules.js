@@ -16,6 +16,7 @@ export const QUIT_REWARD_MIN_SECONDS = 30;
 // uses that clock. Movement, cooldowns, drops and run records use game seconds.
 export const WAVE_SECONDS = 600;
 export const COMBAT_ZONE_SECONDS = 6 * 60;
+export const SINGLE_STAGE_FIRST_HORDE_AT = 141;
 export function zoneDuration(mode = 'standard') {
   if (mode === SINGLE_STAGE || mode === 'standard' || mode === 'classic') return COMBAT_ZONE_SECONDS;
   return WAVE_SECONDS;
@@ -30,12 +31,12 @@ export function isSoloNormalOpening(run) {
 // Times are elapsed game seconds. Leave one final recovery interval before the guardian.
 export function normalOpeningWaves(mode, firstHorde, honey) {
   const waves = mode === SINGLE_STAGE
-    ? [[90,'alpha'],[115,'event'],[141,firstHorde],[170,'totem'],[198,'alpha'],
+    ? [[90,'alpha'],[115,'event'],[SINGLE_STAGE_FIRST_HORDE_AT,firstHorde,1.5],[170,'totem'],[198,'alpha'],
        [226,'elitewave'],[254,'summoner'],[282,'swarm']]
     : [[75,'alpha'],[100,'event'],[125,firstHorde],[150,'totem'],[175,'elitewave'],
        [200,'summoner'],[225,'swarm']];
   if (honey) waves.unshift([waves[0][0] - 25,'alpha']);
-  return waves.map(([t,kind]) => ({t,kind}));
+  return waves.map(([t,kind,sizeScale = 1]) => ({t,kind,sizeScale}));
 }
 export const formatGameTime = seconds => Math.floor((seconds||0)/60).toString().padStart(2,'0')+':'+Math.floor((seconds||0)%60).toString().padStart(2,'0');
 export const remainingZoneSeconds = run => Math.ceil(zoneDuration(run.mode) - run.stageTime);

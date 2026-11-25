@@ -14,18 +14,19 @@ import {SINGLE_STAGE,zoneDuration,remainingZoneSeconds,isSoloNormalOpening,norma
 import {performanceProfile} from '../../source/src/performance/performance-profile.js';
 import {readDevice} from '../../platform/device.mjs';
 
-test('ordinary waves grow to 200, include event and elite spawns, and leave boss slots available',()=>{
-  for(const [mode,peak] of [[SINGLE_STAGE,360],['standard',300],['classic',300]]){
+test('ordinary waves grow to each mode ceiling, include event and elite spawns, and leave boss slots available',()=>{
+  for(const [mode,peak,ceiling] of [[SINGLE_STAGE,360,240],['standard',300,200],['classic',300,200]]){
     const seconds=360;
     assert.equal(zoneDuration(mode),seconds);
     assert.equal(remainingZoneSeconds({mode,stageTime:.05}),seconds);
     assert.equal(remainingZoneSeconds({mode,stageTime:seconds+1}),-1);
     let previous=0;
     for(let second=0;second<=seconds+60;second++){
-      const limit=ordinaryLimit(second,1,mode);assert.ok(limit>=previous&&limit<=200);previous=limit;
+      const limit=ordinaryLimit(second,1,mode);
+      assert.ok(limit>=previous && limit<=ceiling);previous=limit;
     }
-    assert.ok(ordinaryLimit(peak-1,1,mode)<200);
-    assert.equal(ordinaryLimit(peak,1,mode),200);
+    assert.ok(ordinaryLimit(peak-1,1,mode)<ceiling);
+    assert.equal(ordinaryLimit(peak,1,mode),ceiling);
   }
   const enemies={n:201,count:201,alive:new Uint8Array(201).fill(1),flags:new Uint32Array(201)};
   enemies.flags[200]=4;
@@ -39,7 +40,7 @@ test('ordinary waves grow to 200, include event and elite spawns, and leave boss
 });
 
 test('short zones halve the first 30 seconds and gradually recover the existing curve',()=>{
-  assert.deepEqual([0,30,45,60,180,360].map(t=>ordinaryLimit(t,1,SINGLE_STAGE)),[7,14,26,40,90,200]);
+  assert.deepEqual([0,30,45,60,180,360].map(t=>ordinaryLimit(t,1,SINGLE_STAGE)),[7,14,26,40,108,240]);
   for(const stage of [1,2]){
     assert.deepEqual([0,30,45,60,150,300].map(t=>ordinaryLimit(t,stage,'standard')),[7,16,28,44,90,200]);
     const originalPeak=2+(stage===1?3.2:2.4);
@@ -58,6 +59,24 @@ test('the team shares the stage population budget through late waves',()=>{
       runOrdinaryLimit({stage:1,stageTime,coop:{size,budgetRank}})).reduce((a,b)=>a+b);
     assert.equal(total,ordinaryLimit(stageTime));
   }
+});
+
+test('single-stage boosts both first horde variants and midgame refills until the last minute',()=>{
+  for(const kind of ['swarm','stampede']){
+    const waves=normalOpeningWaves(SINGLE_STAGE,kind,true);
+    assert.deepEqual(waves.filter(w=>w.sizeScale!==1),[{t:141,kind,sizeScale:1.5}]);
+    assert.ok(normalOpeningWaves('standard',kind,true).every(w=>w.sizeScale===1));
+  }
+  const baseRate=naturalCreditRate(12,140,1,SINGLE_STAGE);
+  for(const [seconds,scale,limit] of [[140.99,1,70],[141,1.2,84],[180,1.2,108],[299.99,1.2,199],[300,1,200],[330,1,220],[359,1,239],[360,1,240]]){
+    assert.equal(naturalCreditRate(12,seconds,1,SINGLE_STAGE),baseRate*scale);
+    assert.equal(ordinaryLimit(seconds,1,SINGLE_STAGE),limit);
+  }
+  const run={stage:1,tier:0,stageTime:141,mode:SINGLE_STAGE,enemyCap:200};
+  assert.equal(runOrdinaryLimit(run,30),114);
+  run.enemyCap=90;
+  assert.equal(runOrdinaryLimit(run,30),90);
+  assert.equal(runOrdinaryLimit({...run,stageTime:360,enemyCap:300},30),240);
 });
 
 test('normal solo first zones space strong encounters and ease the multi-zone refill',()=>{

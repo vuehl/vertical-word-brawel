@@ -6,7 +6,7 @@ export async function reviewCaptureBag(page,dir){
     image.path.includes('/capture_bag-') && image.width>0).length>=1);
   const preloaded=await page.evaluate(()=>nativeImageLoads.filter(image=>image.path.includes('/capture_bag-')).map(image=>image.path));
   assert.deepEqual(preloaded, [await page.evaluate(()=>GameGlobal.pokebonk.files.pathFor('assets/vfx/capture-bag/p00.webp'))]);
-  await page.evaluate(()=>{
+  const trails=await page.evaluate(async()=>{
     const run=app.run;
     run.enemies.clear();
     for(let attempt=0;attempt<10 && run.capture.index<0;attempt++){
@@ -18,10 +18,29 @@ export async function reviewCaptureBag(page,dir){
     if(index<0)throw Error('Missing capture encounter');
     run.enemies.x[index]=run.player.pos.x+2;
     run.enemies.z[index]=run.player.pos.z;
+    run.player.setSpecies(16);
+    run.player.addMove(98);
+    const slot=run.player.moves.findIndex(move=>move?.def.id===98),move=run.player.moves[slot];
+    await run.sprites.prepareHeroForm(16);
+    await run.vfx.crafted.prepareMoveTexture(move.def.effectKey);
+    run.lockTarget=index;
+    const cast=()=>{move.timer=0;run.castMove(slot,move,0);};
+    const visible=()=>{
+      run.renderWorld(0);
+      return [run.sprites.getHeroGhostGlyph(16,'wind').zxGroup.mesh.count,run.vfx.crafted.windSkills.mesh.count];
+    };
+    cast();
+    const during=visible();
+    run.time+=.201;
+    const after=visible();
+    cast();
+    const beforeCapture=visible();
     run.combat.killEnemy(index,{});
     run.updateCamera(1);
     inspected.env.drawUI(app.r.renderer);
+    return {during,after,beforeCapture};
   });
+  assert.deepEqual(trails,{during:[3,1],after:[0,0],beforeCapture:[3,1]});
   for(const breakAt of [1,2,3,0]){
     await page.evaluate(breakAt=>{
       const run=app.run,ball=run.capture.ball;
@@ -39,7 +58,12 @@ export async function reviewCaptureBag(page,dir){
         const run=app.run,ball=run.capture.ball;
         ball.update((frame+.001)/24-ball.t);
         if(!ball.active)return {active:false,state:run.state,capture:run.capture.state,outcomes:bagOutcomes};
-        if(!breakAt && [52,76].includes(frame)){
+        if(frame===0){
+          run.renderWorld(0);
+          if(run.sprites.getHeroGhostGlyph(16,'wind').zxGroup.mesh.count || run.vfx.crafted.windSkills.mesh.count)
+            throw Error('Quick Attack is still visible in the capture close-up');
+        }
+        if(!breakAt && [52,76,95].includes(frame)){
           const film='assets/vfx/capture-bag/';
           const files=GameGlobal.pokebonk.files;
           const frames=JSON.parse(wx.getFileSystemManager().readFileSync(files.pathFor(film+'frames.bin'),'utf8'));
@@ -70,7 +94,7 @@ export async function reviewCaptureBag(page,dir){
       assert.equal(state.pips,Math.min(breakAt||3,[36,52,68].filter(step=>step<=frame).length));
       if(frame>=76)assert.equal(state.caption,breakAt?'抓字失败':'抓字成功');
       else assert.match(state.caption,/抓字中/);
-      if(!breakAt && [52,76].includes(frame))await page.screenshot({path:path.join(dir,'福袋捕捉-'+frame+'.png')});
+      if(!breakAt && [52,76,95].includes(frame))await page.screenshot({path:path.join(dir,'福袋捕捉-'+frame+'.png')});
     }
   }
   console.log('Verified three escape stages, successful capture, flash result and settlement at four seconds.');

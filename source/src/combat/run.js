@@ -12,7 +12,7 @@ import {gameStick} from "../virtual-stick/stick-config.js";
 import {CombatIdleWarmup, warmCombatShaders} from "../performance/combat-warmup.js";
 import {EVOLUTION_REVEAL, EVOLUTION_DURATION, evolutionPose} from "../effects/upgrade-effects.js";
 import {crowdBudgets, updateCrowdBudget} from "../performance/crowd-budget.js";
-import {ENEMY_XP_SCALE} from "../performance/spawn-budget.js";
+import {ENEMY_XP_SCALE,ordinaryCeiling} from "../performance/spawn-budget.js";
 import {
   buildPaperWorldAsync,
   createPaperAssets,
@@ -725,6 +725,9 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
     yawBack = NaN;
     beginCapture(e, t, n, r, i, a, o, s = !1) {
       this.state = `capturing`;
+      // Combat time pauses during the throw. Retire the player's trailing images before the close-up.
+      this.ghosts.length = 0;
+      this.vfx.crafted.windSkills?.stop('quickHalo');
       let c = this.player.pos,
         l = Math.sign(Math.sin(this.camYaw - Math.atan2(c.x - a, c.z - o))) || 1;
       ((this.yawBack = this.camYaw),
@@ -2317,7 +2320,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
     }
     setHordeQuality(e) {
       const budget=crowdBudgets[e]||crowdBudgets.high,previous=this.liveMax;
-      this.liveMax=budget.max;this.liveMin=budget.min;
+      this.liveMax=ordinaryCeiling(this.mode,budget.max);this.liveMin=budget.min;
       this.liveCap=this.performance?.lockVisualQuality||this.liveCap>=previous?this.liveMax:Math.max(this.liveMin,Math.min(this.liveCap,this.liveMax));
     }
     governHorde() {

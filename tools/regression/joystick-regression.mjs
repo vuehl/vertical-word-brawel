@@ -41,6 +41,38 @@ export async function verifyJoystick(page,dir){
     const {verifyCombatSteering}=await import('./joystick-soak.mjs');
     return verifyCombatSteering(page,dir);
   }
+  const stapler=await page.evaluate(()=>{
+    const r=app.run,p=r.player,f=r.interactables,bill=f.list.find(item=>item.kind==='bill');
+    const before=p.pos.clone(),grounded=p.grounded,speed=p.speedNow,dt=1/30;
+    const states=[];
+    function advance(offset,velocity,ticks){
+      p.pos.set(bill.x+offset,bill.y,bill.z);
+      p.speedNow=velocity;
+      for(let i=0;i<ticks;i++)f.update(dt,dt);
+      states.push(r.state);
+    }
+    try{
+      p.grounded=true;
+      advance(3,0,36);       // Inside the old radius.
+      advance(2,1,36);       // Walking slowly through the interaction zone.
+      advance(2,0,18);
+      advance(3,0,1);        // Leaving discards the first partial hold.
+      advance(2,0,18);
+      advance(2,1,1);        // Moving again in range also restarts the wait.
+      advance(2,0,29);
+      advance(2,0,1);
+      r.resume();
+      advance(2,0,36);       // Closing the window does not reopen it in place.
+      advance(3,0,1);
+      advance(2,0,30);
+      return states;
+    }finally{
+      if(r.state==='modal')r.resume();
+      p.pos.copy(before);p.grounded=grounded;p.speedNow=speed;
+      f.updateDwell(null,0,0);
+    }
+  });
+  assert.deepEqual(stapler,[...Array(7).fill('play'),'modal','play','play','modal']);
   const response=await page.evaluate(()=>{
     const r=app.run,p=r.player,env=inspected.env;
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
@@ -59,7 +91,7 @@ export async function verifyJoystick(page,dir){
       };
       window.tap(x,y,'down',11);window.tap(x+60,y,'move',11);
       const start=step(),held=step();
-      window.tap(x-60,y,'move',11);for(let i=0;i<5;i++)step();const reverse=step();
+      window.tap(x-60,y,'move',11);const firstReverse=step();for(let i=0;i<4;i++)step();const reverse=step();
       window.tap(x,y+60,'move',11);for(let i=0;i<10;i++)step();const turn=step();
       window.tap(x,y,'move',11);for(let i=0;i<25;i++)step();const center=step();
       window.tap(x,y-60,'move',11);for(let i=0;i<5;i++)step();
@@ -67,12 +99,13 @@ export async function verifyJoystick(page,dir){
       window.tap(x,y-60,'up',11);const release=step();
       const cameraDrift=camera.distanceTo(r.r.camera.position);
       for(let i=0;i<30;i++)step();
-      results.push({stop:p.speedNow,fps,boost,airborne,start,held,reverse,turn,center,release,cameraDrift});
+      results.push({stop:p.speedNow,fps,boost,airborne,start,held,firstReverse,reverse,turn,center,release,cameraDrift});
     }
     p.stats.moveSpeed=baseSpeed;
     return results;
   });
   for(const s of response){
+    if(s.fps===30)assert.ok(s.firstReverse[0]<0,'Full-stick reversal must move back on the next combat tick: '+JSON.stringify(s));
     assert.ok(s.start[0]>0 && s.held[0]>=s.start[0]-1e-6 && s.reverse[0]<0,JSON.stringify(s));
     assert.ok(Math.abs(s.turn[0])<.01 && s.turn[1]>0,JSON.stringify(s));
     assert.ok(Math.hypot(...s.center)<.001 && s.stop===0 && s.release[1]<0,JSON.stringify(s));

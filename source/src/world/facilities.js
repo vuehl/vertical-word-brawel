@@ -8,6 +8,8 @@ import {
   bossSummonSeconds,
   bossSummonUnlockSeconds,
   facilityDwellSeconds,
+  staplerDwellSeconds,
+  staplerInteractionRadius,
   facilityIconFile,
   isContactFacility,
   facilityNames,
@@ -68,6 +70,7 @@ var GS = class e {
     waitingForGold = false;
     warnedPortal = null;
     get dwellDuration() {
+      if (this.nearest?.kind === 'bill') return staplerDwellSeconds;
       return this.nearest?.kind === 'boss' ? bossSummonSeconds : facilityDwellSeconds;
     }
     get dwellProgress() {
@@ -104,6 +107,10 @@ var GS = class e {
       this.waitingForGold = false;
       const duration = this.dwellDuration;
       if (this.dwellTime > 0 && this.dwellTime >= duration) return;
+      if (target.kind === 'bill' && (!run.player.grounded || run.player.speedNow >= 0.6)) {
+        this.dwellTime = 0;
+        return;
+      }
       if (run.coop?.lifting || run.capture.throwing || run.capture.canThrow()) {
         this.dwellTime = 0;
         return;
@@ -1145,7 +1152,8 @@ var GS = class e {
           }
           continue;
         }
-        if (ready && u < a.r + 0.8 && u < i && a.kind !== 'shroom' &&
+        const reach = a.kind === 'bill' ? staplerInteractionRadius : a.r + 0.8;
+        if (ready && u < reach && u < i && a.kind !== 'shroom' &&
             (!a.used || a.kind === 'meowth' || a.kind === 'hypno' || a.kind === 'portal' ||
               (a.kind === 'tower' && a.data?.sub !== 'trick'))) {
           i = u;

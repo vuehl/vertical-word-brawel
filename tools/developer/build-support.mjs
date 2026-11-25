@@ -34,8 +34,8 @@ export function isolatedStoragePlugin(platform){
   return {name:'isolated-developer-storage',setup(build){
     build.onLoad({filter:/combat[\\/]enemy-population\.js$/},args=>({
       resolveDir:path.dirname(args.path),
-      contents:replaceOnce(fs.readFileSync(args.path,'utf8'),'if(!allowOrdinarySpawn(this.run,a))return -1;',
-        'if(!this.run.developerSpawning&&!allowOrdinarySpawn(this.run,a))return -1;')
+      contents:replaceOnce(fs.readFileSync(args.path,'utf8'),'if(!allowOrdinarySpawn(',
+        'if(!this.run.developerSpawning&&!allowOrdinarySpawn(')
     }));
     build.onLoad({filter:/ui[\\/]zixing-ui\.js$/},args=>({resolveDir:path.dirname(args.path),
       contents:replaceOnce(fs.readFileSync(args.path,'utf8'),'hud.experienceReady=()=>xpRing.ready;',

@@ -1,6 +1,6 @@
 import {WindAtlasBatch} from './wind-vortex.js';
 import {starterForSpecies} from '../data/starter-characters.js';
-import {installWindSkillArt} from './wind-skill-art.js';
+import {installWindSkillArt,quickHaloSeconds} from './wind-skill-art.js';
 import {installWindReplacements} from './wind-replacements.js';
 import atlas from '../../../resources/public/assets/vfx/wind-moves.json' with {type:'json'};
 import {windFrameAt} from './wind-frame-time.js';
@@ -20,7 +20,7 @@ function dash(run,x,y,z,dx,dz,length) {
   for(let step=1;step<=ghostCount;step++){
     const t=step/ghostCount,xx=x+dx*length*t,zz=z+dz*length*t;
     run.ghosts.push({dashGlyph:true,species:p.speciesId,scale:p.renderScale,x:xx,y:run.terrain.surface(xx,zz),z:zz,
-      dir:run.sprites.dirRow(dx,dz),start:run.time,life:.52-.06*t});
+      dir:run.sprites.dirRow(dx,dz),start:run.time,life:quickHaloSeconds});
   }
   const endY=run.terrain.surface(x+dx*length,z+dz*length);
   for(const side of [-.075,.075]){
