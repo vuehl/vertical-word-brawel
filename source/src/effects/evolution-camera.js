@@ -4,9 +4,8 @@ import {glyphBillboardSize} from '../actors/hero-actions.js';
 import reference from '../../../resources/public/assets/vfx/evolution-screen.json' with {type:'json'};
 import {EVOLUTION_DURATION} from './evolution-timing.js';
 
-// The reference keeps an 80 px tall original form, centered horizontally,
-// with the feet at y=402 in the 390x844 game image. Change the actual camera
-// projection so the desk, glyph and world-space orbits share that framing.
+// Match the reference's 80 px character size by changing the actual camera
+// projection so the desk, glyph and world-space orbits share the same zoom.
 export class EvolutionCamera {
   constructor(run){this.run=run;this.point=new Vector3();this.savedProjection=run.r.camera.projectionMatrix.clone();}
   start(actor){
@@ -39,7 +38,9 @@ export class EvolutionCamera {
     const anchorY=(p[1]*this.point.x+p[5]*this.point.y+p[9]*this.point.z+p[13])/w;
     const targetY=(1-2*reference.camera.feetY/reference.height)/spanY;
     let blend=Math.max(0,Math.min(1,(EVOLUTION_DURATION+.35-age)/.35));blend=blend*blend*(3-2*blend);
-    const scale=1+(zoom-1)*blend,dx=-anchorX*zoom*blend,dy=(targetY-anchorY*zoom)*blend;
+    // The paper camera already puts the player at the center of the projection.
+    const centered=this.run.terrain.zxPaper;
+    const scale=1+(zoom-1)*blend,dx=centered?0:-anchorX*zoom*blend,dy=centered?0:(targetY-anchorY*zoom)*blend;
     const out=c.projectionMatrix.elements;
     for(let col=0;col<4;col++){
       const i=col*4;out[i]=p[i]*scale+p[i+3]*dx;out[i+1]=p[i+1]*scale+p[i+3]*dy;

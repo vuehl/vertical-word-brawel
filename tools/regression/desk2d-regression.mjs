@@ -72,15 +72,26 @@ export async function verifyDesk(page,dir){
  console.log('Verified placement seeds:',seedChecks);
  const stats=await page.evaluate(()=>{
    const r=app.run,t=r.terrain;r.state='paused';const p=r.player.pos,cam=r.r.camera;
-   const original=p.clone(),bounds=t.deskBounds,edges=[];
+   const original=p.clone(),bounds=t.deskBounds;
+   const centerError=()=>{
+     cam.updateMatrixWorld();
+     const focus=p.clone().setY(p.y+.5).project(cam);
+     return Math.hypot(focus.x,focus.y);
+   };
+   let maxCenterError=0;
    for(const sx of [-1,1])for(const sz of [-1,1]){
-     p.set(bounds.x*sx,0,bounds.z*sz);r.camTarget.copy(p);r.updateCamera(1);cam.updateMatrixWorld();
-     for(const u of [-1,1])for(const v of [-1,1]){
-       const a=p.clone().set(u,v,-1).unproject(cam),b=p.clone().set(u,v,1).unproject(cam);const d=b.sub(a);a.addScaledVector(d,-a.y/d.y);
-       edges.push(Math.abs(a.x)<=bounds.x+.01&&Math.abs(a.z)<=bounds.z+.01);
+     for(const y of [0,3]){
+       p.set((bounds.x-2)*sx,y,(bounds.z-2)*sz);r.trauma=1;r.updateCamera(1/60);
+       maxCenterError=Math.max(maxCenterError,centerError());
      }
    }
-   p.copy(original);r.camTarget.copy(p);r.updateCamera(1);r.renderWorld(0);r.r.render(0);
+   p.copy(original);
+   const {charge,readyFlashAt}=r.ult;
+   r.ult.charge=1;r.ult.readyFlashAt=r.time-.001;
+   r.update(0);
+   maxCenterError=Math.max(maxCenterError,centerError());
+   Object.assign(r.ult,{charge,readyFlashAt});
+   r.updateCamera(1);r.renderWorld(0);r.r.render(0);
    // Sample the actual cable crossing near the mouse, then walk into its silhouette.
    const {width,height}=window.deskArtSize;
    const pixel=(x,y)=>({x:(x/width*2-1)*bounds.x,z:(y/height*2-1)*bounds.z});
@@ -96,15 +107,22 @@ export async function verifyDesk(page,dir){
    const mouseBlocked=walk(4040,2500,4020,2200);
    const passageError=walk(3850,2460,4280,2460);
    if(passageError>.001)throw Error('Mouse lower passage is blocked');
-   return {cableError,mouseBlocked,stage:t.zxStage,layers:[...new Set(t.group.children.map(c=>c.name))],colliders:t.colliders.length,spawnFree:!t.hitProp(p.x,.3,p.z,1),edges:edges.every(Boolean),wireBlocked:t.colliders.some(c=>c.kind==='wires'),facilities:r.interactables.list.every(f=>f.model?.name.startsWith('desk2d/device-')&&(f.kind!=='boss'||!!f.dock))};
+   return {cableError,mouseBlocked,stage:t.zxStage,layers:[...new Set(t.group.children.map(c=>c.name))],colliders:t.colliders.length,spawnFree:!t.hitProp(p.x,.3,p.z,1),maxCenterError,wireBlocked:t.colliders.some(c=>c.kind==='wires'),facilities:r.interactables.list.every(f=>f.model?.name.startsWith('desk2d/device-')&&(f.kind!=='boss'||!!f.dock))};
  });
- assert.equal(stats.layers.length,23);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.edges&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
+ assert.ok(stats.maxCenterError<1e-6,'The player stays centered at all four corners, while airborne and during the ultimate-ready cue');
+ assert.equal(stats.layers.length,23);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
  await page.screenshot({path:path.join(dir,'stage1.png')});
  if(process.argv.includes('--desk-placement-only')){
    await page.evaluate(async()=>{
      const run=app.run;run.state='play';await run.changeZone();
      const terrain=run.terrain,blocked=terrain.colliders.find(c=>c.paperBox&&!c.off);
      if(run.stage!==2||!blocked)throw Error('Expected a workshop obstacle in zone two');
+     const {pos}=run.player,cam=run.r.camera;
+     const original=pos.clone(),edge=(terrain.workshopBoundary?.inner??terrain.play)-1;
+     pos.set(edge,2,edge);run.updateCamera(1/60);cam.updateMatrixWorld();
+     const focus=pos.clone().setY(pos.y+.5).project(cam);
+     if(Math.hypot(focus.x,focus.y)>=1e-6)throw Error('The workshop camera lost the player at the map edge');
+     pos.copy(original);run.updateCamera(1/60);
      const id=run.enemies.spawn(19,blocked.x,blocked.z,1,1,2);
      if(id<0||!terrain.placeSpawn(run.enemies.x[id],run.enemies.z[id],run.enemies.radius[id]))throw Error('Blocked workshop spawn');
    });

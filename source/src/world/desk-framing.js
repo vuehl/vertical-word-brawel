@@ -28,21 +28,13 @@ export function deskFrame(aspect,halfWidth,halfDepth,focusX,focusZ,progress=1,be
   return {x,z,w,h,distance:42*h/normal};
 }
 
-// In the 1170 x 2532 play reference, the view covers 2520 map pixels
-// vertically and the centre of the player's ground shadow is at (531,1356).
-export function deskPlayFrame(aspect,halfWidth,halfDepth,focusX,focusZ){
+// Preserve the gameplay zoom from the 1170 x 2532 play reference.
+export function deskPlayFrame(aspect,halfWidth,halfDepth){
   const referenceAspect=1170/2532;
   const halfHeight=1260/deskPixelsPerUnit*Math.max(1,referenceAspect/aspect);
-  // The floor art lies just below the follow plane. Keep its outer texels in view.
+  // Leave a two-pixel margin when fitting the view size to the artwork.
   const inset=2/deskPixelsPerUnit;
   const limitX=halfWidth-inset,limitZ=halfDepth-inset/deskTilt;
   const h=Math.min(halfHeight,limitX/aspect,limitZ*deskTilt),w=h*aspect;
-  const x=clamp(focusX+w*(1-2*531/1170),-limitX+w,limitX-w);
-  const travel=Math.max(0,limitZ-h/deskTilt),walkLimit=halfDepth-deskWalkInset;
-  // The wider view has less room to follow. Reserve some travel so reversing
-  // at the south edge starts moving the camera on the first step.
-  const southZ=travel-Math.min(.4,travel/walkLimit)*Math.max(0,walkLimit-focusZ);
-  const targetZ=focusZ+h*(1-2*1356/2532)/deskTilt;
-  const z=clamp(Math.min(targetZ,southZ),-travel,travel);
-  return {x,z,w,h,distance:84*h/normalHeight};
+  return {w,h,distance:84*h/normalHeight};
 }

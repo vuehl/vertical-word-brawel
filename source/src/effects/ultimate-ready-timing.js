@@ -6,8 +6,8 @@ export function readyBreathPhase(time,fullAt){
 }
 
 // Blink In's arrival cue uses the decaying one-pixel shake from PixelFX core/act.js.
-// The paper camera resets its position each frame, so the offset never accumulates.
 export function applyReadyShake(run){
+  if(run.terrain.zxPaper)return;
   const start=run.ult?.readyFlashAt;
   if(start==null||!run.ult.ready||!run.meta.profile.settings.shakeOn)return;
   const remaining=.1-(run.time-start);

@@ -4,7 +4,7 @@ import {createCaptureGourd,gourdIcon} from './combat/capture-gourd.js';
 import {combatClipIds, combatEvolutionSeconds, loadAudioClips, loadCombatClips} from './combat/audio-clips.js';
 import {deskCamera,deskDevice,deskTexture,disposeDeskDevice} from './world/desk2d.js';
 import {createBerryPickup,createPickupContact} from './combat/berry-pickup.js';
-import {deskPitch,deskTilt,deskFrame,deskWalkInset} from './world/desk-framing.js';
+import {deskPitch,deskTilt,deskPlayFrame,deskWalkInset} from './world/desk-framing.js';
 import {MapSpawnError,mapRulesFor} from './world/map-rules.js';
 import {altarPalette} from './world/desk-altar-art.js';
 import {ALTAR_RING_EMISSIVE,altarRingFragment} from './effects/altar-ring-vfx.js';
@@ -37241,8 +37241,8 @@ var GS = class e {
     }
     chestOutsideEntryView(x,z) {
       const t=this.run.terrain;
-      const frame=deskFrame(this.run.r?.camera?.aspect??390/844,t.deskBounds.x,t.deskBounds.z,t.spawn.x,t.spawn.z);
-      return Math.abs(x-frame.x)>frame.w+8 || Math.abs(z-frame.z)*deskTilt>frame.h+8;
+      const frame=deskPlayFrame(this.run.r?.camera?.aspect??390/844,t.deskBounds.x,t.deskBounds.z);
+      return Math.abs(x-t.spawn.x)>frame.w+8 || Math.abs(z-t.spawn.z)*deskTilt>frame.h+8;
     }
     availableMapSite(radius, accepts = () => true) {
       const terrain = this.run.terrain;

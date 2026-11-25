@@ -69,8 +69,8 @@ export async function reviewUpgradeEffects(page,dir){
       const camera=r.r.camera,rig=r.vfx.upgrade.camera,point=p.pos.clone();point.y+=.08;
       const view=point.clone().applyMatrix4(camera.matrixWorldInverse),projection=camera.projectionMatrix.elements;
       const clipW=projection[3]*view.x+projection[7]*view.y+projection[11]*view.z+projection[15];
-      point.project(camera);
-      const framing={x:(point.x+1)*.5*innerWidth,y:(1-point.y)*.5*innerHeight,
+      const focus=p.pos.clone().setY(p.pos.y+.5).project(camera);
+      const framing={x:(focus.x+1)*.5*innerWidth,y:(1-focus.y)*.5*innerHeight,
         inkPixels:rig.inkHeight*projection[5]/clipW*.5*innerHeight};
       return {from,to,before,oldHp,reveal,duration,state:r.state,species:p.speciesId,count:r.vfx.upgrade.mesh.count,
         front:r.vfx.upgrade.mesh.visible,rear:r.vfx.upgrade.rearMesh.visible,
@@ -86,7 +86,7 @@ export async function reviewUpgradeEffects(page,dir){
     assert.ok(start.fullScreen,'The supplied full-screen atlas replaces the cropped light');
     const cover=Math.max(width/390,height/844);
     assert.ok(Math.abs(start.framing.x-width/2)<.1,'Center the evolution camera on the character');
-    assert.ok(Math.abs(start.framing.y-(height/2-20*cover))<.1,'Match the reference foot position: '+JSON.stringify({width,height,framing:start.framing}));
+    assert.ok(Math.abs(start.framing.y-height/2)<.1,'Keep the gameplay camera center during evolution: '+JSON.stringify({width,height,framing:start.framing}));
     assert.ok(Math.abs(start.framing.inkPixels-80*cover)<.1,'Match the reference character size');
     await draw(`evolution-${from}-${to}-orbit`);
     assert.ok(start.worldPaused&&start.stationary,'Idle animation must not resume combat or movement');

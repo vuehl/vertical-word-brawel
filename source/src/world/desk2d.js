@@ -11,7 +11,7 @@ import {ht as Vector3,w as Color,y as BufferGeometry,v as Attribute,I as Group,e
 import {paperBox,hitsPaperBox} from './paper-collision.js';
 import {createDeskNavigation,createSpawnPlacement} from './desk-navigation.js';
 
-import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskWalkInset,deskFrame,deskPlayFrame} from './desk-framing.js';
+import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame,deskPlayFrame} from './desk-framing.js';
 const xAt=px=>(px-layout.width/2)/pixelsPerUnit;
 const zAt=py=>(py-layout.height/2)/(pixelsPerUnit*tilt);
 const halfWidth=xAt(layout.width),halfDepth=zAt(layout.height);
@@ -138,14 +138,11 @@ export function deskTexture(t,file){
 }
 export function deskCamera(run,progress,bend=0){
   const c=run.r.camera,t=run.terrain,p=run.player.pos;
-  const {x:focusX,z:focusZ}=run.camTarget;
-  const {x,z:followZ,w,h,distance}=progress===undefined
-    ?deskPlayFrame(c.aspect,halfWidth,halfDepth,focusX,focusZ)
-    :deskFrame(c.aspect,halfWidth,halfDepth,focusX,focusZ,progress,bend);
-  // A sprint can outrun the smoothed focus. Keep the feet inside the picture.
-  const southEdge=progress===undefined?halfDepth-2/(pixelsPerUnit*tilt):halfDepth;
-  const z=Math.max(followZ,Math.min(southEdge,p.z+deskWalkInset)-h/tilt);
-  c.position.set(x,distance*tilt,z+distance*Math.cos(pitch));c.lookAt(x,0,z);
+  const {x=p.x,z=p.z,w,h,distance}=progress===undefined
+    ?deskPlayFrame(c.aspect,halfWidth,halfDepth)
+    :deskFrame(c.aspect,halfWidth,halfDepth,run.camTarget.x,run.camTarget.z,progress,bend);
+  const y=progress===undefined?p.y+.5:0;
+  c.position.set(x,y+distance*tilt,z+distance*Math.cos(pitch));c.lookAt(x,y,z);
   c.projectionMatrix.makeOrthographic(-w,w,h,-h,c.near,c.far,c.coordinateSystem);
   c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
   t.deskCamera=c;run.camYaw=0;run.camPitch=pitch;run.camDist=distance;run.camLift=0;
