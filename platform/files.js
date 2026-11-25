@@ -253,7 +253,7 @@ async function init(progress) {
   // Only known, content-addressed resource folders inside this game's cache.
   // Removed music packages are obsolete too; player saves live elsewhere.
   for (const entry of fs().readdirSync(base)) {
-    const match=/^(art|world|text|dragon_summon|sound|music_(?:boss|ingame[1-4]))-([a-f0-9]{16})$/.exec(entry);
+    const match=/^(art|world|text|dragon_summon|capture_bag|sound|music_(?:boss|ingame[1-4]))-([a-f0-9]{16})$/.exec(entry);
     if(match&&info.packs[match[1]]!==match[2])await removePackDirectory(base+'/'+entry);
   }
   await ensurePack('text', progress);

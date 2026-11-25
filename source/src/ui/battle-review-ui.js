@@ -513,7 +513,7 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   };
   hud.ultCutIn=(species,name,tint)=>{
     clearAnnouncement();
-    if(window.nativeUI&&run.ult.castBanner){
+    if(run.ult.castBanner){
       run.ult.castBanner.name=name;
       return;
     }

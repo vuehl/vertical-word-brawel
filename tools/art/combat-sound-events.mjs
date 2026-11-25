@@ -9,7 +9,7 @@ for (const [move, label, impact] of [
   ['ember','火点拍'], ['fire-blast','大字爆炎',true], ['fire-spin','火焰漩涡',true],
   ['inferno','炼狱',true], ['flamethrower','喷射火焰'], ['stampede','烈焰狂奔'],
   ['quick-attack','电光一闪'], ['tackle','撞击'], ['wing-attack','翅膀攻击'],
-  ['aerial-ace','燕返'], ['twister','龙卷风',true],
+  ['aerial-ace','燕返'], ['air-slash','空气斩'],
 ]) {
   add(move + ':cast', label + '发动', 'move', move, 'cast');
   if (impact) add(move + ':impact', label + '爆开', 'move', move, 'impact');

@@ -228,7 +228,7 @@ export function installDeveloperMode(app,{skills,speciesName}){
     if(panel||!run||run.state!=='play'||app.screen)return;
     mountEntrance();
     showOnEntry=false;
-    run.state='paused';run.input.releaseLock();run.input.pressed.clear();
+    run.state='paused';run.input.pressed.clear();
     run.input.stickX=run.input.stickY=0;
     seconds=Math.round(run.stageTime);target=ordinaryCount(run);
     panel=node('div','','position:absolute;inset:0;z-index:1000;background:#162620b8;display:flex;align-items:center;justify-content:center;padding:12px;pointer-events:auto;');

@@ -12,7 +12,8 @@ import {retiredMoveIds, moveAvailableForSpecies, moveOfferLevel, configureSkillL
 export async function loadSkillCatalog() {
   const read = name => fs.readFileSync(new URL('../../' + name, import.meta.url), 'utf8');
   const json = name => JSON.parse(read(name));
-  const source = read('source/src/game.js').replace(/\r\n/g, '\n');
+  const source = ['skills', 'upgrade-offers', 'ultimate-moves', 'encounters']
+    .map(name => read('source/src/combat/' + name + '.js').replace(/\r\n/g, '\n')).join('\n');
   const moves = json('resources/public/data/moves.json');
   const species = json('resources/public/data/pokemon.json');
   const learnsets = json('resources/public/data/learnsets.json');
@@ -47,7 +48,9 @@ export async function loadSkillCatalog() {
     retiredMoveIds, moveAvailableForSpecies, moveOfferLevel, runPlan, planIncludes, plannedUpgrade,
   });
   const evaluate = code => vm.runInContext(code, ctx, {timeout: 5000});
-  evaluate('var ' + between('Zg = {', 'var e_ = class'));
+  evaluate(between('const fireStampedeRecipe =', 'export {'));
+  Object.assign(ctx, await import('../../source/src/data/move-attributes.js'));
+  evaluate(source.match(/const windOrbitDuration = [\d.]+;/)[0]);
   evaluate('var ' + between('t_ = ji(', 'var M_ = class'));
   evaluate(between('function Ax(e, t)', 'var lS ='));
   evaluate(between('var lS =', 'var dS ='));

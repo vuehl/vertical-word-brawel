@@ -110,7 +110,9 @@ for (let a = 0; a < materialMoves.length; a++) for (let b = a; b < materialMoves
   verifiedMaterialPairs++;
 }
 const sources = [
-  ['source/src/game.js', '技能生成、升级候选、伤害参数、被动、大招和融合匹配'],
+  ['source/src/combat/skills.js', '普通技能生成及伤害参数'],
+  ['source/src/combat/upgrade-offers.js', '升级候选和融合匹配'],
+  ['source/src/combat/ultimate-moves.js', '大招实现及冷却时间'],
   ['source/src/data/starter-characters.js', '两条进阶路线、单关与多关进阶等级、各形态大招与移速转伤害'],
   ['source/src/data/skill-availability.js', '当前技能与融合的启用、移除规则'],
   ['source/src/data/form-copy.js', '各形态技能显示名与融合名称'],
@@ -118,7 +120,7 @@ const sources = [
   ['resources/public/data/learnsets.json', '经运行代码过滤的进化链学习表'],
   ['resources/public/data/moves.json', '普通技能原名、编号和底层属性'],
   ['resources/public/text/ui.json', '游戏中文文案'],
-  ['source/src/effects/wind-move-art.js', '电光一闪、龙卷风的风系表现'],
+  ['source/src/effects/wind-move-art.js', '电光一闪、空气斩的风系表现'],
   ['source/src/effects/wind-replacements.js', '起风与羽毛舞的特效'],
 ].map(([file,note]) => ({file,note,sha256:crypto.createHash('sha256').update(read(file)).digest('hex').slice(0,12)}));
 const types = JSON.parse(read('resources/public/data/types.json')).names;

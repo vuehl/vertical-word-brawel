@@ -12,13 +12,13 @@ const bindings=('globalThis window self document navigator location history loca
 export async function buildPlay(common,src,hostCode){
   const resolveDir=path.join(src,'src');
   const entries={
-    gameplay:'import "../../platform/turnstile-stub.js"; import {setChineseText} from "./data/chinese-text.js";'+
+    gameplay:'import {setChineseText} from "./data/chinese-text.js";'+
       'export async function start(){setChineseText(window.readChineseText());return require("./game.js").launch();}',
     // These build-only entries give esbuild boundaries for shared modules. Their
     // lazy references preserve initialization order and are never shipped.
     combat:'export function include(){require("./combat/boss-encounters.js");require("./combat/move-effects.js");}',
     presentation:'export function include(){require("./data/config.js");require("./ui/zixing-ui.js");require("./world/paper-world.js");'+
-      'require("./effects/stylized-skill-vfx.js");require("./ui/customize.js");require("./world/room-monsters.js");'+
+      'require("./effects/stylized-skill-vfx.js");require("./world/room-monsters.js");'+
       'require("./actors/actor-metrics.js");require("./actors/hero-poses.js");require("./effects/facility-clock.js");}',
     three:'export function include(){require("./vendor/three-DmSYIDKK.js");}'
   };
@@ -29,7 +29,7 @@ export async function buildPlay(common,src,hostCode){
   }};
   const result=await esbuild.build({...common,format:'esm',splitting:true,write:false,metafile:true,
     plugins:[entryPlugin,...common.plugins],outdir:'play',entryPoints:Object.fromEntries(Object.keys(entries).map(key=>[key,prefix+key])),
-    define:{'globalThis.__ZILING_COMPILED_STYLES__':'true',innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'}});
+    define:{innerWidth:'window.innerWidth',innerHeight:'window.innerHeight',devicePixelRatio:'window.devicePixelRatio'}});
 
   const outputs=result.metafile.outputs,content=new Map(result.outputFiles.map(file=>[path.resolve(file.path),file.text]));
   const files=new Map(),names=new Map();

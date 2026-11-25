@@ -1,11 +1,9 @@
+import {createAudioSource as synth} from '../build/audio-fixture.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import puppeteer from 'puppeteer-core';
 import {buttonSoundFiles} from '../../source/src/ui/button-audio.js';
 
-const text=fs.readFileSync(new URL('../../source/src/game.js',import.meta.url),'utf8');
-const start=text.indexOf('  N = new (class {')+'  N = '.length;
-const synth=text.slice(start,text.indexOf('  Gs = (e, t, n)',start)).trim().replace(/,$/,'');
 const buttonSounds=Object.fromEntries(Object.entries(buttonSoundFiles).map(([kind,file])=>
   [kind,[...fs.readFileSync(new URL('../../resources/public/assets/sfx/'+file,import.meta.url))]]));
 const browser=await puppeteer.launch({

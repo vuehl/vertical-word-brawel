@@ -30,7 +30,7 @@ export async function recordWindReference(page,sourceDir,destination){
     window.windRecordingOrigin=windLane;
   });
   const spells=[
-    ['电光一闪',98],['撞击',33],['起风',49001],['翅膀攻击',17],['羽毛舞',332],['龙卷风',239],
+    ['电光一闪',98],['撞击',33],['起风',49001],['翅膀攻击',17],['羽毛舞',332],['空气斩',403],
     ['大招/一阵风刮来',0,16],['大招/刮倒一片',0,18],['大招/跑得没影',0,59],
     ['融合/残气乱刮',50006],['融合/卷着打转',50106]
   ];
@@ -38,7 +38,7 @@ export async function recordWindReference(page,sourceDir,destination){
     if(process.env.WIND_RECORD_SKILLS&&!process.env.WIND_RECORD_SKILLS.split(',').includes(name)){
       const saved=prior?.clips.find(clip=>clip.name===name);if(saved)report.clips.push(saved);continue;
     }
-    const local=id===49001||id===332;
+    const local=id===49001||id===332||id===403;
     const referenceDir=local?path.resolve(import.meta.dirname,'../../resources/art/wind-supplement'):sourceDir;
     const file=path.join(referenceDir,name+'.gif'),meta=await sharp(file,{animated:true}).metadata();
     const delays=meta.delay,frameStart=[];let total=0;
@@ -67,7 +67,7 @@ export async function recordWindReference(page,sourceDir,destination){
       }
       p.pos.set(x,r.terrain.surface(x,z),z);r.camTarget.copy(p.pos);
       await r.sprites.prepareHeroForm(species);
-      if(id===332||id===17){
+      if(id===332||id===17||id===403){
         e.clear();
         const target=e.spawn(147,x+1.85,z-7.35,1,1,0);
         e.hp[target]=e.maxHp[target]=1e7;
@@ -76,7 +76,8 @@ export async function recordWindReference(page,sourceDir,destination){
       }else for(let i=0;i<e.n;i++){
         e.x[i]=p.pos.x+1.65+i*2.5;e.z[i]=p.pos.z-5.6-i*3;e.y[i]=r.terrain.surface(e.x[i],e.z[i]);
       }
-      e.update();r.lockTarget=id===332?-1:0;r.input.stickX=0;
+      if(id===403)r.vfx.enabledText=false;
+      e.update();r.lockTarget=id===332||id===403?-1:0;r.input.stickX=0;
       if(id||species===18){p.addMove(id||98);p.moves[0].timer=999;
         await r.vfx.crafted.prepareMoveTexture(p.moves[0].def.effectKey??p.moves[0].def.key);}
       if(!id)await r.vfx.crafted.prepareMoveTexture('wind-ultimate');
@@ -132,7 +133,11 @@ export async function recordWindReference(page,sourceDir,destination){
       fs.writeFileSync(path.join(destination,liveFile),live);
       // Keep the compact side-by-side GIF for playback/export. The viewer uses
       // the independent lossless PNGs above, never this downsampled preview.
-      const preview=await sharp(live).resize(width,height).png().toBuffer();
+      // Match the hero scale and origin in the Air Slash recording. Retain the
+      // uncropped capture separately so both the effect and battle are inspectable.
+      const previewImage=sharp(live);
+      if(id===403)previewImage.extract({left:195,top:394,width,height});
+      const preview=await previewImage.resize(width,height).png().toBuffer();
       const pair=await sharp({create:{width:width*2+2,height,channels:3,background:'#212c32'}})
         .composite([{input:source,left:0,top:0},{input:preview,left:width+2,top:0}]).png().toBuffer();
       const frameFile=String(refFrame).padStart(3,'0')+'.png';

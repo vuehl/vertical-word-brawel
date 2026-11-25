@@ -1,3 +1,4 @@
+import {createAudioSource as synth} from '../build/audio-fixture.mjs';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer-core';
@@ -11,14 +12,6 @@ import {EVOLUTION_REVEAL} from '../../source/src/effects/evolution-timing.js';
 // Render the shipped recipes before the player's volume controls and compressor.
 // The original kit EQ is baked into the move sounds. Playback uses the SFX bus.
 const root = new URL('../../', import.meta.url);
-const source = fs.readFileSync(new URL('source/src/game.js', root), 'utf8').replaceAll('\r\n', '\n');
-const kitStart = source.indexOf('  ts = {');
-const kitEnd = source.indexOf('var Rs =', kitStart);
-const start = source.indexOf('  N = new (class {');
-const end = source.indexOf('  Gs = (e, t, n)', start);
-assert.ok(kitStart >= 0 && kitEnd > kitStart && start > kitEnd && end > start);
-const factory = 'var ' + source.slice(kitStart, kitEnd) + '\nreturn (' +
-  source.slice(start + '  N = '.length, end).trim().replace(/,$/, '') + ');';
 const rate = 24000;
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -26,7 +19,7 @@ const browser = await puppeteer.launch({
 });
 try {
   const page = await browser.newPage();
-  const clips = await page.evaluate(async ({factory, rate, events}) => {
+  const clips = await page.evaluate(async ({synth, rate, events}) => {
     let raw, seed = 17391;
     let duration;
     Math.random = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
@@ -43,7 +36,7 @@ try {
         });
       }
     };
-    const make = new Function(factory), clips = {};
+    const make = () => (0,eval)(synth), clips = {};
     async function record({key:name, method, args}) {
       duration = method === 'evolve' ? args[0] + 1 : 3;
       const audio = make();
@@ -70,7 +63,7 @@ try {
     }
     for (const event of events) await record(event);
     return clips;
-  }, {factory, rate, events:combatSoundEvents});
+  }, {synth, rate, events:combatSoundEvents});
   const directory = new URL('resources/public/assets/sfx/', root);
   fs.mkdirSync(directory, {recursive:true});
   const manifestPath = new URL('resources/public/config/combat-audio.json', root);

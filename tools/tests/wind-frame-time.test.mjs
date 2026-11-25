@@ -24,7 +24,7 @@ test('authored wind atlases fit texture limits and keep every exposure of the re
   for(const atlas of [skill,moves,vortex,replacements]){
     assert.ok(atlas.columns*atlas.tile<=4096&&atlas.rows*atlas.tile<=4096);
   }
-  for(const clip of [skill.clips.wingLaunch,skill.clips.wingHit,skill.clips.quickHalo,skill.clips.tackleRush,skill.clips.attackLoops,moves.twister,vortex,...Object.values(replacements.clips)]){
+  for(const clip of [skill.clips.wingLaunch,skill.clips.wingHit,skill.clips.quickHalo,skill.clips.tackleRush,skill.clips.attackLoops,moves.airSlash,moves.hit,vortex,...Object.values(replacements.clips)]){
     assert.equal(clip.times.length,clip.count+1);
     assert.equal(clip.pages.length,clip.count);
     assert.match(clip.sha256,/^[a-f0-9]{64}$/);

@@ -5179,18 +5179,6 @@ export function createMoveEffects({F, I, L, bl, Sl, wl, El, Ll, Vf, k}) {
             e.vfx.ring(t, n, r, i, V.fairy, 0.4));
         },
       },
-      twister: {
-        draw(e, t, n, r) {
-          (Lp(e, t, n, r, 7002288, 13172720, 5), Rp(e, t, n, r, I.Leaf, 5943402, 4, n * 0.5, !1));
-        },
-        trail(e, t, n, r) {
-          e.vfx.dust(t, n - 1, r, 11061408, 1, 2);
-        },
-        boom(e, t, n, r, i) {
-          (vp(e, t, n, r, 7002288, 14, i * 2.2, I.Swirl, 0.8, 0.5, i * 2),
-            e.vfx.ring(t, e.terrain.height(t, r), r, i, 7002288, 0.4));
-        },
-      },
       "dragon-rage": {
         shape: I.Flame,
         color: 9071359,

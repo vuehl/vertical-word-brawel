@@ -141,10 +141,6 @@ export function fitPaperActionLabels(footer){
     }
   }
   fit();requestAnimationFrame(()=>{if(footer.isConnected)fit();});
-  if(!window.nativeUI&&typeof ResizeObserver==='function'){
-    const observer=new ResizeObserver(()=>footer.isConnected?fit():observer.disconnect());
-    observer.observe(footer);
-  }
 }
 
 export function standardFooter(footer){

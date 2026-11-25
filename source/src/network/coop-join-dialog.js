@@ -33,7 +33,7 @@ export function askCoopCode({el,button,parent,screen,trigger,previous='',error='
     async function readClipboard(){
       const version=revision;
       try{
-        const value=window.readRoomCode?await window.readRoomCode():await navigator.clipboard.readText();
+        const value=await window.readRoomCode();
         if(!closed&&revision===version)paste(value);
       }catch{if(!closed&&revision===version)refresh('无法读取剪贴板，请点数字输入');}
     }

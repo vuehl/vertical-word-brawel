@@ -2,10 +2,9 @@
 
 The MIT license in `LICENSE` covers ONLY the original code in this repository, which is:
 
-- `server.mjs`
+- `local/game-routes.mjs` (adapted from `server.mjs`)
 - `tools/` (`pull.mjs`, `probe.mjs`, `mirror.mjs`)
 - `firebase/` (`backend.mjs`, `shared.mjs`, `backend.test.mjs`, rules + config files)
-- `../platform/turnstile-stub.js` (previously `public/turnstile-stub.js`)
 
 Everything else is third-party or upstream content, listed below, and is NOT covered by the MIT license.
 

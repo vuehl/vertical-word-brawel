@@ -40,6 +40,5 @@ function scan(directory) {
 for (const folder of ['source/src', 'source/local', 'source/firebase', 'source/tools', 'platform', 'tools']) {
   scan(path.join(root, folder));
 }
-checkModule(path.join(root, 'source/server.mjs'));
 if (missing.length) throw Error('找不到源码引用的文件\n' + missing.join('\n'));
 console.log('已核对 ' + checked + ' 个模块的本地导入路径。');

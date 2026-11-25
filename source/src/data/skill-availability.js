@@ -1,7 +1,7 @@
 // Keep retired IDs reserved so old saves cannot turn them into another skill.
 export const retiredMoveIds = new Set([
   36, 44, 172, 179, 242, 245, 514, 583, 50104,
-  10, 163, 225, 257, 337, 394, 424,
+  10, 163, 225, 239, 257, 337, 394, 424,
 ]);
 // Permanent IDs: old saves must never resolve a removed fusion as a new skill.
 export const activeFusionIds = new Set([50001, 50006, 50080, 50106]);
@@ -9,7 +9,7 @@ export const retiredFusionId = id => id >= 50000 && id <= 50106 && !activeFusion
 
 const fireForms = new Set([4, 5, 6]);
 const windForms = new Set([16, 17, 18, 58, 59]);
-const windMoves = new Set([98, 33, 17, 332, 239, 49001]);
+const windMoves = new Set([98, 33, 17, 332, 403, 49001]);
 const windFusions = new Set([50006, 50106]);
 
 export function moveOfferLevel(species, level) {

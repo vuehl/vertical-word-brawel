@@ -30,7 +30,7 @@ export async function writeBootHeroArt(root,out){
 
 export function bootAssets(root) {
   const read=file=>fs.readFileSync(path.join(root,file),'utf8').replace(/\r\n/g,'\n');
-  const css=read('source/src/ui/base.css')+'\n'+read('source/src/ui/customize.js').split('style.textContent=').pop().split(String.fromCharCode(96))[1]+'\n' + zixingStyle;
+  const css=read('source/src/ui/base.css')+'\n'+read('source/src/ui/portrait.css')+'\n' + zixingStyle;
   const rules=[];
   postcss.parse(css).walkRules(rule=>{
     let media='';

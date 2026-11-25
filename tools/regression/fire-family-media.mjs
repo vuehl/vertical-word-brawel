@@ -47,9 +47,9 @@ export async function reviewFireFamilyMedia(page,dir,moves){
   const result=await page.evaluate(async({id,key})=>{
    const r=app.run;r.player.setSpecies(key==='air-slash'?16:4);vfxSetup();r.ghosts.length=0;r.enemies.x[1]=0;r.enemies.z[1]=key==='inferno'?-8:-2.4;r.enemies.update();r.lockTarget=1;r.player.pos.y=r.terrain.height(0,0);
    await Promise.all([...r.sprites.batches.values()].map(b=>b.material?.uniforms?.map?.value?.userData?.ready));
-   r.player.addMove(id);r.player.moves[0].timer=0;vfxAdvance(4);vfxDraw();
+   r.player.addMove(id);await r.vfx.crafted.prepareMoveTexture(r.player.moves[0].def.effectKey??key);r.player.moves[0].timer=0;vfxAdvance(4);vfxDraw();
    const f=r.vfx.crafted.fireFamily,j=r.vfx.crafted.fireJet;
-   return {key,count:f.mesh.count,jet:j.mesh.count,ball:r.vfx.crafted.fireball.mesh.count,ghosts:r.ghosts.length,damage:r.player.moves[0].damageDone,gl:app.r.renderer.getContext().getError()};
+   return {key,count:key==="air-slash"?r.vfx.crafted.windMoves.mesh.count:f.mesh.count,jet:j.mesh.count,ball:r.vfx.crafted.fireball.mesh.count,ghosts:r.ghosts.length,damage:r.player.moves[0].damageDone,gl:app.r.renderer.getContext().getError()};
   },{key,id});
   assert.ok(result.count+result.jet+result.ball>0,'Missing visual '+key);assert.equal(result.gl,0);report.pictures.push(result);
   if(key==='inferno')assert.ok(result.ball>0,'Inferno must fly as the Ember fireball');

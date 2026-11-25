@@ -26,51 +26,12 @@ const replace=(s,from,to)=>{
   if(!s.includes(from)||s.indexOf(from)!==s.lastIndexOf(from))throw Error('Source anchor changed: '+from.slice(0,80));
   return s.replace(from,to);
 };
-const shellServer=read('server.mjs');
-function serverCode() {
-  const imports=shellServer.slice(0,shellServer.indexOf('const PORT')).replace(/^import .+ from 'node:(?:fs(?:\/promises)?|http|path)';\n/gm,'');
-  const routes=shellServer.slice(shellServer.indexOf('function accountByToken'),shellServer.indexOf('// Standalone loopback-only HTTP server.'));
-  return imports + `
-import {readStore,writeStore} from "pokebonk:store";
-import {progressDispatcher,callProgress} from "pokebonk:progress";
-let store,dirty;
-function persist(){dirty=true;}
-` + routes + `
-async function localRoute(draft,url,method,headers,bodyText,checkpoint){
-  store=draft;
-  store.coopParties??={};
-  dirty=false;
-  const key=url.pathname.slice(4);
-  if(!checkpoint)for(const account of Object.values(store.accounts))constrainLiteProfile(account.profile);
-  if(key==="/coop/access")return {response:{status:200,data:{show:false,play:false}}};
-  const social=["coop","friends","rooms","invites","clans","mail","events","seasons","leaderboard"];
-  if(social.includes(key.split("/")[1]))return {response:{status:404}};
-  const route=matchRoute(method,key);
-  if(!route)return {response:{status:404,data:{error:"Not found."}}};
-  const response={status:200,data:undefined};
-  const value=await route.handler({headers:{authorization:headers.Authorization||headers.authorization},bodyText},response,url,route.params);
-  if(value!==undefined)response.data=value;
-  return {response,dirty};
-}
-const dispatch=progressDispatcher({load:readStore,save:writeStore,call:${development?'null':'callProgress'},
-  mutationID:()=>crypto.randomBytes(16).toString("hex"),localRoute});
-let queue=Promise.resolve();
-export function dispatchApi(...args){
-  const next=queue.then(()=>dispatch(...args));
-  queue=next.catch(()=>{});
-  return next;
-}
-`;
-}
 const sources={
   name:'pokebonk-platform',setup(build){
     build.onLoad({filter:/[\\/]PortalDock\.mjs$/},args=>({
       contents:bindPortalZoneClock(fs.readFileSync(args.path,'utf8')),loader:'js',
     }));
-    build.onResolve({filter:/^pokebonk:api$/},args=>({path:args.path,namespace:'pokebonk'}));
     build.onResolve({filter:/^node:crypto$/},()=>({path:path.join(platform,'crypto.mjs')}));
-    build.onResolve({filter:/^pokebonk:store$/},()=>({path:path.join(platform,'store.mjs')}));
-    build.onResolve({filter:/^pokebonk:progress$/},()=>({path:path.join(platform,'cloud-progress.mjs')}));
     build.onResolve({filter:/^pokebonk:clone$/},()=>({path:path.join(platform,'clone.mjs')}));
     build.onResolve({filter:/^pokebonk:base64$/},()=>({path:path.join(platform,'base64.mjs')}));
     build.onResolve({filter:/^pokebonk:css-number$/},()=>({path:path.join(platform,'css-number.mjs')}));
@@ -85,14 +46,6 @@ const sources={
         '        view.setUint32(blockLen - (isLE ? 8 : 4), this.length * 8, isLE);');
       return {contents,resolveDir:path.dirname(args.path)};
     });
-    build.onLoad({filter:/./,namespace:'pokebonk'},()=>({
-      contents:serverCode(),
-      resolveDir:src,loader:'js'
-    }));
-    build.onLoad({filter:/firebase[\\/]shared\.mjs$/},()=>({resolveDir:path.join(src,'firebase'),contents:
-      read('firebase/shared.mjs').replace(/export function json\(res,[\s\S]+?(?=export const seasonPayload)/,
-        'export function json(res,code,data){res.status=code;res.data=data;}\nexport async function body(req){return req.bodyText ? JSON.parse(req.bodyText):undefined;}\n')
-    }));
     build.onLoad({filter:/local[\\/]progression\.mjs$/},()=>({resolveDir:path.join(src,'local'),contents:
       read('local/progression.mjs').replace("import fs from 'node:fs';",'import {cloneData as structuredClone} from "pokebonk:clone";')
         .replace(/^const pokemon = new Map\(.+;$/m,'const pokemon=new Map('+JSON.stringify(JSON.parse(read('../resources/public/data/pokemon.json')).map(p=>[p.id,{family:p.family}]))+');')
@@ -113,20 +66,13 @@ const sources={
       code+='\nexport const compileStyleSelector=selector=>compile(selector,{adapter,strict:true,xmlMode:false,cacheResults:false});';
       return {contents:code,resolveDir:path.dirname(args.path)};
     });
-    build.onLoad({filter:/[\\/](config|move-effects|boss-encounters)\.js$/},args=>({
-      contents:lowerUnicodeRegexes(fs.readFileSync(args.path,'utf8')),resolveDir:path.dirname(args.path)
-    }));
-    build.onLoad({filter:/src[\\/]game\.js$/},()=>{
-      let code=read('src/game.js');
-      // The DOM retry screen cannot be drawn before the WeChat renderer exists.
-      code=replace(code,'((n.lastChild.textContent = c(`Error cargando datos: {msg}`, { msg: t(e.message) })),\n          r.append(X(`button`, { class: `btn big red`, onclick: () => location.reload() }, c(`Reintentar`))));\n        return;',
-        'throw Error("游戏数据读取失败：" + (e.message || e));');
-      code=replace(code,'await new Promise((e) => setTimeout(e, Math.min(5e3, 1e3 + t * 500))));',
-        'await new Promise((e) => setTimeout(e, 500)));\n          if (t >= 2) throw Error("WebGL 2 初始化失败：" + (e.message || e));');
-      if(developer)code=developer.instrumentGame(code);
-      code=replace(code,'if ((this.r.render(n), this.run?.state === \x60play\x60))','if ((this.r.render(n), window.drawUI(this.r.renderer), this.run?.state === \x60play\x60))');
-      code=replace(code,'(this.failing++ % 60 == 0','(window.onBootRenderError?.(e), this.failing++ % 60 == 0');
-      return {contents:lowerUnicodeRegexes(code),resolveDir:path.join(src,'src')};
+    build.onLoad({filter:/[\\/]source[\\/]src[\\/].*\.js$/},args=>{
+      let code=fs.readFileSync(args.path,'utf8');
+      if(developer && args.path===path.join(src,'src','game.js')) {
+        code=developer.instrumentGame(code.replace(/\r\n/g,'\n'));
+      }
+      if(code.includes('\\p{'))code=lowerUnicodeRegexes(code);
+      return {contents:code,resolveDir:path.dirname(args.path)};
     });
   }
 };
@@ -134,7 +80,7 @@ const sources={
 const previewESVersion=2017;
 const common={bundle:true,platform:'browser',format:'cjs',minify:true,target:'es'+previewESVersion,charset:'utf8',legalComments:'eof',metafile:process.argv.includes('--analyze'),
   nodePaths:[path.join(import.meta.dirname,'node_modules')],plugins:[...(developer?[developer.isolatedStoragePlugin(platform)]:[]),sources],logLevel:'warning'};
-const hostBundle=await esbuild.build({...common,define:{document:'undefined'},entryPoints:[path.join(platform,'host.mjs')],write:false});
+const hostBundle=await esbuild.build({...common,define:{document:'undefined',__LOCAL_PROGRESS_ONLY__:String(development)},entryPoints:[path.join(platform,'host.mjs')],write:false});
 await esbuild.build({...common,entryPoints:[path.join(import.meta.dirname,'build/resource-runtime.mjs')],outfile:path.join(out,'resource-runtime.js')});
 fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
 const result=await buildPlay(common,src,hostBundle.outputFiles[0].text);

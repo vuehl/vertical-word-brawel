@@ -17,7 +17,6 @@ import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,atla
 import {readyBreathPhase,breathPeriod} from '../effects/ultimate-ready-timing.js';
 import {regionAtlas,atlasSymbol} from './region-atlas-art.js';
 import {paperStages} from '../world/paper-world.js';
-import {zixingStyle} from './zixing-style.js';
 import {laboratory} from '../data/catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from '../performance/loading-work.js';
 import {selectGraphicsQuality} from '../performance/performance-profile.js';
@@ -218,13 +217,12 @@ const labGroups=[['dmg','atkspd','spd','area','crit'],['hp','armor','regen','mag
 export function createZixingUI(app,api) {
   if(app.zixing)return app.zixing;
   document.documentElement.classList.add('zixing');
-  if(!globalThis.__ZILING_COMPILED_STYLES__)document.head.append(el('style','',zixingStyle));
   window.__zixingApp=app;
   let selected=defaultStarter,selectedDestination=destinations[0],selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,authPromise=null,activeEntry=null;
   const scene=journeyScene();
-  const ui=app.zixing={home,choose,map,difficulty:map,lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready,prepareHomeArt:scene.prepare,savedCard,settlementSaved};
+  const ui=app.zixing={home,choose,map,difficulty:map,multiplayer:()=>openProfilePage(coopTitle,()=>multiplayer()),lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready,prepareHomeArt:scene.prepare,savedCard,settlementSaved};
   const character=characterForSpecies;
-  if(window.nativeUI)window.addEventListener('memorywarning',releaseGlyphCanvasCache);
+  window.addEventListener('memorywarning',releaseGlyphCanvasCache);
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
   // Older local saves have run history. A restored cloud save may only have dust or stage progress.
@@ -235,7 +233,7 @@ export function createZixingUI(app,api) {
     const current=app.run;
     if(battleRecovery || current?.coop?.room!==session)return;
     current.coop.reconnecting=true;
-    current.state='paused';current.input.releaseLock();
+    current.state='paused';
     const seat={code:session.code,seat:session.me,party:current.coop.party};
     let stopped=false,busy=false,unavailable=false,timer,next,attempts=0;
     const stop=()=>{
@@ -520,11 +518,7 @@ export function createZixingUI(app,api) {
       const copy=button(paperIcon('copy'),async()=>{
         if(!room)return;
         try {
-          if(window.copyRoomCode)await window.copyRoomCode(room.code);
-          else {
-            await navigator.clipboard.writeText(room.code);
-            app.notice('房间号已复制');
-          }
+          await window.copyRoomCode(room.code);
         }catch{
           app.notice('复制失败，请再试一次或手动输入房间号');
         }

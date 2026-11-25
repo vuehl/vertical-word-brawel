@@ -8,6 +8,7 @@
     {"name": "art", "root": "packs/art"},
     {"name": "world", "root": "packs/world"},
     {"name": "text", "root": "packs/text"},
-    {"name": "dragon_summon", "root": "packs/dragon_summon"}
+    {"name": "dragon_summon", "root": "packs/dragon_summon"},
+    {"name": "capture_bag", "root": "packs/capture_bag"}
   ]
 }

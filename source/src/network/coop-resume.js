@@ -61,15 +61,18 @@ export function restoreProgress(run,data,world) {
     const chosen = new Set([...(data.chosenVitamins ?? []), ...p.vitamins.keys()]);
     p.chosenVitamins = new Set([...chosen].filter(key=>vitaminRules.has(key)).slice(0,vitaminKindLimit));
     const openingMoveId=p.moves[0]?.def.id;
+    const hasAirSlash=data.moves.some(move=>move?.id===403);
     p.moves.fill(null);
     for(const [i,saved] of data.moves.entries()){
       if(!saved)continue;
       const index=p.moves.findIndex(m=>!m);
-      if(!p.addMove(saved.id))continue;
+      if(saved.id===239 && hasAirSlash)continue;
+      if(!p.addMove(saved.id===239 ? 403 : saved.id))continue;
       const move=p.moves[index];
       p.moves[index]=null;
       p.moves[i]=move;
       const {id,...attributes}=saved;Object.assign(move,attributes);
+      if(move.parents?.includes(239))move.parents=move.parents.map(id=>id===239?403:id);
     }
     // Older loadouts can contain only retired moves.
     if(openingMoveId!=null && !p.moves.some(Boolean))p.addMove(openingMoveId);

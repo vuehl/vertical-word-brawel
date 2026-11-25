@@ -5,7 +5,7 @@ import {restoreProgress} from '../../source/src/network/coop-resume.js';
 
 const {ctx, config, evaluate, between} = await loadSkillCatalog();
 evaluate(between('function drawOfferPage(', 'function Gb('));
-const removed = [10, 163, 225, 257, 337, 394, 424, 50024, 50079, 50093, 50105];
+const removed = [239, 10, 163, 225, 257, 337, 394, 424, 50024, 50079, 50093, 50105];
 const windRemoved = [52, 53, 50080, 50099];
 const catalog = species => {
   const fire = species < 7;
@@ -33,7 +33,7 @@ test('at character level one the first draw and rerolls cover every ordinary fir
       roster:config.Bt.find(row=>row.id===(fire?4:16)),moves:[],vitamins:new Map(),
       freeMoveSlot:()=>1,ownedMoveIds:()=>new Set([opening])};
     const run={player,meta:{inLeague:()=>true},banished:new Set()};
-    const expected=fire?[53,83,126,488,517]:[17,33,239,332,49001];
+    const expected=fire?[53,83,126,488,517]:[17,33,332,403,49001];
     assert.ok(catalog(species).every(move=>move.level===1));
     const draws=[...ctx.Ub(run,3),...ctx.Ub(run,3)];
     assert.deepEqual([...new Set(draws.map(offer=>offer.id))].sort((a,b)=>a-b),expected);
@@ -42,13 +42,13 @@ test('at character level one the first draw and rerolls cover every ordinary fir
 
 test('each wind form learns six moves and has exactly four unordered fusion pairs', () => {
   evaluate(between('var M_ = class', 'function P_('));
-  evaluate(between('function Tx(', 'function Ex('));
-  const ids = [98,33,49001,17,332,239];
-  const pairs = new Map([['17:239','残气乱刮'],['239:332','残气乱刮'],
+  evaluate(between('function Tx(', 'function Ax('));
+  const ids = [98,33,49001,17,332,403];
+  const pairs = new Map([['17:403','残气乱刮'],['332:403','残气乱刮'],
     ['33:98','卷着打转'],['98:49001','卷着打转']]);
   for (const species of [16,17,18,58,59]) {
     const defs = ids.map(id => ctx.formMove(id,species));
-    assert.deepEqual(defs.map(d => d.name), ['电光一闪','撞击','起风','翅膀攻击','羽毛舞','龙卷风']);
+    assert.deepEqual(defs.map(d => d.name), ['电光一闪','撞击','起风','翅膀攻击','羽毛舞','空气斩']);
     assert.equal(defs[2].arch,'vortex');
     assert.equal(defs[4].count,3);
     for (const a of defs) for (const b of defs) {
@@ -69,7 +69,7 @@ test('each wind form learns six moves and has exactly four unordered fusion pair
       assert.deepEqual([...fused.parents],[defs[a].id,defs[b].id]);
       assert.deepEqual(run.fusions,[r.key]);
     }
-    for(const id of [16,97,297,403,542,50088]) assert.equal(ctx.formMove(id,species),null);
+    for(const id of [16,97,297,239,542,50088]) assert.equal(ctx.formMove(id,species),null);
   }
 });
 
@@ -96,7 +96,7 @@ test('Flame Stampede is a selectable ordinary fire skill, upgrades normally and 
 
 test('wind excludes fire skills while the removed cross-element fusion stays unavailable', () => {
   for (const species of [16, 17, 18, 58, 59]) {
-    assert.deepEqual(catalog(species).map(m => m.id).sort((a,b) => a-b), [17,33,98,239,332,49001]);
+    assert.deepEqual(catalog(species).map(m => m.id).sort((a,b) => a-b), [17,33,98,332,403,49001]);
     for (const id of windRemoved) assert.equal(ctx.formMove(id, species), null, `${species}:${id}`);
   }
   for (const species of [4, 5, 6]) {
@@ -120,7 +120,7 @@ test('wind rejects fire fusion offers and stale confirmation callbacks but keeps
       assert.equal(ctx.bS(run,{a:0,b:1,r:recipe}), null);
       assert.equal(run.player.moves.filter(Boolean).length, 2, 'rejected fusion preserves materials');
     }
-    assert.equal(ctx._S(ctx.O_(17),ctx.O_(239),species).key, 'fu-16');
+    assert.equal(ctx._S(ctx.O_(17),ctx.O_(403),species).key, 'fu-16');
     assert.equal(ctx._S(ctx.O_(98),ctx.O_(49001),species).key, 'fu-wind-spin');
   }
   assert.equal(ctx._S(ctx.O_(52),ctx.O_(53),4).key, 'fu-t-fire');
@@ -233,12 +233,13 @@ test('old co-op loadouts discard retired skills, upgrade Ring Wave to Gust and k
       }};
     const run={player:p, coop:{}, camTarget:{copy(){}}, director:{timeline:[]}, planEvolution:() => null};
     const data={v:3,stage:1,run:{nextEvo:null},player:{speciesId:species,level:9,hp:10},pos:[0,0,0],
-      moves:[{id:10},{id:403},{id:49001,level:5,damageDone:123},{id:50088}]};
+      moves:[{id:10},{id:239,level:4,damageDone:77},{id:49001,level:5,damageDone:123},{id:50088}]};
     restoreProgress(run,data,{stage:1,time:60,stageTime:60});
     const kept=p.moves.filter(Boolean);
-    assert.equal(kept.length,1);
-    assert.equal(kept[0].def.id,species < 7 ? opening : 49001);
+    assert.deepEqual(kept.map(m=>m.def.id),species < 7 ? [opening] : [403,49001]);
     if (species >= 16) {
+      assert.equal(p.moves[1].level,4);
+      assert.equal(p.moves[1].damageDone,77);
       assert.equal(p.moves[2].def.name,'起风');
       assert.equal(p.moves[2].level,5);
       assert.equal(p.moves[2].damageDone,123);

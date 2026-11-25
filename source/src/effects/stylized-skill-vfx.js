@@ -178,9 +178,9 @@ export class StylizedSkillFX{
       case 'flame-charge':return [this.stampedeArt().texture];
       case 'wind-ultimate':return [this.windArt().texture,this.windSkillArt().texture];
       case 'wind-feather-dance':case 'wind-gust':return [this.windReplacementArt().texture];
-      case 'wind-twister':return [this.windMoveArt().texture];
+      case 'wind-air-slash':return [this.windMoveArt().texture];
       case 'wind-quick-attack':case 'wind-wing-attack':
-      case 'wind-tackle':return [this.windMoveArt().texture,this.windSkillArt().texture];
+      case 'wind-tackle':return [this.windSkillArt().texture];
       case 'fu-16':case 'fu-wind-spin':return [this.windSkillArt().texture];
       case 'ember':return [ball];
       case 'fire-spin':return [spin];
@@ -432,7 +432,7 @@ export class StylizedSkillFX{
     this.stampede?.update();
   }
   setPerformance(profile,view){this.limit=profile.name==='流畅'?10:profile.name==='均衡'?18:28;this.vfx.view=view;this.fireJet.setPerformance(profile);this.fireSpin.setPerformance(profile);this.fireball.setPerformance(profile);this.fireFamily.setPerformance(profile);}
-  clear(){this.entries.length=0;this.keys.clear();this.lightSources.length=0;this.mesh.count=0;this.mesh.visible=false;this.paintClock=-1;this.paintCount=0;this.fireJet.clear();this.fireSpin.clear();this.fireball.clear();this.fireFamily.clear();this.windVortex?.clear();this.windMoves?.clear();this.windReplacements?.reset();this.windSkills?.reset();this.stampede?.reset();}
+  clear(){this.entries.length=0;this.keys.clear();this.lightSources.length=0;this.mesh.count=0;this.mesh.visible=false;this.paintClock=-1;this.paintCount=0;this.fireJet.clear();this.fireSpin.clear();this.fireball.clear();this.fireFamily.clear();this.windVortex?.clear();this.windMoves?.reset();this.windReplacements?.reset();this.windSkills?.reset();this.stampede?.reset();}
   dispose(){this.clear();this.fireJet.dispose();this.fireSpin.dispose();this.fireball.dispose();this.fireFamily.dispose();this.windVortex?.dispose();this.windMoves?.dispose();this.windReplacements?.dispose();this.windSkills?.dispose();this.stampede?.dispose();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}
 }
 

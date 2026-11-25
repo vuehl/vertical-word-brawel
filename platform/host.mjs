@@ -1,4 +1,5 @@
 import {cloudSocket} from './cloud-coop.mjs';
+import {createCaptureOverlay} from './capture-bag.mjs';
 import 'core-js/modules/es.array.at.js';
 import 'core-js/modules/es.array.flat.js';
 import 'core-js/modules/es.array.flat-map.js';
@@ -20,7 +21,7 @@ import {installSurfaces} from './surfaces.mjs';
 import {CanvasPath} from './path.mjs';
 import {cloneData} from './clone.mjs';
 import {initCrypto,random} from './crypto.mjs';
-import {dispatchApi} from 'pokebonk:api';
+import {dispatchApi} from './game-api.mjs';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
 import {createControlLayer,createCanvasLayer,createHUDLayer} from './control-layer.mjs';
@@ -359,7 +360,7 @@ export async function setup(host) {
     innerWidth:view.w,innerHeight:view.h,devicePixelRatio:view.dpr,uiPixelRatio:scale,screen:{width:view.w,height:view.h,orientation:{get type(){return view.h>=view.w?'portrait-primary':'landscape-primary';}}},
     nativeUI:true,nativeDevice:device,bootStage:host.bootStage,backgroundMusicEnabled:false,nativeGraphics:{pixelBudget:900000,maxPixelRatio:1.5},
     setNativeFrameRate:typeof wx.setPreferredFramesPerSecond==='function'?fps=>wx.setPreferredFramesPerSecond(fps):undefined,
-    navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,getGamepads:()=>[],onLine:true},
+    navigator:{userAgent:'MicroMessenger MiniGame',language:'zh-CN',languages:['zh-CN'],maxTouchPoints:5,onLine:true},
     AudioContext:wx.createWebAudioContext?class {constructor(){return wx.createWebAudioContext();}}:undefined,
     crypto:{getRandomValues(a){new Uint8Array(a.buffer,a.byteOffset,a.byteLength).set(random(a.byteLength));return a;}},
     structuredClone:cloneData,
@@ -413,12 +414,17 @@ export async function setup(host) {
       modalTransition.advance(now);
       mutations(observer.takeRecords());
       const run=env.__pb?.run,state=run?.state;
+      const captureTrack=drawCapture(renderer,env.__zixingApp?.run);
       const overlay=modalTransition.element;
       layout.setOverlay(overlay);
       const playing=usingBattleHUD()&&!opaque;
       const page=env.__zixingApp?.screen,camera=opaque&&page?._journeyCamera;
       if(!!camera!==!!lastJourneyCamera)uiFrames.invalidate(false,true);
-      const changed=uiFrames.draw(now,opaque?'opaque':playing?'play':state,layout,boxes=>{
+      const changed=uiFrames.draw(now,captureTrack?'capture-bag':opaque?'opaque':playing?'play':state,layout,boxes=>{
+        if(captureTrack){
+          paint(layout,boxes.filter(box=>captureTrack.contains(box.el)),view,scale);
+          return;
+        }
         // Classify once in paint order. A full HUD refresh used to walk the
         // ancestors of every box separately for every tile, then again for the base.
         const groups=new Map(),base=[],tiles=run?.coop?coopTiles:soloTiles;
@@ -437,6 +443,7 @@ export async function setup(host) {
         paint(layout,base,view,scale);
       });
       if(!draw)draw=compositor(renderer.getContext(),uiCanvas);
+      if(captureTrack){draw(renderer,changed,false,[],null,run);return;}
       if(camera){
         const tile=(canvas,x,y,w,h,slot,dirty)=>({canvas:canvas._surface,x:(view.x+x)*scale,y:(view.y+y)*scale,
           width:w*scale,height:h*scale,slot,changed:dirty});
@@ -474,6 +481,7 @@ export async function setup(host) {
     readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},
   });
   env.window=env.self=env.globalThis=env;
+  const drawCapture=createCaptureOverlay(env,host.files);
   wx.onWindowResize?.(()=>{
     const info=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();
     Object.assign(view,viewport(info));

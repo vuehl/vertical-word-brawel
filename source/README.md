@@ -6,13 +6,15 @@
 
 - src/data/lite-rules.js 管理可选角色、单地图与存档边界。
 - src/data/config.js：森林配置、角色技能和数值表。
-- src/ui/base.css、src/ui/customize.js：Canvas 界面构建使用的基础样式与覆盖规则。
-- src/game.js：角色、捕获、地图生成、战斗；CP 是主菜单，QP 是森林出发页。
+- src/ui/base.css、src/ui/portrait.css：Canvas 界面构建使用的基础样式与覆盖规则。
+- `src/game.js` 管理微信启动、对局切换和每帧调度。
+- `src/combat/run.js` 负责对局，`player.js` 负责玩家，`skills.js`、`upgrade-offers.js`、`ultimate-moves.js` 分别管理技能、升级候选和大招。
+- `src/world/terrain.js`、`facilities.js` 管理地形和互动设施。`src/ui/zixing-ui.js` 负责微信首页和选角，`battle-hud.js` 负责战斗界面。
 - ../resources/public/data/：角色和招式 JSON。
 - ../resources/public/assets/：字灵图集、场景模型、界面贴图和技能特效。
 - ../resources/public/overrides/：可选的自定义素材覆盖层。
 - local/progression.mjs：本地结算规则。
-- server.mjs：本地进度接口，随构建嵌入微信小游戏。HTTP 测试监听 127.0.0.1，使用独立的临时存档。
+- `local/game-routes.mjs` 提供小游戏内的账号、对局及存档接口，[微信平台接口](../platform/game-api.mjs) 负责接入微信存储与云进度。
 
 ## 验证
 

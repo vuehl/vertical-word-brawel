@@ -14,25 +14,29 @@ function replaceOnce(code,from,to){
   return code.replace(from,to);
 }
 export function instrumentGame(code){
-  // Only explicit count setup may exceed the production cap; natural spawns
-  // in the developer build exercise exactly the same budget as release.
-  code=replaceOnce(code,'if(!allowOrdinarySpawn(this.run,a))return -1;',
-    'if(!this.run.developerSpawning&&!allowOrdinarySpawn(this.run,a))return -1;');
   code=replaceOnce(code,'await this.run.openStage(onLoadProgress),',
     'await this.run.openStage(onLoadProgress),window.__zixingDeveloper.attachRun(this.run),');
-  return 'import {installDeveloperMode} from "../../tools/developer/panel.mjs";\n'+
+  return 'import {movePool,applyUpgrade} from "./combat/upgrade-offers.js";\n'+
+    'import {formMove,upgradeMoveStats} from "./combat/skills.js";\n'+
+    'import {Dr as upgradeTiers} from "./data/config.js";\n'+
+    'import {installDeveloperMode} from "../../tools/developer/panel.mjs";\n'+
     replaceOnce(code,'  await app.boot();\n  return app;',`  await app.boot();
   installDeveloperMode(app,{
       skills:{
-        pool:run=>Vb(run.player.speciesId,run.player.roster,run.player.types,id=>run.meta.inLeague(id)),
+        pool:run=>movePool(run.player.speciesId,run.player.roster,run.player.types,id=>run.meta.inLeague(id)),
         move:(id,species)=>formMove(id,species),
-        upgrade:(run,slot)=>Gb(run,{kind:'upMove',slot,ups:P_(run.player.moves[slot],E[0])})
-      },speciesName:id=>k.get(id).name
+        upgrade:(run,slot)=>applyUpgrade(run,{kind:'upMove',slot,ups:upgradeMoveStats(run.player.moves[slot],upgradeTiers[0])})
+      },speciesName:id=>gameData.get(id).name
   });
   return app;`);
 }
 export function isolatedStoragePlugin(platform){
   return {name:'isolated-developer-storage',setup(build){
+    build.onLoad({filter:/combat[\\/]enemy-population\.js$/},args=>({
+      resolveDir:path.dirname(args.path),
+      contents:replaceOnce(fs.readFileSync(args.path,'utf8'),'if(!allowOrdinarySpawn(this.run,a))return -1;',
+        'if(!this.run.developerSpawning&&!allowOrdinarySpawn(this.run,a))return -1;')
+    }));
     build.onLoad({filter:/ui[\\/]zixing-ui\.js$/},args=>({resolveDir:path.dirname(args.path),
       contents:replaceOnce(fs.readFileSync(args.path,'utf8'),'hud.experienceReady=()=>xpRing.ready;',
         'hud.experienceReady=()=>xpRing.ready;hud.developerSyncExperience=()=>{Object.assign(xpRing,new ExperienceRing(run.player,performance.now()));last=-Infinity;};')}));

@@ -1,8 +1,4 @@
-// Original rules and data are unchanged; these styles adapt the interface to portrait.
-import {laboratory, shop, roster, heldItems, biomes} from '../data/catalogs.js';
-if(typeof document !== 'undefined' && !globalThis.__ZILING_COMPILED_STYLES__){
- const style=document.createElement('style');
- style.textContent=`
+
     .rotate-hint{display:none!important;pointer-events:none!important}
     .legal-summary{display:flex;flex-direction:column;gap:4px;align-items:center;font-size:10px;line-height:1.5}
     .legal-summary>p{margin:0}
@@ -386,6 +382,3 @@ if(typeof document !== 'undefined' && !globalThis.__ZILING_COMPILED_STYLES__){
       .sm-modal .sm-foot .actions{width:100%;gap:6px}
       .sm-modal .sm-foot .btn{flex:1;min-width:0;min-height:44px;padding:6px;font-size:16px}
     }
-  `;
- document.head.append(style);
-}

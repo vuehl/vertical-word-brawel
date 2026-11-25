@@ -1,3 +1,4 @@
+import {createAudioSource as synth} from '../build/audio-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,13 +7,6 @@ import {combatClipIds, combatEvolutionSeconds, loadAudioClips, loadCombatClips} 
 import {buttonSoundFiles} from '../../source/src/ui/button-audio.js';
 import {combatSoundEvents} from '../art/combat-sound-events.mjs';
 import manifest from '../../resources/public/config/combat-audio.json' with {type:'json'};
-
-// Exercise the shipped synth itself without loading the renderer and game data.
-const source=fs.readFileSync(new URL('../../source/src/game.js',import.meta.url),'utf8');
-const start=source.indexOf('  N = new (class {')+'  N = '.length;
-const end=source.indexOf('  Gs = (e, t, n)',start);
-const kits=source.slice(source.indexOf('  ts = {'),source.indexOf('var Rs ='));
-const synth='var '+kits+'\n'+source.slice(start,end).trim().replace(/,$/,'');
 
 const clipResponse = {ok:true,arrayBuffer:async()=>new ArrayBuffer(8)};
 function fixture(fetchClip = async()=>clipResponse) {
@@ -36,13 +30,13 @@ function fixture(fetchClip = async()=>clipResponse) {
   const document={hidden:false,addEventListener(){}};
   const listeners=new Map();
   const env={AudioContext:Context,document,navigator:{},Ws:()=>false,performance:{now:()=>10000},
-    combatClipIds,combatEvolutionSeconds,loadAudioClips,loadCombatClips,buttonSoundFiles,fetch:fetchClip,Zt:path=>path,
+    combatClipIds,combatEvolutionSeconds,loadAudioClips,loadCombatClips,buttonSoundFiles,fetch:url=>fetchClip(url.split('assets/').pop().split('?')[0]),
     matchMedia:()=>({matches:true}),addEventListener:(name,fn)=>listeners.set(name,fn),clearTimeout:id=>timers.delete(id),
     setTimeout:callback=>{const id=++nextTimer;timers.set(id,callback);return id;},
     setInterval(){return 1;},clearInterval(){},backgroundMusicEnabled:false};
   env.window=env;
   const audio=vm.runInNewContext(synth,env);
-  const timer=()=>{const [id,callback]=timers.entries().next().value;timers.delete(id);callback();};
+  const timer=()=>{const id=audio.aliveTimer, callback=timers.get(id);timers.delete(id);callback();};
   return {audio,contexts,document,timer,timers,emit:name=>listeners.get(name)()};
 }
 

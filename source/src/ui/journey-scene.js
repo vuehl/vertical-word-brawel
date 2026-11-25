@@ -55,11 +55,11 @@ export function journeyScene(){
   function paint(){
     if(!node.isConnected)return;
     const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
-    const d=Math.min(2,window.devicePixelRatio||1),margin=window.nativeUI?96:0;
+    const d=Math.min(2,window.devicePixelRatio||1),margin=96;
     const scale=Math.max(w/390,(h+margin)/844)*pose.scale,cx=w*.5,cy=h*pose.height;
     const x=cx-scale*pose.origin,y=cy-scale*461,size=Math.min(w*pose.actor,h*.21);
     const page=node.parentNode;
-    if(window.nativeUI&&(moving||blending)&&desk&&node.dataset.shot!=='entry'){
+    if((moving||blending)&&desk&&node.dataset.shot!=='entry'){
       if(word&&!actorLayer){
         actorLayer=document.createElement('canvas');
         actorLayer.width=actorLayer.height=actor.width;
@@ -96,13 +96,11 @@ export function journeyScene(){
     return animate(520,t=>{moving=t<1;pose=between(from,to,ease(t));paint();},()=>ticket===motion&&node.isConnected);
   }
   function fade(page,from,to,ms){
-    const ticket=++presentation,controls=Array.from(page.children).filter(el=>el!==node);
+    const ticket=++presentation;
     return animate(ms,t=>{
       const value=from+(to-from)*ease(t);
-      if(window.nativeUI){
-        page._journeyFade=value===1?null:{scene:1,controls:value};
-        if(blending!==(t<1)){blending=t<1;paint();}
-      }else for(const el of controls)el.style.opacity=t===1&&to===1?'':String(value);
+      page._journeyFade=value===1?null:{scene:1,controls:value};
+      if(blending!==(t<1)){blending=t<1;paint();}
       if(!page._journeyCamera)window.invalidateUI?.();
     },()=>ticket===presentation&&node.parentNode===page&&page.isConnected);
   }

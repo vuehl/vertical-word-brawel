@@ -20,7 +20,7 @@ export async function verifyEntry({page,tap,dir}){
   await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed);
   await page.waitForFunction(()=>app.screen.querySelector('.journey-scene')?.dataset.word==='炎'&&
     nativeImageLoads.some(img=>img.width===560&&img.height===1212));
-  assert.ok(await page.evaluate(()=>!app.menuScene.terrain),'The home artwork must be independent of the battle map');
+  assert.ok(await page.evaluate(()=>!app.run && !nativeImageLoads.some(img=>img.src?.includes('/env/forest'))),'The home artwork must be independent of the battle map');
   const homeActions=()=>page.evaluate(()=>[...app.screen.querySelectorAll('button')].map(b=>b.dataset.action));
   assert.deepEqual(await homeActions(),['settings','journey','help']);
   await capture('00-first-home');

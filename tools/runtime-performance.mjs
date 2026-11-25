@@ -125,6 +125,9 @@ try{
   }else if(process.argv.includes('--ultimate-cast')){
     const {reviewUltimateCast}=await import('./regression/ultimate-cast-regression.mjs');
     await reviewUltimateCast(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--capture-bag')){
+    const {reviewCaptureBag}=await import('./regression/capture-bag-regression.mjs');
+    await reviewCaptureBag(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--capture-rewards')){
     const {reviewCaptureRewards}=await import('./regression/capture-rewards-regression.mjs');
     await reviewCaptureRewards(page);assert.deepEqual(errors,[]);

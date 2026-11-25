@@ -40,7 +40,7 @@ export async function reviewSkillAvailability(page, dir) {
       const p=app.run.player;
       p.setSpecies(species);
       const accepted=[];
-      for (const id of [33,49001,17,332,98,239,50006,50106,16,97,297,403,542,50088]) {
+      for (const id of [33,49001,17,332,98,403,50006,50106,16,97,297,239,542,50088]) {
         p.moves.fill(null);
         if (p.addMove(id)) accepted.push(p.moves[0].def.name);
       }
@@ -56,8 +56,8 @@ export async function reviewSkillAvailability(page, dir) {
     assert.equal(state.ability,'');
     assert.equal(state.ultimate,({16:'阵风',17:'刮倒一片',18:'刮倒一片',58:'跑得没影',59:'跑得没影'})[species]);
     assert.ok(Math.abs(state.attack-([17,18].includes(species)?10:1))<1e-6);
-    assert.ok(Math.abs(state.move-([58,59].includes(species)?10:1))<1e-6);
-    assert.deepEqual(state.accepted,['撞击','起风','翅膀攻击','羽毛舞','电光一闪','龙卷风','残气乱刮','卷着打转']);
+    assert.ok(Math.abs(state.move-({58:2,59:3}[species]??1))<1e-6);
+    assert.deepEqual(state.accepted,['撞击','起风','翅膀攻击','羽毛舞','电光一闪','空气斩','残气乱刮','卷着打转']);
     report.forms.push(state);
   }
   fs.writeFileSync(path.join(dir,'skill-availability.json'),JSON.stringify(report,null,2));

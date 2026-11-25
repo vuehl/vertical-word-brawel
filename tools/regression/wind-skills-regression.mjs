@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import windMoves from '../../resources/public/assets/vfx/wind-moves.json' with {type:'json'};
 import replacements from '../../resources/public/assets/vfx/wind-replacements.json' with {type:'json'};
 
 export async function reviewWindSkills(page,dir){
@@ -74,10 +75,10 @@ export async function reviewWindSkills(page,dir){
     assert.equal(sample.expiredSpeed,1);assert.equal(sample.afterExpiry,0);
   }
   console.log('Wind rush speed and collision damage verified',report.rushContacts);
-  report.twister=await page.evaluate(async()=>{
+  report.airSlash=await page.evaluate(async(hitFrame)=>{
     setupWind();
     const r=app.run,p=r.player,e=r.enemies,pool=r.projectiles;
-    p.setSpecies(16);p.addMove(239);
+    p.setSpecies(16);p.addMove(403);
     const move=p.moves[0];
     move.mods.count+=2;
     const duration=move.def.dur*move.mods.dur*p.stats.duration;
@@ -95,17 +96,23 @@ export async function reviewWindSkills(page,dir){
     const center=shots.reduce((a,b)=>Math.abs(pool.vx[a])<Math.abs(pool.vx[b])?a:b);
     for(let frame=0;frame<duration*60 && pool.alive[center] && pool.z[center]>p.pos.z-6.5;frame++)
       vfxAdvance(1,1/60,false);
+    const mesh=r.vfx.crafted.windMoves;
+    const poses=Array.from({length:mesh.mesh.count},(_,i)=>mesh.pose.getX(i));
     const result={count:shots.length,fullLifetime:shots.every(id=>Math.abs(pool.maxLife[id]-duration)<.001),
-      allAlive:shots.every(id=>pool.alive[id]),visible:r.vfx.crafted.windMoves.mesh.count,
+      allAlive:shots.every(id=>pool.alive[id]),visible:poses.filter(pose=>pose<hitFrame).length,
       passedBoth:pool.z[center]<p.pos.z-6,
       hitBoth:targets.every(id=>pool.alreadyHit(center,id)&&e.hp[id]<e.maxHp[id])};
+    for(let frame=0;frame<duration*60 && pool.alive[center];frame++){
+      vfxAdvance(1,1/60,false);
+      if(pool.alive[center] && pool.vz[center]>1)result.returned=true;
+    }
     vfxAdvance(Math.ceil(duration*60)+1,1/60,false);
     return {...result,remaining:pool.used,remainingArt:r.vfx.crafted.windMoves.mesh.count};
-  });
-  assert.ok(report.twister.count>=3 && report.twister.fullLifetime && report.twister.allAlive &&
-    report.twister.visible===report.twister.count && report.twister.passedBoth && report.twister.hitBoth,
-    JSON.stringify(report.twister));
-  assert.equal(report.twister.remaining,0);assert.equal(report.twister.remainingArt,0);
+  },windMoves.hit.first);
+  assert.ok(report.airSlash.count>=3 && report.airSlash.fullLifetime && report.airSlash.allAlive && report.airSlash.returned &&
+    report.airSlash.visible===report.airSlash.count && report.airSlash.passedBoth && report.airSlash.hitBoth,
+    JSON.stringify(report.airSlash));
+  assert.equal(report.airSlash.remaining,0);assert.equal(report.airSlash.remainingArt,0);
   for(const hz of [30,60]){
     const flight=await page.evaluate(async ({hz,clips})=>{
       setupWind();const r=app.run,e=r.enemies,p=r.player,pool=r.projectiles;
@@ -135,7 +142,7 @@ export async function reviewWindSkills(page,dir){
     assert.equal(flight.remaining,0);
     (report.featherDance??=[]).push({hz,...flight});
   }
-  for(const id of [98,332,239,17,33,49001,50006,50106]){
+  for(const id of [98,332,403,17,33,49001,50006,50106]){
     const def=await page.evaluate(async id=>{
       setupWind();const r=app.run;r.player.setSpecies(16);
       if(!r.player.addMove(id))throw Error('Missing '+id);
@@ -196,22 +203,51 @@ export async function reviewWindSkills(page,dir){
         const e=r.enemies;
         r.camYaw=0;e.clear();
         for(let i=0;i<3;i++){
-          const angle=-Math.PI/2+i*2*Math.PI/3;
-          const id=e.spawn(19,p.pos.x+Math.cos(angle)*6,p.pos.z+Math.sin(angle)*6,1,1,0);
+          const angle=-Math.PI/6+i*2*Math.PI/3;
+          const id=e.spawn(19,p.pos.x+Math.cos(angle)*4,p.pos.z+Math.sin(angle)*4,1,1,0);
           e.hp[id]=e.maxHp[id]=5000;targets.push(id);
         }
         e.update();r.lockTarget=targets[1];
       }
-      r.ult.charge=1;r.ult.fire();vfxAdvance(species===16?30:12,1/60);
-      const directions=r.vfx.crafted.windEmitters.map(e=>Math.atan2(e.z-p.pos.z,e.x-p.pos.x)*180/Math.PI);
+      r.ult.charge=1;r.ult.fire();vfxAdvance(12,1/60);
+      const orbit=()=>r.vfx.crafted.windEmitters.map(e=>{
+        const dx=e.x-p.pos.x,dz=e.z-p.pos.z;
+        return {angle:Math.atan2(dz,dx),radius:Math.hypot(dx,dz)};
+      });
+      const samples=[];
+      if(species===16){
+        const framesPerSample=Math.floor((r.ult.def.dur[0]*60-12)/5);
+        samples.push(orbit());
+        for(let i=0;i<5;i++){
+          vfxAdvance(framesPerSample,1/60);
+          samples.push(orbit());
+        }
+      }
       return {species,name:r.ult.name,attack:p.stats.attackSpeed/before.attack,move:p.stats.moveSpeed/before.move,
-        vortex:r.vfx.crafted.windVortex?.mesh.count||0,directions,targetsHit:targets.filter(id=>r.enemies.hp[id]<5000).length,
+        samples,targetsHit:targets.filter(id=>r.enemies.hp[id]<5000).length,
         opening:r.vfx.crafted.windSkills?.events.map(e=>e.clip)??[]};
     },species);
     if(species===16){
       assert.equal(result.name,'阵风');
-      assert.equal(result.vortex,3);
-      assert.deepEqual(result.directions.map(Math.round).sort((a,b)=>a-b),[-90,30,150]);
+      for(const [index,sample] of result.samples.entries()){
+        assert.equal(sample.length,3);
+        for(const [i,vortex] of sample.entries()){
+          const next=sample[(i+1)%3];
+          assert.ok(Math.abs(vortex.radius-next.radius)<.01);
+          assert.ok(Math.abs(Math.cos(vortex.angle-next.angle)+.5)<.01,'Vortices stay 120 degrees apart');
+          if(index){
+            const previous=result.samples[index-1][i];
+            assert.ok(vortex.radius>previous.radius);
+            const turn=(vortex.angle-previous.angle+2*Math.PI)%(2*Math.PI);
+            assert.ok(turn>.1&&turn<Math.PI,'Each vortex keeps circling outward');
+            if(index>=2){
+              const earlier=result.samples[index-2][i];
+              const priorTurn=(previous.angle-earlier.angle+2*Math.PI)%(2*Math.PI);
+              assert.ok(turn<priorTurn,'Angular speed drops as the orbit expands');
+            }
+          }
+        }
+      }
       assert.equal(result.targetsHit,3);
     }
     else {

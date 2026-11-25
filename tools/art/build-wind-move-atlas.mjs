@@ -1,76 +1,114 @@
-import path from 'node:path';
-import sharp from 'sharp';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
-import {clarifyWindFrame,windClarity,writeWindAtlas} from './wind-art-clarity.mjs';
+import {fileURLToPath} from 'node:url';
+import sharp from 'sharp';
+import {unmixWindInk, writeWindAtlas} from './wind-art-clarity.mjs';
 
-// Only live consumers: dash ghost and the complete twister sequence.
-const directory = process.argv[2];
-if (!directory) throw Error('Pass the directory containing the three wind move GIFs');
-const tile = 192, columns = 8, layers = [];
-async function recording(name) {
-  const file = path.join(directory, name + '.gif');
-  const read = page => sharp(file, {page}).removeAlpha().raw().toBuffer();
-  const background = await read(4);
-  return async (page, left, top, select, angle=0) => {
-    const frame = await read(page);
-    const pixels = Buffer.alloc(tile * tile * 4);
-    for (let y = 0; y < tile; y++) for (let x = 0; x < tile; x++) {
-      const sx = left+96+Math.round((x-96)*Math.cos(angle)-(y-96)*Math.sin(angle));
-      const sy = top+96+Math.round((x-96)*Math.sin(angle)+(y-96)*Math.cos(angle));
-      if (sx < 0 || sx >= 390 || sy < 0 || sy >= 892) continue;
-      const j = (390 * sy + sx) * 3;
-      const r = frame[j], g = frame[j+1], b = frame[j+2];
-      const diff = Math.abs(r-background[j])+Math.abs(g-background[j+1])+Math.abs(b-background[j+2]);
-      if (diff < 9) continue;
-      const rgba = select(sx,sy,r,g,b,diff,background.subarray(j,j+3));
-      if (rgba) pixels.set(rgba, (y * tile + x) * 4);
-    }
-    const index = layers.length;
-    layers.push({input:pixels, raw:{width:tile,height:tile,channels:4},
-      left:index%columns*tile, top:Math.floor(index/columns)*tile});
-  };
+const source = new URL('../../resources/art/wind-supplement/空气斩.gif', import.meta.url);
+const output = new URL('../../resources/public/assets/vfx/', import.meta.url);
+const file = fileURLToPath(source);
+const {width, pageHeight, delay} = await sharp(file, {animated:true}).metadata();
+const tile = 256, columns = 6, layers = [];
+const read = page => sharp(file, {page}).removeAlpha().raw().toBuffer();
+const before = await read(5), after = await read(37);
+const frames = await Promise.all(Array.from({length:27}, (_, i) => read(i+6)));
+
+// Screen-space registration points along the outbound and returning paths.
+// Rotate each pose to face up. The game rotates it back using live velocity.
+const centres = [
+  [191,498],[200,478],[207,455],[214,432],[220,410],[226,390],[231,369],
+  [239,349],[247,330],[253,312],[259,292],[264,276],[270,270],
+  [282,255],[279,261],[278,273],[277,287],[275,302],[271,320],[267,340],
+  [263,361],[254,385],[246,411],[239,437],[227,460],[221,481],[214,502],
+];
+function sourcePixel(index, sx, sy) {
+  if(sx<0 || sx>=width || sy<0 || sy>=pageHeight)return;
+  const k=(sy*width+sx)*3, frame=frames[index], bg=index<6?before:after;
+  const base=bg.subarray(k,k+3), rgb=frame.subarray(k,k+3);
+  // Rectify the paper matte only where it is visible in both exposures.
+  // The HUD, prop edges, glyphs and the contact burst need a clean donor.
+  if(sx<132 && sy>340 && sy<453 || sx>157 && sx<225 && sy>483 ||
+    sx>216 && sx<294 && sy>308 && sy<358 || sy<258 && (sx<204 || sx>330) ||
+    base[0]<145 || base[0]>202 || base[0]-base[1]<8 || base[0]-base[1]>36 ||
+    base[1]-base[2]<14 || base[1]-base[2]>40 || rgb[0]<base[0]-5 ||
+    (index===6 || index===7) && Math.hypot(sx-251,sy-361)<46)return;
+  const blue=rgb[2]-base[2], green=rgb[1]-base[1];
+  if(blue<3 || green<1 || rgb[0]+3<base[0])return [0,0,0,0];
+  return unmixWindInk([...rgb],base,255*blue/(255-base[2]));
 }
-const twister = await recording('龙卷风');
-const dash = await recording('电光一闪');
-// The third ghost is isolated on bare paper after the speed lines fade.
-await dash(10,267-96,306-96,(x,y,r,g,b,diff,bg) => {
-  if (x<242 || x>293 || y<281 || y>329) return;
-  const a = Math.max(0,(b-bg[2])/(244-bg[2]));
-  if (a<.035) return;
-  return [Math.max(0,Math.min(255,bg[0]+(r-bg[0])/a)),Math.max(0,Math.min(255,bg[1]+(g-bg[1])/a)),244,Math.min(255,a*1000)];
-});
-const first=layers.length,pages=Array.from({length:19},(_,i)=>i+5);
-for(const page of pages){
-  const cx=Math.round(201+(page-7)*3.45),foot=Math.round(505-(page-7)*7.6);
-  await twister(page,cx-96,foot-176,(x,y,r,g,b,diff,bg)=>{
-    const h=foot-y;
-    if(h<0||h>174||(y<260&&x<210)||Math.abs(x-cx)>Math.min(88,32+h*.49))return;
-    // Recover transparency by removing the warm paper tint. Early poses are
-    // translucent grey, so a simple neutral-colour threshold loses them.
-    const tint=bg[0]-bg[2];
-    if(tint<24){
-      // An enemy or a white book in the background must not cut a glyph-shaped
-      // hole out of the opaque grey funnel drawn in front of it.
-      const chroma=Math.max(r,g,b)-Math.min(r,g,b);
-      return chroma<32&&Math.min(r,g,b)>65?[r,g,b,Math.min(255,diff*6)]:undefined;
-    }
-    const alpha=Math.max(0,Math.min(1,1-(r-b)/tint));
-    if(alpha<.045||Math.min(r,g,b)<65||b-r>24||g-r>16)return;
-    return [r,g,b].map((v,c)=>Math.max(0,Math.min(255,bg[c]+(v-bg[c])/alpha))).concat(Math.round(alpha*255));
-  });
-  const pixels=layers.at(-1).input;
-  if(page===5)pixels.fill(0);
-  if(page>=18){
-    const clean=layers[first+6+(page-18)%4-5].input;
-    clean.copy(pixels);
-    const fade=page<21?1:[.9,.65,.4][page-21];
-    for(let k=3;k<pixels.length;k+=4)pixels[k]=Math.round(pixels[k]*fade);
+
+function layer(render){
+  const pixels=Buffer.alloc(tile*tile*4);
+  for(let y=0;y<tile;y++)for(let x=0;x<tile;x++){
+    const ink=render(x-tile/2,y-tile/2);
+    if(ink)pixels.set(ink,(y*tile+x)*4);
   }
+  const index=layers.length;
+  layers.push({input:pixels,raw:{width:tile,height:tile,channels:4},
+    left:index%columns*tile,top:Math.floor(index/columns)*tile});
 }
-const rows=Math.ceil(layers.length/columns),file=path.join(directory,'龙卷风.gif');
-const {delay}=await sharp(file,{animated:true}).metadata(),times=[0];
-for(const page of pages)times.push(times.at(-1)+delay[page]);
-fs.writeFileSync(path.resolve(import.meta.dirname,'../../resources/public/assets/vfx/wind-moves.json'),JSON.stringify({tile,columns,rows,dashGhost:0,twister:{first,count:pages.length,pages,times,source:'龙卷风.gif',reconstructedRegions:'Frames 18–23 use registered clean poses to replace the HUD and damage-label occlusion.',sha256:createHash('sha256').update(fs.readFileSync(file)).digest('hex')},clarity:windClarity})+'\n');
-for(const layer of layers)layer.input=clarifyWindFrame(layer.input,tile,tile,{detail:.65,edge:.22});
-await writeWindAtlas(layers,tile,columns,rows,path.resolve(import.meta.dirname,'../../resources/public/assets/vfx/wind-moves.png'));
+// Fill the portions hidden behind the glyph, books or HUD from the same
+// exposure. Neighbouring samples follow the curvature of the leading edge,
+// keeping the three strokes aligned across the occluder.
+for(let i=0;i<centres.length;i++){
+  const [cx,cy]=centres[i], angle=.235+(i>=13?Math.PI:0);
+  const cos=Math.cos(angle),sin=Math.sin(angle);
+  const axis=i<13?10:i<17?-10:4;
+  const bend=x=>.0037*(x-axis)**2;
+  function sample(x,y){
+    const sx=cx+x*cos-y*sin, sy=cy+x*sin+y*cos;
+    const left=Math.floor(sx), top=Math.floor(sy);
+    let alpha=0, rgb=[0,0,0];
+    for(let dy=0;dy<=1;dy++)for(let dx=0;dx<=1;dx++){
+      const ink=sourcePixel(i,left+dx,top+dy);
+      if(!ink)return;
+      const weight=(1-Math.abs(sx-left-dx))*(1-Math.abs(sy-top-dy))*ink[3];
+      alpha+=weight;
+      for(let c=0;c<3;c++)rgb[c]+=ink[c]*weight;
+    }
+    return alpha>0?[...rgb.map(v=>Math.round(v/alpha)),Math.round(alpha)]:[0,0,0,0];
+  }
+  layer((x,y)=>{
+    const depth=y-bend(x);
+    if(Math.abs(x)>106 || depth < -36 || depth>48 || y>73)return;
+    const ink=sample(x,y);
+    if(ink)return ink;
+    const sides=[];
+    for(const dir of [-1,1]){
+      for(let d=1;d<82;d++){
+        const xx=x+dir*d;
+        if(Math.abs(xx)>106){sides.push([d,[0,0,0,0]]);break;}
+        const value=sample(xx,depth+bend(xx));
+        if(value){sides.push([d,value]);break;}
+      }
+    }
+    if(sides.length<2)return sides[0]?.[1];
+    const [[dl,l],[dr,r]]=sides;
+    const a=l[3]*dr+r[3]*dl;
+    if(!a)return;
+    return [0,1,2].map(c=>(l[c]*l[3]*dr+r[c]*r[3]*dl)/a).concat(a/(dl+dr));
+  });
+}
+const hitPages=[12,13];
+for(const page of hitPages){
+  const frame=frames[page-6];
+  layer((x,y)=>{
+    const sx=250+x,sy=356+y;
+    if(Math.abs(x)>45 || Math.abs(y)>49)return;
+    const k=(sy*width+sx)*3, rgb=frame.subarray(k,k+3), bg=after.subarray(k,k+3);
+    // The hit has cyan flecks with more blue than the silvery blade or desk.
+    const excess=rgb[2]-rgb[0];
+    if(excess<22 || rgb[2]<155 || rgb[1]<bg[1]+4)return;
+    return unmixWindInk([...rgb],bg,255*Math.max(0,rgb[2]-bg[2])/(255-bg[2]||1));
+  });
+}
+const sha256=createHash('sha256').update(fs.readFileSync(source)).digest('hex');
+function clip(first,pages){
+  const times=[0];
+  for(const page of pages)times.push(times.at(-1)+delay[page]);
+  return {first,count:pages.length,pages,times,source:'空气斩.gif',sha256};
+}
+const rows=Math.ceil(layers.length/columns);
+const atlas={tile,columns,rows,airSlash:clip(0,centres.map((_,i)=>i+6)),hit:clip(centres.length,hitPages)};
+fs.writeFileSync(new URL('wind-moves.json',output),JSON.stringify(atlas)+'\n');
+await writeWindAtlas(layers,tile,columns,rows,fileURLToPath(new URL('wind-moves.png',output)));

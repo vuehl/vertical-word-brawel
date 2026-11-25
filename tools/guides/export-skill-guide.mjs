@@ -85,7 +85,9 @@ for (const recipe of allFusions) {
   recipe.desc = recipe.desc.replaceAll('Máquina de Bill', '订书机').replaceAll('比尔的机器', '订书机');
 }
 const sources = [
-  ['source/src/game.js', '技能生成、候选池、融合判定、伤害与大招实现'],
+  ['source/src/combat/skills.js', '普通技能生成及伤害参数'],
+  ['source/src/combat/upgrade-offers.js', '升级候选和融合匹配'],
+  ['source/src/combat/ultimate-moves.js', '大招实现及冷却时间'],
   ['source/src/data/starter-characters.js', '当前出战名单与两种模式的进阶配置'],
   ['source/src/data/form-copy.js', '各形态的技能显示名与融合名称'],
   ['source/src/data/skill-availability.js', '技能移除规则、空气斩归属与融合停用清单'],

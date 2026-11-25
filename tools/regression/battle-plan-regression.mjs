@@ -11,7 +11,7 @@ export async function reviewBattlePlan({page,tap,dir}){
   const selected={};
   for(const group of ['moves','vitamins','fusions','items']){
     await tab(group);
-    const key=await page.evaluate(group=>group==='moves'?'m403':app.screen.querySelector('[data-plan-key]').dataset.planKey,group);
+    const key=await page.evaluate(()=>app.screen.querySelector('[data-plan-key]').dataset.planKey);
     await tap('[data-plan-key="'+key+'"]');
     assert.equal(await page.evaluate(()=>app.screen.querySelector('.zc-plan-marked').textContent),'已标记 1 项');
     selected[group]=[key];
@@ -24,7 +24,7 @@ export async function reviewBattlePlan({page,tap,dir}){
   assert.equal(await page.evaluate(()=>app.screen.querySelectorAll('.zc-plan-row.marked').length),0);
   await action('collection-back');
   await tap('[data-species="16"]');await action('collection-plan');
-  await tap('[data-plan-key="m403"]');await action('collection-back');
+  await tap('[data-plan-key="'+selected.moves[0]+'"]');await action('collection-back');
   assert.deepEqual(await page.evaluate(()=>app.meta.profile.collection.plans[16]),selected,'Back discards edits');
   await action('collection-next');await action('enter');
   await page.waitForFunction(()=>app.run?.state==='play'&&app.run.time>1,{timeout:90000});
@@ -69,9 +69,20 @@ export async function reviewBattlePlan({page,tap,dir}){
     run.ui.hideModal();run.state='play';
     player.addMove(17);player.addMove(542);
     for(const move of player.moves)if(move)move.level=4;
+    const renderFusion=run.ui.showFusion.bind(run.ui);
+    run.ui.showFusion=(r,offers,done)=>{
+      renderFusion(r,offers,done);
+      const cards=[...run.ui.modalEl.querySelectorAll('.zx-review-recipe-select')];
+      if(cards.length!==offers.length)throw Error('Missing fusion recipes');
+      offers.forEach((offer,index)=>{
+        const badge=cards[index].querySelector('.zc-plan-badge')?.textContent;
+        const expected=plan.fusions.includes('m'+offer.r.id)?'★ 计划中':undefined;
+        if(badge!==expected)throw Error('Incorrect fusion plan badge on '+offer.r.name);
+      });
+      result.fusion=badges().length>0;
+    };
     run.interactables.interact({kind:'bill'});
-    result.fusion=badges();return result;
+    return result;
   });
-  const mark='★ 计划中';
-  assert.deepEqual(result,{marked:2,banished:[],refresh:true,items:heldItems.map(item=>item.key).filter(key=>key!=='air-balloon').sort(),fusion:[mark]});
+  assert.deepEqual(result,{marked:2,banished:[],refresh:true,items:heldItems.map(item=>item.key).filter(key=>key!=='air-balloon').sort(),fusion:true});
 }

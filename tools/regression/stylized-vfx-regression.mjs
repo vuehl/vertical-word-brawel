@@ -51,7 +51,7 @@ export async function reviewStylizedVFX(page,dir){
     await page.setViewport({width:390,height:844,deviceScaleFactor:1});
     await page.evaluate(async()=>{
       if(!await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'}))throw Error('Cannot start wind');
-      if(!app.run.vfx.crafted.windMoves?.loaded)throw Error('Starting move atlas was not preloaded');
+      if(!app.run.vfx.crafted.windSkills?.loaded)throw Error('Starting move atlas was not preloaded');
       const t=app.run.terrain;
       // Place the real cast on open desk space so both homing shots can
       // reach the target without running into a randomly placed prop.
@@ -63,7 +63,7 @@ export async function reviewStylizedVFX(page,dir){
       }
       throw Error('No clear wind review lane');
     });
-    for(const key of ['quick-attack','wind-ring-wave','aerial-ace','twister']){
+    for(const key of ['quick-attack','wind-ring-wave','aerial-ace','air-slash']){
       const {id}=moves.find(move=>move.key===key);
       const name=await page.evaluate(async id=>{
         vfxSetup();
@@ -83,7 +83,7 @@ export async function reviewStylizedVFX(page,dir){
         const indices=await page.evaluate(i=>{
           vfxAdvance(i===0?1:2);const r=app.run,key=r.player.moves[0].def.effectKey;
           const art=key==='wind-quick-attack'?r.vfx.crafted.windSkills:
-            key==='wind-twister'?r.vfx.crafted.windMoves:r.vfx.crafted.windReplacements;
+            key==='wind-air-slash'?r.vfx.crafted.windMoves:r.vfx.crafted.windReplacements;
           r.player.moves[0].timer=999;
           return Array.from({length:art.mesh.count},(_,j)=>art.pose.getX(j));
         },i);
@@ -102,6 +102,32 @@ export async function reviewStylizedVFX(page,dir){
         .gif({delay:67,loop:0}).toFile(path.join(dir,name+'.gif'));
       console.log(name,'verified',poses.size,'poses, damage',result.damage);
     }
+    return;
+  }
+  if(process.argv.includes('--wind-vortex')){
+    const duration=await page.evaluate(async()=>{
+      await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
+      vfxSetup();app.run.ult.charge=1;app.run.ult.fire();
+      return app.run.ult.def.dur[0];
+    });
+    const frames=[],poses=new Set();
+    for(let i=0;i<Math.ceil((duration+.4)*10);i++){
+      const state=await page.evaluate(()=>{
+        vfxAdvance(3);
+        const art=app.run.vfx.crafted.windVortex;
+        return {visible:art.mesh.visible,frame:art.pose.getX(0)};
+      });
+      if(state.visible)poses.add(state.frame);
+      frames.push(await sharp(await page.screenshot()).resize(390,844).ensureAlpha().raw().toBuffer());
+    }
+    assert.ok(poses.size>=6);
+    assert.equal(await page.evaluate(()=>app.run.vfx.crafted.windVortex.mesh.visible),false);
+    const preview=path.join(dir,'一阵刮来.gif');
+    const delays=frames.map(()=>100);
+    await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
+      .gif({delay:delays,loop:0}).toFile(preview);
+    assert.deepEqual((await sharp(preview,{animated:true}).metadata()).delay,delays);
+    console.log('Verified the moving wind ultimate, animated poses and cleanup.');
     return;
   }
   report.base=await page.evaluate(()=>{
@@ -141,28 +167,6 @@ export async function reviewStylizedVFX(page,dir){
     return reviewFireSpin(page,dir,moves);
   }
   const screenshot=async name=>{await page.screenshot({path:path.join(dir,name+'.png')});report.screens.push(name);};
-  if(process.argv.includes('--wind-vortex')){
-    await page.evaluate(async()=>{
-      await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
-      vfxSetup();app.run.ult.charge=1;app.run.ult.fire();
-    });
-    const frames=[],poses=new Set();
-    for(let i=0;i<24;i++){
-      const state=await page.evaluate(()=>{
-        vfxAdvance(3);
-        const art=app.run.vfx.crafted.windVortex;
-        return {visible:art.mesh.visible,frame:art.pose.getX(0)};
-      });
-      if(state.visible)poses.add(state.frame);
-      frames.push(await sharp(await page.screenshot()).resize(390,844).ensureAlpha().raw().toBuffer());
-    }
-    assert.ok(poses.size>=6);
-    assert.equal(await page.evaluate(()=>app.run.vfx.crafted.windVortex.mesh.visible),false);
-    await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
-      .gif({delay:100,loop:0}).toFile(path.join(dir,'一阵刮来.gif'));
-    console.log('Verified the moving wind ultimate, animated poses and cleanup.');
-    return;
-  }
   async function recordElements(){
     const elementFrames=[];
     for(const key of ['flamethrower','hydro-pump']){

@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {spawn} from 'node:child_process';
+import * as nativeFs from 'node:fs';
+import {localRoute} from '../local/game-routes.mjs';
+import {readStore,writeStore} from '../../platform/store.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,18 +56,21 @@ test('manual quits earn zero dust before 30 seconds and normal rewards from 30 s
    assert.deepEqual([p.stardust,p.totalStardust,p.counters.runs,p.counters.kills],[12+dust,20+dust,1,200]);
  }
 });
-test('HTTP blocks removed content, saves valid play once, and restores progression',async()=>{
- const root=path.resolve(import.meta.dirname,'..'),dir=await fs.mkdtemp(path.join(os.tmpdir(),'pokebonk-lite-test-'));
- const port=18186;let proc,token;
- const start=async()=>{proc=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:String(port),STORE_DIR:dir},stdio:['ignore','pipe','pipe']});let errors='';proc.stderr.on('data',b=>errors+=b);for(let i=0;i<100;i++){try{const r=await fetch(`http://127.0.0.1:${port}/local/health`);if(r.ok)return;}catch{}if(proc.exitCode!==null)throw Error(errors);await new Promise(r=>setTimeout(r,50));}throw Error(errors||'Startup timeout');};
- const stop=()=>new Promise(resolve=>{proc.once('exit',resolve);proc.kill();});
- const call=async(route,data,status=200)=>{const r=await fetch(`http://127.0.0.1:${port}/api${route}`,{method:data===undefined?'GET':'POST',headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},...(data===undefined?{}:{body:JSON.stringify(data)})});assert.equal(r.status,status,route);return r.json();};
- try{
-  await start();
-  for(const file of ['/','/index.html','/legal','/manifest.webmanifest','/src/game.js']){
-    const response=await fetch(`http://127.0.0.1:${port}${file}`);
-    assert.equal(response.status,404,file);
-  }
+test('WeChat local routes reject removed content and restore persisted progress',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'pokebonk-lite-test-'));
+ t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const previous=globalThis.wx;
+ globalThis.wx={env:{USER_DATA_PATH:dir},getFileSystemManager:()=>nativeFs};
+ t.after(()=>{if(previous===undefined)delete globalThis.wx;else globalThis.wx=previous;});
+ let token;
+ const call=async(route,data,status=200)=>{
+   const draft=readStore();
+   const {response,dirty}=await localRoute(draft,new URL('/api'+route,'https://minigame.local'),
+     data===undefined?'GET':'POST',{Authorization:token?'Bearer '+token:''},JSON.stringify(data));
+   if(dirty)writeStore(draft);
+   assert.equal(response.status,status,route);
+   return response.data;
+ };
   token=(await call('/auth/guest',{})).token;
   assert.deepEqual((await call('/profile')).profile.league,[4,16]);await call('/profile/starter',{id:132},400);await call('/profile/starter',{id:16});
   assert.deepEqual(await call('/coop/access'),{show:false,play:false});
@@ -85,12 +90,11 @@ test('HTTP blocks removed content, saves valid play once, and restores progressi
   const retry=await call(finishShort,{result:singleResult});
   assert.ok(single.stardust>0);assert.equal(single.profile.stardust,retry.profile.stardust);
   await call('/runs',{...base,species:132},400);
-  await stop();await start();const saved=(await call('/profile')).profile;
+  const saved=(await call('/profile')).profile;
   assert.equal(saved.research[25],5);assert.equal(saved.stardust,single.profile.stardust);
   assert.equal(saved.times['forest-0'].time,600);assert.equal(saved.times['forest-single-stage'].time,100);
   assert.equal(saved.runs[0].mode,'single-stage');assert.equal(saved.counters.runs,2);
   assert.deepEqual(saved.league,[4,16]);assert.deepEqual(saved.shinies,[16]);
- }finally{if(proc&&proc.exitCode===null)await stop();assert.equal(path.dirname(path.resolve(dir)),path.resolve(os.tmpdir()));assert.ok(path.basename(dir).startsWith('pokebonk-lite-test-'));await fs.rm(dir,{recursive:true,force:true});}
 });
 
 test('best-time records retain the client object schema and fastest splits',()=>{
