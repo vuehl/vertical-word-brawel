@@ -1529,7 +1529,7 @@ export function createZixingUI(app,api) {
     const hud=run.ui;selected=character(run.startSpecies).id;
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
-    run.hints.show=(key,site)=>{if(run.state==='play'&&!run.stageCleared&&!app.screen&&!hud.hasModal())hint(key,site);};
+    run.hints.show=(key,site)=>{if(run.state==='play'&&!run.stageCleared&&!app.screen&&!hud.hasModal())hint(key,site,run);};
     // Offers reuse these four glyph canvases throughout the run. Paint them on the loading screen.
     const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
     hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
@@ -1689,7 +1689,10 @@ export function createZixingUI(app,api) {
       feed.append(banner);
       setTimeout(()=>banner.remove(),1800);
     }
-    hud.stageIntro=r=>{if(!r.sanctuary)intro(paperStages[r.stage-1],'桌上世界 · 第 '+r.stage+' 区');};
+    hud.stageIntro=r=>{
+      if(r.terrain.bossSite)intro(paperStages[r.stage-1],'桌上世界 · 圣地');
+      else if(!r.sanctuary)intro(paperStages[r.stage-1],'桌上世界 · 第 '+r.stage+' 区');
+    };
     const evolve=run.startEvolution.bind(run);
     run.startEvolution=()=>{
       run.state='modal';
@@ -1926,7 +1929,7 @@ export function createZixingUI(app,api) {
       const fraction=Math.round(Math.max(0,Math.min(1,p.hp/Math.max(1,p.maxHp)))*1000)/1000;
       const bonus=Math.max(0,Math.round(p.shield+p.overheal)),key=[current,maximum,fraction,bonus].join('/');
       if(key===lastHealth)return;
-      drawBattleHealth(health,fraction,current,bonus);
+      drawBattleHealth(health,fraction,current,maximum,bonus);
       lastHealth=key;
       health.dataset.progress=String(fraction);health.dataset.frame=String(++healthFrame);
       health.setAttribute('aria-valuenow',current);health.setAttribute('aria-valuemax',maximum);

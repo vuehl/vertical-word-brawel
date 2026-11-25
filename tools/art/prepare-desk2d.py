@@ -91,15 +91,19 @@ for post,foot_depth in zip(feet,depth_at):
  selected=np.asarray(region)>0
  cover[selected]=pixels[:,:,3][selected]
  depth[selected]=foot_depth
+def save_depth(file):
+ packing=np.zeros((*cover.shape,3),dtype='uint8')
+ packing[:,:,0]=np.clip(np.rint(depth*255/shelf['maskDepthRange']),0,255).astype('uint8')
+ packing[:,:,1]=cover
+ Image.fromarray(packing).resize((2048,440),Image.Resampling.BOX).save(out/file,optimize=True)
+
+save_depth('shelf-depth-bare.png')
 for name,post in shelf['hanging'].items():
  with Image.open(root/(name+'.png')) as decoration:
   alpha=np.asarray(decoration.getchannel('A').crop((left,top,right,bottom)))
  cover=np.maximum(cover,alpha)
  if post is not None: depth[alpha>0]=depth_at[post]
-packing=np.zeros((*cover.shape,3),dtype='uint8')
-packing[:,:,0]=np.clip(np.rint(depth*255/shelf['maskDepthRange']),0,255).astype('uint8')
-packing[:,:,1]=cover
-Image.fromarray(packing).resize((2048,440),Image.Resampling.BOX).save(out/'shelf-depth.png',optimize=True)
+save_depth('shelf-depth.png')
 if previous and not desk_only:
  current_files={part[0] for layer in layers for part in layer['parts']}
  for layer in previous['layers']:

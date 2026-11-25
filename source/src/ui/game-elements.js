@@ -348,7 +348,8 @@ var mw = 7500,
     guardian: {
       letter: `g`,
       kind: 'boss',
-      text: run => `满 ${bossSummonUnlockSeconds(run) / 60} 分钟后，靠近装置即可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
+      text: run => run?.terrain?.bossSite ? '靠近计时装置即可召唤龘。'
+        : `满 ${bossSummonUnlockSeconds(run) / 60} 分钟后，靠近装置即可召唤龘。满 ${zoneDuration() / 60} 分钟时，龘会自动现身。`,
     },
     alpha: {
       letter: `f`,
@@ -425,7 +426,7 @@ var mw = 7500,
       if (this.queued && performance.now() >= this.busyUntil) {
         const event = this.queued;
         this.queued = null;
-        this.show(event);
+        this.show(event,null,e);
       }
       if (nearest) this.show(hint, nearest, e);
       if (nearest?.kind === 'boss' && this.site === nearest && this.el?.parentNode) {

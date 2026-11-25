@@ -2174,7 +2174,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
       if(this.coop && (this.coop.suspended || this.coop.reconnecting || !this.coop.room.open))return;
       let t = this.input;
       // Start after loading or restoring the room, so the boss intro owns its cinematic state.
-      if (this.sanctuary && this.state === 'play' && !this.bossSpawned && !this.stageCleared && !this.coop?.pendingBoss) {
+      if (this.sanctuary && !this.terrain.bossSite && this.state === 'play' && !this.bossSpawned && !this.stageCleared && !this.coop?.pendingBoss) {
         if (this.coop && !this.coop.isHost) {
           // The host's summon may have arrived while this seat was loading the previous zone.
           this.coop.reassignBoss();

@@ -93,6 +93,7 @@ var qT = 52,
     bossShared = !1;
     bossStage = 0;
     pendingBoss = null;
+    loadingBossCall = null;
     remoteCall = !1;
     portalAt = null;
     portalWant = null;
@@ -1097,6 +1098,9 @@ var qT = 52,
         (this.portalAt = null),
         (this.portalWant = null),
         this.run.player.dead && this.revive(null));
+      const call=this.loadingBossCall;
+      this.loadingBossCall=null;
+      if(call)this.onBossCall(null,call.st,call.x,call.z,call.a,call.summonMode);
     }
     end(e) {
       this.ended || (this.broadcast({ t: `end`, v: +!!e }), this.finishRun(e));
@@ -1213,6 +1217,11 @@ var qT = 52,
           this.onShare(n, +t.x, +t.z, +t.v);
           break;
         case `boss`:
+          // A faster seat can reach the clock while this seat is loading the desk.
+          if(t.st===4 && ((this.advancing && r.stage===2) || (r.stage===4 && r.buildingStage))){
+            if(!this.loadingBossCall || t.a<this.loadingBossCall.a)this.loadingBossCall=t;
+            break;
+          }
           this.onBossCall(n, t.st | 0, +t.x, +t.z, t.a | 0, t.summonMode);
           break;
         case `bd`:

@@ -721,6 +721,11 @@ export async function reviewCoop(browser, gamePort) {
       r.update=dt=>{if(r.state==='modal')r.resume();return update(dt);};
       r.pendingLevels=0;r.pendingBlessings.length=0;r.player.iframes=3600;
     })));
+    await host.evaluate(()=>{
+      const r=app.run,[clock]=r.interactables.list;
+      if(r.bossSpawned||clock.kind!=='boss')throw Error('Expected a waiting sanctuary clock');
+      r.player.pos.set(clock.x,clock.y,clock.z);
+    });
     await Promise.all(clients.map(page=>page.waitForFunction(()=>app.run.stage===4 && app.run.boss.kit &&
       app.run.coop.monsters.completedTurn>0 && app.run.boss.roomAim,{timeout:45000})));
     // The original health gates trigger both phase transitions. Inject only

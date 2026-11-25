@@ -1957,6 +1957,7 @@ var e_ = class {
         this.hit(id, Ex(attack.def, attack) * hitMultiplier, {
           type: attack.def.type, cls: attack.def.cls, slot: 8, noReact: true,
         });
+        if (player.speciesId === 59) this.run.vfx?.crafted.windRush?.hit(enemies.x[id], enemies.y[id], enemies.z[id]);
       }
     }
     limitWindBossHit(index, damage) {

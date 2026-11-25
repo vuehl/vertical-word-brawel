@@ -258,7 +258,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
   for(const stage of [1,2,4]) {
     await page.waitForFunction(stage=>{
       const r=app.run;
-      return r?.stage===stage && r.state==='play' && (stage!==4 || r.boss.alive);
+      return r?.stage===stage && r.state==='play';
     },{timeout:90000},stage);
     if(stage===2){
       assert.ok(await page.evaluate(()=>{
@@ -295,7 +295,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     assert.equal(inventory.rejected,true,'Removed types must not be recreated through any placement API');
     assert.deepEqual(inventory.after,inventory.before,'Rejected objects must not reserve terrain or add invisible meshes');
     for(const kind of removed){assert.equal(inventory.counts[kind]||0,0,kind+' must not spawn');assert.ok(!inventory.markers.includes(kind));}
-    assert.deepEqual(Object.keys(inventory.counts).sort(),(stage===4?[]:retained).slice().sort());
+    assert.deepEqual(Object.keys(inventory.counts).sort(),(stage===4?['boss']:retained).slice().sort());
     if(stage!==4){
       assert.equal(inventory.counts.altar,1);
       const s=inventory.spacing;
@@ -370,12 +370,18 @@ export async function reviewScenes({page,tap,dir,sleep}) {
     const area=await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-area').textContent);
     assert.match(area,stage===4?/星灯书庭.*圣地/:new RegExp(stage+'/2区'));
     if(stage===4){
+      await page.evaluate(()=>{
+        const r=app.run,[clock]=r.interactables.list;
+        if(r.bossSpawned)throw Error('Final boss started before activation');
+        r.state='play';r.player.pos.set(clock.x,clock.y,clock.z);r.interactables.update(1/30,1/30);
+      });
+      await playing();
       report.sanctuary=await page.evaluate(()=>{
         const {sanctuary:s,boss}=app.run;boss.kit.enterPhase(2);boss.kit.enterPhase(3);
         return {species:boss.kit.species,phase:boss.kit.phase,ultimate:boss.kit.ultimateName,roots:s.roots.length,brambles:s.brambles.length,columns:s.covers.filter(c=>c.kind==='column').length};
       });
       assert.equal(report.sanctuary.species,149);assert.equal(report.sanctuary.phase,3);assert.equal(report.sanctuary.ultimate,'满天乱砸');
-      assert.ok(report.sanctuary.roots && report.sanctuary.brambles && report.sanctuary.columns);
+      assert.ok(report.sanctuary.roots && report.sanctuary.brambles);assert.equal(report.sanctuary.columns,0);
     } else {
       await summonAtBuilding();
       await playing();

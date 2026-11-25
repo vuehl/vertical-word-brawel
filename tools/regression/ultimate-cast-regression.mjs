@@ -40,7 +40,7 @@ export async function reviewUltimateCast(page,dir){
         tick();
         return [p.pos.x-x,p.pos.z-z];
       };
-      cue.start=env.performance.now()-700;
+      if(cue)cue.start=env.performance.now()-700;
       const [held]=step();
       window.tap(x-60,y,'move',11);
       // Allow the normal joystick smoothing to reverse direction.
@@ -60,12 +60,19 @@ export async function reviewUltimateCast(page,dir){
       const owner=run.ui.touch.stickId;
       const [,withButton]=step(8);
       window.tap(buttonX,buttonY,'up',1);
-      return {uses:run.ult.uses-before,name:cue.name,color:cue.color,tier:cue.tier,
+      return {uses:run.ult.uses-before,name:cue?.name??run.ult.name,color:cue?.color??null,tier:cue?.tier??null,
+        worldOnly:!cue&&run.vfx.crafted.windRush?.mist.visible===true&&!env.castHidesUI(run),
         held:held>0,turned:turned<0,released,restarted:restarted>0,buttonOnly,owner,withButton:withButton<0};
     },{route,growth});
     const tier=Math.min(2,route.length-1+growth);
-    assert.deepEqual(started,{uses:1,name,color,tier,held:true,turned:true,released:true,restarted:true,
+    const worldOnly=species===59;
+    assert.deepEqual(started,{uses:1,name,color:worldOnly?null:color,tier:worldOnly?null:tier,worldOnly,held:true,turned:true,released:true,restarted:true,
       buttonOnly:true,owner:12,withButton:true},'Cast and steer: '+species);
+    if(worldOnly){
+      await page.screenshot({path:path.join(dir,'飙-释放.png')});
+      await page.evaluate(()=>window.tap(0,0,'up',12));
+      continue;
+    }
     const expectedLayers=[...(tier>=2?['flame']:[]),...(tier>=1?['blade']:[])];
     const titleX=[];
     for(const [ms,hidden] of [[200,false],[333,true],[500,true],[700,true],[1000,true],[2010,false]]){

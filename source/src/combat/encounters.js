@@ -2529,7 +2529,8 @@ var iT = Math.PI / 180,
         };
       this.readyBlinkAt = this.readyFlashAt = null;
       const type = t.types?.[0];
-      this.castBanner = {start: performance.now(), color: castToneForType(type, this.readyPalette.base), tier: i, type};
+      const showCutIn = t.speciesId !== 59;
+      this.castBanner = showCutIn ? {start: performance.now(), color: castToneForType(type, this.readyPalette.base), tier: i, type} : null;
       ((this.charge = 0),
         (this.active = a),
         e.upgradeTiming.beginUltimate(),
@@ -2542,12 +2543,12 @@ var iT = Math.PI / 180,
       e.vfx.crafted.ultimate(u,a);
       let d = this.quiet;
       ((t.ultPoseT = d ? 0 : 0.6),
-        !d &&
+        showCutIn && !d &&
           e.meta.profile.settings.ultPose !== !1 &&
           e.ui.ultCutIn(t.speciesId, Zh(n, r), Ni[n.type]),
         d || (e.ultLook(n.tint, a + 0.3), e.audio.duck(0.35, a + 0.6), J.start(e.audio)),
         (n.sfx ?? (() => {}))(e.audio, u));
-      const sparks = [4,5,6,16].includes(t.speciesId) ? 0 : 24;
+      const sparks = [4,5,6,16,59].includes(t.speciesId) ? 0 : 24;
       if (sparks) e.vfx.ring(u.x, u.y, u.z, 4.5, Ni[n.type], 0.5, 0.9);
       for (let t = 0; t < sparks; t++) {
         let r = (t / 24) * Math.PI * 2,

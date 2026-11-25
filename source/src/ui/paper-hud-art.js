@@ -98,7 +98,7 @@ export function specialMapMarker(flags,dx,dz,isBoss=false,edgeRadius=40){
   return {kind,x:60+dx*k,y:58+dz*k,edge,angle:Math.atan2(dz,dx)};
 }
 
-export function drawBattleHealth(canvas,fraction,current,bonus=0) {
+export function drawBattleHealth(canvas,fraction,current,maximum,bonus) {
   const ctx=canvas.getContext('2d');
   ctx.setTransform(canvas.width/88,0,0,canvas.height/20,0,0);ctx.clearRect(0,0,88,20);
   const capsule=(x,y,w,h,r)=>{
@@ -118,7 +118,17 @@ export function drawBattleHealth(canvas,fraction,current,bonus=0) {
   fill.addColorStop(0,fraction<.3?'#F1A2A0':'#83CC68');
   fill.addColorStop(1,fraction<.3?'#C96B76':'#4B9F52');
   ctx.save();capsule(3,3,82,12,6);ctx.clip();
-  ctx.fillStyle=fill;ctx.fillRect(3,3,82*fraction,12);ctx.restore();
+  const shieldWidth=bonus>0?Math.max(1,82*bonus/(maximum+bonus)):0;
+  const healthWidth=(82-shieldWidth)*fraction;
+  ctx.fillStyle=fill;ctx.fillRect(3,3,healthWidth,12);
+  if(shieldWidth>0){
+    const shield=ctx.createLinearGradient(0,3,0,15);
+    shield.addColorStop(0,'#FAFCFD');
+    shield.addColorStop(1,'#B7C1C9');
+    ctx.fillStyle=shield;
+    ctx.fillRect(3+healthWidth,3,shieldWidth,12);
+  }
+  ctx.restore();
   const label=String(current)+(bonus?' +'+bonus:'');
   ctx.font='700 '+(label.length>9?9:11)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineWidth=2;ctx.strokeStyle='#fffef8d9';ctx.strokeText(label,44,9.5);ctx.fillStyle='#263f36';ctx.fillText(label,44,9.5);

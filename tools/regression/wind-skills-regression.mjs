@@ -223,7 +223,8 @@ export async function reviewWindSkills(page,dir){
       }
       return {species,name:r.ult.name,attack:p.stats.attackSpeed/before.attack,move:p.stats.moveSpeed/before.move,
         samples,targetsHit:targets.filter(id=>r.enemies.hp[id]<5000).length,
-        opening:r.vfx.crafted.windSkills?.events.map(e=>e.clip)??[]};
+        opening:r.vfx.crafted.windSkills?.events.map(e=>e.clip)??[],
+        rush:r.vfx.crafted.windRush?.funnels.every(mesh=>mesh.visible)??false};
     },species);
     if(species===16){
       assert.equal(result.name,'阵风');
@@ -251,7 +252,8 @@ export async function reviewWindSkills(page,dir){
     else {
       const attack=[17,18].includes(species);
       assert.equal(result.name,attack?'刮倒一片':'跑得没影');
-      assert.ok(result.opening.includes(attack?'attackLoops':'gust'));
+      if(species===59)assert.ok(result.rush);
+      else assert.ok(result.opening.includes(attack?'attackLoops':'gust'));
       assert.ok(Math.abs(result.move-({17:1,18:1,58:2,59:3})[species])<1e-6);
       assert.ok(Math.abs(result.attack-(attack?10:1))<1e-6);
     }
@@ -277,12 +279,12 @@ export async function reviewWindSkills(page,dir){
     r.input.stickX=1;
     vfxAdvance(10,1/60);r.input.stickX=0;
     const ghosts=r.ghosts.filter(g=>g.windGlyph),batch=r.sprites.getHeroGhostGlyph(59,'wind');
-    window.windSpeedReview={base,boosted,ghosts:ghosts.map(g=>({species:g.species,scale:g.scale,x:g.x,z:g.z})),word:batch.zxGlyph,visible:batch.zxGroup.mesh.count,opening:r.vfx.crafted.windSkills.events.some(e=>e.clip==='gust'),oldVolume:r.vfx.crafted.entries.some(e=>e.mode===1)};
+    window.windSpeedReview={base,boosted,ghosts:ghosts.map(g=>({species:g.species,scale:g.scale,x:g.x,z:g.z})),word:batch.zxGlyph,visible:batch.zxGroup.mesh.count,opening:r.vfx.crafted.windRush.mist.visible,oldVolume:r.vfx.crafted.entries.some(e=>e.mode===1)};
     vfxDraw();return window.windSpeedReview;
   });
   fs.writeFileSync(path.join(dir,'wind-skills.json'),JSON.stringify(report,null,2));
   assert.ok(Math.abs(report.speed.boosted/report.speed.base-3)<1e-8,JSON.stringify(report.speed));
-  assert.ok(report.speed.ghosts.length>0&&report.speed.ghosts.length<=5);
+  assert.ok(report.speed.ghosts.length>0&&report.speed.ghosts.length<=2);
   assert.ok(report.speed.ghosts.every(g=>g.species===59&&Number.isFinite(g.scale)));
   assert.equal(report.speed.word,'飙');assert.ok(report.speed.visible>0);
   assert.ok(report.speed.opening);assert.equal(report.speed.oldVolume,false);
@@ -295,11 +297,14 @@ export async function reviewWindSkills(page,dir){
     r.hideOwnFx=true;r.renderWorld(0);const hidden=r.ghosts.filter(g=>g.windGlyph).length;
     r.hideOwnFx=false;r.vfx.opacity=1;
     r.ult.def.cast({run:r});const refreshed=p.buffs.get(key).t,refreshSpeed=p.stats.moveSpeed;
-    vfxAdvance(330,1/60);
-    return {timer,paused,opacity,hidden,refreshed,refreshSpeed,expired:!p.buffs.has(key),after:p.stats.moveSpeed,remaining:r.ghosts.filter(g=>g.windGlyph).length,gl:r.r.renderer.getContext().getError()};
+    vfxAdvance(284,1/60);
+    const art=r.vfx.crafted.windRush,burst=!!art.blast&&art.mesh.visible&&!art.mist.visible;
+    vfxAdvance(46,1/60);
+    return {timer,paused,opacity,hidden,refreshed,refreshSpeed,burst,ended:art.meshes.every(m=>!m.visible),expired:!p.buffs.has(key),after:p.stats.moveSpeed,remaining:r.ghosts.filter(g=>g.windGlyph).length,gl:r.r.renderer.getContext().getError()};
   }));
   assert.equal(report.speed.timer,report.speed.paused);assert.ok(report.speed.opacity>0);assert.equal(report.speed.hidden,0);
   assert.equal(report.speed.refreshed,5);assert.equal(report.speed.refreshSpeed,report.speed.boosted);
+  assert.ok(report.speed.burst&&report.speed.ended);
   assert.ok(report.speed.expired);assert.equal(report.speed.after,report.speed.base);assert.equal(report.speed.remaining,0);assert.equal(report.speed.gl,0);
   report.lifecycle=await page.evaluate(()=>{const r=app.run,a=r.vfx.crafted.windSkillArt();a.play('wingHit',0,1,0,3);r.hideOwnFx=true;a.begin();a.end();const hidden=a.mesh.count===0&&a.events.length===0;r.hideOwnFx=false;a.track({},'typhoon',0,0,0,6);r.vfx.crafted.clear();return {hidden,cleared:a.events.length===0&&a.tracked.size===0,gl:app.r.renderer.getContext().getError()};});
   assert.ok(report.lifecycle.hidden&&report.lifecycle.cleared);assert.equal(report.lifecycle.gl,0);

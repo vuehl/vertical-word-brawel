@@ -36,7 +36,7 @@ export function createPeerHud(run,node,el) {
         const fraction=Math.round(peer.last.hp*1000)/1000,bonus=peer.last.bonus;
         const key=[current,maximum,fraction,bonus].join('/');
         if(view.hp!==key){
-          drawBattleHealth(bar,fraction,current,bonus);
+          drawBattleHealth(bar,fraction,current,maximum,bonus);
           bar.setAttribute('aria-valuenow',current);bar.setAttribute('aria-valuemax',maximum);
           bar.setAttribute('aria-label',peer.name+' · 生命 '+current+' / '+maximum+(bonus?'，护盾与额外生命 '+bonus:''));
           bar.dataset.frame=key;view.hp=key;

@@ -178,7 +178,7 @@ var GS = class e {
         facility.retry = setTimeout(() => this.loadDevice(facility), 10000);
         return;
       }
-      const scale = facility.kind === 'berry' ? 0.5 : 1;
+      const scale = facility.kind === 'boss' ? (this.run.terrain.bossSite?.scale ?? 1) : facility.kind === 'berry' ? 0.5 : 1;
       model.scale.multiplyScalar(scale);
       group.add(model);
       group.userData.h = model.userData.displayHeight * scale;
@@ -239,6 +239,7 @@ var GS = class e {
     }
     add(kind, x, z, options = {}) {
       if (!isActiveFacility(kind) || options.data?.comet) return null;
+      if (this.run.terrain.bossSite && kind !== 'boss' && kind !== 'portal') return null;
       // Forced portals and event placements also need a clear physical footprint.
       const terrain=this.run.terrain;
       if(terrain.desk2d){
@@ -275,7 +276,7 @@ var GS = class e {
         facility.r = RS[facility.data.tier].r;
         if (facility.data.tier >= 2) this.altarBeacon(facility);
       } else if (kind === 'boss') {
-        facility.r = this.run.sanctuary ? 5 : 4;
+        facility.r = this.run.sanctuary ? 5 * (terrain.bossSite?.scale ?? 1) : 4;
       } else if (kind === 'portal') {
         facility.r = 3.4;
         const beacon = facility.beacon = fb(this.portalColor(facility), 1.7, 6.6);
@@ -315,7 +316,10 @@ var GS = class e {
     }
     *populationSteps() {
       const {terrain, player, endless, sanctuary} = this.run;
-      if (sanctuary) return;
+      if (sanctuary) {
+        if (terrain.bossSite) this.add('boss',terrain.bossSite.x,terrain.bossSite.z);
+        return;
+      }
       const rng = new Ol(terrain.seed ^ 30634);
       const count = base => Math.round(base * (0.5 + 0.5 * terrain.areaMul));
       const bonus = player.items.get('dowsing-machine') ?? 0;
@@ -1335,7 +1339,10 @@ var GS = class e {
         if (facility.dock) {
           if (facility.used || this.run.bossSpawned) facility.dock.open();
           const host = this.run.r;
-          facility.dock.update(host.shared.uTime.value,remainingZoneSeconds(this.run));
+          const elapsed = !!this.run.terrain.bossSite;
+          const seconds = elapsed ? Math.floor(this.run.stageTime) : remainingZoneSeconds(this.run);
+          if (!elapsed && seconds <= 0) facility.dock.open();
+          facility.dock.update(host.shared.uTime.value,seconds);
         }
         if(facility.kind==='bill')facility.model?.userData.updateGaze?.(
           this.run.r.camera,this.run.player,this.hasVisual(facility),dt??0);

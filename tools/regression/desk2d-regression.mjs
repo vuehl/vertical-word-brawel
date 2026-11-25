@@ -11,9 +11,77 @@ export async function verifyDesk(page,dir){
  const click=async(selector,match)=>{const el=await page.waitForFunction((sel,txt)=>[...app.screen.querySelectorAll(sel)].find(el=>!txt||el.textContent.includes(txt)),{timeout:15000},selector,match);await el.evaluate(el=>el.click());await el.dispose();};
  console.log('Home',await page.evaluate(()=>app.screen.textContent.slice(0,250)));
  if(await page.evaluate(()=>!!app.screen.querySelector('.auth-body button')))await click('.auth-body button');
- await click('[data-action="journey"]');await click('[data-action="collection-next"]');
- await click('.zx-album-mode[data-mode="standard"][data-tier="0"]');await click('[data-action="enter"]');
+ await page.evaluate(async()=>{
+   if(!app.meta.account)await app.meta.load(await app.backend.guest());
+   await inspected.env.prepareForest();
+   if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))
+     throw app.lastStartError||Error('Could not start the desk route');
+ });
  await page.waitForFunction(()=>app.run?.terrain?.desk2d&&app.run.time>.1,{timeout:30000});
+ if(process.argv.includes('--desk-route-only')){
+   const area=await page.evaluate(async()=>{
+     const r=app.run;app.halted=true;r.state='play';r.godMode=true;
+     const scenery=()=>{
+       const t=r.terrain;
+       return JSON.stringify({
+         tiles:t.group.children.map(m=>JSON.stringify([m.name,m.position.toArray(),m.scale.toArray(),m.renderOrder])).sort(),
+         colliders:t.colliders,spawn:t.spawn.toArray(),atlas:t.deskAtlas.art.src,
+       });
+     };
+     const placements=()=>r.interactables.list.map(({kind,x,z})=>({kind,x,z}));
+     const before=scenery(), first=placements();
+     await r.enterPortal();
+     r.updateCamera(0);r.ui.hud(r);r.renderWorld(0);app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
+     return {stage:r.terrain.zxStage,sameScenery:before===scenery(),first,second:placements(),
+       spawnFree:r.terrain.canReachDeskPoint(r.player.pos.x,r.player.pos.z),
+       sitesClear:r.terrain.facilitySites.every(s=>r.interactables.fitsOnDesk(s.x,s.z,6.5,s.surface))};
+   });
+   assert.equal(area.stage,2);assert.ok(area.sameScenery&&area.spawnFree&&area.sitesClear);
+   assert.deepEqual(area.first.map(f=>f.kind).sort(),area.second.map(f=>f.kind).sort());
+   for(const kind of ['boss','bill']){
+     const first=area.first.find(f=>f.kind===kind),second=area.second.find(f=>f.kind===kind);
+     assert.ok(first&&second);assert.notDeepEqual(first,second);
+   }
+   await page.screenshot({path:path.join(dir,'desk-route-area-2.png')});
+   const final=await page.evaluate(async()=>{
+     const r=app.run;r.hints.seen.add('g');await r.enterPortal();
+     const f=r.interactables,[door]=f.list;
+     const sample=()=>{
+       r.update(0);r.ui.hud(r);f.render();
+       return [door.dock.seconds,r.ui.root.querySelector('.zx-hud-clock').textContent,door.dock.state,r.bossSpawned];
+     };
+     if(!door?.dock)throw Error('Missing final desk clock');
+     const start=sample();
+     for(let i=0;i<65;i++)r.update(1/30);
+     const elapsed=sample();
+     r.renderWorld(0);app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);
+     return {stage:r.terrain.zxStage,kinds:f.list.map(o=>o.kind),layers:[...new Set(r.terrain.group.children.map(m=>m.name))].sort(),
+       start,elapsed,covers:r.sanctuary.covers.length,reachable:r.terrain.canReachDeskPoint(door.x,door.z)};
+   });
+   assert.deepEqual(final,{stage:4,kinds:['boss'],layers:['desk2d/desk','desk2d/shelf'],
+     start:[0,'00:00','idle',false],elapsed:[2,'00:02','idle',false],covers:0,reachable:true});
+   await page.waitForFunction(()=>!app.run.ui.root.querySelector('.zx-intro'));
+   await page.evaluate(()=>{const r=app.run;r.renderWorld(0);app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);});
+   await page.screenshot({path:path.join(dir,'desk-route-final.png')});
+   assert.deepEqual(await page.evaluate(()=>{
+     const r=app.run,f=r.interactables,[door]=f.list;
+     r.player.pos.set(door.x,door.y,door.z);f.update(1/30,1/30);f.render();
+     return [door.used,r.boss.alive,r.boss.name,door.dock.state];
+   }),[true,true,'龘','playing']);
+   const victory=await page.evaluate(async()=>{
+     const r=app.run;await r.dragonHdAssets?.loading;
+     for(let frame=0;frame<360&&r.state==='cinematic';frame++)r.update(1/60);
+     const kit=r.boss.kit;
+     kit.enterPhase(2);kit.enterPhase(3);
+     r.combat.killEnemy(r.boss.bossIndex,{type:'normal'});
+     const portal=r.interactables.list.find(f=>f.kind==='portal');
+     await portal.modelReady;
+     return {cleared:r.stageCleared,phase:kit.phase,portal:portal.model.name};
+   });
+   assert.deepEqual(victory,{cleared:true,phase:3,portal:'desk2d/device-portal'});
+   console.log('Desk route, clock and manual final boss passed',area,final);
+   return;
+ }
  if(process.argv.includes('--bill-gaze-only')){
    await page.evaluate(()=>{app.halted=true;app.run.state='paused';});
    await verifyBillGaze(page,dir,'desk');
@@ -255,10 +323,10 @@ export async function verifyDesk(page,dir){
  await verifyBillGaze(page,dir,'desk');
  await verifyBerryPickup(page,dir);
  await page.evaluate(async()=>{app.run.state='play';await app.run.changeZone();});
- assert.ok(await page.evaluate(()=>app.run.stage===2&&!app.run.terrain.desk2d));
+ assert.ok(await page.evaluate(()=>app.run.stage===2&&app.run.terrain.desk2d));
  assert.ok(await page.evaluate(()=>{
    const r=app.run;r.renderWorld(0);
-   return [...r.sprites.glyphGroups.values()].every(g=>!g.material.uniforms.uShelfActive.value&&g.material.uniforms.uShelfDepth.value===null);
+   return [...r.sprites.glyphGroups.values()].every(g=>g.material.uniforms.uShelfActive.value&&g.material.uniforms.uShelfDepth.value===r.terrain.shelfDepth);
  }));
  await verifyBillGaze(page,dir,'stage2');
  await verifyBerryPickup(page,dir);

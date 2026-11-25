@@ -10,6 +10,7 @@ import {installBillGaze} from '../effects/bill-gaze.js';
 import {ht as Vector3,w as Color,y as BufferGeometry,v as Attribute,I as Group,et as PlaneGeometry,K as Mesh,q as BasicMaterial,dt as Texture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import {paperBox,hitsPaperBox} from './paper-collision.js';
 import {createDeskNavigation,createSpawnPlacement} from './desk-navigation.js';
+import {deskLayers,deskAtlasFile} from './desk-stage-layout.js';
 
 import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame,deskPlayFrame} from './desk-framing.js';
 const xAt=px=>(px-layout.width/2)/pixelsPerUnit;
@@ -18,15 +19,17 @@ const halfWidth=xAt(layout.width),halfDepth=zAt(layout.height);
 // The artwork lies on one plane; ordinary props use a shallow gameplay top
 // so spring shoes can lift the player across their silhouettes and land safely.
 const propHeight=1.2;
-export const isDeskStage=t=>t.biome.zxStage===1&&!t.arena;
+export const isDeskStage=t=>!!t.mapRules.desk;
 export function initDesk(t){
-  t.desk2d=true;t.zxPaper=true;t.zxStage=1;t.group.name='desk-map-2d';
+  const stage=t.biome.zxStage, layers=deskLayers(stage,layout.layers);
+  t.desk2d=true;t.zxPaper=true;t.zxStage=stage;t.group.name='desk-map-2d';
   t.hasWater=t.frozen=t.isLava=false;t.waterLevel=-99;t.minH=t.maxH=0;
   t.heights.fill(0);t.pathMask.fill(0);t.landmarks=[];t.zxProps=[];
   t.deskBounds={x:halfWidth,z:halfDepth};t.play=halfWidth;t.workshopGroundY=()=>0;
   t.deskAtlas={...t.deskBounds,art:null};
-  const {spawn,facilitySites=[]}=t.mapRules;
+  const {spawn,facilitySites=[],bossSite}=t.mapRules;
   t.spawn.set(xAt(spawn.x),0,zAt(spawn.z));
+  if(bossSite)t.bossSite={x:xAt(bossSite.x),z:zAt(bossSite.z),scale:bossSite.scale};
   const surfaces=new Map(facilitySites.map(s=>[s.surface,[]]));
   t.facilitySites=facilitySites.map(s=>({surface:s.surface,x:xAt(s.x),z:zAt(s.z)}));
   t.inBounds=(x,z,n=0)=>Math.abs(x)<halfWidth-n&&Math.abs(z)<halfDepth-n;
@@ -34,7 +37,7 @@ export function initDesk(t){
   t.deskOwned=[];t.deskTextures=new Map();
   t.deskFadeMaterials={cup:[],zhi:[]};
   const walkThroughProps=[];
-  for(const [kind,l,rawTop,r,rawBottom] of layout.rects){
+  for(const [kind,l,rawTop,r,rawBottom] of (bossSite?[]:layout.rects)){
     const offset=kind==='mouse'?-160:0,top=rawTop+offset,b=rawBottom+offset;
     const box=paperBox(xAt((l+r)/2),zAt((top+b)/2),(r-l)/pixelsPerUnit,(b-top)/(pixelsPerUnit*tilt),propHeight,0,propHeight);
     box.kind=kind;
@@ -100,10 +103,10 @@ export function initDesk(t){
   t.steerDeskEnemy=createDeskNavigation(t);
   t.placeSpawn=createSpawnPlacement(t);
   t.canReachDeskPoint=(x,z)=>t.placeSpawn(x,z,1);
-  t.deviceFootprint=kind=>kind==='boss'?6.5:deviceSizes[kind].footprintRadius;
+  t.deviceFootprint=kind=>deviceSizes[kind].footprintRadius*(kind==='boss'&&bossSite?bossSite.scale:1);
   const geometry=new PlaneGeometry(1,1);geometry.rotateX(-Math.PI/2);t.deskOwned.push(geometry);
   t.deskReady=(async()=>{
-    const jobs=layout.layers.flatMap(({name,parts},layer)=>parts.map(part=>({name,layer,part})));
+    const jobs=layers.flatMap(({name,parts},layer)=>parts.map(part=>({name,layer,part})));
     async function load(){
       while(jobs.length&&!t.disposed){
         const {name,layer,part:[file,x,y,w,h]}=jobs.shift();
@@ -118,10 +121,10 @@ export function initDesk(t){
         sheet.renderOrder=-100+layer;t.group.add(sheet);
       }
     }
-    const atlas=loadDeskImage('/assets/ui-paper/desk-map-atlas.webp').then(image=>{
+    const atlas=loadDeskImage('/assets/ui-paper/'+deskAtlasFile(stage)).then(image=>{
       if(!t.disposed)t.deskAtlas.art=image;
     });
-    await Promise.all([atlas,...Array.from({length:4},load),deskTexture(t,'shelf-depth.png').then(map=>{
+    await Promise.all([atlas,...Array.from({length:4},load),deskTexture(t,bossSite?'shelf-depth-bare.png':'shelf-depth.png').then(map=>{
       if(t.disposed)return;
       map.colorSpace='';map.generateMipmaps=false;map.minFilter=map.magFilter;t.shelfDepth=map;
     })]);
@@ -145,10 +148,12 @@ export function deskTexture(t,file){
 }
 export function deskCamera(run,progress,bend=0,p=run.player.pos){
   const c=run.r.camera,t=run.terrain;
-  const {x=p.x,z=p.z,w,h,distance}=progress===undefined
+  const summon=progress===undefined && run.state==='cinematic' ? run.dragonHd?.center : null;
+  const target=summon??p;
+  const {x=target.x,z=target.z,w,h,distance}=progress===undefined
     ?deskPlayFrame(c.aspect,halfWidth,halfDepth)
     :deskFrame(c.aspect,halfWidth,halfDepth,run.camTarget.x,run.camTarget.z,progress,bend);
-  const y=progress===undefined?p.y+.5:0;
+  const y=progress===undefined?(summon?.y??p.y+.5):0;
   c.position.set(x,y+distance*tilt,z+distance*Math.cos(pitch));c.lookAt(x,y,z);
   c.projectionMatrix.makeOrthographic(-w,w,h,-h,c.near,c.far,c.coordinateSystem);
   c.projectionMatrixInverse.copy(c.projectionMatrix).invert();

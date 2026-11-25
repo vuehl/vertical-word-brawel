@@ -100,6 +100,7 @@ export function starterUltimate(id,original){
         const player=run.player, active=player.buffs.get(key);
         if(active)active.t=speedDuration;
         else player.addBuff(key,speedDuration,name);
+        if(id===59)player.buffs.get(key).windBurstDone=false;
         player.zilingSpeedFx=0;player.zilingSpeedPosition=null;
       }};
   }
@@ -127,11 +128,11 @@ export function updateStarterSpeed(run,delta,shape){
       // ahead of the player, and no new samples while standing still.
       const f=i/steps;
       const old=run.ghosts.findIndex(g=>g.windGlyph);
-      if(run.ghosts.filter(g=>g.windGlyph).length>=5)run.ghosts.splice(old,1);
+      if(run.ghosts.filter(g=>g.windGlyph).length>=(p.speciesId===59?2:5))run.ghosts.splice(old,1);
       if(run.ghosts.length>=96)run.ghosts.shift();
       run.ghosts.push({windGlyph:true,species:p.speciesId,scale:p.renderScale,x:previous.x+dx*f,
         y:previous.y+(p.pos.y-previous.y)*f,z:previous.z+dz*f,dir:run.sprites.dirRow(dx,dz),
-        start:run.time,life:.24});
+        start:run.time,life:p.speciesId===59?.14:.24});
     }
     return;
   }
@@ -148,5 +149,6 @@ export function clearStarterSpeed(run){
   const movement=p.buffs.delete(speedBuff),attack=p.buffs.delete(attackSpeedBuff);
   p.zilingSpeedPosition=null;
   if(run.ghosts)for(let i=run.ghosts.length-1;i>=0;i--)if(run.ghosts[i].windGlyph)run.ghosts.splice(i,1);
+  run.vfx?.crafted?.windRush?.reset();
   if(movement||attack)p.recompute();
 }

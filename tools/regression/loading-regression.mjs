@@ -330,7 +330,8 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       const metric=s.loadingMetrics.at(-1);
       if(s.desk2d){
         const layout=JSON.parse(fs.readFileSync(new URL('../../resources/public/config/desk2d-layout.json',import.meta.url),'utf8'));
-        assert.equal(s.deskLayers,layout.layers.reduce((count,layer)=>count+layer.parts.length,0),'Every desk artwork layer is ready at entry');
+        const layers=s.stage===4?layout.layers.filter(layer=>['shelf','desk'].includes(layer.name)):layout.layers;
+        assert.equal(s.deskLayers,layers.reduce((count,layer)=>count+layer.parts.length,0),'Every desk artwork layer is ready at entry');
         assert.ok(metric.terrain.steps>=s.deskLayers&&s.colliders>0);
       }else assert.ok(metric.terrain.yields>0);
       if(s.stage<4)assert.ok(metric.interactions.yields>0);
@@ -343,15 +344,16 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       assert.ok(s.matchedProps,'Every prop needs its ground surface or matching collider');
       if(!s.desk2d)assert.ok(s.colliders>=s.props-s.walkableProps&&s.colliders<200&&s.props>10);
     }
-    const workshopStages=stages.filter(stage=>!stage.desk2d);
-    assert.ok(workshopStages[1].textures.filter(id=>workshopStages[0].textures.includes(id)).length>=10,'Workshop areas must reuse the paper textures');
+    assert.ok(stages.every(stage=>stage.desk2d),'All forest areas use the illustrated desktop');
     const before=path.join(dir,'loading-before.json');
     if(fs.existsSync(before)){
       const previous=JSON.parse(fs.readFileSync(before));
       for(const stage of stages){
         const beforeStage=previous.stages.find(s=>s.stage===stage.stage);
-        assert.equal(stage.colliders,beforeStage.colliders,'World collider count changed');
-        assert.equal(stage.props,beforeStage.props,'World props changed');
+        if(beforeStage.desk2d===stage.desk2d){
+          assert.equal(stage.colliders,beforeStage.colliders,'World collider count changed');
+          assert.equal(stage.props,beforeStage.props,'World props changed');
+        }
         for(const [id,foot] of Object.entries(stage.feet))if(beforeStage.feet[id])assert.deepEqual(foot,beforeStage.feet[id],'Actor collision dimensions changed: '+id);
       }
     }

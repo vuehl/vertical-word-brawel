@@ -2489,7 +2489,17 @@ var mv = 30,
         Fl.leave(),
         (this.squash *= Math.exp(-e * 10)));
       let l = !1;
-      for (let [t, n] of this.buffs) ((n.t -= e), n.t <= 0 && (this.buffs.delete(t), (l = !0)));
+      for (const [key, buff] of this.buffs) {
+        buff.t -= e;
+        if (key === speedBuff && this.speciesId === 59 && !this.dead && !buff.windBurstDone && buff.t <= .38) {
+          buff.windBurstDone = true;
+          t.vfx.crafted.windRush?.burst();
+        }
+        if (buff.t <= 0) {
+          this.buffs.delete(key);
+          l = true;
+        }
+      }
       (l && this.recompute(),
         (this.hp < this.maxHp || this.items.has(`fresh-water`)) && this.heal(i.regen * e),
         (this.leechBudget = Math.min(this.maxHp * 0.08, this.leechBudget + this.maxHp * 0.05 * e)),

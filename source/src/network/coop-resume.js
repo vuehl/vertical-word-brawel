@@ -89,6 +89,14 @@ export function restoreProgress(run,data,world) {
     }else if(p.dead)coop.revive(null);
   }
   if(data?.stage!==world.stage)p.pos.set(world.x,run.terrain.height(world.x,world.z),world.z);
+  // Older checkpoints can contain positions from the larger workshop layout.
+  const terrain=run.terrain;
+  if(terrain?.desk2d && run.stage>1 && (!terrain.inBounds(p.pos.x,p.pos.z,p.radius) ||
+      terrain.hitProp(p.pos.x,p.pos.y+.01,p.pos.z,p.radius,true))){
+    const spot={};
+    if(terrain.placeSpawn(p.pos.x,p.pos.z,p.radius,spot))p.pos.set(spot.x,0,spot.z);
+    else p.pos.copy(terrain.spawn);
+  }
   run.camTarget.copy(p.pos);
   run.time=world.time;
   for(const event of run.director.timeline){

@@ -52,6 +52,8 @@ var KS = Math.PI / 180,
         (this.stone = n.stone),
         e.r.scene.add(this.group));
       let r = e.terrain;
+      // The illustrated final desk supplies its own shelf and boundaries.
+      if (r.bossSite) return;
       for (let e of n.columns) {
         let t = r.height(e.x, e.z),
           i = { x: e.x, z: e.z, r: 1, h: t + 4.6, standY:t+4.4 },
@@ -351,6 +353,7 @@ var KS = Math.PI / 180,
         stone: 12107944,
       });
       let n = e.terrain;
+      if (n.bossSite) return;
       for (let e of $S) n.reserve(e.x, e.z, 3);
       this.shaftMat = new Kr({
         transparent: !0,
@@ -648,6 +651,7 @@ var KS = Math.PI / 180,
         ));
     }
     ambience(e) {
+      if (!this.shaftMat) return;
       let t = this.run,
         n = t.r.camera.position,
         r = t.terrain;
@@ -691,7 +695,7 @@ var KS = Math.PI / 180,
       this.shaftMat.uniforms.uK.value = this.phase === 3 ? 0.55 : this.phase === 4 ? 1.5 : 1;
     }
     dispose() {
-      (super.dispose(), this.shaftMat.dispose());
+      (super.dispose(), this.shaftMat?.dispose());
     }
   };
 function tC(e) {

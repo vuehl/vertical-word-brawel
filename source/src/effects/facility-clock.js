@@ -70,14 +70,13 @@ export function createIllustratedClock(sprite,renderer){
       '#include <map_fragment>\ndiffuseColor.rgb=clockFace(diffuseColor.rgb,vec2(vMapUv.x,1.-vMapUv.y)*510.);');
   };
   function open(){if(state==='idle')state='playing';}
-  function update(time,remaining){
-    const seconds=Math.max(0,Math.min(5999,Math.ceil(remaining)));
+  function update(time,displaySeconds){
+    const seconds=Math.max(0,Math.min(5999,displaySeconds));
     if(seconds!==lastSeconds){
       const display=formatGameTime(seconds);
       digits.value.set(segmentMasks[+display[0]],segmentMasks[+display[1]],segmentMasks[+display[3]],segmentMasks[+display[4]]);
       lastSeconds=seconds;
     }
-    if(seconds===0)open();
     if(state!=='idle'){
       started??=time;
       opening.value=Math.min(1.04,(time-started)/.75);

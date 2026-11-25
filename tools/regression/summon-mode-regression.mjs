@@ -179,6 +179,9 @@ export async function reviewSummonModes(page, dir) {
         const portal=r.interactables.list.find(o=>o.kind==='portal');
         if(!r.stageCleared||!portal)throw Error('Defeating zone 2 did not open the exit');
         await r.enterPortal();r.update(0);
+        if(r.bossSpawned)throw Error('Final boss started before the clock was reached');
+        const [clock]=r.interactables.list;
+        r.player.pos.set(clock.x,clock.y,clock.z);r.interactables.update(1/30,1/30);
         return {stage:r.stage,sanctuary:!!r.sanctuary,boss:r.boss.name,alive:r.boss.alive};
       });
       assert.deepEqual(finalZone,{stage:4,sanctuary:true,boss:'龘',alive:true});
