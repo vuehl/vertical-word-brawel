@@ -65,7 +65,7 @@ export async function setup(host) {
   const controls=createControlLayer(makeCanvas);
   const readyBlink=createReadyBlink(makeCanvas);
   const ultimateCast=createUltimateCast(()=>wx.createImage(),makeCanvas,
-    ()=>wx.getFileSystemManager().readFileSync('play/ultimate-cast-ink.bin'));
+    host.files.pathFor,path=>wx.getFileSystemManager().readFileSync(path));
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
   readDevicePerformance(wx,device).then(()=>win.dispatchEvent(new D.Event('deviceperformancechange')));
@@ -107,7 +107,8 @@ export async function setup(host) {
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
-  const comboNameplate=createComboNameplate(makeCanvas,(wx.loadFont(host.files.pathFor('fonts/cast-title.ttf'))||fonts.bold)+','+fonts.bold);
+  const castFont=wx.loadFont(host.files.pathFor('fonts/cast-title.ttf'))||fonts.bold;
+  const comboNameplate=createComboNameplate(makeCanvas,castFont,()=>wx.createImage(),host.files.pathFor('fonts/cast-title-glyphs.webp'));
   const uiAssets=await readUIAssets(host.files);
   uiAssets.compileStyleSelector=D.compileStyleSelector;
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
@@ -260,8 +261,10 @@ export async function setup(host) {
     pointers.delete(id);captured.delete(id);
   }
   function touches(kind,event){
+    const run=win.__pb?.run;
+    const hiddenHud=!win.__pb?.screen&&castHidesUI(run,perf.now());
     // A press begun in combat must not select a card while it is appearing.
-    if(modalTransition.active||(!win.__pb?.screen&&castHidesUI(win.__pb?.run,perf.now()))){
+    if(modalTransition.active||(hiddenHud&&run.state!=='play')){
       for(const [id,p] of pointers)cancelPointer(id,p);
       return;
     }
@@ -302,7 +305,8 @@ export async function setup(host) {
       if(kind==='down'){
         if(x<0||y<0||x>=view.w||y>=view.h)continue;
         const entry=env.__zixingApp?.screen;
-        const target=layout.hit(x,y);
+        // Keep steering during the cut-in without activating invisible HUD buttons.
+        const target=hiddenHud?run.ui.touch.el:layout.hit(x,y);
         const entryButton=entry?.dataset.page==='home'&&entry.contains(target)&&target.closest?.('button');
         p={target,entryButton,x,y,lastX:x,lastY:y,scrolled:false};pointers.set(id,p);
       }

@@ -66,6 +66,11 @@ for(const key of windClarityAtlases){
   for(let k=0;k<source.length;k+=4)if(source[k+3]===0){source.fill(0,k,k+3);decoded.fill(0,k,k+3);}
   assert.equal(digest(decoded),digest(source),'Keep wind coverage and visible colours in the runtime pack: '+key);
 }
+for(const name of ['ultimate-cast.webp','nameplate-blade.webp','ultimate-cast-ink.bin']){
+  const key='assets/vfx/'+name;
+  assert.match(index.files[key],/^text\//,'Cast resources must be installed before the first battle');
+  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(root,'platform',name))),key);
+}
 // This WebP encodes palette indices as pixels. Any transcoding corrupts both themes.
 const chantAsset='assets/vfx/dragon-chant.webp';
 const meshAsset='assets/vfx/dragon-summon-hd/arc-mesh.bin';

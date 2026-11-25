@@ -35,8 +35,10 @@ function sweptWidth(band,ms){
   return left+titleWidth-bladeTip-3;
 }
 export function castTitlePose(band,ms,duration){
-  const swept=sweptWidth(band,ms),settle=unit((ms-500)/200),out=unit((ms-duration+200)/200);
-  const p=unit(swept/Math.max(1,sweptWidth(band,500)));
+  // Reveal the lettering one authored frame behind the leading edge of the blade.
+  const lag=1000/30;
+  const swept=sweptWidth(band,Math.max(0,ms-lag)),settle=unit((ms-500)/200),out=unit((ms-duration+200)/200);
+  const p=unit(swept/Math.max(1,sweptWidth(band,500-lag)));
   const travel=52,overshoot=travel*.10;
   const offset=ms<500?travel-(travel+overshoot)*(1-(1-p)**2):
     -overshoot*(1-settle*settle*(3-2*settle))+titleWidth*out*out;

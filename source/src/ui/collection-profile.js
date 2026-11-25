@@ -38,10 +38,11 @@ function indexPaper(c,face,modeLevels){
   c.moveTo(273,16);c.lineTo(260,16);c.lineTo(263.5,19);c.stroke();
   text(c,face==='stats'?'进阶路线':'基础属性',310,14,12,'#385671','bold','center');
 }
-function drawAttributes(c,stats){
-  const total=stats?attributes.reduce((sum,[key])=>sum+stats[key],0):0;
+function drawAttributes(c,stats,base){
+  // The bars compare the six species attributes on their shared base scale.
+  const total=base?attributes.reduce((sum,[key])=>sum+base[key],0):0;
   attributes.forEach(([key,label],i)=>{
-    const col=i%3,x=13+col*114,y=i<3?46:66,r=total?stats[key]*6/total:0;
+    const col=i%3,x=13+col*114,y=i<3?46:66,r=total?base[key]*6/total:0;
     text(c,label,x,y,12,'#475D75');
     const bar=x+31,track=40;
     c.fillStyle='#D1DCE7';c.fillRect(bar,y-2,track,4);
@@ -97,8 +98,9 @@ export function profilePrint(id,actor,api,face){
   indexPaper(ctx,face,actor?.singleStageEvoLevels);
   let label;
   if(face==='stats'){
-    const stats=id==null?null:api.speciesInfo(id).stats;
-    drawAttributes(ctx,stats);
+    const base=id==null?null:api.speciesInfo(id).stats;
+    const stats=base?{...base,hp:api.startingMaxHp(id)}:null;
+    drawAttributes(ctx,stats,base);
     label='基础属性，'+attributes.map(([key,name])=>name+' '+(stats?.[key]??'—')).join('，');
   }else{
     const rows=routes(id,actor,api);

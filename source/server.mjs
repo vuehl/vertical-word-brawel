@@ -154,6 +154,7 @@ route('PUT', '/profile/prefs', async (req, res) => {
   const b = await body(req) || {};
   const p = acc.profile;
   if (b.settings && typeof b.settings === 'object') p.settings = { ...p.settings, ...b.settings };
+  if (b.firstJourneyPlayed === true) p.firstJourneyPlayed = true;
   for (const k of ['lastSpecies', 'lastBiome', 'avatar', 'frame', 'title', 'skins', 'team', 'collection']) {
     if (b[k] !== undefined) p[k] = b[k];
   }

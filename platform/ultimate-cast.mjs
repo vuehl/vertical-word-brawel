@@ -31,14 +31,14 @@ function fillContours(ctx,words,offset,color){
   return offset;
 }
 
-export function createUltimateCast(makeImage,makeCanvas,readInk){
+export function createUltimateCast(makeImage,makeCanvas,pathFor,readFile){
   let lightAtlas,ink,surface,ctx,last=-1,pending=false,failedCue;
   let bladeAtlas,bladePending=false,bladeFailedCue;
   function loadBlade(){
     const image=makeImage();bladePending=true;
     image.onload=()=>{bladeAtlas=image;bladePending=false;};
     image.onerror=()=>{bladePending=false;};
-    image.src='play/nameplate-blade.webp';
+    image.src=pathFor('assets/vfx/nameplate-blade.webp');
   }
   loadBlade();
   const halves=[-1,-1];
@@ -46,7 +46,7 @@ export function createUltimateCast(makeImage,makeCanvas,readInk){
     pending=true;
     try{
       if(!ink){
-        const data=unzlibSync(new Uint8Array(readInk()));
+        const data=unzlibSync(new Uint8Array(readFile(pathFor('assets/vfx/ultimate-cast-ink.bin'))));
         ink=new Int16Array(data.length);
         let count=0,value=0,shift=0;
         for(const byte of data){
@@ -59,7 +59,7 @@ export function createUltimateCast(makeImage,makeCanvas,readInk){
       const image=makeImage();
       image.onload=()=>{lightAtlas=image;pending=false;};
       image.onerror=()=>{pending=false;};
-      image.src='play/ultimate-cast.webp';
+      image.src=pathFor('assets/vfx/ultimate-cast.webp');
     }catch(error){pending=false;console.warn('大招演出资源读取失败',error);}
   }
   load();

@@ -46,6 +46,12 @@ export function bootAssets(root) {
   });
   const assets={'engine/styles.json':Buffer.from(JSON.stringify(rules)),
     'fonts/cast-title.ttf':fs.readFileSync(path.join(root,'resources/public/fonts/cast-title.ttf'))};
+  assets['fonts/cast-title-glyphs.webp']=fs.readFileSync(path.join(root,'platform/cast-title-glyphs.webp'));
+  // WeChat's preview packager filters loose WebP files. Install the cast assets
+  // from the same versioned archive that supplies the HUD and its font.
+  for(const name of ['ultimate-cast.webp','nameplate-blade.webp','ultimate-cast-ink.bin']){
+    assets['assets/vfx/'+name]=fs.readFileSync(path.join(root,'platform',name));
+  }
   const directory=path.join(root,'resources/public/assets/ui-paper');
   for(const name of fs.readdirSync(directory)){
     if(/\.(png|webp)$/.test(name))assets['assets/ui-paper/'+name]=fs.readFileSync(path.join(directory,name));

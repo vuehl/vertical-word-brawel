@@ -7,7 +7,7 @@ import {moveCopy, specialNames} from '../../source/src/data/form-copy.js';
 import {configureStarterSpecies} from '../../source/src/data/starter-characters.js';
 import {windMoveEffect} from '../../source/src/effects/wind-move-art.js';
 import {runPlan,planIncludes,plannedUpgrade} from '../../source/src/combat/battle-plan.js';
-import {retiredMoveIds, moveAvailableForSpecies, configureSkillLearnsets} from '../../source/src/data/skill-availability.js';
+import {retiredMoveIds, moveAvailableForSpecies, moveOfferLevel, configureSkillLearnsets} from '../../source/src/data/skill-availability.js';
 
 export async function loadSkillCatalog() {
   const read = name => fs.readFileSync(new URL('../../' + name, import.meta.url), 'utf8');
@@ -44,7 +44,7 @@ export async function loadSkillCatalog() {
     ji: entries => Object.defineProperties({}, Object.fromEntries(
       Object.entries(entries).map(([key, get]) => [key, {get, enumerable: true}]))),
     moveCopy, specialNames, windMoveEffect,
-    retiredMoveIds, moveAvailableForSpecies, runPlan, planIncludes, plannedUpgrade,
+    retiredMoveIds, moveAvailableForSpecies, moveOfferLevel, runPlan, planIncludes, plannedUpgrade,
   });
   const evaluate = code => vm.runInContext(code, ctx, {timeout: 5000});
   evaluate('var ' + between('Zg = {', 'var e_ = class'));

@@ -21,7 +21,7 @@ import {dragonChantSeconds,prepareDragonChant,startDragonChant} from './effects/
 import {beginDragonSummon,clearDragonSummon,warmDragonSummon} from './effects/dragon-summon-hd/sequence.js';
 import {configureStarterSpecies,starterUltimate,applyStarterSpeed,updateStarterSpeed,clearStarterSpeed,windSpeedDamageBonus,speedBuff,windBossDamage,windRushMultiplier} from './data/starter-characters.js';
 import {windMoveEffect} from './effects/wind-move-art.js';
-import {retiredMoveIds,moveAvailableForSpecies,configureSkillLearnsets} from './data/skill-availability.js';
+import {retiredMoveIds,moveAvailableForSpecies,moveOfferLevel,configureSkillLearnsets} from './data/skill-availability.js';
 import {runPlan, planIncludes} from './combat/battle-plan.js';
 import {createZixingUI,paperIcon} from './ui/zixing-ui.js';
 import {buttonSoundFiles,buttonSoundFor} from './ui/button-audio.js';
@@ -7643,15 +7643,16 @@ const damageContours={
   "-": [[40.1,37,23.9,37,23.9,37,22.4,36.7,21.1,35.8,21.1,35.8,21.1,35.8,20.3,34.5,20,33,20,33,20,32,20,32,20.3,30.5,21.1,29.2,21.1,29.2,21.1,29.2,22.4,28.3,23.9,28,23.9,28,40.1,28,40.1,28,41.6,28.3,42.9,29.2,42.9,29.2,42.9,29.2,43.7,30.5,44,32,44,32,44,33,44,33,43.7,34.5,42.9,35.8,42.9,35.8,42.9,35.8,41.6,36.7,40.1,37,40.1,37]],
   "×": [[14.2,42.3,14.2,42.3,24,32.4,24,32.4,24.3,32,24,31.6,24,31.6,14.2,21.7,14.2,21.7,13.3,20.4,13,18.8,13,18.8,13,18.8,13.3,17.2,14.2,15.9,14.2,15.9,15.9,14.2,15.9,14.2,17.2,13.3,18.8,13,18.8,13,18.8,13,20.4,13.3,21.7,14.2,21.7,14.2,31.6,24.1,31.6,24.1,32,24.3,32.5,24.1,32.5,24.1,42.4,14.2,42.4,14.2,43.7,13.3,45.2,13,45.2,13,45.2,13,46.8,13.3,48.2,14.2,48.2,14.2,49.8,15.9,49.8,15.9,50.7,17.2,51,18.8,51,18.8,51,18.8,50.7,20.4,49.8,21.7,49.8,21.7,39.9,31.6,39.9,31.6,39.7,32,39.9,32.4,39.9,32.4,49.8,42.3,49.8,42.3,50.7,43.6,51,45.2,51,45.2,51,45.2,50.7,46.8,49.8,48.1,49.8,48.1,48.2,49.8,48.2,49.8,46.8,50.7,45.2,51,45.2,51,45.2,51,43.7,50.7,42.4,49.8,42.4,49.8,32.5,39.9,32.5,39.9,32,39.7,31.6,39.9,31.6,39.9,21.7,49.8,21.7,49.8,20.4,50.7,18.8,51,18.8,51,18.8,51,17.2,50.7,15.9,49.8,15.9,49.8,14.2,48.1,14.2,48.1,13.3,46.8,13,45.2,13,45.2,13,45.2,13.3,43.6,14.2,42.3]]
 };
-function drawCutGlyphRow(ctx,glyphs,top,bottom,extraContours={}){
+function drawCutGlyphRow(ctx,glyphs,top,bottom,extraContours={},outline=true){
   ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';ctx.font='900 47px Arial, sans-serif';
   const face=ctx.createLinearGradient(0,8,0,55);
   face.addColorStop(0,top);
   face.addColorStop(1,bottom);
+  const passes=outline?[[1,10,'#656565'],[0,8,'#ffffff'],[0,0,face]]:[[0,0,face]];
   for(let j=0;j<glyphs.length;j++){
     ctx.save();ctx.translate(j*64,0);
     const ch=glyphs[j],contours=damageContours[ch]??extraContours[ch];
-    for(const [offset,width,color] of [[1,10,'#656565'],[0,8,'#ffffff'],[0,0,face]]){
+    for(const [offset,width,color] of passes){
       ctx.save();ctx.translate(0,offset);ctx.strokeStyle=ctx.fillStyle=color;ctx.lineWidth=width||1;
       if(contours){
         ctx.beginPath();
@@ -7698,6 +7699,7 @@ const comboLetterContours={
 };
 const comboFaces=[
   ['#59cdff','#009de0'],['#fff18a','#ffdf00'],['#ff7575','#ff1818'],['#dc9eff','#b52bff'],
+  ['#ff635d','#ff394d'],
 ];
 // Right-side ink extent from the glyph center, including the 5px outline.
 const comboDigitRight=Array.from({length:10},(_,digit)=>{
@@ -7705,24 +7707,33 @@ const comboDigitRight=Array.from({length:10},(_,digit)=>{
   return (Math.max(...xs)+5-32)/64;
 });
 const comboSheets=[];
-const rainbowSteps=24;
-function comboPhase(tier,phase,column){
-  return tier===4?(phase+column*5)%rainbowSteps:0;
+const comboRainbowPeriod=256;
+let comboRainbowStrip;
+function rainbowStrip(){
+  if(comboRainbowStrip)return comboRainbowStrip;
+  // Tile two identical cycles so the timer and glyphs can sample across the seam.
+  const strip=document.createElement('canvas');
+  strip.width=2*comboRainbowPeriod;strip.height=4;
+  const ctx=strip.getContext('2d'),gradient=ctx.createLinearGradient(0,0,strip.width,0);
+  const colors=['#ff394d','#ff981f','#ffda22','#2bd478','#13cde5','#397dff','#9b54ff','#f541a5'];
+  for(let i=0;i<=colors.length*2;i++)gradient.addColorStop(i/(colors.length*2),colors[i%colors.length]);
+  ctx.fillStyle=gradient;ctx.fillRect(0,0,strip.width,strip.height);
+  comboRainbowStrip=strip;
+  return strip;
 }
-function comboColors(tier,phase){
-  if(tier!==4)return comboFaces[tier];
-  const hue=phase*360/rainbowSteps;
-  return ['hsl('+hue+',100%,75%)','hsl('+hue+',100%,53%)'];
-}
-function comboSheet(tier,phase){
-  const key=tier===4?4+phase:tier;
-  if(!comboSheets[key]){
+function comboSheet(tier){
+  if(!comboSheets[tier]){
     const sheet=document.createElement('canvas');
-    sheet.width=13*64;sheet.height=64;
-    drawCutGlyphRow(sheet.getContext('2d'),'0123456789×连击',...comboColors(tier,phase),comboLetterContours);
-    comboSheets[key]=sheet;
+    sheet.width=13*64;sheet.height=tier===4?128:64;
+    const ctx=sheet.getContext('2d'),glyphs='0123456789×连击';
+    drawCutGlyphRow(ctx,glyphs,...comboFaces[tier],comboLetterContours);
+    if(tier===4){
+      ctx.translate(0,64);
+      drawCutGlyphRow(ctx,glyphs,'#ffffff','#ffffff',comboLetterContours,false);
+    }
+    comboSheets[tier]=sheet;
   }
-  return comboSheets[key];
+  return comboSheets[tier];
 }
 // Wheels use an unwrapped position so another kill can retarget a roll in flight.
 function comboWheelAt(wheel,time){
@@ -7770,18 +7781,22 @@ class ComboRoller {
     this.canvas.textContent='×'+count;this.canvas.setAttribute('aria-label','连击 ×'+count);
   }
   paint(tier,time,progress){
-    const rainbow=tier===4,phase=rainbow?Math.floor(time*16)%rainbowSteps:0;
+    const rainbow=tier===4,phase=rainbow?Math.floor(time*comboRainbowPeriod/4)%comboRainbowPeriod:0;
     if(progress===this.lastProgress && (time===this.paintedAt || (!this.active && (!rainbow||phase===this.lastPhase))))return;
     this.lastProgress=progress;
     this.lastPhase=phase;
     this.paintedAt=time;this.active=false;
     const ctx=this.canvas.getContext('2d');
     const length=this.wheels.length,large=this.count>=50;
-    const colorFrame=tier+'/'+phase+'/'+(rainbow?length:0);
-    if(this.colorFrame!==colorFrame){
-      this.colorFrame=colorFrame;
-      const stops=rainbow?Array.from({length},(_,i)=>comboColors(tier,comboPhase(tier,phase,i+1))[1]):comboColors(tier,phase);
-      this.trackColors=stops;
+    let faces;
+    if(rainbow){
+      if(!this.rainbowFaces){
+        const layer=document.createElement('canvas');
+        layer.width=this.canvas.width;layer.height=this.canvas.height;
+        this.rainbowFaces=layer.getContext('2d');
+      }
+      faces=this.rainbowFaces;
+      faces.clearRect(0,0,this.canvas.width,this.canvas.height);
     }
     // Center the complete line and reserve its peak width for the 40% pulse.
     const lastCenter=2.85+.70*(length-1);
@@ -7799,23 +7814,37 @@ class ComboRoller {
     ctx.save();ctx.translate(this.canvas.width-19-width*Math.cos(angle)/2,92);ctx.rotate(angle);
     const barY=cell*.50*scale+7,start=-width/2;
     ctx.fillStyle='rgba(26,32,42,.58)';ctx.fillRect(start,barY,width,8);
-    const fill=ctx.createLinearGradient(start,barY,rainbow?start+width:start,rainbow?barY:barY+8);
-    this.trackColors.forEach((color,i)=>fill.addColorStop(i/(this.trackColors.length-1),color));
-    ctx.fillStyle=fill;ctx.fillRect(start+width*(1-progress),barY,width*progress,8);
+    const fillStart=start+width*(1-progress);
+    if(rainbow){
+      ctx.drawImage(rainbowStrip(),phase+(1-progress)*comboRainbowPeriod,0,progress*comboRainbowPeriod,4,
+        fillStart,barY,width*progress,8);
+    }else{
+      const fill=ctx.createLinearGradient(start,barY,start,barY+8);
+      fill.addColorStop(0,comboFaces[tier][0]);fill.addColorStop(1,comboFaces[tier][1]);
+      ctx.fillStyle=fill;ctx.fillRect(fillStart,barY,width*progress,8);
+    }
     ctx.scale(scale,scale);ctx.translate(-centerX,-cy);
     ctx.beginPath();ctx.rect(0,cy-40,this.canvas.width,80);ctx.clip();
-    const glyph=(digit,x,y,size,column)=>{
-      const sheet=comboSheet(tier,comboPhase(tier,phase,column));
-      ctx.drawImage(sheet,digit*64,0,64,64,x-size/2,y-size/2,size,size);
+    const sheet=comboSheet(tier);
+    const glyph=(digit,x,y,size)=>{
+      const dx=x-size/2,dy=y-size/2;
+      ctx.drawImage(sheet,digit*64,0,64,64,dx,dy,size,size);
+      if(faces)faces.drawImage(sheet,digit*64,64,64,64,dx,dy,size,size);
     };
-    glyph(11,left+.50*cell,cy,cell,1);
-    glyph(12,left+1.47*cell,cy,cell,length);
-    glyph(10,left+2.24*cell,cy+2,cell*.65,0);
+    glyph(11,left+.50*cell,cy,cell);
+    glyph(12,left+1.47*cell,cy,cell);
+    glyph(10,left+2.24*cell,cy+2,cell*.65);
     for(let i=0;i<length;i++){
       const w=this.wheels[i],pos=comboWheelAt(w,time),base=Math.floor(pos),fraction=pos-base,x=right-i*pitch;
       if(pos!==w.to)this.active=true;
-      if(!(w.blank&&base<w.to))glyph(base%10,x,cy-80*fraction,cell,length-i);
-      if(fraction>0)glyph((base+1)%10,x,cy+80-80*fraction,cell,length-i);
+      if(!(w.blank&&base<w.to))glyph(base%10,x,cy-80*fraction,cell);
+      if(fraction>0)glyph((base+1)%10,x,cy+80-80*fraction,cell);
+    }
+    if(faces){
+      faces.save();faces.globalCompositeOperation='source-in';
+      faces.drawImage(rainbowStrip(),phase,0,comboRainbowPeriod,4,left,0,lineWidth,this.canvas.height);
+      faces.restore();
+      ctx.drawImage(faces.canvas,0,0);
     }
     ctx.restore();
     this.canvas.dataset.frame=String(++this.frame);
@@ -35926,9 +35955,9 @@ function Vb(e, t, n, r) {
   const available = id => moveAvailableForSpecies(id, e) && O_(id);
   let i = new Set(),
     a = [];
-  t?.kit.forEach((e, t) => {
-    let n = k.movesByKey.get(e)?.id;
-    n != null && available(n) && (i.add(n), a.push({ id: n, level: Math.max(1, Ye[t]) }));
+  t?.kit.forEach((key, slot) => {
+    let n = k.movesByKey.get(key)?.id;
+    n != null && available(n) && (i.add(n), a.push({ id: n, level: moveOfferLevel(e, Ye[slot]) }));
   });
   let o = (e) => !!t?.kit.includes(k.moves.get(e).key),
     s = null,
@@ -35941,22 +35970,22 @@ function Vb(e, t, n, r) {
     let t = zb(e);
     c = A_(e)
       .filter((e) => available(e) && !o(e))
-      .map((e) => ({ id: e, level: Bb(t.get(e) ?? 0) }))
+      .map(id => ({ id, level: moveOfferLevel(e, Bb(t.get(id) ?? 0)) }))
       .sort((e, t) => e.level - t.level);
   }
   let l = new Map();
-  for (let e of y)
-    e !== t &&
-      k.get(e.id).types.some((e) => n.includes(e)) &&
-      e.kit.forEach((t, i) => {
+  for (let other of y)
+    other !== t &&
+      k.get(other.id).types.some((e) => n.includes(e)) &&
+      other.kit.forEach((t, i) => {
         let a = k.movesByKey.get(t)?.id,
           s = a == null ? void 0 : k.moves.get(a)?.type;
         if (a == null || !s || (s !== `normal` && !n.includes(s)) || !available(a) || o(a)) return;
         let c = l.get(a),
-          u = Math.max(1, Ye[i]);
+          u = moveOfferLevel(e, Ye[i]);
         c
-          ? (c.from.push(e.id), (c.open ||= r(e.id)), (c.level = Math.min(c.level, u)))
-          : l.set(a, { id: a, level: u, from: [e.id], open: r(e.id) });
+          ? (c.from.push(other.id), (c.open ||= r(other.id)), (c.level = Math.min(c.level, u)))
+          : l.set(a, { id: a, level: u, from: [other.id], open: r(other.id) });
       });
   let u = new Set(c.map((e) => e.id));
   return {
@@ -48822,7 +48851,7 @@ var ME = class {
         for (let t of [...this.looks.keys()]) t !== e.pointerId && this.looks.delete(t);
         this.pinch = 0;
       }
-      let t = document.querySelector(`.minimap`);
+      let t = !window.castHidesUI?.(this.run) && document.querySelector(`.minimap`);
       if (t && !this.mapTap && t.offsetWidth) {
         let n = t.getBoundingClientRect();
         if (
@@ -52285,6 +52314,7 @@ var KO = 300,
     adopt(e) {
       (this.profile &&
         ((e.settings = this.profile.settings),
+        (e.firstJourneyPlayed = this.profile.firstJourneyPlayed || e.firstJourneyPlayed),
         (e.collection = this.profile.collection ?? e.collection),
         (e.lastSpecies = this.profile.lastSpecies),
         (e.lastBiome = this.profile.lastBiome),
@@ -64619,6 +64649,7 @@ function ZX(app) {
   return createZixingUI(app, {
     defaults: SO,
     speciesInfo: id => k.get(id),
+    startingMaxHp: id => Math.round(zE(k.get(id), pt.get(id)?.passive ?? '', app.meta.labStats()).stats.maxHp),
     evolutionIds: id => k.evolutionsOf(id).map(actor=>actor.id),
     evolutionLevel: (from,to) => k.runEvolution(from,k.get(to)).level,
     planCatalog(id) {
@@ -65784,7 +65815,8 @@ function zP(e, t, n, species) {
     i = r ? formMove(r.id, species) : null;
   if (!r || !i) return null;
   let a = g_[i.arch],
-    o = t === 0 ? c(`Inicial`) : c(`Nv. {n}`, { n: Ye[t] }),
+    level = moveOfferLevel(species, Ye[t]),
+    o = t === 0 ? c(`Inicial`) : c(`Nv. {n}`, { n: level }),
     s = i.cls === `physical` ? c(`Físico`) : c(`Especial`);
   return pD(
     X(
@@ -65810,7 +65842,7 @@ function zP(e, t, n, species) {
     void 0,
     t === 0
       ? c(`Lo tiene desde el principio de la partida.`)
-      : c(`Se te puede ofrecer al subir de nivel desde el nivel {n}.`, { n: Ye[t] }),
+      : c(`Se te puede ofrecer al subir de nivel desde el nivel {n}.`, { n: level }),
   );
 }
 function BP(e) {
@@ -73157,7 +73189,7 @@ var JI = class {
         const tier = count >= 100 ? 4 : count >= 50 ? 3 : count >= 25 ? 2 : Number(count >= 10);
         if (streak.dataset.tier !== String(tier)) {
           streak.dataset.tier = String(tier);
-          streak.style.setProperty('--sc',comboColors(tier,0)[1]);
+          streak.style.setProperty('--sc',comboFaces[tier][1]);
         }
         if(this.comboRoller)this.comboRoller.setCount(count,time);
         else{
@@ -78376,6 +78408,7 @@ var mL = new Set([400, 404, 409, 410, 413, 422]),
           skins: t.skins,
           team: t.team,
           collection: t.collection,
+          firstJourneyPlayed: t.firstJourneyPlayed,
         },
         e.token,
       ).catch(error => {if(reportError)throw error;});

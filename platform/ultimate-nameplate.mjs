@@ -1,6 +1,7 @@
 /*! Combo counter adapted from patch-gg/pixelfx, src/fx/ui/combo-counter.js.
  * Copyright (c) 2026 Patch and Hugo Duprez. MIT (see pixelfx-blink-in.js). */
 import {castTitleLayout,castTitleLeft,castTitlePose,titleCenter,titleFont,titleLine,titleWidth} from '../source/src/effects/ultimate-cast-layout.js';
+import {paintCastRow} from './cast-title-rows.mjs';
 import {castDurationMs} from './ultimate-cast.mjs';
 import {Rng} from '../source/src/vendor/pixelfx-blink-in.js';
 
@@ -9,8 +10,12 @@ function rampColor(rgb,target,k){
   return 'rgb('+[channel(16),channel(8),channel(0)].join(',')+')';
 }
 
-export function createComboNameplate(makeCanvas,font){
-  let canvas,ctx,owner,lastStep=-1,layout,shade,base,tip;
+export function createComboNameplate(makeCanvas,font,makeImage,atlasPath){
+  let canvas,ctx,owner,lastStep=-1,layout,shade,base,tip,atlas,rows;
+  const image=makeImage();
+  image.onload=()=>{atlas=image;owner=null;};
+  image.onerror=()=>console.warn('大招招名字形图集未加载',atlasPath);
+  image.src=atlasPath;
   return (run,band,scale,now)=>{
     const cue=run?.ult?.castBanner;
     if(!cue?.name||now-cue.start>=castDurationMs)return null;
@@ -19,6 +24,7 @@ export function createComboNameplate(makeCanvas,font){
     if(fresh){
       owner=cue;layout=castTitleLayout(cue.name);
       shade=rampColor(cue.color,0,.48);base=rampColor(cue.color,0,0);tip=rampColor(cue.color,255,.85);
+      rows=atlas?layout.rows.map(text=>paintCastRow(makeCanvas,atlas,text,shade,base,tip)):[];
     }
     if(!canvas){canvas=makeCanvas();ctx=canvas.getContext('2d');}
     const pixels=Math.min(3,Math.max(1,band.zoom*scale));
@@ -40,16 +46,25 @@ export function createComboNameplate(makeCanvas,font){
           for(let i=0;i<9;i++)ctx.fillRect(edgeX+rng.range(8,60),layout.height/2+rng.range(-44,44),-rng.range(4,21),1.5);
         }else if(hit<1){
           ctx.save();ctx.globalAlpha=(1-hit)*.65;ctx.strokeStyle=tip;ctx.lineWidth=2;
-          ctx.beginPath();ctx.ellipse(titleCenter,layout.height/2,36+60*hit,18+32*hit,0,0,2*Math.PI);ctx.stroke();
+          ctx.beginPath();
+          ctx.save();ctx.translate(titleCenter,layout.height/2);ctx.scale(36+60*hit,18+32*hit);
+          ctx.arc(0,0,1,0,2*Math.PI);ctx.restore();ctx.stroke();
           ctx.restore();
         }
         for(let row=0;row<layout.rows.length;row++){
           const y=(layout.height-(layout.rows.length-1)*titleLine)/2+row*titleLine;
           ctx.save();ctx.translate(titleCenter+offset,y);ctx.rotate(.0774);
-          const fill=ctx.createLinearGradient(0,-36,0,39);
-          fill.addColorStop(0,'white');fill.addColorStop(.66,tip);fill.addColorStop(1,base);
-          ctx.lineWidth=10;ctx.strokeStyle=shade;ctx.strokeText(layout.rows[row],0,1);
-          ctx.fillStyle=hit>=0&&hit<.18?'white':fill;ctx.fillText(layout.rows[row],0,0);ctx.restore();
+          const sprite=rows[row],flash=hit>=0&&hit<.18;
+          if(sprite){
+            ctx.drawImage(sprite.canvas,0,flash?sprite.h:0,sprite.w,sprite.h,
+              -sprite.width/2,-sprite.height/2,sprite.width,sprite.height);
+          }else{
+            const fill=ctx.createLinearGradient(0,-36,0,39);
+            fill.addColorStop(0,'white');fill.addColorStop(.66,tip);fill.addColorStop(1,base);
+            ctx.lineWidth=10;ctx.strokeStyle=shade;ctx.strokeText(layout.rows[row],0,1);
+            ctx.fillStyle=flash?'white':fill;ctx.fillText(layout.rows[row],0,0);
+          }
+          ctx.restore();
         }
         if(ms>600&&ms<castDurationMs-200){
           const length=Math.min(2,Array.from(cue.name).length)*titleFont;

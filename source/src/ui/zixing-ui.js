@@ -227,6 +227,9 @@ export function createZixingUI(app,api) {
   if(window.nativeUI)window.addEventListener('memorywarning',releaseGlyphCanvasCache);
   const current=()=>character(selected);
   const profile=()=>app.meta.profile;
+  // Older local saves have run history. A restored cloud save may only have dust or stage progress.
+  const hasJourneyProgress=p=>!!(p?.firstJourneyPlayed||p?.runs?.length||p?.counters?.runs>0||
+    p?.totalStardust>0||p?.biomes?.forest>0);
   let battleRecovery=null;
   function recoverBattle(session,reason){
     const current=app.run;
@@ -379,27 +382,34 @@ export function createZixingUI(app,api) {
     selected=p&&canDeploy(p,last)?last:4;
     const root=screen('home','','',[]);
     root.classList.add('zx-home-fixed');
-    const startButton=button('开始旅程',()=>{
-      const travel=scene.travel('choose',()=>choose());
-      // Start the shared profile read during the zoom. The chooser handles pending reads and retries.
-      if(!profile())ready().catch(()=>{});
-      return travel;
-    },'primary zx-home-start',{'data-action':'journey'});
+    const startButton=button('开始旅程',()=>openProfilePage('开始旅程',()=>{
+      if(!hasJourneyProgress(profile())){
+        return start({species:defaultStarter,biome:'forest',tier:0,boosts:[],mode:SINGLE_STAGE});
+      }
+      return app.screen===root?scene.travel('choose',()=>choose()):choose();
+    }),'primary zx-home-start',{'data-action':'journey'});
     const entry=(symbol,label,action,open)=>button([
       homeEntryFace(),el('span','paper-entry-content',[menuSymbol(symbol),el('span','paper-button-divider',[],{'aria-hidden':true}),el('span','paper-entry-label',label)]),
     ],open,'zx-home-entry zx-home-'+(action==='multiplayer'?'coop':action),{'data-action':action,'data-paper-surface':'flat'});
-    const coopButton=entry('duo',coopTitle,'multiplayer',()=>openProfilePage(coopTitle,()=>multiplayer()));
-    const labButton=entry('lab','研究所','lab',openLab);
     const helpButton=button([icon('book',18,'#304764'),el('span','','玩法说明')],()=>help(),'zx-plain',{'data-action':'help','data-paper-surface':'flat'});
+    const foot=el('div','zx-home-foot',helpButton);
+    const dock=el('footer','zx-home-dock',[startButton,foot],{'data-paper-surface':'flat'});
+    function showSecondary(){
+      if(!foot.isConnected||!hasJourneyProgress(profile()))return;
+      dock.insertBefore(el('div','zx-home-secondary',[
+        entry('duo',coopTitle,'multiplayer',()=>openProfilePage(coopTitle,()=>multiplayer())),
+        entry('lab','研究所','lab',openLab),
+      ]),foot);
+    }
     // Only artwork absorbs height changes. Navigation stays outside any scroll container.
     root.querySelector('.zx-body').remove();
     root.append(
       el('div','zx-home-top',row(button(paperIcon('settings'),()=>openProfilePage('设置',settings),'zx-gear',{'aria-label':'设置','data-action':'settings','data-paper-surface':'flat'}))),
       el('div','zx-home-visual',homeWordmark(),{role:'heading','aria-level':1,'aria-label':'字行'}),
-      el('footer','zx-home-dock',[
-        startButton,el('div','zx-home-secondary',[coopButton,labButton]),el('div','zx-home-foot',helpButton),
-      ],{'data-paper-surface':'flat'}),
+      dock,
     );
+    if(p)showSecondary();
+    else authPromise?.then(showSecondary,()=>{});
     scene.mount(root,current(),p?app.meta.skinFor(selected):null);
   }
 
@@ -796,9 +806,10 @@ export function createZixingUI(app,api) {
   }
   async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode}) {
     if(activeEntry||app.starting)return false;
+    const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&!hasJourneyProgress(profile());
     let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
-    const scenic=!config.coop&&['map','entry-error'].includes(app.screen?.dataset.page);
+    const scenic=!config.coop&&(firstJourney||['map','entry-error'].includes(app.screen?.dataset.page));
     const view=scenic?journeyLoadingScreen(config):loadingScreen('entry',!!config.coop),{node}=view;
     activeEntry=node;
     const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
@@ -837,6 +848,10 @@ export function createZixingUI(app,api) {
       if(abandoned())return false;
       const ok=await app.startRun(config,update);
       if(!ok)throw app.lastStartError||Error('对局未能开始，请重试');
+      if(firstJourney){
+        profile().firstJourneyPlayed=true;
+        app.meta.saveNow();
+      }
       diagnostics.status='ready';
       return true;
     }catch(error){
@@ -846,7 +861,7 @@ export function createZixingUI(app,api) {
         const errorPage=screen('entry-error','暂时未能进入','',[
           el('div','zx-entry-slip',[menuSymbol('disconnected',48),el('div','zc-copy',[
             el('b','',destination),small(lastPhase||'准备场景')]),text(diagnostics.error,'zx-entry-message')],{'data-paper-surface':'album-page'}),
-        ],[button('返回选择',map),button('重新进入',()=>start(config),'primary',{'data-action':'retry-entry'})]);
+        ],[firstJourney?button('返回首页',home):button('返回选择',map),button('重新进入',()=>start(config),'primary',{'data-action':'retry-entry'})]);
         errorPage.querySelector('.zx-body').dataset.paperSurface='flat';
       }
       return false;

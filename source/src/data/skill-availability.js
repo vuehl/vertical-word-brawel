@@ -12,6 +12,10 @@ const windForms = new Set([16, 17, 18, 58, 59]);
 const windMoves = new Set([98, 33, 17, 332, 239, 49001]);
 const windFusions = new Set([50006, 50106]);
 
+export function moveOfferLevel(species, level) {
+  return fireForms.has(Number(species)) || windForms.has(Number(species)) ? 1 : Math.max(1, level);
+}
+
 export function moveAvailableForSpecies(id, species) {
   if (retiredMoveIds.has(id) || retiredFusionId(id)) return false;
   if (species == null) return true;

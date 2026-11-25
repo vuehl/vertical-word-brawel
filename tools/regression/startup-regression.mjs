@@ -89,9 +89,9 @@ async function checkFirstJourneyFrame(page) {
   assert.equal(frame.resized,0,'Changing world resolution must not reset the visible canvas during the zoom');
   assert.equal(frame.before[3],255,'The outgoing journey frame is visible');
   assert.deepEqual(frame.after,frame.before,'Applying the first profile must preserve the displayed journey frame');
-  await page.waitForFunction(()=>app.screen?.querySelector('.zc-character'));
+  await page.waitForFunction(()=>app.run?.state==='play'&&app.meta.profile?.firstJourneyPlayed,{timeout:90000});
   await page.setViewport(viewport);
-  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.zixing.home();});
+  await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.toMenu();});
 }
 
 // Exercise the returning-player path: a fresh guest never reads cloud progress
@@ -142,13 +142,16 @@ export async function reviewStartupLatency({page,dir,baseline=false}) {
     assert.ok(before.home&&before.complete,'Home must be usable while cloud progress is still pending');
     assert.equal(before.profile,false,'Do not fabricate a profile before cloud progress arrives');
     await page.evaluate(()=>inspected.doc.querySelector('[data-action="journey"]').click());
-    await page.waitForFunction(()=>app.screen?.dataset.page==='choose');
+    await page.waitForFunction(()=>app.screen?.dataset.page==='request');
     assert.ok(await page.evaluate(()=>app.screen.textContent.includes('正在读取存档')&&!app.screen.querySelector('.zc-character')));
     await page.evaluate(()=>app.screen.querySelector('.zx-footer button').click());
   }
   await page.evaluate(()=>releaseStartupCloud());
   await page.waitForFunction(()=>app.meta.profile?.stardust===321&&bootPercentages.includes(100),{timeout:15000});
-  if(!baseline)assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'home','A late save must not reopen character selection after going back');
+  if(!baseline){
+    await page.waitForFunction(()=>app.screen?.querySelector('[data-action="multiplayer"]'));
+    assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'home','A late save must not reopen character selection after going back');
+  }
   const report=await page.evaluate(()=>({...startupAudit,packages:requestedPackages,percentages:[...new Set(bootPercentages)]}));
   report.beforeCloudReturned=before;
   if(!baseline){

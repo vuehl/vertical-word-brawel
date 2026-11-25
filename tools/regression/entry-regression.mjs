@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import {writeFile} from 'node:fs/promises';
 
+// Menu and co-op scenarios start after the solo introduction.
+export async function prepareReturningPlayer(page){
+  await page.evaluate(async()=>{
+    await app.zixing.prepareProfile();
+    app.meta.profile.firstJourneyPlayed=true;
+    await app.meta.saveNow(true);
+    if(app.screen?.dataset.page==='home')app.zixing.home();
+  });
+}
+
 export async function verifyEntry({page,tap,dir}){
   const screen=name=>page.waitForFunction(name=>app.screen?.dataset.page===name,{},name);
   const capture=name=>page.screenshot({path:path.join(dir,name+'.png')});
@@ -11,8 +21,27 @@ export async function verifyEntry({page,tap,dir}){
   await page.waitForFunction(()=>app.screen.querySelector('.journey-scene')?.dataset.word==='炎'&&
     nativeImageLoads.some(img=>img.width===560&&img.height===1212));
   assert.ok(await page.evaluate(()=>!app.menuScene.terrain),'The home artwork must be independent of the battle map');
+  const homeActions=()=>page.evaluate(()=>[...app.screen.querySelectorAll('button')].map(b=>b.dataset.action));
+  assert.deepEqual(await homeActions(),['settings','journey','help']);
+  await capture('00-first-home');
+  await page.evaluate(()=>{
+    const env=inspected.env,prepare=env.prepareForest;
+    env.prepareForest=()=>{env.prepareForest=prepare;throw Error('测试首次资源加载失败');};
+  });
+  await journey();await screen('entry-error');
+  assert.ok(!await page.evaluate(()=>app.meta.profile.firstJourneyPlayed));
+  await tap('.paper-back');await screen('home');
+  assert.deepEqual(await homeActions(),['settings','journey','help']);
+  await journey();
+  await page.waitForFunction(()=>app.run?.state==='play'&&!app.screen,{timeout:90000});
+  assert.deepEqual(await page.evaluate(()=>{
+    const {species,biome,tier,mode}=app.lastCfg;return [species,biome,tier,mode,app.run.stage,!!app.run.coop];
+  }),[4,'forest',0,'single-stage',1,false]);
+  assert.equal(await page.evaluate(async()=>(await app.backend.loadProfile(app.meta.account)).firstJourneyPlayed),true);
+  await tap('.zx-hud-pause');await tap('[data-action="pause-end"]');await tap('[data-action="end-confirm"]');
+  await tap('[data-action="report-home"]');await screen('home');
   await capture('01-home');
-  assert.deepEqual(await page.evaluate(()=>[...app.screen.querySelectorAll('button')].map(b=>b.dataset.action)),['settings','journey','multiplayer','lab','help']);
+  assert.deepEqual(await homeActions(),['settings','journey','multiplayer','lab','help']);
   assert.ok(await page.evaluate(()=>app.screen.querySelector('.zx-home-wordmark').offsetHeight>=70));
   // Some input adapters give window x/y at press and an empty touch list at release.
   await page.evaluate(()=>{
@@ -183,6 +212,42 @@ export async function verifyEntry({page,tap,dir}){
   });
   await page.evaluate(()=>{app.run.streakT=1/60;});
   await page.waitForFunction(()=>!app.run.ui.els.streak.offsetWidth);
+  const rainbow=await page.evaluate(()=>{
+    const hud=app.run.ui;
+    const addStop=CanvasGradient.prototype.addColorStop;
+    // Exercise a mobile palette parser that accepts RGB colors but drops HSL stops.
+    CanvasGradient.prototype.addColorStop=function(offset,color){
+      return addStop.call(this,offset,/^hsla?\(/i.test(color)?'#ffffff':color);
+    };
+    try{
+      hud.streakHud(99,3,2);
+      hud.streakHud(100,3,2.5);
+      hud.streakHud(101,3,3);
+      const canvas=hud.els.streak.querySelector('canvas'),ctx=canvas.getContext('2d');
+      function frame(time){
+        // An almost empty bar isolates the ink in the digits and caption.
+        hud.streakHud(101,.01,time);
+        return ctx.getImageData(0,0,canvas.width,canvas.height).data;
+      }
+      const before=frame(4-1/60),next=frame(4),later=frame(5);
+      const dominant=[0,0,0];
+      let seamChange=0,moving=0;
+      for(let i=0;i<next.length;i+=4){
+        const r=next[i],g=next[i+1],b=next[i+2],max=Math.max(r,g,b);
+        if(next[i+3]<240||max-Math.min(r,g,b)<100)continue;
+        dominant[max===r?0:max===g?1:2]++;
+        const delta=p=>Math.max(Math.abs(r-p[i]),Math.abs(g-p[i+1]),Math.abs(b-p[i+2]));
+        seamChange=Math.max(seamChange,delta(before));
+        if(delta(later)>50)moving++;
+      }
+      return {dominant,seamChange,moving};
+    }finally{
+      CanvasGradient.prototype.addColorStop=addStop;
+      hud.streakHud(0,0,5);
+    }
+  });
+  assert.ok(rainbow.dominant.every(pixels=>pixels>100)&&rainbow.moving>500&&rainbow.seamChange<24,
+    'RGB ink must flow across the combo and wrap smoothly: '+JSON.stringify(rainbow));
   await page.evaluate(()=>{
     for(const id of ['rare-candy','fire-stone','ice-stone','leaf-stone','tm-case','stick','bicycle','full-heal'])app.run.player.items.set(id,1);
   });

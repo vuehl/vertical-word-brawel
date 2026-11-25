@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {RelayRoom} from '../../source/src/network/multiplayer.js';
 import {multiplayerConfig} from '../../source/src/network/multiplayer-config.js';
 import {cloudSocket} from '../../platform/cloud-coop.mjs';
+import {prepareReturningPlayer} from './entry-regression.mjs';
 
 export async function reviewCoop(browser, gamePort) {
   const endpoint = new URL(process.env.COOP_TEST_URL || 'ws://127.0.0.1:8787/ws');
@@ -155,7 +156,10 @@ export async function reviewCoop(browser, gamePort) {
         assert.equal(defaultCard.query,undefined);
       }
       await page.evaluate(() => { releaseTextDownload(); releaseOptionalDownloads(); });
-      if(i!==1)await page.waitForFunction(() => window.app?.screen?.querySelector('[data-action="multiplayer"]'), {timeout:90000});
+      if(i===0){
+        await page.waitForFunction(()=>window.app?.screen?.dataset.page==='home',{timeout:90000});
+        await prepareReturningPlayer(page);
+      }
       if(sqlTest && i===0){
         await page.evaluate(()=>app.screen.querySelector('[data-action="lab"]').click());
         await page.waitForFunction(()=>app.screen?.dataset.page==='lab' && app.meta.profile.stardust===150);
@@ -197,6 +201,7 @@ export async function reviewCoop(browser, gamePort) {
         cardQuery={roomCode:code}; // Previously sent invitations still open the room.
       }else{
         await page.waitForFunction(code=>window.app?.coopRoom?.code===code,{timeout:90000},code);
+        await prepareReturningPlayer(page);
         await click(page,'离开房间');
         await click(page,'返回首页');
         await page.evaluate(()=>fixtureShow({query:{roomCode:'invalid'}}));

@@ -24,6 +24,22 @@ test('removed skills cannot resolve or enter either starter family through share
   }
 });
 
+test('at character level one the first draw and rerolls cover every ordinary fire and wind move', () => {
+  ctx.m=[];
+  ctx.F={shuffle:list=>list};
+  for(const species of [4,5,6,16,17,18,58,59]){
+    const fire=species<7,opening=fire?52:98;
+    const player={speciesId:species,level:1,types:[fire?'fire':'flying'],
+      roster:config.Bt.find(row=>row.id===(fire?4:16)),moves:[],vitamins:new Map(),
+      freeMoveSlot:()=>1,ownedMoveIds:()=>new Set([opening])};
+    const run={player,meta:{inLeague:()=>true},banished:new Set()};
+    const expected=fire?[53,83,126,488,517]:[17,33,239,332,49001];
+    assert.ok(catalog(species).every(move=>move.level===1));
+    const draws=[...ctx.Ub(run,3),...ctx.Ub(run,3)];
+    assert.deepEqual([...new Set(draws.map(offer=>offer.id))].sort((a,b)=>a-b),expected);
+  }
+});
+
 test('each wind form learns six moves and has exactly four unordered fusion pairs', () => {
   evaluate(between('var M_ = class', 'function P_('));
   evaluate(between('function Tx(', 'function Ex('));
