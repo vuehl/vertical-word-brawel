@@ -30,6 +30,7 @@ export async function reviewFireSpin(page,dir,moves){
       bodyRatios:s?Array.from({length:s.mesh.count},(_,i)=>s.attributes[1].array[i*4+2]===0?s.attributes[1].array[i*4]/s.attributes[0].array[i*4+3]:null).filter(ratio=>ratio!==null):[],
       camera:r.camDist,glError:app.r.renderer.getContext().getError()};
   });
+  const cameraBeforeCast=await page.evaluate(()=>{app.run.updateCamera(1);return app.run.camDist;});
   const report={baseline,environment:'Actual compiled WeChat bundle in desktop Chrome SwiftShader, not phone FPS.',qualities:[],directions:[]};
   await setup();await page.evaluate(()=>vfxAdvance(18));report.main=await sample();
   await page.screenshot({path:path.join(dir,baseline?'原版.png':'手绘版.png')});
@@ -48,7 +49,7 @@ export async function reviewFireSpin(page,dir,moves){
   }
   for(const quality of ['low','medium','high']){
     await setup(quality);await page.evaluate(()=>vfxAdvance(18));const result=await sample();
-    assert.ok(result.sprites>0&&result.sprites<=result.limit);assert.equal(result.camera,42);assert.equal(result.glError,0);
+    assert.ok(result.sprites>0&&result.sprites<=result.limit);assert.equal(result.camera,cameraBeforeCast);assert.equal(result.glError,0);
     report.qualities.push({quality,...result});await page.screenshot({path:path.join(dir,'画质-'+quality+'.png')});
   }
   for(const [name,angle] of [['上',-Math.PI/2],['右',0],['下',Math.PI/2],['左',Math.PI]]){
@@ -81,8 +82,23 @@ export async function reviewFireSpin(page,dir,moves){
   report.otherMoves=[];
   for(const key of ['flamethrower','water-gun','ember']){
     const other=moves.find(m=>m.key===key);
-    const result=await page.evaluate(id=>{vfxSetup();app.run.player.addMove(id);app.run.player.moves[0].timer=0;vfxAdvance(18);const v=app.run.vfx.crafted,p=app.run.vfxPeaks;return {authored:v.fireSpin.mesh.count,other:p.volumes+p.firePackets+p.projectiles+p.particles};},other.id);
-    assert.equal(result.authored,0);assert.ok(result.other>0);report.otherMoves.push({key,...result});
+    const result=await page.evaluate(async id=>{
+      vfxSetup();
+      const r=app.run,v=r.vfx.crafted;
+      if(!r.player.addMove(id))throw Error('Missing comparison move '+id);
+      const move=r.player.moves[0];
+      await v.prepareMoveTexture(move.def.effectKey??move.def.key);
+      move.timer=0;
+      let authored=0,other=0;
+      for(let frame=0;frame<18;frame++){
+        vfxAdvance(1,1/30,false);
+        authored=Math.max(authored,v.fireSpin.mesh.count);
+        other=Math.max(other,v.fireJet.reference.mesh.count+v.fireball.mesh.count);
+      }
+      const p=r.vfxPeaks;
+      return {authored,other:other+p.volumes+p.firePackets+p.projectiles+p.particles};
+    },other.id);
+    assert.equal(result.authored,0,key);assert.ok(result.other>0,key+' must render');report.otherMoves.push({key,...result});
   }
   // Inspect all twenty authored poses without enemy silhouettes or damage
   // labels covering the curls. This uses the compiled effect on the real desk.
@@ -101,7 +117,7 @@ export async function reviewFireSpin(page,dir,moves){
       const parts=Array.from({length:s.mesh.count},(_,j)=>({kind:s.attributes[1].array[j*4+2],frame:s.attributes[1].array[j*4+1]}));
       return {parts,triangles:s.mesh.geometry.index.count/3,projection:s.mesh.userData.projection,glError:app.r.renderer.getContext().getError()};
     },i);
-    assert.equal(state.projection,'isometric-fire-funnel');assert.equal(state.triangles,2*(24*24+16*16));assert.equal(state.glError,0);
+    assert.equal(state.projection,'isometric-fire-funnel');assert.equal(state.triangles,2*24*24);assert.equal(state.glError,0);
     const body=state.parts.find(p=>p.kind===0),dust=state.parts.find(p=>p.kind===4);
     assert.ok(body&&dust);assert.equal(body.frame,dust.frame,'Ground dust must stay registered to the exact body pose');
     report.shapeCycle.push(state);shapeFrames.push(await page.screenshot());

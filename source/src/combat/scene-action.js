@@ -41,7 +41,7 @@ export function sceneAction(run,target,prompt){
     case 'challenge':return action(used?'挑战进度':'开启挑战',used?(data.left?'剩 '+data.left+' 个':'已完成'):'',used);
     case 'boss':return action('召唤首领',run.bossSpawned?'已召唤':'',run.bossSpawned);
     case 'shrine':return action('触碰圣地',run.bossSpawned?'已唤醒':'',run.bossSpawned);
-    case 'portal':return action(run.endless?'前往新区':data.sanct?(run.stage>=4?'离开圣地':'进入圣地'):'进入传送门');
+    case 'portal':return action(run.endless?'前往新区':data.sanct?(run.stage>=4?'离开圣地':'进入圣地'):'进门');
     default:return action(raw);
   }
 }

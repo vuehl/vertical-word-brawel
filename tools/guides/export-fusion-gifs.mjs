@@ -84,7 +84,7 @@ try{
   });
   await page.evaluate(stampede=>{
     const title=document.createElement('div');title.id='clip-title';if(stampede)title.style.display='none';document.body.append(title);
-    window.fusionSetup=()=>{
+    window.fusionSetup=skill=>{
       const r=app.run,p=r.player;app.halted=true;r.state='play';r.ui.hideModal();r.godMode=true;r.pendingLevels=0;
       r.director.update=()=>{};r.events.update=()=>{};r.minibosses.update=()=>{};r.queueLevelUp=()=>{};
       r.enemies.clear();r.ult.clear();r.projectiles.clear();r.zones.clear();r.vfx.clear();r.timers.length=0;r.anims.length=0;r.ghosts.length=0;
@@ -99,7 +99,9 @@ try{
         const ex=x+offset[0],ez=z+offset[1],n=r.enemies.spawn(id,ex,ez,1,1,0);
         r.enemies.hp[n]=r.enemies.maxHp[n]=1e7;r.enemies.y[n]=r.terrain.surface(ex,ez);r.enemies.kx[n]=r.enemies.kz[n]=0;
       }
-      r.enemies.update();r.lockTarget=0;
+      r.enemies.update();
+      // The vortex uses normal auto-aim so the target reticle never covers its artwork.
+      r.lockTarget=skill.key==='fu-4'||skill.key==='fire-spin'?-1:0;
       inspected.doc.querySelectorAll('.zx-intro,.run-hint,.banner').forEach(n=>n.remove());
     };
     window.fusionDraw=()=>{const r=app.run;app.r.renderer.resetState();r.updateCamera(1/30);r.renderWorld(0);r.vfx.update(0);app.r.render(0);r.ui.hud(r);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);};
@@ -107,7 +109,7 @@ try{
   },stampede);
   for(const skill of skills){
     const def=await page.evaluate(async skill=>{
-      fusionSetup();const r=app.run,p=r.player;p.setSpecies(skill.species);
+      fusionSetup(skill);const r=app.run,p=r.player;p.setSpecies(skill.species);
       p.evoStage=skill.species===5?1:skill.species===6?2:0;p.recompute();
       await r.sprites.prepareHeroForm(skill.species);
       if(!p.addMove(skill.id))throw Error('Missing fusion '+skill.key);

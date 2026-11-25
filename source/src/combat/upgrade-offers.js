@@ -549,7 +549,7 @@ var lS = [{
       const r=Math.min(9,Math.hypot(e.tx-n.x,e.tz-n.z)),i=n.x+e.ax*r,a=n.z+e.az*r;
       const vortex=(x,z,scale,duration,main)=>{
         let damageTick=0,spokeTick=0;const key={};
-        art.play('seal',x,U(t,x,z)+.15,z,6*scale,{life:.28,mode:1,height:8*scale,priority:2});
+        art.play('seal',x,U(t,x,z)+.15,z,6*scale,{life:.28,mode:1,height:8*scale,priority:2,visualScale:1});
         W(t,duration,(age,dt)=>{
           const phase=age/duration,baseRadius=(2.4+(main?phase*1.6:0))*scale;
           const radius=baseRadius*e.R,y=U(t,x,z);
@@ -572,12 +572,12 @@ var lS = [{
           art.fusionBurst(x,y,z,artRadius,main);
           q(e,x,z,radius,main?1.8:.9,{status:'burn',statusChance:.8,knock:4});
           if(main){
-            gx(e,x,z,radius*.7,2.5,.12,'burn',.5,undefined,e.type,{authoredFire:true,artRadius:artRadius*.7});
+            gx(e,x,z,radius*.7,2.5,.12,'burn',.5,undefined,e.type,{authoredFire:true,artRadius:artRadius*.7,visualScale:1});
           }
           t.shake(main?.25:.1,x,z);M(t.audio,main?.8:.4);fs(t.audio,.18,.6);
         });
       };
-      art.play('charge',n.x,n.y+1,n.z,4,{life:.25});
+      art.play('charge',n.x,n.y+1,n.z,4,{life:.25,visualScale:1});
       t.later(.3,()=>vortex(i,a,1,2.6*e.D,true));
       for(let j=0;j<mx(e,1,2);j++){
         const angle=Math.atan2(e.az,e.ax)+(j?-1:1)*.9;

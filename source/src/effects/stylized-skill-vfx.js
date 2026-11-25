@@ -191,7 +191,7 @@ export class StylizedSkillFX{
       case 'inferno':return [ball,base];
       case 'fire-blast':return [ball,base,family.mushroomTexture];
       case 'fire-ultimate':case 'fu-t-fire':return [base,family.mushroomTexture];
-      case 'fu-4':return [base,spin];
+      case 'fu-4':return [base,spin,family.stormTexture];
       default:return family.supports(key)?[base]:[];
     }
   }

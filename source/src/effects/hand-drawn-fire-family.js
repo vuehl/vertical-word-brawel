@@ -2,12 +2,14 @@ import {VFX_SCALE} from './visual-scale.js';
 import {fireFootprints,fireFootprintGLSL,fireSurfaceGeometry} from './fire-footprint.js';
 import {B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/fire-family.json' with {type:'json'};
+import stormRings from '../../../resources/public/assets/vfx/fire-storm-rings.json' with {type:'json'};
 import mushroomAtlas from '../../../resources/public/assets/vfx/fire-mushroom.json' with {type:'json'};
 
 export const fireFamilyMoves=new Set(['scratch','slash','dragon-claw','fire-fang','flare-blitz','air-slash','inferno','fire-blast','fu-4']);
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
 const ringCycleHz=atlas.clips.ring.fps/atlas.clips.ring.count;
+const stormPageStart=atlas.columns*atlas.rows;
 // Measured lower-ring aspect and tilt in the packed eruption / meteor drawings.
 const burstFootprints={eruption:{depthRatio:.56,shear:.16,pivotY:.46},meteorHit:{depthRatio:.48,shear:.02,pivotY:.42}};
 const vertex=layout=>`
@@ -16,6 +18,7 @@ uniform vec3 heroPosition;
 varying vec4 vScreen;varying vec4 vHero;varying vec2 vClarity;varying vec4 vBurst;
 varying vec2 vUv;varying vec2 vLocal;varying vec2 vCut;varying float vAlpha;varying float vPalette;
 varying vec2 vNextUv;varying float vBlend;
+varying float vStormRing;
 ${fireFootprintGLSL}
 void main(){
  vec2 local=(uv-iPose.xy)*vec2(iOrigin.w,iStyle.w);
@@ -69,21 +72,28 @@ void main(){
  vec4 heroView=viewMatrix*vec4(heroPosition,1.);vec4 heroClip=projectionMatrix*heroView;
  vHero=vec4(heroClip.xy/max(.01,heroClip.w),vec2(projectionMatrix[0][0]*1.15,projectionMatrix[1][1]*1.8)/max(.01,heroClip.w));
  vClarity=iFrame.zw;
- vec2 tile=vec2(mod(iFrame.x,${layout.columns}.),${layout.rows-1}.-floor(iFrame.x/${layout.columns}.));
- vUv=(tile+mix(vec2(.5/${layout.tile}.),vec2(1.-.5/${layout.tile}.),uv))/vec2(${layout.columns}.,${layout.rows}.);
- vec2 nextTile=vec2(mod(iTween.x,${layout.columns}.),${layout.rows-1}.-floor(iTween.x/${layout.columns}.));
- vNextUv=(nextTile+mix(vec2(.5/${layout.tile}.),vec2(1.-.5/${layout.tile}.),uv))/vec2(${layout.columns}.,${layout.rows}.);vBlend=iTween.y;
+ vStormRing=step(${stormPageStart}.,iFrame.x);
+ vec2 grid=mix(vec2(${layout.columns}.,${layout.rows}.),vec2(${stormRings.columns}.,${stormRings.rows}.),vStormRing);
+ vec2 indices=vec2(iFrame.x,iTween.x)-vStormRing*${stormPageStart}.;
+ vec2 tileUv=mix(vec2(.5/${layout.tile}.),vec2(1.-.5/${layout.tile}.),uv);
+ vUv=(vec2(mod(indices.x,grid.x),grid.y-1.-floor(indices.x/grid.x))+tileUv)/grid;
+ vNextUv=(vec2(mod(indices.y,grid.x),grid.y-1.-floor(indices.y/grid.x))+tileUv)/grid;vBlend=iTween.y;
  vAlpha=iFrame.y;vPalette=iStyle.z;vLocal=uv;vCut=vec2(mixedBurst?0.:iPose.z,iPose.w);
 }`;
 const fragment=`
+uniform sampler2D stormMap;
+varying float vStormRing;
 uniform sampler2D map;uniform float crispCloud;varying vec2 vUv;varying vec2 vLocal;varying vec2 vCut;varying float vAlpha;varying float vPalette;
 varying vec4 vScreen;varying vec4 vHero;varying vec2 vClarity;varying vec4 vBurst;
 varying vec2 vNextUv;varying float vBlend;
+vec4 sampleFire(vec2 coords){
+ return vStormRing>.5?texture2D(stormMap,coords):texture2D(map,coords);
+}
 void main(){
  float lower=vCut.x+(vCut.x>0.?.13*pow(abs(vLocal.x-.5)*2.,2.):0.);
  if(vLocal.y<lower||vLocal.y>vCut.y)discard;
- vec4 ink=texture2D(map,vUv);
- if(vBlend>0.){vec4 nextInk=texture2D(map,vNextUv);float a=mix(ink.a,nextInk.a,vBlend);ink=vec4(mix(ink.rgb*ink.a,nextInk.rgb*nextInk.a,vBlend)/max(.001,a),a);}
+ vec4 ink=sampleFire(vUv);
+ if(vBlend>0.){vec4 nextInk=sampleFire(vNextUv);float a=mix(ink.a,nextInk.a,vBlend);ink=vec4(mix(ink.rgb*ink.a,nextInk.rgb*nextInk.a,vBlend)/max(.001,a),a);}
  float density=ink.a*smoothstep(crispCloud>.5?.035:.06,crispCloud>.5?.45:.52,ink.a);
  if(vBurst.x>.5){
   // Keep the hot central column upright. The lower lip, outer arcs and ash
@@ -167,12 +177,13 @@ export class HandDrawnFireFamily{
    return texture;
   };
   this.texture=atlasTexture('assets/vfx/fire-family.png','loaded');
+  this.stormTexture=atlasTexture('assets/vfx/fire-storm-rings.webp','stormLoaded');
   this.mushroomTexture=atlasTexture('assets/vfx/fire-mushroom.png','mushroomLoaded');
   const batch=(capacity,kind)=>{
    const foreground=kind===1,layout=foreground?mushroomAtlas:atlas;
    const g=fireSurfaceGeometry(foreground?24:1,true);
    const attributes=['iOrigin','iFrame','iStyle','iPose','iTween'].map(name=>{const a=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);g.setAttribute(name,a);return a;});
-   const m=new ShaderMaterial({vertexShader:vertex(layout),fragmentShader:fragment,uniforms:{map:{value:foreground?this.mushroomTexture:this.texture},crispCloud:{value:foreground?1:0},heroPosition:{value:{x:0,y:0,z:0}}},transparent:true,depthWrite:false,depthTest:!foreground,side:2,toneMapped:false});m.forceSinglePass=true;
+   const m=new ShaderMaterial({vertexShader:vertex(layout),fragmentShader:fragment,uniforms:{map:{value:foreground?this.mushroomTexture:this.texture},stormMap:{value:this.stormTexture},crispCloud:{value:foreground?1:0},heroPosition:{value:{x:0,y:0,z:0}}},transparent:true,depthWrite:false,depthTest:!foreground,side:2,toneMapped:false});m.forceSinglePass=true;
    const mesh=new InstancedMesh(g,m,capacity);mesh.name=kind===2?'fire-vortex-rear-spokes':foreground?'fire-mushroom-foreground':'authored-fire-family';mesh.count=0;mesh.visible=false;mesh.frustumCulled=false;mesh.renderOrder=kind===2?6.98:foreground?1000:7.15;scene.add(mesh);return {mesh,attributes};
   };
   const normal=batch(128,0),top=batch(16,1);this.mesh=normal.mesh;this.attributes=normal.attributes;this.topMesh=top.mesh;this.topAttributes=top.attributes;
@@ -194,8 +205,9 @@ export class HandDrawnFireFamily{
    if(index<0)return null;
    const removed=this.events.splice(index,1)[0];if(removed.key)this.keys.delete(removed.key);
   }
-  this.loadTexture(options.foreground?this.mushroomTexture:this.texture);
-  const spec=(options.foreground?mushroomAtlas:atlas).clips[clip];
+  const storm=stormRings.clips[clip];
+  this.loadTexture(storm?this.stormTexture:options.foreground?this.mushroomTexture:this.texture);
+  const spec=storm??(options.foreground?mushroomAtlas:atlas).clips[clip];
   const e={clip,x,y,z,size,age:-(options.delay||0),life:spec.count/30,own,alpha:1,angle:0,palette:0,mode:0,anchorX:.5,anchorY:.5,priority:1,cutLower:0,cutUpper:1,...options};
   this.events.push(e);this.played++;return e;
  }
@@ -237,7 +249,7 @@ export class HandDrawnFireFamily{
    const angle=this.slashAngle(x-(player?.x??x),z-(player?.z??z));
    this.play('blade',x,y,z,3.5,{own,life:.28,palette:4,angle});this.owner.impacts++;return;
   }
-  this.play('burst',x,y,z,1.9,{own,life:.26,alpha:.9});this.owner.impacts++;
+  this.play('burst',x,y,z,1.9,{own,life:.26,alpha:.9,visualScale:key==='fu-4'?1:VFX_SCALE});this.owner.impacts++;
  }
  strike(key,x,y,z,dx,dz,radius){
   const angle=Math.atan2(dz,dx),size=clamp(radius*1.6,2.5,7);
@@ -274,7 +286,7 @@ export class HandDrawnFireFamily{
   const existing=this.keys.get(zone),artRadius=zone.artRadius??zone.r;
   const neighbor=!existing&&this.events.find(e=>e.clip==='crack'&&e.key&&e.key!==zone&&Math.hypot(e.x-zone.x,e.z-zone.z)<Math.min(artRadius,e.size/2)*.9);
   if(neighbor&&this.clock-neighbor.seen<.08)return;
-  this.touch(zone,'crack',zone.x,zone.y+.10,zone.z,artRadius*2,{mode:1,height:artRadius*2,alpha:.52,clarity:1,cycleHz:.65,priority:0});
+  this.touch(zone,'crack',zone.x,zone.y+.10,zone.z,artRadius*2,{mode:1,height:artRadius*2,alpha:.52,clarity:1,cycleHz:.65,priority:0,visualScale:zone.visualScale});
  }
  ring(x,y,z,radius,life=.6){
   this.play('ring',x,y+.14,z,radius*2.1,{life,mode:1,grow:true,alpha:.85,clarity:2,priority:2});
@@ -311,21 +323,23 @@ export class HandDrawnFireFamily{
  }
  fusionVortex(key,x,y,z,radius,main){
   this.owner.touch(key,{x,y,z,radius:radius*(main?1.05:.95),height:radius*3,mode:3,type:'fire',handDrawn:true,own:true});
-  this.touch(key,'ring',x,y+.18,z,radius*2.5,{mode:1,priority:2,alpha:.32,clarity:2,cycleHz:ringCycleHz});
+  this.touch(key,'sweepRing',x,y+.18,z,radius*2.5,{mode:1,height:radius*2.5,spin:-1.8,priority:2,alpha:.32,clarity:2,visualScale:1});
  }
  fusionSpoke(x,y,z,dx,dz,vortexRadius){
   // Match the rendered funnel width at the emission height.
-  const width=vortexRadius*1.05*2.4*VFX_SCALE,start=width*.17,travel=width*.55+4.4*VFX_SCALE;
+  const width=vortexRadius*1.05*2.4,start=width*.17,travel=width*.55+4.4;
   this.play('wake',x+dx*start,y+width*.60,z+dz*start,5.7,{
    life:.42,mode:4,angle:Math.atan2(-dz,-dx),anchorX:.32,height:4.8,
    travelX:dx*travel,travelZ:dz*travel,rise:.75,priority:1,
-   spoke:{x,z,dx,dz}
+   spoke:{x,z,dx,dz},visualScale:1
   });
  }
  fusionBurst(x,y,z,radius,main){
-  this.play('eruption',x,y,z,main?12:8,{life:.65,anchorY:.2,priority:2});
-  this.play('pillar',x,y,z,main?8:5,{height:main?12:8,life:.6,delay:.08,alpha:.7,anchorY:.18,priority:2});
-  this.ring(x,y,z,radius*(main?1.25:1.1),.8);
+  this.play('eruption',x,y,z,main?12:8,{life:.65,anchorY:.2,priority:2,visualScale:1});
+  this.play('pillar',x,y,z,main?8:5,{height:main?12:8,life:.6,delay:.08,alpha:.7,anchorY:.18,priority:2,visualScale:1});
+  const ringRadius=radius*(main?1.25:1.1);
+  this.play('fusionRing',x,y+.14,z,ringRadius*2.1,{life:.8,loop:true,mode:1,height:ringRadius*2.1,grow:true,alpha:.72,clarity:2,priority:2,visualScale:1});
+  this.play('shockwave',x,y+.19,z,ringRadius*2.15,{life:.8*.65,mode:1,height:ringRadius*2.15,alpha:.36,clarity:2,priority:2,delay:.07,visualScale:1});
  }
  fireBlast(x,y,z,radius){
   const f=this,s=clamp(radius,2.8,5.5);
@@ -389,7 +403,10 @@ export class HandDrawnFireFamily{
   for(const e of group){
    if(e.age<0)continue;
    if(count>=(foreground?16:this.limit))break;
-   const spec=(foreground?mushroomAtlas:atlas).clips[e.clip],t=clamp(e.age/e.life),ease=1-(1-t)**2;
+   const storm=stormRings.clips[e.clip];
+   if(storm&&!this.stormLoaded)continue;
+   const spec=storm??(foreground?mushroomAtlas:atlas).clips[e.clip],t=clamp(e.age/e.life),ease=1-(1-t)**2;
+   const first=spec.first+(storm?stormPageStart:0),visualScale=e.visualScale??VFX_SCALE;
    const biteHit=e.bite?Math.max(0,1-Math.abs(e.age-.14)/.06):0;
    const growth=e.spoke?Math.min(1,.38+t*2.8):e.bite?1.08-.13*smooth(e.age/.14)+biteHit*.07:e.mushroomPart==='stem'?.72+.28*clamp(e.age/.18):e.mushroomPart==='cap'?.30+.70*(1-(1-clamp(e.age/.28))**3):e.grow?.18+.82*Math.sin(Math.min(1,t*1.5)*Math.PI/2):e.scaleFrom!=null?e.scaleFrom+(e.scaleTo-e.scaleFrom)*ease:1;
    const vertical=e.bite?growth*(1-biteHit*.24):e.mushroomPart==='stem'?.16+.84*(1-(1-clamp(e.age/.30))**2):e.mushroomPart==='cap'?.50+.50*(1-(1-clamp(e.age/.32))**2):growth;
@@ -400,11 +417,11 @@ export class HandDrawnFireFamily{
    const birth=e.spoke?Math.min(1,t/.095):e.fadeIn?smooth(e.age/e.fadeIn):1,fade=e.fadeOut?smooth((e.life-e.age)/e.fadeOut):e.key||e.mushroomPart?1:Math.min(1,(1-t)*5);
    const alpha=e.alpha*(e.own?v.ownOpacity:1)*v.opacity*(v.calm?.76:1)*birth*fade;
    const o=count++*4;
-   origin[o]=e.x+(e.travelX||0)*t+(e.releasing?(e.tailVX||0)*e.life*smooth(t):0);origin[o+1]=e.y-(e.fall||0)*t+(e.rise||0)*t;origin[o+2]=e.z+(e.travelZ||0)*t+(e.releasing?(e.tailVZ||0)*e.life*smooth(t):0);origin[o+3]=e.size*growth*VFX_SCALE;
-   frame[o]=spec.first+index;frame[o+1]=alpha;frame[o+2]=e.clarity||0;frame[o+3]=e.own&&(e.palette===0||e.heroOpening)?1:0;
-   const footprint=fireFootprints[e.clip],burst=burstFootprints[e.clip];
-   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=footprint?origin[o+3]:(e.height||e.size)*vertical*VFX_SCALE;
-   pose[o]=e.anchorX;pose[o+1]=footprint?footprint.pivotY:e.anchorY;pose[o+2]=burst?burst.pivotY:e.cutLower;pose[o+3]=e.cutUpper;tween[o]=spec.first+next;tween[o+1]=e.blend?position-index:0;tween[o+2]=burst?-burst.depthRatio:(footprint?.depthRatio??0);tween[o+3]=(burst??footprint)?.shear??0;
+   origin[o]=e.x+(e.travelX||0)*t+(e.releasing?(e.tailVX||0)*e.life*smooth(t):0);origin[o+1]=e.y-(e.fall||0)*t+(e.rise||0)*t;origin[o+2]=e.z+(e.travelZ||0)*t+(e.releasing?(e.tailVZ||0)*e.life*smooth(t):0);origin[o+3]=e.size*growth*visualScale;
+   frame[o]=first+index;frame[o+1]=alpha;frame[o+2]=e.clarity||0;frame[o+3]=e.own&&(e.palette===0||e.heroOpening)?1:0;
+   const footprint=fireFootprints[e.clip==='fusionRing'?'ring':e.clip],burst=burstFootprints[e.clip];
+   style[o]=e.angle+(e.spin||0)*(e.age+(e.phaseOffset||0));style[o+1]=e.mode;style[o+2]=e.palette;style[o+3]=footprint?origin[o+3]:(e.height||e.size)*vertical*visualScale;
+   pose[o]=e.anchorX;pose[o+1]=footprint?footprint.pivotY:e.anchorY;pose[o+2]=burst?burst.pivotY:e.cutLower;pose[o+3]=e.cutUpper;tween[o]=first+next;tween[o+1]=e.blend?position-index:0;tween[o+2]=burst?-burst.depthRatio:(footprint?.depthRatio??0);tween[o+3]=(burst??footprint)?.shear??0;
   }
   mesh.count=(foreground?this.mushroomLoaded:this.loaded)?count:0;mesh.visible=mesh.count>0;
   if(count)for(const a of attributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}
@@ -412,7 +429,7 @@ export class HandDrawnFireFamily{
  }
  setPerformance(profile){this.limit=profile.name==='流畅'?48:profile.name==='均衡'?80:128;this.impactBudget=profile.fireImpactBudget??(profile.name==='流畅'?4:Infinity);}
  clear(){this.events.length=this.ordered.length=0;for(const group of this.groups)group.length=0;this.impactBucket=-1;this.impactCount=0;this.keys.clear();this.hitTimes.clear();for(const {mesh} of this.batches){mesh.count=0;mesh.visible=false;}}
- dispose(){this.disposed=true;this.clear();for(const {mesh} of this.batches){mesh.parent?.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh.dispose();}this.texture.dispose();this.mushroomTexture.dispose();}
+ dispose(){this.disposed=true;this.clear();for(const {mesh} of this.batches){mesh.parent?.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();mesh.dispose();}this.texture.dispose();this.mushroomTexture.dispose();this.stormTexture.dispose();}
 }
 
 export function installFireFamilyVFX(registry){

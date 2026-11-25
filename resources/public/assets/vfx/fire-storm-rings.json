@@ -1,0 +1,95 @@
+{
+  "tile": 256,
+  "columns": 8,
+  "rows": 5,
+  "clips": {
+    "fusionRing": {
+      "first": 0,
+      "count": 16,
+      "fps": 24,
+      "source": "醉拳-技能11-醉千坛/火圈/huoquan",
+      "sourceFrames": 20,
+      "activeFrames": 20,
+      "frames": [
+        "huoquan_00000.png",
+        "huoquan_00001.png",
+        "huoquan_00003.png",
+        "huoquan_00004.png",
+        "huoquan_00005.png",
+        "huoquan_00006.png",
+        "huoquan_00008.png",
+        "huoquan_00009.png",
+        "huoquan_00010.png",
+        "huoquan_00011.png",
+        "huoquan_00013.png",
+        "huoquan_00014.png",
+        "huoquan_00015.png",
+        "huoquan_00016.png",
+        "huoquan_00018.png",
+        "huoquan_00019.png"
+      ],
+      "crop": {
+        "left": 16,
+        "top": 30,
+        "width": 929,
+        "height": 669
+      }
+    },
+    "sweepRing": {
+      "first": 16,
+      "count": 12,
+      "fps": 24,
+      "source": "醉拳-技能10-醉旋踢/施法",
+      "sourceFrames": 12,
+      "activeFrames": 12,
+      "frames": [
+        "1_00.png",
+        "1_01.png",
+        "1_02.png",
+        "1_03.png",
+        "1_04.png",
+        "1_05.png",
+        "1_06.png",
+        "1_07.png",
+        "1_08.png",
+        "1_09.png",
+        "1_10.png",
+        "1_11.png"
+      ],
+      "crop": {
+        "left": 30,
+        "top": 28,
+        "width": 741,
+        "height": 557
+      }
+    },
+    "shockwave": {
+      "first": 28,
+      "count": 12,
+      "fps": 24,
+      "source": "醉拳-技能12-醉腾云/龙头受击扩散波",
+      "sourceFrames": 54,
+      "activeFrames": 22,
+      "frames": [
+        "ltsjksb_00031.png",
+        "ltsjksb_00033.png",
+        "ltsjksb_00035.png",
+        "ltsjksb_00037.png",
+        "ltsjksb_00039.png",
+        "ltsjksb_00041.png",
+        "ltsjksb_00042.png",
+        "ltsjksb_00044.png",
+        "ltsjksb_00046.png",
+        "ltsjksb_00048.png",
+        "ltsjksb_00050.png",
+        "ltsjksb_00052.png"
+      ],
+      "crop": {
+        "left": 58,
+        "top": 38,
+        "width": 932,
+        "height": 632
+      }
+    }
+  }
+}

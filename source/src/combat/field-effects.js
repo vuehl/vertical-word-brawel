@@ -453,7 +453,7 @@ var Yp = 3e3,
     }
     render() {
       (this.pool.begin(), this.glow.begin());
-      this.run.vfx.crafted.windMoves?.begin();
+      this.run.vfx.crafted.windMoves?.render();
       this.run.vfx.crafted.windReplacements?.begin();
       this.run.vfx.crafted.windSkills?.begin();
       let e = this.run.vfx.ownOpacity,
@@ -509,7 +509,6 @@ var Yp = 3e3,
                       r ? e : 1,
                     ));
       }
-      this.run.vfx.crafted.windMoves?.end();
       this.run.vfx.crafted.windReplacements?.end();
       this.run.vfx.crafted.windSkills?.end();
       (this.pool.end(), this.glow.end());

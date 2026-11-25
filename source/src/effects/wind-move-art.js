@@ -1,9 +1,9 @@
-import {WindAtlasBatch} from './wind-vortex.js';
-import {starterForSpecies} from '../data/starter-characters.js';
+import {waveHalfWidth, waveDepth, waveNose} from './air-slash-shape.js';
+import {createWindTexture} from './wind-vortex.js';
+import {et as PlaneGeometry,H as InstancedMesh,B as InstanceAttribute,ct as ShaderMaterial,j as DynamicDraw} from '../vendor/three-DmSYIDKK.js';
+import {starterForSpecies, windGlyphFill} from '../data/starter-characters.js';
 import {installWindSkillArt,quickHaloSeconds} from './wind-skill-art.js';
 import {installWindReplacements} from './wind-replacements.js';
-import atlas from '../../../resources/public/assets/vfx/wind-moves.json' with {type:'json'};
-import {windFrameAt} from './wind-frame-time.js';
 
 const moveKeys=new Set(['quick-attack','air-slash','wing-attack','tackle']);
 export function windMoveEffect(key,species) {
@@ -29,45 +29,102 @@ function dash(run,x,y,z,dx,dz,length) {
   }
 }
 
-export class WindMoveArt extends WindAtlasBatch {
-  constructor(owner) {
-    super(owner.mesh.parent,96,'assets/vfx/wind-moves.png',atlas.columns,atlas.rows,atlas.tile,'wind-move-frames');
-    this.owner=owner;
-    this.hits=[];
-  }
-  begin() {
-    this.clear();
-    if(!this.owner.allowed()){this.hits.length=0;return;}
-    const {vfx,run}=this.owner;
-    this.opacity=vfx.opacity*vfx.ownOpacity*(vfx.calm?.8:1);
-    for(let i=this.hits.length-1;i>=0;i--){
-      const hit=this.hits[i], frame=windFrameAt(atlas.hit,run.time-hit.start);
-      if(frame<0)this.hits.splice(i,1);
-      else this.push(hit.x,hit.y,hit.z,8.25,atlas.hit.first+frame,this.opacity);
-    }
-  }
-  hit(run,target) {
-    if(!this.owner.allowed() || target==null)return;
-    const enemies=run.enemies;
-    if(this.hits.length>=32)this.hits.shift();
-    this.hits.push({x:enemies.x[target],y:enemies.y[target]+enemies.hgt[target]*.5,z:enemies.z[target],start:run.time});
-  }
-  airSlash(pool,id,size) {
-    const progress=1-pool.life[id]/pool.maxLife[id];
-    const clip=atlas.airSlash, frame=windFrameAt(clip,progress*clip.times.at(-1)/1000);
-    if(frame>=0)this.push(pool.x[id],pool.y[id],pool.z[id],size*5.9,clip.first+frame,
-      this.opacity,.5,pool.vx[id],pool.vz[id]);
-  }
-  reset(){this.hits.length=0;this.clear();}
-}
+// Use the same sRGB fill and channel permutations as the hero cutout.
+const [red,green,blue]=windGlyphFill.map(c=>((c/255+.055)/1.055)**2.4);
+const originalInk=[red,green,blue], classicInk=[blue,red,green], shinyInk=[green,blue,red];
 
+export class WindMoveArt {
+  constructor(owner) {
+    this.owner=owner;
+    this.waves=[];
+    const capacity=12;
+    const geometry=new PlaneGeometry(1,1);
+    this.texture=createWindTexture(this,'assets/vfx/air-slash-wave.webp');
+    this.origin=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
+    this.pose=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
+    this.tint=new InstanceAttribute(new Float32Array(capacity*3),3).setUsage(DynamicDraw);
+    geometry.setAttribute('slashOrigin',this.origin);
+    geometry.setAttribute('slashMotion',this.pose);
+    geometry.setAttribute('glyphInk',this.tint);
+    const material=new ShaderMaterial({
+      uniforms:{map:{value:this.texture}},
+      transparent:true,depthWrite:false,side:2,toneMapped:false,
+      vertexShader:`
+        attribute vec4 slashOrigin;
+        attribute vec4 slashMotion;
+        attribute vec3 glyphInk;
+        varying vec2 waveUv;
+        varying vec3 ink;
+        varying float progress;
+        varying float opacity;
+        void main(){
+          vec2 forward=slashMotion.yz;
+          vec2 across=vec2(-forward.y,forward.x);
+          vec3 world=slashOrigin.xyz;
+          world.xz+=slashOrigin.w*(forward*(uv.x-${waveNose})*${waveDepth}
+                    +across*(2.*uv.y-1.)*${waveHalfWidth});
+          gl_Position=projectionMatrix*viewMatrix*vec4(world,1.);
+          waveUv=uv;
+          ink=glyphInk;
+          progress=slashMotion.x;
+          opacity=slashMotion.w;
+        }`,
+      fragmentShader:`
+        uniform sampler2D map;
+        varying vec2 waveUv;
+        varying vec3 ink;
+        varying float progress;
+        varying float opacity;
+        void main(){
+          vec2 sampleUv=waveUv;
+          float wake=1.-waveUv.x;
+          sampleUv.x+=.029*wake*sin(waveUv.y*49.-progress*19.);
+          vec4 brush=texture2D(map,sampleUv);
+          float highlight=smoothstep(.26,.94,brush.r);
+          float release=smoothstep(.78,1.,progress);
+          float lift=1.-smoothstep(.08,1.,release*(1.+.8*wake));
+          float alpha=brush.a*(.68+.27*highlight)*lift*opacity;
+          if(alpha<.012)discard;
+          vec3 color=mix(ink*(.80+.32*brush.g),mix(ink,vec3(1.),.78),highlight);
+          gl_FragColor=vec4(color,alpha);
+          #include <colorspace_fragment>
+        }`
+    });
+    this.mesh=new InstancedMesh(geometry,material,capacity);
+    this.mesh.name='wind-air-slash';
+    this.mesh.frustumCulled=false;
+    this.mesh.renderOrder=7;
+    this.reset();
+    owner.mesh.parent.add(this.mesh);
+  }
+  play(wave) {
+    if(this.waves.length>=this.pose.count)this.waves.shift();
+    this.waves.push(wave);
+  }
+  render() {
+    const {vfx}=this.owner;
+    let count=0;
+    for(let i=this.waves.length-1;i>=0;i--){
+      const wave=this.waves[i];
+      if(wave.done){this.waves.splice(i,1);continue;}
+      if(!this.owner.allowed()||!this.loaded)continue;
+      const ink=wave.look==='classic'?classicInk:wave.look==='shiny'?shinyInk:originalInk;
+      this.origin.setXYZW(count,wave.x,wave.y,wave.z,wave.radius);
+      this.pose.setXYZW(count,wave.front,wave.dx,wave.dz,vfx.opacity*vfx.ownOpacity*(vfx.calm?.8:1));
+      this.tint.setXYZ(count,...ink);
+      count++;
+    }
+    this.mesh.count=count;
+    this.mesh.visible=count>0;
+    if(count)this.origin.needsUpdate=this.pose.needsUpdate=this.tint.needsUpdate=true;
+  }
+  reset(){this.waves.length=0;this.mesh.count=0;this.mesh.visible=false;}
+  dispose(){this.disposed=true;this.texture.dispose();this.reset();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}
+}
 export function installWindMoveArt(registry) {
-  const art=run=>run.vfx.crafted.windMoveArt();
   registry['wind-quick-attack']={...registry['quick-attack'],sourceKey:'quick-attack',
     replacesDash:true,dash};
-  registry['wind-air-slash']={...registry['air-slash'],sourceKey:'air-slash',
-    hit:(run,x,y,z,color,target)=>art(run).hit(run,target),
-    draw:(pool,id,size)=>art(pool.run).airSlash(pool,id,size)};
+  registry['wind-air-slash']={sourceKey:'air-slash'};
   installWindSkillArt(registry);
   installWindReplacements(registry);
 }

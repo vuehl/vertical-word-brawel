@@ -19,7 +19,7 @@ export const bossSummonSeconds = 0;
 export const bossSummonUnlockSeconds = run =>
   run?.biome?.id === 'forest' && run.stage === 2 ? 3 * 60 : 5 * 60;
 export const facilityNames = Object.freeze({
-  chest: '红骰子', freechest: '免费蓝骰子', altar: '时尚小垃圾', portal: '门？', boss: '传送门',
+  chest: '红骰子', freechest: '免费蓝骰子', altar: '时尚小垃圾', portal: '门', boss: '传送门',
   magnet: '磁铁', berry: 'QQ糖', ditto: '键帽挂件', nest: '弹珠', bill: '订书机',
 });
 export const isActiveFacility = kind => Object.hasOwn(facilityNames, kind);

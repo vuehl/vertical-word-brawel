@@ -25,6 +25,10 @@ export async function reviewStylizedVFX(page,dir){
     window.vfxAdvance=(frames,dt=1/30,present=true)=>{const r=app.run;for(let i=0;i<frames;i++){r.realTime+=dt;r.simulate(dt);r.updateCamera(dt);r.renderWorld(dt);r.vfx.update(dt);r.vfxPeaks.particles=Math.max(r.vfxPeaks.particles,r.vfx.add.n+r.vfx.norm.n);r.vfxPeaks.volumes=Math.max(r.vfxPeaks.volumes,r.vfx.crafted.mesh.count);r.vfxPeaks.firePackets=Math.max(r.vfxPeaks.firePackets,r.vfx.crafted.fireJet.mesh.count);r.vfxPeaks.projectiles=Math.max(r.vfxPeaks.projectiles,r.projectiles.used);for(const e of r.vfx.crafted.entries)if(!r.vfxPeaks.modes.includes(e.mode))r.vfxPeaks.modes.push(e.mode);}vfxDraw(false,present);};
     vfxSetup();vfxDraw();
   });
+  if(process.argv.includes('--hand-drawn-fire-spin')){
+    const {reviewFireSpin}=await import('./fire-spin-regression.mjs');
+    return reviewFireSpin(page,dir,moves);
+  }
   if(process.argv.includes('--fire-family')){
     const {reviewFireFamily}=await import('./fire-family-regression.mjs');return reviewFireFamily(page,dir,moves);
   }
@@ -161,10 +165,6 @@ export async function reviewStylizedVFX(page,dir){
   if(process.argv.includes('--hand-drawn-fireball')){
     const {reviewFireball}=await import('./fireball-regression.mjs');
     return reviewFireball(page,dir,moves);
-  }
-  if(process.argv.includes('--hand-drawn-fire-spin')){
-    const {reviewFireSpin}=await import('./fire-spin-regression.mjs');
-    return reviewFireSpin(page,dir,moves);
   }
   const screenshot=async name=>{await page.screenshot({path:path.join(dir,name+'.png')});report.screens.push(name);};
   async function recordElements(){

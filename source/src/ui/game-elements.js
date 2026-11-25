@@ -362,7 +362,7 @@ var mw = 7500,
     portal: {
       letter: `p`,
       kind: 'portal',
-      text: () => `靠近传送门即可前往下一区域或通关。`,
+      text: () => `靠近门即可前往下一区域或通关。`,
     },
     egg: {
       letter: `e`,

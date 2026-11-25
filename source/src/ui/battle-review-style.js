@@ -119,7 +119,7 @@ html.zixing .zx-combat-feed .zx-review-boss:not(.shield):not(.immune) .bb-bar>i{
 html.zixing .zx-combat-feed .zx-review-boss{gap:8px;padding:5px 9px 7px 8px;border:0;border-radius:3px;background:#3E4D69;align-items:center}
 html.zixing .zx-combat-feed .zx-review-boss .bb-pt{width:34px;height:36px;display:flex;align-items:center;justify-content:center;background:#E7CCD7;border:0;padding:3px}
 html.zixing .zx-combat-feed .zx-review-boss .bb-pt>img,html.zixing .zx-combat-feed .zx-review-boss .bb-pt>canvas{width:26px;height:26px;object-fit:contain}
-html.zixing .zx-combat-feed .zx-review-boss .bb-body{min-height:0;gap:0}
+html.zixing .zx-combat-feed .zx-review-boss .bb-body{min-height:0;gap:0;align-self:flex-start}
 html.zixing .zx-combat-feed .zx-review-boss .bb-name{font-size:15px;line-height:19px;color:#F3F1FA}
 html.zixing .zx-combat-feed .zx-review-boss .bb-tag{color:#D2DDEC;font-size:11px;line-height:16px}
 html.zixing .zx-combat-feed .zx-review-boss .bb-rage{color:#FFE4E8;background:#9E576B;padding:0 4px;line-height:16px;margin:0}

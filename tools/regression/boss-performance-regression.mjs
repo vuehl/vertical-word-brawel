@@ -167,18 +167,27 @@ export async function reviewBossPerformance(page, dir, baseline = false, program
       report.bossHud=await page.evaluate(async()=>{
         const {run,host}=bossPerf, ui=run.ui, bar=ui.els.bossBar;
         ui.hud(run);inspected.env.invalidateUI();inspected.env.drawUI(host.renderer);
-        const before=auditUIUploads;
+        const top=()=>[bar,bar.lastElementChild].map(el=>el.getBoundingClientRect().top);
+        const positions=[top()],before=auditUIUploads;
         for(const fraction of [.75,.5,.25]){
           ui.updateBossHealth(bar,fraction,1);
           await new Promise(resolve=>setTimeout(resolve,100));
           inspected.env.drawUI(host.renderer);
+          positions.push(top());
+        }
+        const fullUploads=auditUIUploads-before,foot=ui.els.bossFoot,display=foot.style.display;
+        for(const value of ['none','',display]){
+          foot.style.display=value;
+          inspected.env.invalidateUI();inspected.env.drawUI(host.renderer);
+          positions.push(top());
         }
         const tile=inspected.hudLayers.find(layer=>layer.id==='boss-health')?.canvas;
-        return {fullUploads:auditUIUploads-before,label:bar.lastElementChild.textContent,
+        return {fullUploads,positions,label:bar.lastElementChild.textContent,
           size:tile&&[tile.width,tile.height],screen:[inspected.uiCanvas.width,inspected.uiCanvas.height]};
       });
       assert.equal(report.bossHud.fullUploads,0);
       assert.equal(report.bossHud.label,'25.0%');
+      for(const position of report.bossHud.positions)assert.deepEqual(position,report.bossHud.positions[0]);
       assert.ok(report.bossHud.size[0]>0&&report.bossHud.size[1]>0&&report.bossHud.size[1]<report.bossHud.screen[1]/4);
       assert.equal(report.samples.reduce((n,sample)=>n+sample.programs,0),0,'Boss summon shaders must be prepared during loading');
       assert.equal(settled.readbacks,0,'An open guardian screen must not read Canvas pixels every frame');

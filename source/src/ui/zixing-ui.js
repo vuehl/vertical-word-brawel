@@ -21,7 +21,7 @@ import {laboratory} from '../data/catalogs.js';
 import {prepareHudImage,waitForLoadingPaint} from '../performance/loading-work.js';
 import {selectGraphicsQuality} from '../performance/performance-profile.js';
 import {ExperienceRing} from '../combat/experience-ring.js';
-import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus,windRushMultiplier} from '../data/starter-characters.js';
+import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus,windRushMultiplier,windRushDragonBonus} from '../data/starter-characters.js';
 import {SINGLE_STAGE,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,QUIT_REWARD_MIN_SECONDS,remainingZoneSeconds,formatGameTime as time} from '../data/lite-rules.js';
 import {sceneAction} from '../combat/scene-action.js';
 import {facilityNames} from '../data/active-content.js';
@@ -38,7 +38,7 @@ const destinations=[
   {id:'bookshelf',name:'书架云端',art:'bookshelf',released:false},
 ];
 const difficulties=[
-  {name:'普通（单关）',tier:0,mode:SINGLE_STAGE,note:['击败首区镇守后','进入传送门通关']},
+  {name:'普通（单关）',tier:0,mode:SINGLE_STAGE,note:['击败首区镇守后','进门通关']},
   {name:'普通',tier:0,mode:'standard',note:['完成全部区域','挑战圣地镇守']},
   {name:'困难',tier:1,mode:'standard',note:['敌人更强，首领更具挑战'],locked:'完整通关普通后解锁'},
   {name:'噩梦',tier:2,mode:'standard',note:['更高强度的进阶挑战'],locked:'通关困难后解锁'},
@@ -732,7 +732,7 @@ export function createZixingUI(app,api) {
         cover.insertBefore(stamp,cover.querySelector('.journey-station-label'));
         stampMode=stampKey;
       }
-      updateText(itinerary,selectedDifficulty.mode===SINGLE_STAGE?'1 个区域 / 传送门通关':selectedDestination.regions+' 个区域 / 圣地终战');
+      updateText(itinerary,selectedDifficulty.mode===SINGLE_STAGE?'1 个区域 / 进门通关':selectedDestination.regions+' 个区域 / 圣地终战');
       updateText(enter,'进入'+selectedDestination.name);
     }
     refresh();
@@ -1674,7 +1674,7 @@ export function createZixingUI(app,api) {
         const speedRoute=hasWindSpeedPassive(route.middle);
         const benefit=speedRoute?`移速 ×${windRushMultiplier(route.middle)} → ×${windRushMultiplier(route.final)}`:trait+' ×10';
         return button([el('div','zx-evo-choice-head',[el('b','',trait+'路线'),routePrint([16,route.middle,route.final])]),
-          el('div','zx-evo-benefit',[el('b','',benefit),el('small','',speedRoute?'持续 5 秒 · 撞击同倍率':'持续 5 秒')]),
+          el('div','zx-evo-benefit',[el('b','',benefit),el('small','',speedRoute?`持续 5 秒 · 撞龘额外 ×${windRushDragonBonus[route.middle]} → ×${windRushDragonBonus[route.final]}`:'持续 5 秒')]),
           el('small','zx-evo-note','首次进阶  ·  '+character(route.middle).word+'  ·  '+character(route.middle).ult),
         ],()=>{if(chosen)return;chosen=true;choose(route.middle);},'zx-branch-choice',{'data-branch-id':route.middle,'data-paper-surface':'info-slip'});
       }),[],hud,'zx-evo-dialog');
@@ -1748,7 +1748,7 @@ export function createZixingUI(app,api) {
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     const portalCopy=small('');
-    const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 传送门已开启'),portalCopy],{'aria-live':'polite'});
+    const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 门已开启'),portalCopy],{'aria-live':'polite'});
     portalGuide.hidden=true;
     hud.root.append(node);
     const combo=hud.els.streak;

@@ -10,8 +10,12 @@ export async function checkIcons(page){
       await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=src;});
       return img;
     }
-    const images=await Promise.all(['normal','water'].map(type=>load('assets/ui/types/'+type+'.png?v=test')));
-    const checks={shared:images[0]._surface===images[1]._surface,tiles:[]};
+    const images=await Promise.all(['fire','flying','normal'].map(type=>load('assets/ui/types/'+type+'.png?v=test')));
+    const checks={
+      shared:images.every(img=>img._surface===images[0]._surface),
+      skillSizes:images.map(img=>[img.naturalWidth,img.naturalHeight]),
+      tiles:[],
+    };
     for(const key of ['assets/ui/types/water.png','assets/items/old-rod.png','assets/items/adamant-orb.png']){
       const img=await load(key),canvas=doc.createElement('canvas');
       canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
@@ -24,7 +28,8 @@ export async function checkIcons(page){
     }
     return checks;
   });
-  assert.ok(checks.shared,'Two type icons should share one decoded page');
+  assert.ok(checks.shared,'The three high-resolution skill icons should share one decoded page');
+  assert.deepEqual(checks.skillSizes,[[256,256],[256,256],[256,256]]);
   assert.deepEqual(checks.tiles,[[64,64,64,true],[256,256,256,true],[30,30,30,true]]);
   console.log('Packed icon URLs, dimensions, shared pages, canvas drawing and PNG reads passed');
 }

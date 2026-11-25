@@ -2,6 +2,7 @@ import {formCopy, moveCopy} from './form-copy.js';
 
 // Keep species IDs stable for saved unlocks and glyph artwork.
 export const starterSpecies = Object.freeze([4,16]);
+export const windGlyphFill = Object.freeze([135,187,255]);
 export const starterEvolutionLevels = Object.freeze([18,40]);
 export const singleStageEvolutionLevels = Object.freeze([12,30]);
 export const starterWords = Object.freeze(Object.fromEntries(
@@ -9,14 +10,15 @@ export const starterWords = Object.freeze(Object.fromEntries(
 ));
 export const windSpeedPassive = '超过基础移速时获得伤害加成，收益逐渐递减，最高 40%。';
 const windRushMultipliers = {58:2, 59:3};
+export const windRushDragonBonus = Object.freeze({58:5, 59:10});
 export const speedDuration = 5;
 function windMoveEffectText(id){
   const multiplier=windRushMultipliers[id];
-  return `移速变为当前的 ${multiplier} 倍，持续 ${speedDuration} 秒。期间撞到怪物造成当前主攻击 ${multiplier} 倍的伤害。`;
+  return `移速变为当前的 ${multiplier} 倍，持续 ${speedDuration} 秒。期间撞到怪物造成当前主攻击 ${multiplier} 倍的伤害，撞到首领龘额外造成主攻击基础伤害的 ${windRushDragonBonus[id]} 倍。`;
 }
 export const windRoutes = [
   {middle:17, final:18, role:'A · 攻速', note:'首次进阶获得「刮倒一片」，攻速变为 10 倍，持续 5 秒。'},
-  {middle:58, final:59, role:'B · 移速', note:`「跑得没影」持续 ${speedDuration} 秒。飒的移速与撞击伤害为 ${windRushMultipliers[58]} 倍，进阶为飙后为 ${windRushMultipliers[59]} 倍。`+windSpeedPassive},
+  {middle:58, final:59, role:'B · 移速', note:`「跑得没影」持续 ${speedDuration} 秒。飒的移速与撞击伤害为 ${windRushMultipliers[58]} 倍，进阶为飙后为 ${windRushMultipliers[59]} 倍。撞到首领龘时，飒额外造成 ${windRushDragonBonus[58]} 倍主攻击基础伤害，飙额外造成 ${windRushDragonBonus[59]} 倍。`+windSpeedPassive},
 ];
 export const attackSpeedBuff = 'ziling-wind-attack-speed';
 export const speedBuff = 'ziling-wind-speed';

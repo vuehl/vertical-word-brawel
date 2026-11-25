@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import {glyphCatalog} from '../../source/src/actors/glyph-catalog.js';
+import {windGlyphFill} from '../../source/src/data/starter-characters.js';
 
 // Use 风's #87bbff fill for both evolution routes. Keep alpha and dark ink.
 export function blueWindPixels(pixels,width,regions){
@@ -11,9 +12,9 @@ export function blueWindPixels(pixels,width,regions){
       const i=(y*width+x)*4;
       if(!pixels[i+3]||pixels[i]<=pixels[i+2])continue;
       const fill=(pixels[i]-pixels[i+2])/(255-51);
-      pixels[i]=Math.round(pixels[i]+(135-255)*fill);
-      pixels[i+1]=Math.round(pixels[i+1]+(187-89)*fill);
-      pixels[i+2]=Math.round(pixels[i+2]+(255-51)*fill);
+      pixels[i]=Math.round(pixels[i]+(windGlyphFill[0]-255)*fill);
+      pixels[i+1]=Math.round(pixels[i+1]+(windGlyphFill[1]-89)*fill);
+      pixels[i+2]=Math.round(pixels[i+2]+(windGlyphFill[2]-51)*fill);
       changed=true;
     }
   }

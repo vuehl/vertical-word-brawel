@@ -53,6 +53,31 @@ test('native text alignment preserves right-aligned counters and explicit flex c
   assert.ok(Math.abs(control.x-label.x)<=1,'Explicit flex justification must take precedence');
 });
 
+test('boss health updates keep the bar and percentage at their full-layout positions',()=>{
+  const {document}=parseHTML(`<html class="zixing"><body><div style="padding:12px">
+    <b>守护者</b><div data-ui-layer="boss-health" style="position:relative;height:9px;margin-top:4px">
+      <i style="position:absolute;inset:0;transform-origin:left"></i>
+      <b style="position:absolute;top:-22px;right:0">100.0%</b>
+    </div></div></body></html>`);
+  const width=390,height=746,ctx={measureText:text=>({width:text.length*10})};
+  const layout=createLayout(document,{w:width,h:height},{getContext:()=>ctx},{regular:'test',bold:'test'},
+    {rules:[],layout:{views:[{w:width,h:height,screens:{}}],styles:[]}});
+  const bar=document.querySelector('[data-ui-layer="boss-health"]'),fill=bar.firstElementChild,label=bar.lastElementChild;
+  const capture=()=>layout.refresh().filter(box=>bar.contains(box.el));
+  let parts=capture();
+  const barTop=layout.box(bar).y,labelTop=layout.box(label).y;
+  for(const fraction of [.75,.5,.25,0]){
+    fill.style.transform='scaleX('+fraction+')';
+    label.textContent=(fraction*100).toFixed(1)+'%';
+    parts=layout.refreshSubtree(bar,parts);
+    assert.equal(layout.box(bar).y,barTop);
+    assert.equal(layout.box(label).y,labelTop);
+    assert.equal(layout.box(fill).w,layout.box(bar).w*fraction);
+  }
+  capture();
+  assert.equal(layout.box(bar).y,barTop);
+});
+
 test('registered top HUD region can paint above the common safe area without moving other controls',()=>{
   const {document}=parseHTML('<html class="zixing"><body><div data-ui-region="hud-top" style="position:absolute;left:12px;top:8px;height:26px;display:flex">关卡 · 1/3区</div><button style="position:absolute;top:60px;height:40px">暂停</button></body></html>');
   const region={x:12,y:-26,w:160,h:26},ctx={measureText:text=>({width:[...text].length*10})};

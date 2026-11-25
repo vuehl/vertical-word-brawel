@@ -273,7 +273,9 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
     const root=make(element,parent);
     root.node.setPositionType(Y.POSITION_TYPE_RELATIVE);
     root.node.setPosition(Y.EDGE_LEFT,0);root.node.setPosition(Y.EDGE_TOP,0);
-    root.node.setMargin(Y.EDGE_ALL,0);
+    // bounds already includes the margins applied by the parent layout.
+    // Yoga's per-edge margins take precedence over EDGE_ALL.
+    for(const edge of edges)root.node.setMargin(edge,0);
     root.node.setWidth(bounds.w);root.node.setHeight(bounds.h);
     root.node.calculateLayout(bounds.w,bounds.h,Y.DIRECTION_LTR);
     // The tile's outer footprint stays fixed. Recompute only its contents;

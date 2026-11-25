@@ -4,6 +4,9 @@ import fs from 'node:fs';
 import {roster} from '../../source/src/data/catalogs.js';
 import {constrainLiteProfile,heroAppearanceOwned,isLiteFamily,validLiteRun,rosterForMode} from '../../source/src/data/lite-rules.js';
 import {characters,configureStarterSpecies,starterWords,starterUltimate,attackSpeedBuff,applyStarterSpeed,clearStarterSpeed,speedBuff,windSpeedDamageBonus,windBossDamage,updateStarterSpeed} from '../../source/src/data/starter-characters.js';
+import {e_ as Combat} from '../../source/src/combat/skills.js';
+import {R} from '../../source/src/combat/enemy-population.js';
+import {finalBossSpecies} from '../../source/src/data/character-rules.js';
 import {glyphWordForSpecies} from '../../source/src/actors/paper-glyph-art.js';
 import {glyphCatalog} from '../../source/src/actors/glyph-catalog.js';
 import {restoreProgress} from '../../source/src/network/coop-resume.js';
@@ -155,6 +158,31 @@ test('one full speed ultimate cannot burst down a fresh boss, including simultan
   for(let frame=1;frame<=300;frame++) total+=hit(frame/60)+hit(frame/60);
   assert.ok(Math.abs(total-3800)<1e-6);
   assert.equal(hit(5,2),800);
+});
+
+test('wind rush adds dragon boss damage once per contact and uses the current main attack',()=>{
+  const targets=[0,1,2,3];
+  const enemies={
+    species:[finalBossSpecies,finalBossSpecies,25,25],flags:[R.Boss,0,R.Boss,0],
+    x:[0,0,0,0],y:[0,0,0,0],z:[0,0,0,0],radius:[1,1,1,1],hgt:[2,2,2,2],gen:[1,1,1,1],
+    within:()=>targets,isAlive:()=>true,parked:()=>false,
+  };
+  const move={def:{dmg:100,type:'normal',cls:'physical'},mods:{dmg:2},level:2};
+  const baseDamage=100*1.3*2*1.04;
+  for(const [speciesId,multipliers] of [[58,[7,2,2,2]],[59,[13,3,3,3]],[17,[]],[18,[]],[16,[]]]){
+    const player={speciesId,moves:[move],radius:.5,pos:{x:0,y:0,z:0}};
+    const combat=new Combat({enemies,player}),buff={},hits=[];
+    combat.hit=(id,damage)=>hits.push([id,damage]);
+    const expected=multipliers.map((m,id)=>[id,baseDamage*m]);
+    combat.windRushContacts(buff,-3,0);
+    assert.deepEqual(hits,expected);
+    player.pos.x=3;
+    combat.windRushContacts(buff,0,0);
+    assert.deepEqual(hits,expected,'leaving the same contact does not deal a second hit');
+    player.pos.x=0;
+    combat.windRushContacts(buff,3,0);
+    assert.deepEqual(hits,[...expected,...expected],'a new collision can hit again');
+  }
 });
 
 test('speed afterimages follow travelled positions, retain the casting glyph, stay bounded and clear',()=>{

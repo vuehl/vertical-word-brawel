@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import windMoves from '../../resources/public/assets/vfx/wind-moves.json' with {type:'json'};
 import replacements from '../../resources/public/assets/vfx/wind-replacements.json' with {type:'json'};
 
 export async function reviewWindSkills(page,dir){
@@ -75,44 +74,43 @@ export async function reviewWindSkills(page,dir){
     assert.equal(sample.expiredSpeed,1);assert.equal(sample.afterExpiry,0);
   }
   console.log('Wind rush speed and collision damage verified',report.rushContacts);
-  report.airSlash=await page.evaluate(async(hitFrame)=>{
-    setupWind();
-    const r=app.run,p=r.player,e=r.enemies,pool=r.projectiles;
-    p.setSpecies(16);p.addMove(403);
-    const move=p.moves[0];
-    move.mods.count+=2;
-    const duration=move.def.dur*move.mods.dur*p.stats.duration;
-    await r.vfx.crafted.prepareMoveTexture(move.def.effectKey);
-    e.clear();
-    const targets=[2,6].map(distance=>{
-      const id=e.spawn(74,p.pos.x,p.pos.z-distance,1,1,0);
-      e.y[id]=r.terrain.surface(e.x[id],e.z[id]);
-      e.hp[id]=e.maxHp[id]=1e7;
-      return id;
-    });
-    e.update();r.lockTarget=targets[0];move.timer=0;
-    vfxAdvance(1,1/60,false);move.timer=999;
-    const shots=Array.from({length:pool.n},(_,id)=>id).filter(id=>pool.slot[id]===0);
-    const center=shots.reduce((a,b)=>Math.abs(pool.vx[a])<Math.abs(pool.vx[b])?a:b);
-    for(let frame=0;frame<duration*60 && pool.alive[center] && pool.z[center]>p.pos.z-6.5;frame++)
-      vfxAdvance(1,1/60,false);
-    const mesh=r.vfx.crafted.windMoves;
-    const poses=Array.from({length:mesh.mesh.count},(_,i)=>mesh.pose.getX(i));
-    const result={count:shots.length,fullLifetime:shots.every(id=>Math.abs(pool.maxLife[id]-duration)<.001),
-      allAlive:shots.every(id=>pool.alive[id]),visible:poses.filter(pose=>pose<hitFrame).length,
-      passedBoth:pool.z[center]<p.pos.z-6,
-      hitBoth:targets.every(id=>pool.alreadyHit(center,id)&&e.hp[id]<e.maxHp[id])};
-    for(let frame=0;frame<duration*60 && pool.alive[center];frame++){
-      vfxAdvance(1,1/60,false);
-      if(pool.alive[center] && pool.vz[center]>1)result.returned=true;
-    }
-    vfxAdvance(Math.ceil(duration*60)+1,1/60,false);
-    return {...result,remaining:pool.used,remainingArt:r.vfx.crafted.windMoves.mesh.count};
-  },windMoves.hit.first);
-  assert.ok(report.airSlash.count>=3 && report.airSlash.fullLifetime && report.airSlash.allAlive && report.airSlash.returned &&
-    report.airSlash.visible===report.airSlash.count && report.airSlash.passedBoth && report.airSlash.hitBoth,
-    JSON.stringify(report.airSlash));
-  assert.equal(report.airSlash.remaining,0);assert.equal(report.airSlash.remainingArt,0);
+  for(const hz of [30,60]){
+    const sample=await page.evaluate(async hz=>{
+      setupWind();
+      const r=app.run,p=r.player,e=r.enemies;
+      p.setSpecies(16);p.addMove(403);
+      const move=p.moves[0];
+      move.mods.count+=2;
+      await r.vfx.crafted.prepareMoveTexture(move.def.effectKey);
+      e.clear();
+      const startX=p.pos.x,startZ=p.pos.z;
+      // Centerline, left wing, far right wing, outside width, behind, beyond range.
+      const targets=[[0,-3],[-2.8,-7],[2.8,-14],[7,-7],[0,4],[0,-23]].map(([dx,dz])=>{
+        const id=e.spawn(74,startX+dx,startZ+dz,1,1,0);
+        e.x[id]=startX+dx;e.z[id]=startZ+dz;
+        e.y[id]=p.pos.y;e.radius[id]=.55;e.hp[id]=e.maxHp[id]=1e7;
+        return id;
+      });
+      e.update();r.lockTarget=targets[0];move.timer=0;
+      const art=r.vfx.crafted.windMoves,hits=targets.map(()=>0),order=[];
+      let peak=0,distance=0,straight=true,previous=0;
+      for(let frame=0;frame<hz;frame++){
+        if(frame===5)p.pos.x+=3;
+        const hp=targets.map(id=>e.hp[id]);
+        vfxAdvance(1,1/hz,false);move.timer=999;
+        peak=Math.max(peak,art.mesh.count);
+        if(art.mesh.count){
+          distance=startZ-art.origin.getZ(0);
+          straight&&=Math.abs(art.origin.getX(0)-startX)<.01 && distance>=previous;
+          previous=distance;
+        }
+        targets.forEach((id,i)=>{if(e.hp[id]<hp[i]){hits[i]++;order.push(i);}});
+      }
+      return {peak,travelsFar:distance>15,straight,hits,order,remaining:art.mesh.count};
+    },hz);
+    assert.deepEqual(sample,{peak:1,travelsFar:true,straight:true,hits:[1,1,1,0,0,0],order:[0,1,2],remaining:0});
+    (report.airSlash??=[]).push({hz,...sample});
+  }
   for(const hz of [30,60]){
     const flight=await page.evaluate(async ({hz,clips})=>{
       setupWind();const r=app.run,e=r.enemies,p=r.player,pool=r.projectiles;

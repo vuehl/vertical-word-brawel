@@ -88,7 +88,7 @@ test('map filters distinguish free gifts and keep buildings visible through fog 
   texts.length=0;run.events={blind:true};run.ui.mapFacilityIcon=()=>null;
   for(const shadow of [true,false]){
     result=drawBattleMinimap(canvas,run,{shadow,facilityKind:'freechest'});
-    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),(shadow?['免','免费蓝骰子','门','门？']:['免','免费蓝骰子']).sort());
+    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),(shadow?['免','免费蓝骰子','门','门']:['免','免费蓝骰子']).sort());
   }
 });
 

@@ -3,7 +3,8 @@ import {vl, random as F, I, L, Sl, wl, Fl} from "../effects/battle-particles.js"
 import {R, xf, Cf} from "./enemy-population.js";
 import {Kp, qp} from "../effects/move-particles.js";
 import {typeColors as Ni, typeNames as Pi, gameData as k} from "../data/game-database.js";
-import {speedBuff, windBossDamage, windRushMultiplier} from "../data/starter-characters.js";
+import {speedBuff, windBossDamage, windRushMultiplier, windRushDragonBonus} from "../data/starter-characters.js";
+import {finalBossSpecies} from "../data/character-rules.js";
 import {Br as v, Vn as ct, Bt as y} from "../data/config.js";
 import {clamp as Gs} from "../effects/scene-renderer.js";
 import {am, em} from "./field-effects.js";
@@ -11,6 +12,7 @@ import {moveAvailableForSpecies} from "../data/skill-availability.js";
 import {Zg, $g, Qg} from "../data/move-attributes.js";
 import {moveCopy} from "../data/form-copy.js";
 import {windMoveEffect} from "../effects/wind-move-art.js";
+import {castWindAirSlash} from "./wind-air-slash.js";
 import {STAMPEDE_FLAME} from "../effects/stylized-effect-atlas.js";
 import {_h, Dh, Ah, H, U, W, yh, q, jh, Y} from "./ultimate-moves.js";
 import {ls, M, ks} from "./move-sounds.js";
@@ -1950,7 +1952,9 @@ var e_ = class {
         if ((ex - along * dx) ** 2 + (ez - along * dz) ** 2 > (player.radius + enemies.radius[id]) ** 2) continue;
         contacts.set(id, enemies.gen[id]);
         attack ??= player.moves.find(Boolean) ?? new M_(formMove(98, player.speciesId));
-        this.hit(id, Ex(attack.def, attack) * multiplier, {
+        const dragonBoss = (enemies.flags[id] & R.Boss) && enemies.species[id] === finalBossSpecies;
+        const hitMultiplier = dragonBoss ? multiplier + windRushDragonBonus[player.speciesId] : multiplier;
+        this.hit(id, Ex(attack.def, attack) * hitMultiplier, {
           type: attack.def.type, cls: attack.def.cls, slot: 8, noReact: true,
         });
       }
@@ -3684,7 +3688,7 @@ function formMove(id, species) {
     dmg:g_.fusion.dmg*.94,cd:fireStampedeRecipe.cd,castRecipe:fireStampedeRecipe};
   const name = moveCopy(species, def.name, def.key);
   const effectKey = windMoveEffect(def.key,species);
-  if(effectKey==='wind-air-slash')return {...def,name,effectKey,dur:1.35,desc:'挥出弧形风刃，穿过沿途敌人后折返。'};
+  if(effectKey==='wind-air-slash')return {...def,name,effectKey,arch:'strike',area:6,dur:.42,speed:0,count:1,desc:'横斩出一道与字形同色的弧形风波，向远处飞行，沿途每个敌人只受击一次。'};
   if(effectKey==='wind-gust')return {...def,name,effectKey,dur:1.2,speed:10,desc:'向前吹出一道旋风，牵引并伤害沿途的敌人。'};
   if(effectKey==='wind-feather-dance')return {...def,name:'羽毛舞',effectKey,count:3,spread:.28,desc:'射出三枚青色羽毛追击敌人，命中时迸开碎羽。'};
   if(effectKey)return {...def,name,effectKey};
@@ -3792,7 +3796,7 @@ var M_ = class {
     bounce: (e) => c(`+{n} rebote`, { n: e }),
   };
 function P_(e, t) {
-  let n = g_[e.def.arch].stats.slice(),
+  let n = e.def.effectKey==='wind-air-slash' ? ['dmg','cd','area','crit'] : g_[e.def.arch].stats.slice(),
     r = [],
     i = t >= 1.6 ? 3 : 2;
   for (let e = 0; e < i && n.length; e++) {
@@ -4434,6 +4438,11 @@ function Q_(e, t, n, r) {
       break;
     }
     case `strike`: {
+      if (o.effectKey === 'wind-air-slash') {
+        castWindAirSlash(e,d,p,u,x);
+        Y_(e,o.key,'cast',void 0,()=>e.audio.slash(o.type));
+        break;
+      }
       let t = e.aimTarget(Math.max(6, d + 3));
       if (t < 0 && e.aimMode !== `manual`) {
         n.timer = 0.15; n.waitingForTarget = true;

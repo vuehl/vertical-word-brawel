@@ -4,27 +4,32 @@ import {et as PlaneGeometry, H as InstancedMesh, B as InstanceAttribute, j as Dy
 import vortexAtlas from '../../../resources/public/assets/vfx/wind-vortex.json' with {type:'json'};
 import {windFrameAt} from './wind-frame-time.js';
 
+export function createWindTexture(owner, file) {
+  const texture = new Texture();
+  texture.colorSpace = SRGB;
+  texture.generateMipmaps = false;
+  texture.minFilter = texture.magFilter = 1006;
+  texture.userData.load = () => new Promise(resolve => {
+    const image = new Image();
+    const finish = ok => { clearTimeout(timer); image.onload = image.onerror = null; resolve(ok); };
+    const timer = setTimeout(() => finish(false), 12000);
+    image.onload = () => {
+      if (!owner.disposed) {
+        texture.image = image;
+        texture.needsUpdate = true;
+        owner.loaded = true;
+      }
+      finish(!owner.disposed);
+    };
+    image.onerror = () => finish(false);
+    image.src = file;
+  });
+  return texture;
+}
+
 export class WindAtlasBatch {
   constructor(scene, capacity, file, columns, rows, tileSize, name) {
-    this.texture = new Texture();
-    this.texture.colorSpace = SRGB;
-    this.texture.generateMipmaps = false;
-    this.texture.minFilter = this.texture.magFilter = 1006;
-    this.texture.userData.load = () => new Promise(resolve => {
-      const image = new Image();
-      const finish = ok => { clearTimeout(timer); image.onload = image.onerror = null; resolve(ok); };
-      const timer = setTimeout(() => finish(false), 12000);
-      image.onload = () => {
-        if (!this.disposed) {
-          this.texture.image = image;
-          this.texture.needsUpdate = true;
-          this.loaded = true;
-        }
-        finish(!this.disposed);
-      };
-      image.onerror = () => finish(false);
-      image.src = file;
-    });
+    this.texture = createWindTexture(this, file);
     const plane = new PlaneGeometry(1,1);
     this.origin = new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
     this.pose = new InstanceAttribute(new Float32Array(capacity*3),3).setUsage(DynamicDraw);
