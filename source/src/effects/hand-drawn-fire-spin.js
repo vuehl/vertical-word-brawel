@@ -117,7 +117,7 @@ function createFireOutlineMask(host,spin){
   pass.needsSwap=false;pass.needsDepthTexture=true;
   pass.render=(renderer,input)=>{
     active.value=false;
-    if(!outlinePass.enabled||!spin.visible||!composer.stableDepthTexture)return;
+    if(!outlinePass.enabled||!spin.visible||!spin.parent?.visible||!composer.stableDepthTexture)return;
     const w=Math.ceil(input.width/2),h=Math.ceil(input.height/2);
     target.setSize(w,h);uniforms.maskSize.value.set(w,h);uniforms.worldDepth.value=composer.stableDepthTexture;
     proxy.count=spin.count;

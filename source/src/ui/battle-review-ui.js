@@ -597,5 +597,5 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
       if(top!==y)marker.style.top=Math.ceil(top)+'px';
     }
   }
-  return {queue,lane,syncEvent,placeTeam,placeMarkers};
+  return {queue,lane,syncEvent,placeTeam,placeMarkers,clearAnnouncement};
 }

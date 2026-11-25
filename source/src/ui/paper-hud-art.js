@@ -338,24 +338,25 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
   // Scale map contents around the player within the fixed circular frame.
   ctx.translate(60,58);ctx.scale(1/viewRatio,1/viewRatio);ctx.translate(-60,-58);
   const left=60-radius,right=60+radius,top=58-radius,bottom=58+radius;
-  if(atlas){
+  if(atlas?.art){
     const [x,y]=point(-atlas.x,-atlas.z),w=2*atlas.x*scale,h=2*atlas.z*scale;
     ctx.drawImage(atlas.art,x,y,w,h);
+  }
+  if(square&&atlas){
     // The map and its ruled margin use one world-space grid.
     const step=Math.max(atlas.x,atlas.z)*scale/4;
     ctx.strokeStyle='rgba(84,105,127,.10)';ctx.lineWidth=.16*viewRatio;ctx.beginPath();
-    for(let col=60;col<=right;col+=step){
+    const [originX,originY]=point(0,0);
+    for(let col=originX+Math.ceil((left-originX)/step)*step;col<=right;col+=step){
       ctx.moveTo(col,top);ctx.lineTo(col,bottom);
-      if(col>60){ctx.moveTo(120-col,top);ctx.lineTo(120-col,bottom);}
     }
-    for(let row=58;row<=bottom;row+=step){
+    for(let row=originY+Math.ceil((top-originY)/step)*step;row<=bottom;row+=step){
       ctx.moveTo(left,row);ctx.lineTo(right,row);
-      if(row>58){ctx.moveTo(left,116-row);ctx.lineTo(right,116-row);}
     }
     ctx.stroke();
     ctx.save();ctx.translate(60,58);ctx.scale(viewRatio,viewRatio);ctx.translate(-60,-58);
     finishAtlasPaper(ctx);ctx.restore();
-  }else{
+  }else if(!atlas?.art){
     const half=run.terrain.world/2,[bx,by]=point(-half,-half);
     ctx.strokeStyle='#c3cec6';ctx.lineWidth=1;ctx.strokeRect(bx,by,half*2*scale,half*2*scale);
     for(const prop of run.terrain.zxProps||[]){

@@ -4,6 +4,7 @@ import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import sharp from 'sharp';
+import {writeDeskMapAtlas} from '../art/desk-map-atlas.mjs';
 import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
 import {isAtlasIcon,packIconAtlases} from './icon-atlases.mjs';
@@ -30,6 +31,7 @@ const fontText=[];
 await writeWindGlyphColors(source);
 await writeHeroActions(source);
 await updateDeskDeviceArt(source);
+await writeDeskMapAtlas(pub);
 const hash = data => createHash('sha256').update(data).digest('hex').slice(0, 16);
 function addPage(pack, data, extension) {
   // Content-address files so repeated UI assets only occupy space once.

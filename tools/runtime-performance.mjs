@@ -119,7 +119,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--ultimate-cast')){
+  if(process.argv.includes('--region-atlas')){
+    const {reviewRegionAtlas}=await import('./regression/region-atlas-regression.mjs');
+    await reviewRegionAtlas(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--ultimate-cast')){
     const {reviewUltimateCast}=await import('./regression/ultimate-cast-regression.mjs');
     await reviewUltimateCast(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--capture-rewards')){

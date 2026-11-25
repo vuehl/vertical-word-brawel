@@ -203,24 +203,47 @@ export async function reviewUpgradeEffects(page,dir){
   assert.ok(report.settings.coalesced&&report.settings.hidden&&report.settings.cleared&&report.settings.cooperative&&report.settings.chained);
   assert.equal(report.settings.calm,1);assert.ok(Math.abs(report.settings.opacity-.14)<1e-6);
   assert.ok(Math.abs(report.settings.calmBurst-.14*.18)<1e-6);
-  report.lowFps=await page.evaluate(duration=>{
+  report.lowFps=await page.evaluate(async duration=>{
     const r=app.run,p=r.player,fx=r.vfx.upgrade;r.state='play';r.anims.length=0;r.ui.showEvolution();
     p.setSpecies(4);p.renderScale=1;p.evolutionLift=0;r.nextEvo={to:5,level:p.level};
     const count=r.stats.evolutions,clock=r.time;
+    const family=r.vfx.crafted.fireFamily,shots=r.projectiles;
+    await family.ready;
+    const shot=shots.fire({...p.pos,y:p.pos.y+1,dx:1,dz:0,speed:5,life:3,radius:1,dmg:1,type:'fire',cls:'special'});
+    r.ult.fire();
+    r.renderWorld(0);r.vfx.update(.4);
+    const submitted=()=>{
+      const meshes=[family.topMesh,shots.glow.mesh],seen=[false,false];
+      const hooks=meshes.map(mesh=>mesh.onBeforeRender);
+      try{
+        meshes.forEach((mesh,index)=>{mesh.onBeforeRender=()=>{seen[index]=true;};});
+        app.r.render(0);
+      }finally{meshes.forEach((mesh,index)=>{mesh.onBeforeRender=hooks[index];});}
+      return seen;
+    };
+    const before=submitted();
     r.startEvolution();[...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
-    for(let i=0;i<Math.round(duration*10)-1;i++)r.update(.1);
+    const bannerCleared=r.ult.castBanner===null,during=[];
+    for(let i=0;i<Math.round(duration*10)-1;i++){
+      r.update(.1);
+      if(i===0||i===29||i===40)during.push(submitted());
+    }
     r.update(.0999);
     const paused=r.state==='evolving'&&r.time===clock;
     r.update(.0002);
     const complete=r.state==='play'&&p.speciesId===5&&p.evolutionLift===0&&p.flash===0&&r.stats.evolutions===count+1&&!fx.screen.mesh.visible;
+    const shotResumed=shots.alive[shot]&&shots.life[shot]===3&&submitted()[1];
     // A missing optional full-screen texture retains the already loaded local effect.
     const loaded=fx.screen.loaded;fx.screen.loaded=false;
     fx.play(p,true);fx.update(.9);
     const fallback=fx.light.mesh.visible&&!fx.screen.mesh.visible;
     fx.screen.loaded=loaded;fx.clear();
-    return {paused,complete,fallback};
+    return {paused,complete,fallback,before,during,bannerCleared,shotResumed};
   },EVOLUTION_DURATION);
   assert.ok(report.lowFps.paused&&report.lowFps.complete&&report.lowFps.fallback);
+  assert.deepEqual(report.lowFps.before,[true,true],'The foreground blast and projectile are visible before confirmation');
+  assert.deepEqual(report.lowFps.during,Array(3).fill([false,false]),'Skills stay hidden through charge, reveal and landing');
+  assert.ok(report.lowFps.bannerCleared&&report.lowFps.shotResumed,'Dismiss the cast banner and restore the live projectile');
   if(process.argv.includes('--evolution-preview')){
     const {default:sharp}=await import('sharp');
     await page.setViewport({width:390,height:844,deviceScaleFactor:1});

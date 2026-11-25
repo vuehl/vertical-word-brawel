@@ -24,6 +24,7 @@ export function initDesk(t){
   t.hasWater=t.frozen=t.isLava=false;t.waterLevel=-99;t.minH=t.maxH=0;
   t.heights.fill(0);t.pathMask.fill(0);t.landmarks=[];t.zxProps=[];
   t.deskBounds={x:halfWidth,z:halfDepth};t.play=halfWidth;t.workshopGroundY=()=>0;
+  t.deskAtlas={...t.deskBounds,art:null};
   const {spawn,facilitySites=[]}=t.mapRules;
   t.spawn.set(xAt(spawn.x),0,zAt(spawn.z));
   const surfaces=new Map(facilitySites.map(s=>[s.surface,[]]));
@@ -117,22 +118,28 @@ export function initDesk(t){
         sheet.renderOrder=-100+layer;t.group.add(sheet);
       }
     }
-    await Promise.all([...Array.from({length:4},load),deskTexture(t,'shelf-depth.png').then(map=>{
+    const atlas=loadDeskImage('/assets/ui-paper/desk-map-atlas.webp').then(image=>{
+      if(!t.disposed)t.deskAtlas.art=image;
+    });
+    await Promise.all([atlas,...Array.from({length:4},load),deskTexture(t,'shelf-depth.png').then(map=>{
       if(t.disposed)return;
       map.colorSpace='';map.generateMipmaps=false;map.minFilter=map.magFilter;t.shelfDepth=map;
     })]);
   })();
 }
-export function deskTexture(t,file){
-  if(!t.deskTextures.has(file))t.deskTextures.set(file,new Promise((resolve,reject)=>{
-    const ready=image=>{
-      const map=new Texture(image);map.colorSpace=SRGB;map.needsUpdate=true;
-      if(t.disposed)map.dispose();else t.deskOwned.push(map);resolve(map);
-    };
+function loadDeskImage(path){
+  return new Promise((resolve,reject)=>{
     const image=new Image();
-    image.addEventListener('load',()=>ready(image));
-    image.addEventListener('error',()=>reject(Error('无法读取桌面图片 '+file)));
-    image.src='/assets/env/desk2d/'+file;
+    image.addEventListener('load',()=>resolve(image));
+    image.addEventListener('error',()=>reject(Error('无法读取桌面图片 '+path)));
+    image.src=path;
+  });
+}
+export function deskTexture(t,file){
+  if(!t.deskTextures.has(file))t.deskTextures.set(file,loadDeskImage('/assets/env/desk2d/'+file).then(image=>{
+    const map=new Texture(image);map.colorSpace=SRGB;map.needsUpdate=true;
+    if(t.disposed)map.dispose();else t.deskOwned.push(map);
+    return map;
   }));
   return t.deskTextures.get(file);
 }

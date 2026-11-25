@@ -1773,6 +1773,7 @@ export function createZixingUI(app,api) {
       return preparedResult;
     }
     hud.showEvolution=(from,to)=>{
+      combatFeed.clearAnnouncement();
       clearEvolution();
       if(from==null)preparedResult=null;
       else evolutionCard(from,to);
@@ -1879,7 +1880,7 @@ export function createZixingUI(app,api) {
     let mapAt=-Infinity,mapFrame=0;
     hud.drawMinimap=(r,force=false)=>{
       const now=performance.now();if(minimap.hidden||(!force&&now-mapAt<(run.performance?.mapInterval??120)))return;
-      mapAt=now;drawBattleMinimap(minimap,r,{hanging:true,facilityKind:r.stageCleared?'portal':hud.mapFacilityKind});minimap.dataset.frame=String(++mapFrame);
+      mapAt=now;drawBattleMinimap(minimap,r,{hanging:true,atlas:regionAtlas(r.terrain),facilityKind:r.stageCleared?'portal':hud.mapFacilityKind});minimap.dataset.frame=String(++mapFrame);
     };
     const ultimateRing=el('canvas','zx-ult-progress',[],{width:168,height:168,'data-static':'true'});
     hud.touch.ult.append(ultimateRing);

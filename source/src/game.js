@@ -8059,18 +8059,20 @@ var Gl = class {
     track(e) {
       return (this.faded.push(e), (e.fade = this.opacity), e);
     }
-    constructor(e, t, atlas, run) {
+    constructor(scene, t, atlas, run) {
+      const combat = this.combatLayer = new Cr();
+      scene.add(combat);
       ((this.atlas = atlas),
-        (this.add = new zl(e, this.atlas, 3000, !0, !1, t)),
-        (this.norm = new zl(e, this.atlas, 1800, !1, !1, t)),
-        (this.ground = new zl(e, this.atlas, 1500, !0, !0, t)),
-        (this.groundN = new zl(e, this.atlas, 800, !1, !0, t)),
-        (this.beams = new Bl(e)),
-        (this.rings = new Ul(e)),
-        (this.text = new Gl(e)));
-      this.crafted=new StylizedSkillFX(this,e);
-      this.upgrade=new UpgradeEffects(run,e);
-      this.danger=new EnemyTelegraphs(e,()=>run.time,(x,z)=>run.terrain.height(x,z));
+        (this.add = new zl(combat, this.atlas, 3000, !0, !1, t)),
+        (this.norm = new zl(combat, this.atlas, 1800, !1, !1, t)),
+        (this.ground = new zl(combat, this.atlas, 1500, !0, !0, t)),
+        (this.groundN = new zl(combat, this.atlas, 800, !1, !0, t)),
+        (this.beams = new Bl(combat)),
+        (this.rings = new Ul(combat)),
+        (this.text = new Gl(combat)));
+      this.crafted=new StylizedSkillFX(this,combat);
+      this.upgrade=new UpgradeEffects(run,scene);
+      this.danger=new EnemyTelegraphs(combat,()=>run.time,(x,z)=>run.terrain.height(x,z));
     }
     setPerformance(profile,view){
       for(const pool of [this.add,this.norm,this.ground,this.groundN,this.beams])pool.lockVisualQuality=!!profile.lockVisualQuality;
@@ -15080,8 +15082,8 @@ var Yp = 3e3,
     glow;
     constructor(e) {
       ((this.run = e),
-        (this.pool = new ql(e.r.scene, e.vfx.atlas, Yp, !1, e.r.shared)),
-        (this.glow = new ql(e.r.scene, e.vfx.atlas, Yp, !0, e.r.shared)));
+        (this.pool = new ql(e.vfx.combatLayer, e.vfx.atlas, Yp, !1, e.r.shared)),
+        (this.glow = new ql(e.vfx.combatLayer, e.vfx.atlas, Yp, !0, e.r.shared)));
     }
     perSlot = new Int32Array(16);
     ownShots = 0;
@@ -46077,8 +46079,8 @@ var GT = 15,
         (this.camDist = Gs(s.camDist ?? 9, CE, 26)),
         (this.vfx.ownFade = Math.max(0.1, Math.min(1, s.ownFxOpacity ?? s.fxOpacity ?? 1))),
         (r.floatText = s.floatText !== !1),
-        (this.orbitals = new ql(e.scene, this.vfx.atlas, 512, !1, e.shared)),
-        (this.orbitalsGlow = this.vfx.track(new ql(e.scene, this.vfx.atlas, 512, !0, e.shared))),
+        (this.orbitals = new ql(this.vfx.combatLayer, this.vfx.atlas, 512, !1, e.shared)),
+        (this.orbitalsGlow = this.vfx.track(new ql(this.vfx.combatLayer, this.vfx.atlas, 512, !0, e.shared))),
         (this.research = { add: (e, t) => i.addResearch(e, t) }),
         (this.rerolls = 2 + i.lab(`reroll`)),
         (this.skips = 2 + i.lab(`skip`)),
@@ -47711,6 +47713,7 @@ var GT = 15,
         r = EVOLUTION_REVEAL,
         o = Math.round(n.maxHp);
       ((this.state = `evolving`),
+        (this.ult.castBanner = null),
         this.sprites.get(t),
         this.audio.evolve(r),
         this.audio.duck(0.2, EVOLUTION_DURATION),
@@ -48587,6 +48590,8 @@ var GT = 15,
     }
     renderWorld(e) {
       let t = this.r.camera;
+      const showCombatFx = this.state !== 'evolving';
+      this.vfx.combatLayer.visible = showCombatFx;
       this.mapEvents.renderWeather();
       this.sprites.setShelfDepth(this.terrain.shelfDepth);
       if(this.terrain.desk2d)updateDeskPropFade(this);
@@ -48599,9 +48604,9 @@ var GT = 15,
         this.player.render(),
         this.coop?.render(),
         this.mewtwo.active || this.allies.render(),
-        this.ult.render());
+        showCombatFx && this.ult.render());
       let n = this.sprites.get(this.player.speciesId);
-      for (let t = this.ghosts.length - 1; t >= 0; t--) {
+      for (let t = this.ghosts.length - 1; showCombatFx && t >= 0; t--) {
         let r = this.ghosts[t];
         if(r.windGlyph||r.dashGlyph){
           const age=this.time-r.start;
@@ -48627,7 +48632,7 @@ var GT = 15,
       (this.interactables.render(e),
         this.pickups.render(this.time),
         this.sprites.end(),
-        this.projectiles.render(),
+        showCombatFx && this.projectiles.render(),
         this.state !== `play` &&
           this.state !== `capturing` &&
           (this.orbitals.begin(), this.orbitalsGlow.begin()),
@@ -48658,6 +48663,7 @@ var GT = 15,
       this.vfx.crafted.dispose();
       this.vfx.upgrade.dispose();
       this.vfx.danger.dispose();
+      this.vfx.combatLayer.removeFromParent();
       this.vfx.atlas.dispose();
       disposePaperAssets(this.paperAssets);
       for (let e of [

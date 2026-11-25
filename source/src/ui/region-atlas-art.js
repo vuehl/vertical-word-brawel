@@ -2,15 +2,6 @@
 // out of the cached sheet so filters, panning and peer updates share one base.
 const sheets=new WeakMap();
 
-function drawDesk(ctx,terrain){
-  const layers=terrain.group.children.filter(mesh=>mesh.name.startsWith('desk2d/')&&mesh.material?.map?.image);
-  layers.sort((a,b)=>a.renderOrder-b.renderOrder);
-  for(const mesh of layers){
-    const {position,scale}=mesh;
-    ctx.drawImage(mesh.material.map.image,position.x-scale.x/2,position.z-scale.z/2,scale.x,scale.z);
-  }
-}
-
 function drawWorkshop(ctx,terrain){
   // Use the authored geometry, including batches outside the gameplay camera.
   const layers=[];
@@ -51,15 +42,15 @@ function drawWorkshop(ctx,terrain){
 }
 
 export function regionAtlas(terrain){
+  if(terrain.desk2d)return terrain.deskAtlas;
   if(sheets.has(terrain))return sheets.get(terrain);
-  const {x,z}=terrain.deskBounds??{x:terrain.world/2,z:terrain.world/2};
+  const x=terrain.world/2,z=x;
   const art=document.createElement('canvas'),density=640/(2*Math.max(x,z));
   art.width=Math.round(2*x*density);art.height=Math.round(2*z*density);
   const ctx=art.getContext('2d');
   ctx.fillStyle='#e7dfcd';ctx.fillRect(0,0,art.width,art.height);
   ctx.save();ctx.translate(art.width/2,art.height/2);ctx.scale(art.width/(2*x),art.height/(2*z));
-  if(terrain.desk2d)drawDesk(ctx,terrain);
-  else drawWorkshop(ctx,terrain);
+  drawWorkshop(ctx,terrain);
   ctx.restore();
   // Limit the ink density of the illustration alone. A little local colour
   // keeps copper wood and blue stationery distinguishable beneath the markers.
@@ -76,7 +67,7 @@ export function regionAtlas(terrain){
   const shortSide=Math.min(art.width,art.height);
   // The workshop fills its non-playable perimeter with boundary props.
   // Start the ink wash at the playable edge instead of printing a second frame.
-  const inset=terrain.desk2d?0:Math.max(0,Math.min(.2,(1-terrain.play/Math.max(x,z))/2+.012));
+  const inset=Math.max(0,Math.min(.2,(1-terrain.play/Math.max(x,z))/2+.012));
   for(const [dx,dy,reach] of [[0,art.height,.15],[art.width,0,.075]]){
     const ink=ctx.createLinearGradient(0,0,dx,dy);
     const band=shortSide*reach/(dx||dy);
