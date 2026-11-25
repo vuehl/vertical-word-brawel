@@ -46,6 +46,7 @@ const srv=http.createServer((req,res)=>{
   if(req.url==='/'){res.setHeader('content-type','text/html; charset=utf-8');return res.end('<meta charset=utf-8><style>*{margin:0}canvas{display:block;width:100vw;height:100vh}</style><body><script src="/fixture.js"></script><script src="/boot.js"></script>');}
   if(req.url==='/fixture.js'||req.url==='/boot.js'){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(req.url==='/fixture.js'?'window.packageData='+JSON.stringify(packageData)+';window.packageEntries='+JSON.stringify(packageEntries)+';\n'+fixture:script());}
   if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(fixtureSubpackage(game,req.url.slice(1)));}
+  if(/^\/play\/(ultimate-cast|nameplate-blade)\.webp$/.test(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
   if(dataUrls.has(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
   if(req.url==='/favicon.ico'){res.statusCode=204;return res.end();}
   res.statusCode=404;res.end();

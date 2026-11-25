@@ -120,7 +120,7 @@ test('rejoining preserves the one-time spring shoe draw and normalizes older sta
 test('borrowed ultimates keep the original cast, while wind forms use the correct source stage',()=>{
   const calls=[],original={};
   for(const id of [4,16,58,132])original[id]={names:['a','b','c'],descs:['d0','d1','d2'],dur:[1.2,1.8,3],cast:ctx=>calls.push([id,ctx])};
-  for(const [id,name,source,index] of [[4,'一点火苗',4,0],[5,'一点火苗',4,1],[6,'一点火苗',4,2],[132,'照着变',132,0],[16,'一阵风刮来',16,0]]){
+  for(const [id,name,source,index] of [[4,'一点火苗',4,0],[5,'一点火苗',4,1],[6,'一点火苗',4,2],[132,'照着变',132,0],[16,'阵风',16,0]]){
     const def=starterUltimate(id,original);assert.deepEqual(def.names,[name]);assert.equal(def.dur[0],original[source].dur[index]);
     def.cast({tier:2,form:2});const [actual,ctx]=calls.at(-1);assert.equal(actual,source);
     assert.equal(ctx.tier,[16,58].includes(id)?index:2);

@@ -15,7 +15,7 @@ export async function reviewStarters({page,tap,resize,dir,sleep}){
     await tap('[data-action="journey"]');
     assert.deepEqual(await page.evaluate(()=>[...inspected.doc.querySelectorAll('[data-species]')].map(e=>Number(e.dataset.species))),[4,16]);
     await snapshot('choose-before-'+width);
-    for(const [id,word,ult] of [[4,'炎','一点火苗'],[16,'风','一阵风刮来']]){
+    for(const [id,word,ult] of [[4,'炎','一点火苗'],[16,'风','阵风']]){
       await tap('[data-species="'+id+'"]');await snapshot('choose-'+id+'-'+width);
       const data=await page.evaluate(()=>{
         const canvas=app.screen.querySelector('.zx-glyph.large canvas'),box=canvas.getBoundingClientRect();

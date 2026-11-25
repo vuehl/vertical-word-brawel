@@ -1919,7 +1919,31 @@ export function createZixingUI(app,api) {
       health.setAttribute('aria-valuenow',current);health.setAttribute('aria-valuemax',maximum);
       health.setAttribute('aria-label','生命 '+current+' / '+maximum+(bonus?'，护盾与额外生命 '+bonus:''));
     };
+    // Keep the full number animation and its timer above the release button. On short
+    // screens use the space to its left if the pause button limits headroom.
+    function placeCombo(){
+      let top='',right='';
+      if(run.streak>=1 && run.streakT>0){
+        const area=hud.hudEl.getBoundingClientRect(),ult=hud.touch.ult.getBoundingClientRect();
+        if(area.height && ult.height){
+          const gap=16,comboHeight=108;
+          const pauseBottom=pauseButton.getBoundingClientRect().bottom;
+          const above=Math.min(Math.max(area.height*.36-46,pauseBottom-area.top+gap),ult.top-area.top-gap-comboHeight);
+          if(area.top+above>=pauseBottom+gap){
+            top=Math.round(above)+'px';
+          }else{
+            top=Math.round(Math.max(0,Math.min(area.height-comboHeight,ult.top-area.top)))+'px';
+            right=Math.ceil(area.right-ult.left+gap)+'px';
+          }
+        }
+      }
+      if((combo.style.top||'')===top && (combo.style.right||'')===right)return;
+      combo.style.top=top;combo.style.right=right;
+      combo.dataset.placement=top+'/'+right;
+    }
     hud.hud=function(...args){
+      placeCombo();
+      hud.streakHud(run.streak,run.streakT,run.realTime);
       const pos=run.player.pos,feet=hud.project(run,pos.x,pos.y-.15,pos.z);
       if(resultSlip)updateEvolution(feet);
       updateHealth(feet);

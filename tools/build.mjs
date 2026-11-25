@@ -145,6 +145,8 @@ function checkScriptSize(file,bytes){
 for(const [name,code] of result.files)checkScriptSize('play/'+name,Buffer.byteLength(code));
 const playDir=path.join(out,'play');
 fs.mkdirSync(playDir,{recursive:true});
+for(const asset of ['ultimate-cast.webp','ultimate-cast-ink.bin','nameplate-blade.webp'])
+  fs.copyFileSync(path.join(platform,asset),path.join(playDir,asset));
 function writeScript(destination,code){
   if(fs.existsSync(destination)&&fs.readFileSync(destination,'utf8')===code)return;
   const pending=destination+'.'+process.pid+'.tmp';

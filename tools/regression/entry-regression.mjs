@@ -173,13 +173,13 @@ export async function verifyEntry({page,tap,dir}){
   await page.waitForFunction(()=>{
     const streak=app.run.ui.els.streak;
     const number=inspected.layout.box(streak.children[1].firstChild);
-    const fill=inspected.layout.box(streak.children[2].firstChild);
-    return number?.opacity>0&&number.opacity<.7&&fill?.w>0&&fill.w<20;
+    const remaining=Number(streak.children[2].getAttribute('aria-valuenow'));
+    return number?.opacity>0&&number.opacity<.7&&remaining>0&&remaining<=1;
   });
   await page.evaluate(()=>app.run.onKill());
   await page.waitForFunction(()=>{
     const streak=app.run.ui.els.streak;
-    return streak.children[1].textContent==='×8'&&inspected.layout.box(streak.children[2].firstChild)?.w>45;
+    return streak.children[1].textContent==='×8'&&Number(streak.children[2].getAttribute('aria-valuenow'))>2.4;
   });
   await page.evaluate(()=>{app.run.streakT=1/60;});
   await page.waitForFunction(()=>!app.run.ui.els.streak.offsetWidth);

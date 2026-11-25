@@ -50,6 +50,7 @@ const srv=http.createServer((req,res)=>{
   if(req.url==='/'){res.setHeader('content-type','text/html;charset=utf-8');return res.end('<meta charset="utf-8"><style>*{margin:0}canvas{display:block;width:100vw;height:100vh}</style><body><script src="/fixture.js"></script><script src="/boot.js"></script>');}
   if(req.url==='/fixture.js'||req.url==='/boot.js'){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(req.url==='/boot.js'?boot:'window.packageData='+JSON.stringify(packageData)+';window.packageEntries='+JSON.stringify(packageEntries)+';'+fixture);}
   if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(fixtureSubpackage(game,req.url.slice(1)));}
+  if(/^\/play\/(ultimate-cast|nameplate-blade)\.webp$/.test(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
   if(urls.has(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
   res.statusCode=404;res.end();
 });
@@ -119,7 +120,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(process.argv.includes('--capture-rewards')){
+  if(process.argv.includes('--ultimate-cast')){
+    const {reviewUltimateCast}=await import('./regression/ultimate-cast-regression.mjs');
+    await reviewUltimateCast(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--capture-rewards')){
     const {reviewCaptureRewards}=await import('./regression/capture-rewards-regression.mjs');
     await reviewCaptureRewards(page);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--late-combat-feedback')){

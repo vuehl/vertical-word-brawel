@@ -65,6 +65,19 @@ export class StickSampler {
     return true;
   }
 
+  // 直接送入已经归一化好的向量（向上为正）。调用方自己管原点/半径/摇杆形状时用，
+  // 采样器只负责排队和时序。幅度超过 1 同样截断到单位长度。
+  pushVector(id, vx, vy, timeStamp) {
+    if (this.pointerId === null || id !== this.pointerId) return false;
+    const len = Math.hypot(vx, vy);
+    if (len > 1) {
+      vx /= len;
+      vy /= len;
+    }
+    this._push(vx, vy, true, timeStamp);
+    return true;
+  }
+
   // 抬起 / 滑动中断 / 切后台。统一走“松手”路径，由物理层做平滑减速。
   end(id, timeStamp) {
     if (this.pointerId === null) return false;                       // 不是摇杆的手指（比如点技能键）

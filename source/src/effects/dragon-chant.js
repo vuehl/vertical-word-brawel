@@ -1,6 +1,8 @@
 import {dragonChantAtlas, sprites} from './dragon-chant-atlas.js';
 export {prepareDragonChant} from './dragon-chant-atlas.js';
 
+import {chantScale} from './ultimate-cast-layout.js';
+
 const words = '万字归一', beat = .38;
 export const dragonChantSeconds = beat * 3 + .68;
 const limit = t => Math.max(0, Math.min(t, 1));
@@ -65,7 +67,7 @@ export function startDragonChant(ui, onBeat, mode = 'manual') {
   const width = canvas.width = Math.min(640, Math.max(320, screen.width));
   const height = canvas.height = Math.round(width * screen.height / screen.width);
   const ctx = canvas.getContext('2d');
-  const scale = Math.min(width / 488, height / 645);
+  const scale = chantScale(width,height);
   ctx.save();
   ctx.translate(width * .45, height * .48);
   ctx.scale(width * .86, height * .65);

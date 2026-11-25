@@ -209,7 +209,7 @@ export async function reviewWindSkills(page,dir){
         opening:r.vfx.crafted.windSkills?.events.map(e=>e.clip)??[]};
     },species);
     if(species===16){
-      assert.equal(result.name,'一阵风刮来');
+      assert.equal(result.name,'阵风');
       assert.equal(result.vortex,3);
       assert.deepEqual(result.directions.map(Math.round).sort((a,b)=>a-b),[-90,30,150]);
       assert.equal(result.targetsHit,3);

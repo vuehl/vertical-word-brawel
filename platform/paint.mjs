@@ -166,10 +166,54 @@ export function compositor(gl,canvas) {
   }
   const prog=gl.createProgram();
   gl.attachShader(prog,shader(gl.VERTEX_SHADER,'#version 300 es\nout vec2 uv;void main(){vec2 v=vec2((gl_VertexID<<1)&2,gl_VertexID&2);uv=vec2(v.x,1.-v.y);gl_Position=vec4(v*2.-1.,0.,1.);}'));
-  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,'#version 300 es\nprecision highp float;in vec2 uv;out vec4 color;uniform sampler2D ui;uniform float opacity;uniform bool flip;void main(){color=texture(ui,flip?vec2(uv.x,1.-uv.y):uv)*opacity;}'));
+  gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,`#version 300 es
+precision highp float;
+in vec2 uv;out vec4 color;
+uniform sampler2D ui;uniform float opacity;uniform bool flip;
+uniform bool castActive;uniform vec4 castUV;uniform vec3 castTone;uniform vec3 bladeNext;
+vec3 castKey(vec2 pos,float halfIndex,vec2 extent){
+  pos=clamp(pos,.5/extent,1.-.5/extent);
+  return texture(ui,vec2((halfIndex+pos.x)*.5,pos.y*castUV.z)).rgb;
+}
+vec2 castMotion(vec2 pos,float plane,vec2 extent){
+  vec2 size=vec2(textureSize(ui,0));
+  pos=clamp(pos,vec2(2./size.x,.5/(size.y-extent.y)),vec2(1.-2./size.x,1.-.5/(size.y-extent.y)));
+  vec2 at=vec2((plane+pos.x)*.25,mix(castUV.z,1.,pos.y));
+  vec2 field=vec2(texture(ui,at).r,texture(ui,at+vec2(.25,0.)).r);
+  return (field*255.-128.)*(castUV.w/127.)/extent;
+}
+void main(){
+  if(castActive){
+    if(castUV.w<0.){
+      vec2 offset=uv*vec2(castUV.z,-castUV.w);
+      float e=mix(texture(ui,castUV.xy+offset).r,texture(ui,bladeNext.xy+offset).r,bladeNext.z);
+      e=max(0.,(e-.012)/.988);
+      color=vec4(mix(castTone,vec3(1.),.87*smoothstep(.60,1.,e))*e,.24*e+.72*smoothstep(.40,.86,e));
+      return;
+    }
+    vec2 extent=vec2(textureSize(ui,0))*vec2(.5,castUV.z);
+    float t=castUV.x;
+    vec3 mask;
+    if(t<=.001||t>=.999) mask=castKey(uv,t<.5?castUV.y:1.-castUV.y,extent);
+    else {
+      vec2 a=uv-t*castMotion(uv,0.,extent),b=uv-(1.-t)*castMotion(uv,2.,extent);
+      a=uv-t*castMotion(a,0.,extent);b=uv-(1.-t)*castMotion(b,2.,extent);
+      mask=mix(castKey(a,castUV.y,extent),castKey(b,1.-castUV.y,extent),t);
+      mask.gb=smoothstep(vec2(.24),vec2(.76),mask.gb);
+    }
+    float energy=max(0.,(mask.r-.012)/.988);
+    float body=mask.g,fill=min(mask.b,body);
+    vec3 pigment=mix(castTone*.94,vec3(1.),.78*smoothstep(.76,.97,energy));
+    vec3 ink=castTone*.49*(body-fill)+pigment*fill;
+    float halo=energy*(1.-body);
+    color=vec4(ink+castTone*.83*halo,body+.23*halo);
+  }else color=texture(ui,flip?vec2(uv.x,1.-uv.y):uv)*opacity;
+}`));
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
   const opacity=gl.getUniformLocation(prog,'opacity');
   const flip=gl.getUniformLocation(prog,'flip');
+  const cast=gl.getUniformLocation(prog,'castActive'),castUV=gl.getUniformLocation(prog,'castUV'),castTone=gl.getUniformLocation(prog,'castTone');
+  const bladeNext=gl.getUniformLocation(prog,'bladeNext');
   const texture=gl.createTexture(),tiles=[],vao=gl.createVertexArray();
   let width=0,height=0,activeSlots=0;
   let frozen=null,frozenKey=null,frozenOwner=null,frozenWidth=0,frozenHeight=0;
@@ -179,7 +223,7 @@ export function compositor(gl,canvas) {
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   }
-  function compose(changed,opaque,layers,freezeKey,run,foregroundOpacity){
+  function beginPass(){
     const bufferWidth=gl.drawingBufferWidth,bufferHeight=gl.drawingBufferHeight;
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,bufferWidth,bufferHeight);
     gl.activeTexture(gl.TEXTURE0);
@@ -195,39 +239,10 @@ export function compositor(gl,canvas) {
       }
       if(premultiply!==useCanvas){gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,useCanvas);premultiply=useCanvas;}
     }
-    // Copy the scene before UI composition, once per paused choice sequence.
-    // Everything stays on the GPU; never read pixels back or create a bitmap.
-    if(frozen&&(frozenOwner!==run||frozenWidth!==gl.drawingBufferWidth||frozenHeight!==gl.drawingBufferHeight))release();
-    if(freezeKey&&!hasFrozen(freezeKey)){
-      const allocate=!frozen;
-      if(allocate)frozen=gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D,frozen);
-      if(allocate){
-        textureParameters();
-        gl.copyTexImage2D(gl.TEXTURE_2D,0,gl.RGBA,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,0);
-      }else gl.copyTexSubImage2D(gl.TEXTURE_2D,0,0,0,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
-      frozenOwner=run;frozenKey=freezeKey;frozenWidth=gl.drawingBufferWidth;frozenHeight=gl.drawingBufferHeight;
-    }else if(!freezeKey)frozenKey=null;
-    if(opaque){
-      if(foregroundOpacity!==undefined)gl.clearColor(229/255,230/255,216/255,1);
-      else gl.clearColor(.957,.949,.98,1);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-    }
-    gl.useProgram(prog);gl.uniform1f(opacity,1);gl.bindVertexArray(vao);
-    if(freezeKey){
-      gl.disable(gl.BLEND);gl.bindTexture(gl.TEXTURE_2D,frozen);gl.uniform1i(flip,1);gl.drawArrays(gl.TRIANGLES,0,3);
-    }
-    gl.uniform1i(flip,0);gl.bindTexture(gl.TEXTURE_2D,texture);
-    if(changed){
-      prepareUpload(true);
-      if(width!==canvas.width||height!==canvas.height){
-        textureParameters();
-        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,canvas);
-        width=canvas.width;height=canvas.height;
-      }else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,canvas);
-    }
-    gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
-    if(foregroundOpacity===undefined)gl.drawArrays(gl.TRIANGLES,0,3);
+    return prepareUpload;
+  }
+  function drawLayers(layers,prepareUpload){
+    const bufferWidth=gl.drawingBufferWidth,bufferHeight=gl.drawingBufferHeight;
     const sx=bufferWidth/canvas.width,sy=bufferHeight/canvas.height;
     let slots=0,lastOpacity=1;
     for(const control of layers){
@@ -263,19 +278,73 @@ export function compositor(gl,canvas) {
       gl.viewport(Math.round(control.x*sx),Math.round((canvas.height-control.y-control.height)*sy),Math.round(control.width*sx),Math.round(control.height*sy));
       const alpha=control.opacity??1;
       if(alpha!==lastOpacity){gl.uniform1f(opacity,alpha);lastOpacity=alpha;}
+      if(control.castUV){
+        const rgb=control.castColor;
+        gl.uniform1i(cast,1);gl.uniform4fv(castUV,control.castUV);
+        if(control.bladeNext)gl.uniform3fv(bladeNext,control.bladeNext);
+        gl.uniform3f(castTone,(rgb>>16)/255,(rgb>>8&255)/255,(rgb&255)/255);
+      }
       gl.drawArrays(gl.TRIANGLES,0,3);
+      if(control.castUV)gl.uniform1i(cast,0);
     }
-    if(foregroundOpacity!==undefined){
+    return slots;
+  }
+  function compose(changed,opaque,layers,freezeKey,run,foregroundOpacity){
+    const bufferWidth=gl.drawingBufferWidth,bufferHeight=gl.drawingBufferHeight;
+    const prepareUpload=beginPass();
+    // Copy the scene before UI composition, once per paused choice sequence.
+    // Everything stays on the GPU; never read pixels back or create a bitmap.
+    if(frozen&&(frozenOwner!==run||frozenWidth!==gl.drawingBufferWidth||frozenHeight!==gl.drawingBufferHeight))release();
+    if(freezeKey&&!hasFrozen(freezeKey)){
+      const allocate=!frozen;
+      if(allocate)frozen=gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D,frozen);
+      if(allocate){
+        textureParameters();
+        gl.copyTexImage2D(gl.TEXTURE_2D,0,gl.RGBA,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,0);
+      }else gl.copyTexSubImage2D(gl.TEXTURE_2D,0,0,0,0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);
+      frozenOwner=run;frozenKey=freezeKey;frozenWidth=gl.drawingBufferWidth;frozenHeight=gl.drawingBufferHeight;
+    }else if(!freezeKey)frozenKey=null;
+    if(opaque){
+      if(foregroundOpacity!==undefined)gl.clearColor(229/255,230/255,216/255,1);
+      else gl.clearColor(.957,.949,.98,1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    gl.useProgram(prog);gl.uniform1f(opacity,1);gl.bindVertexArray(vao);
+    if(freezeKey){
+      gl.disable(gl.BLEND);gl.bindTexture(gl.TEXTURE_2D,frozen);gl.uniform1i(flip,1);gl.drawArrays(gl.TRIANGLES,0,3);
+    }
+    gl.uniform1i(flip,0);gl.bindTexture(gl.TEXTURE_2D,texture);
+    if(changed){
+      prepareUpload(true);
+      if(width!==canvas.width||height!==canvas.height){
+        textureParameters();
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,canvas);
+        width=canvas.width;height=canvas.height;
+      }else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,canvas);
+    }
+    gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+    if(foregroundOpacity===undefined)gl.drawArrays(gl.TRIANGLES,0,3);
+    activeSlots=drawLayers(layers,prepareUpload);
+    if(foregroundOpacity>0){
       gl.viewport(0,0,bufferWidth,bufferHeight);gl.bindTexture(gl.TEXTURE_2D,texture);
       gl.uniform1f(opacity,foregroundOpacity);gl.drawArrays(gl.TRIANGLES,0,3);
     }
-    activeSlots=slots;
   }
   const draw=(renderer,changed,opaque=false,layers=[],freezeKey=null,run=freezeKey,foregroundOpacity)=>{
     // Raw GL owns this pass. Reset Three's cached state once on handoff,
     // including when an offscreen canvas upload fails.
     try{compose(changed,opaque,layers,freezeKey,run,foregroundOpacity);}
     finally{gl.bindVertexArray(null);renderer.resetState();}
+  };
+  // Run after all scene and HUD passes, including the dragon's white flash.
+  draw.topLayers=(renderer,layers)=>{
+    try{
+      const prepareUpload=beginPass();
+      gl.useProgram(prog);gl.bindVertexArray(vao);gl.uniform1f(opacity,1);gl.uniform1i(flip,0);
+      gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+      activeSlots|=drawLayers(layers,prepareUpload);
+    }finally{gl.bindVertexArray(null);renderer.resetState();}
   };
   draw.hasFrozen=hasFrozen;draw.releaseFrozen=release;
   draw.releaseUnused=()=>{

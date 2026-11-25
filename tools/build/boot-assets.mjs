@@ -44,7 +44,8 @@ export function bootAssets(root) {
       rules.push([sel,declarations,key,media,weight,rules.length]);
     }
   });
-  const assets={'engine/styles.json':Buffer.from(JSON.stringify(rules))};
+  const assets={'engine/styles.json':Buffer.from(JSON.stringify(rules)),
+    'fonts/cast-title.ttf':fs.readFileSync(path.join(root,'resources/public/fonts/cast-title.ttf'))};
   const directory=path.join(root,'resources/public/assets/ui-paper');
   for(const name of fs.readdirSync(directory)){
     if(/\.(png|webp)$/.test(name))assets['assets/ui-paper/'+name]=fs.readFileSync(path.join(directory,name));

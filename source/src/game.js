@@ -39,6 +39,9 @@ import {EnemyTelegraphs} from './combat/enemy-telegraphs.js';
 import {CrowdGrid} from './performance/crowd-grid.js';
 import {crowdStep,separationBudget} from './performance/crowd-cadence.js';
 import {FramePacer,CombatClock} from './performance/frame-pacing.js';
+import {createStickConfig} from './virtual-stick/stick-config.js';
+import {StickSampler} from './virtual-stick/stick-input.js';
+import {StickFilter} from './virtual-stick/stick-filter.js';
 import {CombatIdleWarmup,warmCombatShaders,warmCombatDraw} from './performance/combat-warmup.js';
 import {UpgradeEffects,EVOLUTION_REVEAL,EVOLUTION_DURATION,evolutionPose} from './effects/upgrade-effects.js';
 import {createActorTypeLookup} from './actors/actor-types.js';
@@ -7614,6 +7617,210 @@ function Wl(e) {
     }
   return Math.round(e).toString();
 }
+const HERO_HURT_LABEL = 2;
+const CRITICAL_LABEL = 3;
+const MEGA_CRITICAL_LABEL = 4;
+const NORMAL_HIT_LABEL=1, EFFECTIVE_LABEL=5, RESISTED_LABEL=6;
+// Each face uses lighter and darker values of the same hue.
+const damagePalettes=[
+  ['#59cdff','#009de0'], ['#ff6767','#ee1010'],
+  ['#ffbd78','#ff8000'], ['#f0a3ff','#d51aff'],
+  ['#fff08a','#ffd900'], ['#89c4ff','#168aff'],
+];
+// M PLUS Rounded 1c ExtraBold, fitted to the existing 64px glyph cells.
+const damageContours={
+  "0": [[37.5,18.8,37.5,18.8,37.5,18.8,36.1,16.8,34.3,15.6,32,15.3,32,15.3,32,15.3,29.7,15.6,27.9,16.8,26.5,18.8,26.5,18.8,26.5,18.8,25.7,20.9,25.2,23.6,24.8,27,24.7,31,24.7,31,24.7,31,24.8,35,25.2,38.4,25.7,41.1,26.5,43.2,26.5,43.2,26.5,43.2,27.9,45.2,29.7,46.4,32,46.7,32,46.7,32,46.7,34.3,46.4,36.1,45.2,37.5,43.2,37.5,43.2,37.5,43.2,38.3,41.1,38.8,38.4,39.2,35,39.3,31,39.3,31,39.3,31,39.2,27,38.8,23.6,38.3,20.9,37.5,18.8],[45.6,49.4,45.6,49.4,45.6,49.4,43.6,51.4,41.3,53,38.5,54.1,35.5,54.8,32,55,32,55,32,55,28.5,54.8,25.5,54.1,22.7,53,20.4,51.4,18.4,49.4,18.4,49.4,18.4,49.4,17.1,47.3,16,44.8,15.1,42,14.5,38.7,14.1,35,14,31,14,31,14,31,14.1,27,14.5,23.3,15.1,20,16,17.2,17.1,14.7,18.4,12.6,18.4,12.6,18.4,12.6,20.4,10.6,22.7,9,25.5,7.9,28.5,7.2,32,7,32,7,32,7,35.5,7.2,38.5,7.9,41.3,9,43.6,10.6,45.6,12.6,45.6,12.6,45.6,12.6,46.9,14.7,48,17.2,48.9,20,49.5,23.3,49.9,27,50,31,50,31,50,31,49.9,35,49.5,38.7,48.9,42,48,44.8,46.9,47.3,45.6,49.4]],
+  "1": [[32.3,19,24.4,25.9,24.4,25.9,23.7,26.3,22.8,26.1,22.8,26.1,22.8,26.1,22.2,25.4,22,24.4,22,24.4,22,19.7,22,19.7,22.6,16.4,24.5,13.9,24.5,13.9,29.9,9.1,29.9,9.1,32.6,7.5,35.5,7,35.5,7,38.9,7,38.9,7,40.1,7.3,41.1,8.1,41.1,8.1,41.1,8.1,41.8,9.3,42,10.7,42,10.7,42,50.3,42,50.3,41.8,51.7,41.1,52.9,41.1,52.9,41.1,52.9,40.1,53.7,38.9,54,38.9,54,35.5,54,35.5,54,34.4,53.7,33.4,52.9,33.4,52.9,33.4,52.9,32.7,51.7,32.4,50.3,32.4,50.3,32.4,19,32.4,19,32.3,19]],
+  "2": [[44.3,54,18.8,54,18.8,54,17.3,53.7,16.1,52.9,16.1,52.9,16.1,52.9,15.3,51.7,15,50.4,15,50.4,15,48.9,15,48.9,15.3,46.7,16.3,44.8,18,43.1,18,43.1,18,43.1,21.5,40.5,24.5,38,27.2,35.8,29.4,33.7,31.2,31.9,32.7,30.4,32.7,30.4,32.7,30.4,34.7,27.5,35.9,24.6,36.3,21.8,36.3,21.8,36.3,21.8,35.8,19.2,34.6,17.4,32.5,16.3,29.5,16,29.5,16,29.5,16,26.6,16.2,23.2,16.9,19.5,18.1,19.5,18.1,19.5,18.1,18.3,18.3,17.1,17.9,17.1,17.9,17.1,17.9,16.3,17,16,15.9,16,15.9,16,13.2,16,13.2,16.2,11.7,17,10.3,17,10.3,17,10.3,18.1,9.2,19.6,8.5,19.6,8.5,19.6,8.5,22.6,7.9,25.5,7.4,28.4,7.1,31.2,7,31.2,7,31.2,7,34.9,7.2,38.2,7.9,41.1,9.1,43.5,10.7,43.5,10.7,43.5,10.7,45.4,12.7,46.7,15,47.5,17.7,47.8,20.8,47.8,20.8,47.8,20.8,47.6,23.5,46.9,26.2,45.7,28.9,44.1,31.4,44.1,31.4,44.1,31.4,42.7,33.2,40.9,35.2,38.7,37.4,36.2,39.7,33.2,42.3,29.9,45.1,29.9,45.1,29.9,45.1,29.8,45.2,29.8,45.2,29.8,45.2,29.8,45.2,29.8,45.3,29.9,45.3,29.9,45.3,44.3,45.3,44.3,45.3,45.7,45.6,46.9,46.4,46.9,46.4,46.9,46.4,47.7,47.6,48,48.9,48,48.9,48,50.4,48,50.4,47.7,51.7,46.9,52.9,46.9,52.9,46.9,52.9,45.7,53.7,44.3,54,44.3,54]],
+  "3": [[34.2,15.9,19.7,15.9,19.7,15.9,18.3,15.6,17.1,14.8,17.1,14.8,17.1,14.8,16.3,13.6,16,12.2,16,12.2,16,10.7,16,10.7,16.3,9.3,17.1,8.1,17.1,8.1,17.1,8.1,18.3,7.3,19.7,7,19.7,7,43.7,7,43.7,7,45.1,7.3,46.3,8.1,46.3,8.1,46.3,8.1,47.1,9.3,47.4,10.7,47.4,10.7,47.4,12.2,47.4,12.2,47,14.5,46.1,16.5,44.5,18.2,44.5,18.2,34.8,26.3,34.8,26.4,34.8,26.4,34.8,26.4,34.9,26.5,34.9,26.5,35.6,26.5,35.6,26.5,39.1,26.8,42.1,28,44.6,30,44.6,30,44.6,30,46.1,31.9,47.2,34.1,47.8,36.6,48,39.4,48,39.4,48,39.4,47.7,43,46.9,46.1,45.4,48.7,43.4,51,43.4,51,43.4,51,41.4,52.4,39.1,53.6,36.5,54.4,33.6,54.8,30.3,55,30.3,55,30.3,55,27.7,54.9,25.1,54.7,22.5,54.3,19.9,53.8,19.9,53.8,19.9,53.8,18.5,53.1,17.3,52,17.3,52,17.3,52,16.6,50.6,16.3,49,16.3,49,16.3,46.8,16.3,46.8,16.6,45.7,17.4,44.8,17.4,44.8,17.4,44.8,18.5,44.3,19.7,44.4,19.7,44.4,19.7,44.4,23.3,45.4,26.5,46,29.4,46.2,29.4,46.2,29.4,46.2,32.7,45.8,35.2,44.5,35.2,44.5,35.2,44.5,36.7,42.4,37.2,39.6,37.2,39.6,37.2,39.6,36.7,36.9,34.9,35.2,34.9,35.2,34.9,35.2,32.8,34.4,29.9,34,26,33.8,26,33.8,26,33.8,24.6,33.5,23.4,32.7,23.4,32.7,23.4,32.7,22.6,31.5,22.3,30.2,22.3,30.2,22.3,30,22.3,30,22.6,27.7,23.5,25.7,25.1,24,25.1,24,34.2,16,34.2,16,34.2,16,34.2,15.9,34.2,15.9,34.2,15.9]],
+  "4": [[33.5,20.6,23.6,36.9,23.6,37,23.6,37,23.6,37,23.7,37,23.7,37,33.1,37,33.1,37,33.5,36.9,33.6,36.5,33.6,36.5,33.6,20.6,33.6,20.6,33.6,20.6,33.6,20.5,33.6,20.5,33.6,20.5,33.5,20.6,33.5,20.6,33.5,20.6],[33.1,45.8,18.2,45.8,18.2,45.8,17,45.5,15.9,44.7,15.9,44.7,15.9,44.7,15.2,43.5,15,42,15,42,15,40.8,15,40.8,15.2,38.4,15.8,36.2,16.9,34,16.9,34,31.7,10,31.7,10,34,7.8,36.8,7,36.8,7,39.7,7,39.7,7,40.9,7.3,42,8.1,42,8.1,42,8.1,42.7,9.3,42.9,10.7,42.9,10.7,42.9,36.5,42.9,36.5,43.1,36.9,43.4,37,43.4,37,45.7,37,45.7,37,47,37.3,48,38.2,48,38.2,48,38.2,48.8,39.4,49,40.8,49,40.8,49,42,49,42,48.8,43.5,48,44.7,48,44.7,48,44.7,47,45.5,45.7,45.8,45.7,45.8,43.4,45.8,43.4,45.8,43.1,45.9,42.9,46.4,42.9,46.4,42.9,51.3,42.9,51.3,42.7,52.7,42,53.9,42,53.9,42,53.9,40.9,54.7,39.7,55,39.7,55,36.8,55,36.8,55,35.6,54.7,34.6,53.9,34.6,53.9,34.6,53.9,33.9,52.7,33.6,51.3,33.6,51.3,33.6,46.4,33.6,46.4,33.5,45.9,33.1,45.8,33.1,45.8]],
+  "5": [[19.5,54.1,19.5,54.1,19.5,54.1,18.1,53.5,17,52.5,17,52.5,17,52.5,16.3,51.1,16,49.5,16,49.5,16,47.5,16,47.5,16.3,46.3,17.1,45.3,17.1,45.3,17.1,45.3,18.2,44.8,19.5,44.9,19.5,44.9,19.5,44.9,22.7,45.6,25.5,46.1,27.8,46.2,27.8,46.2,27.8,46.2,31.2,45.9,33.9,45,35.8,43.4,36.9,41.1,37.3,38.3,37.3,38.3,37.3,38.3,36.9,35.4,35.7,33.4,33.7,32.2,30.8,31.8,30.8,31.8,30.8,31.8,29.5,31.9,28.3,32.2,28.3,32.2,28.3,32.2,27.7,32.5,26.7,32.8,26.7,32.8,26.7,32.8,25.6,33.3,24.9,33.6,24.9,33.6,24.9,33.6,24.2,33.8,23.3,34,23.3,34,23.3,34,22.4,34.2,21.5,34.2,21.5,34.2,19.5,34.2,19.5,34.2,18.2,34,17,33.1,17,33.1,17,33.1,16.3,31.9,16.1,30.5,16.1,30.5,17,10.7,17,10.7,17.3,9.3,18.2,8.1,18.2,8.1,18.2,8.1,19.4,7.3,20.8,7,20.8,7,42.2,7,42.2,7,43.6,7.3,44.8,8.1,44.8,8.1,44.8,8.1,45.6,9.3,45.9,10.7,45.9,10.7,45.9,12.2,45.9,12.2,45.6,13.6,44.8,14.8,44.8,14.8,44.8,14.8,43.6,15.6,42.2,15.9,42.2,15.9,27.6,15.9,27.6,15.9,27.2,16,27,16.4,27,16.4,26.6,24.6,26.6,24.6,26.7,24.7,26.7,24.7,26.7,24.7,26.8,24.7,26.8,24.7,29.9,23.7,33,23.4,33,23.4,33,23.4,36.4,23.7,39.4,24.4,41.9,25.6,44.1,27.3,44.1,27.3,44.1,27.3,45.8,29.4,47,31.9,47.8,34.9,48,38.3,48,38.3,48,38.3,47.8,41.2,47.3,43.8,46.5,46.1,45.4,48.2,43.9,50,42.1,51.5,40,52.8,37.6,53.8,34.8,54.4,31.7,54.9,28.3,55,28.3,55,28.3,55,25.4,54.9,22.5,54.6,19.5,54.1]],
+  "6": [[32,30.3,32,30.3,32,30.3,29.1,30.8,26.8,32.5,26.8,32.5,26.8,32.5,25.4,35.1,24.9,38.6,24.9,38.6,24.9,38.6,25.1,41,25.8,43.1,26.9,44.9,26.9,44.9,26.9,44.9,29.1,46.6,32,47.1,32,47.1,32,47.1,35,46.6,37.3,44.9,37.3,44.9,37.3,44.9,38.3,43.2,38.9,41.1,39.2,38.6,39.2,38.6,39.2,38.6,38.7,35,37.3,32.4,37.3,32.4,37.3,32.4,35,30.8,32,30.3],[32,55,32,55,32,55,28.9,54.8,26.1,54.2,23.6,53.1,21.4,51.6,19.4,49.7,19.4,49.7,19.4,49.7,17.8,47.4,16.6,44.7,15.7,41.5,15.2,37.9,15,33.9,15,33.9,15,33.9,15.1,30.2,15.4,26.7,15.9,23.6,16.7,20.7,17.6,18.1,18.8,15.8,20.1,13.7,20.1,13.7,20.1,13.7,22,11.7,24,10,26.4,8.7,28.9,7.7,31.7,7.2,34.7,7,34.7,7,34.7,7,37.9,7.1,40.9,7.5,40.9,7.5,40.9,7.5,42.2,8,43.3,9,43.3,9,43.3,9,44,10.4,44.2,11.9,44.2,11.9,44.2,13.1,44.2,13.1,44,14.3,43.2,15.2,43.2,15.2,43.2,15.2,42.2,15.7,41,15.6,41,15.6,41,15.6,37.9,15.1,35.1,14.9,35.1,14.9,35.1,14.9,32.5,15.2,30.2,16.1,28.3,17.7,28.3,17.7,28.3,17.7,26.7,19.8,25.7,22.5,25,25.7,25,25.7,25,25.7,25,25.7,25.1,25.8,25.1,25.8,25.1,25.8,25.1,25.8,27.6,24.2,30.6,23.3,34.1,23,34.1,23,34.1,23,37.5,23.2,40.5,24,43,25.2,45.1,27,45.1,27,45.1,27,46.8,29.2,48,31.8,48.8,34.9,49,38.4,49,38.4,49,38.4,48.8,41.3,48.3,44.1,47.4,46.5,46.1,48.7,44.5,50.6,44.5,50.6,44.5,50.6,42.5,52.2,40.3,53.4,37.8,54.3,35.1,54.8,32,55]],
+  "7": [[37.8,15.8,19.6,15.8,19.6,15.8,18.2,15.5,17.1,14.7,17.1,14.7,17.1,14.7,16.3,13.5,16,12.2,16,12.2,16,10.7,16,10.7,16.3,9.3,17.1,8.1,17.1,8.1,17.1,8.1,18.2,7.3,19.6,7,19.6,7,44.5,7,44.5,7,45.8,7.3,47,8.1,47,8.1,47,8.1,47.7,9.3,48,10.7,48,10.7,48,12.2,48,12.2,47.8,14.5,47.2,16.7,46.3,18.9,46.3,18.9,46.3,18.9,44.7,21.8,43.1,24.7,41.7,27.7,40.2,30.8,38.8,33.9,37.5,37.1,36.2,40.4,34.9,43.7,33.7,47.1,32.5,50.5,32.5,50.5,32.5,50.5,31.8,51.9,30.7,53,30.7,53,30.7,53,29.3,53.8,27.9,54,27.9,54,23.6,54,23.6,54,22.4,53.7,21.6,52.9,21.6,52.9,21.6,52.9,21.1,51.8,21.3,50.5,21.3,50.5,21.3,50.5,22.6,47.2,23.9,43.9,25.3,40.6,26.7,37.4,28.2,34.2,29.7,31.1,31.2,28,32.8,25,34.4,22,36.1,19.1,37.8,16.2,37.8,16.2,37.8,16.2,37.9,16.1,38,15.9,38,15.9,38,15.9,37.9,15.9,37.8,15.8,37.8,15.8]],
+  "8": [[30.6,33.4,30.6,33.4,30.6,33.4,28,34.9,26.3,36.5,26.3,36.5,26.3,36.5,25.4,38.3,25.1,40.3,25.1,40.3,25.1,40.3,25.6,42.8,27,44.8,27,44.8,27,44.8,29.2,46.1,32,46.5,32,46.5,32,46.5,34.8,46.1,36.9,44.8,36.9,44.8,36.9,44.8,38.4,42.8,38.8,40.3,38.8,40.3,38.8,40.3,38.5,38.2,37.4,36.4,37.4,36.4,37.4,36.4,35.2,34.9,31.5,33.3,31.5,33.3,31.5,33.3,31.1,33.2,30.6,33.4],[32,14.5,32,14.5,32,14.5,29.6,14.8,27.7,15.9,27.7,15.9,27.7,15.9,26.5,17.6,26.2,19.7,26.2,19.7,26.2,19.7,26.5,21.5,27.4,23.1,27.4,23.1,27.4,23.1,29.2,24.5,31.9,25.7,31.9,25.7,31.9,25.7,32.4,25.8,32.8,25.7,32.8,25.7,32.8,25.7,35.7,24.1,37.4,22.1,38,19.7,38,19.7,38,19.7,37.6,17.6,36.4,15.9,36.4,15.9,36.4,15.9,34.5,14.8,32,14.5],[43.8,50.4,43.8,50.4,43.8,50.4,41.5,52,38.7,53.1,35.6,53.8,32,54,32,54,32,54,28.4,53.8,25.3,53.1,22.5,52,20.2,50.4,20.2,50.4,20.2,50.4,18.4,48.5,17.1,46.2,16.3,43.7,16,40.8,16,40.8,16,40.8,16.3,38.2,17.2,35.8,18.7,33.7,20.9,31.7,23.6,30,23.6,30,23.6,30,23.7,30,23.7,29.9,23.7,29.9,23.7,29.9,23.7,29.8,23.6,29.8,23.6,29.8,23.6,29.8,21.3,28,19.5,26.1,18.2,23.8,17.5,21.4,17.2,18.7,17.2,18.7,17.2,18.7,17.6,15.5,19,12.7,21.1,10.3,21.1,10.3,21.1,10.3,23.3,8.9,25.8,7.8,28.7,7.2,32,7,32,7,32,7,35.3,7.2,38.2,7.8,40.7,8.9,42.9,10.3,42.9,10.3,42.9,10.3,45,12.7,46.4,15.5,46.8,18.7,46.8,18.7,46.8,18.7,46.4,21.6,45.1,24.2,43,26.5,40,28.6,40,28.6,40,28.6,40,28.6,39.9,28.7,39.9,28.7,39.9,28.7,40,28.8,40,28.8,40,28.8,40,28.8,42.9,30.5,45.1,32.5,46.7,34.9,47.7,37.7,48,40.8,48,40.8,48,40.8,47.7,43.7,46.9,46.2,45.6,48.5,43.8,50.4]],
+  "9": [[32.5,14.9,32.5,14.9,32.5,14.9,29.6,15.4,27.4,17,27.4,17,27.4,17,26,19.5,25.6,22.8,25.6,22.8,25.6,22.8,25.8,25.5,26.4,27.7,27.4,29.5,27.4,29.5,27.4,29.5,29.6,31.1,32.5,31.7,32.5,31.7,32.5,31.7,35.4,31.1,37.5,29.4,37.5,29.4,37.5,29.4,38.6,27.6,39.2,25.4,39.4,22.8,39.4,22.8,39.4,22.8,38.9,19.6,37.5,17,37.5,17,37.5,17,35.2,15.4,32.5,14.9],[30.4,39,30.4,39,30.4,39,27.1,38.7,24.3,38,21.8,36.7,19.7,34.9,19.7,34.9,19.7,34.9,18.1,32.6,16.9,29.9,16.2,26.7,16,23,16,23,16,23,16.3,19.5,17.1,16.4,18.5,13.7,20.4,11.3,20.4,11.3,20.4,11.3,22.8,9.4,25.6,8.1,28.9,7.3,32.5,7,32.5,7,32.5,7,35.5,7.2,38.2,7.8,40.7,8.9,42.8,10.3,44.7,12.2,44.7,12.2,44.7,12.2,46.2,14.5,47.4,17.1,48.3,20.2,48.8,23.6,49,27.5,49,27.5,49,27.5,48.9,31.3,48.6,34.8,48.1,38,47.4,41,46.6,43.6,45.5,46,44.2,48.1,42.7,49.9,41.1,51.5,39.2,52.8,37.2,53.7,34.9,54.4,32.5,54.9,29.8,55,29.8,55,29.8,55,26.6,54.9,23.3,54.4,23.3,54.4,23.3,54.4,22,53.9,21,52.9,21,52.9,21,52.9,20.3,51.6,20,50.1,20,50.1,20,48.9,20,48.9,20.3,47.7,21,46.8,21,46.8,21,46.8,22.1,46.3,23.3,46.3,23.3,46.3,23.3,46.3,26.5,46.9,29.5,47.1,29.5,47.1,29.5,47.1,32.2,46.8,34.6,45.9,36.5,44.4,36.5,44.4,36.5,44.4,37.9,42.3,38.9,39.6,39.3,36.3,39.3,36.3,39.3,36.3,39.3,36.3,39.2,36.2,39.2,36.2,39.2,36.2,39.2,36.2,36.7,37.8,33.8,38.7,30.4,39]],
+  "+": [[28.1,35.3,19.9,35.3,19.9,35.3,18.8,35.1,17.9,34.4,17.9,34.4,17.9,34.4,17.2,33.5,17,32.4,17,32.4,17,31.6,17,31.6,17.2,30.5,17.9,29.6,17.9,29.6,17.9,29.6,18.8,28.9,19.9,28.7,19.9,28.7,28.1,28.7,28.1,28.7,28.5,28.6,28.6,28.2,28.6,28.2,28.6,19.9,28.6,19.9,28.8,18.8,29.4,17.9,29.4,17.9,29.4,17.9,30.3,17.2,31.4,17,31.4,17,32.6,17,32.6,17,33.7,17.2,34.6,17.9,34.6,17.9,34.6,17.9,35.2,18.8,35.4,19.9,35.4,19.9,35.4,28.2,35.4,28.2,35.5,28.6,35.9,28.7,35.9,28.7,44.1,28.7,44.1,28.7,45.2,28.9,46.1,29.6,46.1,29.6,46.1,29.6,46.8,30.5,47,31.6,47,31.6,47,32.4,47,32.4,46.8,33.5,46.1,34.4,46.1,34.4,46.1,34.4,45.2,35.1,44.1,35.3,44.1,35.3,35.9,35.3,35.9,35.3,35.5,35.4,35.4,35.8,35.4,35.8,35.4,44.1,35.4,44.1,35.2,45.2,34.6,46.1,34.6,46.1,34.6,46.1,33.7,46.8,32.6,47,32.6,47,31.4,47,31.4,47,30.3,46.8,29.4,46.1,29.4,46.1,29.4,46.1,28.8,45.2,28.6,44.1,28.6,44.1,28.6,35.8,28.6,35.8,28.5,35.4,28.1,35.3,28.1,35.3]],
+  "-": [[40.1,37,23.9,37,23.9,37,22.4,36.7,21.1,35.8,21.1,35.8,21.1,35.8,20.3,34.5,20,33,20,33,20,32,20,32,20.3,30.5,21.1,29.2,21.1,29.2,21.1,29.2,22.4,28.3,23.9,28,23.9,28,40.1,28,40.1,28,41.6,28.3,42.9,29.2,42.9,29.2,42.9,29.2,43.7,30.5,44,32,44,32,44,33,44,33,43.7,34.5,42.9,35.8,42.9,35.8,42.9,35.8,41.6,36.7,40.1,37,40.1,37]],
+  "×": [[14.2,42.3,14.2,42.3,24,32.4,24,32.4,24.3,32,24,31.6,24,31.6,14.2,21.7,14.2,21.7,13.3,20.4,13,18.8,13,18.8,13,18.8,13.3,17.2,14.2,15.9,14.2,15.9,15.9,14.2,15.9,14.2,17.2,13.3,18.8,13,18.8,13,18.8,13,20.4,13.3,21.7,14.2,21.7,14.2,31.6,24.1,31.6,24.1,32,24.3,32.5,24.1,32.5,24.1,42.4,14.2,42.4,14.2,43.7,13.3,45.2,13,45.2,13,45.2,13,46.8,13.3,48.2,14.2,48.2,14.2,49.8,15.9,49.8,15.9,50.7,17.2,51,18.8,51,18.8,51,18.8,50.7,20.4,49.8,21.7,49.8,21.7,39.9,31.6,39.9,31.6,39.7,32,39.9,32.4,39.9,32.4,49.8,42.3,49.8,42.3,50.7,43.6,51,45.2,51,45.2,51,45.2,50.7,46.8,49.8,48.1,49.8,48.1,48.2,49.8,48.2,49.8,46.8,50.7,45.2,51,45.2,51,45.2,51,43.7,50.7,42.4,49.8,42.4,49.8,32.5,39.9,32.5,39.9,32,39.7,31.6,39.9,31.6,39.9,21.7,49.8,21.7,49.8,20.4,50.7,18.8,51,18.8,51,18.8,51,17.2,50.7,15.9,49.8,15.9,49.8,14.2,48.1,14.2,48.1,13.3,46.8,13,45.2,13,45.2,13,45.2,13.3,43.6,14.2,42.3]]
+};
+function drawCutGlyphRow(ctx,glyphs,top,bottom,extraContours={}){
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';ctx.font='900 47px Arial, sans-serif';
+  const face=ctx.createLinearGradient(0,8,0,55);
+  face.addColorStop(0,top);
+  face.addColorStop(1,bottom);
+  for(let j=0;j<glyphs.length;j++){
+    ctx.save();ctx.translate(j*64,0);
+    const ch=glyphs[j],contours=damageContours[ch]??extraContours[ch];
+    for(const [offset,width,color] of [[1,10,'#656565'],[0,8,'#ffffff'],[0,0,face]]){
+      ctx.save();ctx.translate(0,offset);ctx.strokeStyle=ctx.fillStyle=color;ctx.lineWidth=width||1;
+      if(contours){
+        ctx.beginPath();
+        for(const ring of contours){
+          ctx.moveTo(ring[0],ring[1]);
+          for(let k=2;k<ring.length;k+=2)ctx.lineTo(ring[k],ring[k+1]);
+          ctx.closePath();
+        }
+        if(width)ctx.stroke();
+        ctx.fill();
+      }else{
+        if(width)ctx.strokeText(ch,32,33);
+        ctx.fillText(ch,32,33);
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+}
+function drawDamageRows(ctx,glyphs){
+  for(const [index,[top,bottom]] of damagePalettes.entries()){
+    ctx.save();ctx.translate(0,(index+1)*64);
+    drawCutGlyphRow(ctx,glyphs,top,bottom);
+    ctx.restore();
+  }
+}
+// Cut-stroke lettering for the HUD caption. Outlines follow each stroke.
+const comboLetterContours={
+  '连':[
+    [8,10,12,6,22,13,18,19],
+    [5,25,20,23,22,28,16,35,19,40,15,46,8,46,11,40,9,36,14,30,6,31],
+    [5,50,12,44,20,45,28,49,39,50,59,48,54,57,36,57,25,55,15,50,9,55,4,55],
+    [23,13,56,11,56,17,22,20],
+    [32,6,40,6,34,17,30,24,54,22,54,28,23,31,22,26],
+    [21,35,58,32,57,39,21,42],
+    [38,19,45,18,45,46,38,48]
+  ],
+  '击':[
+    [12,13,52,11,51,19,12,21],
+    [6,27,58,24,57,32,6,35],
+    [28,6,36,5,36,49,28,50],
+    [10,39,18,37,18,48,47,46,47,37,55,35,54,53,10,56]
+  ],
+};
+const comboFaces=[
+  ['#59cdff','#009de0'],['#fff18a','#ffdf00'],['#ff7575','#ff1818'],['#dc9eff','#b52bff'],
+];
+// Right-side ink extent from the glyph center, including the 5px outline.
+const comboDigitRight=Array.from({length:10},(_,digit)=>{
+  const xs=damageContours[digit].flatMap(ring=>ring.filter((_,index)=>index%2===0));
+  return (Math.max(...xs)+5-32)/64;
+});
+const comboSheets=[];
+const rainbowSteps=24;
+function comboPhase(tier,phase,column){
+  return tier===4?(phase+column*5)%rainbowSteps:0;
+}
+function comboColors(tier,phase){
+  if(tier!==4)return comboFaces[tier];
+  const hue=phase*360/rainbowSteps;
+  return ['hsl('+hue+',100%,75%)','hsl('+hue+',100%,53%)'];
+}
+function comboSheet(tier,phase){
+  const key=tier===4?4+phase:tier;
+  if(!comboSheets[key]){
+    const sheet=document.createElement('canvas');
+    sheet.width=13*64;sheet.height=64;
+    drawCutGlyphRow(sheet.getContext('2d'),'0123456789×连击',...comboColors(tier,phase),comboLetterContours);
+    comboSheets[key]=sheet;
+  }
+  return comboSheets[key];
+}
+// Wheels use an unwrapped position so another kill can retarget a roll in flight.
+function comboWheelAt(wheel,time){
+  const t=Math.max(0,Math.min(1,(time-wheel.start)/.23));
+  return t===1?wheel.to:wheel.to-(wheel.to-wheel.from)*(1-t)**2;
+}
+class ComboRoller {
+  constructor(label){
+    this.label=label;
+    this.canvas=document.createElement('canvas');
+    this.canvas.width=352;this.canvas.height=216;
+    this.canvas.style.width='176px';this.canvas.style.height='108px';
+    this.canvas.style.display='block';this.canvas.setAttribute('role','img');
+    label.replaceChildren(this.canvas);
+    this.wheels=[];this.paintedAt=-1;this.active=false;this.frame=0;
+  }
+  reset(){this.wheels.length=0;this.count=null;this.active=false;this.pulseStart=null;}
+  scaleAt(time){
+    if(this.pulseStart==null)return 1;
+    const age=Math.max(0,time-this.pulseStart);
+    const rising=age<.09;
+    const t=rising?age/.09:Math.min(1,(age-.09)/.23);
+    const eased=t*t*(3-2*t);
+    const peak=1.4;
+    return rising?this.pulseFrom+(peak-this.pulseFrom)*eased:peak+(1-peak)*eased;
+  }
+  setCount(count,time){
+    const length=String(count).length;
+    const roll=this.count!=null && count>this.count;
+    if(roll || this.count==null){
+      this.pulseFrom=this.scaleAt(time);
+      this.pulseStart=time;
+    }else{
+      this.pulseStart=null;
+    }
+    this.wheels.length=length;
+    for(let i=0;i<length;i++){
+      const place=Math.floor(count/10**i),previous=this.wheels[i];
+      if(roll && previous?.to===place)continue;
+      // A newly introduced leading digit rolls in from a blank cell.
+      const from=roll?(previous?comboWheelAt(previous,time):place-1):place;
+      this.wheels[i]={from,to:place,start:time,blank:roll&&!previous};
+    }
+    this.count=count;this.active=true;this.paintedAt=-1;
+    this.canvas.textContent='×'+count;this.canvas.setAttribute('aria-label','连击 ×'+count);
+  }
+  paint(tier,time,progress){
+    const rainbow=tier===4,phase=rainbow?Math.floor(time*16)%rainbowSteps:0;
+    if(progress===this.lastProgress && (time===this.paintedAt || (!this.active && (!rainbow||phase===this.lastPhase))))return;
+    this.lastProgress=progress;
+    this.lastPhase=phase;
+    this.paintedAt=time;this.active=false;
+    const ctx=this.canvas.getContext('2d');
+    const length=this.wheels.length,large=this.count>=50;
+    const colorFrame=tier+'/'+phase+'/'+(rainbow?length:0);
+    if(this.colorFrame!==colorFrame){
+      this.colorFrame=colorFrame;
+      const stops=rainbow?Array.from({length},(_,i)=>comboColors(tier,comboPhase(tier,phase,i+1))[1]):comboColors(tier,phase);
+      this.trackColors=stops;
+    }
+    // Center the complete line and reserve its peak width for the 40% pulse.
+    const lastCenter=2.85+.70*(length-1);
+    const cell=Math.min(large?88:74,326/(1.4*(lastCenter+.38)));
+    const units=comboWheelAt(this.wheels[0],time),whole=Math.floor(units);
+    const edge=units===whole?comboDigitRight[whole%10]:Math.max(comboDigitRight[whole%10],comboDigitRight[(whole+1)%10]);
+    const lineWidth=(lastCenter+edge)*cell;
+    const left=(this.canvas.width-lineWidth)*.5,cy=this.canvas.height*.5;
+    const pitch=.70*cell,right=left+lastCenter*cell;
+    ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+    const scale=this.scaleAt(time);
+    this.active=this.pulseStart!=null && time-this.pulseStart<.32;
+    const centerX=this.canvas.width*.5,width=lineWidth*scale,angle=-13*Math.PI/180;
+    // Rotate the label and timer together, reserving the right edge for the pulse.
+    ctx.save();ctx.translate(this.canvas.width-19-width*Math.cos(angle)/2,92);ctx.rotate(angle);
+    const barY=cell*.50*scale+7,start=-width/2;
+    ctx.fillStyle='rgba(26,32,42,.58)';ctx.fillRect(start,barY,width,8);
+    const fill=ctx.createLinearGradient(start,barY,rainbow?start+width:start,rainbow?barY:barY+8);
+    this.trackColors.forEach((color,i)=>fill.addColorStop(i/(this.trackColors.length-1),color));
+    ctx.fillStyle=fill;ctx.fillRect(start+width*(1-progress),barY,width*progress,8);
+    ctx.scale(scale,scale);ctx.translate(-centerX,-cy);
+    ctx.beginPath();ctx.rect(0,cy-40,this.canvas.width,80);ctx.clip();
+    const glyph=(digit,x,y,size,column)=>{
+      const sheet=comboSheet(tier,comboPhase(tier,phase,column));
+      ctx.drawImage(sheet,digit*64,0,64,64,x-size/2,y-size/2,size,size);
+    };
+    glyph(11,left+.50*cell,cy,cell,1);
+    glyph(12,left+1.47*cell,cy,cell,length);
+    glyph(10,left+2.24*cell,cy+2,cell*.65,0);
+    for(let i=0;i<length;i++){
+      const w=this.wheels[i],pos=comboWheelAt(w,time),base=Math.floor(pos),fraction=pos-base,x=right-i*pitch;
+      if(pos!==w.to)this.active=true;
+      if(!(w.blank&&base<w.to))glyph(base%10,x,cy-80*fraction,cell,length-i);
+      if(fraction>0)glyph((base+1)%10,x,cy+80-80*fraction,cell,length-i);
+    }
+    ctx.restore();
+    this.canvas.dataset.frame=String(++this.frame);
+  }
+}
 var Gl = class {
     cap;
     limit = 240;
@@ -7629,7 +7836,7 @@ var Gl = class {
       this.cap = t;
       let n = this.glyphs.length,
         r = document.createElement(`canvas`);
-      ((r.width = 64 * n), (r.height = 64));
+      ((r.width=64*n), (r.height=64*(1+damagePalettes.length)));
       let i = r.getContext(`2d`);
       ((i.font = `900 54px Fredoka, Nunito, "Arial Rounded MT Bold", Arial, sans-serif`),
         (i.textAlign = `center`),
@@ -7641,6 +7848,7 @@ var Gl = class {
           i.strokeText(this.glyphs[e], e * 64 + 32, 35),
           (i.fillStyle = `#fff`),
           i.fillText(this.glyphs[e], e * 64 + 32, 35));
+      drawDamageRows(i,this.glyphs);
       let a = new Wr(r);
       a.colorSpace = pi;
       let o = new Yr(1, 1),
@@ -7655,12 +7863,35 @@ var Gl = class {
         transparent: !0,
         depthTest: !1,
         depthWrite: !1,
-        uniforms: { map: { value: a }, G: { value: n } },
-        vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; uniform float G; varying vec2 vUv; varying vec4 vCol;
+        uniforms: { map: { value: a }, G: { value:n }, rows:{value:1+damagePalettes.length} },
+        vertexShader: `attribute vec4 iA; attribute vec4 iB; attribute vec4 iC; uniform float G; uniform float rows; varying vec2 vUv; varying vec4 vCol; varying float impact;
         void main(){ vec4 mv = viewMatrix*vec4(iA.xyz,1.); float dist = -mv.z; float s = iA.w * clamp(dist*0.08, 0.6, 2.4);
-          mv.xy += vec2(position.x*0.62 + iB.y*0.56, position.y) * s;
-          gl_Position = projectionMatrix*mv; vUv = vec2((iB.x + uv.x)/G, uv.y); vCol = iC; }`,
-        fragmentShader: `uniform sampler2D map; varying vec2 vUv; varying vec4 vCol; void main(){ vec4 t = texture2D(map, vUv); if (t.a < 0.05) discard; gl_FragColor = vec4(mix(vec3(0.1,0.06,0.18), vCol.rgb, smoothstep(0.3,0.7,t.r)), t.a*vCol.a); }`,
+          impact = iB.z;
+          vec2 glyph = vec2(position.x*0.62 + iB.y*0.56, position.y);
+          if(impact>.5){
+            float age=iB.w;
+            float kick=smoothstep(0.,.18,age), drift=smoothstep(.62,1.,age);
+            glyph=vec2(position.x+iB.y,position.y);
+            if(impact==2.) mv.y+=.95+.65*kick+1.28*age+.40*drift;
+            else mv.xy+=vec2(.16*kick+.24*drift,.62+.57*kick+.36*drift);
+          }
+          mv.xy += glyph*s;
+          gl_Position=projectionMatrix*mv;vUv=vec2((iB.x+uv.x)/G,(uv.y+rows-1.-impact)/rows);vCol=iC; }`,
+        fragmentShader: `uniform sampler2D map; varying vec2 vUv; varying vec4 vCol; varying float impact;
+          void main(){
+            vec4 t=texture2D(map,vUv);if(t.a<.05)discard;
+            vec3 ink=mix(vec3(0.1,0.06,0.18),vCol.rgb,smoothstep(0.3,0.7,t.r));
+            if(impact>.5){
+              // Preserve the white outline while lifting the face color.
+              vec3 face=mix(t.rgb,pow(max(t.rgb,vec3(0.)),vec3(.76)),smoothstep(.27,.82,max(t.r,max(t.g,t.b))));
+              float peak=max(face.r,max(face.g,face.b));
+              vec3 pale=mix(face,vec3(1.),.14*smoothstep(.55,.95,peak));
+              // Keep the dominant channel luminous as damage concentrates the hue.
+              vec3 deep=max(vec3(0.),face-(vec3(peak)-face)*.38)*.985;
+              ink=mix(pale,deep,vCol.r);
+            }
+            gl_FragColor=vec4(ink,t.a*vCol.a);
+          }`,
       });
       ((this.mesh = new Sr(o, c, t)),
         (this.mesh.frustumCulled = !1),
@@ -7668,7 +7899,7 @@ var Gl = class {
         (this.mesh.renderOrder = 50),
         e.add(this.mesh));
     }
-    spawn(e, t, n, r, i, a = 0.5) {
+    spawn(e, t, n, r, i, a = 0.5, impact = false, damage = 0) {
       if(this.view&&!this.view.visible(e,t,n,6))return;
       let item;
       if (this.items.length >= this.limit) {
@@ -7677,11 +7908,24 @@ var Gl = class {
       }
       let o = Al.set(i);
       item??=this.free.pop()??{color:{},glyphs:[]};
-      item.x=e+F.range(-0.4,0.4);item.y=t;item.z=n+F.range(-0.4,0.4);
-      item.vy=3.2;item.text=r;item.life=item.max=.85;item.size=a;
-      item.color.r=o.r;item.color.g=o.g;item.color.b=o.b;
+      const hurt=impact===HERO_HURT_LABEL;
+      item.x=hurt?e:e+F.range(-.4,.4);item.y=t;item.z=hurt?n:n+F.range(-.4,.4);
+      item.impact=Number(impact);item.vy=hurt?0:impact?5.2:3.2;item.text=r;
+      item.life=item.max=impact===MEGA_CRITICAL_LABEL?1.04:impact===CRITICAL_LABEL?.92:hurt?.80:impact?.72:.85;item.size=a;
+      const logDamage=Math.log1p(Math.max(0,damage));
+      item.color.r=impact ? logDamage/(logDamage+3.2) : o.r;item.color.g=o.g;item.color.b=o.b;
       item.glyphs.length=r.length;
       for(let j=0;j<r.length;j++)item.glyphs[j]=this.glyphs.indexOf(r[j]);
+      if(impact){
+        const offsets=item.offsets??=[];
+        let advance=0;
+        for(let j=0;j<r.length;j++){
+          const width=r[j]==='1'?.44:r[j]==='-'?.48:r[j]==='.'?.27:.64;
+          offsets[j]=advance+width/2;
+          advance+=width;
+        }
+        for(let j=0;j<r.length;j++)offsets[j]-=advance/2;
+      }
       this.items.push(item);
     }
     trimTo(limit){
@@ -7704,15 +7948,38 @@ var Gl = class {
           c = s < 0.12 ? 1 + (1 - s / 0.12) * 0.7 : 1,
           l = s > 0.7 ? 1 - (s - 0.7) / 0.3 : 1,
           u = o.text.length;
-        for (let e = 0; e < u && i < this.cap; e++) {
-          let a = o.glyphs[e];
+        const critical=o.impact===CRITICAL_LABEL;
+        const mega=o.impact===MEGA_CRITICAL_LABEL;
+        if(mega){
+          const strike=Math.min(s/.10,1), settle=Math.min(Math.max((s-.10)/.17,0),1);
+          c=.60+.86*strike-.42*settle;
+          l=1-Math.max(0,(s-.68)/.32)**2;
+        }else if(critical){
+          const punch=Math.min(s/.085,1);
+          const settle=Math.min(Math.max((s-.085)/.16,0),1);
+          c=.66+.72*punch-.38*settle;
+          l=1-Math.max(0,(s-.66)/.34)**2;
+        }else if(o.impact===HERO_HURT_LABEL){
+          const recoil=Math.min(s/.13,1), settle=Math.min(Math.max((s-.13)/.18,0),1);
+          c=.77+.48*recoil-.25*settle;
+          l=1-Math.max(0,(s-.61)/.39)**2;
+        }else if(o.impact){
+          // Fast compression, one overshoot, then a readable hold before release.
+          c = s < .09 ? .83 + .62*(s/.09) : s < .25 ? 1.45 - .48*(s-.09)/.16
+            : s < .39 ? .97 + .09*(s-.25)/.14 : 1.06;
+          l = 1 - Math.max(0,(s-.67)/.33)**2;
+        }
+        for(let e=0;e<u && i<this.cap;e++){
+          let a=o.glyphs[e];
           a < 0 ||
             ((t[i * 4] = o.x),
             (t[i * 4 + 1] = o.y),
             (t[i * 4 + 2] = o.z),
             (t[i * 4 + 3] = o.size * c),
             (n[i * 4] = a),
-            (n[i * 4 + 1] = e - (u - 1) / 2),
+            (n[i * 4 + 1] = o.impact ? o.offsets[e] : e - (u - 1) / 2),
+            (n[i * 4 + 2] = o.impact),
+            (n[i * 4 + 3] = s),
             (r[i * 4] = o.color.r),
             (r[i * 4 + 1] = o.color.g),
             (r[i * 4 + 2] = o.color.b),
@@ -7937,8 +8204,13 @@ var Gl = class {
     number(e, t, n, r, i, a = !1, target = null) {
       if (!this.enabledText) return;
       if(target!==null){accumulateDamage(this,target,e,t,n,r,i,a);return;}
-      let o = Wl(r);
-      this.text.spawn(e, t, n, a === 2 ? o + `!!` : a ? o + `!` : o, i, a === 2 ? 1 : a ? 0.75 : 0.52);
+      const style=a===2?MEGA_CRITICAL_LABEL:a?CRITICAL_LABEL:i===16751162?EFFECTIVE_LABEL:
+        i===11053240?RESISTED_LABEL:i===0xffffff?NORMAL_HIT_LABEL:0;
+      const size=style===MEGA_CRITICAL_LABEL?.97:style===CRITICAL_LABEL?.87:style===RESISTED_LABEL?.69:style?.76:.52;
+      this.text.spawn(e,t,n,(style?'-':'')+Wl(r),i,size,style,r);
+    }
+    playerDamage(x,y,z,loss) {
+      if(this.enabledText && loss>0)this.text.spawn(x,y,z,'-'+Wl(loss),0xff4948,.79,HERO_HURT_LABEL,loss);
     }
     heal(e, t, n, r) {
       this.enabledText && this.text.spawn(e, t, n, `+` + Math.max(1, Math.round(r)), 3993696, 0.56);
@@ -28168,9 +28440,7 @@ var e_ = class {
               r.vfx.ring(t, i.y[e], o, 2.1, 16730762, 0.28, 0.45),
               r.vfx.ring(t, i.y[e] + 0.1, o, 1.2, 16777215, 0.2, 0.4),
               r.vfx.burst(t, a, o, 16743088, 10, 9, I.Star, 0.5, 0.35),
-              this.canReact(`mega`) &&
-                (r.ui.popup(i.x[e], i.y[e] + i.hgt[e] + 1.5, i.z[e], c(`¡Megacrítico!`), `#ff5a9a`, 0.9),
-                r.shake(0.05)))
+              this.canReact(`mega`) && r.shake(0.05))
             : u && criticalFx &&
               (r.vfx.flash(t, a, o, 16765498, 1.4, 0.1), r.vfx.ring(t, i.y[e], o, 1.3, 16765498, 0.2, 0.3)),
           x &&
@@ -32544,7 +32814,7 @@ var mv = 30,
         (this.squash = 0.5),
         (u.stats.damageTaken += f),
         u.stats.hits++,
-        u.vfx.number(this.pos.x, this.pos.y + (this.hp<=0 && heroActionCatalog[this.speciesId] ? 4 : 2), this.pos.z, f, 16730714),
+        u.vfx.playerDamage(this.pos.x, this.pos.y + (this.hp<=0 && heroActionCatalog[this.speciesId] ? 4 : 2), this.pos.z, f),
         u.r.kick(0.006),
         u.shake(0.12),
         Na(0.25 + 0.6 * Math.min(1, (f / this.maxHp) * 4), 110),
@@ -33517,11 +33787,14 @@ var mv = 30,
         E = r.isLava ? -99 : r.waterAt(this.pos.x, this.pos.z),
         ee = r.frozen && T < E,
         D = !ee && T < E - 0.55;
-      const stickHeld = t.ui.touch?.floatingStick && t.ui.touch.stickId >= 0;
+      // 触摸摇杆仍在驱动（按住，或松手后滤波还在衰减）时按模拟量走：
+      // 速度跟随摇杆幅度，松手靠幅度衰减平滑减速，而不是硬停或满速滑一段。
+      const stickDriven = !!t.ui.touch?.stickDriving;
+      const stickHeld = stickDriven && t.ui.touch.floatingStick;
       // Consume the release with the same movement rule as the drag.
       const directSteering = stickHeld || this.stickHeldLastUpdate;
       this.stickHeldLastUpdate = stickHeld;
-      if (stickHeld && y > 0) w *= Math.min(1, y);
+      if (stickDriven && y > 0) w *= Math.min(1, y);
       if (
         ((this.wading = !ee && !D && T < E - 0.04),
         (this.slip = Math.max(ee && this.pos.y < E + 0.3 ? 1 : 0, this.arenaSlip)),
@@ -43734,6 +44007,7 @@ var iT = Math.PI / 180,
           R: Math.sqrt(t.stats.area),
         };
       this.readyBlinkAt = this.readyFlashAt = null;
+      this.castBanner = {start: performance.now(), color: this.readyPalette.base};
       ((this.charge = 0),
         (this.active = a),
         e.upgradeTiming.beginUltimate(),
@@ -47777,6 +48051,7 @@ var GT = 15,
         this.state === `capturing` && this.clearCaptureView(),
         !frozenWorld&&this.renderWorld(i ? r : 0),
         !frozenWorld&&this.vfx.update(i ? r : a ? e : 0),
+        window.castHidesUI?.(this)&&(this.vfx.text.mesh.visible=false),
         this.ui.hud(this),
         this.state === `play` && this.pendingLevels > 0 && this.evoHold <= 0 && !this.ult.castPending)
       )
@@ -47805,6 +48080,8 @@ var GT = 15,
       let t = this.input,
         n = this.player,
         r = !!this.coop && n.dead;
+      // 触摸摇杆：每个逻辑 tick 取样一次（用真实 tick 时长，慢动作不拖慢手感）。
+      this.ui.touch?.driveStick(t, this.realDt || e);
       (Fl.leave(),
         (this.time += e),
         (this.stageTime += e),
@@ -48385,10 +48662,22 @@ function jE(e, t) {
     e.setPointerCapture(t);
   } catch {}
 }
+// 触摸摇杆手感（单机）。只在这里调：
+//   smoothAlpha     低通时间常数（秒）。越小越跟手，越大越稳；0.03 ≈ 0.1 秒内到满速
+//   deadZone        死区（归一化幅度），低于它不动
+//   deadZoneRelease 迟滞下限，防止在死区边缘来回抖
+//   filterWeights   最近 3 个逻辑帧的权重（新 → 旧）
+const STICK_FEEL = { smoothAlpha: 0.03, deadZone: 0.15, deadZoneRelease: 0.09, filterWeights: [0.5, 0.3, 0.2] };
 var ME = class {
     el;
     ult;
     run = null;
+    // 触摸摇杆输入链路：触摸事件只入队 → 每个逻辑 tick 取样 → 3 帧低通 + 死区 → 写 input.stickX/Y。
+    stickCfg = createStickConfig(STICK_FEEL);
+    stickSampler = new StickSampler(this.stickCfg);
+    stickFilter = new StickFilter(this.stickCfg);
+    stickEngaged = !1; // 摇杆还有没走完的输入：按住中，或松手后仍在减速
+    stickDriving = !1; // 本 tick 的移动是否由触摸摇杆驱动（按住或减速中）
     stick;
     knob;
     act;
@@ -48553,13 +48842,14 @@ var ME = class {
       if(this.swipeMove && !(this.centeredStick && inStick)){
         if(this.stickId < 0){
           this.swipeActive=true;this.stickId=e.pointerId;this.sx=e.clientX;this.sy=e.clientY;
-          this.run.input.stickX=this.run.input.stickY=0;
+          this.stickBegin(e);
         }
         return;
       }
       if (this.stickId < 0 && inStick) {
         this.swipeActive=false;
         this.run.autoRun=false;
+        this.stickBegin(e);
         if (((this.stickId = e.pointerId), this.fixed)) {
           let t = this.stick.getBoundingClientRect();
           ((this.sx = t.left + t.width / 2),
@@ -48585,7 +48875,7 @@ var ME = class {
     move = (e) => {
       let t = this.run?.input;
       if (!t || e.pointerId === this.mapTap?.id || this.btnIds.has(e.pointerId)) return;
-      if(this.run.state !== `play` || this.run.player.dead || document.hidden){this.releaseStick();return;}
+      if(this.run.state !== `play` || this.run.player.dead || document.hidden){this.releaseStick(!0);return;}
       if(this.swipeActive){
         if(e.pointerId !== this.stickId)return;
         const dx=e.clientX-this.sx,dy=e.clientY-this.sy,distance=Math.hypot(dx,dy);
@@ -48593,7 +48883,7 @@ var ME = class {
         // an invisible joystick origin. Keep the heading while the finger rests.
         if(distance < 4)return;
         this.sx=e.clientX;this.sy=e.clientY;
-        t.stickX=dx/distance;t.stickY=-dy/distance;
+        this.stickSampler.pushVector(e.pointerId,dx/distance,-dy/distance,e.timeStamp);
         return;
       }
       if (e.pointerId === this.stickId) {
@@ -48630,12 +48920,12 @@ var ME = class {
         }
         const length = Math.hypot(n, r) || 1;
         const dx = n / length, dy = r / length;
-        const deadZone = this.floatingStick ? Math.max(3, radius * EE) : radius * EE;
+        // 浮动摇杆送原始幅度，死区统一交给滤波器（STICK_FEEL.deadZone），避免两层死区叠加。
         const strength = this.floatingStick
-          ? Math.max(0, Math.min(1, (i - deadZone) / (radius - deadZone)))
-          : +(i >= deadZone);
-        t.stickX = strength * dx;
-        t.stickY = -strength * dy;
+          ? Math.min(1, i / radius)
+          : +(i >= radius * EE);
+        // 不在触摸回调里直接改方向：只入队，逻辑 tick 再取样滤波（见 driveStick）。
+        this.stickSampler.pushVector(e.pointerId, strength * dx, -strength * dy, e.timeStamp);
         const knobTravel = Math.min(i, radius);
         this.knob.style.transform = `translate(${dx * knobTravel}px, ${dy * knobTravel}px)`;
         return;
@@ -48675,13 +48965,40 @@ var ME = class {
       let [e, t] = [...this.looks.values()];
       return t ? Math.hypot(e.x - t.x, e.y - t.y) : 0;
     }
-    releaseStick() {
+    // 松手/滑动中断：只入队一个“抬起”样本，由 driveStick 平滑减速到停。
+    // hard=true（暂停、死亡、切后台、隐藏控件）才立刻清零，避免回来时旧方向还在走。
+    releaseStick(hard) {
       ((this.stickId = -1),
         (this.swipeActive = !1),
         this.stick.classList.remove(`on`, `fixed`),
         (this.stick.style.left = this.stick.style.top = this.stick.style.bottom = ``),
-        (this.knob.style.transform = ``),
-        this.run && ((this.run.input.stickX = 0), (this.run.input.stickY = 0)));
+        (this.knob.style.transform = ``));
+      hard === !0 ? this.stickStop() : this.stickSampler.end();
+    }
+    // 按下：绑定手指，方向从 0 开始（手指没动就不该走）。
+    stickBegin(e) {
+      this.stickSampler.end();
+      this.stickSampler.begin(e.pointerId, 0, 0, e.timeStamp);
+      this.stickEngaged = !0;
+    }
+    stickStop() {
+      this.stickSampler.abort();
+      this.stickFilter.reset();
+      this.stickEngaged = this.stickDriving = !1;
+      this.run && ((this.run.input.stickX = 0), (this.run.input.stickY = 0));
+    }
+    // 每个逻辑 tick 调一次（Run.simulate 开头），dt = 本 tick 时长（秒）。
+    // 取“此刻之前”的最新采样 → 3 帧低通 + 死区 → 写入 input.stickX/Y。
+    // 摇杆没参与时什么都不写，手柄/键盘的输入不会被覆盖。
+    driveStick(input, dt) {
+      if (!this.stickEngaged) return;
+      const raw = this.stickSampler.consume(performance.now());
+      const out = this.stickFilter.update(raw, dt);
+      input.stickX = out.x;
+      input.stickY = out.y;
+      this.stickDriving = raw.held || out.mag > 0;
+      // 松手后减速走完：交还控制权（上面已经写过一次 0）。
+      this.stickDriving || ((this.stickEngaged = !1), this.stickFilter.reset());
     }
     show(e) {
       e !== this.shown && ((this.shown = e), this.el.classList.toggle(`on`, e), !e && this.letGo());
@@ -48692,7 +49009,7 @@ var ME = class {
           try {
             this.el.releasePointerCapture(e);
           } catch {}
-      (this.releaseStick(), this.looks.clear(), this.btnIds.clear(), (this.pinch = 0), (this.mapTap = null));
+      (this.releaseStick(!0), this.looks.clear(), this.btnIds.clear(), (this.pinch = 0), (this.mapTap = null));
       for (let e of this.el.querySelectorAll(`.tc-btn.on`)) e.classList.remove(`on`);
       let e = this.run?.input;
       if (e) for (let t of [`Space`, `ShiftLeft`, `KeyR`, `KeyE`, `Escape`, `KeyQ`]) e.touchKey(t, !1);
@@ -72823,33 +73140,38 @@ var JI = class {
           this.popups.delete(s);
         }, 900));
     }
-    streakHud(count, remaining) {
+    streakHud(count, remaining, time=this.runRef?.realTime??performance.now()/1000) {
       const streak = this.els.streak;
-      const visible = count >= 3 && remaining > 0;
+      const visible = count >= 1 && remaining > 0;
       if (visible !== this.stkOn) {
         this.stkOn = visible;
         streak.hidden = !visible;
         this.stkN = this.stkBar = -1;
+        this.comboRoller?.reset();
       }
       if (!visible) return;
 
       const number = streak.children[1];
+      if(!this.comboRoller && streak.classList.contains('zx-combo'))this.comboRoller=new ComboRoller(number);
       if (count !== this.stkN) {
         const tier = count >= 100 ? 4 : count >= 50 ? 3 : count >= 25 ? 2 : Number(count >= 10);
         if (streak.dataset.tier !== String(tier)) {
           streak.dataset.tier = String(tier);
-          streak.style.setProperty('--sc', ['#0089ED', '#00AB78', '#F28300', '#F03D51', '#AB36EF'][tier]);
+          streak.style.setProperty('--sc',comboColors(tier,0)[1]);
         }
-        number.textContent = `×${count}`;
-        const now = performance.now();
-        if (this.stkN >= 0 && now - this.stkAt >= 120) {
-          number.animate?.([{transform:'scale(1.45) rotate(-4deg)'}, {transform:'none'}], {duration:220, easing:'ease-out'});
-          this.stkAt = now;
+        if(this.comboRoller)this.comboRoller.setCount(count,time);
+        else{
+          number.textContent = `×${count}`;
+          const now = performance.now();
+          if (this.stkN >= 0 && now - this.stkAt >= 120) {
+            number.animate?.([{transform:'scale(1.45) rotate(-4deg)'}, {transform:'none'}], {duration:220, easing:'ease-out'});
+            this.stkAt = now;
+          }
         }
         this.stkN = count;
       }
-
       const progress = Math.min(1, Math.ceil(remaining / wE.STREAK_WINDOW * 48) / 48);
+      this.comboRoller?.paint(Number(streak.dataset.tier),time,progress);
       if (progress !== this.stkBar) {
         this.stkBar = progress;
         streak.children[2].firstChild.style.transform = `scaleX(${progress})`;

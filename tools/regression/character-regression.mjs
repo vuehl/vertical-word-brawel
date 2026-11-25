@@ -23,7 +23,7 @@ export async function reviewCharacters(page,dir) {
     assert.equal(start.next.level,mode==='single-stage'?12:18);
     report.heroes.push(start);
     assert.equal(start.word,({4:'炎',16:'风'})[species]);
-    assert.equal(start.ultimate,({4:'一点火苗',16:'一阵风刮来'})[species]);
+    assert.equal(start.ultimate,({4:'一点火苗',16:'阵风'})[species]);
     if(branch){
       if(species===16){
         const choices=await page.evaluate(()=>{const r=app.run;r.player.level=r.nextEvo.level;r.tryEvolve();return r.ui.modalEl.textContent;});

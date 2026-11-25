@@ -50,7 +50,7 @@ export const formCopy = {
     ultimate: ['巨型烈焰', '一点火苗'],
     fusion: ['烈焰旋风', '炼狱风暴'],
   },
-  16: windForm('风', '旋风', '一阵风刮来'),
+  16: windForm('风', '旋风', '阵风'),
   17: windForm('讽', '龙卷风', '刮倒一片'),
   18: {...windForm('疯', '飓风', '刮倒一片'), fusion: ['羽毛气旋', '残气乱刮']},
   58: windForm('飒', '忠诚冲锋', '跑得没影'),
