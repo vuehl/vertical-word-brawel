@@ -113,12 +113,32 @@ test('a locked obsolete cache does not prevent text installation, and byte-only 
   assert.deepEqual(progress,[25]);
   assert.deepEqual([...new Set(states.map(s=>s.phase))],['download','unpack','write','ready']);
 });
-test('a mounted text archive remains usable when the package callback reports failure',async()=>{
-  const f=installer({loadSubpackage({fail}){queueMicrotask(()=>fail({errMsg:'download interrupted'}));}});
+test('an already mounted archive installs without requesting the package again',async()=>{
+  const f=installer();
   f.data.set('packs/text/assets.br',new Uint8Array(4));
+  await f.api.init();
+  assert.deepEqual(f.downloads,{});
+  assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
+});
+test('an archive mounted without a completion callback is picked up during the first download',{timeout:5000},async()=>{
+  const f=installer({loadSubpackage(){queueMicrotask(()=>f.data.set('packs/text/assets.br',new Uint8Array(4)));}});
   await f.api.init();
   assert.deepEqual(f.downloads,{text:1});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
+});
+test('entering during background preparation joins the download and starts the remaining pack',async()=>{
+  const pending={};
+  const f=installer({loadSubpackage({name,success}){pending[name](success);}});
+  const world=new Promise(resolve=>{pending.world=resolve;});
+  const art=new Promise(resolve=>{pending.art=resolve;});
+  const background=f.api.preloadForest();
+  const finishWorld=await world;
+  assert.deepEqual(f.downloads,{world:1});
+  const entering=f.api.prepareForest();
+  const finishArt=await art;
+  finishWorld();finishArt();
+  await Promise.all([background,entering]);
+  assert.deepEqual(f.downloads,{world:1,art:1});
 });
 test('native async installs coalesce, report progress and leave unused models on disk as recipes',async()=>{
   const fixture=installer(),progressA=[],progressB=[];

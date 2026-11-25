@@ -25,7 +25,8 @@ export async function reviewUltimateCast(page,dir){
       window.tap(x,y,'down',11);
       window.tap(x+60,y,'move',11);
       const before=run.ult.uses;
-      window.tap(button.x+button.width/2-screen.x,button.y+button.height/2-screen.y);
+      const buttonX=button.x+button.width/2-screen.x,buttonY=button.y+button.height/2-screen.y;
+      window.tap(buttonX,buttonY);
       const tick=()=>{run.update(1/60);run.input.endFrame();};
       tick();
       const cue=run.ult.castBanner,p=run.player;
@@ -46,11 +47,21 @@ export async function reviewUltimateCast(page,dir){
       window.tap(x,y+60,'move',12);
       const [,restarted]=step(8);
       window.tap(x,y+60,'up',12);
+      // Repeat the skill press while the steering thumb is lifted. The button
+      // thumb can remain on the screen when the steering thumb lands again.
+      window.tap(buttonX,buttonY,'down',1);
+      const buttonOnly=run.ui.touch.touches===1&&run.ui.touch.stickId===-1;
+      window.tap(x,y,'down',12);
+      window.tap(x,y-60,'move',12);
+      const owner=run.ui.touch.stickId;
+      const [,withButton]=step(8);
+      window.tap(buttonX,buttonY,'up',1);
       return {uses:run.ult.uses-before,name:cue.name,color:cue.color,evoStage:cue.evoStage,
-        held:held>0,turned:turned<0,released,restarted:restarted>0};
+        held:held>0,turned:turned<0,released,restarted:restarted>0,buttonOnly,owner,withButton:withButton<0};
     },route);
     const evoStage=route.length-1;
-    assert.deepEqual(started,{uses:1,name,color,evoStage,held:true,turned:true,released:true,restarted:true},'Cast and steer: '+species);
+    assert.deepEqual(started,{uses:1,name,color,evoStage,held:true,turned:true,released:true,restarted:true,
+      buttonOnly:true,owner:12,withButton:true},'Cast and steer: '+species);
     const expectedLayers=[...(evoStage>=2?['flame']:[]),...(evoStage>=1?['blade']:[])];
     const titleX=[];
     for(const [ms,hidden] of [[200,false],[333,true],[500,true],[700,true],[1000,true],[2010,false]]){
@@ -96,6 +107,20 @@ export async function reviewUltimateCast(page,dir){
       if(ms===1000)assert.deepEqual(frame.layers,evoStage>=2?['flame']:[],'Blade sweep has ended: '+species);
       if(ms>=2000)assert.deepEqual(frame.layers,[]);
     }
+    const recovered=await page.evaluate(()=>{
+      const run=app.run,env=inspected.env,screen=run.r.canvas.getBoundingClientRect();
+      const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
+      const advance=()=>{for(let i=0;i<8;i++){run.update(1/60);run.input.endFrame();}};
+      const startX=run.player.pos.x;
+      window.tap(x+60,y,'move',12);advance();
+      const turned=run.player.pos.x>startX;
+      window.tap(x+60,y,'up',12);
+      const startZ=run.player.pos.z;
+      window.tap(x,y,'down',1);window.tap(x,y+60,'move',1);advance();
+      window.tap(x,y+60,'up',1);
+      return {turned,restarted:run.player.pos.z>startZ};
+    });
+    assert.deepEqual(recovered,{turned:true,restarted:true},'Steer after HUD recovery: '+species);
     assert.ok(titleX[0]>titleX[2]&&titleX[1]<titleX[2],'Travel left, overshoot and rebound');
     assert.ok(Math.abs(titleX[2]-titleX[1]-5.2)<.8,'Rebound by 10% of the 52-unit travel');
     console.log('Verified cast, layered rendering and HUD recovery:',name);

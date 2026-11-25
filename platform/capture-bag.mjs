@@ -264,7 +264,6 @@ export function createCaptureOverlay(env, files) {
       console.warn('[福袋捕捉] 素材暂不可用，沿用原捕捉演出',error);
     });
   }
-  prepare();
   return function drawCapture(renderer, run) {
     const ball=run?.capture?.ball;
     if (bound && (bound.ball!==ball || ball.disposed)) {

@@ -107,14 +107,14 @@ async function start() {
   function paintProgress(renderer) {
     if (!splash || waitingForRetry) return;
     lastPaint = Date.now();
-    const seconds = Math.max(0, Math.floor((lastPaint - lastAdvance) / 1000));
+    const elapsedMs = Math.max(0, lastPaint - lastAdvance);
     // Estimate within the current stage between native callbacks. The next
     // stage and the completed home frame can only be reached by real work.
-    const ceiling = shown < 50 ? 50 : shown < 90 ? 90 : 100;
-    const estimate = animationFrom + (ceiling - animationFrom) * seconds / (60 + seconds);
-    displayed = shown === 100 ? 100 : Math.max(displayed, Math.min(ceiling - .01, Math.floor(estimate * 100) / 100));
+    const ceiling = shown < 90 ? 90 : 100;
+    const estimate = animationFrom + (ceiling - animationFrom) * elapsedMs / (40000 + elapsedMs);
+    displayed = shown === 100 ? 100 : Math.max(displayed, Math.min(ceiling - .1, Math.round(estimate * 10) / 10));
     try {
-      splash.draw(displayed, !!renderer, ((lastPaint - began) % 1800) / 1800, seconds);
+      splash.draw(displayed, !!renderer, ((lastPaint - began) % 1800) / 1800);
     } catch (error) {
       console.warn('[宝可梦启动] 无法更新加载进度', error);
       splash.dispose();
@@ -190,17 +190,16 @@ async function start() {
     const files = require('./files');
     GameGlobal.pokebonk = Object.assign(host, {canvas, files});
     stage('准备游戏资源');
-    const prepared = {play:0, text:0, world:0, art:0};
+    const prepared = {play:0, text:0};
     function installProgress(state) {
       const ratio = state.total ? Math.min(1, state.completed / state.total) : 0;
       const value = state.phase === 'ready' ? 1 : state.phase === 'write' ? .7 + .3*ratio :
         state.phase === 'unpack' ? .6 : .55*ratio;
       prepared[state.name] = Math.max(prepared[state.name], value);
-      if (state.name === 'text') updateDownloads();
-      else showProgress(Math.min(89, 50 + Math.floor(12*prepared.world + 28*prepared.art)));
+      updateDownloads();
     }
     function updateDownloads() {
-      showProgress(Math.min(49, 5 + Math.floor(30*prepared.play + 15*prepared.text)));
+      showProgress(Math.min(89.9, 5 + 55*prepared.play + 30*prepared.text));
     }
     showProgress(5);
     let play;
@@ -219,15 +218,13 @@ async function start() {
       ['文字资源', () => files.init(undefined, installProgress)]
     ]);
     if (!resourcesReady) return;
-    stage('准备桌面场景与角色');
-    showProgress(50);
-    if (!await prepareResources([['场景与角色', () => files.prepareForest(installProgress)]])) return;
     stage('绘制游戏首页');
     showProgress(90);
     await withTimeout(launchEngine(host,play,showProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
     host.bootDiagnostics.completed=true;
     host.bootDiagnostics.totalMs=Date.now()-began;
     console.info('[宝可梦启动] 游戏首页已绘制', Date.now() - began, 'ms');
+    files.preloadForest().catch(error=>console.warn('[字行] 后台准备场景资源失败',error));
   } catch (error) {
     console.error('[宝可梦] ' + phase + '失败', error);
     const restart = typeof wx.restartMiniProgram === 'function';

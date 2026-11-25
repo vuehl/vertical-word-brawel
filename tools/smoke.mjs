@@ -159,7 +159,8 @@ async function verifyProgressImage(percent, filename){
       assert.ok(ink>100*sx*sx,'The startup illustration must show '+word);
     }
   }
-  assert.ok(await page.evaluate(p=>window.bootLabels.includes(p+'%'),percent),'Readable percentage was painted');
+  const expectedLabel=process.argv.includes('--baseline')?percent+'%':percent.toFixed(1)+'%';
+  assert.ok(await page.evaluate(label=>window.bootLabels.includes(label),expectedLabel),'Readable percentage was painted');
   const {channels:rgb}=await sharp(image).removeAlpha().stats();
   assert.ok(rgb.some(channel=>channel.max-channel.min>100),'Stationery illustration is visible');
 }
@@ -167,11 +168,11 @@ async function verifyStartup(){
   await page.waitForFunction(()=>window.textRequested&&window.playDownloaded||window.problem,{timeout:20000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
   const baseline=process.argv.includes('--baseline');
-  await page.waitForFunction(()=>bootPercentages[bootPercentages.length-1]>=35);
+  await page.waitForFunction(floor=>bootPercentages[bootPercentages.length-1]>=floor,{},baseline?35:60);
   const playReady=await page.evaluate(()=>bootPercentages[bootPercentages.length-1]);
-  assert.ok(baseline ? playReady===35||playReady===50 : playReady>=35&&playReady<50);
-  const halfText=baseline?(playReady===35?42:67):39;
-  await verifyProgressImage(playReady);
+  assert.ok(baseline ? playReady===35||playReady===50 : playReady>=60&&playReady<90);
+  const halfText=baseline?(playReady===35?42:67):68;
+  await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
   await page.evaluate(()=>window.reportTextProgress(50));
   await page.waitForFunction(p=>bootPercentages[bootPercentages.length-1]>=p,{},halfText);
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])),'00-loading.png');
@@ -192,11 +193,13 @@ async function verifyStartup(){
       try {await new Promise(resolve=>setTimeout(resolve,3100));}
       finally {gl.uniform1f=original;}
       gaps.push(performance.now()-lastChange);
-      return {gaps,samples,labels:bootLabels.slice(firstLabel).map(parseFloat)};
+      return {gaps,samples,labels:bootLabels.slice(firstLabel)};
     });
     const longest=Math.round(Math.max(...gaps));
     assert.ok(samples>3&&longest<1000,'Moving bar must update within every second, longest gap '+longest+'ms');
-    assert.ok(labels.at(-1)>labels[0]&&labels.every((n,i)=>n<100&&(!i||n>=labels[i-1])),
+    assert.ok(labels.every(label=>/^\d+\.\d%$/.test(label)),'Boot percentages must have one decimal place');
+    const values=labels.map(parseFloat);
+    assert.ok(values.at(-1)>values[0]&&values.every((n,i)=>n<100&&(!i||n>=values[i-1])),
       'The visible percentage must advance while callbacks are paused: '+labels);
     console.log('Stalled boot progress animation:',samples,'updates, longest gap',longest,'ms');
   }
@@ -214,6 +217,13 @@ async function verifyStartup(){
   });
   const retryInstall=process.argv.includes('--boot-only')&&!baseline&&!failFrame;
   if(retryInstall)await page.evaluate(()=>{
+    const files=GameGlobal.pokebonk.files,resolve=files.resolvePath.bind(files);
+    files.resolvePath=async function(url){
+      if(url==='assets/ui-paper/journey-desk.webp'){
+        await new Promise(done=>{window.releaseHomeDesk=done;});
+      }
+      return resolve(url);
+    };
     const manager=wx.getFileSystemManager(),write=manager.writeFile,modal=wx.showModal;
     manager.writeFile=function(options){
       if(!options.filePath.includes('/text-'))return write.call(this,options);
@@ -226,7 +236,7 @@ async function verifyStartup(){
       window.retryBootInstall=options;
     };
   });
-  await page.evaluate(()=>{window.releaseTextDownload();window.releaseOptionalDownloads();});
+  await page.evaluate(baseline=>{window.releaseTextDownload();if(baseline)window.releaseOptionalDownloads();},baseline);
   if(retryInstall){
     await page.waitForFunction(()=>window.retryBootInstall||window.problem);
     assert.deepEqual(await page.evaluate(()=>[retryBootInstall.confirmText,bootPercentages.includes(100)]),['重试',false]);
@@ -236,7 +246,7 @@ async function verifyStartup(){
     await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
     await page.evaluate(()=>releaseHomeStatus());
     await page.waitForFunction(()=>bootPercentages.includes(95));
-    await verifyProgressImage(95);
+    await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
     assert.equal(await page.evaluate(()=>!!app.screen?.querySelector('button')||bootPercentages.includes(100)),false);
     await page.evaluate(()=>releaseGlyphAtlas());
   }
@@ -259,6 +269,14 @@ async function verifyStartup(){
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
   if(retryInstall)assert.equal(await page.evaluate(()=>requestedPackages.filter(name=>name==='play').length),1);
   await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
+  if(!baseline){
+    await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed&&requestedPackages.includes('world'));
+    assert.ok(await page.evaluate(()=>app.screen.dataset.page==='home'&&bootPercentages.includes(100)&&!requestedPackages.includes('art')),
+      'Home must be usable while the first background download is held');
+    assert.ok(await page.evaluate(()=>!requestedPackages.includes('capture_bag')),'Capture effects are only needed in a run');
+    if(retryInstall)await page.evaluate(()=>window.releaseHomeDesk());
+    await page.evaluate(()=>window.releaseOptionalDownloads());
+  }
   if(process.argv.includes('--software-render')){
     await page.evaluate(()=>{window.productionFrameGap=app.frameGap.bind(app);app.frameGap=()=>250;app.r.setDynRes(.6);});
     console.log('Software rendering check: reduced 3D frame rate and adaptive scene resolution; native UI resolution unchanged');

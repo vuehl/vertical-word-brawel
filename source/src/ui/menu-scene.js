@@ -74,7 +74,7 @@ export function paintLoadingSlip(ctx,value,label){
   polygon(ctx,[[48,-48],[65,-48],[65,-31],[56,-35],[48,-31]],'#C77683');
   ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillStyle='#293651';ctx.font='bold 15px sans-serif';
   ctx.fillText(label,61,-18);
-  ctx.textAlign='right';ctx.font='bold 19px sans-serif';ctx.fillStyle='#385A8A';ctx.fillText(value+'%',329,-18);
+  ctx.textAlign='right';ctx.font='bold 19px sans-serif';ctx.fillStyle='#385A8A';ctx.fillText(value.toFixed(1)+'%',329,-18);
   ctx.fillStyle='#D1DBEA';ctx.fillRect(61,0,268,7);
   if(value){ctx.fillStyle='#5076AE';ctx.fillRect(61,0,268*value/100,7);}
 }

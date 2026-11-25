@@ -160,7 +160,6 @@ export class App {
     // The home screen does not need a cloud profile. Share this request
     // with menu actions, without a late response navigating the player.
     if(account)ui.prepareProfile(account).catch(error=>console.warn('[字行] 后台读取存档失败',error));
-    await ui.prepareHomeArt();
     ui.home();
     window.bootStage?.('首页内容已就绪',99);
   }

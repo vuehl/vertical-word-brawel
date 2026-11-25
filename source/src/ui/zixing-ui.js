@@ -220,7 +220,7 @@ export function createZixingUI(app,api) {
   window.__zixingApp=app;
   let selected=defaultStarter,selectedDestination=destinations[0],selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,authPromise=null,activeEntry=null;
   const scene=journeyScene();
-  const ui=app.zixing={home,choose,map,difficulty:map,multiplayer:()=>openProfilePage(coopTitle,()=>multiplayer()),lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready,prepareHomeArt:scene.prepare,savedCard,settlementSaved};
+  const ui=app.zixing={home,choose,map,difficulty:map,multiplayer:()=>openProfilePage(coopTitle,()=>multiplayer()),lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready,savedCard,settlementSaved};
   const character=characterForSpecies;
   window.addEventListener('memorywarning',()=>{
     releaseGlyphCanvasCache();

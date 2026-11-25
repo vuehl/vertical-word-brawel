@@ -56,6 +56,10 @@ async function readBrotli(archive,expected) {
   if(!raw||raw.byteLength!==expected)throw Error('解压后长度不符 '+archive);
   return raw;
 }
+function packageAvailable(name) {
+  return name === 'play' ? !!(GameGlobal.pokebonkPlayEntry && GameGlobal.pokebonkPlayEntry.api)
+    : exists('packs/' + name + '/assets.br');
+}
 function downloadPackage(name, progress) {
   return new Promise((resolve,reject) => {
     let timer, lastBytes = 0, lastPercent = 0, done = false;
@@ -66,11 +70,13 @@ function downloadPackage(name, progress) {
       if (error) reject(new Error(name + ' 分包：' + (error.errMsg || error.message || error)));
       else resolve();
     }
-    function resetTimer() {
-      clearTimeout(timer);
-      timer = setTimeout(() => finish('下载长时间没有进展，请检查网络后重试'), 45000);
+    let lastProgress = Date.now();
+    function checkDownload() {
+      if (packageAvailable(name)) return finish();
+      if (Date.now() - lastProgress >= 15000) return finish('下载长时间没有进展，请检查网络后重试');
+      timer = setTimeout(checkDownload, 1500);
     }
-    resetTimer();
+    timer = setTimeout(checkDownload, 1500);
     try {
       const task = wx.loadSubpackage({name, success: () => finish(), fail: finish});
       if (task && task.onProgressUpdate) task.onProgressUpdate(event => {
@@ -80,7 +86,7 @@ function downloadPackage(name, progress) {
         if (done || (bytes <= lastBytes && percent <= lastPercent)) return;
         lastBytes = Math.max(lastBytes, bytes);
         lastPercent = Math.max(lastPercent, percent);
-        resetTimer();
+        lastProgress = Date.now();
         if (progress) progress(lastPercent);
       });
     } catch (error) { finish(error); }
@@ -89,17 +95,16 @@ function downloadPackage(name, progress) {
 async function loadPackage(name, progress) {
   // A packaged archive can already be mounted even if WeChat missed the
   // download callback. The normal unpacker still validates its contents.
-  const available = () => name === 'play'
-    ? !!(GameGlobal.pokebonkPlayEntry && GameGlobal.pokebonkPlayEntry.api)
-    : exists('packs/' + name + '/assets.br');
+  if (packageAvailable(name)) return;
   try {
     await downloadPackage(name, progress);
   } catch (error) {
-    if (available()) return;
+    if (packageAvailable(name)) return;
     console.warn('[宝可梦] 重试下载分包', name, error);
     await new Promise(resolve => setTimeout(resolve, 500));
+    if (packageAvailable(name)) return;
     try { await downloadPackage(name, progress); }
-    catch (retryError) { if (!available()) throw retryError; }
+    catch (retryError) { if (!packageAvailable(name)) throw retryError; }
   }
 }
 async function unpack(name, revision, progress) {
@@ -278,10 +283,17 @@ async function preparePacks(names,onProgress,downloadProgress) {
   finally {if(onProgress)for(const name of names)listeners.get(name).delete(onProgress);}
 }
 function prepareForest(onProgress) {return preparePacks(['world','art'],onProgress);}
+async function preloadForest() {
+  // Keep idle downloads serial. Entering a game can join the current install
+  // and start the other pack immediately through prepareForest.
+  await yieldTask();
+  await ensurePack('world');
+  await ensurePack('art');
+}
 async function readCompressedAsset(url,expected){
   const path=await resolvePath(url);
   if(!path)throw Error('找不到压缩资源 '+url);
   const raw=await readBrotli(path,expected);
   return raw instanceof Uint8Array?raw:new Uint8Array(raw);
 }
-module.exports = {init,pathFor,resolvePath,readCompressedAsset,loadIcon,loadPackage,prepareForest,diagnostics};
+module.exports = {init,pathFor,resolvePath,readCompressedAsset,loadIcon,loadPackage,prepareForest,preloadForest,diagnostics};

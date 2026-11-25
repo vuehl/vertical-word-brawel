@@ -306,8 +306,11 @@ export async function setup(host) {
       if(kind==='down'){
         if(x<0||y<0||x>=view.w||y>=view.h)continue;
         const entry=env.__zixingApp?.screen;
-        // Keep steering during the cut-in without activating invisible HUD buttons.
-        const target=hiddenHud?run.ui.touch.el:layout.hit(x,y);
+        let target=layout.hit(x,y);
+        if(hiddenHud){
+          // Track button contacts through release without giving them the stick.
+          target=target.closest?.('.tc-btn')?doc.body:run.ui.touch.el;
+        }
         const entryButton=entry?.dataset.page==='home'&&entry.contains(target)&&target.closest?.('button');
         p={target,entryButton,x,y,lastX:x,lastY:y,scrolled:false};pointers.set(id,p);
       }

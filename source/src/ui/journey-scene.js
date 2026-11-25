@@ -36,16 +36,14 @@ export function journeyScene(){
   const node=document.createElement('canvas'),actor=document.createElement('canvas');
   node.className='journey-scene';node.dataset.static='true';node.setAttribute('aria-hidden','true');
   node.dataset.journeyBackdrop='true';
-  let desk=null,deskReady=null,pose=shots.home,target='',identity='',word='',motion=0,presentation=0,leaving=false;
+  let desk=null,loadingDesk=null,pose=shots.home,target='',identity='',word='',motion=0,presentation=0,leaving=false;
   let moving=false,blending=false,actorLayer=null;
   function prepare(){
-    if(!deskReady)deskReady=new Promise(resolve=>{
-      const image=new Image();
-      image.onload=()=>{desk=image;paint();resolve();};
-      image.onerror=()=>{deskReady=null;resolve();};
-      image.src='assets/ui-paper/journey-desk.webp';
-    });
-    return deskReady;
+    if(desk||loadingDesk)return;
+    loadingDesk=new Image();
+    loadingDesk.onload=()=>{desk=loadingDesk;loadingDesk=null;paint();};
+    loadingDesk.onerror=()=>{loadingDesk=null;};
+    loadingDesk.src='assets/ui-paper/journey-desk.webp';
   }
   function drawActor(ctx,cx,cy,size){
     ctx.save();ctx.translate(cx,cy+size*.36);ctx.scale(1,.24);
@@ -140,5 +138,5 @@ export function journeyScene(){
     if(sameScene&&changed&&page.dataset.page!=='entry')fade(page,0,1,235);
   }
   window.addEventListener('resize',paint);
-  return {prepare,mount,travel};
+  return {mount,travel};
 }
