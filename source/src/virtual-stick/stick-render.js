@@ -6,7 +6,7 @@
 export class FixedStepRunner {
   constructor(cfg, onStep) {
     this.cfg = cfg;
-    this.onStep = onStep;     // (dt) => void，dt 恒为 cfg.fixedStep
+    this.onStep = onStep;     // (dt, lagSeconds)，lag 是本步结束到当前渲染帧的时间
     this.acc = 0;
     this.dropped = 0;         // 因卡顿丢弃的时间（秒），用于埋点
     this.steps = 0;
@@ -22,12 +22,16 @@ export class FixedStepRunner {
     const cfg = this.cfg;
     const maxDt = Math.min(cfg.maxFrameDelta, Math.max(0, frameDeltaSeconds));
     if (frameDeltaSeconds > maxDt) this.dropped += frameDeltaSeconds - maxDt;
-    this.acc += maxDt;
     const step = cfg.fixedStep;
+    this.acc += maxDt;
+    // 丢最老的整步，让保留下来的步始终对应最近的采样时段。
+    const skipped = Math.max(0, Math.floor(this.acc / step) - cfg.maxSubSteps) * step;
+    this.acc -= skipped;
+    this.dropped += skipped;
     let n = 0;
     while (this.acc >= step && n < cfg.maxSubSteps) {
-      this.onStep(step);
       this.acc -= step;
+      this.onStep(step, this.acc);
       n++;
       this.steps++;
     }
@@ -64,7 +68,7 @@ export class RenderState {
   capture(body) {
     if (!this.ready) return this.reset(body.x, body.y, body.z, body.facing);
     this.px = this.cx; this.py = this.cy; this.pz = this.cz; this.pf = this.cf;
-    this.cx = body.x; this.cy = body.y; this.cz = body.z; this.cf = body.facing;
+    this.cx = body.x; this.cy = body.y; this.cz = body.z; this.cf = body.facing ?? 0;
   }
 
   // alpha 来自 FixedStepRunner.alpha；返回复用对象。

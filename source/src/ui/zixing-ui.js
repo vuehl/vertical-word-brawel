@@ -1500,7 +1500,7 @@ export function createZixingUI(app,api) {
     };
     const build=entries.length?el('section','zx-outcome-build',[
       el('b','','本局构筑'),el('div','zx-outcome-stash',[
-        buildGroup('招式',entries.filter(i=>i.move)),buildGroup('维生素',entries.filter(i=>i.vitamin)),buildGroup('道具',entries.filter(i=>!i.move&&!i.vitamin)),
+        buildGroup('招式',entries.filter(i=>i.move)),buildGroup('BUFF',entries.filter(i=>i.vitamin)),buildGroup('道具',entries.filter(i=>!i.move&&!i.vitamin)),
       ]),
     ]):null;
     const receipt=el('div','zx-outcome-body',[
@@ -1712,7 +1712,7 @@ export function createZixingUI(app,api) {
     const skillSlots=el('div','zx-skill-slots',[],{'data-ui-layer':'skills','aria-label':'本局技能'});
     const c=character(run.startSpecies),coin=hudPaperIcon('coin',18);
     const stageCaption=el('canvas','zx-stage-caption',[],{width:368,height:52,role:'img','data-ui-region':'hud-top','data-static':'true'});
-    const vitamins=el('div','zx-hud-vitamins vitamin-rail',[],{'aria-label':'本局维生素','data-ui-layer':'items'});
+    const vitamins=el('div','zx-hud-vitamins vitamin-rail',[],{'aria-label':'本局 BUFF','data-ui-layer':'items'});
     const supplies=el('div','zx-hud-supplies zx-inventory-items',[],{'aria-label':'本局道具','data-ui-layer':'items'});
     inventory.append(el('div','zx-loadout-top',[skillSlots,vitamins]),supplies);
     const health=el('canvas','zx-player-health',[],{width:176,height:40,'data-static':'true','data-ui-layer':'health',role:'progressbar','aria-label':'角色生命','aria-valuemin':0});

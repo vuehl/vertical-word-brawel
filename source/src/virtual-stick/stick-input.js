@@ -22,6 +22,7 @@ export class StickSampler {
     this.queue = [];          // 待消费的原始采样（按 t 升序）
     this.cursor = 0;          // 已消费到的下标
     this.pointerId = null;    // 当前绑定的手指 id，null 表示没按下
+    this.gesture = 0;
     this.origin = { x: 0, y: 0 };
     this.radius = Math.max(8, cfg.radiusPx);
     this.lastConsumed = null;
@@ -43,6 +44,8 @@ export class StickSampler {
   begin(id, x, y, timeStamp, originX, originY) {
     if (this.pointerId !== null && id !== this.pointerId) return false; // 多指：只认第一根
     this.pointerId = id;
+    this.gesture++;
+    this.lastMoveStamp = timeStamp;
     this.origin.x = Number.isFinite(originX) ? originX : x;
     this.origin.y = Number.isFinite(originY) ? originY : y;
     // 按下瞬间方向为 0：手指还没动就不该产生位移，这是“开局正常”的前提。
@@ -54,21 +57,21 @@ export class StickSampler {
   move(id, x, y, timeStamp) {
     if (this.pointerId !== null && id !== this.pointerId) return false;
     if (this.pointerId === null) return false;
-    let vx = (x - this.origin.x) / this.radius;
-    let vy = -(y - this.origin.y) / this.radius; // 屏幕 y 向下，翻转成“向上为正”
-    const len = Math.hypot(vx, vy);
-    if (len > 1) {
-      vx /= len;
-      vy /= len;
-    }
-    this._push(vx, vy, true, timeStamp);
-    return true;
+    const vx = (x - this.origin.x) / this.radius;
+    const vy = -(y - this.origin.y) / this.radius; // 屏幕 y 向下，翻转成“向上为正”
+    return this.pushVector(id, vx, vy, timeStamp);
   }
 
   // 直接送入已经归一化好的向量（向上为正）。调用方自己管原点/半径/摇杆形状时用，
   // 采样器只负责排队和时序。幅度超过 1 同样截断到单位长度。
   pushVector(id, vx, vy, timeStamp) {
     if (this.pointerId === null || id !== this.pointerId) return false;
+    if (!Number.isFinite(vx) || !Number.isFinite(vy)) return false;
+    // 同一手指的迟到旧 move 不能覆盖较新的转向。新手势重新建立次序。
+    if (Number.isFinite(timeStamp)) {
+      if (timeStamp < this.lastMoveStamp) return false;
+      this.lastMoveStamp = timeStamp;
+    }
     const len = Math.hypot(vx, vy);
     if (len > 1) {
       vx /= len;
@@ -115,26 +118,25 @@ export class StickSampler {
       q.splice(0, drop);
       this.cursor -= drop;
     }
-    if (q.length > this.cfg.historyLimit) {
-      const extra = q.length - this.cfg.historyLimit;
-      q.splice(0, extra);
-      this.cursor = Math.max(0, this.cursor - extra);
-      this.stats.dropped += extra;
-    }
-
     const s = this.lastConsumed || EMPTY;
     const out = this.out;
     out.t = s.t;
     out.x = s.x;
     out.y = s.y;
     out.held = s.held; // 只认队列里的状态，不读“此刻”的手指状态，保证时序一致
+    out.gesture = s.gesture;
     return out;
   }
 
   _push(vx, vy, held, timeStamp) {
     const { t, late } = this._stamp(timeStamp);
-    const sample = { t, x: vx, y: vy, held };
+    const sample = { t, x: vx, y: vy, held, gesture: this.gesture };
     this.queue.push(sample);
+    if (this.queue.length > this.cfg.historyLimit) {
+      this.queue.shift();
+      if (this.cursor > 0) this.cursor--;
+      else this.stats.dropped++;
+    }
     this.stats.pushed++;
     if (late > this.cfg.fixedStep * 1000 + 0.5) this.stats.late++;
   }
@@ -143,7 +145,10 @@ export class StickSampler {
   // 这样即使 iOS/Android 的相对时间原点不同也不会错位。
   _stamp(timeStamp) {
     const arrive = this.now();
-    if (!Number.isFinite(timeStamp)) return { t: arrive, late: 0 };
+    if (!Number.isFinite(timeStamp)) {
+      this.lastStamp = arrive;
+      return { t: arrive, late: 0 };
+    }
 
     if (this.anchorEvent === null) {
       // 只用“事件之间的差值”，所以时间原点不同（相对时间 / 纪元时间）都没关系。

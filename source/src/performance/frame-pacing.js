@@ -40,11 +40,17 @@ export class CombatClock {
   gap=0;
   next=0;
   ticks(run,now,gap){
-    if(this.run!==run||this.gap!==gap||now-this.next>=Math.max(60,2*gap)){
+    if(this.run!==run||this.gap!==gap){
       this.run=run;this.gap=gap;this.next=now;
+    }else if(now-this.next>=Math.max(60,2*gap)){
+      // 长卡顿后仅执行当前这一步，立即读取截至此刻的触摸事件。
+      this.next=now+gap*.5;
     }
-    const count=Math.min(2,Math.max(0,Math.floor((now-this.next+gap*.5)/gap)+1));
+    const count=Math.min(2,Math.max(0,Math.floor((now-this.next+gap*.5)/gap+1e-8)+1));
     this.next+=count*gap;
+    // Quantization uses half a step of phase. alpha is the elapsed fraction
+    // since the latest actual tick boundary, including draws without a tick.
+    this.alpha=Math.max(0,Math.min(1,(now-this.next)/gap+1.5));
     return count;
   }
 }

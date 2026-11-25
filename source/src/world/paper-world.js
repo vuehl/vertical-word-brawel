@@ -37,12 +37,12 @@ export function buildPaperWorld(terrain){if(isDeskStage(terrain)){initDesk(terra
 export async function buildPaperWorldAsync(terrain,options){if(isDeskStage(terrain)){if(!terrain.deskReady)initDesk(terrain);await terrain.deskReady;options?.check?.();return {steps:terrain.group.children.length};}return runLoadingSteps(workshopWorldSteps(terrain),options);}
 export const applyPaperLight=applyWorkshopLight;
 const focus=new Vector3();
-export function updatePaperCamera(run,dt){
-  const p=run.player.pos,c=run.r.camera;
+export function updatePaperCamera(run,dt,p=run.player.pos){
+  const c=run.r.camera;
   run.camTarget.copy(p);
   run.trauma=Math.max(0,(run.trauma||0)-Math.max(0,dt)*2.4);
   if(run.terrain.desk2d){
-    deskCamera(run);
+    deskCamera(run,undefined,0,p);
     return;
   }
   run.camYaw=PAPER_CAMERA.yaw;run.camPitch=PAPER_CAMERA.pitch;run.camDist=PAPER_CAMERA.distance;

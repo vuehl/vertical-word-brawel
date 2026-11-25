@@ -21,7 +21,7 @@ function fileCall(method,options) {
   return new Promise((resolve,reject)=>{
     let done=false;
     const finish=(error,result)=>{if(done)return;done=true;clearTimeout(timer);error?reject(error instanceof Error?error:Error(error.errMsg||String(error))):resolve(result);};
-    const action=method==='writeFile'?'保存':method==='readCompressedFile'?'解压':'读取';
+    const action=method==='rmdir'?'清理':method==='writeFile'?'保存':method==='readCompressedFile'?'解压':'读取';
     const timer=setTimeout(()=>finish(Error('资源'+action+'超时，请重试')),30000);
     try {fs()[method](Object.assign({},options,{success:result=>finish(null,result),fail:finish}));}catch(error){finish(error);}
   });
@@ -33,6 +33,10 @@ async function readFile(filePath,encoding) {
 async function writeFile(filePath,data,encoding) {
   if(typeof fs().writeFile==='function')await fileCall('writeFile',Object.assign({filePath,data},encoding?{encoding}:{}));
   else fs().writeFileSync(filePath,data,encoding);
+}
+async function removePackDirectory(dirPath) {
+  if(typeof fs().rmdir==='function')await fileCall('rmdir',{dirPath,recursive:true});
+  else {await yieldTask();fs().rmdirSync(dirPath,true);}
 }
 async function readArchive(name,archive) {
   const manager=fs(),expected=info.rawSizes[name];let raw;
@@ -97,13 +101,21 @@ async function unpack(name, revision, progress) {
   report(name,'download',0,100);
   await loadPackage(name,p=>{if(progress)progress(p);report(name,'download',p,100);});
   // Only an interrupted install can leave an unmarked hash directory.
-  if (exists(dir)) fs().rmdirSync(dir, true);
+  if (exists(dir)) await removePackDirectory(dir);
   fs().mkdirSync(dir, true);
   const archive = 'packs/' + name + '/assets.br';
   report(name,'unpack');await yieldTask();
   const unpackAt=Date.now(),raw=await readArchive(name,archive);
   stats.unpackMs=Date.now()-unpackAt;
-  const entries=[...resourceEntries(raw)],writeAt=Date.now();
+  // Advancing the iterator decodes each filtered file. Give the splash
+  // time to present frames even before the first native write begins.
+  const entries=[];
+  let decodeSlice=Date.now();
+  for(const entry of resourceEntries(raw)){
+    entries.push(entry);
+    if(Date.now()-decodeSlice>=6){await yieldTask();decodeSlice=Date.now();}
+  }
+  const writeAt=Date.now();
   report(name,'write',0,entries.length);
   let sliceStart = Date.now(),reported=0;
   const batchSize=typeof fs().writeFile==='function'?4:1;
@@ -242,7 +254,7 @@ async function init(progress) {
   // Removed music packages are obsolete too; player saves live elsewhere.
   for (const entry of fs().readdirSync(base)) {
     const match=/^(art|world|text|dragon_summon|sound|music_(?:boss|ingame[1-4]))-([a-f0-9]{16})$/.exec(entry);
-    if(match&&info.packs[match[1]]!==match[2])fs().rmdirSync(base+'/'+entry,true);
+    if(match&&info.packs[match[1]]!==match[2])await removePackDirectory(base+'/'+entry);
   }
   await ensurePack('text', progress);
 }

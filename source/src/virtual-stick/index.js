@@ -58,7 +58,7 @@ export class VirtualStickController {
     this.tick = 0;                 // 固定步序号，随输入快照一起导出，供帧同步对齐
     this._flushPending = false;    // 松手后，消费到 held=false 的那一步立刻补发
 
-    this.runner = new FixedStepRunner(this.cfg, (dt) => this._step(dt));
+    this.runner = new FixedStepRunner(this.cfg, (dt, lag) => this._step(dt, this.clockMs - lag * 1000));
     this.view.reset();
   }
 
@@ -205,6 +205,7 @@ export class VirtualStickController {
     // 暂停期间不调 update、或调用方传进来的是钳位/缩放后的 dt 时，累加出来的时钟
     // 会落后于事件时间戳，队列里的输入“永远还没到点”→ 方向滞后、越卡越不同步。
     this.clockMs = this.now();
+    this.distanceLeft = this.cfg.maxFrameDistance;
 
     // 物理步长本身仍由 runner 钳位，卡顿不会变成“一步走很远”。
     return this.runner.advance(rawDt);
@@ -216,9 +217,8 @@ export class VirtualStickController {
     this.view.reset(x, y, z, this.body.facing);
   }
 
-  _step(dt) {
+  _step(dt, simMs) {
     this.tick++;
-    const simMs = this.clockMs;
     const raw = this.sampler.consume(simMs);
     const filtered = this.filter.update(raw, dt);
 
@@ -226,7 +226,9 @@ export class VirtualStickController {
     this.input.y = filtered.y;
     this.input.held = raw.held;
 
-    this.body.step(filtered, dt);
+    const startX = this.body.x, startZ = this.body.z;
+    this.body.step(filtered, dt, this.distanceLeft);
+    this.distanceLeft = Math.max(0, this.distanceLeft - Math.hypot(this.body.x-startX, this.body.z-startZ));
     // 每个物理步都推进一次快照：prev/curr 始终是“相邻两步”。
     // 若一帧跑 N 步只推一次，prev 会退到 N 步之前，帧率在 1 步/2 步间波动时画面忽快忽慢。
     this.view.capture(this.body);

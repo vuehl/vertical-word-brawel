@@ -51,7 +51,7 @@ module.exports = async function presentBootFrame(gl) {
       ctx.fillStyle=navy;ctx.fillRect(0,0,w,height);
     }
     ctx.setTransform(s,0,0,s,left*s,-y);ctx.save();ctx.translate(0,track);
-    paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源');
+    paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=90?'正在打开首页':value>=50?'正在准备场景与角色':'正在准备游戏资源');
     ctx.restore();
     return strip?y:null;
   }
@@ -62,12 +62,24 @@ module.exports = async function presentBootFrame(gl) {
     attach(gl.FRAGMENT_SHADER,`#version 300 es
       precision highp float;
       uniform sampler2D artwork;uniform int percent;uniform bool overScene;
+      uniform vec4 trackRect;uniform float sweep;
       in vec2 uv;out vec4 color;
-      void main(){if(percent<0&&overScene)discard;color=texture(artwork,uv);}`);
+      void main(){
+        if(percent<0&&overScene)discard;
+        color=texture(artwork,uv);
+        vec2 p=(uv-trackRect.xy)/trackRect.zw;
+        if(percent<100 && p.x>=0. && p.x<=1. && p.y>=0. && p.y<=1.){
+          float distanceToBand=abs(p.x-(sweep*1.32-.16));
+          float band=1.-smoothstep(.035,.16,distanceToBand);
+          vec3 tint=p.x<float(percent)*.01?vec3(.73,.88,1.):vec3(.53,.68,.86);
+          color.rgb=mix(color.rgb,tint,band*.9);
+        }
+      }`);
     gl.linkProgram(program);
     if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program)||'启动画面着色器未就绪');
     const percent=gl.getUniformLocation(program,'percent'),overScene=gl.getUniformLocation(program,'overScene');
-    function draw(value,overlay=false){
+    const trackRect=gl.getUniformLocation(program,'trackRect'),sweep=gl.getUniformLocation(program,'sweep');
+    function draw(value,overlay=false,sweepPhase=0){
       if(!program)return;
       value=Math.max(0,Math.min(100,Math.floor(value)));
       const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight,key=w+'x'+h+'@'+value;
@@ -92,6 +104,9 @@ module.exports = async function presentBootFrame(gl) {
         last=key;
       }
       gl.uniform1i(percent,value);gl.uniform1i(overScene,overlay?1:0);
+      const scale=Math.min(w/390,h/550);
+      gl.uniform4f(trackRect, .5+(61-195)*scale/w, .79, 268*scale/w, 5*scale/h);
+      gl.uniform1f(sweep,sweepPhase);
       gl.drawArrays(gl.TRIANGLES,0,3);gl.bindVertexArray(null);gl.useProgram(null);gl.flush();
     }
     draw(0);

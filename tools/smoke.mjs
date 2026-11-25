@@ -100,6 +100,7 @@ await page.evaluateOnNewDocument(()=>{
     const loc=lookup.call(this,program,name);
     if(name==='percent' && loc)locations.set(program,loc);
     if(name==='overScene' && locations.has(program))bootLocations.add(locations.get(program));
+    if(name==='sweep' && locations.has(program))window.bootSweep=loc;
     return loc;
   };
   gl.uniform1i=function(loc,value){
@@ -140,7 +141,8 @@ async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
   const sx=Math.min(width/390,height/550),left=Math.round((width-390*sx)/2+61*sx),right=Math.round((width-390*sx)/2+329*sx);
-  const y=Math.floor(height*.79+3*sx);
+  // The bottom edge retains the measured fill colour underneath the moving band.
+  const y=Math.floor(height*.79+6*sx);
   let filled=0;
   for(let x=left;x<right;x++){
     const at=(y*width+x)*channels;
@@ -164,10 +166,38 @@ async function verifyProgressImage(percent, filename){
 async function verifyStartup(){
   await page.waitForFunction(()=>window.textRequested&&window.playDownloaded||window.problem,{timeout:20000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
-  await verifyProgressImage(50);
+  const baseline=process.argv.includes('--baseline');
+  await page.waitForFunction(()=>bootPercentages[bootPercentages.length-1]>=35);
+  const playReady=await page.evaluate(()=>bootPercentages[bootPercentages.length-1]);
+  assert.ok(playReady===35||(baseline&&playReady===50));
+  const halfText=playReady===35?42:67;
+  await verifyProgressImage(playReady);
   await page.evaluate(()=>window.reportTextProgress(50));
-  await verifyProgressImage(67,'00-loading.png');
-  console.log('Verified 50% and 67% labels and bar lengths during a stalled download');
+  await page.waitForFunction(p=>bootPercentages.includes(p),{},halfText);
+  await verifyProgressImage(halfText,'00-loading.png');
+  async function verifyMotion(){
+    if(baseline||!process.argv.includes('--boot-only'))return;
+    const {gaps,samples}=await page.evaluate(async()=>{
+      const gl=WebGL2RenderingContext.prototype,original=gl.uniform1f;
+      let lastValue,lastChange=performance.now(),samples=0;
+      const gaps=[];
+      gl.uniform1f=function(loc,value){
+        if(loc===window.bootSweep && value!==lastValue){
+          const now=performance.now();gaps.push(now-lastChange);
+          lastChange=now;lastValue=value;samples++;
+        }
+        return original.call(this,loc,value);
+      };
+      try {await new Promise(resolve=>setTimeout(resolve,3100));}
+      finally {gl.uniform1f=original;}
+      gaps.push(performance.now()-lastChange);
+      return {gaps,samples};
+    });
+    const longest=Math.round(Math.max(...gaps));
+    assert.ok(samples>3&&longest<1000,'Moving bar must update within every second, longest gap '+longest+'ms');
+    console.log('Stalled boot progress animation:',samples,'updates, longest gap',longest,'ms');
+  }
+  await verifyMotion();
   const checkGlyphGate=process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline');
   if(checkGlyphGate)await page.evaluate(()=>{
     const files=GameGlobal.pokebonk.files,resolve=files.resolvePath.bind(files);
@@ -183,6 +213,7 @@ async function verifyStartup(){
   if(checkGlyphGate){
     await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
     await page.evaluate(()=>releaseHomeStatus());
+    await page.waitForFunction(()=>bootPercentages.includes(95));
     await verifyProgressImage(95);
     assert.equal(await page.evaluate(()=>!!app.screen?.querySelector('button')||bootPercentages.includes(100)),false);
     await page.evaluate(()=>releaseGlyphAtlas());
@@ -196,9 +227,10 @@ async function verifyStartup(){
     return;
   }
   if(!checkGlyphGate){
-    await page.waitForFunction(()=>window.bootPercentages.filter(n=>n>=95).length>=2||window.problem,{timeout:60000});
+    await page.waitForFunction(()=>window.homeStatusRequested && window.bootPercentages.at(-1)>=97 ||window.problem,{timeout:60000});
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     await verifyProgressImage(await page.evaluate(()=>bootPercentages.at(-1)),'00-background.png');
+    await verifyMotion();
     await page.evaluate(()=>window.releaseHomeStatus());
   }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});

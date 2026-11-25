@@ -96,18 +96,19 @@ async function start() {
   }
   if (wx.getLaunchOptionsSync) receiveInvite(wx.getLaunchOptionsSync());
   wx.onShow(receiveInvite);
-  let phase = '创建画面', splash, shown = 0;
+  let phase = '创建画面', splash, shown = 0, animationTimer, activeRenderer;
+  let lastPaint = 0;
   function stage(title) {
     phase = title;
     const ms=Date.now()-began;
     host.bootDiagnostics.stages.push({stage:title,ms});
     console.info('[宝可梦启动]', title, ms, 'ms');
   }
-  function showProgress(value = shown, renderer) {
-    if (!splash || value < shown || (value === shown && !renderer)) return;
-    shown = value;
+  function paintProgress(renderer) {
+    if (!splash) return;
+    lastPaint = Date.now();
     try {
-      splash.draw(value, !!renderer);
+      splash.draw(shown, !!renderer, ((lastPaint - began) % 1800) / 1800);
     } catch (error) {
       console.warn('[宝可梦启动] 无法更新加载进度', error);
       splash.dispose();
@@ -116,7 +117,17 @@ async function start() {
       if (renderer) renderer.resetState();
     }
   }
-  host.bootStage=(title,value)=>{stage(title);showProgress(value);};
+  function showProgress(value = shown, renderer) {
+    if (!splash) return;
+    shown = Math.max(shown, value);
+    // The renderer can cover the splash on any frame. Restore its GL state
+    // after both overlays and timer-driven paints between game frames.
+    if (renderer) {
+      activeRenderer = renderer;
+      paintProgress(renderer);
+    }
+  }
+  host.bootStage=(title,value,renderer)=>{stage(title);showProgress(value,renderer);};
   try {
     stage('字行 · 打开纸上世界');
     const canvas = wx.createCanvas();
@@ -131,6 +142,9 @@ async function start() {
     if (!gl) gl = canvas.getContext('webgl2');
     if (!gl) throw Error('当前微信环境无法创建 WebGL 2 画面，请更新微信后重新进入。');
     splash = await require('./boot-screen')(gl);
+    animationTimer = setInterval(() => {
+      if (shown < 100 && Date.now() - lastPaint >= 75) paintProgress(activeRenderer);
+    }, 100);
     console.info('[宝可梦启动] 启动画面已提交', Date.now() - began, 'ms');
     const files = require('./files');
     GameGlobal.pokebonk = Object.assign(host, {canvas, files});
@@ -139,8 +153,7 @@ async function start() {
     function packageProgress(name, percent) {
       if (!Number.isFinite(percent)) return;
       downloaded[name] = Math.max(downloaded[name], Math.min(100, percent));
-      // Reserve the last 15% for unpacking, entry registration and the first rendered home frame.
-      showProgress(5 + Math.floor((45 * downloaded.play + 35 * downloaded.text) / 100));
+      showProgress(5 + Math.floor((30 * downloaded.play + 15 * downloaded.text) / 100));
     }
     showProgress(5);
     const [play] = await withTimeout(Promise.all([
@@ -156,7 +169,8 @@ async function start() {
       const ratio=state.total?Math.min(1,state.completed/state.total):0;
       const value=state.phase==='ready'?1:state.phase==='write'?.7+.3*ratio:state.phase==='unpack'?.6:.55*ratio;
       prepared[state.name]=Math.max(prepared[state.name]||0,value);
-      showProgress(85+Math.floor(2.5*(prepared.world+prepared.art)));
+      // The character art is the largest download on a cold launch.
+      showProgress(50+Math.floor(12*prepared.world+28*prepared.art));
     }),120000,'桌面场景与角色资源准备超时，请重新进入。');
     stage('绘制游戏首页');
     showProgress(90);
@@ -171,6 +185,8 @@ async function start() {
       confirmText:restart ? '重新进入' : '退出游戏', showCancel:false,
       success:() => restart ? wx.restartMiniProgram({}) : wx.exitMiniProgram({})});
   } finally {
+    clearInterval(animationTimer);
+    activeRenderer = null;
     if (splash) splash.dispose();
     splash = null;
   }

@@ -58,7 +58,11 @@ Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(ho
     window.inspected=s;
     if(window.holdHomeStatus){
       const gate=new Promise(resolve=>{window.releaseHomeStatus=resolve;}),fetch=s.env.fetch;
-      s.env.fetch=(url,...args)=>String(url).endsWith('/api/status')?gate.then(()=>fetch(url,...args)):fetch(url,...args);
+      s.env.fetch=(url,...args)=>{
+        if(!String(url).endsWith('/api/status'))return fetch(url,...args);
+        window.homeStatusRequested=true;
+        return gate.then(()=>fetch(url,...args));
+      };
     }
     if(window.failFirstFrame)s.env.drawUI=()=>{throw Error('test: first game frame failed');};
   };host.onApp=app=>window.app=app;

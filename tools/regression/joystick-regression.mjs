@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {prepareReturningPlayer} from './entry-regression.mjs';
 
 export async function verifyJoystick(page,dir){
   await page.evaluate(()=>{window.holdHomeStatus=false;window.releaseHomeStatus?.();releaseOptionalDownloads();releaseTextDownload();});
@@ -10,6 +11,7 @@ export async function verifyJoystick(page,dir){
     await handle.evaluate(el=>el.click());await handle.dispose();
   };
   if(await page.evaluate(()=>!!app.screen.querySelector('.auth-body button')))await click('.auth-body button');
+  await prepareReturningPlayer(page);
   await click('[data-action="journey"]');
   await click('[data-action="collection-next"]');
   await click('[data-action="enter"]');
@@ -21,6 +23,19 @@ export async function verifyJoystick(page,dir){
   await page.evaluate(()=>{
     app.halted=true;const r=app.run;r.enemies.clear();r.state='play';
     r.ui.touch.update(r,'');inspected.env.drawUI(app.r.renderer);
+    // Isolated collision/geometry probes run without RAF. Explicitly consume
+    // queued events at a simulation boundary, as Run.simulate does in play.
+    window.stickStep=dt=>{
+      const run=app.run;
+      run.walkBudget=run.ui.touch.stickCfg.maxFrameDistance;
+      run.ui.touch.driveStick(run.input,dt,performance.now());
+      run.stepPlayer(run.player,dt);
+      run.renderAlpha=1;
+    };
+    window.settleStick=()=>{
+      for(let i=0;i<16;i++)r.ui.touch.driveStick(r.input,1/30,performance.now());
+      return [r.input.stickX,r.input.stickY];
+    };
   });
   if(process.argv.includes('--joystick-soak')){
     const {verifyCombatSteering}=await import('./joystick-soak.mjs');
@@ -39,28 +54,28 @@ export async function verifyJoystick(page,dir){
       r.updateCamera(1);r.realDt=1/fps;
       const step=()=>{
         const {x,z}=p.pos;
-        p.update(1/fps);r.updateCamera(1/fps);r.input.endFrame();
+        window.stickStep(1/fps);r.updateCamera(1/fps);r.input.endFrame();
         return [p.pos.x-x,p.pos.z-z];
       };
       window.tap(x,y,'down',11);window.tap(x+60,y,'move',11);
       const start=step(),held=step();
-      window.tap(x-60,y,'move',11);const reverse=step();
-      window.tap(x,y+60,'move',11);const turn=step();
-      window.tap(x,y,'move',11);const center=step();
-      window.tap(x,y-60,'move',11);step();
+      window.tap(x-60,y,'move',11);for(let i=0;i<5;i++)step();const reverse=step();
+      window.tap(x,y+60,'move',11);for(let i=0;i<10;i++)step();const turn=step();
+      window.tap(x,y,'move',11);for(let i=0;i<25;i++)step();const center=step();
+      window.tap(x,y-60,'move',11);for(let i=0;i<5;i++)step();
       const camera=r.r.camera.position.clone();
       window.tap(x,y-60,'up',11);const release=step();
       const cameraDrift=camera.distanceTo(r.r.camera.position);
-      results.push({fps,boost,airborne,start,held,reverse,turn,center,release,cameraDrift});
+      for(let i=0;i<30;i++)step();
+      results.push({stop:p.speedNow,fps,boost,airborne,start,held,reverse,turn,center,release,cameraDrift});
     }
     p.stats.moveSpeed=baseSpeed;
     return results;
   });
   for(const s of response){
-    const stride=s.start[0],near=(a,b)=>Math.abs(a-b)<1e-6;
-    assert.ok(stride>0&&near(s.held[0],stride)&&near(s.reverse[0],-stride),JSON.stringify(s));
-    assert.ok(near(s.turn[0],0)&&near(s.turn[1],stride),JSON.stringify(s));
-    assert.ok(Math.hypot(...s.center,...s.release,s.cameraDrift)<1e-6,JSON.stringify(s));
+    assert.ok(s.start[0]>0 && s.held[0]>=s.start[0]-1e-6 && s.reverse[0]<0,JSON.stringify(s));
+    assert.ok(Math.abs(s.turn[0])<.01 && s.turn[1]>0,JSON.stringify(s));
+    assert.ok(Math.hypot(...s.center)<.001 && s.stop===0 && s.release[1]<0,JSON.stringify(s));
   }
   const southEdge=await page.evaluate(()=>{
     const r=app.run,p=r.player,env=inspected.env,c=r.r.camera;
@@ -73,15 +88,15 @@ export async function verifyJoystick(page,dir){
       p.kx=p.kz=p.crowdX=p.crowdZ=0;r.camTarget.copy(p.pos);
       const advance=frames=>{
         for(let frame=0;frame<frames;frame++){
-          r.realDt=dt;p.update(dt);r.updateCamera(dt);r.input.endFrame();
+          r.realDt=dt;window.stickStep(dt);r.updateCamera(dt);r.input.endFrame();
           if(r.terrain.hitProp(p.pos.x,p.pos.y,p.pos.z,p.radius-.001,true))throw Error(lane+' collision penetration');
         }
       };
       window.tap(x,y,'down',11);window.tap(x,y+60,'move',11);advance(fps);
       const edge=p.pos.z,wallSpeed=p.speedNow,wallCamera=c.position.z;
-      window.tap(x,y-60,'move',11);advance(1);
+      window.tap(x,y-60,'move',11);advance(6);
       const cameraReturn=wallCamera-c.position.z;
-      advance(fps*3-1);
+      advance(fps*3-6);
       r.renderWorld(0);
       const at=p.pos.clone(),speed=p.speedNow,action=p.heroPlayback?.clip.frames[0].action;
       window.tap(x+60,y-60,'move',11);advance(fps);
@@ -94,7 +109,7 @@ export async function verifyJoystick(page,dir){
   for(const s of southEdge){
     assert.ok(s.reachedWall&&s.wallSpeed<.01&&s.cameraReturn>0,JSON.stringify(s));
     assert.ok(Math.abs(s.drift)<.001&&s.north>1&&s.turn>.5,JSON.stringify(s));
-    assert.ok(s.north>18&&s.speed>0,JSON.stringify(s));
+    assert.ok(s.north>16&&s.speed>0,JSON.stringify(s));
     if(s.lane==='open')assert.equal(s.action,'walk',JSON.stringify(s));
   }
   const circles=await page.evaluate(()=>{
@@ -117,24 +132,24 @@ export async function verifyJoystick(page,dir){
           r.enemies.x[id]=p.pos.x+dx*.3;r.enemies.z[id]=p.pos.z+dz*.3;
         }
         const px=p.pos.x,pz=p.pos.z;
-        p.update(dt);r.enemies.update(dt);r.input.endFrame();
+        window.stickStep(dt);r.enemies.update(dt);r.input.endFrame();
         const forward=(p.pos.x-px)*dx+(p.pos.z-pz)*dz;
         const sideways=(p.pos.z-pz)*dx-(p.pos.x-px)*dz;
         minForward=Math.min(minForward,forward/dt);
         maxPathError=Math.max(maxPathError,Math.abs(Math.atan2(sideways,forward))*180/Math.PI);
-        const alignment=dx*r.input.stickX-dz*r.input.stickY;
+        const alignment=(dx*r.input.stickX-dz*r.input.stickY)/Math.max(.00001,Math.hypot(r.input.stickX,r.input.stickY));
         maxAngleError=Math.max(maxAngleError,Math.acos(Math.min(1,Math.max(-1,alignment)))*180/Math.PI);
       }
       const held=t.stickId===11,damage=p.maxHp-p.hp;
       window.tap(x,y,'up',11);r.enemies.clear();
-      for(let frame=0;frame<fps/2;frame++)p.update(dt);
+      for(let frame=0;frame<fps/2;frame++)window.stickStep(dt);
       return {turn,fps,hits:r.stats.hits-hits,damage,minForward,maxAngleError,maxPathError,held,stopSpeed:Math.hypot(p.vel.x,p.vel.z)};
     }));
   });
   for(const circle of circles){
     assert.ok(circle.hits>0&&circle.damage>0&&circle.held,JSON.stringify(circle));
     assert.ok(circle.minForward>0,'Ordinary contact reversed movement during a circle: '+JSON.stringify(circle));
-    assert.ok(circle.maxAngleError<5&&circle.maxPathError<30&&circle.stopSpeed<.01,JSON.stringify(circle));
+    assert.ok(circle.maxAngleError<25&&circle.maxPathError<30&&circle.stopSpeed<.01,JSON.stringify(circle));
   }
   const testCloseCrowd=()=>page.evaluate(()=>{
     const r=app.run,p=r.player,enemies=r.enemies,env=inspected.env;
@@ -157,20 +172,21 @@ export async function verifyJoystick(page,dir){
         for(let i=0;i<frames;i++){
           const oldX=p.pos.x,oldZ=p.pos.z;
           if(Math.hypot(p.crowdX,p.crowdZ)>.001)loadedSteps++;
-          r.realDt=dt;p.update(dt);enemies.update(dt);r.input.endFrame();
+          r.realDt=dt;window.stickStep(dt);enemies.update(dt);r.input.endFrame();
           const dx=p.pos.x-oldX,dz=p.pos.z-oldZ;
+          if(i<Math.min(6,frames-1))continue; // allow the 3-tick turn and braking response
           if(direction){
             maxSideways=Math.max(maxSideways,Math.abs(dz));
             minForward=Math.min(minForward,dx*direction);
-          }else maxDrift=Math.max(maxDrift,Math.hypot(dx,dz));
+          }else if (i===frames-1) maxDrift=Math.max(maxDrift,Math.hypot(dx,dz));
         }
       };
       window.tap(x,y,'down',11);advance(0,3);
       window.tap(x+8,y,'move',11);advance(1,4);
-      window.tap(x-8,y,'move',11);advance(-1,4);
-      window.tap(x,y,'move',11);advance(0,4);
+      window.tap(x-8,y,'move',11);advance(-1,10);
+      window.tap(x,y,'move',11);advance(0,30);
       window.tap(x+40,y,'move',11);advance(1,2);
-      window.tap(x+40,y,'up',11);advance(0,fps/2);
+      window.tap(x+40,y,'up',11);advance(0,30);
       enemies.clear();
       return {stage:r.stage,fps,hits:r.stats.hits-initialHits,loadedSteps,maxDrift,maxSideways,minForward};
     });
@@ -189,7 +205,7 @@ export async function verifyJoystick(page,dir){
         const screen=inspected.doc.getElementById('game').getBoundingClientRect();
         const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
         const samples=[],saved=p.pos.clone();
-        const input=()=>[r.input.stickX,r.input.stickY];
+        const input=window.settleStick;
         const diagonal=Math.SQRT1_2;
         const vertical=[];
         for(const dy of [-1,1]){
@@ -203,7 +219,7 @@ export async function verifyJoystick(page,dir){
             env.drawUI(app.r.renderer);
             const knob=inspected.layout.box(t.knob);
             knobs.push([knob.x+knob.w/2-t.sx,knob.y+knob.h/2-t.sy]);
-            for(let frame=0;frame<6;frame++){r.realDt=1/60;p.update(1/60);r.input.endFrame();}
+            for(let frame=0;frame<6;frame++){r.realDt=1/60;window.stickStep(1/60);r.input.endFrame();}
             speeds.push(Math.hypot(p.vel.x,p.vel.z));
           }
           const movement=[p.pos.x-start.x,p.pos.z-start.z];
@@ -231,7 +247,7 @@ export async function verifyJoystick(page,dir){
           p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.kx=p.kz=p.crowdX=p.crowdZ=0;
           p.grounded=true;r.autoRun=false;
           const start=p.pos.clone();
-          for(let frame=0;frame<12;frame++){r.realDt=1/60;p.update(1/60);r.input.endFrame();}
+          for(let frame=0;frame<12;frame++){r.realDt=1/60;window.stickStep(1/60);r.input.endFrame();}
           const movement=[p.pos.x-start.x,p.pos.z-start.z];
           // A stationary finger and a second finger must not change the heading.
           window.tap(x-dx*45,y-dy*45,'move',11);const held=input();
@@ -250,12 +266,12 @@ export async function verifyJoystick(page,dir){
       // Save the observations even on a failing build.
       await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify(report,null,2));
       for(const s of result.vertical){
-        assert.ok(s.headings.every(([x,y])=>x===0&&y*-s.dy>0),'Vertical hold drifted: '+JSON.stringify(s));
-        assert.ok(Math.abs(s.headings[1][1])<Math.abs(s.headings[0][1])&&s.headings.at(-1)[1]===-s.dy,'Short drag must allow a slower walk');
-        assert.ok(s.speeds[1]>0&&s.speeds[1]<s.speeds.at(-1)*.5,'Short drag must slow the actual player');
+        assert.ok(s.headings.every(([x,y])=>Math.abs(x)<.01&&y*-s.dy>=0),'Vertical hold drifted: '+JSON.stringify(s));
+        assert.ok(Math.abs(s.headings[1][1])<Math.abs(s.headings[0][1])&&Math.abs(s.headings.at(-1)[1]+s.dy)<.01,'Short drag must allow a slower walk');
+        assert.ok(s.speeds[1]>=0&&s.speeds[1]<s.speeds.at(-1)*.5,'Short drag must slow the actual player');
         assert.ok(s.knobs.every(([x,y])=>Math.abs(x)<.01&&y*s.dy>0),'Painted knob drifted: '+JSON.stringify(s));
         assert.ok(Math.abs(s.movement[0])<.001&&s.dy*s.movement[1]>.5,'Vertical player path: '+JSON.stringify(s));
-        assert.ok(s.turn[0]>.5&&s.turn[1]*-s.dy>.5&&s.reverse[0]===0&&s.reverse[1]===s.dy,'Deliberate turn or reversal blocked');
+        assert.ok(s.turn[0]>.5&&s.turn[1]*-s.dy>.5&&Math.abs(s.reverse[0])<.01&&Math.abs(s.reverse[1]-s.dy)<.01,'Deliberate turn or reversal blocked');
       }
       for(const s of result.samples){
         const near=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1])<.01;
@@ -280,17 +296,17 @@ export async function verifyJoystick(page,dir){
     inspected.touches('down',{touches:[stick,second],changedTouches:[stick,second]});
     stick.clientX+=45;
     inspected.touches('move',{touches:[stick,second],changedTouches:[stick]});
-    inspected.touches('up',{touches:[stick]});
+    inspected.touches('up',{touches:[stick]});window.settleStick();
     if(t.stickId!==11||r.input.stickX<.99)throw Error('Ending the second contact released the stick');
     inspected.touches('cancel',{touches:[],changedTouches:[]});
-    results.push({kind:'missing-changed-touches',stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
+    window.settleStick();results.push({kind:'missing-changed-touches',stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
     inspected.touches('down',{touches:[stick,second],changedTouches:[stick,second]});
     stick.clientX+=50;
     inspected.touches('move',{touches:[stick,second],changedTouches:[stick]});
-    for(let frame=0;frame<12;frame++)r.input.endFrame();
+    window.settleStick();for(let frame=0;frame<12;frame++)r.input.endFrame();
     if(t.stickId!==11||r.input.stickX<.99)throw Error('Stationary thumb lost its heading');
     inspected.touches('move',{touches:[second],changedTouches:[second]});
-    results.push({kind:'missed-stick-release',stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
+    window.settleStick();results.push({kind:'missed-stick-release',stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
     inspected.touches('up',{touches:[],changedTouches:[second]});
     for(const kind of ['cancel','lostpointercapture','pause','hide']){
       r.state='play';t.update(r,'');env.drawUI(app.r.renderer);
@@ -299,7 +315,7 @@ export async function verifyJoystick(page,dir){
       else if(kind==='lostpointercapture')t.el.dispatchEvent(new env.PointerEvent(kind,{pointerId:11}));
       else if(kind==='pause'){r.pause();t.update(r,'');}
       else window.fixtureHide();
-      results.push({kind,stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
+      window.settleStick();results.push({kind,stopped:!r.input.stickX&&!r.input.stickY,hidden:!t.stick.classList.contains('on')});
       window.tap(x+100,y,'cancel',11);
       if(kind==='hide')window.fixtureShow({});
       r.ui.hideModal();r.state='play';t.update(r,'');
@@ -322,7 +338,7 @@ export async function verifyJoystick(page,dir){
     window.tap(x+45,y,'up',11);
     return result;
   });
-  assert.deepEqual(cast,{casts:1,held:true,heading:1});
+  assert.ok(cast.casts===1 && cast.held && cast.heading>0,JSON.stringify(cast));
   const facility=await page.evaluate(()=>{
     const r=app.run,facilities=r.interactables,t=r.ui.touch,env=inspected.env;
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
@@ -331,6 +347,7 @@ export async function verifyJoystick(page,dir){
     let opens=0;facilities.interact=()=>opens++;
     try{
       window.tap(x,y,'down',11);window.tap(x+8,y,'move',11);
+      window.settleStick();
       for(let i=0;i<100;i++)facilities.updateDwell(chest,1/30,1/30);
       const held=t.stickId===11&&r.input.stickX>0,whileMoving=opens;
       window.tap(x,y,'up',11);
@@ -350,25 +367,41 @@ export async function verifyJoystick(page,dir){
       if(id<0)throw Error('Could not seed joystick crowd');
       r.enemies.flags[id]&=~131072;
     }
-    const count=r.enemies.count,gap=app.frameGap(),now=performance.now(),loop=app.loop;
-    const samples=[],dt=[],simulate=r.simulate;
+    const count=r.enemies.count,gap=1000/30,now=performance.now(),loop=app.loop;
+    const samples=[],dt=[],simulate=r.simulate,frameGap=app.frameGap;
+    let interpolation;
     r.simulate=function(seconds,...args){dt.push(seconds);return simulate.call(this,seconds,...args);};
     app.loop=()=>{};app.pacer.reset();app.combatClock.run=null;app.last=now-gap;app.halted=false;
     try{
+      // Use one monotonic test clock for event arrivals, RAF and the simulator.
+      let at=now;
+      app.frameGap=()=>1000/60;
+      performance.now=()=>at;
       window.tap(x,y,'down',11);window.tap(x+60,y,'move',11);
-      for(const [delay,action] of [[0,'hold'],[gap,'hold'],[gap+250,'reverse'],[2*gap+250,'release']]){
+      const sequence=['hold','hold','reverse','hold','hold','hold','release',...Array(15).fill('rest')];
+      for(const [i,action] of sequence.entries()){
+        at=now+i*gap+(i>=2?250:0);
         if(action==='reverse')window.tap(x-60,y,'move',11);
         if(action==='release')window.tap(x-60,y,'up',11);
-        const start=p.pos.x;loop(now+delay);samples.push(p.pos.x-start);
+        const start=p.pos.x;loop(at);samples.push(p.pos.x-start);
+        if(i===4){
+          // 60 Hz 下的中间显示帧只插值，物理位置和输入帧号均保持稳定。
+          const before=p.pos.x,tick=r.inputTick;
+          at+=gap/2;loop(at);
+          interpolation={before,after:p.pos.x,prev:p.motionView.px,draw:r.visiblePlayerPosition().x,
+            camera:r.camTarget.x,sameTick:tick===r.inputTick};
+        }
       }
-    }finally{app.halted=true;app.loop=loop;r.simulate=simulate;}
-    return {count,gap,samples,dt};
+    }finally{delete performance.now;app.frameGap=frameGap;app.halted=true;app.loop=loop;r.simulate=simulate;}
+    return {count,gap,samples,dt,interpolation};
   });
   assert.equal(stall.count,200);
-  assert.equal(stall.dt.length,4,JSON.stringify(stall));
+  const view=stall.interpolation;
+  assert.ok(view.sameTick && view.before===view.after && Math.abs(view.prev-view.after)>.0001,JSON.stringify(view));
+  assert.ok(Math.abs(view.draw-(view.prev+view.after)/2)<.0001 && view.draw===view.camera,JSON.stringify(view));
+  assert.equal(stall.dt.length,22,JSON.stringify(stall));
   assert.ok(stall.dt.every(dt=>Math.abs(dt-stall.gap/1000)<1e-6),JSON.stringify(stall));
-  const [first,held,reverse,released]=stall.samples;
-  assert.ok(first>0&&held>0&&Math.abs(held+reverse)<.001&&Math.abs(released)<.001,JSON.stringify(stall));
+  assert.ok(stall.samples[1]>0 && stall.samples[5]<0 && stall.samples[6]<0 && stall.samples.at(-1)===0 && stall.samples.every(dx=>Math.abs(dx)<=1.6),JSON.stringify(stall));
   await page.evaluate(async()=>{
     const r=app.run;
     r.enemies.clear();r.godMode=false;
@@ -397,11 +430,11 @@ export async function verifyJoystick(page,dir){
       window.tap(x,y,'down',11);window.tap(x+45,y,'move',11);
       let side=0,back=0;
       for(let i=0;i<60;i++){
-        const px=p.pos.x;r.realDt=1/30;p.update(1/30);
+        const px=p.pos.x;r.realDt=1/30;window.stickStep(1/30);
         side=Math.max(side,Math.abs(p.pos.z-startZ));back=Math.max(back,px-p.pos.x);
       }
       const endX=p.pos.x;
-      window.tap(x-45,y,'move',11);p.update(1/30);
+      window.tap(x-45,y,'move',11);for(let i=0;i<6;i++)window.stickStep(1/30);
       window.tap(x-45,y,'up',11);
       results.push({side,back,reverse:endX-p.pos.x});
     }

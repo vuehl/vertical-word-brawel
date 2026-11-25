@@ -22,6 +22,7 @@ export const DEFAULT_STICK_CONFIG = Object.freeze({
   stopEpsilon: 0.03,       // 速度低于该值直接归零，杜绝残速漂移
   turnRate: 18,            // 朝向收敛速率（1/s）
   maxStepDistance: 0.35,   // 单步最大位移（硬钳位，防单帧飞出）
+  maxFrameDistance: 1.6,   // 同一显示帧的所有普通水平移动共用这个距离预算
 
   /* ---------- 渲染插值 ---------- */
   renderSmoothing: 0,      // 额外的视觉平滑时间常数（秒）。0 = 纯插值，不增加延迟
@@ -57,3 +58,13 @@ export function createStickConfig(overrides = {}) {
   if (cfg.maxStepDistance < normalStep) cfg.maxStepDistance = normalStep;
   return cfg;
 }
+
+// 实战共用一套参数。怪群逻辑固定 30 Hz；画面仍按设备设置绘制。
+export const gameStick = createStickConfig({
+  fixedStep: 1 / 30,
+  smoothAlpha: 0.022,
+  maxSpeed: 6.3,           // 基础跑速，角色、装备和地形再乘各自的倍率
+  accel: 48,
+  decel: 28,
+  maxStepDistance: 1.2,
+});

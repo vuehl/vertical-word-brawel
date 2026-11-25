@@ -39,7 +39,10 @@ import {EnemyTelegraphs} from './combat/enemy-telegraphs.js';
 import {CrowdGrid} from './performance/crowd-grid.js';
 import {crowdStep,separationBudget} from './performance/crowd-cadence.js';
 import {FramePacer,CombatClock} from './performance/frame-pacing.js';
-import {createStickConfig} from './virtual-stick/stick-config.js';
+import {gameStick} from './virtual-stick/stick-config.js';
+import {steerVelocity} from './virtual-stick/stick-physics.js';
+import {RenderState} from './virtual-stick/stick-render.js';
+import {StickFrameStream} from './virtual-stick/stick-frames.js';
 import {StickSampler} from './virtual-stick/stick-input.js';
 import {StickFilter} from './virtual-stick/stick-filter.js';
 import {CombatIdleWarmup,warmCombatShaders,warmCombatDraw} from './performance/combat-warmup.js';
@@ -32265,7 +32268,7 @@ var mv = 30,
   gv = 2.6,
   _v = 2,
   vv = 8,
-  yv = 6.3,
+  yv = gameStick.maxSpeed,
   bv = 0.8,
   xv = 0.35,
   Sv = 5.5,
@@ -32312,7 +32315,7 @@ var mv = 30,
     flash = 0;
     renderScale = 1;
     speedNow = 0;
-    stickHeldLastUpdate = false;
+    motionView = new RenderState();
     animT = 0;
     attackT = 0;
     ultPoseT = 0;
@@ -33821,10 +33824,6 @@ var mv = 30,
       // 触摸摇杆仍在驱动（按住，或松手后滤波还在衰减）时按模拟量走：
       // 速度跟随摇杆幅度，松手靠幅度衰减平滑减速，而不是硬停或满速滑一段。
       const stickDriven = !!t.ui.touch?.stickDriving;
-      const stickHeld = stickDriven && t.ui.touch.floatingStick;
-      // Consume the release with the same movement rule as the drag.
-      const directSteering = stickHeld || this.stickHeldLastUpdate;
-      this.stickHeldLastUpdate = stickHeld;
       if (stickDriven && y > 0) w *= Math.min(1, y);
       if (
         ((this.wading = !ee && !D && T < E - 0.04),
@@ -33920,9 +33919,10 @@ var mv = 30,
             r = Math.min(o, n) / a;
           ((t.x *= r), (t.z *= r));
         }
-      } else if (directSteering && !this.diving) {
-        this.vel.x = _ * w;
-        this.vel.z = v * w;
+      } else if (stickDriven && !this.diving) {
+        const rate = y > 0 ? gameStick.accel : gameStick.decel;
+        this.vel.x = S ? 0 : steerVelocity(this.vel.x, _ * w, rate, e, gameStick.stopEpsilon);
+        this.vel.z = S ? 0 : steerVelocity(this.vel.z, v * w, rate, e, gameStick.stopEpsilon);
       } else if (this.grounded) {
         let t = _ * w,
           n = v * w,
@@ -34021,6 +34021,13 @@ var mv = 30,
       ((this.kx *= se), (this.kz *= se));
       let ce = walkX + this.kx * e,
         le = walkZ + this.kz * e;
+      // 在碰撞查询之前钳位，补跑的第二步只能用本显示帧剩余的移动距离。
+      if (stickDriven) {
+        const distance = Math.hypot(ce, le);
+        const limit = Math.min(gameStick.maxStepDistance, t.walkBudget ?? gameStick.maxFrameDistance);
+        if (distance > limit) { ce *= limit / distance; le *= limit / distance; }
+        t.walkBudget = (t.walkBudget ?? gameStick.maxFrameDistance) - Math.min(distance, limit);
+      }
       this.crowdX = this.crowdZ = 0;
       let ue = this.pos.x + ce,
         de = this.pos.z + le,
@@ -34227,7 +34234,7 @@ var mv = 30,
             t.vfx.dust(this.pos.x, this.pos.y, this.pos.z, 15260864, 1, 1))
         : (this.animT += e * 0.6);
     }
-    render() {
+    render(position = this.pos) {
       let e = this.run,
         evolving = e.state === 'evolving',
         evolutionGlyph = evolving ? this.evolutionGlyph : undefined,
@@ -34259,9 +34266,9 @@ var mv = 30,
         d = this.invisT > 0 ? 0.5 : 0,
         f = e.spectralSkin ? [0.82, 0.66, 1.35, 0.68 + 0.07 * Math.sin(e.time * 3)] : [1, 1, 1, 0];
       const glyphIndex = t.push(
-        this.pos.x,
-        this.pos.y + (this.evolutionLift ?? 0),
-        this.pos.z,
+        position.x,
+        position.y + (this.evolutionLift ?? 0),
+        position.z,
         n,
         r,
         l,
@@ -34284,17 +34291,17 @@ var mv = 30,
       } else {
         this.readyBatch = this.readyFrame = null;
       }
-      let p = Math.max(e.terrain.surface(this.pos.x, this.pos.z),
-        e.terrain.propTop(this.pos.x,this.pos.z,this.radius,this.pos.y+.0001));
+      let p = Math.max(e.terrain.surface(position.x, position.z),
+        e.terrain.propTop(position.x,position.z,this.radius,position.y+.0001));
       (e.skinGl &&
         !this.dead &&
         eu(
           e.vfx.add,
           e.skinMember,
           e.skinLook,
-          this.pos.x,
-          this.pos.y,
-          this.pos.z,
+          position.x,
+          position.y,
+          position.z,
           e.realDt,
           t.bodyHeight(this.renderScale),
         ),
@@ -34302,9 +34309,9 @@ var mv = 30,
           !this.dead &&
           Math.random() < 0.06 &&
           e.vfx.add.spawn({
-            x: this.pos.x + F.range(-0.6, 0.6),
-            y: this.pos.y + F.range(0.3, 1.6),
-            z: this.pos.z + F.range(-0.6, 0.6),
+            x: position.x + F.range(-0.6, 0.6),
+            y: position.y + F.range(0.3, 1.6),
+            z: position.z + F.range(-0.6, 0.6),
             vy: 0.6,
             life: 0.8,
             size: 0.7,
@@ -34317,9 +34324,9 @@ var mv = 30,
           !this.dead &&
           Math.random() < 0.035 &&
           e.vfx.add.spawn({
-            x: this.pos.x + F.range(-0.6, 0.6),
-            y: this.pos.y + F.range(0.4, 1.8),
-            z: this.pos.z + F.range(-0.6, 0.6),
+            x: position.x + F.range(-0.6, 0.6),
+            y: position.y + F.range(0.4, 1.8),
+            z: position.z + F.range(-0.6, 0.6),
             vy: 0.5,
             life: 0.5,
             size: 0.4,
@@ -34330,10 +34337,10 @@ var mv = 30,
             spin: 4,
           }),
         // Original artwork still needs a separate contact shadow on the ground.
-        e.sprites.shadows.push(this.pos.x, p, this.pos.z, 1.4),
+        e.sprites.shadows.push(position.x, p, position.z, 1.4),
         e.playerFootRing ??= e.sprites.clipFootRing(createPlayerFootRing(e.r.scene,{PlaneGeometry:Yr,ShaderMaterial:Kr,Mesh:Tr})));
       e.playerFootRing.visible=!this.dead;
-      e.playerFootRing.position.set(this.pos.x,p+.09,this.pos.z);
+      e.playerFootRing.position.set(position.x,p+.09,position.z);
     }
   },
   kv = 12,
@@ -44412,6 +44419,18 @@ var GT = 15,
     marks = [];
     targets = [];
     clock0 = dE();
+    stickFrames = new StickFrameStream(gameStick);
+    recordStick(x,y,held,ms,force=false) {
+      if (!this.room.open || this.ended) return;
+      const run=this.run;
+      if (this.inputStage !== run.stage) {
+        this.inputStage=run.stage;
+        this.stickFrames=new StickFrameStream(gameStick);
+      }
+      if (force) run.inputTick=(run.inputTick || 0)+1;
+      const frames=this.stickFrames.record(run.inputTick,ms-this.clock0*1000,x,y,held,force);
+      if (frames) this.broadcast({t:'stick-input',stage:run.stage,frames});
+    }
     tmpV = new ti();
     spec = null;
     constructor(e, t) {
@@ -44745,7 +44764,7 @@ var GT = 15,
     interpPeers() {
       const now=dE();
       for(const peer of this.peers.values()){
-        advancePeerMotion(peer,now,this.run.realDt);
+        advancePeerMotion(peer,now,this.run.drawDt ?? this.run.realDt);
         peer.proxyRenderTime = now - peer.off - peer.delay;
       }
     }
@@ -45462,6 +45481,15 @@ var GT = 15,
       if (!n || !t || typeof t.t != `string`) return;
       let r = this.run;
       switch (t.t) {
+        case 'stick-input': {
+          if (n.gone || t.stage !== r.stage) break;
+          if (n.inputStage !== t.stage || !n.stickFrames) {
+            n.inputStage=t.stage;
+            n.stickFrames=new StickFrameStream(gameStick);
+          }
+          n.stickFrames.receive(t.frames);
+          break;
+        }
         case 'resume-query': {
           if(!r.player || r.buildingStage || r.state==='transition' || this.ended)return;
           this.room.mesh.sendCtl(e,{t:'resume-world',...worldProgress(r)});
@@ -45569,6 +45597,7 @@ var GT = 15,
       let n = this.peers.get(e);
       if(n && t==='open'){
         this.peerGone(n);
+        n.stickFrames=null;
         Object.assign(n,{gone:false,link:t,last:null,lastAt:-99,stage:0,buf:[],boss:[],ack:0});
         this.known.get(n.id).clear();
         this.bdAcks.delete(n.slot);
@@ -47967,7 +47996,8 @@ var GT = 15,
         );
       a(Qb(this, t, n, i), r);
     }
-    update(e, dwellSeconds = e, tickSeconds = 0, ticks = 1) {
+    update(e, dwellSeconds = e, tickSeconds = 0, ticks = 1, lastStepMs = performance.now()) {
+      this.walkBudget = gameStick.maxFrameDistance;
       if(this.coop && (this.coop.suspended || this.coop.reconnecting || !this.coop.room.open))return;
       let t = this.input;
       // Start after loading or restoring the room, so the boss intro owns its cinematic state.
@@ -48070,16 +48100,16 @@ var GT = 15,
       if(this.state==='capturing'){this.orbitals.begin();this.orbitalsGlow.begin();this.capBall?.update(e);}
       if(i && r>0){
         this.realDt=tickSeconds || e;
-        this.simulate(r,dwellSeconds/ticks);
+        this.simulate(r,dwellSeconds/ticks,lastStepMs - (ticks - 1) * tickSeconds * 1000);
         if(ticks===2 && this.state==='play' && !this.buildingStage && !this.pendingLevels && this.hitstopT<=0){
           this.input.endFrame();
-          this.simulate(r,dwellSeconds/2);
+          this.simulate(r,dwellSeconds/2,lastStepMs);
           r*=2;
         }
         this.realDt=e;
       }
       if (
-        (!frozenWorld&&(this.updateCamera(e),applyReadyShake(this)),
+        (!frozenWorld&&(this.updateCamera(this.drawDt ?? e),applyReadyShake(this)),
         this.state === `capturing` && this.clearCaptureView(),
         !frozenWorld&&this.renderWorld(i ? r : 0),
         !frozenWorld&&this.vfx.update(i ? r : a ? e : 0),
@@ -48098,6 +48128,23 @@ var GT = 15,
         this.offerBlessing(e.title, e.min);
       }
     }
+    stepPlayer(player, dt) {
+      const view = player.motionView, pos = player.pos;
+      // 从碰撞解算后的实坐标取样。传送、换区或复活时清除旧插值段。
+      view.reset(pos.x, pos.y, pos.z);
+      player.update(dt);
+      if (Math.hypot(pos.x-view.cx, pos.z-view.cz) > gameStick.snapThreshold) {
+        view.reset(pos.x, pos.y, pos.z);
+      } else {
+        view.capture(pos);
+      }
+    }
+    visiblePlayerPosition() {
+      const {pos, motionView: view} = this.player;
+      if (this.state !== 'play' || this.renderAlpha == null || !view.ready ||
+          pos.x !== view.cx || pos.y !== view.cy || pos.z !== view.cz) return pos;
+      return view.sample(this.renderAlpha);
+    }
     setHordeQuality(e) {
       const budget=crowdBudgets[e]||crowdBudgets.high,previous=this.liveMax;
       this.liveMax=budget.max;this.liveMin=budget.min;
@@ -48106,14 +48153,15 @@ var GT = 15,
     governHorde() {
       updateCrowdBudget(this,performance.now(),document.hidden);
     }
-    simulate(e, dwellSeconds = e) {
+    simulate(e, dwellSeconds = e, stepMs = performance.now()) {
       if (this.stageTime >= bossSummonUnlockSeconds(this) - 60 && !this.bossSpawned &&
           !this.dragonHdAssets && this.stageBossSpecies === finalBossSpecies) warmDragonSummon(this);
       let t = this.input,
         n = this.player,
         r = !!this.coop && n.dead;
       // 触摸摇杆：每个逻辑 tick 取样一次（用真实 tick 时长，慢动作不拖慢手感）。
-      this.ui.touch?.driveStick(t, this.realDt || e);
+      this.inputTick = (this.inputTick || 0) + 1;
+      this.ui.touch?.driveStick(t, this.realDt || e, stepMs);
       (Fl.leave(),
         (this.time += e),
         (this.stageTime += e),
@@ -48168,7 +48216,7 @@ var GT = 15,
           this.weatherT <= 0 && ((this.weather = this.baseWeather), this.applyWeatherLook())),
         this.weatherFx(e),
         this.zoneMotes(e),
-        n.update(e),
+        this.stepPlayer(n, e),
         this.state === `dead`)
       ) {
         this.enemies.update(e);
@@ -48513,10 +48561,10 @@ var GT = 15,
     shakeOff = new ti();
     updateCamera(e) {
       this.vfx?.upgrade.camera.restore();
-      if(this.terrain?.zxPaper){updatePaperCamera(this,e);this.vfx?.upgrade.camera.apply();Il.yaw=0;return;}
+      if(this.terrain?.zxPaper){updatePaperCamera(this,e,this.visiblePlayerPosition());this.vfx?.upgrade.camera.apply();Il.yaw=0;return;}
       let t = this.coop?.camFocus() ?? null,
         n = this.r.camera,
-        r = t ?? this.player.pos;
+        r = t ?? this.visiblePlayerPosition();
       (Number.isFinite(this.camTarget.x + this.camTarget.y + this.camTarget.z) ||
         this.camTarget.copy(Number.isFinite(r.x + r.y + r.z) ? r : this.terrain.spawn),
         Number.isFinite(this.camYaw) || (this.camYaw = 0),
@@ -48601,7 +48649,7 @@ var GT = 15,
         this.enemies.render(),
         this.boss.kit && !this.boss.kit.dead && this.boss.kit.render(),
         this.boss.mech?.render(),
-        this.player.render(),
+        this.player.render(this.visiblePlayerPosition()),
         this.coop?.render(),
         this.mewtwo.active || this.allies.render(),
         showCombatFx && this.ult.render());
@@ -48687,7 +48735,6 @@ var GT = 15,
     }
   },
   TE = 46,
-  EE = 0.1,
   DE = 1.15,
   OE = 400,
   kE = 300,
@@ -48697,18 +48744,14 @@ function jE(e, t) {
     e.setPointerCapture(t);
   } catch {}
 }
-// 触摸摇杆手感（单机）。只在这里调：
-//   smoothAlpha     低通时间常数（秒）。越小越跟手，越大越稳；0.03 ≈ 0.1 秒内到满速
-//   deadZone        死区（归一化幅度），低于它不动
-//   deadZoneRelease 迟滞下限，防止在死区边缘来回抖
-//   filterWeights   最近 3 个逻辑帧的权重（新 → 旧）
-const STICK_FEEL = { smoothAlpha: 0.03, deadZone: 0.15, deadZoneRelease: 0.09, filterWeights: [0.5, 0.3, 0.2] };
+// 微信使用原生采样时刻，浏览器使用 PointerEvent 的时间戳。
+const touchTime = event => 'nativeTouchTime' in event ? event.nativeTouchTime : event.timeStamp;
 var ME = class {
     el;
     ult;
     run = null;
     // 触摸摇杆输入链路：触摸事件只入队 → 每个逻辑 tick 取样 → 3 帧低通 + 死区 → 写 input.stickX/Y。
-    stickCfg = createStickConfig(STICK_FEEL);
+    stickCfg = gameStick;
     stickSampler = new StickSampler(this.stickCfg);
     stickFilter = new StickFilter(this.stickCfg);
     stickEngaged = !1; // 摇杆还有没走完的输入：按住中，或松手后仍在减速
@@ -48800,7 +48843,7 @@ var ME = class {
         e.touches.length
           ? this.looks.size + +(this.stickId >= 0) > e.touches.length &&
             (this.looks.clear(), (this.pinch = 0))
-          : (this.releaseStick(), this.looks.clear(), (this.pinch = 0));
+          : (this.releaseStick(false, touchTime(e)), this.looks.clear(), (this.pinch = 0));
       };
       listen(window,'touchend',s,true);
       listen(window,'touchcancel',s,true);
@@ -48853,7 +48896,7 @@ var ME = class {
         (this.lastType = e.pointerType),
         e.pointerType === `touch` && this.touches === 0)
       ) {
-        this.stickId >= 0 && this.releaseStick();
+        this.stickId >= 0 && this.releaseStick(false, touchTime(e));
         for (let t of [...this.looks.keys()]) t !== e.pointerId && this.looks.delete(t);
         this.pinch = 0;
       }
@@ -48918,7 +48961,7 @@ var ME = class {
         // an invisible joystick origin. Keep the heading while the finger rests.
         if(distance < 4)return;
         this.sx=e.clientX;this.sy=e.clientY;
-        this.stickSampler.pushVector(e.pointerId,dx/distance,-dy/distance,e.timeStamp);
+        this.stickSampler.pushVector(e.pointerId,dx/distance,-dy/distance,touchTime(e));
         return;
       }
       if (e.pointerId === this.stickId) {
@@ -48929,7 +48972,8 @@ var ME = class {
         let n = e.clientX - this.sx,
           r = e.clientY - this.sy,
           i = Math.hypot(n, r);
-        const radius=this.centeredStick||this.floatingStick
+        // 尺寸在一次手势内稳定。缩放或屏幕旋转会重置手势。
+        const radius=this.dragRadius ??= this.centeredStick||this.floatingStick
           ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
           : TE*this.k;
         const reach=TE*this.k*DE;
@@ -48955,12 +48999,8 @@ var ME = class {
         }
         const length = Math.hypot(n, r) || 1;
         const dx = n / length, dy = r / length;
-        // 浮动摇杆送原始幅度，死区统一交给滤波器（STICK_FEEL.deadZone），避免两层死区叠加。
-        const strength = this.floatingStick
-          ? Math.min(1, i / radius)
-          : +(i >= radius * EE);
-        // 不在触摸回调里直接改方向：只入队，逻辑 tick 再取样滤波（见 driveStick）。
-        this.stickSampler.pushVector(e.pointerId, strength * dx, -strength * dy, e.timeStamp);
+        const strength = Math.min(1, i / radius);
+        this.stickSampler.pushVector(e.pointerId, strength * dx, -strength * dy, touchTime(e));
         const knobTravel = Math.min(i, radius);
         this.knob.style.transform = `translate(${dx * knobTravel}px, ${dy * knobTravel}px)`;
         return;
@@ -48993,7 +49033,7 @@ var ME = class {
             performance.now() - t.t < 700 &&
             this.run?.openMap())
         : e.pointerId === this.stickId
-          ? this.releaseStick()
+          ? this.releaseStick(false, touchTime(e))
           : this.looks.delete(e.pointerId) && (this.pinch = 0);
     };
     spread() {
@@ -49002,21 +49042,27 @@ var ME = class {
     }
     // 松手/滑动中断：只入队一个“抬起”样本，由 driveStick 平滑减速到停。
     // hard=true（暂停、死亡、切后台、隐藏控件）才立刻清零，避免回来时旧方向还在走。
-    releaseStick(hard) {
+    releaseStick(hard, stamp) {
       ((this.stickId = -1),
         (this.swipeActive = !1),
         this.stick.classList.remove(`on`, `fixed`),
         (this.stick.style.left = this.stick.style.top = this.stick.style.bottom = ``),
         (this.knob.style.transform = ``));
-      hard === !0 ? this.stickStop() : this.stickSampler.end();
+      hard === !0 ? this.stickStop() : this.stickSampler.end(undefined, stamp);
     }
     // 按下：绑定手指，方向从 0 开始（手指没动就不该走）。
     stickBegin(e) {
-      this.stickSampler.end();
-      this.stickSampler.begin(e.pointerId, 0, 0, e.timeStamp);
+      this.dragRadius = undefined;
+      const stamp = touchTime(e);
+      this.stickSampler.end(undefined, stamp);
+      this.stickSampler.begin(e.pointerId, 0, 0, stamp);
       this.stickEngaged = !0;
     }
     stickStop() {
+      if (this.stickDriving && this.run) {
+        this.run.player.vel.x = this.run.player.vel.z = 0;
+        this.run.coop?.recordStick(0, 0, false, performance.now(), true);
+      }
       this.stickSampler.abort();
       this.stickFilter.reset();
       this.stickEngaged = this.stickDriving = !1;
@@ -49025,15 +49071,20 @@ var ME = class {
     // 每个逻辑 tick 调一次（Run.simulate 开头），dt = 本 tick 时长（秒）。
     // 取“此刻之前”的最新采样 → 3 帧低通 + 死区 → 写入 input.stickX/Y。
     // 摇杆没参与时什么都不写，手柄/键盘的输入不会被覆盖。
-    driveStick(input, dt) {
+    driveStick(input, dt, stepMs) {
       if (!this.stickEngaged) return;
-      const raw = this.stickSampler.consume(performance.now());
+      const raw = this.stickSampler.consume(stepMs);
       const out = this.stickFilter.update(raw, dt);
       input.stickX = out.x;
       input.stickY = out.y;
-      this.stickDriving = raw.held || out.mag > 0;
+      const velocity = this.run.player.vel;
+      this.stickDriving = raw.held || out.mag > 0 || (this.stickDriving && (velocity.x !== 0 || velocity.z !== 0));
+      this.run.coop?.recordStick(out.x, out.y, raw.held, stepMs);
       // 松手后减速走完：交还控制权（上面已经写过一次 0）。
-      this.stickDriving || ((this.stickEngaged = !1), this.stickFilter.reset());
+      if (!this.stickDriving && this.stickSampler.cursor === this.stickSampler.queue.length) {
+        this.stickEngaged = false;
+        this.stickFilter.reset();
+      }
     }
     show(e) {
       e !== this.shown && ((this.shown = e), this.el.classList.toggle(`on`, e), !e && this.letGo());
@@ -79301,7 +79352,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
             (n.lastChild.textContent = c(`La tarjeta gráfica no responde, reintentando…`)),
             await new Promise((e) => setTimeout(e, Math.min(5e3, 1e3 + t * 500))));
         }
-      window.bootStage?.('画面引擎已就绪',97);
+      window.bootStage?.('画面引擎已就绪',97,this.r.renderer);
       ((this.r.onLost = (e) => this.contextLost(e)),
         Io(),
         (this.input = new es(e)),
@@ -79875,12 +79926,18 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
       if (!this.pacer.ready(e,gap,this.r.needsDraw)) return;
       const frameWindow=Math.min(gap,this.pacer.next-e);
       const combat=this.run?.state==='play'&&!this.run.buildingStage&&!this.screen?.classList.contains('zx-loading-screen');
-      const ticks=combat?this.combatClock.ticks(this.run,e,gap):1;
+      const physicsMs = gameStick.fixedStep * 1000;
+      const ticks=combat?this.combatClock.ticks(this.run,e,physicsMs):1;
+      const alpha = combat ? this.combatClock.alpha : null;
+      const lastStepMs = performance.now() - (alpha || 0) * physicsMs;
+      if (this.run) this.run.renderAlpha = alpha;
       if(!combat)this.combatClock.run=null;
-      if(!ticks)return;
       const elapsed = this.last === null ? 0 : Math.max(0, (e - this.last) / 1e3);
-      let n = Math.min(0.1, elapsed);
-      this.last = e;
+      const logicDt = Math.min(0.1, elapsed);
+      const n = this.last == null ? 0 : Math.min(.1, Math.max(0, (e-(this.drawAt ?? e))/1000));
+      this.drawAt = e;
+      if (this.run) this.run.drawDt = n;
+      if (ticks) this.last = e;
       try {
         // Opaque menus only upload changed UI; hidden scenery stays idle.
         // Leave the last portal frame on screen until the new world and its sprites are ready.
@@ -79895,11 +79952,20 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           return;
         }
         let t = performance.now();
-        this.pad.update(n, this.run?.state === `play`);
+        if (ticks) this.pad.update(logicDt, this.run?.state === `play`);
         if(!this.r.needsDraw&&window.drawFrozenModal?.(this.r.renderer)){
           this.perf.active=false;this.run.crowdSample=null;this.adaptRes(0,0,e);this.failing=0;return;
         }
-        this.run ? this.run.update(n, Math.min(elapsed, 0.5), combat?gap/1000:0, ticks) : this.menuScene?.update(n);
+        if (!ticks) {
+          this.run.fpsN++;
+          this.run.governHorde();
+          this.run.coop?.interpPeers();
+          this.run.updateCamera(n);
+          applyReadyShake(this.run);
+          this.run.renderWorld(0);
+        } else if (this.run) {
+          this.run.update(logicDt, Math.min(elapsed, 0.5), combat ? gameStick.fixedStep : 0, ticks, lastStepMs);
+        } else this.menuScene?.update(n);
         // The XP ring still needs HUD updates while combat is paused. Reuse
         // that same scene when the choice first appears.
         if(this.run?.pendingLevels>0&&!this.r.needsDraw&&window.drawFrozenUpgrade?.(this.r.renderer)){
@@ -79932,7 +79998,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
           }
         } else this.failing === 180 && ((this.failing = 0), this.toMenu());
       } finally {
-        this.input.endFrame();
+        if (ticks) this.input.endFrame();
       }
     };
   };

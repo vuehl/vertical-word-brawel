@@ -143,8 +143,8 @@ export function deskTexture(t,file){
   }));
   return t.deskTextures.get(file);
 }
-export function deskCamera(run,progress,bend=0){
-  const c=run.r.camera,t=run.terrain,p=run.player.pos;
+export function deskCamera(run,progress,bend=0,p=run.player.pos){
+  const c=run.r.camera,t=run.terrain;
   const {x=p.x,z=p.z,w,h,distance}=progress===undefined
     ?deskPlayFrame(c.aspect,halfWidth,halfDepth)
     :deskFrame(c.aspect,halfWidth,halfDepth,run.camTarget.x,run.camTarget.z,progress,bend);

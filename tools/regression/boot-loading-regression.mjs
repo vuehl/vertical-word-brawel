@@ -66,6 +66,12 @@ try{
       for(let value=1;value<=100;value++){current.splash.draw(value);if(values.has(value))snapshots.set(value,pixels());}
       const uploads=[...bootUploads],count=uploads.length;
       current.splash.draw(100);const unchangedUploads=bootUploads.length-count;
+      const motion=[];
+      for(const value of [0,42,99,100]){
+        current.splash.draw(value,false,.25);const a=pixels(),before=bootUploads.length;
+        current.splash.draw(value,false,.75);
+        motion.push({value,changed:difference(a,pixels()),uploads:bootUploads.length-before});
+      }
       // Returning from 100 to zero catches old text/progress left behind too.
       current.splash.draw(0);snapshots.set(0,pixels());current.splash.dispose();current.splash.dispose();
       let changedChannels=0;const differences=[];
@@ -87,13 +93,17 @@ try{
       screen.width=w;reference.splash.draw(95);
       window.lastBoot=reference.splash;
       const releasedCanvases=current.canvases.every(c=>c.width===1&&c.height===1);
-      return {width,height,changedChannels,differences,lateChangedChannels,lateDifference,lateFull,resizedFull,releasedCanvases,unchangedUploads,
+      return {width,height,motion,changedChannels,differences,lateChangedChannels,lateDifference,lateFull,resizedFull,releasedCanvases,unchangedUploads,
         progressUpdates:count,uploadedBytes:uploads.reduce((n,u)=>n+u.width*u.height*4,0),fullUploadBytes:100*w*h*4,
         maxUploadHeight:Math.max(...uploads.map(u=>u.height))};
     },{source,art,width,height});
     assert.equal(sample.changedChannels,0,'Incremental output must match a fresh full paint: '+JSON.stringify(sample.differences));
     assert.equal(sample.lateChangedChannels,0,'Late hero images must appear without stale background: '+JSON.stringify(sample.lateDifference));
     assert.equal(sample.unchangedUploads,0);assert.equal(sample.progressUpdates,100);
+    for(const {value,changed,uploads} of sample.motion){
+      assert.equal(uploads,0,'Animating a fixed percentage must reuse the texture');
+      assert.ok(value===100?changed===0:changed>100,'Visible motion through 99%, then a steady completed bar');
+    }
     assert.ok(sample.lateFull&&sample.resizedFull&&sample.releasedCanvases);
     if(height/(width/390)>=600)assert.ok(sample.uploadedBytes<sample.fullUploadBytes*.2,'Phone progress should upload under 20% of a full frame');
     await page.screenshot({path:path.join(dir,`boot-${width}x${height}.png`)});

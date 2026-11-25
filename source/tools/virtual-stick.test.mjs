@@ -2,7 +2,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createStickConfig } from '../src/virtual-stick/stick-config.js';
+import { createStickConfig, gameStick } from '../src/virtual-stick/stick-config.js';
+import { StickFrameStream } from '../src/virtual-stick/stick-frames.js';
+import { acceptPeerSample, advancePeerMotion } from '../src/network/peer-motion.js';
+import { RelayRoom } from '../src/network/multiplayer.js';
 import { StickSampler } from '../src/virtual-stick/stick-input.js';
 import { StickFilter } from '../src/virtual-stick/stick-filter.js';
 import { MoveBody } from '../src/virtual-stick/stick-physics.js';
@@ -11,6 +14,67 @@ import { encodeInput, decodeInput, InputSender, RemoteStick } from '../src/virtu
 import { VirtualStickController } from '../src/virtual-stick/index.js';
 
 const cfg = createStickConfig();
+
+test('补跑两步分别读取该时刻的方向，共用一帧位移预算', () => {
+  let now=0;
+  const ctl=new VirtualStickController({now:()=>now,stick:{
+    fixedStep:.02, smoothAlpha:.001, filterWeights:[1], accel:1000,
+    maxFrameDistance:.15, maxSpeed:10,
+  }});
+  ctl.sampler.begin(1,0,0,0);
+  now=10;ctl.sampler.pushVector(1,1,0,now);
+  now=30;ctl.sampler.pushVector(1,0,1,now);
+  assert.equal(ctl.sampler.pushVector(1,-1,0,20),false);
+  now=40;
+  assert.equal(ctl.update(.04),2);
+  assert.ok(Math.abs(ctl.body.x-.15)<1e-6);
+  assert.ok(ctl.input.y>.99 && ctl.body.z===0);
+});
+
+test('联机回放只积分实际执行的逻辑步，跳过卡顿空档', () => {
+  const stream=new StickFrameStream(gameStick);
+  stream.receive([1,2].map((tick,i)=>({tick,ms:100+i*300,x:1,y:0,held:true})));
+  const distance={};
+  assert.ok(stream.displacement(.1,.4,6,distance));
+  assert.ok(Math.abs(distance.x-6*gameStick.fixedStep)<1e-6);
+});
+
+test('联机转发成批滤波输入，松手即时补发，丢包和乱序时轨迹有界', () => {
+  const sender=new StickFrameStream(gameStick),receiver=new StickFrameStream(gameStick);
+  const a=new RelayRoom(), b=new RelayRoom(), packets=[];
+  b.me='B';b.room.members=[{id:'A'},{id:'B'}];
+  a.socket={send:raw=>{packets.push(JSON.parse(raw));return true;}};
+  b.ev.ctl=(_id,data)=>receiver.receive(data.frames);
+  for(let tick=1;tick<=12;tick++){
+    const ms=(tick-1)*1000/30,held=tick<12;
+    const frames=sender.record(tick,ms,held&&tick<=6?1:0,held&&tick>6?1:0,held);
+    if(frames)a.mesh.broadcast({t:'stick-input',frames});
+  }
+  assert.equal(packets.at(-1).data.frames.at(-1).held,false);
+  assert.ok(packets.some(p=>p.data.frames.length>1));
+  const deliver=p=>b.receive(JSON.stringify({op:'ctl',from:'A',data:p.data}));
+  for(const [i,p] of packets.entries()){
+    if(i===1)continue;
+    for(const f of p.data.frames)assert.deepEqual(Object.keys(f).sort(),['held','ms','tick','x','y']);
+    deliver(p);deliver(p);
+  }
+  deliver(packets[1]); // 很晚才到的旧包不能重新驱动队友
+  assert.deepEqual(receiver.history.map(f=>f.tick),[...new Set(receiver.history.map(f=>f.tick))].sort((a,b)=>a-b));
+  assert.equal(receiver.history.at(-1).tick,12);
+
+  const peer={stage:1,buf:[],stickFrames:receiver}, speed=6;
+  acceptPeerSample(peer,{ts:.16,x:0,z:0,y:0,face:0},1,1.16);
+  acceptPeerSample(peer,{ts:.24,x:.04*speed,z:-.04*speed,y:0,face:0},1,1.24);
+  let previous={x:peer.x,z:peer.z};
+  for(let ms=220;ms<=1500;ms+=10){
+    advancePeerMotion(peer,1+ms/1000,.01);
+    assert.ok(Math.hypot(peer.x-previous.x,peer.z-previous.z)<.15);
+    if(ms===300)assert.ok(peer.x>-peer.z,'缓冲内复算的先向右、再向上的输入应体现在轨迹上');
+    previous={x:peer.x,z:peer.z};
+  }
+  assert.ok(Math.hypot(peer.x-.24,peer.z+.24)<.5,'断流后只允许短时预测');
+  assert.equal(receiver.displacement(2,2.1,speed,{}),false);
+});
 
 test('配置：权重归一化、单步钳位不小于正常步长', () => {
   assert.ok(Math.abs(cfg.filterWeights.reduce((a, b) => a + b, 0) - 1) < 1e-9);

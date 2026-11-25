@@ -327,12 +327,12 @@ module.exports = async function presentBootFrame(gl) {
     ctx.setTransform(s, 0, 0, s, left * s, -y);
     ctx.save();
     ctx.translate(0, track);
-    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 95 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 85 ? "\u6B63\u5728\u6574\u7406\u8D44\u6E90" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90");
+    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 90 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 50 ? "\u6B63\u5728\u51C6\u5907\u573A\u666F\u4E0E\u89D2\u8272" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90");
     ctx.restore();
     return strip ? y : null;
   }
   try {
-    let draw = function(value, overlay = false) {
+    let draw = function(value, overlay = false, sweepPhase = 0) {
       if (!program) return;
       value = Math.max(0, Math.min(100, Math.floor(value)));
       const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value;
@@ -367,6 +367,9 @@ module.exports = async function presentBootFrame(gl) {
       }
       gl.uniform1i(percent, value);
       gl.uniform1i(overScene, overlay ? 1 : 0);
+      const scale = Math.min(w / 390, h / 550);
+      gl.uniform4f(trackRect, 0.5 + (61 - 195) * scale / w, 0.79, 268 * scale / w, 5 * scale / h);
+      gl.uniform1f(sweep, sweepPhase);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.bindVertexArray(null);
       gl.useProgram(null);
@@ -378,11 +381,23 @@ module.exports = async function presentBootFrame(gl) {
     attach(gl.FRAGMENT_SHADER, `#version 300 es
       precision highp float;
       uniform sampler2D artwork;uniform int percent;uniform bool overScene;
+      uniform vec4 trackRect;uniform float sweep;
       in vec2 uv;out vec4 color;
-      void main(){if(percent<0&&overScene)discard;color=texture(artwork,uv);}`);
+      void main(){
+        if(percent<0&&overScene)discard;
+        color=texture(artwork,uv);
+        vec2 p=(uv-trackRect.xy)/trackRect.zw;
+        if(percent<100 && p.x>=0. && p.x<=1. && p.y>=0. && p.y<=1.){
+          float distanceToBand=abs(p.x-(sweep*1.32-.16));
+          float band=1.-smoothstep(.035,.16,distanceToBand);
+          vec3 tint=p.x<float(percent)*.01?vec3(.73,.88,1.):vec3(.53,.68,.86);
+          color.rgb=mix(color.rgb,tint,band*.9);
+        }
+      }`);
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(program) || "\u542F\u52A8\u753B\u9762\u7740\u8272\u5668\u672A\u5C31\u7EEA");
     const percent = gl.getUniformLocation(program, "percent"), overScene = gl.getUniformLocation(program, "overScene");
+    const trackRect = gl.getUniformLocation(program, "trackRect"), sweep = gl.getUniformLocation(program, "sweep");
     draw(0);
     await new Promise((resolve) => {
       if (typeof requestAnimationFrame !== "function") {

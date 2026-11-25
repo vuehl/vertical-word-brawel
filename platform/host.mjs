@@ -253,9 +253,9 @@ export async function setup(host) {
   wx.onKeyboardInput?.(r=>{if(active){active.value=r.value;active.dispatchEvent(new InputEvent('input'));uiFrames.invalidate(true,true);}});
   wx.onKeyboardConfirm?.(r=>{if(active){active.value=r.value;active.dispatchEvent(new InputEvent('change'));active.blur();}wx.hideKeyboard?.({});});
   function setRange(el,x){const b=rect(el);if(b.width<=0)return;el.value=String(rangeValueAt(el,(x-b.x)/b.width));el.dispatchEvent(new InputEvent('input'));}
-  function cancelPointer(id,p){
+  function cancelPointer(id,p,nativeTouchTime){
     const target=captured.get(id)||p.target;
-    const options={pointerId:id,pointerType:'touch',buttons:0,clientX:p.lastX,clientY:p.lastY};
+    const options={pointerId:id,pointerType:'touch',buttons:0,clientX:p.lastX,clientY:p.lastY,nativeTouchTime};
     target.dispatchEvent(new InputEvent('pointercancel',{...options,bubbles:true}));
     win.dispatchEvent(new InputEvent('pointercancel',options));
     pointers.delete(id);captured.delete(id);
@@ -265,7 +265,7 @@ export async function setup(host) {
     const hiddenHud=!win.__pb?.screen&&castHidesUI(run,perf.now());
     // A press begun in combat must not select a card while it is appearing.
     if(modalTransition.active||(hiddenHud&&run.state!=='play')){
-      for(const [id,p] of pointers)cancelPointer(id,p);
+      for(const [id,p] of pointers)cancelPointer(id,p,event.timeStamp);
       return;
     }
     // Menus still react immediately. In battle, DOM mutations invalidate the
@@ -283,7 +283,7 @@ export async function setup(host) {
       for(const [id,p] of pointers){
         const listed=changed.some(t=>(t.identifier??0)===id);
         if((kind==='down'&&listed) || (!listed&&!all.some(t=>(t.identifier??0)===id))){
-          cancelPointer(id,p);
+          cancelPointer(id,p,event.timeStamp);
         }
       }
     }
@@ -313,6 +313,8 @@ export async function setup(host) {
       if(!p)continue;
       if(p.entryButton&&Math.hypot(x-p.x,y-p.y)>=15)p.scrolled=true;
       const target=captured.get(id)||p.target,options={pointerId:id,pointerType:'touch',clientX:x,clientY:y,pageX:x,pageY:y,button:0,buttons:kind==='up'?0:1,isPrimary:pointers.keys().next().value===id,bubbles:true};
+      // 保留微信采样时刻。派发时生成的 DOM 时间戳会把积压的多次转向挤到同一帧。
+      options.nativeTouchTime = event.timeStamp;
       if(kind==='move'&&target!==win.__pb?.run?.ui?.touch?.el&&p.target.type!=='range'&&Math.abs(y-p.y)>5){
         let remaining=p.lastY-y;
         for(let sc=p.target;sc&&remaining;sc=sc.parentElement){
@@ -328,7 +330,7 @@ export async function setup(host) {
       p.lastX=x;p.lastY=y;
       target.dispatchEvent(new InputEvent('pointer'+kind,options));
       win.dispatchEvent(new InputEvent('pointer'+kind,{...options,bubbles:false}));
-      const contact={touches:all,changedTouches:[t]};
+      const contact={touches:all,changedTouches:[t],nativeTouchTime:event.timeStamp};
       target.dispatchEvent(new InputEvent(touchType,{...contact,bubbles:true}));
       // The virtual document has no parent window. Notify it before the next
       // pointerdown, including when both thumbs land in the same native event.

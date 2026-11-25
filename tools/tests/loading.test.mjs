@@ -49,7 +49,7 @@ test('cooperative model expansion preserves every byte and yields between batche
 function installer({nativeAsync=true,stalledWrite=false}={}){
   const {pool,recipes}=models(),data=new Map(),dirs=new Set(),downloads={};
   const archives={world:[['model-parts.bin',pool],['model-map.json',Buffer.from(JSON.stringify(recipes))]],art:[],text:[]};
-  let failFile=null,yields=0,asyncReads=0,syncReads=0,asyncWrites=0;
+  let failFile=null,yields=0,asyncReads=0,syncReads=0,asyncWrites=0,asyncRemovals=0;
   const compressed=filePath=>Uint8Array.of(filePath.includes('world')?1:filePath.includes('text')?3:2,0,0,0).buffer;
   const manager={
     accessSync(p){if(!data.has(p)&&!dirs.has(p))throw Error('ENOENT');},
@@ -62,6 +62,10 @@ function installer({nativeAsync=true,stalledWrite=false}={}){
     renameSync(from,to){data.set(to,data.get(from));data.delete(from);}
   };
   if(nativeAsync){
+    manager.rmdir=({dirPath,recursive,success})=>{
+      assert.equal(recursive,true);asyncRemovals++;
+      setImmediate(()=>{manager.rmdirSync(dirPath);success({});});
+    };
     manager.readCompressedFile=({filePath,success})=>{asyncReads++;queueMicrotask(()=>success({data:compressed(filePath)}));};
     manager.writeFile=({filePath,data:bytes,success,fail})=>{asyncWrites++;if(stalledWrite)return;
       queueMicrotask(()=>{try{manager.writeFileSync(filePath,bytes);success({});}catch(error){fail(error);}});};
@@ -76,7 +80,7 @@ function installer({nativeAsync=true,stalledWrite=false}={}){
       throw Error(name);}
   };
   vm.runInNewContext(fs.readFileSync(new URL('../../platform/files.js',import.meta.url),'utf8'),context);
-  return {api:context.module.exports,data,dirs,downloads,info,get yields(){return yields;},
+  return {api:context.module.exports,data,dirs,downloads,info,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
     get io(){return {asyncReads,syncReads,asyncWrites};},failNext(file){failFile=file;}};
 }
 
@@ -86,6 +90,7 @@ test('removed music caches are evicted without touching saves or current resourc
   const kept=['/userdata/saves',base+'/player-data',base+'/world-'+f.info.packs.world];
   for(const dir of [...removed,...kept]){f.dirs.add(dir);f.data.set(dir+'/test',new Uint8Array([42]));}
   await f.api.init();
+  assert.equal(f.asyncRemovals,removed.length);
   for(const dir of removed){assert.ok(!f.dirs.has(dir));assert.ok(!f.data.has(dir+'/test'));}
   for(const dir of kept){assert.ok(f.dirs.has(dir));assert.equal(f.data.get(dir+'/test')[0],42);}
   assert.deepEqual(f.downloads,{text:1});

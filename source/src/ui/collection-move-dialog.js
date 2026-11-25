@@ -84,9 +84,9 @@ export function openMoveDialog(el,move,trigger){
         el('b','zc-range-title','随机强化范围'),pairs(ranges,'zc-growth-ranges')]);
     });
   }
-  disclosure('related','相关道具与维生素','',()=>{
+  disclosure('related','相关道具与 BUFF','',()=>{
     const related=move.related();
-    if(!related)return el('div','zc-related','暂无相关道具与维生素');
+    if(!related)return el('div','zc-related','暂无相关道具与 BUFF');
     related.classList.add('zc-related');
     related.querySelector('small')?.remove();
     return related;

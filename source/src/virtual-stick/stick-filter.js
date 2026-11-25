@@ -29,13 +29,16 @@ export class StickFilter {
   update(sample, dt) {
     const cfg = this.cfg;
     const held = !!sample.held;
+    if (held && sample.gesture !== this.gesture) {
+      this.reset();
+      this.gesture = sample.gesture;
+    }
     const x = held ? sample.x : 0;
     const y = held ? sample.y : 0;
 
     if (!held) {
       // 松手：清空历史，避免残留的旧方向被“平均”回一个非零向量。
       this.history.length = 0;
-      this.history.push({ t: sample.t, x: 0, y: 0 });
     } else {
       // 每个物理步都入队（哪怕样本没变）。历史窗口代表“最近 N 个物理步”，
       // 手指甩过去后停住不动、不再有 touchmove 时，旧方向会在 N 步内被挤出窗口；
