@@ -1,14 +1,17 @@
 import reference from '../../../resources/public/assets/vfx/evolution-screen.json' with {type:'json'};
 
-export const EVOLUTION_DURATION=Math.round(reference.duration*1000)/1000;
-export const EVOLUTION_REVEAL=Math.round(reference.reveal*1000)/1000;
-export const EVOLUTION_LANDING=5.28;
+// Atlas times describe the original brush animation. Gameplay uses the same
+// exposures on a shorter clock, including the 20 ms frames in the charge.
+export const EVOLUTION_DURATION=4.2;
+export const EVOLUTION_PLAYBACK_RATE=Math.round(reference.duration*1000)/(1000*EVOLUTION_DURATION);
+export const evolutionFrameTimes=reference.times.map(time=>time/EVOLUTION_PLAYBACK_RATE);
+export const EVOLUTION_REVEAL=reference.reveal/EVOLUTION_PLAYBACK_RATE;
+export const EVOLUTION_LANDING=evolutionFrameTimes[148];
 
 export function evolutionFrame(seconds){
-  const {times}=reference;
-  let lo=0,hi=times.length-1;
-  while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(times[mid]<=seconds+1e-8)lo=mid;else hi=mid-1;}
-  return Math.min(times.length-2,lo);
+  let lo=0,hi=evolutionFrameTimes.length-1;
+  while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(evolutionFrameTimes[mid]<=seconds+1e-8)lo=mid;else hi=mid-1;}
+  return Math.min(evolutionFrameTimes.length-2,lo);
 }
 export function evolutionTile(frame){
   if(frame>142)return -1;
@@ -19,6 +22,6 @@ export function evolutionTile(frame){
 }
 export function evolutionPose(seconds){
   const frame=evolutionFrame(seconds),next=Math.min(frame+1,reference.flashes.length-1);
-  const blend=Math.max(0,Math.min(1,(seconds-reference.times[frame])/(reference.times[frame+1]-reference.times[frame])));
-  return {flash:reference.flashes[frame],lift:reference.liftPixels[frame]+(reference.liftPixels[next]-reference.liftPixels[frame])*blend};
+  const blend=Math.max(0,Math.min(1,(seconds-evolutionFrameTimes[frame])/(evolutionFrameTimes[frame+1]-evolutionFrameTimes[frame])));
+  return {glyph:reference.poses[frame],flash:reference.flashes[frame],lift:reference.liftPixels[frame]+(reference.liftPixels[next]-reference.liftPixels[frame])*blend};
 }

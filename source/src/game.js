@@ -6100,7 +6100,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
     begin() {
       this.count = 0;
     }
-    push(e, t, n, r, i, a, o, s = 0, c = 0, l = 0, u = 0, d = 1, f = 1, p = 1, m = 0, h = !1, g = 0, glyphRect = this.zxGlyphRect) {
+    push(e, t, n, r, i, a, o, s = 0, c = 0, l = 0, u = 0, d = 1, f = 1, p = 1, m = 0, h = !1, g = 0, glyphRect = this.zxGlyphRect, glyphWidth = 1, glyphHeight = 1) {
       if (!this.ready) {
         if (this.zxGlyph) return;
         this.standIn?.push(
@@ -6129,7 +6129,7 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         if(buffer!==this)this.count++;
         const pos=buffer.aPos.array,dim=buffer.aSize.array,uv=buffer.aUV.array,fx=buffer.aFx.array,tint=buffer.aTint.array,look=buffer.aLook.array;
         pos[index*3]=e;pos[index*3+1]=t+.08;pos[index*3+2]=n;
-        dim[index*2]=dim[index*2+1]=size;
+        dim[index*2]=size*glyphWidth;dim[index*2+1]=size*glyphHeight;
         uv.set(glyphRect,index*4);
         fx[index*4]=s;fx[index*4+1]=c;fx[index*4+2]=l;fx[index*4+3]=u;
         tint[index*4]=d;tint[index*4+1]=f;tint[index*4+2]=p;tint[index*4+3]=m;
@@ -33926,8 +33926,8 @@ var mv = 30,
     render() {
       let e = this.run,
         evolving = e.state === 'evolving',
-        // Evolution pauses combat time, but the old form must keep breathing.
-        heroFrame = e.sprites.heroFrame(this,this.speciesId,evolving?'idle':playerHeroAction(this),(this.dead||evolving?e.realTime:e.time)*1000),
+        evolutionGlyph = evolving ? this.evolutionGlyph : undefined,
+        heroFrame = e.sprites.heroFrame(this,this.speciesId,evolving?'idle':playerHeroAction(this),(this.dead||evolving?e.realTime:e.time)*1000,evolutionGlyph?.[0]),
         t = e.sprites.getPlayerGlyph(Xl(this.speciesId, e.skinLook),this.speciesId,evolving?undefined:this.heroPose??this.firePose,heroFrame),
         n = !evolving && this.speedNow > 0.6 && !this.gliding ? `walk` : `idle`,
         r = evolving ? e.realTime*.6 : this.animT,
@@ -33970,6 +33970,8 @@ var mv = 30,
         i,
         e.skinGl,
         heroFrame?.rect,
+        evolutionGlyph?.[1],
+        evolutionGlyph?.[2],
       );
       if (e.ult.readyBlinkAt != null && glyphIndex != null && !this.dead) {
         this.readyBatch = t;
@@ -47412,71 +47414,70 @@ var GT = 15,
         this.cry(e),
         this.ui.showEvolution(e, t, r));
       this.sprites.prepareHeroForm(t,this.r.renderer);
+      // The brush master contains only light. Flash the actual glyph on the
+      // photographed beats, including when the full-screen artwork is ready.
+      const glyphFlash=amount=>this.hideOwnFx?0:
+        amount*this.vfx.opacity*this.vfx.ownOpacity*(this.vfx.calm?.18:1);
       n.heroPlayback=undefined;
+      n.evolutionGlyph=this.hideOwnFx?undefined:evolutionPose(0).glyph;
       let s = this.camYaw;
       this.setCine({ follow: -2, dist: 3.6, pitch: 0.22, orbit: 0 });
       this.vfx.upgrade.play(n,true,r);
+      n.renderScale=1;
+      let advanceRelease,evolvedMaxHp;
+      const reveal=()=>{
+        n.speciesId=e;
+        n.setSpecies(t);
+        n.renderScale=1;
+        n.iframes=Math.max(n.iframes,2.6);
+        this.nextEvo=this.planEvolution(t,n.level+3);
+        this.stats.evolutions++;
+        this.meta.count('evolutions',1);
+        this.meta.unlockForm(t);
+        evolvedMaxHp=Math.round(n.maxHp);
+        const enemies=this.enemies,targets=enemies.within(n.pos.x,n.pos.z,18);
+        const generations=targets.map(id=>enemies.gen[id]);
+        const type=n.types[0],damage=80*n.level;
+        let nextTarget=0,resultReady=false;
+        this.cry(t);
+        this.audio.evolveDone();
+        return progress=>{
+          // Distribute the reveal's hits over the release while combat is paused.
+          const end=Math.min(targets.length,Math.max(nextTarget+6,Math.ceil(targets.length*progress)));
+          while(nextTarget<end){
+            const index=nextTarget++,id=targets[index];
+            if(enemies.gen[id]!==generations[index]||!enemies.isAlive(id)||enemies.flags[id]&R.Capture)continue;
+            if(enemies.flags[id] & (R.Boss | 12290))
+              this.combat.hit(id,enemies.maxHp[id]*.05,{type,cls:'special',fixed:true,silent:true,noReact:true});
+            else this.combat.hit(id,damage,{type,cls:'special',silent:true,knock:8,noReact:true});
+          }
+          if(!resultReady&&progress>=.25){
+            this.ui.prepareEvolutionResult?.(e,t,o,evolvedMaxHp);
+            resultReady=true;
+          }
+        };
+      };
+      // The reveal can fall between screen refreshes. One clock carries that
+      // fraction of a frame into the new pose, its light and its landing.
       this.animate(
-        r,
+        EVOLUTION_DURATION,
         (progress) => {
-          // Only the reveal callback changes species, stats and unlocks.
-          const pose=evolutionPose(progress*r);
-          n.flash=this.hideOwnFx?0:pose.flash*(this.vfx.calm?.18:1);
-          n.renderScale=1;
+          const elapsed=progress*EVOLUTION_DURATION;
+          if(elapsed+1e-8>=r){
+            advanceRelease??=reveal();
+            advanceRelease(Math.max(0,(elapsed-r)/(EVOLUTION_DURATION-r)));
+          }
+          const pose=evolutionPose(elapsed);
+          if(advanceRelease)n.evolutionLift=this.hideOwnFx?0:this.vfx.upgrade.camera.lift(pose.lift);
+          n.flash=glyphFlash(pose.flash);
+          n.evolutionGlyph=this.hideOwnFx?undefined:pose.glyph;
         },
         () => {
-          ((n.speciesId = e),
-            n.setSpecies(t),
-            (n.flash = this.hideOwnFx?0:this.vfx.calm?.18:1),
-            (n.renderScale = 1),
-            (n.iframes = Math.max(n.iframes, 2.6)),
-            (this.nextEvo = this.planEvolution(t, n.level + 3)),
-            this.stats.evolutions++,
-            this.meta.count(`evolutions`, 1),
-            this.meta.unlockForm(t));
-          let r = n.pos.x,
-            c = n.pos.z;
-          const evolvedMaxHp=Math.round(n.maxHp);
-          // The world is stationary through landing. Keep the reveal's target
-          // list and damage, but amortize hits, deaths and drops over its frames.
-          const enemies=this.enemies, targets=enemies.within(r,c,18);
-          const generations=targets.map(id=>enemies.gen[id]);
-          const type=n.types[0], damage=80*n.level;
-          let nextTarget=0, resultReady=false;
-          const applyPulse=progress=>{
-            const end=Math.min(targets.length,Math.max(nextTarget+6,Math.ceil(targets.length*progress)));
-            while(nextTarget<end){
-              const index=nextTarget++, id=targets[index];
-              if(enemies.gen[id]!==generations[index]||!enemies.isAlive(id)||enemies.flags[id]&R.Capture)continue;
-              if(enemies.flags[id] & (R.Boss | 12290))
-                this.combat.hit(id,enemies.maxHp[id]*.05,{type,cls:'special',fixed:true,silent:true,noReact:true});
-              else this.combat.hit(id,damage,{type,cls:'special',silent:true,knock:8,noReact:true});
-            }
-          };
-          applyPulse(0);
-          this.animate(
-            EVOLUTION_DURATION-EVOLUTION_REVEAL,
-            (progress) => {
-              applyPulse(progress);
-              if(!resultReady && progress>=.25){
-                this.ui.prepareEvolutionResult?.(e,t,o,evolvedMaxHp);
-                resultReady=true;
-              }
-              const elapsed=progress*(EVOLUTION_DURATION-EVOLUTION_REVEAL);
-              const pose=evolutionPose(EVOLUTION_REVEAL+elapsed);
-              n.evolutionLift = this.hideOwnFx ? 0 : this.vfx.upgrade.camera.lift(pose.lift);
-              n.flash=(this.hideOwnFx?0:this.vfx.calm?.18:1)*pose.flash;
-            },
-            () => {
-              n.renderScale = 1;
-              n.evolutionLift = 0;n.flash=0;
-              this.ui.evolutionReveal(e,t,o,evolvedMaxHp);
-              this.state='play';this.cine.want=0;this.yawBack=s;
-              this.ui.endCinematic();this.evoHold=2.4;
-            },
-          );
-          (this.cry(t),
-            this.audio.evolveDone());
+          n.renderScale=1;
+          n.evolutionGlyph=undefined;n.evolutionLift=0;n.flash=0;
+          this.ui.evolutionReveal(e,t,o,evolvedMaxHp);
+          this.state='play';this.cine.want=0;this.yawBack=s;
+          this.ui.endCinematic();this.evoHold=2.4;
         },
       );
     }

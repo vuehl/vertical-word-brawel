@@ -151,12 +151,12 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     const texture=animations.get(id)?.texture;
     if(!disposed && texture?.image)renderer?.initTexture(texture);
   };
-  run.sprites.heroFrame=(actor,id,action,nowMs)=>{
+  run.sprites.heroFrame=(actor,id,action,nowMs,poseIndex)=>{
     if(action&&heroActionCatalog[id]&&!animations.get(id)?.texture.image){
       prepareHeroAnimation(id);
       return heroActionFrame(actor,id,undefined,nowMs);
     }
-    return heroActionFrame(actor,id,action,nowMs);
+    return heroActionFrame(actor,id,action,nowMs,poseIndex);
   };
   run.sprites.getAnimatedHeroGlyph=(id,frame)=>
     skin(get(id,false,'hero-animation'),glyphWordForSpecies(frame.species),animations.get(frame.species));

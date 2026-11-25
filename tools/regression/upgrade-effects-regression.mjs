@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {EVOLUTION_DURATION,evolutionFrameTimes} from '../../source/src/effects/evolution-timing.js';
 
 export async function reviewUpgradeEffects(page,dir){
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
@@ -79,9 +80,9 @@ export async function reviewUpgradeEffects(page,dir){
         overlay:!!r.ui.root.querySelector('.zx-evolution-stamp,.zx-evolution-cutin,.zx-evolution-result'),
         frames,framing,worldPaused:r.time===clock,stationary:p.pos.equals(position)};
     },{from,to});
-    assert.equal(start.state,'evolving');assert.equal(start.species,from);assert.equal(start.count,1);assert.ok(start.front&&start.rear);assert.equal(start.overlay,false);
-    assert.equal(start.lightFrame,27,'Golden spiral is loaded and playing on the original form');
-    assert.ok(Math.abs(start.duration-6.2)<1e-8,'Evolution uses the original GIF duration');
+    assert.equal(start.state,'evolving');assert.equal(start.species,from);assert.equal(start.count,0);assert.ok(!start.front&&!start.rear);assert.equal(start.overlay,false);
+    assert.equal(start.lightFrame,55,'Golden spiral is loaded and playing on the original form');
+    assert.ok(Math.abs(start.duration-4.2)<1e-8,'Evolution finishes two seconds sooner');
     assert.ok(Math.abs(start.reveal/start.duration-4.4/6.2)<1e-8,'Keep the original GIF charge/release ratio');
     assert.ok(start.fullScreen,'The supplied full-screen atlas replaces the cropped light');
     const cover=Math.max(width/390,height/844);
@@ -170,7 +171,7 @@ export async function reviewUpgradeEffects(page,dir){
     fx.play(r.player,true);fx.play(r.player,true);const coalesced=fx.events.length===1;
     r.hideOwnFx=true;fx.update(.1);fx.play(r.player,true);const hidden=fx.events.length===0&&!fx.mesh.visible&&!fx.light.mesh.visible&&!fx.screen.mesh.visible;
     r.hideOwnFx=false;r.vfx.calm=true;r.vfx.ownFade=.4;r.vfx.fade=.5;fx.play(r.player,true);fx.update(.2);
-    const calm=fx.mesh.material.uniforms.calm.value,opacity=fx.timing.getW(0);
+    const calm=fx.mesh.material.uniforms.calm.value,opacity=fx.screen.uniforms.strength.value/.55;
     fx.update(fx.events[0].reveal-.2);const calmBurst=fx.screen.uniforms.strength.value;
     r.vfx.clear();const cleared=fx.events.length===0&&!fx.mesh.visible&&!fx.light.mesh.visible&&!fx.screen.mesh.visible;
     r.vfx.calm=false;r.vfx.ownFade=1;r.vfx.fade=1;
@@ -187,14 +188,15 @@ export async function reviewUpgradeEffects(page,dir){
   assert.ok(report.settings.coalesced&&report.settings.hidden&&report.settings.cleared&&report.settings.cooperative&&report.settings.chained);
   assert.equal(report.settings.calm,1);assert.ok(Math.abs(report.settings.opacity-.14)<1e-6);
   assert.ok(Math.abs(report.settings.calmBurst-.14*.18)<1e-6);
-  report.lowFps=await page.evaluate(()=>{
+  report.lowFps=await page.evaluate(duration=>{
     const r=app.run,p=r.player,fx=r.vfx.upgrade;r.state='play';r.anims.length=0;r.ui.showEvolution();
     p.setSpecies(4);p.renderScale=1;p.evolutionLift=0;r.nextEvo={to:5,level:p.level};
     const count=r.stats.evolutions,clock=r.time;
     r.startEvolution();[...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
-    for(let i=0;i<61;i++)r.update(.1);
+    for(let i=0;i<Math.round(duration*10)-1;i++)r.update(.1);
+    r.update(.0999);
     const paused=r.state==='evolving'&&r.time===clock;
-    for(let i=0;i<3;i++)r.update(.1);
+    r.update(.0002);
     const complete=r.state==='play'&&p.speciesId===5&&p.evolutionLift===0&&p.flash===0&&r.stats.evolutions===count+1&&!fx.screen.mesh.visible;
     // A missing optional full-screen texture retains the already loaded local effect.
     const loaded=fx.screen.loaded;fx.screen.loaded=false;
@@ -202,11 +204,10 @@ export async function reviewUpgradeEffects(page,dir){
     const fallback=fx.light.mesh.visible&&!fx.screen.mesh.visible;
     fx.screen.loaded=loaded;fx.clear();
     return {paused,complete,fallback};
-  });
+  },EVOLUTION_DURATION);
   assert.ok(report.lowFps.paused&&report.lowFps.complete&&report.lowFps.fallback);
   if(process.argv.includes('--evolution-preview')){
     const {default:sharp}=await import('sharp');
-    const reference=JSON.parse(fs.readFileSync(new URL('../../resources/public/assets/vfx/evolution-screen.json',import.meta.url)));
     await page.setViewport({width:390,height:844,deviceScaleFactor:1});
     await page.evaluate(()=>{
       const r=app.run,p=r.player;r.state='play';r.anims.length=0;r.vfx.clear();r.ui.showEvolution();
@@ -215,21 +216,23 @@ export async function reviewUpgradeEffects(page,dir){
       r.startEvolution();[...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
     });
     const frames=[],delays=[];
-    for(let i=0;i<reference.times.length-1;i++){
+    // GIFs use centiseconds. Round the cumulative clock to prevent drift.
+    const ticks=evolutionFrameTimes.map(t=>Math.round(t*100));
+    for(let i=0;i<evolutionFrameTimes.length-1;i++){
       await page.evaluate(dt=>{
         const r=app.run;r.update(dt);app.r.render(0);inspected.env.drawUI(app.r.renderer);
-      },i===0?0:reference.times[i]-reference.times[i-1]);
+      },i===0?0:evolutionFrameTimes[i]-evolutionFrameTimes[i-1]);
       const screenshot=await page.screenshot();
       if([0,20,60,120,123,126,136,170].includes(i))fs.writeFileSync(path.join(dir,'preview-'+i+'.png'),screenshot);
       frames.push(await sharp(screenshot).ensureAlpha().raw().toBuffer());
-      delays.push(Math.round((reference.times[i+1]-reference.times[i])*1000));
+      delays.push((ticks[i+1]-ticks[i])*10);
     }
     const file='evolution-reference-timing.gif';
     await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
       .gif({delay:delays,loop:0,effort:4,dither:.5}).toFile(path.join(dir,file));
     const metadata=await sharp(path.join(dir,file),{animated:true}).metadata();
-    assert.equal(metadata.delay.reduce((total,delay)=>total+delay,0),6200,'Preview must play at the original GIF timing');
-    report.preview={file,duration:6.2};console.log('Reference-timed evolution preview:',file);
+    assert.equal(metadata.delay.reduce((total,delay)=>total+delay,0),4200,'Preview must match the game clock');
+    report.preview={file,duration:EVOLUTION_DURATION};console.log('Evolution preview:',file);
   }
   report.dispose=await page.evaluate(()=>{
     const r=app.run,fx=r.vfx.upgrade;fx.play();app.toMenu();

@@ -2,15 +2,17 @@ import {y as BufferGeometry,v as BufferAttribute,B as InstanceAttribute,H as Ins
 import {WindAtlasBatch} from './wind-vortex.js';
 import {EvolutionScreen} from './evolution-screen.js';
 import {EvolutionCamera} from './evolution-camera.js';
-import {EVOLUTION_DURATION,EVOLUTION_REVEAL,evolutionFrame} from './evolution-timing.js';
+import {goldPalette} from './evolution-brush.js';
+import {EVOLUTION_DURATION,EVOLUTION_REVEAL,EVOLUTION_PLAYBACK_RATE,evolutionFrame} from './evolution-timing.js';
 export {EVOLUTION_DURATION,EVOLUTION_REVEAL,EVOLUTION_LANDING,evolutionPose} from './evolution-timing.js';
 
-// jinhua.gif flashes into the new form at frame 126. The game clock drives
+// The supplied fullscreen recording reveals the new form at frame 126. The game clock drives
 // both the effect and the actual species change, including at low frame rates.
 // Frames 92–123 have a 20 ms delay. The rest use 40 ms. Preserve those
 // relative speeds while aligning frame 126 with the gameplay reveal.
 function sourceFrame(age,reveal,duration){
-  const time=age<reveal?4.4*age/reveal:4.4+1.8*(age-reveal)/(duration-reveal);
+  const time=age<reveal?EVOLUTION_REVEAL*age/reveal:
+    EVOLUTION_REVEAL+(EVOLUTION_DURATION-EVOLUTION_REVEAL)*(age-reveal)/(duration-reveal);
   return evolutionFrame(time);
 }
 
@@ -36,7 +38,7 @@ export class UpgradeEffects {
   constructor(run,scene){
     this.run=run;this.events=[];
     const g=geometry(),capacity=8;
-    this.light=new WindAtlasBatch(scene,capacity,'assets/vfx/evolution-light.webp',8,9,96,'evolution-light');
+    this.light=new WindAtlasBatch(scene,capacity,'assets/vfx/evolution-light.webp',8,9,112,'evolution-light');
     this.light.mesh.renderOrder=7.1;
     this.light.mesh.material.depthTest=false;
     this.screen=new EvolutionScreen(run);
@@ -51,7 +53,7 @@ export class UpgradeEffects {
         attribute float part;
         uniform float calm;
         varying vec2 vUv;
-        varying float kind,alpha,head,depthSide;
+        varying float kind,alpha,head,depthSide,inkFrame;
         const float TAU=6.2831853;
         // Ellipse tilt, aspect and radius sampled in source GIF frame units.
         vec3 orbitPose(float f){
@@ -70,6 +72,7 @@ export class UpgradeEffects {
           float progress=clamp(age/max(reveal,.001),0.,1.);
           float seconds=progress*4.4;
           float frame=seconds<3.68?seconds*25.:seconds<4.32?92.+(seconds-3.68)*50.:124.+(seconds-4.32)*25.;
+          inkFrame=frame;
           float ending=1.-smoothstep(reveal+.08,effectTime.z,age);
           alpha=effectTime.w*smoothstep(0.,.12,age)*ending;
           vec4 p=viewMatrix*vec4(originSize.xyz,1.);
@@ -124,8 +127,9 @@ export class UpgradeEffects {
         }`,
       fragmentShader:`
         varying vec2 vUv;
-        varying float kind,alpha,head,depthSide;
+        varying float kind,alpha,head,depthSide,inkFrame;
         uniform float layer;
+        ${goldPalette}
         void main(){
           // Glyphs don't write depth. Split arcs around their render order so
           // the supplied orbit really passes behind and in front of any form.
@@ -139,9 +143,10 @@ export class UpgradeEffects {
           float light,core;
           if(kind<1.5){
             float d=abs(vUv.y-.5)*2.;
-            core=exp(-d*d*50.);
-            light=core+exp(-d*d*12.)*.65+exp(-d*d*3.)*.16;
-            light*=head;
+            float width=mix(.06,.48,head);
+            float aa=clamp(fwidth(d),.015,.10);
+            core=1.-smoothstep(width*.35-aa,width*.35+aa,abs(vUv.y*2.-1.+width*.20));
+            light=(1.-smoothstep(width-aa,width+aa,d)+.08*exp(-d*d*5.))*head;
           }else if(kind<17.5){
             vec2 q=abs(vUv-.5)*2.;
             core=0.;
@@ -154,10 +159,11 @@ export class UpgradeEffects {
           }
           float a=clamp(light*alpha,0.,1.);
           if(a<.003)discard;
-          vec3 color=mix(vec3(1.,.75,.27),vec3(1.,1.,.88),clamp(core,0.,1.));
-          if(kind>1.5&&kind<17.5)color=vec3(.87,.39,.50);
-          if(kind>17.5)color=mix(vec3(1.,.83,.43),vec3(1.),clamp(light,0.,1.));
-          gl_FragColor=vec4(color,a);
+          vec3 rim,ink,gold,glint;
+          goldPalette(inkFrame,rim,ink,gold,glint);
+          vec3 color=mix(mix(ink,gold,head*.65),glint,clamp(core,0.,1.));
+          if(kind>17.5)color=mix(gold,glint,clamp(light,0.,1.));
+          gl_FragColor=sRGBTransferEOTF(vec4(color,a));
           #include <colorspace_fragment>
         }`,
     });
@@ -196,13 +202,15 @@ export class UpgradeEffects {
     for(let i=this.events.length-1;i>=0;i--){
       const e=this.events[i];e.age+=Math.max(0,dt);
       if(e.age>=e.duration||e.actor.dead){this.events.splice(i,1);continue;}
-      const p=e.actor.pos,j=this.mesh.count++,scale=e.actor.renderScale??1;
-      this.origin.setXYZW(j,p.x,p.y+.08,p.z,e.height*scale);
+      const p=e.actor.pos,scale=e.actor.renderScale??1;
       const opacity=fx.opacity*fx.ownOpacity*(fx.calm?.7:1);
-      this.timing.setXYZW(j,e.age,e.reveal,e.duration,opacity);
       if(e.evolution){
         const source=sourceFrame(e.age,e.reveal,e.duration),frame=Math.floor(source/2);
-        if(e.actor===this.run.player)this.screen.update(e,source,opacity);
+        if(e.actor===this.run.player){
+          this.screen.update(e,source,opacity);
+          // The recorded track includes the orbit, burst and their fade-out.
+          if(this.screen.loaded)continue;
+        }
         if(frame<72){
           // In the padded square image the center sits 0.48 actor heights
           // above the ground, matching the procedural orbit.
@@ -211,6 +219,11 @@ export class UpgradeEffects {
           this.light.push(p.x,p.y+.08,p.z,e.height*scale*4,frame,opacity*fade,.38);
         }
       }
+      const j=this.mesh.count++;
+      this.origin.setXYZW(j,p.x,p.y+.08,p.z,e.height*scale);
+      // These shader curves and particle lifetimes are in the original brush clock.
+      const rate=e.evolution?EVOLUTION_PLAYBACK_RATE:1;
+      this.timing.setXYZW(j,e.age*rate,e.reveal*rate,e.duration*rate,opacity);
     }
     this.light.end();
     // The full recording includes the same local gold light. Keep the local

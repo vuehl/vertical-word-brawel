@@ -24,9 +24,10 @@ export function playerHeroAction(player){
   return player.speedNow>.6?'walk':'idle';
 }
 
-export function heroActionFrame(actor,species,action,nowMs){
+export function heroActionFrame(actor,species,action,nowMs,poseIndex){
   const clip=clipsBySpecies.get(species)?.[action];
   if(!clip){actor.heroPlayback=undefined;return;}
+  if(poseIndex!=null)return clip.frames[poseIndex%clip.frames.length];
   let playback=actor.heroPlayback;
   if(playback?.clip!==clip){
     playback=actor.heroPlayback={clip,elapsed:0,last:nowMs};
