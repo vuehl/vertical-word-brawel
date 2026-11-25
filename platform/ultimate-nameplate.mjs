@@ -5,6 +5,8 @@ import {paintCastRow} from './cast-title-rows.mjs';
 import {castDurationMs} from './ultimate-cast.mjs';
 import {Rng} from '../source/src/vendor/pixelfx-blink-in.js';
 
+const padLeft=24,padRight=12,canvasWidth=padLeft+titleWidth+padRight;
+
 function rampColor(rgb,target,k){
   const channel=n=>Math.round((rgb>>n&255)*(1-k)+target*k);
   return 'rgb('+[channel(16),channel(8),channel(0)].join(',')+')';
@@ -28,7 +30,7 @@ export function createComboNameplate(makeCanvas,font,makeImage,atlasPath){
     }
     if(!canvas){canvas=makeCanvas();ctx=canvas.getContext('2d');}
     const pixels=Math.min(3,Math.max(1,band.zoom*scale));
-    const w=Math.ceil(titleWidth*pixels),h=Math.ceil(layout.height*pixels);
+    const w=Math.ceil(canvasWidth*pixels),h=Math.ceil(layout.height*pixels);
     const resize=w!==canvas.width||h!==canvas.height,changed=fresh||resize||step!==lastStep;
     if(changed){
       if(resize){canvas.width=w;canvas.height=h;}
@@ -36,11 +38,12 @@ export function createComboNameplate(makeCanvas,font,makeImage,atlasPath){
       const {offset,reveal,alpha}=castTitlePose(band,ms,castDurationMs);
       const edgeX=titleWidth-reveal;
       if(reveal>0&&alpha>0){
-        ctx.save();ctx.setTransform(w/titleWidth,0,0,h/layout.height,0,0);
-        ctx.beginPath();ctx.rect(edgeX,0,reveal,layout.height);ctx.clip();
+        const clipLeft=reveal>=titleWidth?-padLeft:edgeX;
+        ctx.save();ctx.setTransform(w/canvasWidth,0,0,h/layout.height,padLeft*w/canvasWidth,0);
+        ctx.beginPath();ctx.rect(clipLeft,0,titleWidth+padRight-clipLeft,layout.height);ctx.clip();
         ctx.globalAlpha=alpha;ctx.font=titleFont+'px '+font;
         ctx.textBaseline='middle';ctx.textAlign='center';ctx.lineJoin='round';
-        const fullCast=cue.evoStage>=2,hit=(ms-500)/320;
+        const fullCast=(cue.tier??2)>=2,hit=(ms-500)/320;
         if(fullCast&&ms<500){
           const rng=new Rng(step+1);
           ctx.fillStyle=tip;
@@ -83,7 +86,7 @@ export function createComboNameplate(makeCanvas,font,makeImage,atlasPath){
       }
       lastStep=step;
     }
-    return {slot:21,canvas,changed,x:castTitleLeft(band)*scale,y:(band.y-layout.height*band.zoom/2)*scale,
-      width:titleWidth*band.zoom*scale,height:layout.height*band.zoom*scale};
+    return {slot:21,canvas,changed,x:(castTitleLeft(band)-padLeft*band.zoom)*scale,y:(band.y-layout.height*band.zoom/2)*scale,
+      width:canvasWidth*band.zoom*scale,height:layout.height*band.zoom*scale};
   };
 }

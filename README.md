@@ -1,6 +1,6 @@
-# 字行 · 微信竖屏小游戏
+# 字由搏击 · 微信竖屏小游戏
 
-这是「字灵同行」的竖屏工程。修改字形和美术从 `resources/` 开始，修改玩法从 `source/src/` 开始。在微信开发者工具中导入项目根目录，工具会按 `project.config.json` 加载 `minigame/`。
+这是「字由搏击」的竖屏工程。修改字形和美术从 `resources/` 开始，修改玩法从 `source/src/` 开始。在微信开发者工具中导入项目根目录，工具会按 `project.config.json` 加载 `minigame/`。
 
 ## 项目目录
 

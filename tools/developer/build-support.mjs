@@ -54,7 +54,7 @@ export function isolatedStoragePlugin(platform){
 }
 export function writeProject(root,out){
   const config=JSON.parse(fs.readFileSync(path.join(root,'project.config.json'),'utf8'));
-  config.projectname='字行 · 开发测试（独立存档）';
+  config.projectname='字由搏击 · 开发测试（独立存档）';
   config.description='仅供开发测试，禁止上传发布；正式工程位于上两级目录。';
   fs.writeFileSync(path.join(out,'project.config.json'),JSON.stringify(config,null,2)+'\n');
   const main=path.join(out,'minigame/game.js'),directory=path.join(out,'minigame/play'),play=path.join(directory,'game.js');

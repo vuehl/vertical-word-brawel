@@ -39,12 +39,12 @@ async function readBrotli(archive,expected) {
   const manager=fs();let raw;
   if(typeof manager.readCompressedFile==='function'){
     try {raw=(await fileCall('readCompressedFile',{filePath:archive,compressionAlgorithm:'br'})).data;}
-    catch(error){console.warn('[字行] 异步解压失败',archive,error);}
+    catch(error){console.warn('[字由搏击] 异步解压失败',archive,error);}
   }
   if((!raw||raw.byteLength!==expected)&&typeof manager.readCompressedFileSync==='function'){
     await yieldTask();
     try {raw=manager.readCompressedFileSync({filePath:archive,compressionAlgorithm:'br'});}
-    catch(error){console.warn('[字行] 原生解压失败，使用备用解码器',archive,error);}
+    catch(error){console.warn('[字由搏击] 原生解压失败，使用备用解码器',archive,error);}
   }
   if(!raw||raw.byteLength!==expected){
     const bytes=new Uint8Array(await readFile(archive));await yieldTask();
@@ -70,8 +70,9 @@ function downloadPackage(name, progress) {
     let lastProgress = Date.now();
     function checkDownload() {
       if (packageAvailable(name)) return finish();
-      if (Date.now() - lastProgress >= 15000) return finish('下载长时间没有进展，请检查网络后重试');
-      timer = setTimeout(checkDownload, 1500);
+      const remaining = 10000 - (Date.now() - lastProgress);
+      if (remaining <= 0) return finish('下载长时间没有进展，请检查网络后重试');
+      timer = setTimeout(checkDownload, Math.min(1500, remaining));
     }
     timer = setTimeout(checkDownload, 1500);
     try {
@@ -283,7 +284,7 @@ async function removeObsoletePacks() {
         }
         fs().rmdirSync(dir,false);
         removed++;
-      }catch(error){console.info('[字行] 保留未清理的旧缓存',entry,error.message||error.errMsg);}
+      }catch(error){console.info('[字由搏击] 保留未清理的旧缓存',entry,error.message||error.errMsg);}
       await yieldTask();
     }
   }

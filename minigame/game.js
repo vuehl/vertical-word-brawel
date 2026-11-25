@@ -85,7 +85,7 @@ async function start() {
     wx.onShareAppMessage(wechatShareCard);
   }
   if (wx.showShareMenu) {
-    wx.showShareMenu({menus:['shareAppMessage'], fail:e=>console.warn('[字行] 转发菜单未开启', e.errMsg)});
+    wx.showShareMenu({menus:['shareAppMessage'], fail:e=>console.warn('[字由搏击] 转发菜单未开启', e.errMsg)});
   }
   function receiveInvite(options) {
     const code = options && options.query && options.query.roomCode;
@@ -147,7 +147,7 @@ async function start() {
       }));
       if (!failed.length) return true;
       const content = messages.join('\n');
-      console.warn('[字行启动]', content);
+      console.warn('[字由搏击启动]', content);
       waitingForRetry = true;
       const restart = typeof wx.restartMiniProgram === 'function';
       const choice = await new Promise((resolve, reject) => wx.showModal({
@@ -164,7 +164,7 @@ async function start() {
     }
   }
   try {
-    stage('字行 · 打开纸上世界');
+    stage('字由搏击 · 打开纸上世界');
     const canvas = wx.createCanvas();
     const view = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     const width=view.windowWidth||canvas.width||360,height=view.windowHeight||canvas.height||640;
@@ -226,10 +226,10 @@ async function start() {
     host.bootDiagnostics.completed=true;
     host.bootDiagnostics.totalMs=Date.now()-began;
     host.bootDiagnostics.text = files.diagnostics.packs.text;
-    console.info('[字行启动耗时]', JSON.stringify(host.bootDiagnostics));
+    console.info('[字由搏击启动耗时]', JSON.stringify(host.bootDiagnostics));
     console.info('[宝可梦启动] 游戏首页已绘制', Date.now() - began, 'ms');
-    files.preloadForest().catch(error=>console.warn('[字行] 后台准备场景资源失败',error));
-    files.cleanObsoletePacks().catch(error=>console.info('[字行] 无法读取旧缓存目录',error.message));
+    files.preloadForest().catch(error=>console.warn('[字由搏击] 后台准备场景资源失败',error));
+    files.cleanObsoletePacks().catch(error=>console.info('[字由搏击] 无法读取旧缓存目录',error.message));
   } catch (error) {
     console.error('[宝可梦] ' + phase + '失败', error);
     const restart = typeof wx.restartMiniProgram === 'function';

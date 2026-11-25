@@ -149,6 +149,25 @@ test('an archive mounted without a completion callback is picked up during the f
   assert.deepEqual(f.downloads,{text:1});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
 });
+test('download progress resets the ten-second inactivity limit before a single retry',async t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout']});
+  let notify;
+  const f=installer({loadSubpackage({success}){
+    if(f.downloads.text===2)queueMicrotask(success);
+    return {onProgressUpdate(fn){notify=fn;}};
+  }});
+  const ready=f.api.loadPackage('text');
+  t.mock.timers.tick(9000);
+  notify({progress:30});
+  t.mock.timers.tick(9999);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.downloads.text,1);
+  t.mock.timers.tick(1);
+  await new Promise(resolve=>setImmediate(resolve));
+  t.mock.timers.tick(500);
+  await ready;
+  assert.equal(f.downloads.text,2);
+});
 test('entering during background preparation joins the download and starts the remaining pack',async()=>{
   const pending={};
   const f=installer({loadSubpackage({name,success}){pending[name](success);}});

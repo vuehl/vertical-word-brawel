@@ -1,5 +1,5 @@
 {
-  "description": "字行 · 字灵同行 · 微信竖屏",
+  "description": "字由搏击 · 微信竖屏小游戏",
   "setting": {
     "urlCheck": false,
     "es6": false,
@@ -27,7 +27,7 @@
   "compileType": "game",
   "libVersion": "latest",
   "appid": "wxa545e5ead35ffb1b",
-  "projectname": "字行森林竖屏版",
+  "projectname": "字由搏击",
   "condition": {
     "search": {
       "current": -1,

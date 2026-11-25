@@ -15,7 +15,7 @@ module.exports = async function presentBootFrame(gl) {
       const file=wx.env.USER_DATA_PATH+'/zixing-boot-heroes.webp';
       wx.getFileSystemManager().writeFileSync(file,src.slice(src.indexOf(',')+1),'base64');
       image.src=file;
-    }catch(error){console.warn('[字行] 启动字灵图片读取失败',error);}
+    }catch(error){console.warn('[字由搏击] 启动字灵图片读取失败',error);}
   }
   image.onerror=loadLocal;
   try{image.src=src;}catch{loadLocal();}

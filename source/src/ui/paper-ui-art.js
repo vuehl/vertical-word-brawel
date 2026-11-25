@@ -1,4 +1,5 @@
 import {glyphCanvas} from '../actors/paper-glyph-art.js';
+import {gameTitle} from './menu-scene.js';
 
 // A field notebook for the starters. The lobby keeps this static canvas
 // between requests and scales the whole spread to the space above its buttons.
@@ -94,7 +95,7 @@ export function drawPaperIllustration(canvas,hero=false,variant=0){
     c.restore();
     if(hero){
       const shade=c.createLinearGradient(0,0,0,310);shade.addColorStop(0,'#f8f5eaff');shade.addColorStop(.7,'#f8f5eaf0');shade.addColorStop(1,'#f8f5ea00');c.fillStyle=shade;c.fillRect(0,0,780,310);
-      c.save();c.translate(390,126);c.rotate(-.055);c.font='bold 145px "Ziling Swei",sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';c.lineWidth=10;c.strokeStyle='#343044';c.strokeText('字 行',0,8);c.strokeText('字 行',0,0);const gold=c.createLinearGradient(0,-80,0,80);gold.addColorStop(0,'#ffed9d');gold.addColorStop(1,'#e8bc60');c.fillStyle=gold;c.fillText('字 行',0,0);c.restore();
+      c.save();c.translate(390,126);c.rotate(-.055);c.font='bold 145px "Ziling Swei",sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';c.lineWidth=10;c.strokeStyle='#343044';c.strokeText(gameTitle,0,8);c.strokeText(gameTitle,0,0);const gold=c.createLinearGradient(0,-80,0,80);gold.addColorStop(0,'#ffed9d');gold.addColorStop(1,'#e8bc60');c.fillStyle=gold;c.fillText(gameTitle,0,0);c.restore();
       c.font='bold 23px "Ziling Swei",sans-serif';c.textAlign='center';c.fillStyle='#526f72';c.fillText('桌 上 有 天 地 · 落 字 即 成 灵',390,245);
       for(const [word,x,y,size] of [['风',280,430,146],['炎',500,421,175]]){
         c.drawImage(glyphCanvas(word),x-size/2,y-size/2,size,size);

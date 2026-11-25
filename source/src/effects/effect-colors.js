@@ -39,3 +39,9 @@ export function readyPaletteForType(type){
   palettes.set(base,palette);
   return palette;
 }
+
+export function castToneForType(type,base){
+  if(type!=='flying')return base;
+  const channel=shift=>Math.round(((base>>shift)&255)*.38+255*.62);
+  return channel(16)<<16|channel(8)<<8|channel(0);
+}

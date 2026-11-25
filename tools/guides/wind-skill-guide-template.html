@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<meta name="description" content="字行风、讽、疯、飒、飙的技能、进阶、大招、被动与全融合配方。单文件离线图鉴，支持搜索、配方查询与打印。">
-<title>风系技能与全融合图鉴 · 字行</title>
+<meta name="description" content="《字由搏击》中风、讽、疯、飒、飙的技能、进阶、大招、被动与全融合配方。单文件离线图鉴，支持搜索、配方查询与打印。">
+<title>风系技能与全融合图鉴 · 字由搏击</title>
 <style>
 :root{--ink:#20323a;--muted:#63737a;--line:#dce4e6;--paper:#f3f6f7;--teal:#16796f;--dark:#123c42;--mint:#c0efd7;--soft:#eaf5f0;--blue:#526dba;--orange:#ad633e;font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;font-size:16px;color:var(--ink);background:var(--paper);scroll-behavior:smooth;scroll-padding-top:88px}
 *{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button,a,input,select,summary{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{opacity:.4;cursor:default}button,a,summary{touch-action:manipulation}a{color:inherit;text-decoration:none}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #398cb5;outline-offset:4px}img{display:block;max-width:100%}h1,h2,h3,h4,p{margin:0}h1,h2,h3,h4{line-height:1.4}p{line-height:1.85}small{font-size:.8125rem}code{font-family:Consolas,monospace;font-size:.8125rem;overflow-wrap:anywhere}::selection{background:#c5eedd}.wrap{max-width:1280px;margin:auto;padding:0 36px}.muted{color:var(--muted)}.secondary{font-size:.875rem;color:var(--muted);line-height:1.7}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}.hidden{display:none!important}.count{font-variant-numeric:tabular-nums}.pill{display:inline-flex;align-items:center;border-radius:5px;padding:3px 8px;font-size:.875rem;line-height:1.5;background:#eef1f3;color:#54646d;white-space:nowrap}.pill.flying,.pill.type{background:#e5f3ec;color:#237563}.pill.fire,.pill.signature{background:#fff0e4;color:#a35d31}.pill.dragon,.pill.psychic{background:#eeeafb;color:#7357a6}.pill.reaction{background:#e7effb;color:#4d68a9}.pill.support{background:#eeeafa;color:#6d5a9a}.pill.attack{background:#e8effd;color:#4664a7}.pill.speed{background:#e6f3ee;color:#217665}.quiet-btn{background:white;border:1px solid var(--line);border-radius:7px;padding:9px 15px;color:var(--ink);font-size:.875rem}
@@ -20,7 +20,7 @@ main{padding-bottom:36px}section{margin-top:52px}.section-heading{display:flex;a
 </style>
 </head>
 <body id="top">
-<header class="topbar"><div class="wrap"><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">风</span><span>字行 <span class="muted">/</span> 技能资料库</span></a><div class="top-actions"><span class="secondary top-date" id="snapshotDate"></span><button type="button" class="quiet-btn" id="printButton">打印 / 存为 PDF</button></div></div></header>
+<header class="topbar"><div class="wrap"><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">风</span><span>字由搏击 <span class="muted">/</span> 技能资料库</span></a><div class="top-actions"><span class="secondary top-date" id="snapshotDate"></span><button type="button" class="quiet-btn" id="printButton">打印 / 存为 PDF</button></div></div></header>
 <div class="hero"><div class="wrap"><div class="hero-main"><div class="hero-copy"><div class="eyebrow">风系字灵档案 · 离线版</div><h1>一字起风<br><span>两路进阶</span></h1><p>风、讽、疯、飒、飙的每一招，<br>以及全部融合配方，都在这里。</p><div class="hero-links"><a class="hero-link primary" href="#moves">查看全部技能</a><a class="hero-link" href="#wind-fusions">查询融合配方</a></div></div><div class="evo-art" id="heroArt" aria-label="风选择讽或飒，再进阶为疯或飙，单关为 12、30 级，多关为 18、40 级"></div></div><div class="stats" id="heroStats"></div></div></div>
 <nav class="nav" aria-label="页面目录"><div class="wrap"><a href="#evolution" class="active">进阶与大招</a><a href="#moves">普通技能</a><a href="#wind-fusions">风系融合</a><a href="#all-fusions">全部融合</a><a href="#notes">整理说明</a><span class="nav-note">单文件 · 无需联网</span></div></nav>
 <main class="wrap">
@@ -56,7 +56,7 @@ main{padding-bottom:36px}section{margin-top:52px}.section-heading{display:flex;a
   <p class="fineprint">搜索支持当前名称、原名、材料名和英文 key。打印会自动显示全部普通技能、全部融合定义并展开具体配方，不受当前分页和筛选限制。</p>
 </section>
 </main>
-<footer class="footer"><div class="wrap"><span>字行 · 风系技能与全融合图鉴 <span id="footerDate"></span><br>本地源码整理 · 离线阅读 · 可打印</span><a class="backtop" href="#top">回到顶部</a></div></footer>
+<footer class="footer"><div class="wrap"><span>字由搏击 · 风系技能与全融合图鉴 <span id="footerDate"></span><br>本地源码整理 · 离线阅读 · 可打印</span><a class="backtop" href="#top">回到顶部</a></div></footer>
 <script>
 'use strict';
 const DATA = /*__GUIDE_DATA__*/;

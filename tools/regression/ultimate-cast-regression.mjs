@@ -7,15 +7,19 @@ export async function reviewUltimateCast(page,dir){
     window.nativeImageLoads.some(image=>image.path===window.__host.files.pathFor('assets/vfx/'+name+'.webp')&&image.width>0)));
   await page.waitForFunction(()=>window.nativeImageLoads.some(image=>
     image.path===window.__host.files.pathFor('fonts/cast-title-glyphs.webp')&&image.width>0));
-  for(const route of [[4],[4,5],[4,5,6],[16],[16,17],[16,17,18],[16,58],[16,58,59]]){
-    const species=route.at(-1),name=formCopy[species].ultimate[1],color=route[0]===4?0xff641c:0x5dd7d6;
-    const started=await page.evaluate(async ([base,...evolutions])=>{
+  const routes=[[4],[4,5],[4,5,6],[16],[16,17],[16,17,18],[16,58],[16,58,59]];
+  const cases=routes.map(route=>({route,growth:0}));
+  cases.push({route:[4],growth:2});
+  for(const {route,growth} of cases){
+    const species=route.at(-1),name=formCopy[species].ultimate[1],color=route[0]===4?0xff641c:0xc1f0ef;
+    const started=await page.evaluate(async ({route:[base,...evolutions],growth})=>{
       if(app.run.player.speciesId!==base||app.run.ult.uses){
         await app.startRun({species:base,biome:'forest',tier:0,boosts:[],mode:'standard'});
       }
       app.halted=true;
       const run=app.run,env=inspected.env;
       for(const form of evolutions)run.player.setSpecies(form);
+      run.player.growth=growth;
       run.update(1/60);
       run.ult.add(1);
       run.ui.ultHud(run);
@@ -56,13 +60,13 @@ export async function reviewUltimateCast(page,dir){
       const owner=run.ui.touch.stickId;
       const [,withButton]=step(8);
       window.tap(buttonX,buttonY,'up',1);
-      return {uses:run.ult.uses-before,name:cue.name,color:cue.color,evoStage:cue.evoStage,
+      return {uses:run.ult.uses-before,name:cue.name,color:cue.color,tier:cue.tier,
         held:held>0,turned:turned<0,released,restarted:restarted>0,buttonOnly,owner,withButton:withButton<0};
-    },route);
-    const evoStage=route.length-1;
-    assert.deepEqual(started,{uses:1,name,color,evoStage,held:true,turned:true,released:true,restarted:true,
+    },{route,growth});
+    const tier=Math.min(2,route.length-1+growth);
+    assert.deepEqual(started,{uses:1,name,color,tier,held:true,turned:true,released:true,restarted:true,
       buttonOnly:true,owner:12,withButton:true},'Cast and steer: '+species);
-    const expectedLayers=[...(evoStage>=2?['flame']:[]),...(evoStage>=1?['blade']:[])];
+    const expectedLayers=[...(tier>=2?['flame']:[]),...(tier>=1?['blade']:[])];
     const titleX=[];
     for(const [ms,hidden] of [[200,false],[333,true],[500,true],[700,true],[1000,true],[2010,false]]){
       const frame=await page.evaluate(ms=>{
@@ -99,12 +103,12 @@ export async function reviewUltimateCast(page,dir){
         assert.equal(frame.positions.length,Math.ceil(Array.from(name).length/2),'Draw every title row from the supplied glyphs');
         titleX.push(frame.positions[0]);
       }
-      assert.equal(frame.hidden,evoStage>=2&&hidden,'HUD visibility: '+species+' at '+ms);
+      assert.equal(frame.hidden,tier>=2&&hidden,'HUD visibility: '+species+' at '+ms);
       assert.equal(frame.finished,ms>=2000);
       assert.ok(frame.layers.every(layer=>expectedLayers.includes(layer)),'Unexpected layer: '+species+' at '+ms);
       if(ms===500||ms===700)assert.deepEqual(frame.layers,expectedLayers,'Cast layers: '+species+' at '+ms);
-      if(ms===(evoStage>=2?333:500))await page.screenshot({path:path.join(dir,formCopy[species].word+'-释放.png')});
-      if(ms===1000)assert.deepEqual(frame.layers,evoStage>=2?['flame']:[],'Blade sweep has ended: '+species);
+      if(ms===(tier>=2?333:500))await page.screenshot({path:path.join(dir,formCopy[species].word+(growth?'-成长':'')+'-释放.png')});
+      if(ms===1000)assert.deepEqual(frame.layers,tier>=2?['flame']:[],'Blade sweep has ended: '+species);
       if(ms>=2000)assert.deepEqual(frame.layers,[]);
     }
     const recovered=await page.evaluate(()=>{

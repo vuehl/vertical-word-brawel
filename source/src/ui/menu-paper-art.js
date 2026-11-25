@@ -6,8 +6,8 @@ const paper='#F4F3F8',ink='#2B2A49';
 // Independent lettering can sit on the same desk as the live character cutout.
 export function homeWordmark(){
   const cv=document.createElement('canvas');
-  cv.width=452;cv.height=240;cv.className='zx-home-wordmark';cv.dataset.static='true';
-  cv.setAttribute('aria-hidden','true');paintWordmark(cv.getContext('2d'),226,119);
+  cv.width=640;cv.height=200;cv.className='zx-home-wordmark';cv.dataset.static='true';
+  cv.setAttribute('aria-hidden','true');paintWordmark(cv.getContext('2d'),cv.width/2,cv.height/2);
   return cv;
 }
 

@@ -28,6 +28,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // source/src/ui/menu-scene.js
 var menu_scene_exports = {};
 __export(menu_scene_exports, {
+  gameTitle: () => gameTitle,
   gradient: () => gradient,
   paintLoadingBackdrop: () => paintLoadingBackdrop,
   paintLoadingSlip: () => paintLoadingSlip,
@@ -53,18 +54,18 @@ function paintWordmark(c, x, y) {
   c.save();
   c.translate(x, y);
   c.rotate(-0.035);
-  c.font = 'bold 191px "Ziling Swei",sans-serif';
+  c.font = 'bold 144px "Ziling Swei",sans-serif';
   c.textAlign = "center";
   c.textBaseline = "middle";
   c.lineJoin = "round";
   c.strokeStyle = "#5B98D6";
-  c.lineWidth = 26;
-  c.strokeText("\u5B57\u884C", 0, 0);
+  c.lineWidth = 20;
+  c.strokeText(gameTitle, 0, 0);
   c.strokeStyle = ink;
-  c.lineWidth = 12;
-  c.strokeText("\u5B57\u884C", 0, 0);
+  c.lineWidth = 9;
+  c.strokeText(gameTitle, 0, 0);
   c.fillStyle = paper;
-  c.fillText("\u5B57\u884C", 0, 0);
+  c.fillText(gameTitle, 0, 0);
   c.restore();
 }
 function paintMenuScene(c, width, height, hero, drawWord, selectedWord) {
@@ -236,11 +237,12 @@ function paintLoadingSlip(ctx, value, label) {
     ctx.fillRect(61, 0, 268 * value / 100, 7);
   }
 }
-var paper, ink;
+var paper, ink, gameTitle;
 var init_menu_scene = __esm({
   "source/src/ui/menu-scene.js"() {
     paper = "#F4F3F8";
     ink = "#2B2A49";
+    gameTitle = "\u5B57\u7531\u640F\u51FB";
   }
 });
 
@@ -265,7 +267,7 @@ module.exports = async function presentBootFrame(gl) {
       wx.getFileSystemManager().writeFileSync(file, src.slice(src.indexOf(",") + 1), "base64");
       image.src = file;
     } catch (error) {
-      console.warn("[\u5B57\u884C] \u542F\u52A8\u5B57\u7075\u56FE\u7247\u8BFB\u53D6\u5931\u8D25", error);
+      console.warn("[\u5B57\u7531\u640F\u51FB] \u542F\u52A8\u5B57\u7075\u56FE\u7247\u8BFB\u53D6\u5931\u8D25", error);
     }
   }
   image.onerror = loadLocal;

@@ -23,7 +23,7 @@ import {OS} from "../world/facilities.js";
 import {bu} from "../world/terrain.js";
 import {updateStarterSpeed, clearStarterSpeed} from "../data/starter-characters.js";
 import {blinkDuration} from "../effects/ultimate-ready-timing.js";
-import {readyPaletteForType} from "../effects/effect-colors.js";
+import {castToneForType, readyPaletteForType} from "../effects/effect-colors.js";
 import {ta, aa, Da, Na, Pa, uo} from "../ui/controls.js";
 import {Rh, zh, J, Xh, Zh, Qh} from "./ultimate-moves.js";
 import {Fg} from "./skills.js";
@@ -2528,7 +2528,8 @@ var iT = Math.PI / 180,
           R: Math.sqrt(t.stats.area),
         };
       this.readyBlinkAt = this.readyFlashAt = null;
-      this.castBanner = {start: performance.now(), color: this.readyPalette.base, evoStage: r};
+      const type = t.types?.[0];
+      this.castBanner = {start: performance.now(), color: castToneForType(type, this.readyPalette.base), tier: i, type};
       ((this.charge = 0),
         (this.active = a),
         e.upgradeTiming.beginUltimate(),

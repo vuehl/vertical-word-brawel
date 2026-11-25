@@ -1,10 +1,14 @@
 const paper='#F4F3F8',ink='#2B2A49';
+export const gameTitle='字由搏击';
 export function polygon(c,p,fill){c.beginPath();c.moveTo(...p[0]);for(const a of p.slice(1))c.lineTo(...a);c.closePath();c.fillStyle=fill;c.fill();}
 export function gradient(c,x,y,xx,yy,a,b){const g=c.createLinearGradient(x,y,xx,yy);g.addColorStop(0,a);g.addColorStop(1,b);return g;}
 
 export function paintWordmark(c,x,y){
-c.save();c.translate(x,y);c.rotate(-.035);c.font='bold 191px "Ziling Swei",sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';
-    c.strokeStyle='#5B98D6';c.lineWidth=26;c.strokeText('字行',0,0);c.strokeStyle=ink;c.lineWidth=12;c.strokeText('字行',0,0);c.fillStyle=paper;c.fillText('字行',0,0);c.restore();
+  c.save();c.translate(x,y);c.rotate(-.035);
+  c.font='bold 144px "Ziling Swei",sans-serif';c.textAlign='center';c.textBaseline='middle';c.lineJoin='round';
+  c.strokeStyle='#5B98D6';c.lineWidth=20;c.strokeText(gameTitle,0,0);
+  c.strokeStyle=ink;c.lineWidth=9;c.strokeText(gameTitle,0,0);
+  c.fillStyle=paper;c.fillText(gameTitle,0,0);c.restore();
 }
 
 // Menu illustration only. Battle glyph atlases, world textures and skill art

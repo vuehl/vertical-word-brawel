@@ -1,5 +1,5 @@
 import {journeyScene} from './journey-scene.js';
-import {paintLoadingSlip} from './menu-scene.js';
+import {gameTitle,paintLoadingSlip} from './menu-scene.js';
 import {headerCutout,titleRibbon,hudPaperIcon,paperIcon,upgradePrint,rewardPaper,arrivalPennant,evolutionResult,settlementTicket,battleDialogHeading,battleDialogFrame,pausePagePrint,stagePortrait,choiceMark} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,dockDialogClose,mountMenuDialog,openPaperPrompt,paperDecisionPanel,paperDecisionActions,paperDialogTitle,standardButton,fitPaperActionLabels,standardFooter,freePaperActions} from './paper-system.js';
 import {choiceQuality,choiceModel,effectScope} from './choice-presentation.js';
@@ -406,7 +406,7 @@ export function createZixingUI(app,api) {
     root.querySelector('.zx-body').remove();
     root.append(
       el('div','zx-home-top',row(button(paperIcon('settings'),()=>openProfilePage('设置',settings),'zx-gear',{'aria-label':'设置','data-action':'settings','data-paper-surface':'flat'}))),
-      el('div','zx-home-visual',homeWordmark(),{role:'heading','aria-level':1,'aria-label':'字行'}),
+      el('div','zx-home-visual',homeWordmark(),{role:'heading','aria-level':1,'aria-label':gameTitle}),
       dock,
     );
     if(p)showSecondary();
