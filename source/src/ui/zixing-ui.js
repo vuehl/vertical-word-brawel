@@ -23,9 +23,9 @@ import {prepareHudImage,waitForLoadingPaint} from '../performance/loading-work.j
 import {selectGraphicsQuality} from '../performance/performance-profile.js';
 import {ExperienceRing} from '../combat/experience-ring.js';
 import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus,windRushMultiplier} from '../data/starter-characters.js';
-import {SINGLE_STAGE,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,QUIT_REWARD_MIN_SECONDS,remainingZoneSeconds} from '../data/lite-rules.js';
+import {SINGLE_STAGE,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,QUIT_REWARD_MIN_SECONDS,remainingZoneSeconds,formatGameTime as time} from '../data/lite-rules.js';
 import {sceneAction} from '../combat/scene-action.js';
-import {facilityDwellSeconds,facilityNames} from '../data/active-content.js';
+import {facilityNames} from '../data/active-content.js';
 import {COOP_ROOM_SIZE} from '../network/multiplayer-config.js';
 import {setFrameRateLock,frameRateHelp} from '../performance/frame-policy.js';
 import {portalGuidance} from '../world/portal-guidance.js';
@@ -57,7 +57,6 @@ function compactCounter(value){
   return String(value);
 }
 const percent=n=>Number(((Number(n)||0)*100).toFixed(1))+'%';
-const time=n=>Math.floor((n||0)/60).toString().padStart(2,'0')+':'+Math.floor((n||0)%60).toString().padStart(2,'0');
 function el(tag,cls='',children=[],attrs={}) {
   const node=document.createElement(tag);if(cls)node.className=cls;
   for(const [k,v] of Object.entries(attrs)) {
@@ -1053,7 +1052,7 @@ export function createZixingUI(app,api) {
     const trigger=host.querySelector('[data-action="help"]');
     const instructions=[
       ['move','移动','按住空白处拖动，松手停下。移动时也能用另一只手点大招。'],
-      ['collect','攻击与拾取',`招式自动释放，靠近即可拾取经验、金币和道具。在扭蛋机旁停留 ${facilityDwellSeconds} 秒可触发互动。`],
+      ['collect','攻击与拾取',`招式自动释放，靠近即可拾取经验、金币和道具。碰到蓝骰子即可免费抽取道具，红骰子消耗标价金币。`],
       ['burst','释放大招','大招就绪后，点大招按钮释放。'],
     ];
     readingDialog(host,host===pauseSheet?pauseSheet:app.screen,trigger,'玩法说明',instructions,'guide-close');
@@ -1737,7 +1736,7 @@ export function createZixingUI(app,api) {
     // Touch controls live beside #hud. Place the new bar above their gesture
     // surface so the pause button receives an actual native pointer event.
     const portalCopy=small('');
-    const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 木门已开启'),portalCopy],{'aria-live':'polite'});
+    const portalGuide=el('div','zx-portal-guide',[el('b','','Boss 已击败 · 传送门已开启'),portalCopy],{'aria-live':'polite'});
     portalGuide.hidden=true;
     hud.root.append(node);
     const combo=hud.els.streak;

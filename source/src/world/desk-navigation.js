@@ -36,7 +36,7 @@ export function createDeskNavigation(terrain) {
     const size=Math.ceil(radius*2)/2;
     let field=fields.get(size);
     if(!field){
-      field={open:new Uint8Array(cols*rows),ready:false,targets:new Map()};
+      field={open:new Uint8Array(cols*rows),ready:false,targets:new Map(),edgeCells:new Map()};
       fields.set(size,field);jobs.push(mapFloor(field,size));
     }
     if(!field.ready)return false;
@@ -49,21 +49,28 @@ export function createDeskNavigation(terrain) {
       }
       return true;
     };
+    if(clear(x,z,targetX,targetZ))return false;
     const [gx,gz]=cell(targetX,targetZ);
-    const targetOpen=inside(gx,gz)&&open[gz*cols+gx];
-    if(targetOpen&&clear(x,z,targetX,targetZ))return false;
-    let goal=gz*cols+gx;
-    if(!targetOpen){
-      // All pursuers of this size see the same clearance grid at the wall.
-      if(field.blockedX!==gx||field.blockedZ!==gz){
-        let best=Infinity;
-        field.blockedX=gx;field.blockedZ=gz;field.nearestGoal=-1;
-        for(let dz=-6;dz<=6;dz++)for(let dx=-6;dx<=6;dx++){
-          const cx=gx+dx,cz=gz+dz,d=dx*dx+dz*dz;
-          if(inside(cx,cz)&&open[cz*cols+cx]&&d<best){field.nearestGoal=cz*cols+cx;best=d;}
-        }
+    if(!inside(gx,gz))return false;
+    const targetCell=gz*cols+gx;
+    let goal=open[targetCell]?targetCell:field.edgeCells.get(targetCell);
+    // A player can stand deep inside an obstacle. Cache the closest open
+    // cell so all pursuing NPCs of this size use the same edge.
+    if(goal===undefined){
+      goal=-1;
+      let best=Infinity;
+      function consider(dx,dz){
+        const x=gx+dx,z=gz+dz,id=z*cols+x,d=dx*dx+dz*dz;
+        if(inside(x,z)&&open[id]&&d<best){best=d;goal=id;}
       }
-      goal=field.nearestGoal;
+      for(let ring=1;ring<Math.max(cols,rows);ring++){
+        for(let n=-ring;n<=ring;n++){
+          consider(n,-ring);consider(n,ring);
+          if(Math.abs(n)<ring){consider(-ring,n);consider(ring,n);}
+        }
+        if(best<=(ring+1)**2)break;
+      }
+      field.edgeCells.set(targetCell,goal);
     }
     if(goal<0)return false;
     let target=field.targets.get(targetSlot);
@@ -149,10 +156,10 @@ export function createSpawnPlacement(terrain) {
     }
     fields.set(size,open);return open;
   }
-  return function place(x,z,radius,out){
+  return function place(x,z,radius,out,blocked){
     const open=fieldFor(radius);
     const col=Math.round((x+bounds.x)/step),row=Math.round((z+bounds.z)/step);
-    const clear=(px,pz)=>!terrain.hitProp(px,terrain.height(px,pz)+.01,pz,radius);
+    const clear=(px,pz)=>!terrain.hitProp(px,terrain.height(px,pz)+.01,pz,radius) && !blocked?.(px,pz,radius);
     if(col>=0&&row>=0&&col<cols&&row<rows&&open[row*cols+col]===2&&clear(x,z)){
       if(out){out.x=x;out.z=z;}
       return true;

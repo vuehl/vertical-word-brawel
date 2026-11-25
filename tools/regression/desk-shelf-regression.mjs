@@ -8,7 +8,8 @@ export async function verifyDeskShelf(page,dir){
     const gl=renderer.getContext(),w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
     const saved=p.clone(),savedFocus=r.camTarget.clone(),auto=renderer.autoClear,target=renderer.getRenderTarget();
     const clear=renderer.getClearColor(host.shared.uFogColor.value.clone()),alpha=renderer.getClearAlpha();
-    const world=(x,y)=>p.clone().set((2*x/5142-1)*t.deskBounds.x,0,(2*y/2892-1)*t.deskBounds.z);
+    const {width,height}=window.deskArtSize;
+    const world=(x,y)=>p.clone().set((2*x/width-1)*t.deskBounds.x,0,(2*y/height-1)*t.deskBounds.z);
     const open=(x,y,radius)=>{const v=world(x,y);return !t.hitProp(v.x,0,v.z,radius);};
     const feet=t.colliders.filter(c=>c.kind==='shelf-foot');
     const playerRadius=r.player.radius;

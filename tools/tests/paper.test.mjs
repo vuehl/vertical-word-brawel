@@ -80,15 +80,15 @@ test('map filters distinguish free gifts and keep buildings visible through fog 
   const run={ui:{mapFacilityIcon:kind=>({kind,naturalWidth:16,naturalHeight:20})},player:{pos:{x:0,z:0}},enemies:{n:0},boss:{alive:false},terrain:{world:240},
     interactables:{markers:()=>markers},allies:{list:[]}};
   let result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'freechest'});
-  assert.equal(result.count,2);assert.deepEqual(icons.sort(),['freechest']);assert.deepEqual(texts,['2','免费扭蛋']);
+  assert.equal(result.count,2);assert.deepEqual(icons.sort(),['freechest']);assert.deepEqual(texts,['2','免费蓝骰子']);
   icons.length=0;texts.length=0;result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'});
-  assert.equal(result.count,1);assert.deepEqual(icons.sort(),['chest']);assert.deepEqual(texts,['扭蛋']);
+  assert.equal(result.count,1);assert.deepEqual(icons.sort(),['chest']);assert.deepEqual(texts,['红骰子']);
   markers=markers.filter(marker=>marker.kind!=='chest');
   assert.equal(drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'}).count,0);
   texts.length=0;run.events={blind:true};run.ui.mapFacilityIcon=()=>null;
   for(const shadow of [true,false]){
     result=drawBattleMinimap(canvas,run,{shadow,facilityKind:'freechest'});
-    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),(shadow?['免','免费扭蛋','门','门？']:['免','免费扭蛋']).sort());
+    assert.equal(result.count,1);assert.deepEqual(texts.splice(0).sort(),(shadow?['免','免费蓝骰子','门','门？']:['免','免费蓝骰子']).sort());
   }
 });
 

@@ -67,14 +67,14 @@ export async function verifyJoystick(page,dir){
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
     const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
     const results=[];
-    for(const fps of [30,60])for(const [lane,startX] of [['open',0],['tissue',-31],['bell',16]]){
+    for(const fps of [30,60])for(const [lane,startX] of [['open',0],['tissue',-31]]){
       const dt=1/fps,limit=r.terrain.deskBounds.z-2;
       p.pos.set(startX,0,limit-2);p.vel.set(0,0,0);p.grounded=true;
       p.kx=p.kz=p.crowdX=p.crowdZ=0;r.camTarget.copy(p.pos);
       const advance=frames=>{
         for(let frame=0;frame<frames;frame++){
           r.realDt=dt;p.update(dt);r.updateCamera(dt);r.input.endFrame();
-          if(r.terrain.hitProp(p.pos.x,p.pos.y,p.pos.z,p.radius-.001))throw Error(lane+' collision penetration');
+          if(r.terrain.hitProp(p.pos.x,p.pos.y,p.pos.z,p.radius-.001,true))throw Error(lane+' collision penetration');
         }
       };
       window.tap(x,y,'down',11);window.tap(x,y+60,'move',11);advance(fps);
@@ -94,8 +94,8 @@ export async function verifyJoystick(page,dir){
   for(const s of southEdge){
     assert.ok(s.reachedWall&&s.wallSpeed<.01&&s.cameraReturn>0,JSON.stringify(s));
     assert.ok(Math.abs(s.drift)<.001&&s.north>1&&s.turn>.5,JSON.stringify(s));
-    if(s.lane==='open')assert.ok(s.north>18&&s.action==='walk',JSON.stringify(s));
-    else assert.ok(s.speed<.01&&s.action==='idle',JSON.stringify(s));
+    assert.ok(s.north>18&&s.speed>0,JSON.stringify(s));
+    if(s.lane==='open')assert.equal(s.action,'walk',JSON.stringify(s));
   }
   const circles=await page.evaluate(()=>{
     const r=app.run,p=r.player,t=r.ui.touch,env=inspected.env;
@@ -327,7 +327,7 @@ export async function verifyJoystick(page,dir){
     const r=app.run,facilities=r.interactables,t=r.ui.touch,env=inspected.env;
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
     const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
-    const chest={kind:'freechest'},interact=facilities.interact;
+    const chest={kind:'freechest',contactTest:()=>true},interact=facilities.interact;
     let opens=0;facilities.interact=()=>opens++;
     try{
       window.tap(x,y,'down',11);window.tap(x+8,y,'move',11);
@@ -338,7 +338,7 @@ export async function verifyJoystick(page,dir){
       return {held,whileMoving,afterRelease:opens};
     }finally{facilities.interact=interact;facilities.updateDwell(null,0,0);}
   });
-  assert.deepEqual(facility,{held:true,whileMoving:0,afterRelease:1});
+  assert.deepEqual(facility,{held:true,whileMoving:1,afterRelease:1});
   const stall=await page.evaluate(()=>{
     const r=app.run,p=r.player,env=inspected.env,screen=inspected.doc.getElementById('game').getBoundingClientRect();
     const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;

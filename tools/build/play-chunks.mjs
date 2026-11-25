@@ -19,7 +19,7 @@ export async function buildPlay(common,src,hostCode){
     combat:'export function include(){require("./combat/boss-encounters.js");require("./combat/move-effects.js");}',
     presentation:'export function include(){require("./data/config.js");require("./ui/zixing-ui.js");require("./world/paper-world.js");'+
       'require("./effects/stylized-skill-vfx.js");require("./ui/customize.js");require("./world/room-monsters.js");'+
-      'require("./actors/actor-metrics.js");require("./actors/hero-poses.js");require("./effects/facility-effects.js");}',
+      'require("./actors/actor-metrics.js");require("./actors/hero-poses.js");require("./effects/facility-clock.js");}',
     three:'export function include(){require("./vendor/three-DmSYIDKK.js");}'
   };
   const prefix='play-entry:';

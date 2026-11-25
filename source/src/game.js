@@ -2,15 +2,16 @@ import {choiceQuality as itemOfferQuality} from './ui/choice-presentation.js';
 import {itemOffer,shopOffer,shopAmount,shopShelves,teamOverview,teamDetail,showTeamItem,fullParty,showReviewFusion,showReviewCompanion,styleReviewDialog} from './ui/battle-review-ui.js';
 import {createCaptureGourd,gourdIcon} from './combat/capture-gourd.js';
 import {combatClipIds, combatEvolutionSeconds, loadAudioClips, loadCombatClips} from './combat/audio-clips.js';
-import {deskDevice,deskTexture,disposeDeskDevice} from './world/desk2d.js';
-import {createBerryPickup} from './combat/berry-pickup.js';
+import {deskCamera,deskDevice,deskTexture,disposeDeskDevice} from './world/desk2d.js';
+import {createBerryPickup,createPickupContact} from './combat/berry-pickup.js';
 import {deskPitch,deskTilt,deskFrame,deskWalkInset} from './world/desk-framing.js';
 import {MapSpawnError,mapRulesFor} from './world/map-rules.js';
 import {altarPalette} from './world/desk-altar-art.js';
 import {ALTAR_RING_EMISSIVE,altarRingFragment} from './effects/altar-ring-vfx.js';
 import {formCopy, moveCopy, specialNames} from './data/form-copy.js';
-import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,summonDockModel,facilityNames,isActiveFacility,springShoesKey} from './data/active-content.js';
-import {createFacilityEffects} from './effects/facility-effects.js';
+import {altarChargeSeconds,bossSummonSeconds,bossSummonUnlockSeconds,facilityDwellSeconds,facilityIconFile,isContactFacility,facilityNames,isActiveFacility,springShoesKey} from './data/active-content.js';
+import {createIllustratedClock} from './effects/facility-clock.js';
+import {createFacilityOutlineMask} from './effects/facility-outline-mask.js';
 import {saveProgress,restoreProgress,forgetSeat,savedSeat,worldProgress} from './network/coop-resume.js';
 import {RoomMonsters,roomMonster} from './world/room-monsters.js';
 import {acceptPeerSample,advancePeerMotion} from './network/peer-motion.js';
@@ -49,7 +50,7 @@ import {createStylizedEffectAtlas,EFFECT_CELL,STAMPEDE_FLAME} from './effects/st
 import {StylizedSkillFX} from './effects/stylized-skill-vfx.js';
 import {actorMetrics} from './actors/actor-metrics.js';
 import {buildPaperWorld,buildPaperWorldAsync,createPaperAssets,disposePaperAssets,disposePaperWorld,applyPaperLight,updatePaperCamera,updateWorkshopScene} from './world/paper-world.js';
-import {moveShelfAlly} from './world/desk-shelf.js';
+import {moveShelfAlly,applyShelfMaterial,shadeDeskDevice} from './world/desk-shelf.js';
 import {updateLooseMarbles} from './world/workshop-marbles.js';
 import {createSceneAntialias} from './performance/scene-antialias.js';
 import {paperProp} from './world/paper-props.js';
@@ -63,6 +64,7 @@ import {updatePaperVisibility} from './world/paper-visibility.js';
 import {paperBox,hitsPaperBox,resolvePaperBox,moveDeskPlayer,moveEnemyPastProps,obstacleJumpSpeed} from './world/paper-collision.js';
 import './ui/customize.js';
 import {chineseMessage as t,formatChineseNumber as n,chineseText as c} from "./data/chinese-text.js";
+import {updateDeskPropFade} from './world/desk-prop-fade.js';
 import {
   $ as l,
   $n as u,
@@ -5185,12 +5187,11 @@ var oc = (e, t) =>
           attributes: yi.DEPTH,
           blendFunction: _i.NORMAL,
           uniforms: new Map([
+            ['uHasDeviceMask', new hi(false)], ['uDeviceMask', new hi(null)],
             [`uColor`, new hi(new Ei(1708072))],
             [`uStrength`, new hi(0.85)],
             [`uHasFireMask`, new hi(false)],
             [`uFireMask`, new hi(null)],
-            [`uHasDeviceMask`, new hi(false)],
-            [`uDeviceMask`, new hi(null)],
           ]),
         },
       );
@@ -10628,9 +10629,9 @@ var qu = `
       }
       return top;
     }
-    hitProp(e, t, n, r) {
+    hitProp(e, t, n, r, playerPassage=false) {
       for(const prop of this.nearbyColliders(e,n)){
-        if(prop.off || (prop.standY!=null ? t>=prop.standY-.0001 : t>prop.h))continue;
+        if(prop.off || (playerPassage && prop.playerPassable) || (prop.standY!=null ? t>=prop.standY-.0001 : t>prop.h))continue;
         if(prop.paperBox){if(hitsPaperBox(prop,e,n,r))return true;continue;}
         const dx=e-prop.x,dz=n-prop.z,reach=prop.r+r;
         if(dx*dx+dz*dz<reach*reach)return true;
@@ -10663,10 +10664,10 @@ var qu = `
         }
       return null;
     }
-    resolve(e, t, n, r, i) {
+    resolve(e, t, n, r, i, playerPassage=false) {
       ((i.x = e), (i.z = t));
       for(const prop of this.nearbyColliders(e,t)){
-        if(prop.off || (prop.standY!=null ? r>=prop.standY-.0001 : r>prop.h))continue;
+        if(prop.off || (playerPassage && prop.playerPassable) || (prop.standY!=null ? r>=prop.standY-.0001 : r>prop.h))continue;
         if(prop.paperBox){resolvePaperBox(prop,i,n);continue;}
         const dx=i.x-prop.x,dz=i.z-prop.z,reach=prop.r+n,d2=dx*dx+dz*dz;
         if(d2<reach*reach){
@@ -15331,6 +15332,10 @@ var om = (e) => 1 + 2.9 * (e - 1) ** 3 + 1.9 * (e - 1) ** 2,
       ((this.run = e),
         (this.pool = new ql(e.r.scene, e.vfx.atlas, cm, !1, e.r.shared)),
         (this.glow = new ql(e.r.scene, e.vfx.atlas, cm, !0, e.r.shared)));
+      const world='iA.xyz + vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0])*p2.x + vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1])*p2.y';
+      for(const pool of [this.pool,this.glow]){
+        applyShelfMaterial(pool.mesh.material,e.sprites.shelfUniforms,world,'iA.xyz');
+      }
     }
     spawnXp(e, t, n, r) {
       this.spawnMerged(0, e, t, n, r);
@@ -16305,6 +16310,11 @@ var Pm = class {
             : o.whenFree(() => this.recruit(e, t, n, r, i, a)));
     }
     make(e, t, n, r) {
+      const terrain=this.run.terrain;
+      if(terrain.blocksFacility?.(t,r,.45)){
+        const free={};
+        if(terrain.placeSpawn(t,r,.45,free)){t=free.x;r=free.z;n=terrain.surface(t,r);}
+      }
       let i = k.get(e);
       return {
         species: e,
@@ -16478,7 +16488,14 @@ var Pm = class {
         g = m - e.x,
         _ = h - e.z,
         v = Math.hypot(g, _);
-      if (v > 28 || Math.abs(i.pos.y - e.y) > 10)
+      if(a.crossesNpcProp && r.time>=(e.navNext??0)){
+        e.navNext=r.time+.18;
+        const dir=e.navDir??={};
+        e.navActive=a.crossesNpcProp(e.x,e.z,m,h,.45) && a.steerDeskEnemy(e.x,e.z,m,h,.45,dir,-1-t);
+      }
+      const catchUp=(v>28||Math.abs(i.pos.y-e.y)>10) &&
+        !a.crossesNpcProp?.(e.x,e.z,m,h,.45);
+      if (catchUp)
         (r.vfx.burst(e.x, e.y + 1, e.z, 16777215, 10, 4, I.Soft, 0.5),
           (e.x = m),
           (e.z = h),
@@ -16486,13 +16503,14 @@ var Pm = class {
           r.vfx.burst(e.x, e.y + 1, e.z, 8060826, 10, 4, I.Star, 0.5));
       else if (v > 0.4) {
         let t = Math.min(v * 3, Math.max(9, i.speedNow * 1.3));
+        if(a.desk2d&&e.navActive){g=e.navDir.x*v;_=e.navDir.z*v;}
         ((e.x += (g / v) * t * n),
           (e.z += (_ / v) * t * n),
           (e.fx = g / v),
           (e.fz = _ / v),
           (e.anim += n * (0.6 + t / 4)));
       }
-      moveShelfAlly(a,e,fromX,fromZ);
+      moveShelfAlly(a,e,fromX,fromZ,catchUp);
       let y = a.surface(e.x, e.z) + (o ? 1.1 + Math.sin(r.time * 3 + t) * 0.2 : 0);
       if (((e.y += (y - e.y) * Math.min(1, n * 12)), (e.timer -= n), e.timer > 0)) return;
       let b = r.enemies,
@@ -36921,6 +36939,7 @@ var GS = class e {
       const run = this.run;
       if (target !== this.nearest) {
         this.nearest = target;
+        this.contactHandled=false;
         this.dwellTime = 0;
         this.waitingForGold = false;
         this.warnedPortal = null;
@@ -36949,6 +36968,12 @@ var GS = class e {
         this.dwellTime = 0;
         return;
       }
+      if(target.contactTest){
+        if(this.contactHandled)return;
+        this.contactHandled=true;
+        this.interact(target);
+        return;
+      }
       this.dwellTime += seconds;
       // Frame deltas can add up a fraction below the exact duration.
       if (this.dwellTime + 1e-9 >= duration) {
@@ -36963,7 +36988,6 @@ var GS = class e {
       this.deviceArt = {deskTextures:new Map(),deskOwned:[],shared:run.r.shared};
       const three = {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr};
       this.dwellRing = createFacilityDwellRing(this.group, three);
-      this.idleRingMaterial = this.dwellRing.material.clone();
       // Pens, keyboards and other low props are walkable but still have visible models.
       this.lowProps = (run.terrain.zxProps ?? []).filter(p => p.walkable)
         .map(p => paperBox(p.x, p.z, p.w, p.d, p.h, p.angle));
@@ -36997,9 +37021,10 @@ var GS = class e {
       const group = facility.group;
       if (this.disposed || group.parent !== this.group) return;
       const kind=BS(facility);
-      const model=kind==='boss' ? await bu(summonDockModel) : await deskDevice(this.deviceArt,kind,facility.data?.tier);
+      const flat=this.run.terrain.desk2d;
+      const model=await deskDevice(this.deviceArt,kind,facility.data?.tier);
       if (this.disposed || group.parent !== this.group) {
-        if(kind!=='boss')disposeDeskDevice(model);
+        disposeDeskDevice(model);
         return;
       }
       if (!model) {
@@ -37016,6 +37041,8 @@ var GS = class e {
         const tier = facility.data.tier, three = {PlaneGeometry: Yr, ShaderMaterial: Kr, Mesh: Tr};
         const palette = altarPalette[tier];
         ring = facility.chargeRing = createDeskAltarRing(group,three,new Ei(palette.ring),new Ei(palette.dark),model.userData.breathOpacity);
+      } else if(isContactFacility(kind)){
+        facility.contactTest=createPickupContact(model.children[0],this.run.r);
       } else if(facility.kind==='berry'){
         facility.berryPickup=createBerryPickup(model,this.run.r);
       }
@@ -37024,27 +37051,30 @@ var GS = class e {
         ring.scale.setScalar(facility.ringRadius);
       }
       facility.model = model;
-      this.deviceFx ??= createFacilityEffects(this.run.r, this.run.player.pos);
-      this.deviceFx.add(model);
-      if (model.userData.portalDock) {
-        facility.dock = this.deviceFx.attachDock(model, {
-          durationSeconds: zoneDuration(this.run.mode),
-          remainingSeconds: remainingZoneSeconds(this.run),
-          startOpen: facility.used || this.run.bossSpawned,
-        });
+      this.outlineMask??=createFacilityOutlineMask(this.run.r);
+      this.outlineMask.add(model);
+      group.rotation.y=0;
+      if(kind==='boss'){
+        facility.dock=createIllustratedClock(model.children[0],this.run.r.renderer);
+        if(facility.used||this.run.bossSpawned)facility.dock.open();
         await facility.dock.ready;
         if (this.disposed || group.parent !== this.group) return;
       }
+      if(flat){
+        const foot=facility.berryPickup?(facility.berryShadowFoot=group.position.clone()):group.position;
+        shadeDeskDevice(model,foot,this.run.sprites.shelfUniforms);
+      }
+      if(facility.kind==='magnet')model.userData.updateMagnet(this.run.time);
       if (facility.used){
         if(facility.berryPickup)model.visible=false;
+        else if(facility.kind==='magnet')model.userData.setMagnetUsed(true,this.run.time,true);
         else this.dim(facility);
       }
     }
     releaseDevice(facility) {
       clearTimeout(facility.retry);
       facility.berryPickup=null;
-      facility.halo?.removeFromParent();
-      facility.halo = null;
+      facility.contactTest=null;
       if (facility.chargeRing) {
         const ring = facility.chargeRing;
         ring.removeFromParent();
@@ -37052,11 +37082,11 @@ var GS = class e {
         facility.chargeRing = null;
       }
       if (!facility.model) return;
-      this.deviceFx?.remove(facility.model);
+      this.outlineMask?.remove(facility.model);
       facility.dock?.dispose();
       facility.dock = null;
       this.restoreDeviceColour(facility);
-      if(facility.kind!=='boss')disposeDeskDevice(facility.model);
+      disposeDeskDevice(facility.model);
       facility.model.removeFromParent();
       facility.model = null;
     }
@@ -37154,14 +37184,16 @@ var GS = class e {
       rng.shuffle(kinds);
       if (!endless) kinds.unshift('boss');
 
-      // Sample the whole walkable square, including its corners, before picking
-      // sites. A large desk prop should only exclude its own footprint.
+      // Sample the desk's actual depth with the same six-unit edge clearance
+      // as the fine placement pass. Other maps use their square play bounds.
       const limit = terrain.play - 9, sites = [];
+      const depthLimit = terrain.desk2d ? terrain.deskBounds.z - 6 : limit;
       const cells = Math.ceil(2 * limit / 5), cell = 2 * limit / cells;
+      const rows = Math.ceil(2 * depthLimit / 5), rowHeight = 2 * depthLimit / rows;
       for (let col = 0; col < cells; col++) {
-        for (let row = 0; row < cells; row++) {
+        for (let row = 0; row < rows; row++) {
           const x = -limit + (col + rng.next()) * cell;
-          const z = -limit + (row + rng.next()) * cell;
+          const z = -depthLimit + (row + rng.next()) * rowHeight;
           const fromSpawn = Math.hypot(x - terrain.spawn.x, z - terrain.spawn.z);
           if (fromSpawn < 14 || !terrain.inBounds(x, z, 6) || Math.hypot(x, z) > terrain.arenaR - 6 ||
               !terrain.isFlatOpen(x, z) || !this.fitsOnDesk(x, z, 4.5)) continue;
@@ -37189,7 +37221,7 @@ var GS = class e {
           // The coarse random grid may miss the final usable patches of desk.
           // Keep the spawn, desk edge and prop checks on this path too.
           let clearance = -Infinity;
-          for (let z = -terrain.deskBounds.z + 6; z <= terrain.deskBounds.z - 6; z += 1.5) {
+          for (let z = -depthLimit; z <= depthLimit; z += 1.5) {
             for (let x = -limit; x <= limit; x += 1.5) {
               if (!accepts(x,z) || Math.hypot(x-terrain.spawn.x,z-terrain.spawn.z) < minDistance ||
                   !terrain.inBounds(x,z,6) || !terrain.isFlatOpen(x,z) || !this.fitsOnDesk(x,z,radius) || !this.hasBuildingSpace(x,z,radius)) continue;
@@ -37686,6 +37718,9 @@ var GS = class e {
         facility.dock.open();
         return;
       }
+      if(facility.kind==='magnet'){
+        facility.model?.userData.setMagnetUsed(true,this.run.time);return;
+      }
       if (!facility.model || facility.originalMaterials) return;
       facility.model.userData.setVisualState?.('used');
       const originals = facility.originalMaterials = new Map();
@@ -37696,10 +37731,12 @@ var GS = class e {
         mesh.material = original.clone();
         // Three.js does not clone the shader hook used to composite layered desk art.
         mesh.material.onBeforeCompile = original.onBeforeCompile;
+        mesh.material.customProgramCacheKey = original.customProgramCacheKey;
         mesh.material.color.multiplyScalar(0.55);
       });
     }
     restoreDeviceColour(facility) {
+      if(facility.kind==='magnet')facility.model?.userData.setMagnetUsed(false,this.run.time);
       if (!facility.originalMaterials) return;
       for (const [mesh, original] of facility.originalMaterials) {
         mesh.material.dispose();
@@ -37750,7 +37787,8 @@ var GS = class e {
       i.vfx.burst(e.x, e.y + 1, e.z, 16777215, 24, 7, I.Star, 0.6, 0.6);
       i.audio.chest();
       let a = !t && !n && !i.endless ? 3 : 1;
-      i.later(0.35, () => i.rollChestItem(t, r, a));
+      if(e.contactTest)i.rollChestItem(t,r,a);
+      else i.later(0.35, () => i.rollChestItem(t, r, a));
     }
     respawnChest(chest) {
       const {terrain, player, time} = this.run;
@@ -37784,7 +37822,6 @@ var GS = class e {
         chest.group.position.set(x,chest.y,z);
         chest.group.scale.setScalar(1);chest.group.visible=true;
         if(chest.group.userData.lid)chest.group.userData.lid.rotation.x=0;
-        if(chest.halo)chest.halo.visible=true;
         this.restoreDeviceColour(chest);
         if(!chest.model)chest.modelReady=this.loadDevice(chest);
         return;
@@ -37960,6 +37997,14 @@ var GS = class e {
           if (!a.used) this.altarUpdate(a, u, e, dwellSeconds);
           continue;
         }
+        if(a.contactTest){
+          if(a.kind==='magnet')a.model.userData.updateMagnet(t.time);
+          if(ready&&!a.used&&near&&a.contactTest(t.player)){
+            r=a;
+            i=-1; // Contact takes priority over a nearby dwell facility.
+          }
+          continue;
+        }
         if (ready && u < a.r + 0.8 && u < i && a.kind !== 'shroom' &&
             (!a.used || a.kind === 'meowth' || a.kind === 'hypno' || a.kind === 'portal' ||
               (a.kind === 'tower' && a.data?.sub !== 'trick'))) {
@@ -38119,15 +38164,16 @@ var GS = class e {
       ring.material.uniforms.dwell.value = ring.visible ? progress : -1;
       for (const facility of this.list) {
         const model=facility.model;
-        if(model && facility.kind!=='boss' && !facility.absorbing){
+        if(model && !facility.absorbing){
           model.quaternion.copy(this.run.r.camera.quaternion);
           model.rotateX(deskPitch);
         }
-        const anchor=model?.userData.ringAnchor, halo=facility.chargeRing;
-        if(anchor && halo){
+        const anchor=model?.userData.ringAnchor, charge=facility.chargeRing;
+        if(facility.berryShadowFoot&&model?.visible)model.getWorldPosition(facility.berryShadowFoot);
+        if(anchor && charge && facility.charging){
           // Project the artwork centre onto the ring's ground plane along the
           // current view, so both orthographic desk and perspective views align.
-          const camera=this.run.r.camera,p=halo.position;
+          const camera=this.run.r.camera,p=charge.position;
           model.updateWorldMatrix(true,false);
           model.localToWorld(p.copy(anchor));
           const m=camera.matrixWorld.elements, ortho=camera.projectionMatrix.elements[15]===1;
@@ -38141,24 +38187,17 @@ var GS = class e {
         if (facility.dock) {
           if (facility.used || this.run.bossSpawned) facility.dock.open();
           const host = this.run.r;
-          facility.dock.update(host.camera, host.shared.uTime.value, remainingZoneSeconds(this.run), host.composer.inputBuffer.viewport);
+          facility.dock.update(host.shared.uTime.value,remainingZoneSeconds(this.run));
         }
         if(facility.kind==='bill')facility.model?.userData.updateGaze?.(
           this.run.r.camera,this.run.player,this.hasVisual(facility),dt??0);
-        const charge = facility.chargeRing;
         if (charge) {
           charge.visible = facility.charging && !facility.used && this.hasVisual(facility);
           charge.material.uniforms.dwell.value = facility.charge;
         }
-        if (facility.halo) {
-          facility.halo.visible = !facility.used && !charge?.visible && !(ring.visible && target === facility) && this.hasVisual(facility);
-        }
       }
       if (ring.visible) {
-        if(target.halo){
-          target.group.localToWorld(ring.position.copy(target.halo.position));
-          this.group.worldToLocal(ring.position);
-        }else ring.position.set(target.x,target.y+.12,target.z);
+        ring.position.set(target.x,target.y+.12,target.z);
         ring.scale.setScalar(target.ringRadius);
       }
     }
@@ -38446,9 +38485,7 @@ var GS = class e {
       this.deviceArt.deskOwned.length=0;
       this.deviceArt.deskTextures.clear();
       this.deviceArt.deskDeviceGeometries?.clear();
-      this.idleRingMaterial.dispose();
-      this.deviceFx?.dispose();
-      this.deviceFx = null;
+      this.outlineMask?.dispose();
       (this.run.ui.clearWorldNotices(),
         this.group.traverse((e) => {
           let t = e;
@@ -41004,12 +41041,12 @@ var mw = 7500,
     ball: {
       letter: `b`,
       kind: 'chest',
-      text: () => `靠近即可花费标价金币抽取道具。`,
+      text: () => `碰到红骰子即可按标价抽取道具。`,
     },
     freeball: {
       letter: 'u',
       kind: 'freechest',
-      text: () => `靠近即可免费抽取一件道具。`,
+      text: () => `碰到蓝骰子即可免费抽取一件道具。`,
     },
     altar: {
       letter: `a`,
@@ -41039,12 +41076,12 @@ var mw = 7500,
     portal: {
       letter: `p`,
       kind: 'portal',
-      text: () => `靠近木门即可前往下一区域或通关。`,
+      text: () => `靠近传送门即可前往下一区域或通关。`,
     },
     egg: {
       letter: `e`,
       kind: 'nest',
-      text: () => `靠近即可带上蛋，击败敌人即可孵化伙伴。`,
+      text: () => `靠近即可带上弹珠，击败敌人即可释放伙伴。`,
     },
     level: {
       letter: `l`,
@@ -45798,8 +45835,6 @@ var GT = 15,
         this.fireTexturesPrepared=true;
       }
       await warmCombatShaders(this.r);check();
-      this.onLoadProgress?.({phase:'准备场景特效',progress:.98});
-      await this.interactables.deviceFx?.prepare();check();
       if(!onProgress)this.ui.stageIntro(this);
     }
     stageSprites() {
@@ -46912,7 +46947,7 @@ var GT = 15,
       if (portal && this.interactables.warnedPortal !== portal) {
         const left = this.interactables.rewardsLeft();
         const messages = [];
-        if (left) messages.push('附近还有 ' + left + ' 个奖励扭蛋');
+        if (left) messages.push('附近还有 ' + left + ' 个奖励骰子');
         if (lastZone && this.capture.canWait()) messages.push('还有字灵等待收服');
         if (messages.length) {
           this.ui.toast(messages.join('，') + `。即将离开。`, 'poke-ball');
@@ -48247,6 +48282,7 @@ var GT = 15,
       let t = this.r.camera;
       this.mapEvents.renderWeather();
       this.sprites.setShelfDepth(this.terrain.shelfDepth);
+      if(this.terrain.desk2d)updateDeskPropFade(this);
       this.sprites.begin(t);
       updateWorkshopScene(this,e,this.sprites);
       (updatePaperVisibility(this.terrain,this.sprites.frustum,this.terrain.workshopBoundary?true:this.performance.worldShadows),
@@ -48891,7 +48927,7 @@ var IE = {
   "tm-case": () => [c(`Movimientos hasta el nivel 10, fusiones hasta ★6`)],
   "max-ether": () => [c(`Vitaminas hasta el nivel 12`)],
   "secret-key": (e, t) => [c(`Altares un {pct}% más rápidos`, { pct: 30 * t })],
-  "dowsing-machine": (e, t) => [c(`每个新区域额外增加 {n} 个扭蛋`, { n: 2 * t })],
+  "dowsing-machine": (e, t) => [c(`每个新区域额外增加 {n} 个骰子`, { n: 2 * t })],
   "gold-teeth": (e, t) => [c(`Meowth y la tragaperras: -{pct}%`, { pct: 8 * Math.min(3, t) })],
   "poke-flute": (e) => [
     c(`Ultimate un 25% más rápida`),
@@ -78613,7 +78649,7 @@ var TL = () => d(Date.now()).some((e) => e.id === `halloween26`),
     makeTitle(e) {
       const terrain=new cd({...fr[0],size:120,zxStage:1},1234,this.r.shared);
       const preview={r:this.r,terrain,player:{pos:new ti(0,0,0)},camTarget:new ti(0,0,0)};
-      const title={paper:true,group:terrain.group,applySky:()=>applyPaperLight(preview),update:dt=>updatePaperCamera(preview,dt),dispose:()=>terrain.dispose()};
+      const title={paper:true,group:terrain.group,applySky:()=>applyPaperLight(preview),update:()=>deskCamera(preview,1),dispose:()=>terrain.dispose()};
       this.r.scene.add(title.group);title.group.visible=this.mode===`title`;return title;
     }
     build(e) {

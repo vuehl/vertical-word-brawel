@@ -1,129 +1,95 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DeviceFxThree as T} from '../../source/src/vendor/three-DmSYIDKK.js';
-import {createDeviceScreenFx} from '../../source/src/effects/DeviceScreenFx.mjs';
+import {DeviceFxThree as T,I as Group} from '../../source/src/vendor/three-DmSYIDKK.js';
+import {createFacilityOutlineMask} from '../../source/src/effects/facility-outline-mask.js';
 
-function fixture(width=390,height=844){
-  const scene=new T.Scene(),camera=new T.Camera(),draws=[];
-  camera.near=.1;camera.far=100;camera.isOrthographicCamera=true;
-  let target=null;
-  const renderer={autoClear:true,getRenderTarget:()=>target,setRenderTarget:t=>{target=t;},
-    getScissorTest:()=>false,setScissorTest(){},getScissor:v=>v.set(0,0,width,height),
-    getViewport:v=>v.set(0,0,width,height),setScissor(){},setViewport(){},
-    getClearColor:v=>v.set(0),getClearAlpha:()=>1,setClearColor(){},clear(){},
-    getDrawingBufferSize:v=>v.set(width,height),render(s,c){s.updateMatrixWorld();draws.push(s);}};
-  const fx=createDeviceScreenFx(T,renderer);
-  function device(x,y){
-    const geo=new T.BufferGeometry();
-    geo.setAttribute('position',new T.Float32BufferAttribute([-.1,-.1,0,.1,-.1,0,.1,.1,0,-.1,.1,0],3));
-    geo.setIndex([0,1,2,0,2,3]);
-    const mesh=new T.Mesh(geo,new T.ShaderMaterial());mesh.position.set(x,y,-.5);
-    mesh.userData.deviceScreenFx={version:2,supportXYZ:Array.from(geo.attributes.position.array),centerXYZ:[0,0,0]};
-    scene.add(mesh);fx.add(mesh);return mesh;
-  }
-  const left=device(-.7,-.65),right=device(.7,.65);
-  scene.updateMatrixWorld();camera.updateWorldMatrix(true,false);
-  const source={width,height,texture:{},depthTexture:{}};
-  const composite=options=>fx.composite(scene,camera,0,source,null,{matricesUpdated:true,...options});
-  const tiles=()=>draws.find(s=>s.children[0]?.material?.uniforms.outlineTiles).children[0].material.uniforms.outlineTiles.value;
-  return {scene,camera,fx,left,right,source,renderer,composite,tiles,draws};
+function fixture(t){
+  const camera=new T.Camera(),outlinePass={enabled:true},depth={},draws=[];
+  const enabled={value:false},mask={value:null},passes=[outlinePass];
+  const composer={passes,stableDepthTexture:depth,
+    addPass:(pass,index)=>passes.splice(index,0,pass),
+    removePass:pass=>passes.splice(passes.indexOf(pass),1)};
+  const effects=createFacilityOutlineMask({camera,composer,outlinePass,
+    outline:{uniforms:new Map([['uHasDeviceMask',enabled],['uDeviceMask',mask]])}});
+  t.after(()=>{if(passes.length>1)effects.dispose();});
+  const world=new T.Scene(),facilities=new Group(),stand=new Group(),model=new Group();
+  world.add(facilities);facilities.add(stand);stand.add(model);
+  const geometry=new T.BufferGeometry();
+  geometry.setAttribute('position',new T.Float32BufferAttribute([-.1,-.1,0,.1,-.1,0,0,.1,0],3));
+  const mesh=new T.Mesh(geometry,new T.ShaderMaterial());model.add(mesh);effects.add(model);
+  world.updateMatrixWorld();camera.updateMatrixWorld();
+  const target={world:true};
+  let current=target,colour=new T.Color(0x123456),alpha=.7;
+  const renderer={getRenderTarget:()=>current,setRenderTarget:value=>{current=value;},
+    getClearColor:out=>out.copy(colour),getClearAlpha:()=>alpha,
+    setClearColor(value,a){colour.set(value);alpha=a;},clear(){},
+    render(scene){draws.push({current,visible:scene.children.filter(child=>child.visible)});}};
+  const render=(width=390,height=844)=>passes[0].render(renderer,{width,height});
+  const state=()=>[current,colour.getHex(),alpha];
+  return {mesh,model,facilities,world,composer,effects,enabled,mask,depth,passes,outlinePass,draws,renderer,render,state};
 }
 
-test('world outlines and device effects share one mask, but stale frames redraw it',()=>{
-  const f=fixture(),options={matricesUpdated:true},previous={loading:true};
-  f.renderer.setRenderTarget(previous);
-  const frame=f.fx.prepareFrame(f.scene,f.camera,0,f.source,options);
-  assert.equal(frame.active,2);assert.equal(f.draws.length,1);
-  assert.equal(f.renderer.getRenderTarget(),previous);
-  // Colour grading may change the colour input; the stable depth remains valid.
-  const graded={...f.source,texture:{graded:true}};
-  f.fx.composite(f.scene,f.camera,0,graded,null,{...options,preparedFrame:frame});
-  assert.equal(f.draws.length,2,'Only mask + colour, without a second silhouette draw');
-  assert.equal(f.renderer.getRenderTarget(),previous);
-  assert.equal(f.draws[0].children[0].material.uniforms.worldDepth.value,f.source.depthTexture);
-  assert.equal(f.draws[1].children[0].material.uniforms.maskTex.value,f.fx.maskTexture);
-  assert.equal(f.draws[1].children[0].material.uniforms.beautyTex.value,graded.texture);
-  f.fx.composite(f.scene,f.camera,0,graded,null,{...options,preparedFrame:frame});
-  assert.equal(f.draws.length,4,'A consumed token must regenerate the mask');
-  const next=f.fx.prepareFrame(f.scene,f.camera,0,f.source,options);
-  f.fx.composite(f.scene,f.camera,1,graded,null,{...options,preparedFrame:next});
-  assert.equal(f.draws.length,7,'Time changes must invalidate prepared device animation');
-  f.fx.dispose();
+test('facility mask draws once before the outline with the existing scene depth and transforms',t=>{
+  const f=fixture(t),before=f.state();
+  assert.equal(f.passes[1],f.outlinePass);
+  assert.equal(f.passes[0].needsSwap,false);
+  f.render();
+  assert.equal(f.draws.length,1);
+  const [copy]=f.draws[0].visible;
+  assert.ok(copy.matrix.equals(f.mesh.matrixWorld));
+  assert.equal(copy.material.uniforms.sceneDepth.value,f.depth);
+  assert.equal(f.enabled.value,true);
+  assert.deepEqual(f.state(),before);
 });
 
-test('device compositor reuses scene matrices but standalone callers still update them',()=>{
-  const f=fixture();let updates=0;
-  const update=f.scene.updateMatrixWorld.bind(f.scene);
-  f.scene.updateMatrixWorld=(...args)=>{updates++;return update(...args);};
-  f.composite();assert.equal(updates,0,'Postprocessing must not walk the entire world again');
-  f.composite({matricesUpdated:false});assert.equal(updates,1);
-  updates=0;f.fx.render(f.scene,f.camera,0);
-  assert.equal(updates,1,'Combined render/composite updates the world only for the beauty render');
-  f.fx.dispose();
+test('disabled outlines and unavailable depth skip the mask draw',t=>{
+  const f=fixture(t);
+  f.outlinePass.enabled=false;f.render();
+  f.outlinePass.enabled=true;f.composer.stableDepthTexture=null;f.render();
+  assert.equal(f.draws.length,0);
+  assert.equal(f.enabled.value,false);
 });
 
-test('outline coverage skips empty gaps without clipping device edges at different resolutions',()=>{
-  for(const [w,h,radius] of [[390,844,6],[780,1688,6],[160,320,20]]){
-    const f=fixture(w,h);f.left.position.x=-1.05;
-    f.scene.updateMatrixWorld();f.composite({originalOutlineRadiusPx:radius*2});
-    const tex=f.tiles(),{data,width:side}=tex.image;
-    const covered=(u,v)=>data[Math.min(side-1,Math.floor(v*side))*side+Math.min(side-1,Math.floor(u*side))]>0;
-    assert.equal(covered(.5,.5),false,'A large union rectangle must not shade the gap between devices');
-    assert.ok(data.filter(Boolean).length<data.length*.25,'Sparse devices need only a small fraction of outline searches');
-    // Probe the actual projected silhouette and every direction on its outline,
-    // including a partially offscreen device and radii wider than one tile.
-    for(const mesh of [f.left,f.right])for(let i=0;i<=10;i++)for(let j=0;j<=10;j++){
-      const u=(mesh.position.x-.1+i*.02+1)/2,v=(mesh.position.y-.1+j*.02+1)/2;
-      for(let angle=0;angle<Math.PI*2;angle+=Math.PI/8){
-        const x=u+radius*Math.cos(angle)/w,y=v+radius*Math.sin(angle)/h;
-        if(x>=0&&x<1&&y>=0&&y<1)assert.ok(covered(x,y),'Device or outline was rejected');
-      }
-    }
-    f.fx.dispose();
-  }
+test('offstage and hidden facilities leave no active mask',t=>{
+  const f=fixture(t);
+  f.render();
+  f.mesh.position.x=10;f.world.updateMatrixWorld();f.render();
+  f.mesh.position.x=0;f.world.updateMatrixWorld();f.facilities.visible=false;f.render();
+  assert.equal(f.draws.length,1);
+  assert.equal(f.enabled.value,false);
 });
 
-test('coverage uploads only when visible device regions change and releases its texture',()=>{
-  const f=fixture();f.composite();const tex=f.tiles(),version=tex.version;
-  for(let frame=0;frame<60;frame++)f.composite();
-  assert.equal(tex.version,version,'Stable camera/device placement must not upload tiles each frame');
-  f.left.position.set(0,0,-.5);f.scene.updateMatrixWorld();f.composite();
-  assert.equal(tex.version,version+1);
-  f.left.visible=f.right.visible=false;f.composite();
-  assert.equal(tex.image.data.some(Boolean),false,'Removed devices must not leave stale coverage');
-  let disposed=false;tex.addEventListener('dispose',()=>{disposed=true;});f.fx.dispose();assert.ok(disposed);
+test('the mask render target is reused at stable resolution and resized with the viewport',t=>{
+  const f=fixture(t);f.render();
+  const target=f.draws[0].current;
+  let reallocations=0;
+  target.addEventListener('dispose',()=>reallocations++);
+  for(let frame=0;frame<60;frame++)f.render();
+  assert.equal(reallocations,0);
+  f.render(195,422);
+  assert.equal(f.draws.at(-1).current,target);
+  assert.equal(reallocations,1);
+  assert.deepEqual([target.width,target.height],[195,422]);
 });
 
-test('entry warms hidden mask geometry variants and stars in their actual output colour space',async()=>{
-  const f=fixture(),compiles=[],uploads=[],finish=[],output={width:585,height:1266},previous={loading:true};
-  f.right.geometry.computeVertexNormals();f.right.visible=false;
-  f.renderer.setRenderTarget(previous);
-  f.renderer.compileAsync=(scene,camera)=>{
-    compiles.push({scene,camera,target:f.renderer.getRenderTarget()});
-    return new Promise(resolve=>finish.push(resolve));
-  };
-  f.renderer.initTexture=tex=>uploads.push(tex);
-  const prepared=f.fx.prepare(f.camera,output);
-  assert.equal(f.renderer.getRenderTarget(),previous,'Loading draws must not inherit a bound world target');
-  assert.equal(compiles.length,3);
-  assert.equal(compiles[0].camera,f.camera);
-  assert.equal(compiles[0].target.width,585);assert.equal(compiles[0].target.height,1266);
-  assert.deepEqual(compiles[0].scene.children.map(mesh=>!!mesh.geometry.attributes.normal),[false,true]);
-  for(const entry of compiles.slice(1)){
-    assert.equal(entry.target,output,'Screen effects must use the same output colour space as live composition');
-    assert.notEqual(entry.camera,f.camera);
-  }
-  const star=compiles[2].scene.children[0];
-  for(const name of ['position','spriteFrame','anchorUv','starData'])assert.ok(star.geometry.attributes[name]?.count>=6);
-  assert.equal(uploads.length,2,'Opacity and outline tile textures upload during loading');
-  finish.forEach(resolve=>resolve());await prepared;
-  assert.equal(f.right.visible,false);assert.equal(f.renderer.getRenderTarget(),previous);
-  f.fx.dispose();
+test('removing a facility releases its copy and disposing removes the pass and target',t=>{
+  const f=fixture(t);f.render();
+  const target=f.draws[0].current,material=f.draws[0].visible[0].material;
+  let releases=0;
+  target.addEventListener('dispose',()=>releases++);
+  material.addEventListener('dispose',()=>releases++);
+  f.effects.remove(f.model);f.render();
+  assert.equal(f.draws.length,1);
+  f.effects.dispose();
+  assert.equal(releases,2);
+  assert.deepEqual(f.passes,[f.outlinePass]);
+  assert.equal(f.mask.value,null);
 });
 
-test('failed shader preparation restores the loading target',async()=>{
-  const f=fixture(),previous={loading:true};f.renderer.setRenderTarget(previous);
-  f.renderer.compileAsync=()=>{throw Error('compile failed');};
-  await assert.rejects(f.fx.prepare(f.camera,{width:100,height:200}),/compile failed/);
-  assert.equal(f.renderer.getRenderTarget(),previous);f.fx.dispose();
+test('a failed mask draw restores renderer state and leaves the mask disabled',t=>{
+  const f=fixture(t),before=f.state();
+  f.renderer.render=()=>{throw Error('render failed');};
+  assert.throws(()=>f.render(),/render failed/);
+  assert.deepEqual(f.state(),before);
+  assert.equal(f.enabled.value,false);
 });

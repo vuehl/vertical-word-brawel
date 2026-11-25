@@ -1,62 +1,35 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
+import {illustratedFacilityFiles,facilityNames} from '../../source/src/data/active-content.js';
 
-export async function reviewFacilityGreyRings(page,dir){
-  const results=[];
+export async function reviewFacilityGreyRings(page){
   for(const stage of [1,2]){
-    if(stage===2)await page.evaluate(async()=>{await app.run.changeZone();app.halted=true;});
-    for(const kind of ['bill','altar','berry']){
-      const result=await page.evaluate(async kind=>{
-        const r=app.run,f=r.interactables;r.state='play';r.enemies.clear();r.vfx.clear();
-        const pos=r.player.pos.clone();
-        const a=f.add(kind,pos.x,pos.z,{data:{tier:0}});await a.modelReady;
-        f.nearest=null;f.dwellTime=0;r.renderWorld(0);f.render(0);
-        const halo=a.halo;
-        const c=r.r.camera;c.position.set(a.x,a.y+16,a.z+22);c.lookAt(a.x,a.y+1,a.z);c.updateMatrixWorld();
-        f.render(0);
-        if(kind==='bill'||kind==='berry'){
-          if(!a.model.visible||halo||a.group.getObjectByName('facility-dwell-ring')||f.dwellRing.visible)
-            throw Error('Expected an unmarked '+kind);
-          r.r.render(0);
-          const gl=r.r.renderer.getContext(),frame=gl.canvas.toDataURL('image/png').split(',')[1];
-          f.remove(a);
-          return {kind,error:gl.getError(),frame};
+    const result=await page.evaluate(async({stage,art,kinds})=>{
+      const r=app.run;
+      if(stage!==r.stage){r.state='play';await r.changeZone();}
+      app.halted=true;r.state='play';
+      const f=r.interactables;
+      // Exercise the depth-outline preset as well as the low-cost phone path.
+      r.r.outlinePass.enabled=true;
+      for(const kind of kinds){
+        const a=f.list.find(x=>x.kind===kind&&!x.used&&(kind!=='chest'||!x.data?.gift))??f.add(kind,r.player.pos.x,r.player.pos.z);
+        await a.modelReady;f.render(0);
+        if(!f.hasVisual(a)||a.halo||a.chargeRing?.visible||a.group.getObjectByName('facility-dwell-ring'))
+          throw Error('Idle ground effect: '+kind);
+        if(art[kind]){
+          const cache=f.deviceArt;
+          const texture=await cache.deskTextures.get('device-'+art[kind]+'.png');
+          if(!texture||a.model.children[0].material.map!==texture)throw Error('Wrong art: '+kind);
         }
-        if(!halo?.visible||halo.parent!==a.group||halo.scale.x!==a.ringRadius)throw Error('Missing grey ring: '+kind);
-        let centreError=0;
-        if(a.model.userData.ringAnchor){
-          const centre=a.model.localToWorld(halo.position.clone().copy(a.model.userData.ringAnchor)).project(c);
-          const ringCentre=a.group.localToWorld(halo.position.clone()).project(c);
-          centreError=Math.hypot(centre.x-ringCentre.x,centre.y-ringCentre.y);
-          if(centreError>1e-6)throw Error('Off-centre facility ring: '+kind+' '+centreError);
-        }
-        const renderer=r.r.renderer,gl=renderer.getContext();
-        const priorError=gl.getError();
-        const pixels=()=>{r.r.render(0);renderer.setRenderTarget(null);const p=new Uint8Array(gl.drawingBufferWidth*gl.drawingBufferHeight*4);gl.readPixels(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight,gl.RGBA,gl.UNSIGNED_BYTE,p);return p;};
-        const visible=pixels();halo.visible=false;const absent=pixels();halo.visible=true;
-        let changed=0;
-        for(let i=0;i<visible.length;i+=4)if(Math.abs(visible[i]-absent[i])+Math.abs(visible[i+1]-absent[i+1])+Math.abs(visible[i+2]-absent[i+2])>30)changed++;
-        r.r.render(0);const frame=gl.canvas.toDataURL('image/png').split(',')[1];
         if(kind==='altar'){
           a.charging=true;a.charge=.5;f.render(0);
-          if(halo.visible||!a.chargeRing.visible)throw Error('Overlapping altar rings');
+          if(!a.chargeRing.visible)throw Error('Missing active altar ring');
           a.charging=false;f.render(0);
-          if(!halo.visible||a.chargeRing.visible)throw Error('Grey altar ring did not return');
         }
-        a.used=true;f.render(0);const hidden=!halo.visible;
-        a.used=false;f.render(0);const restored=halo.visible;
-        const error=gl.getError();f.remove(a);
-        return {kind,changed,hidden,restored,centreError,priorError,error,frame};
-      },kind);
-      const {frame,...stats}=result;
-      console.log('Grey ring sample',stage,stats);
-      if(kind==='altar'){assert.ok(stats.changed>30,JSON.stringify(stats));assert.ok(stats.hidden&&stats.restored);}
-      assert.equal(stats.error,0);
-      fs.writeFileSync(path.join(dir,`grey-ring-${stage}-${kind}.png`),Buffer.from(frame,'base64'));
-      results.push({stage,...stats});
-    }
+      }
+      r.r.render(0);
+      if(r.r.composer.passes.some(p=>['Device screen effects','Visible devices'].includes(p.name)))throw Error('Common sweep still installed');
+      return {stage,kinds:kinds.length,gl:r.r.renderer.getContext().getError()};
+    },{stage,art:illustratedFacilityFiles,kinds:Object.keys(facilityNames)});
+    assert.equal(result.gl,0);console.log('Idle facility art verified',result);
   }
-  fs.writeFileSync(path.join(dir,'grey-rings.json'),JSON.stringify(results,null,2));
-  console.log('Grey facility rings verified on both stages',results);
 }

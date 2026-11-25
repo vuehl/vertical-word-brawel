@@ -12,7 +12,7 @@ import {actorMetrics} from '../source/src/actors/actor-metrics.js';
 import {heroActionCatalog} from '../source/src/actors/hero-action-catalog.js';
 import {assetPolicyVersion,compressedFireAtlases,windClarityAtlases,excludedAssetReason,musicTracks} from './build/asset-policy.mjs';
 import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/data/catalogs.js';
-import {facilityNames,facilityIconFile,summonDockModel,isActiveItem} from '../source/src/data/active-content.js';
+import {facilityNames,facilityIconFile,illustratedFacilityFiles,isContactFacility,isActiveItem} from '../source/src/data/active-content.js';
 import {resolveItemIcon} from '../source/src/data/item-icons.js';
 import {glyphSpeciesFromImage} from '../source/src/data/zixing-identity.js';
 import {runtimeData,runtimeSpecies} from './build/runtime-data.mjs';
@@ -229,18 +229,15 @@ for(const key of Object.keys(index.files).filter(key=>key.endsWith('.png'))){
   count[category]=(count[category]||0)+1;
 }
 const models=Object.keys(index.files).filter(k=>k.startsWith('assets/models/'));
-const dockKey='assets/models/'+summonDockModel+'.glb';
-assert.deepEqual(fs.readdirSync(path.join(pub,'assets/models/devices')).filter(name=>name.endsWith('.glb')),
-  [path.basename(dockKey)]);
-assert.deepEqual(models.sort(),['assets/models/ball.glb',dockKey].sort());
+assert.deepEqual(models,['assets/models/ball.glb']);
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
-const adapterHash=digest(fs.readFileSync(path.join(root,'source/src/effects/DeviceScreenFx.mjs')));
-const deskDevices=JSON.parse(fs.readFileSync(path.join(root,'resources/public/config/desk2d-devices.json'),'utf8'));
-const deskTiles=JSON.parse(fs.readFileSync(path.join(root,'resources/public/config/desk2d-layout.json'),'utf8')).layers.find(layer=>layer.name==='desk').parts;
-for(const [name] of deskTiles){
-  const key='assets/env/desk2d/'+name;
-  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed desk tile '+name);
-}
+const deskDevices=JSON.parse(fs.readFileSync(path.join(pub,'config/desk2d-devices.json'),'utf8'));
+const deskLayout=JSON.parse(fs.readFileSync(path.join(pub,'config/desk2d-layout.json'),'utf8'));
+const deskTiles=deskLayout.layers.flatMap(layer=>layer.parts.map(([name])=>'assets/env/desk2d/'+name));
+assert.deepEqual(Object.keys(index.files).filter(key=>/^assets\/env\/desk2d\/[^/]+-\d+\.webp$/.test(key)).sort(),
+  deskTiles.sort(),'Packed map tiles must match the current layout');
+for(const key of deskTiles)
+  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed map tile '+key);
 const paperDirectory='assets/ui-paper/';
 const paperImages=fs.readdirSync(path.join(pub,paperDirectory)).filter(name=>/\.(png|webp)$/.test(name));
 assert.ok(paperImages.includes('journey-desk.webp'),'Missing menu backdrop');
@@ -255,31 +252,22 @@ assert.ok(index.files['assets/env/desk2d/shelf-depth.png'],'Missing shelf occlus
 const billPrefix='assets/env/desk2d/device-bill/';
 assert.deepEqual(Object.keys(index.files).filter(key=>key.startsWith(billPrefix)).map(key=>key.slice(billPrefix.length)).sort(),
   ['device-bill_default.png','eyeball.png','face.png','highlight_eye.png']);
-const dockBytes=Buffer.from(bytes(dockKey));
-const gltf=JSON.parse(dockBytes.toString('utf8',20,20+dockBytes.readUInt32LE(12)));
-const {deviceScreenFxAdapter:adapter,portalDockAdapter:dock}=gltf.asset.extras;
-const scene=gltf.scenes[gltf.scene??0].extras;
-assert.equal(digest(adapter.source),adapter.sha256);
-assert.equal(adapter.sha256,'d0fbc0f794e316abc3c99c4fa0ace0c0a474bdcf0e8a8eb5bfa7a8b4f47fb905');
-assert.equal(dock.requiresDeviceScreenFxSha256,adapter.sha256);
-assert.equal(digest(dock.source),dock.sha256);
-assert.equal(dock.sha256,'5c2a3ca204d395f2bbbb2ebfd1b999f51ec162fea6180582d9cb301e5289f726');
-assert.equal(scene.portalDock.version,1);
-assert.equal(scene.deviceModel,'portal');
-assert.equal(adapter.apiVersion,2);
-assert.deepEqual(Object.keys(deskDevices).sort(),Object.keys(facilityNames).filter(kind=>kind!=='boss').sort());
+assert.deepEqual(Object.keys(deskDevices).sort(),Object.keys(facilityNames).sort());
+assert.ok(index.files['assets/env/desk2d/device-magnet-shadow.png']&&deskDevices.magnet.shadowStrips.length);
+for(const [kind,stem] of Object.entries(illustratedFacilityFiles)){
+  const key='assets/env/desk2d/device-'+stem+'.png',device=deskDevices[kind];
+  assert.ok(index.files[key],key);
+  const {width,height}=await sharp(bytes(key)).metadata();
+  assert.deepEqual(device.frame,{width,height},key);
+  assert.ok(device.strips.length>0,key);
+  if(isContactFacility(kind)){
+    assert.equal(device.pickup.resolution,width,key);
+    assert.equal(device.pickup.height,height,key);
+    assert.ok(device.pickup.strips.length>0,key);
+  }
+}
 for(const kind of Object.keys(facilityNames)){
   assert.ok(index.files['assets/'+facilityIconFile(kind)],'Missing facility thumbnail for '+kind);
-  const fx=kind==='boss'?scene.deviceScreenFx:deskDevices[kind].fx;
-  assert.equal(fx.version,2,kind);
-  assert.equal(fx.cycleSeconds,3,kind);
-  assert.equal(fx.stars.sharedOrigin,true,kind);
-  assert.equal(fx.stars.scatter.tracks,8,kind);
-  assert.ok(fx.supportXYZ.length>=12,kind);
-  if(kind==='boss'||kind==='bill'){
-    assert.ok(!index.files['assets/env/desk2d/device-'+kind+'.png']);
-    continue;
-  }
   if(kind==='altar'){
     const prefix='assets/env/desk2d/device-altar/';
     assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)).sort(),
@@ -289,14 +277,14 @@ for(const kind of Object.keys(facilityNames)){
     assert.deepEqual(Object.keys(index.files).filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length)).sort(),
       ['RGB_flash.png','device-berry_basic.png','fuzzy.png','fuzzy_flash.png']);
     assert.ok(!index.files['assets/env/desk2d/device-berry.png']);
-  }else assert.ok(index.files['assets/env/desk2d/device-'+kind+'.png'],'Missing desk sprite for '+kind);
+  }
 }
 for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.startsWith('assets/env/'))) {
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }
-const report={mappedResources:Object.keys(index.files).length,RGBA:count,iconErrors,fireColorError,originalModels:models.length-1,
-  deviceModels:1,deviceAdapterSha256:adapterHash,
+const report={mappedResources:Object.keys(index.files).length,RGBA:count,iconErrors,fireColorError,originalModels:models.length,
+  deviceModels:0,illustratedDevices:Object.keys(facilityNames).length,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:[],
   removedSceneAssetsVerified:removedSceneAssets.length,
   actorBoundsVerified:152,itemIconsVerified:verifiedCatalogItems,excludedCatalogIcons,cries:0,locales:['zh'],legacyActorImages:0,

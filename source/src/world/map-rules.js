@@ -1,11 +1,11 @@
-// Desk coordinates are pixels in desk_map.png from its top-left corner.
+// Desk coordinates are pixels in desk_map2.png from its top-left corner.
 // Workshop and arena coordinates are world X/Z.
 const maps = {
   'forest:1': {
     spawn: {x:1820, z:1320},
     facilitySites: [
-      {surface:'notebook', x:1214, z:1506},
-      {surface:'wacom', x:2630, z:1922},
+      {surface:'notebook', x:856, z:1684},
+      {surface:'wacom', x:2292, z:1736},
     ],
   },
   'forest:2': {spawn:{x:0, z:0}},

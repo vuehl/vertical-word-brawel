@@ -152,16 +152,21 @@ export async function verifyEntry({page,tap,dir}){
   assert.ok(await page.evaluate(()=>!!app.run.ui.root.querySelector('.zx-square-hud .zx-stage-caption')));
   await page.evaluate(()=>{
     const run=app.run;
+    run.enemies.clear();
+    run.godMode=true;
+    run.player.items.clear();
+    run.player.vitamins.clear();
     run.streak=7;run.streakT=3;
     run.player.items.set('revive',2);
     run.player.vitamins.set('protein',{level:1});
     run.player.vitamins.set('hp-up',{level:2});
   });
   await page.waitForFunction(()=>{
-    const root=app.run.ui.root,combo=root.querySelector('.zx-combo>b'),cells=[...root.querySelectorAll('.zx-supply-row .zx-mini-slot')];
+    const root=app.run.ui.root,combo=root.querySelector('.zx-combo>b');
+    const cells=[...root.querySelectorAll('.vitamin-rail .zx-mini-slot,.zx-hud-supplies .zx-mini-slot')];
     if(combo?.textContent!=='×7'||!combo.offsetWidth||cells.length!==3)return false;
     const boxes=cells.map(c=>c.getBoundingClientRect());
-    return boxes.every((b,i)=>b.width===25&&b.height===25&&b.y===boxes[0].y&&(!i||b.x>=boxes[i-1].right));
+    return boxes.every(b=>b.width===25&&b.height===25)&&boxes[1].x>=boxes[0].right&&boxes[2].y>boxes[1].y;
   });
   await capture('04-entry-play');
   await page.evaluate(()=>{app.run.streakT=.9;});
@@ -179,17 +184,17 @@ export async function verifyEntry({page,tap,dir}){
   await page.evaluate(()=>{app.run.streakT=1/60;});
   await page.waitForFunction(()=>!app.run.ui.els.streak.offsetWidth);
   await page.evaluate(()=>{
-    for(const id of ['rare-candy','fire-stone','ice-stone','leaf-stone'])app.run.player.items.set(id,1);
+    for(const id of ['rare-candy','fire-stone','ice-stone','leaf-stone','tm-case','stick','bicycle','full-heal'])app.run.player.items.set(id,1);
   });
   await page.waitForFunction(()=>{
     const root=app.run.ui.root,more=root.querySelector('[data-action="inventory-more"]');
     if(more?.textContent!=='+2')return false;
     const skills=root.querySelector('.zx-skill-slots').getBoundingClientRect();
-    const cells=[...root.querySelectorAll('.zx-supply-row .zx-mini-slot')].map(c=>c.getBoundingClientRect());
-    return cells.length===6&&cells.every((b,i)=>b.top>=skills.bottom&&b.top===cells[0].top&&(!i||b.left>=cells[i-1].right));
+    const cells=[...root.querySelectorAll('.zx-hud-supplies .zx-mini-slot')].map(c=>c.getBoundingClientRect());
+    return cells.length===8&&cells.every((b,i)=>b.top>=skills.bottom&&b.top===cells[0].top&&(!i||b.left>=cells[i-1].right));
   });
   await tap('[data-action="inventory-more"]');
-  await page.waitForFunction(()=>app.run.ui.modalEl?.querySelectorAll('[data-pause-section="supplies"] .zx-pause-build-row').length===7);
+  await page.waitForFunction(()=>app.run.ui.modalEl?.querySelectorAll('[data-pause-section="supplies"] .zx-pause-build-row').length===11);
   await tap('[data-action="pause-resume"]');
   await tap('.zx-minimap');await capture('04-region-map');await tap('.zx-atlas-filter-toggle');await tap('[data-map-filter="chest"]');
   assert.equal(await page.evaluate(()=>app.run.ui.root.querySelector('.zx-battle-map-art').dataset.filter),'chest');

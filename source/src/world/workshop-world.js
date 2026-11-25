@@ -519,9 +519,17 @@ export function* workshopWorldSteps(terrain){
     preparePaperBatch(ink,false,true);root.add(ink);
     yield;
   }
-  const haloMaterial=workshopLampHalo(assets),sensorLamps=terrain.workshopLamps.filter(l=>l.reactive),halos=new InstancedMesh(planes,haloMaterial,sensorLamps.length);
-  sensorLamps.forEach((l,i)=>{transform.position.set(l.x,l.y,l.z);transform.rotation.set(0,0,0);transform.scale.setScalar(Math.max(.65,l.radius*9));transform.updateMatrix();halos.setMatrixAt(i,transform.matrix);halos.setColorAt(i,new Color(l.color));});
-  halos.instanceMatrix.needsUpdate=true;halos.name='steady-lamp-halos';halos.renderOrder=3;halos.computeBoundingSphere();preparePaperBatch(halos);root.add(halos);
+  const sensorLamps=terrain.workshopLamps.filter(l=>l.reactive);
+  if(sensorLamps.length){
+    const halos=new InstancedMesh(planes,workshopLampHalo(assets),sensorLamps.length);
+    sensorLamps.forEach((lamp,i)=>{
+      transform.position.set(lamp.x,lamp.y,lamp.z);transform.rotation.set(0,0,0);
+      transform.scale.setScalar(Math.max(.65,lamp.radius*9));transform.updateMatrix();
+      halos.setMatrixAt(i,transform.matrix);halos.setColorAt(i,new Color(lamp.color));
+    });
+    halos.instanceMatrix.needsUpdate=true;halos.name='steady-lamp-halos';halos.renderOrder=3;
+    halos.computeBoundingSphere();preparePaperBatch(halos);root.add(halos);
+  }
   // Four fixed accent lights keep the mobile shader bounded.
   terrain.workshopPointLights=Array.from({length:4},()=>{const light=new PointLight(0xffd5a0,0,58,2);light.castShadow=false;root.add(light);return light;});
   const lamps=[];

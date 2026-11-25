@@ -1,7 +1,81 @@
-import {ht as Vector3} from '../vendor/three-DmSYIDKK.js';
+import {g as Box3,F as Frustum,G as Matrix4,ht as Vector3} from '../vendor/three-DmSYIDKK.js';
 
 const kickPx=11, kickSeconds=.13, returnSeconds=.30;
-const a=new Vector3(),b=new Vector3();
+const a=new Vector3(),b=new Vector3(),c=new Vector3();
+
+const marginPx=5;
+const chunks=new WeakMap();
+const vertex=new Vector3();
+const query=new Matrix4(),localQuery=new Matrix4(),frustum=new Frustum();
+
+// Group nearby faces once per shared geometry. This also covers the original
+// solid candy mesh in later zones, with its current camera angle.
+function faceChunks(geometry){
+  if(chunks.has(geometry))return chunks.get(geometry);
+  const positions=geometry.attributes.position,indices=geometry.index;
+  const count=indices?.count??positions.count,blocks=[];
+  for(let start=0;start<count;start+=192){
+    const end=Math.min(start+192,count),box=new Box3();
+    for(let i=start;i<end;i++)box.expandByPoint(vertex.fromBufferAttribute(positions,indices?indices.getX(i):i));
+    blocks.push({start,end,box});
+  }
+  if(!geometry.boundingBox)geometry.computeBoundingBox();
+  chunks.set(geometry,blocks);return blocks;
+}
+
+function edgeDistanceSq(p,q){
+  const dx=q.x-p.x,dy=q.y-p.y,len=dx*dx+dy*dy;
+  const t=len?Math.max(0,Math.min(1,-(p.x*dx+p.y*dy)/len)):0;
+  return (p.x+t*dx)**2+(p.y+t*dy)**2;
+}
+
+function touchesTriangle(a,b,c){
+  const ab=a.x*b.y-a.y*b.x,bc=b.x*c.y-b.y*c.x,ca=c.x*a.y-c.y*a.x;
+  if(ab+bc+ca!==0&&((ab>=0&&bc>=0&&ca>=0)||(ab<=0&&bc<=0&&ca<=0)))return true;
+  return edgeDistanceSq(a,b)<=1||edgeDistanceSq(b,c)<=1||edgeDistanceSq(c,a)<=1;
+}
+
+export function createPickupContact(model,graphics){
+  const meshes=[];
+  model.updateWorldMatrix(true,true);
+  model.traverse(mesh=>{
+    if(!mesh.isMesh)return;
+    const geometry=mesh.userData.pickupGeometry??mesh.geometry;
+    meshes.push({mesh,geometry,blocks:faceChunks(geometry)});
+  });
+  const pos=new Vector3();
+  function inReach(player){
+    const {canvas,camera}=graphics;
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    if(!w||!h)return false;
+    camera.updateMatrixWorld();
+    pos.copy(player.pos).project(camera);
+    if(Math.abs(pos.x)>1||Math.abs(pos.y)>1||Math.abs(pos.z)>1)return false;
+    // In this projection a circle of radius one is exactly five display pixels.
+    const diameter=2*(marginPx+1e-7); // Keep the exact boundary inclusive after projection.
+    const sx=w/diameter,sy=h/diameter;
+    query.set(sx,0,0,-pos.x*sx,0,sy,0,-pos.y*sy,0,0,1,0,0,0,0,1)
+      .multiply(camera.projectionMatrix).multiply(camera.matrixWorldInverse);
+    for(const {mesh,geometry:geo,blocks} of meshes){
+      mesh.updateWorldMatrix(true,false);
+      localQuery.multiplyMatrices(query,mesh.matrixWorld);
+      frustum.setFromProjectionMatrix(localQuery);
+      if(!frustum.intersectsBox(geo.boundingBox))continue;
+      const positions=geo.attributes.position,index=geo.index;
+      for(const {start,end,box} of blocks){
+        if(!frustum.intersectsBox(box))continue;
+        for(let i=start;i<end;i+=3){
+          a.fromBufferAttribute(positions,index?index.getX(i):i).applyMatrix4(localQuery);
+          b.fromBufferAttribute(positions,index?index.getX(i+1):i+1).applyMatrix4(localQuery);
+          c.fromBufferAttribute(positions,index?index.getX(i+2):i+2).applyMatrix4(localQuery);
+          if(touchesTriangle(a,b,c))return true;
+        }
+      }
+    }
+    return false;
+  }
+  return inReach;
+}
 
 export function createBerryPickup(model,graphics){
   const home=model.position.clone(),scale=model.scale.clone(),parent=model.parent;

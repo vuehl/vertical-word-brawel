@@ -143,7 +143,7 @@ export async function reviewAndroidStability(page,dir,baseline=false){
               fromPlayer:Math.hypot(chest.x-run.player.pos.x,chest.z-run.player.pos.z),
               visible:run.sprites.visible(chest.x,chest.y+2,chest.z,8),sameModel:chest.model===model,
               sameGroup:chest.group===group,sameReservation:chest.reservation===reservation,slots:m.list.length,
-              reserved:run.terrain.isReserved(chest.x,chest.z,1),halo:chest.halo.visible});
+              reserved:run.terrain.isReserved(chest.x,chest.z,1),halo:!!chest.halo});
           }
           const sites=m.chestSites,fit=m.fitsOnDesk,visible=run.sprites.visible,reserved=run.terrain.isReserved;
           let collisionChecks=0;
@@ -159,7 +159,7 @@ export async function reviewAndroidStability(page,dir,baseline=false){
       assert.equal(report.chests.rewards,5);assert.equal(report.chests.collisionChecks,24);assert.equal(report.chests.checked,24);
       for(const refill of report.chests.refills){
         assert.equal(refill.used,false);assert.ok(refill.fromOld>=32&&refill.fromPlayer>=32);
-        assert.equal(refill.visible,false);assert.ok(refill.sameModel&&refill.sameGroup&&refill.sameReservation&&refill.reserved&&refill.halo);
+        assert.equal(refill.visible,false);assert.ok(refill.sameModel&&refill.sameGroup&&refill.sameReservation&&refill.reserved&&!refill.halo);
         assert.equal(refill.slots,report.chests.slots);
       }
       console.log('Chest stability',JSON.stringify(report.chests));

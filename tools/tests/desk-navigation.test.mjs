@@ -17,6 +17,22 @@ function terrainFor(kind){
     resolve(x,z,r,y,out){out.x=x;out.z=z;for(const b of boxes)resolvePaperBox(b,out,r);return out;},propTop(){return -Infinity;}};
 }
 
+test('first desk routes share a bounded floor-scan budget across body sizes',()=>{
+  let checks=0;
+  const terrain={deskBounds:{x:50,z:36},inBounds(){checks++;return true;},hitProp:()=>false};
+  const steer=createDeskNavigation(terrain),direction={};
+  for(const radius of [.45,1,2])steer(-10,0,10,0,radius,direction);
+  assert.equal(checks,0);
+  const cellsPerSize=(Math.ceil(100/.75)+1)*(Math.ceil(72/.75)+1);
+  let total=0;
+  for(let tick=0;tick<100&&total<cellsPerSize*3;tick++){
+    checks=0;steer.advance();
+    assert.ok(checks<=1024,'A movement step scanned too many desk cells');
+    total+=checks;
+  }
+  assert.equal(total,cellsPerSize*3);
+});
+
 test('monsters traverse actual stepped prop silhouettes from both sides at 30/60 FPS',()=>{
   for(const kind of ['bottle','medicine','hushoushuang','keyboard','mouse']){
     const t=terrainFor(kind),steer=createDeskNavigation(t);

@@ -197,7 +197,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
   });
   await page.waitForFunction(()=>{
     const img=app.run.hints.el?.querySelector('img');
-    return img?.complete&&img.naturalWidth>0&&img.src.split('?')[0].endsWith('/ui/devices/portal.png');
+    return img?.complete&&img.naturalWidth>0&&img.src.split('?')[0].endsWith('/ui/devices/boss.png');
   },{timeout:6000,polling:50});
   await page.evaluate(()=>{app.r.render(0);inspected.env.invalidateUI();inspected.env.drawUI(app.r.renderer);});
   await shot('提前召唤倒计时');

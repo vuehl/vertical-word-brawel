@@ -35,7 +35,7 @@ export function newProfile(name) {
     dailyStreak: { last: 0, n: 0 }, bag: {}, avatar: '', frame: '', title: '',
     cosmetics: [], events: {},
     // 0.8.27+: wardrobe looks, classic shinies and the 6-slot Team favourites
-    skins: [], classics: [], team: [],
+    classics: [], team: [],
   };
 }
 

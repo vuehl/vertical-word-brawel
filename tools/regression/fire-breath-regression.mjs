@@ -6,6 +6,71 @@ import sharp from 'sharp';
 import referenceAtlas from '../../resources/public/assets/vfx/fire-breath-reference.json' with {type:'json'};
 import baselines from './fire-vfx-baselines.json' with {type:'json'};
 
+async function compareGlyphLayers(page, file) {
+  await page.evaluate(()=>{
+    const r=app.run,sprites=r.sprites,getPlayerGlyph=sprites.getPlayerGlyph;
+    const fire=r.vfx.crafted.fireJet.reference.mesh;
+    let hero;
+    sprites.getPlayerGlyph=(...args)=>{
+      const glyph=getPlayerGlyph.apply(sprites,args);
+      hero=glyph.zxGroup?.mesh??glyph.mesh;
+      return glyph;
+    };
+    try{vfxDraw(false);}finally{sprites.getPlayerGlyph=getPlayerGlyph;}
+    window.fireLayerFixture={hero,fire};
+  });
+  const live=await page.screenshot({path:file});
+  await page.evaluate(()=>{fireLayerFixture.fire.visible=false;app.r.render(0);});
+  const glyph=await page.screenshot();
+  await page.evaluate(()=>{fireLayerFixture.hero.visible=false;app.r.render(0);});
+  const backdrop=await page.screenshot();
+  await page.evaluate(()=>{
+    fireLayerFixture.hero.visible=true;
+    fireLayerFixture.fire.visible=true;
+    delete window.fireLayerFixture;
+    app.r.render(0);
+  });
+  const [{info,data:withFire},{data:withoutFire},{data:withoutHero}]=await Promise.all(
+    [live,glyph,backdrop].map(input=>sharp(input).removeAlpha().raw().toBuffer({resolveWithObject:true}))
+  );
+  const {width,height}=info;
+  const delta=(a,b,i)=>Math.max(Math.abs(a[i]-b[i]),Math.abs(a[i+1]-b[i+1]),Math.abs(a[i+2]-b[i+2]));
+  const glyphMask=new Uint8Array(width*height);
+  for(let i=0;i<glyphMask.length;i++)glyphMask[i]=delta(withoutFire,withoutHero,i*3)>30?1:0;
+  const interiorOffsets=Array.from({length:25},(_,i)=>(Math.floor(i/5)-2)*width+i%5-2);
+  let strokePixels=0,changed=0;
+  for(let i=width*2+2;i<glyphMask.length-width*2-2;i++){
+    // Exclude antialiased edges, where the background intentionally shows through.
+    if(!glyphMask[i]||!interiorOffsets.every(offset=>glyphMask[i+offset]))continue;
+    strokePixels++;
+    if(delta(withFire,withoutFire,i*3)>2)changed++;
+  }
+  return {strokePixels,changed};
+}
+
+async function recordReferenceCast(page, dir) {
+  await page.evaluate(()=>{vfxAdvance(2,.01,false);app.run.player.moves[0].timer=999;});
+  const delays=referenceAtlas.frameEndMs.map((end,i)=>end-(referenceAtlas.frameEndMs[i-1]??0));
+  const shots=[];
+  for(let i=0;i<=delays.length;i++){
+    const frame=await page.evaluate(steps=>{
+      if(steps)vfxAdvance(steps,.01,false);
+      const r=app.run,art=r.vfx.crafted.fireJet.reference,target=r.lockTarget;
+      // Show the battle HUD without the fixture's manually locked target.
+      r.lockTarget=-1;
+      try{vfxDraw();}finally{r.lockTarget=target;}
+      return art.mesh.count===0?-1:art.attributes[1].array[1];
+    },i===0?0:delays[i-1]/10);
+    assert.equal(frame,i===delays.length?-1:i,'The battle capture must show every reference frame in order');
+    shots.push(await page.screenshot());
+  }
+  const frames=await Promise.all(shots.map(input=>sharp(input).ensureAlpha().raw().toBuffer()));
+  const file=path.join(dir,'fire-breath-in-game.gif');
+  await sharp(Buffer.concat(frames),{raw:{width:390,height:844*frames.length,channels:4,pageHeight:844}})
+    .gif({delay:[...delays,300],loop:0,keepDuplicateFrames:true}).toFile(file);
+  assert.deepEqual((await sharp(file,{animated:true}).metadata()).delay,[...delays,300]);
+}
+
 // Called by runtime-performance.mjs --vfx --fire-breath. Exercise the real
 // compiled move, damage fan and game renderer, with deterministic enemy inputs.
 export async function reviewFireBreath(page,dir,moves){
@@ -48,13 +113,18 @@ export async function reviewFireBreath(page,dir,moves){
   }
   for(const [direction,angle] of [['up',-Math.PI/2],['right',0],['down',Math.PI/2],['left',Math.PI],['diagonal',-Math.PI/4]]){
     const sample=await setup(angle);assert.deepEqual(sample.hits,[true,true,true,false]);
-    report.directions.push({direction,...sample});
-    await page.screenshot({path:path.join(dir,'fire-'+direction+'.png')});
+    const file=path.join(dir,'fire-'+direction+'.png');
+    const glyph=baseline?null:await compareGlyphLayers(page,file);
+    if(baseline)await page.screenshot({path:file});
+    if(glyph){
+      assert.ok(glyph.strokePixels>100,direction+' must include the player glyph');
+      assert.equal(glyph.changed,0,direction+' changed the colour of the player strokes');
+    }
+    report.directions.push({direction,...sample,glyph});
   }
   await setup(-Math.PI/2,'high',0,1);
   const active=await page.evaluate(()=>{vfxAdvance(1);const m=app.run.player.moves[0];m.timer=999;return m.active;});
   assert.ok(active>0&&active<5);
-  const frames=[];
   report.lifecycle=[];report.packet=[];
   const filmFrames=Math.ceil((active+.95)*15);
   for(let i=0;i<filmFrames;i++){
@@ -67,12 +137,14 @@ export async function reviewFireBreath(page,dir,moves){
         first:tracked?{age:tracked.age,life:tracked.life,...jet.sample(tracked)}:null};
     });
     sample.time=(i+1)*2/30;report.lifecycle.push(sample);if(sample.first)report.packet.push(sample.first);
-    frames.push(await page.screenshot());
-    if([0,2,5,Math.floor(active*15),Math.floor((active+.35)*15),filmFrames-1].includes(i))fs.writeFileSync(path.join(dir,'phase-'+String(i).padStart(2,'0')+'.png'),frames.at(-1));
+    if([0,2,5,Math.floor(active*15),Math.floor((active+.35)*15),filmFrames-1].includes(i)){
+      await page.screenshot({path:path.join(dir,'phase-'+String(i).padStart(2,'0')+'.png')});
+    }
   }
-  const buffers=await Promise.all(frames.map(frame=>sharp(frame).ensureAlpha().raw().toBuffer()));
-  await sharp(Buffer.concat(buffers),{raw:{width:390,height:844*buffers.length,channels:4,pageHeight:844}})
-    .gif({delay:Array(buffers.length).fill(67),loop:0}).toFile(path.join(dir,'fire-breath-in-game.gif'));
+  if(!baseline){
+    await setup(-Math.PI/2,'high',0,1);
+    await recordReferenceCast(page,dir);
+  }
   const packet=report.packet,peak=Math.max(...packet.map(p=>p.radius));
   assert.ok(peak>packet[0].radius*1.8,'A born flame must visibly grow');
   assert.ok(packet.at(-1).radius<peak*.75&&packet.at(-1).alpha<.15,'A mature flame must shrink and dissolve');

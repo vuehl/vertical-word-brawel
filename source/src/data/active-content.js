@@ -10,17 +10,20 @@ const itemIds = new Set([
 ]);
 export const isActiveItem = id => itemIds.has(id);
 
+export const isContactFacility=kind=>['chest','freechest','magnet','ditto'].includes(kind);
 export const facilityDwellSeconds = 0;
 export const altarChargeSeconds = 3;
 export const bossSummonSeconds = 0;
 export const bossSummonUnlockSeconds = run =>
   run?.biome?.id === 'forest' && run.stage === 2 ? 3 * 60 : 5 * 60;
 export const facilityNames = Object.freeze({
-  chest: '扭蛋', freechest: '免费扭蛋', altar: '时尚小垃圾', portal: '门？', boss: '传送门',
-  magnet: '磁铁', berry: 'QQ糖', ditto: '拍立得', nest: '鹌鹑蛋', bill: '订书机',
+  chest: '红骰子', freechest: '免费蓝骰子', altar: '时尚小垃圾', portal: '门？', boss: '传送门',
+  magnet: '磁铁', berry: 'QQ糖', ditto: '键帽挂件', nest: '弹珠', bill: '订书机',
 });
 export const isActiveFacility = kind => Object.hasOwn(facilityNames, kind);
-// The art IDs describe the physical models. The countdown dock summons and the wooden door is the exit.
-const doorIcons = {boss: 'portal', portal: 'boss'};
-export const summonDockModel = 'devices/' + facilityNames.boss;
-export const facilityIconFile = kind => 'ui/devices/' + (doorIcons[kind] ?? kind) + '.png';
+// Stable facility IDs are also used by saves and co-op events.
+export const illustratedFacilityFiles = Object.freeze({
+  chest:'chest', freechest:'freechest', boss:'boss', portal:'portal',
+  magnet:'magnet', nest:'marble', ditto:'keycap',
+});
+export const facilityIconFile = kind => 'ui/devices/' + (illustratedFacilityFiles[kind] ?? kind) + '.png';

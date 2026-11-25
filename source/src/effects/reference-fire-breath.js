@@ -12,6 +12,8 @@ void main(){
   vec3 forward=(viewMatrix*vec4(cos(iPose.x),0.,sin(iPose.x),0.)).xyz;
   vec2 heading=normalize(forward.xy),side=vec2(heading.y,-heading.x);
   vec2 local=(uv-vec2(${atlas.anchor[0]},${atlas.anchor[1]}))*iOrigin.w;
+  // For an upward cast, place the nozzle at the leading stroke as in the GIF.
+  local.y+=iPose.w*max(heading.y,0.)*iOrigin.w*(14./${atlas.tile}.);
   p.xy+=side*local.x+heading*local.y;
   vec2 cell=vec2(mod(iPose.y,${atlas.columns}.),${atlas.rows-1}.-floor(iPose.y/${atlas.columns}.));
   vUv=(cell+mix(vec2(.5/${atlas.tile}.),vec2(1.-.5/${atlas.tile}.),uv))/vec2(${atlas.columns}.,${atlas.rows}.);
@@ -44,7 +46,8 @@ export class ReferenceFireBreath{
     const material=new ShaderMaterial({vertexShader:vertex,fragmentShader:fragment,uniforms:{map:{value:texture}},transparent:true,depthTest:true,depthWrite:false,side:2,toneMapped:false});
     material.forceSinglePass=true;
     this.mesh=new InstancedMesh(g,material,28);this.mesh.count=0;this.mesh.visible=false;this.mesh.frustumCulled=false;
-    this.mesh.name='reference-fire-breath';this.mesh.renderOrder=7.2;scene.add(this.mesh);
+    // Glyph billboards render at order 1. Their visible strokes cover the nozzle.
+    this.mesh.name='reference-fire-breath';this.mesh.renderOrder=.9;scene.add(this.mesh);
   }
   setPerformance(profile){this.limit=profile.name==='流畅'?10:profile.name==='均衡'?18:28;}
   update(dt,emitters){
@@ -68,7 +71,7 @@ export class ReferenceFireBreath{
       const frame=frameEndMs.findIndex(end=>elapsedMs<end);
       const o=count++*4;
       origin.set([s.x,s.y,s.z,s.size],o);
-      pose.set([s.angle,frame,v.opacity*(s.own?v.ownOpacity:1)*(v.calm?.78:1),0],o);
+      pose.set([s.angle,frame,v.opacity*(s.own?v.ownOpacity:1)*(v.calm?.78:1),s.own?1:0],o);
     }
     this.mesh.count=this.loaded?count:0;this.mesh.visible=this.mesh.count>0;
     for(const a of this.attributes){a.clearUpdateRanges();a.addUpdateRange(0,count*4);a.needsUpdate=true;}

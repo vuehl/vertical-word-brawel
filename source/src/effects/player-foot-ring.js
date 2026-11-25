@@ -32,7 +32,6 @@ export function createPlayerFootRing(scene, three) {
 export function createFacilityDwellRing(parent, three) {
   // The track at UV radius .83 has unit world radius before the building's scale.
   return groundRing(parent, three, 'facility-dwell-ring', 2 / .83, `
-    // A negative value selects the ordinary facility track.
     uniform float dwell, ringOpacity;
     varying vec2 vUv;
     void main(){
@@ -42,11 +41,6 @@ export function createFacilityDwellRing(parent, three) {
       float rim=1.-smoothstep(.043,.058,edge);
       float path=1.-smoothstep(.023,.036,edge);
       vec3 track=mix(vec3(.23),vec3(.76),path);
-      if(dwell<0.){
-        if(rim<.005)discard;
-        gl_FragColor=vec4(track,rim*.98*ringOpacity);
-        return;
-      }
       float turn=fract(atan(p.x,p.y)/tau+1.);
       float written=1.-smoothstep(dwell-.003,dwell+.003,turn);
       vec2 tip=.83*vec2(sin(dwell*tau),cos(dwell*tau));

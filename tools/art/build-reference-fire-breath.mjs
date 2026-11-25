@@ -52,7 +52,8 @@ function extractFlame(rgb, page) {
     const i=y*crop.width+x, o=i*4;
     const r=rgb[i*3], g=rgb[i*3+1], b=rgb[i*3+2];
     const radius=Math.hypot(sx-151,sy-365);
-    if (Math.abs(radius-28.5)<2.6 && r>220 && r-g>75 && g-b<16) {
+    // The GIF's ring also has pink antialiasing along its inner and outer edges.
+    if (radius>=25 && radius<31.1 && r>=180 && r-g>42 && g-b<30) {
       ring.push(o);
       continue;
     }

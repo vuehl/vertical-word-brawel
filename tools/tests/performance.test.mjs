@@ -49,6 +49,18 @@ test('combat ticks retain the selected cadence through jitter and discard a stal
   }
 });
 
+test('combat ticks retain the selected cadence through jitter and discard a stall backlog',()=>{
+  for(const fps of [30,60]){
+    const clock=new CombatClock(),run={},gap=1000/fps;
+    for(let i=0;i<120;i++)assert.equal(clock.ticks(run,i*gap+(i%2?4:-2),gap),1);
+    const after=120*gap+500;
+    assert.equal(clock.ticks(run,after,gap),1);
+    assert.equal(clock.ticks(run,after+1,gap),0);
+    assert.equal(clock.ticks(run,after+2*gap,gap),2);
+    assert.equal(clock.ticks({},after+2*gap+1,gap),1);
+  }
+});
+
 test('WeChat gets one native rate request per transition and can jitter or ignore a request',()=>{
   const requests=[],pacer=new FramePacer(fps=>requests.push(fps));
   for(const fps of [30,60]){

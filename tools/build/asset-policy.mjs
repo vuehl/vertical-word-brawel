@@ -7,7 +7,7 @@ import {isPlayableHeroForm} from '../../source/src/data/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=88;
+export const assetPolicyVersion=89;
 // Full RGBA wind cells use lossless encoding rather than a shared 256-colour palette.
 export const windClarityAtlases=new Set(['wind-replacements','wind-moves','wind-skills','wind-vortex'].map(name=>'assets/vfx/'+name+'.png'));
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
@@ -50,7 +50,7 @@ export function itemIconSelectionChanged(files) {
 // not merely on absence from a short playthrough.
 export function excludedAssetReason(key){
   if(bundledAtlasMetadata.has(key))return '图集坐标已编入玩法脚本';
-  if(key==='assets/env/desk2d/device-boss.png')return '召唤门使用实时倒计时模型';
+  if(key==='assets/models/devices/传送门.glb')return '召唤装置使用手绘时钟贴图';
   if(/^assets\/vfx\/heat-wave\.(?:png|json)$/.test(key))return '热风玩家技能已移除';
   if(/^assets\/cries\/\d+\.ogg$/.test(key))return '旧角色叫声已停用';
   if(key.startsWith('assets/env/desk2d/device-bill/')&&/[^\x00-\x7f]/.test(key))return '订书机效果参考图';

@@ -25,8 +25,9 @@ export async function reviewGourdOffscreen(page,dir){
     f.availableMapSite=originalAvailable;
     const eventChest=f.spawnChest(r.player.pos.x,r.player.pos.z,false);
     if(eventChest&&r.sprites.visible(eventChest.x,t.height(eventChest.x,eventChest.z)+2,eventChest.z,8))throw Error('Event chest spawned in view');
-    const bounds=t.deskBounds,pixel=(x,y)=>({x:(x/5142*2-1)*bounds.x,z:(y/2892*2-1)*bounds.z});
-    const start=pixel(3950,2010),end=pixel(4320,2010),out={...start};
+    const {width,height}=window.deskArtSize;
+    const bounds=t.deskBounds,pixel=(x,y)=>({x:(x/width*2-1)*bounds.x,z:(y/height*2-1)*bounds.z});
+    const start=pixel(3850,2460),end=pixel(4280,2460),out={...start};
     for(let i=0;i<120;i++)t.resolve(out.x+(end.x-start.x)/120,out.z,r.player.radius,0,out);
     const passageError=Math.hypot(out.x-end.x,out.z-end.z);
     if(passageError>.01)throw Error('Mouse passage blocked '+passageError);

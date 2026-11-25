@@ -23,7 +23,8 @@ export async function verifyDesk(page,dir){
  }
  const placement=await page.evaluate(()=>{
    const r=app.run,t=r.terrain,f=r.interactables;
-   const spawn={x:Math.round((t.spawn.x/t.deskBounds.x+1)*5142/2),z:Math.round((t.spawn.z/t.deskBounds.z+1)*2892/2)};
+   const {width,height}=window.deskArtSize;
+   const spawn={x:Math.round((t.spawn.x/t.deskBounds.x+1)*width/2),z:Math.round((t.spawn.z/t.deskBounds.z+1)*height/2)};
    const sites=t.facilitySites.map(s=>{
      const occupants=f.list.filter(b=>b.x===s.x&&b.z===s.z);
      const radius=occupants[0]?.kind==='altar'?6.5:4.5;
@@ -46,8 +47,12 @@ export async function verifyDesk(page,dir){
      const r=kind==='altar'?[6,5.5,5,4.5][options.data.tier]:({boss:4,bill:3.4,nest:2.8}[kind]??2.6);
      const f={kind,x,z,r};probe.list.push(f);return f;
    };
+   let seedsUsingExtension=0;
    for(let seed=1;seed<=64;seed++){
      terrain.seed=seed;probe.list=[];probe.populate();
+     const inExtension=f=>(f.z/t.deskBounds.z+1)*window.deskArtSize.height/2>2892;
+     if(probe.list.some(inExtension))seedsUsingExtension++;
+     if(!probe.chestSites.some(inExtension))throw Error('No refill sites in the new desk area for seed '+seed);
      for(const s of terrain.facilitySites){
        const match=probe.list.filter(f=>f.x===s.x&&f.z===s.z);
        if(match.length>1||match[0]?.kind==='boss')throw Error('指定点分配失败 '+seed+' / '+s.surface);
@@ -61,7 +66,8 @@ export async function verifyDesk(page,dir){
        if(!probe.fitsOnDesk(f.x,f.z,['boss','altar'].includes(f.kind)?6.5:4.5,surface))throw Error('设施轮廓越界 '+seed);
      }
    }
-   return 64;
+   if(!seedsUsingExtension)throw Error('No initial facilities reached the new desk area');
+   return {seeds:64,seedsUsingExtension};
  });
  console.log('Verified placement seeds:',seedChecks);
  const stats=await page.evaluate(()=>{
@@ -76,22 +82,23 @@ export async function verifyDesk(page,dir){
    }
    p.copy(original);r.camTarget.copy(p);r.updateCamera(1);r.renderWorld(0);r.r.render(0);
    // Sample the actual cable crossing near the mouse, then walk into its silhouette.
-   const pixel=(x,y)=>({x:(x/5142*2-1)*bounds.x,z:(y/2892*2-1)*bounds.z});
+   const {width,height}=window.deskArtSize;
+   const pixel=(x,y)=>({x:(x/width*2-1)*bounds.x,z:(y/height*2-1)*bounds.z});
    function walk(ax,ay,bx,by){
      const start=pixel(ax,ay),goal=pixel(bx,by),out={...start},steps=100;
      const dx=(goal.x-start.x)/steps,dz=(goal.z-start.z)/steps;
-     for(let i=0;i<steps;i++)t.resolve(out.x+dx,out.z+dz,r.player.radius,0,out);
+     for(let i=0;i<steps;i++)t.resolve(out.x+dx,out.z+dz,r.player.radius,0,out,true);
      return Math.hypot(out.x-goal.x,out.z-goal.z);
    }
    const cableError=walk(4485,1720,4485,1880);
-   const paperError=walk(800,2700,800,2200),penError=walk(3600,1450,3760,1450);
-   if(paperError<1||penError>.001)throw Error('Tissue pack or pen collision mismatch');
-   const mouseBlocked=walk(4200,2040,4160,1780);
-   const passageError=walk(3950,2010,4320,2010);
+   const paperError=walk(800,3230,800,2800),penError=walk(4140,2670,4358,2670);
+   if(paperError>.001||penError>.001)throw Error('Tissue pack or pen collision mismatch '+JSON.stringify({paperError,penError}));
+   const mouseBlocked=walk(4040,2500,4020,2200);
+   const passageError=walk(3850,2460,4280,2460);
    if(passageError>.001)throw Error('Mouse lower passage is blocked');
-   return {cableError,mouseBlocked,stage:t.zxStage,layers:[...new Set(t.group.children.map(c=>c.name))],colliders:t.colliders.length,spawnFree:!t.hitProp(p.x,.3,p.z,1),edges:edges.every(Boolean),wireBlocked:t.colliders.some(c=>c.kind==='wires'),facilities:r.interactables.list.every(f=>f.kind==='boss'?!!f.dock&&f.model?.userData.portalDock?.version===1:f.model?.name.startsWith('desk2d/device-'))};
+   return {cableError,mouseBlocked,stage:t.zxStage,layers:[...new Set(t.group.children.map(c=>c.name))],colliders:t.colliders.length,spawnFree:!t.hitProp(p.x,.3,p.z,1),edges:edges.every(Boolean),wireBlocked:t.colliders.some(c=>c.kind==='wires'),facilities:r.interactables.list.every(f=>f.model?.name.startsWith('desk2d/device-')&&(f.kind!=='boss'||!!f.dock))};
  });
- assert.equal(stats.layers.length,24);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.edges&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
+ assert.equal(stats.layers.length,23);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.edges&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
  await page.screenshot({path:path.join(dir,'stage1.png')});
  if(process.argv.includes('--desk-placement-only')){
    await page.evaluate(async()=>{
@@ -105,41 +112,8 @@ export async function verifyDesk(page,dir){
  }
  if(process.argv.includes('--desk-layout-only'))return;
  await verifyDeskShelf(page,dir);
- const ringPixels=await page.evaluate(()=>{
-   const r=app.run, facilities=r.interactables;
-   for(const f of facilities.list){
-     if(f.kind==='bill'||f.kind==='berry'){
-       if(f.halo)throw Error('Unexpected ground ring on '+f.kind);
-       continue;
-     }
-     if(!f.halo)throw Error('Missing grey ground ring on '+f.kind);
-     if(!Number.isFinite(f.ringRadius)||f.ringRadius<f.r||(f.chargeRing??f.halo)?.scale.x!==f.ringRadius)
-       throw Error('Invalid desk facility ring on '+f.kind+': '+f.ringRadius);
-   }
-   const chest=facilities.list.find(f=>f.kind==='chest'&&!f.used);
-   r.player.pos.copy(chest.group.position);
-   r.player.pos.z+=4;
-   r.camTarget.copy(r.player.pos);r.updateCamera(1);r.renderWorld(0);
-   if(!chest.halo.visible)throw Error('Idle chest ring is hidden');
-   const gl=r.r.renderer.getContext();
-   function frame(){
-     r.r.render(0);
-     const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight,pixels=new Uint8Array(w*h*4);
-     gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
-     return pixels;
-   }
-   chest.halo.visible=false;
-   const without=frame();
-   chest.halo.visible=true;
-   const withRing=frame();
-   let changed=0;
-   for(let i=0;i<without.length;i+=4){
-     if(Math.abs(withRing[i]-without[i])+Math.abs(withRing[i+1]-without[i+1])+Math.abs(withRing[i+2]-without[i+2])>30)changed++;
-   }
-   return changed;
- });
- assert.ok(ringPixels>30,'Idle chest ring should change visible pixels: '+ringPixels);
- await page.screenshot({path:path.join(dir,'desk-facility-ring.png')});
+ assert.ok(await page.evaluate(()=>app.run.interactables.list.every(f=>!f.halo&&!f.chargeRing?.visible)),
+   'Idle facilities should have no ground track');
  const altarFrames=await page.evaluate(async()=>{
    const r=app.run,f=r.interactables,t=r.terrain,p=r.player.pos;
    const original=f.list.find(b=>b.kind==='altar'), result=[];
@@ -151,7 +125,7 @@ export async function verifyDesk(page,dir){
      const layers=()=>a.model.children.filter(m=>m.visible).map(m=>m.name.split('/').pop()).sort();
      f.render();
      const idle=layers();
-     if(a.chargeRing.visible||!a.halo?.visible)throw Error('Idle altar must show its grey ground ring');
+     if(a.chargeRing.visible||a.halo)throw Error('Idle altar must have no ground ring');
      let idleFrame;
      if(tier===1){
        r.r.render(0);
@@ -198,7 +172,7 @@ export async function verifyDesk(page,dir){
      }
      const compiled=r.r.renderer.info.programs.every(b=>b.diagnostics?.runnable!==false);
      tickAltar(a.r+1,.1);f.render();
-     if(a.chargeRing.visible||!a.halo.visible||a.charge<=0)throw Error('Leaving the altar should restore its grey ring during charge decay');
+     if(a.chargeRing.visible||a.halo||a.charge<=0)throw Error('Leaving the altar should hide its ring during charge decay');
      result.push({tier,idle,active,exit:layers(),ring,radius,color:a.altarColor,interaction:a.r,compiled,error:gl.getError(),frame,idleFrame});
      tickAltar(1,0);
      if(tint.opacity!==0)throw Error('Altar breath did not restart on re-entry');
