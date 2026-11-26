@@ -1453,9 +1453,8 @@ export function createZixingUI(app,api) {
         const trailing=leading?null:label.match(/^(.+?)\s*([+−-]\d+(?:[.,]\d+)?%?)$/);
         const stat=leading?leading[2]:trailing?trailing[1]:label;
         const value=leading?leading[1]:trailing?.[2];
-        const statIcon={damage:'target',attackSpeed:'streak',maxHp:'blessing',moveSpeed:'dash',critChance:'aim',area:'globe',xpGain:'stardust',regen:'blessing',armor:'silver',luck:'shiny-charm',duration:'vela',statusChance:'idea'};
         const mark=args[5]==='boss'?glyph(characterForSpecies(run.player.speciesId)):
-          loadoutIcon(api.interfaceIcon(statIcon[args[2]?.[index]?.mods?.[0]?.stat]||'blessing'),stat);
+          loadoutIcon(api.blessingIcon(args[2]?.[index]?.mods?.[0]?.stat),stat);
         const badge=qualityBadge(meta.quality);
         node.dataset.paperSurface='level-offer';
         node.replaceChildren(el('div','zx-blessing-row',[

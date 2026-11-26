@@ -151,7 +151,7 @@ function ZX(app) {
     facilityIcon: kind => Zt(facilityIconFile(kind)),
     itemIcon,
     itemRarity: id => sn.get(id)?.rarity,
-    interfaceIcon: key => Zt(`ui/icons/${key}.png`),
+    blessingIcon: stat => itemIcon([...Ne.values()].find(v => v.stat === stat)?.icon || 'protein'),
     glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
   });
 }

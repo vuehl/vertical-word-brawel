@@ -132,9 +132,9 @@ test('combat warmup uses the scene target and restores it before async work and 
 test('entry draws each combat batch once and restores its live count even on failure',()=>{
   const batch=()=>({mesh:{visible:false,count:0}});
   const run={projectiles:{pool:batch(),glow:batch()},pickups:{pool:batch(),glow:batch()},
-    orbitals:batch(),orbitalsGlow:batch(),vfx:Object.fromEntries(
+    orbitals:batch(),orbitalsGlow:batch(),carriedMarble:batch(),vfx:Object.fromEntries(
       ['rings','beams','text','add','norm','ground','groundN'].map(key=>[key,batch()]))};
-  const batches=[...Object.values(run.projectiles),...Object.values(run.pickups),...Object.values(run.vfx),run.orbitals,run.orbitalsGlow];
+  const batches=[...Object.values(run.projectiles),...Object.values(run.pickups),...Object.values(run.vfx),run.orbitals,run.orbitalsGlow,run.carriedMarble];
   const art={...batch(),fireJet:{...batch(),hitMesh:batch().mesh,legacy:batch()},fireSpin:batch(),fireball:batch(),
     fireFamily:{...batch(),topMesh:batch().mesh},windVortex:batch(),windMoves:batch()};
   run.vfx.crafted=art;

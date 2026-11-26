@@ -13,6 +13,7 @@ import {actorMetrics} from "../actors/actor-metrics.js";
 import {moveEnemyPastProps, obstacleJumpSpeed} from "../world/paper-collision.js";
 import {Xc, Qc} from "../actors/sprite-assets.js";
 import {glyphCatalog} from "../actors/glyph-catalog.js";
+import {placeCarriedMarble} from "./carried-marble.js";
 
 var nf = [`tm-swords`, `tm-agility`, `tm-iron`, `tm-thunder`, `tm-payday`],
   rf = {
@@ -218,7 +219,8 @@ function gf(e, t) {
   e.interactables.remove(t);
   let r = hf(e);
   (e.sprites.get(r),
-    (e.egg = { from: e.stats.kills, need: mf(e), species: r, x: t.x, y: t.y + 1.6, z: t.z, wob: 0 }),
+    (e.egg = { from: e.stats.kills, need: mf(e), species: r, x: t.x, y: t.y + 1.6, z: t.z }),
+    placeCarriedMarble(e),
     e.ui.toast(c(`¡Tienes un Huevo Pokémon! Eclosiona tras {n} bajas`, { n: e.egg.need }), null),
     e.vfx.burst(t.x, t.y + 1.5, t.z, 16774358, 14, 4, I.Twinkle, 0.45, 0.5),
     e.audio.power());
@@ -227,26 +229,9 @@ var _f = (e) => (e.egg ? Math.min(1, (e.stats.kills - e.egg.from) / e.egg.need) 
 function vf(e, t) {
   let n = e.egg;
   if (!n) return;
-  let r = e.player.pos,
-    i = e.player.facing,
-    a = _f(e),
-    o = r.x - i.x * 1.1 + i.y * 0.6,
-    s = r.z - i.y * 1.1 - i.x * 0.6,
-    c = r.y + 2.1 + Math.sin(e.time * 2.4) * 0.15,
-    l = 1 - Math.exp(-t * 6);
-  ((n.x += (o - n.x) * l),
-    (n.y += (c - n.y) * l),
-    (n.z += (s - n.z) * l),
-    (n.wob =
-      a > 0.8
-        ? Math.sin(e.time * 26) * 0.35 * (a - 0.6) * 2.5
-        : Math.sin(e.time * 3) > 0.97
-          ? Math.sin(e.time * 30) * 0.25
-          : 0));
-  let u = 0.95 + 0.08 * Math.sin(e.time * 3);
-  // The atlas carries the marble and its painted shadow; no surrounding white halo.
-  (e.orbitals.push(n.x, n.y, n.z, u * 1.15, 16777215, I.PixEgg, n.wob, 0),
-    a > 0.6 &&
+  const a = _f(e);
+  placeCarriedMarble(e);
+  (a > 0.6 &&
       Math.random() < t * 8 * a &&
       e.vfx.add.spawn({
         x: n.x + F.range(-0.4, 0.4),

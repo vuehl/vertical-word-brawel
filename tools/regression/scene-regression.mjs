@@ -10,14 +10,16 @@ const retained=['boss','altar','bill','nest','ditto','magnet','freechest','berry
 export async function reviewScenes({page,tap,dir,sleep}) {
   const report={mode:'Compiled WeChat bundle in Chrome fixture. Controlled zone traversal and isolated NPC transactions, not a natural playthrough or phone test.',removed,stages:[],summons:[]};
   const shot=async name=>{await sleep(400);await page.screenshot({path:path.join(dir,name+'.png')});};
-  async function checkBlessingArt() {
-    const {hero,cards}=await page.evaluate(()=>{
+  async function checkBlessingArt(boss=false) {
+    const {hero,cards}=await page.evaluate(boss=>{
       const hero=app.run.ui.root.querySelector('.zx-hud-name').textContent;
       return {hero,cards:[...app.run.ui.modalEl.querySelectorAll('[data-offer]')].map(card=>
-        card.querySelector('canvas.zx-glyph-image')?.parentNode.getAttribute('aria-label'))};
-    });
+        boss?card.querySelector('canvas.zx-glyph-image')?.parentNode.getAttribute('aria-label'):
+          card.querySelector('.zx-blessing-seal img')?.getAttribute('src'))};
+    },boss);
     assert.ok(cards.length>=3);
-    assert.deepEqual(cards,Array(cards.length).fill(hero));
+    if(boss)assert.deepEqual(cards,Array(cards.length).fill(hero));
+    else assert.ok(cards.every(src=>src?.includes('/items/')));
   }
   async function checkSpringShoes(choice) {
     const result=await page.evaluate(choice=>{
@@ -362,7 +364,7 @@ export async function reviewScenes({page,tap,dir,sleep}) {
         return old;
       });
       await page.waitForFunction(()=>app.run.ui.modalEl?.querySelector('[data-choice="showBlessing"]'));
-      await checkBlessingArt();
+      await checkBlessingArt(true);
       await shot('霸主祝福角色图');
       await tap('[data-choice="showBlessing"] [data-offer="0"]');
       await page.evaluate(id=>app.run.player.setSpecies(id),oldSpecies);

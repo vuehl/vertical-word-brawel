@@ -24,6 +24,7 @@
     "test:android-stability": "node tools/runtime-performance.mjs --android-performance --android-stability --stability-probes",
     "build:portal-screen": "node tools/art/portal-screen-atlas.mjs",
     "test:map-play": "node --test tools/tests/workshop-marbles.test.mjs && node tools/runtime-performance.mjs --map-play",
+    "test:carried-marble": "node --test tools/tests/carried-marble.test.mjs && node tools/smoke.mjs --phone-layout --software-render --desk2d --marble-blessing-only",
     "test:weather": "node tools/runtime-performance.mjs --weather-effects",
     "test:desk-navigation": "node --test tools/tests/desk-navigation.test.mjs && node tools/smoke.mjs --phone-layout --software-render --desk2d --desk-navigation-only",
     "test:ui-perf": "node tools/smoke.mjs --phone-layout --software-render --ui-perf",

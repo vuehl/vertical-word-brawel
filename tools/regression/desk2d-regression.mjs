@@ -21,6 +21,10 @@ export async function verifyDesk(page,dir){
      throw app.lastStartError||Error('Could not start the desk route');
  },mode);
  await page.waitForFunction(()=>app.run?.terrain?.desk2d&&app.run.time>.1,{timeout:30000});
+ if(process.argv.includes('--marble-blessing-only')){
+   await (await import('./carried-marble-regression.mjs')).verifyCarriedMarble(page,dir);
+   return;
+ }
  if(process.argv.includes('--desk-exterior-only')){
    const {verifyDeskExterior}=await import('./desk-exterior-regression.mjs');
    await verifyDeskExterior(page,dir);

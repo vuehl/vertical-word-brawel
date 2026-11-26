@@ -22,6 +22,7 @@ import {
   updateWorkshopScene
 } from "../world/paper-world.js";
 import {updateLooseMarbles} from "../world/workshop-marbles.js";
+import {renderCarriedMarble} from "./carried-marble.js";
 import {runLoadingSteps, waitForLoadingPaint} from "../performance/loading-work.js";
 import {performanceProfile} from "../performance/performance-profile.js";
 import {portalGuidance} from "../world/portal-guidance.js";
@@ -270,6 +271,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
         (this.vfx.ownFade = Math.max(0.1, Math.min(1, s.ownFxOpacity ?? s.fxOpacity ?? 1))),
         (r.floatText = s.floatText !== !1),
         (this.orbitals = new ql(this.vfx.combatLayer, this.vfx.atlas, 512, !1, e.shared)),
+        (this.carriedMarble = new ql(this.vfx.combatLayer, this.vfx.atlas, 1, !1, e.shared)),
         (this.orbitalsGlow = this.vfx.track(new ql(this.vfx.combatLayer, this.vfx.atlas, 512, !0, e.shared))),
         (this.research = { add: (e, t) => i.addResearch(e, t) }),
         (this.rerolls = 2 + i.lab(`reroll`)),
@@ -2820,6 +2822,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
         this.boss.kit && !this.boss.kit.dead && this.boss.kit.render(),
         this.boss.mech?.render(),
         this.player.render(this.visiblePlayerPosition()),
+        renderCarriedMarble(this),
         this.coop?.render(),
         this.mewtwo.active || this.allies.render(),
         showCombatFx && this.ult.render());
@@ -2895,6 +2898,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
         this.vfx.beams.mesh,
         this.vfx.text.mesh,
         this.orbitals.mesh,
+        this.carriedMarble.mesh,
         this.orbitalsGlow.mesh,
         this.projectiles?.pool.mesh,
         this.projectiles?.glow.mesh,

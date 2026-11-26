@@ -20,7 +20,7 @@ export async function warmCombatShaders(graphics){
 // pools survive area changes, and their simulation state never advances here.
 export function warmCombatDraw(run){
   const {projectiles,pickups,vfx}=run;
-  const pools=[projectiles.pool,projectiles.glow,pickups.pool,pickups.glow,run.orbitals,run.orbitalsGlow,
+  const pools=[projectiles.pool,projectiles.glow,pickups.pool,pickups.glow,run.orbitals,run.orbitalsGlow,run.carriedMarble,
     vfx.rings,vfx.beams,vfx.text,vfx.add,vfx.norm,vfx.ground,vfx.groundN];
   const crafted=vfx.crafted,family=crafted?.fireFamily;
   // compileAsync links programs but does not allocate instancing buffers. Draw

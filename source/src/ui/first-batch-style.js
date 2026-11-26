@@ -89,7 +89,7 @@ export const firstBatchStyle=`
 .zx .zx-blessing-dialog .zx-choice-list>button.zx-blessing-option{position:relative;display:flex;flex-direction:column;align-items:stretch;min-height:0;height:auto;padding:0;margin:0;gap:0;border:0;background:transparent;box-shadow:none}
 .zx .zx-blessing-row{position:relative;display:flex;flex-direction:row;align-items:center;width:100%;min-height:84px;padding:6px 1px 10px;gap:0}
 .zx .zx-blessing-seal{display:flex;align-items:center;justify-content:center;width:17%;flex:none}
-.zx .zx-blessing-seal>img{width:37px;height:37px;object-fit:contain;image-rendering:pixelated}
+.zx .zx-blessing-seal>img{width:52px;height:52px;max-width:94%;object-fit:contain;image-rendering:auto}
 .zx .zx-blessing-label{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start;justify-content:center;padding:0 8px;gap:3px}
 .zx .zx-blessing-label>b,.zx .zx-blessing-amount{font-size:18px;line-height:23px;font-weight:800;color:#293953}
 .zx .zx-blessing-amount{width:26%;flex:none;text-align:center;white-space:nowrap}

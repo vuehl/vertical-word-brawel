@@ -9,7 +9,7 @@ import {isPlayableHeroForm} from '../../source/src/data/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=104;
+export const assetPolicyVersion=105;
 const bareDesk=new Set(deskLayers(4,deskLayout.layers));
 const bakedDeskSources=new Set(deskLayout.layers.filter(l=>!bareDesk.has(l)).flatMap(l=>
   l.parts.map(([file])=>'assets/env/desk2d/'+file)));
