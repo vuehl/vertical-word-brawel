@@ -1518,7 +1518,7 @@ export function createZixingUI(app,api) {
     };
     const build=entries.length?el('section','zx-outcome-build',[
       el('b','','本局构筑'),el('div','zx-outcome-stash',[
-        buildGroup('招式',entries.filter(i=>i.move)),buildGroup('BUFF',entries.filter(i=>i.vitamin)),buildGroup('道具',entries.filter(i=>!i.move&&!i.vitamin)),
+        buildGroup('招式',entries.filter(i=>i.move)),buildGroup('BUFF（增益）',entries.filter(i=>i.vitamin)),buildGroup('道具',entries.filter(i=>!i.move&&!i.vitamin)),
       ]),
     ]):null;
     const receipt=el('div','zx-outcome-body',[

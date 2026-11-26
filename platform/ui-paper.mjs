@@ -409,8 +409,8 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'guide-distance':
-      cut(ctx,0,1,w,h-1,4,'#A3B6CD');
-      cut(ctx,0,0,w,h-2,4,'#E8EDF6');
+      cut(ctx,0,1,w,h-1,4,'#52627a');
+      cut(ctx,0,0,w,h-2,4,box.s.background);
       break;
     case 'arcade': {
       cut(ctx,2,5,w-2,h-5,12,'#384967');

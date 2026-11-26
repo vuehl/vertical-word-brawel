@@ -280,7 +280,7 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 .zx-compass .cp-ic{left:-16px;top:-16px;width:32px;height:32px;transform:none;animation:none;filter:none}
 .zx-compass .mapbadge{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;background:transparent;box-shadow:none}
 .zx-compass .mapbadge img,.zx-compass .mapbadge canvas{width:28px;height:28px;margin:0}
-.zx-combat-overlay .compass .cp-d{border:1px solid #e1cfad;border-radius:5px;background:#4d4a45;color:#fff7e5;font-size:11px;line-height:1.25;font-weight:700;padding:2px 6px;box-shadow:none}
+.zx-combat-overlay .compass .cp-d{border:1px solid #52627a;border-radius:5px;background:#273448;color:#fff;font-size:11px;line-height:1.25;font-weight:700;padding:2px 6px;box-shadow:none}
 .zx-compass .cp-d{top:31px}
 .zx-skill-slot{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:42px;height:42px;background:#e8ede530;border:1px solid #fffdf580;border-radius:50%;overflow:visible}
 .zx-skill-slot.filled{background:#f8f4e9f2;border-color:#fffdf5}

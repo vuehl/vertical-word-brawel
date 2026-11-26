@@ -1,4 +1,3 @@
-import {VFX_SCALE} from '../source/src/effects/visual-scale.js';
 function makeOverlay(renderer,filmPlacement) {
   const gl=renderer.getContext();
   function shader(type,source){
@@ -65,22 +64,24 @@ async function createFilm(files){
   const frames=JSON.parse(fs.readFileSync(manifest,'utf8'));
   const fps = 24;
   const designWidth = 540;
-  const landingFrame = 30;
+  // Distance behind the target and beyond its right edge in the unzoomed film.
+  const bagSetback = 35 / designWidth;
+  const bagSideOffset = 41 / designWidth;
+  // Keep the approved close-up framing independent of the bag's landing point.
+  const closeRightExtent = 113.1 / designWidth;
+  const closeTopExtent = 176 / designWidth;
   const pushStart = 27 / fps;
   const pushDuration = 0.52;
   const closestZoom = Math.max(...frames.map(frame => frame[7]));
-  function captureZoom(time){
+  function pushProgress(time){
     const u=Math.max(0,Math.min(1,(time-pushStart)/pushDuration));
-    return 1+(closestZoom-1)*u*u*(3-2*u);
+    return u*u*(3-2*u);
   }
-  // The original shot starts with its leading edge outside the portrait crop.
+  // Placement uses the original 540-wide portrait crop, including its transparent margins.
   const entrySpan = frames[0][8] - (frames[0][5] + frames[0][3]);
   function filmPlacement(frame,width,height,anchor,zoom){
     const footX=(1+anchor.x)*width/2,footY=(1-anchor.y)*height/2;
-    // A single scale for the whole take keeps the first exposure outside even
-    // when the chosen spirit is close to the far edge of a wide device.
-    // Cancel the zoom baked into this exposure and apply the current camera zoom.
-    const scale=Math.max(width/designWidth,(footX+1)/entrySpan)*zoom/frame[7]*VFX_SCALE;
+    const scale=width/designWidth*zoom/frame[7];
     return {
       left:Math.round(footX+(frame[5]-frame[8])*scale),
       top:Math.round(footY+(frame[6]-frame[9])*scale),
@@ -88,11 +89,11 @@ async function createFilm(files){
       height:Math.max(1,Math.round(frame[4]*scale))
     };
   }
-  const duration = frames.length / fps;
+  // Zero-based exposures: the escape holds the open bag through frame 95.
+  const escapeLastFrame = 95;
 
   function loader() {
     const pages = new Map();
-    const lastPage = frames[frames.length-1][0];
     let pending = 0;
     function fetch(id) {
       if (pages.has(id)) return pages.get(id);
@@ -120,7 +121,7 @@ async function createFilm(files){
       }).finally(()=>{pending--;});
       return record;
     }
-    function prepare(id) {
+    function prepare(id,lastPage) {
       for (const key of pages.keys()) if(key!==0 && key!==id && key!==id+1) pages.delete(key);
       for (let n=id;n<=Math.min(lastPage,id+1);n++) {
         if(!pages.has(n))fetch(n)?.promise.catch(()=>{});
@@ -137,12 +138,18 @@ async function createFilm(files){
     const b=run.capture.ball,oldStart=b.start,oldUpdate=b.update,oldCamera=run.updateCamera,oldRender=run.player.render;
     const camera=run.r.camera,base=camera.projectionMatrix.clone();
     const ground=run.player.pos.clone(),clicked=ground.clone(),projected=ground.clone();
+    const basePosition=camera.position.clone(),panOffset=ground.clone(),centerGround=ground.clone(),ray=ground.clone();
+    const bagAnchor={x:0,y:0};
+    let startDistance=0,closeDistance=0,bagOffsetX=0,closeX=0,closeY=0,shotX=0,shotY=0;
     const now=()=>env.performance.now();
     let active=false,frameIndex=0,heldFrame=null,heldImage=null,returnTime=null,filmZoom=1,modified=false,overlay;
     function restoreCamera(){
-      if(modified){camera.projectionMatrix.copy(base);camera.projectionMatrixInverse.copy(base).invert();modified=false;}
+      if(!modified)return;
+      camera.position.copy(basePosition);camera.updateMatrixWorld(true);
+      camera.projectionMatrix.copy(base);camera.projectionMatrixInverse.copy(base).invert();modified=false;
     }
     const progressFrames=[36,52,68];
+    let lastFrame=frames.length-1;
     let track=null,pips=[],shownResult=false;
     function showPips(step){
       for(let i=0;i<pips.length;i++){
@@ -155,6 +162,34 @@ async function createFilm(files){
       ground.set(enemy.x[index],enemy.y[index],enemy.z[index]);
       camera.updateMatrixWorld(true);
       clicked.copy(ground).project(camera);
+      // Measure the target at the instant of the throw, in fractions of screen width.
+      const radius=enemy.radius[index];
+      projected.setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar(radius).add(ground).project(camera);
+      const startHalfWidth=Math.max(.045,Math.abs(projected.x-clicked.x)/2);
+      // A horizontal pan puts the spirit at the same camera depth as a centre throw.
+      // This also preserves its apparent size on maps with a perspective camera.
+      centerGround.set(0,0,-.5).unproject(camera);
+      ray.set(0,0,.5).unproject(camera).sub(centerGround);
+      panOffset.set(0,0,0);
+      let centerHalfWidth=startHalfWidth;
+      if(Math.abs(ray.y)>1e-6){
+        centerGround.addScaledVector(ray,(ground.y-centerGround.y)/ray.y);
+        panOffset.copy(ground).sub(centerGround);
+        projected.setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar(radius).add(centerGround).project(camera);
+        centerHalfWidth=Math.max(.045,Math.abs(projected.x)/2);
+      }
+      startDistance=startHalfWidth+bagSideOffset;
+      closeDistance=(centerHalfWidth+bagSideOffset)*closestZoom;
+      bagOffsetX=startDistance;
+      // Fit only the destination. Clamping each axis during the push causes a dogleg.
+      const left=-1+2*(.025+centerHalfWidth*closestZoom);
+      const right=1-2*(.025+(centerHalfWidth+closeRightExtent)*closestZoom);
+      closeX=Math.max(left,Math.min(right,0));
+      const canvas=run.r.renderer.domElement;
+      const top=.95-2*(canvas.width/canvas.height)*closestZoom*closeTopExtent;
+      closeY=Math.max(-.54,Math.min(top,0));
+      shotX=clicked.x;
+      shotY=clicked.y;
       const result=oldStart.call(this,index,...args);
       if(this.active){
         track=run.ui.capEl?.querySelector('.zx-catch-track') || run.ui.capEl?.querySelector('.cap-plate');
@@ -165,6 +200,7 @@ async function createFilm(files){
           track.style.marginBottom='12%';
           track.style.width='252px';
         }
+        lastFrame=this.breakAt ? Math.min(escapeLastFrame,frames.length-1) : frames.length-1;
         shownResult=false;
         active=true;frameIndex=0;returnTime=null;filmZoom=1;
       }
@@ -172,20 +208,27 @@ async function createFilm(files){
     };
     run.updateCamera=function(dt){
       restoreCamera();oldCamera.call(this,dt);
+      if(!active && returnTime===null)return;
       let zoom=1,weight=1;
+      const push=pushProgress(b.t);
       if(active){
-        filmZoom=captureZoom(b.t);
+        filmZoom=1+(closestZoom-1)*push;
         zoom=filmZoom;
       }
-      else if(returnTime!==null){
+      else{
         const u=Math.min(1,(now()-returnTime)/260);
         if(u>=1){returnTime=null;return;}
         weight=(1-u)*(1-u);zoom=1+(filmZoom-1)*weight;
-      }else return;
+      }
+      basePosition.copy(camera.position);
+      camera.position.addScaledVector(panOffset,push*weight);
       camera.updateMatrixWorld(true);projected.copy(ground).project(camera);
       base.copy(camera.projectionMatrix);
-      const dx=(clicked.x-projected.x)*weight+(1-zoom)*projected.x;
-      const dy=(clicked.y-projected.y)*weight+(1-zoom)*projected.y;
+      shotX=clicked.x+(closeX-clicked.x)*push;
+      shotY=clicked.y+(closeY-clicked.y)*push;
+      bagOffsetX=startDistance+(closeDistance-startDistance)*push;
+      const dx=(shotX-projected.x)*weight+(1-zoom)*projected.x;
+      const dy=(shotY-projected.y)*weight+(1-zoom)*projected.y;
       const e=camera.projectionMatrix.elements;
       for(let i=0;i<16;i+=4){e[i]=zoom*e[i]+dx*e[i+3];e[i+1]=zoom*e[i+1]+dy*e[i+3];}
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();modified=true;
@@ -197,9 +240,8 @@ async function createFilm(files){
     b.update=function(dt){
       if(!active || !this.active)return oldUpdate.call(this,dt);
       this.t+=dt;
-      frameIndex=Math.min(frames.length-1,Math.floor(this.t*fps));
+      frameIndex=Math.min(lastFrame,Math.floor(this.t*fps));
       if(this.ball)this.ball.visible=false;
-      run.enemies.scale[this.index]=frameIndex<landingFrame ? this.scale0 : .001;
       const maxSteps=this.breakAt || progressFrames.length;
       while(this.shakes<maxSteps && frameIndex>=progressFrames[this.shakes]){
         run.audio.ballShake();
@@ -212,7 +254,7 @@ async function createFilm(files){
         else run.audio.ballClick();
         run.ui.captureResult(this.breakAt===0);
       }
-      if(this.t<duration)return;
+      if(this.t<(lastFrame+1)/fps)return;
       active=false;returnTime=now();
       this.ended=this.t;
       run.enemies.scale[this.index]=this.scale0;
@@ -226,14 +268,22 @@ async function createFilm(files){
     }
     function draw(renderer) {
       if (!active || !b.active) return false;
-      const frame=frames[frameIndex],page=media.prepare(frame[0]);
+      const frame=frames[frameIndex],page=media.prepare(frame[0],frames[lastFrame][0]);
       if (page) {
         heldFrame=frame;
         heldImage=page;
       }
       if (heldImage) {
         if (!overlay) overlay=makeOverlay(renderer,filmPlacement);
-        overlay.draw(heldFrame,heldImage,clicked,filmZoom);
+        const gl=renderer.getContext(),aspect=gl.drawingBufferWidth/gl.drawingBufferHeight;
+        const entry=Math.min(1,b.t/(12/fps));
+        const approach=1-entry*entry*(3-2*entry);
+        bagAnchor.x=shotX+2*bagOffsetX;
+        // Keep the incoming roll above the glyph as it crosses from offscreen.
+        bagAnchor.y=shotY+2*aspect*filmZoom*(bagSetback+.23*approach);
+        const outsideAtStart=clicked.x+2*startDistance+1-2*entrySpan/designWidth;
+        bagAnchor.x-=Math.max(0,outsideAtStart+.01)*approach;
+        overlay.draw(heldFrame,heldImage,bagAnchor,filmZoom);
       }
       return true;
     }

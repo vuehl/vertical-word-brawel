@@ -41,6 +41,45 @@ export async function reviewCaptureBag(page,dir){
     return {during,after,beforeCapture};
   });
   assert.deepEqual(trails,{during:[3,1],after:[0,0],beforeCapture:[3,1]});
+  const closeShots=await page.evaluate(async()=>{
+    const run=app.run,cam=run.r.camera,en=run.enemies,index=run.capture.index,ball=run.capture.ball;
+    const original=run.player.pos.clone().set(en.x[index],en.y[index],en.z[index]),samples=[];
+    const positions=[0,-.78,.78].flatMap(x=>[0,-.57,.64].map(y=>[x,y]));
+    positions.push([-1,-1],[-1,1],[1,-1],[1,1]);
+    // Include off-grid coordinates near the edges and between the preview positions.
+    for(let i=1;i<=18;i++)positions.push([1.92*((i*.61803398875)%1)-.96,1.84*((i*.41421356237)%1)-.92]);
+    for(const [x,y] of positions){
+      const point=original.clone().set(x,y,-.5).unproject(cam);
+      const ray=original.clone().set(x,y,.5).unproject(cam).sub(point);
+      point.addScaledVector(ray,(original.y-point.y)/ray.y);
+      en.x[index]=point.x;en.z[index]=point.z;
+      ball.start(index,false,()=>{},()=>{});
+      const path=[];
+      for(const frame of [0,12,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,52]){
+        ball.update(frame/24-ball.t);run.updateCamera(0);
+        const foot=point.clone().project(cam);
+        const edge=point.clone().setFromMatrixColumn(cam.matrixWorld,0).add(point).project(cam);
+        path.push({frame,values:[foot.x,foot.y,edge.x-foot.x]});
+      }
+      samples.push({x,y,path});
+      ball.update(2);
+      await new Promise(resolve=>setTimeout(resolve,280));
+      run.updateCamera(0);
+    }
+    en.x[index]=original.x;en.z[index]=original.z;
+    return samples;
+  });
+  const close=closeShots[0].path.at(-1).values;
+  for(const {x,y,path} of closeShots){
+    const start=path[0].values;
+    assert.ok(Math.hypot(start[0]-x,start[1]-y)<.0001,'The shot must start on the clicked spirit');
+    for(const {frame,values} of path){
+      const t=Math.max(0,Math.min(1,(frame-27)/(24*.52)));
+      const progress=t*t*(3-2*t);
+      assert.ok(values.every((v,i)=>Math.abs(v-(start[i]+(close[i]-start[i])*progress))<.0001),
+        'Both pan axes and zoom must reach the centre composition together at frame '+frame+' from '+[x,y]);
+    }
+  }
   for(const breakAt of [1,2,3,0]){
     await page.evaluate(breakAt=>{
       const run=app.run,ball=run.capture.ball;
@@ -53,8 +92,10 @@ export async function reviewCaptureBag(page,dir){
         ball.breakAt=breakAt;
       }
     },breakAt);
-    for(const frame of [0,29,30,35,36,51,52,67,68,75,76,95,96]){
-      const state=await page.evaluate(async({frame,breakAt})=>{
+    const endFrame=breakAt ? 96 : 111;
+    const pictures=breakAt===0 ? [7,30,52,76,110] : breakAt===1 ? [95] : [];
+    for(const frame of [0,7,29,30,35,36,51,52,67,68,75,76,95,...(breakAt?[]:[96,97,110]),endFrame]){
+      const state=await page.evaluate(async({frame,takePicture})=>{
         const run=app.run,ball=run.capture.ball;
         ball.update((frame+.001)/24-ball.t);
         if(!ball.active)return {active:false,state:run.state,capture:run.capture.state,outcomes:bagOutcomes};
@@ -63,7 +104,7 @@ export async function reviewCaptureBag(page,dir){
           if(run.sprites.getHeroGhostGlyph(16,'wind').zxGroup.mesh.count || run.vfx.crafted.windSkills.mesh.count)
             throw Error('Quick Attack is still visible in the capture close-up');
         }
-        if(!breakAt && [52,76,95].includes(frame)){
+        if(takePicture){
           const film='assets/vfx/capture-bag/';
           const files=GameGlobal.pokebonk.files;
           const frames=JSON.parse(wx.getFileSystemManager().readFileSync(files.pathFor(film+'frames.bin'),'utf8'));
@@ -80,9 +121,9 @@ export async function reviewCaptureBag(page,dir){
         }
         const track=run.ui.capEl.querySelector('.zx-catch-track');
         return {active:true,pips:track.querySelectorAll('.zx-catch-pips .on').length,
-          caption:track.querySelector('small').textContent,hidden:run.enemies.scale[ball.index]<.01};
-      },{frame,breakAt});
-      if(frame===96){
+          caption:track.querySelector('small').textContent,targetScale:run.enemies.scale[ball.index],initialScale:ball.scale0};
+      },{frame,takePicture:pictures.includes(frame)});
+      if(frame===endFrame){
         assert.equal(state.active,false);
         assert.equal(state.state,'play');
         if(breakAt)assert.deepEqual(state.outcomes,['escaped']);
@@ -90,12 +131,12 @@ export async function reviewCaptureBag(page,dir){
         continue;
       }
       assert.equal(state.active,true);
-      assert.equal(state.hidden,frame>=30);
+      assert.equal(state.targetScale,state.initialScale,'The captured spirit must stay visible beside the bag');
       assert.equal(state.pips,Math.min(breakAt||3,[36,52,68].filter(step=>step<=frame).length));
       if(frame>=76)assert.equal(state.caption,breakAt?'抓字失败':'抓字成功');
       else assert.match(state.caption,/抓字中/);
-      if(!breakAt && [52,76,95].includes(frame))await page.screenshot({path:path.join(dir,'福袋捕捉-'+frame+'.png')});
+      if(pictures.includes(frame))await page.screenshot({path:path.join(dir,'福袋捕捉-'+frame+'.png')});
     }
   }
-  console.log('Verified three escape stages, successful capture, flash result and settlement at four seconds.');
+  console.log('Verified three escape stages, successful capture, escape through frame 95 and successful capture through frame 110.');
 }

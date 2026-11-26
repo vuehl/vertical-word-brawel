@@ -2,7 +2,7 @@ import {albumTab,setAlbumTabActive} from './paper-system.js';
 
 const sections=[
   ['moves','招式','备选招式','标记想在本局习得或升级的招式。'],
-  ['vitamins','BUFF','BUFF','标记想在升级时优先选择的增益。'],
+  ['vitamins','BUFF','BUFF（增益）','标记想在升级时优先选择的增益。'],
   ['fusions','融合','融合路线','标记想在订书机合成的招式。'],
   ['items','道具','携带道具','标记想从商店购买或从扭蛋拾取的道具。'],
 ];

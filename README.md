@@ -31,7 +31,7 @@
 
 进化参考 GIF 和光环轨迹保存在 `resources/art/upgrade/`。`node tools/art/build-evolution-screen.mjs` 使用 NumPy、Pillow、SciPy 和 OpenCV 重建光效图集、曝光和动作时间轴。再运行 `npm run build:assets` 更新小游戏资源。演出在 4.2 秒内按比例播放参考片的 171 帧，采用居中近景和爆发前暗场，覆盖场景与 HUD，结束后恢复正常镜头。`npm run test:upgrade-effects` 验证普通升级、六条进化路径、不同竖屏尺寸、低帧率、特效设置和清理。
 
-福袋捕捉的图集和 96 帧位置表在 `resources/public/assets/vfx/capture-bag/`，随 `capture_bag` 微信分包加载。修改素材后运行 `npm run build:assets`，再用 `node tools/runtime-performance.mjs --capture-bag` 核对落袋、三格进度、开袋提示和第 4 秒结算。
+福袋捕捉的图集和 111 帧位置表在 `resources/public/assets/vfx/capture-bag/`，随 `capture_bag` 微信分包加载。福袋落在字灵右后方，镜头从第 27 帧起用 0.52 秒完成平移和缩放。三格进度在第 36、52、68 帧推进，第 76 帧显示结果。按 24 帧/秒、从第 0 帧起算，挣脱播完第 95 帧后结算，成功播完第 110 帧后结算。修改素材后运行 `npm run build:assets`，用 `node tools/runtime-performance.mjs --capture-bag` 核对 31 个位置的构图、三种挣脱阶段和成功收尾。
 
 完整的常规、粗体中文字库以无损 WOFF 存放在 `resources/public/fonts/swei/`。构建会从中提取游戏用字，生成供微信加载的两份 TTF 子集。
 
