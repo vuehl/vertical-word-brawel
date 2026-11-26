@@ -141,6 +141,22 @@ export async function verifyEntry({page,tap,dir}){
   await tap('.zc-character[data-species="86"]');await screen('collection-unlock');
   await tap('[data-action="collection-back"]');await tap('[data-filter="owned"]');
   assert.equal(await page.evaluate(()=>app.screen.querySelectorAll('.zc-character').length),2);
+  for(const [id,word] of [[16,'风'],[4,'炎']]){
+    await tap('.zc-character[data-species="'+id+'"]');
+    await page.waitForFunction(word=>app.screen.querySelector('.journey-scene')?.dataset.word===word&&
+      !!app.screen._journeyIdle,{},word);
+    const clip=await page.evaluate(()=>{
+      const {cx,cy}=app.screen._journeyIdle(inspected.env.performance.now()),view=inspected.env.entryViewport();
+      return {x:Math.round(view.x+cx)-40,y:Math.round(view.y+cy)-40,width:80,height:80};
+    });
+    const first=await page.screenshot({clip});
+    let moved=false;
+    for(let i=0;i<8&&!moved;i++){
+      await new Promise(resolve=>setTimeout(resolve,175));
+      moved=!Buffer.from(await page.screenshot({clip})).equals(first);
+    }
+    assert.ok(moved,word+'的选角预览应持续播放待机动画');
+  }
   await tap('[data-action="collection-moves"]');await screen('collection-moves');
   assert.deepEqual(await page.evaluate(()=>[...app.screen.querySelectorAll('[data-move-group]')].map(b=>b.dataset.moveGroup)),['kit','line','fusion']);
   await tap('[data-action="view-ultimate"]');

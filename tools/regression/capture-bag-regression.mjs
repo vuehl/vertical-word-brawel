@@ -62,7 +62,7 @@ export async function reviewCaptureBag(page,dir){
         path.push({frame,values:[foot.x,foot.y,edge.x-foot.x]});
       }
       samples.push({x,y,path});
-      ball.update(2);
+      ball.update(111/24-ball.t+.01);
       await new Promise(resolve=>setTimeout(resolve,280));
       run.updateCamera(0);
     }
@@ -92,15 +92,15 @@ export async function reviewCaptureBag(page,dir){
         ball.breakAt=breakAt;
       }
     },breakAt);
-    const endFrame=breakAt ? 96 : 111;
-    const pictures=breakAt===0 ? [7,30,52,76,110] : breakAt===1 ? [95] : [];
-    for(const frame of [0,7,29,30,35,36,51,52,67,68,75,76,95,...(breakAt?[]:[96,97,110]),endFrame]){
+    const endFrame=111;
+    const pictures=breakAt===0 ? [70,73,76,80,85,90,94,110] : breakAt===1 ? [95,99,103,110] : [];
+    for(const frame of [0,7,29,30,35,36,51,52,66,68,70,73,75,76,80,83,85,87,89,90,92,94,95,96,99,103,110,endFrame]){
       const state=await page.evaluate(async({frame,takePicture})=>{
         const run=app.run,ball=run.capture.ball;
         ball.update((frame+.001)/24-ball.t);
-        if(!ball.active)return {active:false,state:run.state,capture:run.capture.state,outcomes:bagOutcomes};
+        if(!ball.active)return {active:false,state:run.state,capture:run.capture.state,outcomes:bagOutcomes,alive:run.enemies.alive[ball.index]};
+        run.updateCamera(0);run.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
         if(frame===0){
-          run.renderWorld(0);
           if(run.sprites.getHeroGhostGlyph(16,'wind').zxGroup.mesh.count || run.vfx.crafted.windSkills.mesh.count)
             throw Error('Quick Attack is still visible in the capture close-up');
         }
@@ -108,7 +108,7 @@ export async function reviewCaptureBag(page,dir){
           const film='assets/vfx/capture-bag/';
           const files=GameGlobal.pokebonk.files;
           const frames=JSON.parse(wx.getFileSystemManager().readFileSync(files.pathFor(film+'frames.bin'),'utf8'));
-          const page=files.pathFor(film+'p'+String(frames[frame][0]).padStart(2,'0')+'.webp');
+          const page=files.pathFor(film+'p'+String(frames[Math.min(frame,ball.breakAt?95:110)][0]).padStart(2,'0')+'.webp');
           const render=()=>{
             run.updateCamera(0);run.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
           };
@@ -121,22 +121,30 @@ export async function reviewCaptureBag(page,dir){
         }
         const track=run.ui.capEl.querySelector('.zx-catch-track');
         return {active:true,pips:track.querySelectorAll('.zx-catch-pips .on').length,
-          caption:track.querySelector('small').textContent,targetScale:run.enemies.scale[ball.index],initialScale:ball.scale0};
+          caption:track.querySelector('.zx-catch-title b').textContent,visualScale:ball.spiritPose?.scale??1,
+          strokeCount:ball.spiritStrokes?.length||0,removed:ball.spiritPose?.removed||0,foreground:!!ball.escapeForeground,
+          targetScale:run.enemies.scale[ball.index],initialScale:ball.scale0};
       },{frame,takePicture:pictures.includes(frame)});
       if(frame===endFrame){
         assert.equal(state.active,false);
         assert.equal(state.state,'play');
         if(breakAt)assert.deepEqual(state.outcomes,['escaped']);
-        else assert.equal(state.capture,'done');
+        else {assert.equal(state.capture,'done');assert.equal(state.alive,0);}
         continue;
       }
       assert.equal(state.active,true);
-      assert.equal(state.targetScale,state.initialScale,'The captured spirit must stay visible beside the bag');
+      if(pictures.includes(frame) && frame>=80)assert.ok(state.strokeCount>0,'Soul heads must use authored character strokes');
+      assert.equal(state.targetScale,state.initialScale,'Capture must not modify the simulation scale');
+      if(breakAt&&frame>=96&&frame<110){
+        assert.ok(state.visualScale>0&&state.visualScale<=1,'Pop scale at frame '+frame);
+        assert.equal(state.foreground,true,'Escaping actor must have a foreground draw instance');
+      }else if(frame<=76||(breakAt&&frame>=110))assert.equal(state.visualScale,1);
+      else assert.equal(state.visualScale,state.removed>=state.strokeCount?0:1,'Remaining strokes stay fully visible at '+frame+' '+JSON.stringify(state));
       assert.equal(state.pips,Math.min(breakAt||3,[36,52,68].filter(step=>step<=frame).length));
-      if(frame>=76)assert.equal(state.caption,breakAt?'抓字失败':'抓字成功');
+      if(frame>=96)assert.equal(state.caption,breakAt?'抓字失败':'抓字成功');
       else assert.match(state.caption,/抓字中/);
-      if(pictures.includes(frame))await page.screenshot({path:path.join(dir,'福袋捕捉-'+frame+'.png')});
+      if(pictures.includes(frame))await page.screenshot({path:path.join(dir,'福袋捕捉-'+(breakAt?'挣脱':'成功')+'-'+frame+'.png')});
     }
   }
-  console.log('Verified three escape stages, successful capture, escape through frame 95 and successful capture through frame 110.');
+  console.log('Verified three escape stages, successful capture, escape through frame 95 and successful capture through frame 110, with escape return after the common sequence.');
 }

@@ -3,19 +3,45 @@ import {heroActionCatalog} from '../actors/hero-action-catalog.js';
 import {drawAppearanceGlyph,tintGlyph} from './collection-art.js';
 import {paintLoadingBackdrop} from './menu-scene.js';
 
-// Each shot looks at the same point on the desk (the player's feet).
-const selectionShot={scale:2.10,origin:174,height:.216,actor:.345};
-const shots={
-  home:{scale:2.26,origin:172,height:.477,actor:.365},
-  choose:selectionShot,
-  map:selectionShot,
-};
-function between(a,b,t){
-  const mix=k=>a[k]+(b[k]-a[k])*t;
-  return {scale:mix('scale'),origin:mix('origin'),height:mix('height'),actor:mix('actor')};
-}
+// Each shot anchors the portrait ring to the same point on the desk.
+const shots={home:0,choose:1,map:1};
+const showsIdlePortrait=shot=>shot==='home'||shot==='choose';
+const mix=(from,to,t)=>from+(to-from)*t;
 const reduced=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 const ease=t=>t*t*(3-2*t);
+const portraitTilt=.22;
+const portraitLayerScale=1.6;
+
+// Measure the tilted silhouette so asymmetric strokes and transparent atlas
+// margins do not pull the standing figure to one side of its ground ring.
+function portraitBounds(image,columns=1,count=1){
+  const span=80,cell=116,sourceCell=image.width/columns,sample=document.createElement('canvas');
+  sample.width=columns*cell;sample.height=Math.ceil(count/columns)*cell;
+  const ctx=sample.getContext('2d');
+  for(let tile=0;tile<count;tile++){
+    const col=tile%columns,row=Math.floor(tile/columns);
+    ctx.save();ctx.translate((col+.5)*cell,(row+.5)*cell);ctx.rotate(portraitTilt);
+    ctx.drawImage(image,col*sourceCell,row*sourceCell,sourceCell,sourceCell,-span/2,-span/2,span,span);
+    ctx.restore();
+  }
+  const pixels=ctx.getImageData(0,0,sample.width,sample.height).data;
+  const poses=Array.from({length:count},(_,tile)=>{
+    const left=tile%columns*cell,top=Math.floor(tile/columns)*cell;
+    let bottom=-1,minX=cell,maxX=-1;
+    for(let y=0;y<cell;y++){
+      for(let x=0;x<cell;x++){
+        if(pixels[((top+y)*sample.width+left+x)*4+3]<64)continue;
+        bottom=y;
+        minX=Math.min(minX,x);maxX=Math.max(maxX,x);
+      }
+    }
+    return bottom<0?{centerX:0,bottom:.5,width:0}:{
+      centerX:((minX+maxX+1)/2-cell/2)/span,bottom:(bottom+1-cell/2)/span,width:(maxX-minX+1)/span,
+    };
+  });
+  // One fit for the entire idle cycle preserves the size of the animated sprite.
+  return {poses,width:Math.max(...poses.map(pose=>pose.width))};
+}
 function animate(ms,draw,valid){
   const start=performance.now();
   return new Promise(resolve=>{
@@ -40,11 +66,11 @@ export function journeyScene(){
   node.dataset.journeyBackdrop='true';
   let desk=null,deskReady=null,pose=shots.home,target='',identity='',word='',motion=0,presentation=0,leaving=false;
   let poster=null,posterLoad=null;
-  let moving=false,blending=false,actorLayer=null;
+  let moving=false,blending=false,actorLayer=null,actorBounds;
   let idle=null,idleSheet=null,webFrame=0;
   function prepareIdle(id,look){
     const catalog=heroActionCatalog[id];
-    if(!catalog)return;
+    if(!catalog){idle=null;idleSheet=null;return;}
     if(idle?.id===id&&idle.look===look)return;
     const state=idle={id,look,playback:{},frame:-1,columns:catalog.columns};
     idleSheet=null;
@@ -57,6 +83,7 @@ export function journeyScene(){
         tinted.getContext('2d').drawImage(image,0,0);
         idleSheet=tintGlyph(tinted,look);
       }else idleSheet=image;
+      state.bounds=portraitBounds(idleSheet,catalog.columns,catalog.clips.idle.count);
       paint();
     };
     image.onerror=()=>{if(idle===state)idle=null;};
@@ -79,26 +106,30 @@ export function journeyScene(){
     image.src='assets/ui-paper/loading-poster.webp';
   }
   function drawActor(ctx,cx,cy,size,frame){
-    ctx.save();ctx.translate(cx,cy+size*.31);ctx.scale(1,.90);
+    const floorY=cy+size*.30;
+    ctx.save();ctx.translate(cx,floorY);ctx.scale(1,.50);
     ctx.beginPath();ctx.arc(0,0,size*.36,0,Math.PI*2);ctx.lineWidth=size*.065;
     ctx.strokeStyle='rgba(216,246,228,.86)';ctx.stroke();ctx.restore();
+    const bounds=frame?idle.bounds:actorBounds;
+    const pose=bounds.poses[frame?.index??0];
+    const naturalScale=frame?.renderScale??1;
+    const span=size*Math.min(naturalScale,.60/(bounds.width||1));
+    // The front rim stays visible below the feet. The whole figure is centered
+    // horizontally, including poses whose lowest stroke is off to one side.
+    ctx.save();ctx.translate(cx-span*pose.centerX,floorY+size*.05-span*pose.bottom);ctx.rotate(portraitTilt);
     if(frame){
-      const cell=idleSheet.width/idle.columns,tile=frame.index,span=size*frame.renderScale;
-      ctx.save();ctx.translate(cx,cy);ctx.rotate(.22);
+      const cell=idleSheet.width/idle.columns,tile=frame.index;
       ctx.drawImage(idleSheet,tile%idle.columns*cell,Math.floor(tile/idle.columns)*cell,cell,cell,
-        -span/2,size*.44-span,span,span);
-      ctx.restore();
-      return;
-    }
-    ctx.save();ctx.translate(cx,cy);ctx.rotate(.22);
-    ctx.drawImage(actor,-size/2,-size/2,size,size);ctx.restore();
+        -span/2,-span/2,span,span);
+    }else ctx.drawImage(actor,-span/2,-span/2,span,span);
+    ctx.restore();
   }
   function idleLayer(now){
     const frame=heroActionFrame(idle.playback,idle.id,'idle',now);
     if(idle.frame!==frame.index){
       if(!idle.layer){
         idle.layer=document.createElement('canvas');
-        idle.layer.width=idle.layer.height=Math.ceil(actor.width*1.4);
+        idle.layer.width=idle.layer.height=Math.ceil(actor.width*portraitLayerScale);
       }
       const tile=idle.layer,ctx=tile.getContext('2d');
       ctx.clearRect(0,0,tile.width,tile.height);
@@ -111,14 +142,19 @@ export function journeyScene(){
     if(!node.isConnected)return;
     const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
     const d=Math.min(2,window.devicePixelRatio||1),margin=window.nativeUI?96:0;
-    const scale=Math.max(w/390,(h+margin)/844)*pose.scale,cx=w*.5,cy=h*pose.height;
-    const x=cx-scale*pose.origin,y=cy-scale*370,size=Math.min(w*pose.actor,h*.21);
+    // Center the portrait in the space between the header and the album (.journey-air).
+    const compact=h<=680;
+    const airHeight=compact?Math.max(66,h*.19):Math.min(w*.45,h*.274);
+    const cx=w*.5,cy=mix(h*.477,(compact?54:62)+airHeight/2,pose);
+    const size=mix(Math.min(w*.365,h*.21),Math.min(w*.345,h*.21,airHeight/1.3),pose);
+    const scale=Math.max(w/390,(h+margin)/844)*mix(2.26,2.10,pose);
+    const x=cx-scale*mix(172,174,pose),y=cy-scale*370;
     const page=node.parentNode;
     page._journeyIdle=null;
-    const showIdle=idleSheet&&node.dataset.shot==='home'&&!moving&&!blending&&!reduced();
+    const showIdle=word&&idleSheet&&showsIdlePortrait(node.dataset.shot)&&!moving&&!blending&&!reduced();
     if(window.nativeUI&&showIdle&&desk){
       page._journeyCamera=null;
-      const camera={desk,x,y,width:390*scale,height:844*scale,cx,cy,size:size*1.4};
+      const camera={desk,x,y,width:390*scale,height:844*scale,cx,cy,size:size*portraitLayerScale};
       let last;
       page._journeyIdle=now=>{
         const actor=idleLayer(now);
@@ -131,11 +167,11 @@ export function journeyScene(){
     if(window.nativeUI&&(moving||blending)&&desk&&node.dataset.shot!=='entry'){
       if(word&&!actorLayer){
         actorLayer=document.createElement('canvas');
-        actorLayer.width=actorLayer.height=Math.ceil(actor.width*1.4);
+        actorLayer.width=actorLayer.height=Math.ceil(actor.width*portraitLayerScale);
         drawActor(actorLayer.getContext('2d'),actorLayer.width/2,actorLayer.height/2,actor.width);
       }
       // The native compositor can move these two textures without repainting the album.
-      page._journeyCamera={desk,x,y,width:390*scale,height:844*scale,actor:word&&actorLayer,cx,cy,size:size*1.4};
+      page._journeyCamera={desk,x,y,width:390*scale,height:844*scale,actor:word&&actorLayer,cx,cy,size:size*portraitLayerScale};
       return;
     }
     page._journeyCamera=null;
@@ -154,7 +190,8 @@ export function journeyScene(){
     if(desk?.width&&desk.complete!==false)ctx.drawImage(desk,x,y,390*scale,844*scale);
     if(showIdle){
       const layer=idleLayer(performance.now());
-      ctx.drawImage(layer,cx-size*.7,cy-size*.7,size*1.4,size*1.4);
+      const side=size*portraitLayerScale;
+      ctx.drawImage(layer,cx-side/2,cy-side/2,side,side);
       if(!window.nativeUI&&!webFrame)webFrame=window.requestAnimationFrame(()=>{webFrame=0;paint();});
     }else if(word)drawActor(ctx,cx,cy,size);
     window.invalidateUI?.();
@@ -163,7 +200,7 @@ export function journeyScene(){
     if(!instant&&shots[target]===shots[name]){target=name;return;}
     const ticket=++motion,from=pose,to=shots[name];target=name;
     if(instant){moving=false;pose=to;return;}
-    return animate(520,t=>{moving=t<1;pose=between(from,to,ease(t));paint();},()=>ticket===motion&&node.isConnected);
+    return animate(520,t=>{moving=t<1;pose=mix(from,to,ease(t));paint();},()=>ticket===motion&&node.isConnected);
   }
   function fade(page,from,to,ms){
     const ticket=++presentation,controls=Array.from(page.children).filter(el=>el!==node);
@@ -204,9 +241,16 @@ export function journeyScene(){
     if(!sameScene)page.insertBefore(node,page.firstChild);
     prepare();
     const key=(c?.word||'')+'/'+(look||'');
-    if(identity!==key){word=c?.word||'';if(word)drawAppearanceGlyph(actor,word,c.tone,look,true);actorLayer=null;identity=key;}
+    if(identity!==key){
+      word=c?.word||'';
+      if(word){
+        drawAppearanceGlyph(actor,word,c.tone,look,true);
+        actorBounds=portraitBounds(actor);
+      }
+      actorLayer=null;identity=key;
+    }
     node.dataset.word=word;node.dataset.look=look||'normal';node.dataset.shot=page.dataset.page;
-    if(page.dataset.page==='home'&&c&&!reduced())prepareIdle(c.id,look);
+    if(showsIdlePortrait(page.dataset.page)&&c&&!reduced())prepareIdle(c.id,look);
     if(page.dataset.page==='map'||page.dataset.page==='entry')preparePoster();
     if(page.dataset.page==='entry'){++motion;moving=false;}
     else moveTo(page.dataset.page,!sameScene);

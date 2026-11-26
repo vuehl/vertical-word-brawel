@@ -6,6 +6,8 @@ import {STAMPEDE_FLAME} from "../effects/stylized-effect-atlas.js";
 import {em} from "./field-effects.js";
 import {specialNames} from "../data/form-copy.js";
 import {starterUltimate} from "../data/starter-characters.js";
+import {fireRingGrowth} from "../effects/fire-footprint.js";
+import {SPECIAL_ACTORS} from "../performance/spawn-budget.js";
 
 const windOrbitDuration = 2.5;
 
@@ -5426,6 +5428,26 @@ function Oh(e, t, n, r, i, a, o = {}) {
     t.has(n) || (t.add(n), Dh(e, c, a, o));
   }
 }
+function castStarterFireRing(ctx, x, y, z) {
+  const {run} = ctx, enemies = run.enemies;
+  const radius = 12 * ctx.R, duration = .6;
+  const hit = new Map(), candidates = [];
+  const specialFlags = (SPECIAL_ACTORS & ~R.Remote) | R.Elite;
+  let previousRadius = 0;
+  run.vfx.crafted.fireFamily.ring(x, y, z, radius, duration, 1);
+  run.animate(duration, progress => {
+    const outer = radius * fireRingGrowth(progress);
+    // Sweep from the previous rim so a slow frame cannot jump over a target.
+    const inner = previousRadius * .85;
+    for (const id of enemies.within(x, z, outer, candidates)) {
+      if (hit.get(id) === enemies.gen[id]) continue;
+      if (Math.hypot(enemies.x[id] - x, enemies.z[id] - z) + enemies.radius[id] < inner) continue;
+      hit.set(id, enemies.gen[id]);
+      Dh(ctx, id, enemies.flags[id] & specialFlags ? 1.3 : 4, {status:'burn', statusChance:.9, knock:4});
+    }
+    previousRadius = outer;
+  });
+}
 function kh(e, t, n, r, i) {
   let a = e.enemies;
   for (let e of a.within(t, n, r)) {
@@ -5990,15 +6012,16 @@ var J = {
       dur: [1.2, 1.8, 3],
       tint: 16738858,
       cast(e) {
-        // Keep the original fire family's ring, crack, meteor and damage
-        // schedule. Only the presentation calls use the authored sequences.
         const t=e.run, art=t.vfx.crafted.fireFamily, n=e.x, i=e.z;
         J.fire(t.audio,1,.2);
         const rings=e.tier>=1?3:1;
         for(let index=0;index<rings;index++)t.later(.18+index*.22,()=>{
           const p=t.player.pos, ringRadius=8+index*3, radius=ringRadius*e.R;
-          art.ring(p.x,p.y,p.z,ringRadius,.6);
-          q(e,p.x,p.z,radius,1.3,{status:'burn',statusChance:.9,knock:4});
+          if(e.tier===0)castStarterFireRing(e,p.x,p.y,p.z);
+          else {
+            art.ring(p.x,p.y,p.z,ringRadius,.6);
+            q(e,p.x,p.z,radius,1.3,{status:'burn',statusChance:.9,knock:4});
+          }
           for(let j=0;j<8;j++){
             const angle=j/8*H+index, x=p.x+Math.cos(angle)*radius*.6,z=p.z+Math.sin(angle)*radius*.6;
             t.zones.add({x,z,y:U(t,x,z),r:2.2,life:4,tick:.2,dmg:e.dmg*.18,type:'fire',cls:'special',status:'burn',chance:.5,slot:8,color:Y.fire,authoredFire:true});

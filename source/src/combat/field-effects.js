@@ -1,4 +1,5 @@
 import {VFX_SCALE} from '../effects/visual-scale.js';
+import {EnemyShotArt} from '../effects/enemy-shot.js';
 import {typeColors as Ni, typeNames as Pi, gameData as k} from "../data/game-database.js";
 import {random as F, I, Fl, ql} from "../effects/battle-particles.js";
 import {R, Tf, Ef, rf, lf} from "./enemy-population.js";
@@ -84,6 +85,7 @@ var Yp = 3e3,
       ((this.run = e),
         (this.pool = new ql(e.vfx.combatLayer, e.vfx.atlas, Yp, !1, e.r.shared)),
         (this.glow = new ql(e.vfx.combatLayer, e.vfx.atlas, Yp, !0, e.r.shared)));
+      this.enemyArt = new EnemyShotArt(e.vfx.combatLayer, Yp);
     }
     perSlot = new Int32Array(16);
     ownShots = 0;
@@ -163,7 +165,7 @@ var Yp = 3e3,
         shape: I.Soft,
         from: e,
       }),
-        this.run.vfx.flash(i.x[e], o, i.z[e], Ni[a], 1.2, 0.12));
+        this.run.vfx.flash(i.x[e], o, i.z[e], 0x819de7, 1.2, 0.12));
     }
     fromBody(e, t, n) {
       let r = this.run.enemies,
@@ -181,12 +183,14 @@ var Yp = 3e3,
       for (let e = 0; e < this.n; e++)
         this.alive[e] &&
           this.flags[e] & 1 &&
-          (this.run.vfx.burst(this.x[e], this.y[e], this.z[e], this.color[e], 3, 2, I.Spark, 0.3, 0.2),
+          (this.enemyArt.hit(this, e),
           this.remove(e));
     }
     impact(e) {
       (this.flags[e] & 16
         ? this.explode(e)
+        : this.flags[e] & em.Hostile
+          ? this.enemyArt.hit(this, e)
         : qp(this.fx[e]).hitCover
           ? qp(this.fx[e]).hit(this.run,this.x[e],this.y[e],this.z[e])
         : Jp(this.fx[e]) === 'ember'
@@ -226,6 +230,7 @@ var Yp = 3e3,
       }
     }
     step(e) {
+      this.enemyArt.update(e);
       let t = this.run,
         n = t.enemies,
         r = t.player,
@@ -310,7 +315,7 @@ var Yp = 3e3,
           this.remove(c);
           continue;
         }
-        if (this.trail[c] > 0 && Math.random() < o * this.trail[c]) {
+        if (!(l & em.Hostile) && this.trail[c] > 0 && Math.random() < o * this.trail[c]) {
           let e = qp(this.fx[c]);
           e.trail
             ? e.trail(t, this.x[c], this.y[c], this.z[c], this.color[c], this.size[c])
@@ -331,7 +336,7 @@ var Yp = 3e3,
             (e.hitCover(this.x[c], this.y[c], this.z[c], this.rad[c]) ||
               t.terrain.height(this.x[c], this.z[c]) > this.y[c] + 0.4)
           ) {
-            (t.vfx.burst(this.x[c], this.y[c], this.z[c], this.color[c], 4, 3, I.Spark, 0.35, 0.25),
+            (this.enemyArt.hit(this, c),
               this.remove(c));
             continue;
           }
@@ -356,7 +361,7 @@ var Yp = 3e3,
               source ?? -1,
               l & 1024 ? { floor: 0.02 } : {},
             ) && !lightShot && r.shove(n, i, 3.5),
-              t.vfx.burst(this.x[c], this.y[c], this.z[c], this.color[c], 8, 4),
+              this.enemyArt.hit(this, c),
               this.remove(c));
           }
           continue;
@@ -452,6 +457,7 @@ var Yp = 3e3,
     }
     render() {
       (this.pool.begin(), this.glow.begin());
+      this.enemyArt.begin();
       this.run.vfx.crafted.windMoves?.render();
       this.run.vfx.crafted.windReplacements?.begin();
       this.run.vfx.crafted.windSkills?.begin();
@@ -461,6 +467,10 @@ var Yp = 3e3,
         if (!this.alive[n] || (t && !(this.flags[n] & 1))) continue;
         if(!this.fx[n]&&!this.run.sprites.visible(this.x[n],this.y[n],this.z[n],Math.max(8,this.size[n]*2*VFX_SCALE)))continue;
         let r = !(this.flags[n] & 1);
+        if (!r && this.enemyArt.loaded) {
+          this.enemyArt.draw(this, n);
+          continue;
+        }
         this.glow.fade = r ? e : 1;
         let i = r ? Math.min(this.size[n], im) : this.size[n],
           a = Math.min(1, this.life[n] * 4),
@@ -510,9 +520,11 @@ var Yp = 3e3,
       }
       this.run.vfx.crafted.windReplacements?.end();
       this.run.vfx.crafted.windSkills?.end();
+      this.enemyArt.end();
       (this.pool.end(), this.glow.end());
     }
     clear() {
+      this.enemyArt.reset();
       (this.alive.fill(0),
         (this.n = 0),
         (this.free.length = 0),

@@ -1,5 +1,5 @@
 import {VFX_SCALE} from './visual-scale.js';
-import {fireFootprints,fireFootprintGLSL,fireSurfaceGeometry} from './fire-footprint.js';
+import {fireFootprints,fireFootprintGLSL,fireSurfaceGeometry,fireRingGrowth} from './fire-footprint.js';
 import {B as InstanceAttribute,H as InstancedMesh,ct as ShaderMaterial,j as DynamicDraw,b as CanvasTexture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import atlas from '../../../resources/public/assets/vfx/fire-family.json' with {type:'json'};
 import stormRings from '../../../resources/public/assets/vfx/fire-storm-rings.json' with {type:'json'};
@@ -288,8 +288,8 @@ export class HandDrawnFireFamily{
   if(neighbor&&this.clock-neighbor.seen<.08)return;
   this.touch(zone,'crack',zone.x,zone.y+.10,zone.z,artRadius*2,{mode:1,height:artRadius*2,alpha:.52,clarity:1,cycleHz:.65,priority:0,visualScale:zone.visualScale});
  }
- ring(x,y,z,radius,life=.6){
-  this.play('ring',x,y+.14,z,radius*2.1,{life,mode:1,grow:true,alpha:.85,clarity:2,priority:2});
+ ring(x,y,z,radius,life=.6,visualScale=VFX_SCALE){
+  this.play('ring',x,y+.14,z,radius*2.1,{life,mode:1,grow:true,alpha:.85,clarity:2,priority:2,visualScale});
  }
  crack(x,y,z,size=2.5){this.play('crack',x,y+.12,z,size,{mode:1,height:size,life:.65,loop:true,alpha:.54,clarity:1,priority:0});}
  meteor(x,y,z,delay){
@@ -408,7 +408,7 @@ export class HandDrawnFireFamily{
    const spec=storm??(foreground?mushroomAtlas:atlas).clips[e.clip],t=clamp(e.age/e.life),ease=1-(1-t)**2;
    const first=spec.first+(storm?stormPageStart:0),visualScale=e.visualScale??VFX_SCALE;
    const biteHit=e.bite?Math.max(0,1-Math.abs(e.age-.14)/.06):0;
-   const growth=e.spoke?Math.min(1,.38+t*2.8):e.bite?1.08-.13*smooth(e.age/.14)+biteHit*.07:e.mushroomPart==='stem'?.72+.28*clamp(e.age/.18):e.mushroomPart==='cap'?.30+.70*(1-(1-clamp(e.age/.28))**3):e.grow?.18+.82*Math.sin(Math.min(1,t*1.5)*Math.PI/2):e.scaleFrom!=null?e.scaleFrom+(e.scaleTo-e.scaleFrom)*ease:1;
+   const growth=e.spoke?Math.min(1,.38+t*2.8):e.bite?1.08-.13*smooth(e.age/.14)+biteHit*.07:e.mushroomPart==='stem'?.72+.28*clamp(e.age/.18):e.mushroomPart==='cap'?.30+.70*(1-(1-clamp(e.age/.28))**3):e.grow?fireRingGrowth(t):e.scaleFrom!=null?e.scaleFrom+(e.scaleTo-e.scaleFrom)*ease:1;
    const vertical=e.bite?growth*(1-biteHit*.24):e.mushroomPart==='stem'?.16+.84*(1-(1-clamp(e.age/.30))**2):e.mushroomPart==='cap'?.50+.50*(1-(1-clamp(e.age/.32))**2):growth;
    // Brief anticipation, fast closure, then a short recoil and continuous fade.
    const progress=e.bite?(e.age<.065?e.age/.065*.045:e.age<.14?.045+smooth((e.age-.065)/.075)*.365:.41+(e.age-.14)/.29*.59):e.hold?(t<.58?t/.58*.35:.35+(t-.58)/.42*.65):t;

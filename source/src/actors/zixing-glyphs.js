@@ -1,7 +1,8 @@
 import {glyphAtlasReady,glyphCanvas,glyphWordForSpecies,isOriginalHeroGlyph,loadGlyphImage} from './paper-glyph-art.js';
 import {createGlyphBatches} from './glyph-batches.js';
 import {glyphCatalog} from './glyph-catalog.js';
-import {createHeroPoseTexture,loadedHeroRig,prepareHeroStrokes} from './hero-poses.js';
+import {createHeroPoseTexture,loadedHeroRig,loadedCaptureStrokeSheet,prepareHeroStrokes} from './hero-poses.js';
+import {captureStrokeCanvases} from './capture-strokes.js';
 import {heroActionCatalog} from './hero-action-catalog.js';
 import {heroActionFrame} from './hero-actions.js';
 import {applyShelfMaterial} from '../world/desk-shelf.js';
@@ -76,6 +77,25 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     monsterTexture.needsUpdate=true;
   });
   monsterTexture.userData.ready=monsterReady;
+  const captureStrokes=new Map();
+  run.sprites.getCaptureStrokes=(species,word)=>{
+    const key=species+":"+word;
+    if(captureStrokes.has(key))return captureStrokes.get(key);
+    const hero=loadedCaptureStrokeSheet(species,word);
+    let strokes;
+    if(hero && hero.rig.word===word){
+      const rects=hero.rig.groups.flatMap(group=>group.strokes.map(s=>[s.sx,s.sy,s.w,s.h,s.x-hero.rig.frame.left-hero.rig.frame.width/2,s.y-hero.rig.frame.top-hero.rig.frame.height/2]));
+      strokes=captureStrokeCanvases(hero.image,rects,false,(80/96)/Math.max(hero.rig.frame.width,hero.rig.frame.height));
+    }else{
+      const entry=textures.get(word),image=monsterTexture.image;
+      if(!entry?.frames || !image)return null;
+      const rects=entry.frames.map(([u,v,ur,vt])=>[Math.round(u*image.width),Math.round((1-vt)*image.height),
+        Math.round((ur-u)*image.width),Math.round((vt-v)*image.height)]);
+      strokes=captureStrokeCanvases(image,rects,true);
+    }
+    if(strokes.length)captureStrokes.set(key,strokes);
+    return strokes;
+  };
   const {columns,rows,size}=glyphCatalog.monsterAtlas;
   for(const {word,firstTile,strokes} of Object.values(glyphCatalog.enemies)){
     const frames=[];
@@ -136,7 +156,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     }else if(batch.zxOriginalGlyph){
       // Match the appearance swatches on both static and animated cutouts.
       const recolor=batch.id!==batch.sid?'c.rgb=c.brg;':'if(vFx.z>8.9 || (vFx.z>4.9 && vFx.z<6.5))c.rgb=c.gbr;';
-      m.fragmentShader=`uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;${recolor}c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}`;
+      m.fragmentShader=`uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;${recolor}c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));c.a*=1.-clamp(-vFx.y,0.,1.);gl_FragColor=c;}`;
       m.transparent=true;m.depthWrite=false;
       maskSceneInk(m);
     }
@@ -169,6 +189,14 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     const batch=skin(get(id,false,'hero-ghost-'+style),glyphWordForSpecies(id),{...entry,ghost:style,rect:frame.rect});
     batch.zxGhostScale=frame.renderScale;
     return batch;
+  };
+  let captureEntry;
+  run.sprites.getCaptureHeroGlyph=(id,word,removed)=>{
+    const rig=loadedCaptureStrokeSheet(id,word)?.rig;
+    if(!rig)return null;
+    captureEntry??=createHeroPoseTexture(Texture,colorSpace);
+    captureEntry.draw(rig,undefined,removed);
+    return skin(get(id,false,'capture-strokes'),word,captureEntry);
   };
   let playerEntry;
   run.sprites.getPlayerGlyph=(id,speciesId,pose,frame)=>{
@@ -220,7 +248,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   for(const batch of run.sprites.batches.values())skin(batch);
   run.sprites.clear=()=>{
     disposed=true;unusedWarmGlyphs.clear();clear();batches.clear();
-    playerEntry?.texture.dispose();playerEntry=null;monsterTexture.dispose();
+    playerEntry?.texture.dispose();playerEntry=null;captureEntry?.texture.dispose();captureEntry=null;captureStrokes.clear();monsterTexture.dispose();
     for(const {texture} of animations.values())texture.dispose();
     animations.clear();
     for(const page of pages)page.texture.dispose();

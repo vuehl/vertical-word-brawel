@@ -1922,7 +1922,7 @@ var Gl = class {
       this.text.spawn(e,t,n,(style?'-':'')+Wl(r),i,size,style,r,.5);
     }
     playerDamage(x,y,z,loss) {
-      if(this.enabledText && loss>0)this.text.spawn(x,y,z,'-'+Wl(loss),0xff4948,.79,HERO_HURT_LABEL,loss);
+      if(this.enabledText && loss>0)this.text.spawn(x,y,z,'-'+Wl(loss),0xff4948,.79,HERO_HURT_LABEL,loss,.5);
     }
     heal(e, t, n, r) {
       this.enabledText && this.text.spawn(e, t, n, `+` + Math.max(1, Math.round(r)), 3993696, 0.56);

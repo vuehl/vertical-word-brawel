@@ -45,7 +45,7 @@ export async function reviewCaptureRewards(page){
   assert.deepEqual(captured,{species:16,roster:[4,16],shiny:true,copyCard:false});
 
   await page.evaluate(()=>app.screen.querySelector('[data-species="16"]').click());
-  assert.match(await page.evaluate(()=>app.screen.querySelector('[data-action="collection-looks"]').textContent),/换色/);
+  assert.equal(await page.evaluate(()=>app.screen.querySelector('[data-action="collection-looks"]').getAttribute('aria-label')),'外观');
   await page.evaluate(()=>app.screen.querySelector('[data-action="collection-looks"]').click());
   await page.evaluate(()=>app.screen.querySelector('[data-look="shiny"]').click());
   await page.evaluate(()=>app.screen.querySelector('[data-action="collection-next"]').click());

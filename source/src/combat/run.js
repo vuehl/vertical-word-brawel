@@ -312,6 +312,10 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
       if(!this.changingZone)await waitForLoadingPaint(this.r.renderer);
       check();
       if(!this.fireTexturesPrepared){
+        if(await this.projectiles.enemyArt.ready){
+          check();
+          this.r.renderer.initTexture(this.projectiles.enemyArt.texture);
+        }
         // A teammate or mimic can use any fire move. For solo characters,
         // warm their starting kit and loadout, one texture per loading frame.
         const kit=this.player.roster?.kit??[];
@@ -2874,6 +2878,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
         this.sprites.clear());
       this.sprites.standIn.dispose();
       this.vfx.crafted.dispose();
+      this.projectiles?.enemyArt.dispose();
       this.vfx.upgrade.dispose();
       this.vfx.danger.dispose();
       this.vfx.combatLayer.removeFromParent();

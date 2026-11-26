@@ -12,6 +12,7 @@ import {enemyShadow} from "../performance/effect-budget.js";
 import {actorMetrics} from "../actors/actor-metrics.js";
 import {moveEnemyPastProps, obstacleJumpSpeed} from "../world/paper-collision.js";
 import {Xc, Qc} from "../actors/sprite-assets.js";
+import {glyphCatalog} from "../actors/glyph-catalog.js";
 
 var nf = [`tm-swords`, `tm-agility`, `tm-iron`, `tm-thunder`, `tm-payday`],
   rf = {
@@ -1154,10 +1155,21 @@ var Df = 0.4,
         n = e.focusIdx;
       const speech = e.mapEvents?.speech;
       const trackSpeech = speech?.beginFrame();
+      const ball=e.capBall;
       (e.enemyShadowCells??=new Set()).clear();
       for (let r = this.firstAlive; r < this.n; r++) {
         if (!this.alive[r] || this.flags[r] & 32768) continue;
         if (e.dragonHd?.hides(r) || e.dragonHdPending?.id === r) continue;
+        const pose=ball?.index===r ? ball.spiritPose : null;
+        const capturing=ball?.captureFilmActive && ball.index===r;
+        if(capturing){
+          const strokes=e.sprites.getCaptureStrokes(this.species[r],this.glyphWords[r]);
+          const original=e.sprites.get(this.species[r],false,this.glyphWords[r]);
+          const visibleCount=original.zxStrokeFrames?remainingStrokes(original.zxStrokeFrames.length,this.hp[r],this.maxHp[r]):strokes?.length;
+          ball.spiritStrokes=strokes&&original.zxStrokeFrames?strokes.filter(stroke=>stroke.captureFrameIndex<visibleCount):strokes;
+          ball.spiritStrokeCount=ball.spiritStrokes?.length||glyphCatalog.enemies[this.glyphWords[r]]?.strokes||4;
+        }
+        if(pose && pose.scale<=.001)continue;
         let s = this.lodDt[r],
           separation = this.flags[r] & 8192 ? 0 : 6,
           c = this.x[r] + (s > 0 ? (this.vx[r] + this.kx[r] + this.sepX[r]*separation) * s : 0),
@@ -1171,7 +1183,12 @@ var Df = 0.4,
         // Cull by the actual camera and body/shadow bounds. A fixed player
         // radius can hide visible enemies on tall screens; old saves no longer
         // decide visibility. Simulation, targeting and warnings run separately.
-        if (!t.visible(c, this.y[r] + this.hgt[r] * 0.5, l, 2 + Math.max(this.hgt[r], this.radius[r] * 2.4)))
+        let drawY=this.y[r];
+        if(pose){
+          c=pose.position.x;drawY=pose.position.y;l=pose.position.z;
+        }
+        if(capturing)drawY+=.035*Math.sin(ball.t*3.2);
+        if (!t.visible(c, drawY + this.hgt[r] * 0.5, l, 2 + Math.max(this.hgt[r], this.radius[r] * 2.4)))
           continue;
         let u = this.flags[r],
           d = t.get((u & 131072 ? Qc : 0) + this.species[r], false, this.glyphWords[r]),
@@ -1185,6 +1202,8 @@ var Df = 0.4,
           : this.atkAnim[r] > 0
             ? ((m = `attack`), (h = 1 - this.atkAnim[r] / 0.4), (g = !0))
             : (this.frozen[r] > 0 || this.sleep[r] > 0) && ((m = `idle`), (h = 0));
+        if(capturing){m='idle';h=this.anim[r]+ball.t;g=false;}
+        if(capturing&&pose?.removed&&!d.zxStrokeFrames)d=t.getCaptureHeroGlyph(d.id,this.glyphWords[r],pose.removed)||d;
         let _ =
           u & 131072
             ? 1
@@ -1279,38 +1298,61 @@ var Df = 0.4,
         let w = f ? 1 - this.dying[r] / 0.35 : 0;
         let glyphRect=d.zxGlyphRect;
         if(d.zxStrokeFrames){
-          const remaining=remainingStrokes(d.zxStrokeFrames.length,this.hp[r],this.maxHp[r]);
+          const visible=remainingStrokes(d.zxStrokeFrames.length,this.hp[r],this.maxHp[r]);
+          const removed=pose?.removed??0;
+          // Empty/fully covered atlas increments do not shift subsequent stroke identities.
+          const remaining=removed?Math.max(0,ball.spiritStrokes?.[removed-1]?.captureFrameIndex??(visible-removed)):visible;
           if(!remaining||f)continue;
           glyphRect=d.zxStrokeFrames[remaining-1];
         }
         if (trackSpeech && !f && d.ready && !(u & (R.Object | R.Capture | R.Treasure | R.Boss | R.Alpha | R.Totem | R.Summoner))) {
           speech.observe(r,c,this.y[r]+Math.max(0,this.scale[r]-1.2)*.1+.08,l,d);
         }
-        if (
-          (d.push(
-            c,
-            this.y[r] + Math.max(0, this.scale[r] - 1.2) * 0.1,
-            l,
-            m,
-            h,
-            p,
-            this.scale[r],
-            f ? this.flash[r] : 0,
-            w,
-            _,
-            this.squash[r],
-            v,
-            y,
-            b,
-            x,
-            g,
-            0,
-            glyphRect,
-          ),
-          !f && S !== 2 && enemyShadow(e,c,l,!!(u & wf)))
-        ) {
+        const drawIndex=d.push(
+          c,
+          drawY + Math.max(0, this.scale[r] - 1.2) * 0.1,
+          l,
+          m,
+          h,
+          p,
+          this.scale[r]*(pose?.scale??1),
+          f ? this.flash[r] : 0,
+          w,
+          _,
+          this.squash[r],
+          v,
+          y,
+          b,
+          x,
+          g,
+          0,
+          glyphRect,
+          1-.16*(pose?.stretch??0),
+          1+.20*(pose?.stretch??0),
+        );
+        if(capturing && drawIndex!==undefined){
+          const buffer=d.zxGroup||d;
+          ball.captureQuad={
+            pos:buffer.aPos.array.slice(drawIndex*3,drawIndex*3+3),
+            size:buffer.aSize.array.slice(drawIndex*2,drawIndex*2+2),
+            squash:buffer.aFx.array[drawIndex*4+3],
+            lean:d.material.uniforms.uLean.value
+          };
+          if(ball.breakAt && ball.t*24>=96 && ball.t*24<110){
+            const attributes={};
+            for(const key of ['aPos','aSize','aUV','aFx','aTint','aLook']){
+              const attribute=buffer[key],offset=drawIndex*attribute.itemSize;
+              attributes[key]=attribute.array.slice(offset,offset+attribute.itemSize);
+            }
+            ball.escapeForeground={batch:buffer,attributes};
+            // Only the pass in front of the bag draws this instance.
+            buffer.aSize.array[drawIndex*2]=buffer.aSize.array[drawIndex*2+1]=0;
+          }else ball.escapeForeground=null;
+        }
+        if(!f && S !== 2 && enemyShadow(e,pose?this.x[r]:c,pose?this.z[r]:l,!!(u & wf))) {
           let n = this.gnd[r];
-          t.shadows.push(c, Number.isNaN(n) ? e.terrain.surface(c, l) : n, l, this.radius[r] * 2.4);
+          const sx=pose?this.x[r]:c,sz=pose?this.z[r]:l;
+          t.shadows.push(sx, Number.isNaN(n) ? e.terrain.surface(sx, sz) : n, sz, this.radius[r] * 2.4*(pose?.scale??1));
         }
       }
       speech?.endFrame();

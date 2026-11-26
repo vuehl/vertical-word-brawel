@@ -92,7 +92,7 @@ try{
   }
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
-  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects','--difficulty'].includes(arg));
+  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects','--difficulty','--enemy-shot'].includes(arg));
   const repeatableMap=!!iphone||deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--crowded-steering','--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
@@ -136,6 +136,9 @@ try{
   }else if(process.argv.includes('--ultimate-cast')){
     const {reviewUltimateCast}=await import('./regression/ultimate-cast-regression.mjs');
     await reviewUltimateCast(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--capture-universal')){
+    const {reviewCaptureUniversal}=await import('./regression/capture-universal-regression.mjs');
+    await reviewCaptureUniversal(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--capture-bag')){
     const {reviewCaptureBag}=await import('./regression/capture-bag-regression.mjs');
     await reviewCaptureBag(page,dir);assert.deepEqual(errors,[]);
@@ -145,6 +148,9 @@ try{
   }else if(process.argv.includes('--late-combat-feedback')){
     const {reviewLateFeedback}=await import('./regression/late-combat-feedback.mjs');
     await reviewLateFeedback(page);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--enemy-shot')){
+    const {reviewEnemyShot}=await import('./regression/enemy-shot-regression.mjs');
+    await reviewEnemyShot(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--combat-audio')){
     const {reviewCombatAudio}=await import('./regression/combat-audio-regression.mjs');
     await reviewCombatAudio(page);assert.deepEqual(errors,[]);

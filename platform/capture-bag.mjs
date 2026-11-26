@@ -1,3 +1,7 @@
+import {captureSoulTiming,removedCaptureStrokes} from '../source/src/actors/capture-soul-timing.js';
+import {escapeMotion} from './capture-escape-motion.mjs';
+import {createSmoothSoulDrain} from './capture-soul-drain.mjs';
+
 function makeOverlay(renderer,filmPlacement) {
   const gl=renderer.getContext();
   function shader(type,source){
@@ -26,7 +30,7 @@ function makeOverlay(renderer,filmPlacement) {
     tex=page=null;
   }
   return {
-    draw(frame,img,anchor,zoom){
+    draw(frame,img,anchor,zoom,dynamic=false){
       const [,x,y,w,h]=frame;
       const W=gl.drawingBufferWidth,H=gl.drawingBufferHeight;
       const rect=filmPlacement(frame,W,H,anchor,zoom);
@@ -36,7 +40,7 @@ function makeOverlay(renderer,filmPlacement) {
         gl.enable(gl.BLEND);gl.blendEquation(gl.FUNC_ADD);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
         tex??=gl.createTexture();
         gl.useProgram(program);gl.bindVertexArray(vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);
-        if(img!==page){
+        if(dynamic || img!==page){
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,true);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
@@ -91,6 +95,7 @@ async function createFilm(files){
   }
   // Zero-based exposures: the escape holds the open bag through frame 95.
   const escapeLastFrame = 95;
+  const escapeEndFrame = 110;
 
   function loader() {
     const pages = new Map();
@@ -140,6 +145,98 @@ async function createFilm(files){
     const ground=run.player.pos.clone(),clicked=ground.clone(),projected=ground.clone();
     const basePosition=camera.position.clone(),panOffset=ground.clone(),centerGround=ground.clone(),ray=ground.clone();
     const bagAnchor={x:0,y:0};
+    let soulDrain,effectOverlay,foreground;
+    function disposeForeground(){
+      if(!foreground)return;
+      foreground.mesh.dispose();foreground.mesh.geometry.dispose();foreground.mesh.material.dispose();foreground=null;
+    }
+    function drawEscapeForeground(renderer){
+      const snapshot=b.escapeForeground;
+      if(!snapshot||!b.breakAt||b.t*24<96||b.t*24>=110)return;
+      const batch=snapshot.batch,source=batch.material;
+      if(!foreground||foreground.source!==source){
+        disposeForeground();
+        const geometry=batch.mesh.geometry.clone(),material=source.clone();
+        material.uniforms={...source.uniforms};material.depthTest=false;material.depthWrite=false;
+        // The world pass writes an ink mask into alpha. This pass composites
+        // straight onto the screen, so the glyph needs normal alpha blending.
+        material.blending=1; // THREE.NormalBlending
+        const attrs=[['aPos','iPos'],['aSize','iSize'],['aUV','iUV'],['aFx','iFx'],['aTint','iTint'],['aLook','iLook']];
+        for(const [key,name] of attrs){const original=batch[key];geometry.setAttribute(name,new original.constructor(new Float32Array(original.itemSize),original.itemSize));}
+        const mesh=new batch.mesh.constructor(geometry,material,1);mesh.count=1;mesh.frustumCulled=false;
+        const scene=new run.sprites.scene.constructor();scene.add(mesh);
+        foreground={source,mesh,scene,attrs};
+      }
+      for(const [key,name] of foreground.attrs){const a=foreground.mesh.geometry.getAttribute(name);a.array.set(snapshot.attributes[key]);a.needsUpdate=true;}
+      const autoClear=renderer.autoClear;
+      try{renderer.autoClear=false;renderer.render(foreground.scene,camera);}
+      finally{renderer.autoClear=autoClear;renderer.resetState();}
+    }
+    const quadOrigin=ground.clone(),quadRight=ground.clone(),quadUp=ground.clone(),quadPoint=ground.clone();
+    function captureProjection(aspect){
+      const quad=b.captureQuad;
+      if(!quad)return [];
+      const sizeX=quad.size[0]*(1+quad.squash*.35),sizeY=quad.size[1]*(1-quad.squash*.3);
+      quadOrigin.set(...quad.pos);
+      quadPoint.setFromMatrixColumn(camera.matrixWorld,2).multiplyScalar(.25+quad.size[1]*.05);
+      quadOrigin.add(quadPoint);
+      quadRight.setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar(sizeX);
+      const lean=quad.lean;
+      quadUp.setFromMatrixColumn(camera.matrixWorld,1).multiplyScalar(lean);quadUp.y+=1-lean;
+      quadUp.normalize().multiplyScalar(sizeY);
+      stream.from.copy(quadOrigin).addScaledVector(quadUp,.5).project(camera);
+      quadPoint.copy(quadOrigin).addScaledVector(quadUp,.5).add(quadRight).project(camera);
+      stream.glyphWidth=Math.abs(quadPoint.x-stream.from.x)*designWidth/(2*filmZoom);
+      return (b.spiritStrokes||[]).map(stroke=>{
+        quadPoint.copy(quadOrigin).addScaledVector(quadRight,stroke.captureOffsetX||0).addScaledVector(quadUp,.5-(stroke.captureOffsetY||0)).project(camera);
+        return {x:(quadPoint.x-stream.from.x)*designWidth/(2*filmZoom),y:-(quadPoint.y-stream.from.y)*designWidth/(2*aspect*filmZoom)};
+      });
+    }
+    const pose={position:ground.clone(),scale:1,stretch:0};
+    const stream={from:ground.clone(),toX:0,toY:0,phase:0,glyphWidth:0};
+    // The open seam sits about 47 design pixels above the bag's ground anchor.
+    function updateSpirit(){
+      const frame=b.t*fps, escaping=b.breakAt && frame>=96;
+      b.spiritPose=null;stream.phase=0;
+      if(frame<=76 || (escaping && frame>=110))return;
+      const aspect=run.r.renderer.domElement.width/run.r.renderer.domElement.height;
+      const phase=Math.min(1,(frame-76)/18);
+      const jump=escaping?Math.min(1,(frame-96)/14):0;
+      const pop=escaping?escapeMotion(jump):null;
+      const glyph=run.sprites.get(run.enemies.species[b.index],false,run.enemies.glyphWords[b.index]);
+      const halfHeight=Math.max(1.9,Math.min(2.55,glyph.bodyHeight(1)*1.3))*b.scale0/2;
+      stream.from.setFromMatrixColumn(camera.matrixWorld,1).multiplyScalar(.65);
+      stream.from.y+=.35;
+      stream.from.normalize().multiplyScalar(halfHeight).add(ground);
+      stream.from.y+=.08+.035*Math.sin(b.t*3.2);
+      // Project the full glyph quad width before moving or shrinking any stroke.
+      projected.setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar(halfHeight*2).add(stream.from).project(camera);
+      stream.from.project(camera);
+      stream.glyphWidth=Math.abs(projected.x-stream.from.x)*designWidth/(2*filmZoom);
+      stream.toX=shotX+2*(bagOffsetX+3/designWidth*filmZoom);
+      stream.toY=shotY+2*aspect*filmZoom*(bagSetback+47/designWidth);
+      stream.phase=escaping?0:phase;
+      pose.position.copy(ground);
+      if(escaping){
+        // Animate the visible centre from the intake, not the character's feet.
+        quadPoint.copy(stream.from).unproject(camera).sub(ground);
+        pose.position.copy(stream.from);
+        pose.position.x=stream.toX+(stream.from.x-stream.toX)*pop.advance;
+        pose.position.y=stream.toY+(stream.from.y-stream.toY)*pop.advance+2*aspect*filmZoom*pop.lift/designWidth;
+        pose.position.unproject(camera).addScaledVector(quadPoint,-pop.scale);
+        // The billboard's centre also moves with its launch/landing stretch.
+        projected.setFromMatrixColumn(camera.matrixWorld,1).multiplyScalar(.65);projected.y+=.35;
+        projected.normalize().multiplyScalar(halfHeight*pop.scale*.20*pop.stretch);
+        pose.position.sub(projected);
+        pose.position.y-=(.08+.035*Math.sin(b.t*3.2))*(1-pop.scale);
+      }
+      const count=b.spiritStrokeCount||4,time=phase*captureSoulTiming.duration;
+      pose.removed=escaping?0:removedCaptureStrokes(time,count);
+      pose.fade=0;
+      pose.scale=escaping?pop.scale:pose.removed>=count?0:1;
+      pose.stretch=escaping?pop.stretch:0;
+      b.spiritPose=pose;
+    }
     let startDistance=0,closeDistance=0,bagOffsetX=0,closeX=0,closeY=0,shotX=0,shotY=0;
     const now=()=>env.performance.now();
     let active=false,frameIndex=0,heldFrame=null,heldImage=null,returnTime=null,filmZoom=1,modified=false,overlay;
@@ -159,6 +256,7 @@ async function createFilm(files){
     }
     b.start=function(index,...args){
       const enemy=run.enemies;
+      b.spiritStrokes=null;b.spiritStrokeCount=0;b.captureQuad=null;b.escapeForeground=null;
       ground.set(enemy.x[index],enemy.y[index],enemy.z[index]);
       camera.updateMatrixWorld(true);
       clicked.copy(ground).project(camera);
@@ -192,6 +290,8 @@ async function createFilm(files){
       shotY=clicked.y;
       const result=oldStart.call(this,index,...args);
       if(this.active){
+        this.captureFilmActive=true;
+        this.spiritPose=null;stream.phase=0;
         track=run.ui.capEl?.querySelector('.zx-catch-track') || run.ui.capEl?.querySelector('.cap-plate');
         pips=track?track.querySelectorAll('.zx-catch-pips i, .cap-pips i'):[];
         showPips(0);
@@ -232,6 +332,7 @@ async function createFilm(files){
       const e=camera.projectionMatrix.elements;
       for(let i=0;i<16;i+=4){e[i]=zoom*e[i]+dx*e[i+3];e[i+1]=zoom*e[i+1]+dy*e[i+3];}
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();modified=true;
+      if(active)updateSpirit();
     };
     run.player.render=function(...args){
       if(!active)return oldRender.apply(this,args);
@@ -248,22 +349,29 @@ async function createFilm(files){
         run.ui.captureShake(++this.shakes);
         showPips(this.shakes);
       }
-      if(!shownResult && frameIndex>=76){
+      if(!shownResult && this.t*fps>=96){
         shownResult=true;
         if(this.breakAt)run.audio.ballOpen();
         else run.audio.ballClick();
         run.ui.captureResult(this.breakAt===0);
       }
-      if(this.t<(lastFrame+1)/fps)return;
+      if(this.t<((this.breakAt?escapeEndFrame:lastFrame)+1)/fps)return;
       active=false;returnTime=now();
+      this.spiritPose=null;stream.phase=0;
       this.ended=this.t;
       run.enemies.scale[this.index]=this.scale0;
       releasePages();
       this.finish();
     };
     function releasePages(){
+      b.captureFilmActive=false;
       heldFrame=heldImage=null;
       overlay?.releasePage();
+      effectOverlay?.releasePage();
+      disposeForeground();
+      soulDrain=null;
+      b.spiritStrokes=b.captureQuad=b.escapeForeground=null;
+      b.spiritStrokeCount=0;
       media.idle();
     }
     function draw(renderer) {
@@ -284,17 +392,31 @@ async function createFilm(files){
         const outsideAtStart=clicked.x+2*startDistance+1-2*entrySpan/designWidth;
         bagAnchor.x-=Math.max(0,outsideAtStart+.01)*approach;
         overlay.draw(heldFrame,heldImage,bagAnchor,filmZoom);
+        drawEscapeForeground(renderer);
+        if(stream.phase>0 && stream.phase<1){
+          if(!effectOverlay)effectOverlay=makeOverlay(renderer,filmPlacement);
+          const origins=captureProjection(aspect);
+          const anchor={x:(stream.from.x+stream.toX)/2,y:(stream.from.y+stream.toY)/2};
+          const dx=(stream.toX-stream.from.x)*designWidth/(2*filmZoom);
+          const dy=-(stream.toY-stream.from.y)*designWidth/(2*aspect*filmZoom);
+          soulDrain??=createSmoothSoulDrain();
+          const {canvas,extent}=soulDrain.draw(stream.phase,dx,dy,b.spiritStrokes,stream.glyphWidth,origins);
+          effectOverlay.draw([0,0,0,canvas.width,canvas.height,-canvas.width/2,-canvas.height/2,
+            canvas.width/extent,0,0],canvas,anchor,filmZoom,true);
+        }
       }
       return true;
     }
     function detach(){
       restoreCamera();
+      b.spiritPose=null;
       b.start=oldStart;
       b.update=oldUpdate;
       run.updateCamera=oldCamera;
       run.player.render=oldRender;
       releasePages();
       overlay?.dispose();
+      effectOverlay?.dispose();
     }
     return {ball:b,draw,detach,get track(){return track;}};
   };

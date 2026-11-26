@@ -33,7 +33,7 @@ export class WindAtlasBatch {
     const plane = new PlaneGeometry(1,1);
     this.origin = new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
     this.pose = new InstanceAttribute(new Float32Array(capacity*3),3).setUsage(DynamicDraw);
-    this.heading = new InstanceAttribute(new Float32Array(capacity*2),2).setUsage(DynamicDraw);
+    this.heading = new InstanceAttribute(new Float32Array(capacity*3),3).setUsage(DynamicDraw);
     plane.setAttribute('originSize',this.origin);
     plane.setAttribute('frameAlpha',this.pose);
     plane.setAttribute('heading',this.heading);
@@ -42,16 +42,18 @@ export class WindAtlasBatch {
       vertexShader:`
         attribute vec4 originSize;
         attribute vec3 frameAlpha;
-        attribute vec2 heading;
+        attribute vec3 heading;
         varying vec2 vUv;
         varying float alpha;
         void main(){
           vec4 p=viewMatrix*vec4(originSize.xyz,1.);
           vec2 offset=(uv-vec2(.5,frameAlpha.z))*originSize.w;
           if(dot(heading,heading)>.0001){
-            vec2 forward=(viewMatrix*vec4(heading.x,0.,heading.y,0.)).xy;
-            float angle=atan(forward.y,forward.x)-1.5707963;
-            offset=mat2(cos(angle),sin(angle),-sin(angle),cos(angle))*offset;
+            vec2 forward=(viewMatrix*vec4(heading,0.)).xy;
+            if(dot(forward,forward)>.000001){
+              vec2 dir=normalize(forward);
+              offset=mat2(dir.y,-dir.x,dir.x,dir.y)*offset;
+            }
           }
           p.xy+=offset;
           gl_Position=projectionMatrix*p;
@@ -78,17 +80,21 @@ export class WindAtlasBatch {
     this.clear();
     scene.add(this.mesh);
   }
-  push(x,y,z,size,frame,alpha,pivot=.5,dx=0,dz=0) {
+  push(x,y,z,size,frame,alpha,pivot=.5,dx=0,dz=0,dy=0) {
     const i=this.mesh.count;
     if(!this.loaded || i>=this.origin.count || alpha<=0) return;
     this.origin.setXYZW(i,x,y,z,size * VFX_SCALE);
     this.pose.setXYZ(i,frame,alpha,pivot);
-    this.heading.setXY(i,dx,dz);
+    this.heading.setXYZ(i,dx,dy,dz);
     this.mesh.count++;
   }
   end() {
     this.mesh.visible=this.mesh.count>0;
-    if(this.mesh.visible)this.origin.needsUpdate=this.pose.needsUpdate=this.heading.needsUpdate=true;
+    if(this.mesh.visible)for(const attribute of [this.origin,this.pose,this.heading]){
+      attribute.clearUpdateRanges();
+      attribute.addUpdateRange(0,this.mesh.count*attribute.itemSize);
+      attribute.needsUpdate=true;
+    }
   }
   clear() { this.mesh.count = 0; this.mesh.visible = false; }
   dispose() {

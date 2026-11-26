@@ -959,7 +959,7 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .screen.zx [data-print-angle="-3"]{transform:rotate(-3deg)}
 .screen.zx [data-print-angle="-2"]{transform:rotate(-2deg)}
 .screen.zx.zc-library.journey-prep>.zx-header,.screen.zx.zx-route-page.journey-prep>.zx-header{height:62px;min-height:62px;padding-bottom:5px}
-.screen.zx.zc-library.journey-prep .journey-air,.screen.zx.zx-route-page.journey-prep .journey-air{height:21vh;min-height:92px;max-height:178px}
+.screen.zx.zc-library.journey-prep .journey-air,.screen.zx.zx-route-page.journey-prep .journey-air{height:45vw;min-height:0;max-height:27.4vh}
 .screen.zx.journey-prep .route-binding,.screen.zx.journey-prep .selection-binding{flex:1;min-height:0;margin:0;background:#FBF5E8;padding:9px 13px 5px 7px}
 .screen.zx.zc-library.journey-prep .selection-binding .zc-library-paper,.screen.zx.zc-library.journey-prep .selection-binding .zc-filter,.screen.zx.zc-library.journey-prep .selection-binding .zc-filters{background:transparent}
 .screen.zx.journey-prep .route-binding .zx-station-list{flex:1;min-height:0}
@@ -982,7 +982,7 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .screen.zx.journey-prep .route-binding .zx-album-mode:disabled h3{color:#726A6B}
 @media(max-height:680px){
  .screen.zx.zc-library.journey-prep>.zx-header,.screen.zx.zx-route-page.journey-prep>.zx-header{height:54px;min-height:54px}
- .screen.zx.zc-library.journey-prep .journey-air,.screen.zx.zx-route-page.journey-prep .journey-air{height:15vh;min-height:66px}
+ .screen.zx.zc-library.journey-prep .journey-air,.screen.zx.zx-route-page.journey-prep .journey-air{height:19vh;min-height:66px;max-height:none}
  .screen.zx.journey-prep .route-binding .zx-destination-feature,.screen.zx.journey-prep .route-binding .zx-destination-hero{height:115px;min-height:115px}
  .screen.zx.journey-prep .route-binding .zx-destination-hero>.zx-station-print{height:71px}
 }

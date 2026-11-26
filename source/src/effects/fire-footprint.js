@@ -36,6 +36,10 @@ export const fireFootprints = {
   crack:     {depthRatio:.63, shear:.07, pivotY:.51},
 };
 
+export function fireRingGrowth(progress) {
+  return .18 + .82 * Math.sin(Math.min(1, progress * 1.5) * Math.PI / 2);
+}
+
 export const fireFootprintGLSL = `
 vec3 fireFootprint(vec2 local, float angle, float depthRatio, float shear) {
   vec2 disk = vec2(local.x, (local.y - shear * local.x) / depthRatio);

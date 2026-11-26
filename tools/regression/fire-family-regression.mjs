@@ -2,6 +2,48 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import fireAtlas from '../../resources/public/assets/vfx/fire-family.json' with {type:'json'};
+
+async function checkStarterFireRing(page,area){
+ const result=await page.evaluate(area=>{
+  const r=app.run,p=r.player,e=r.enemies;
+  p.setSpecies(4);vfxSetup();placeFireTargets();e.clear();
+  p.evoStage=p.growth=0;p.level=1;p.recompute();p.stats.critChance=0;p.stats.area=area;
+  r.time=r.stageTime=45;
+  const {x,z}=p.pos,radius=12*Math.sqrt(area);
+  function spawn(distance,flags=0){
+   const id=e.spawn(7,x,z,r.director.hpMult(),r.director.dmgMult(),flags);
+   if(id<0)throw Error('Missing fire ring test target');
+   e.x[id]=x;e.z[id]=z-distance;
+   return id;
+  }
+  // Use a full-health, fire-resistant ordinary enemy at the first natural recharge.
+  const near=spawn(1),entering=spawn(radius+4),outside=spawn(radius+4),elite=spawn(radius-1,1);
+  e.z[outside]=z-radius-e.radius[outside]-.25;e.update();
+  const hits=[],original=r.combat.hit;
+  r.combat.hit=function(id,damage,options){
+   const full=e.hp[id]===e.maxHp[id],dealt=original.call(this,id,damage,options);
+   if(options.slot===8&&options.knock===4)hits.push({id,full,killed:!e.isAlive(id),dealt});
+   return dealt;
+  };
+  try{
+   r.ult.charge=1;r.ult.fire();
+   vfxAdvance(9,1/30,false);
+   const early=hits.map(hit=>hit.id);
+   e.z[entering]=z-radius-e.radius[entering]+.1;e.update();
+   vfxAdvance(20,1/30,false);
+   return {near,entering,elite,early,hits,outsideUntouched:e.hp[outside]===e.maxHp[outside]};
+  }finally{r.combat.hit=original;}
+ },area);
+ const {near,entering,elite,early,hits,outsideUntouched}=result;
+ assert.deepEqual(early,[near],'The near target is hit before the rim reaches the outer targets');
+ assert.deepEqual(hits.map(hit=>hit.id).sort((a,b)=>a-b),[near,entering,elite],'Each touched target receives one direct ring hit');
+ for(const hit of hits){
+  assert.ok(hit.full&&hit.dealt>0,'Hit a full-health target directly');
+  assert.equal(hit.killed,hit.id!==elite,'Opening ordinary mobs fall on contact and the elite survives');
+ }
+ assert.ok(outsideUntouched,'An enemy just beyond contact keeps full health');
+}
+
 export async function reviewFireFamily(page,dir,moves){
  const baseline=process.argv.includes('--record-fire-family'), report={moves:[],ultimates:[]};
  await page.setViewport({width:390,height:844,deviceScaleFactor:1});
@@ -77,6 +119,7 @@ export async function reviewFireFamily(page,dir,moves){
   if(!baseline)assert.ok(sawFireRing,'Missing rendered fire ring in form '+species);
   assert.equal(info.tier,species-4);report.ultimates.push(info);
  }
+ for(const area of [1,2.25])await checkStarterFireRing(page,area);
  await page.evaluate(()=>{Math.random=window.familyRandom;familyRngPrototype.next=window.familyRngNext;});
  const baselineFile=process.env.POKEBONK_FIRE_BASELINE||new URL('./fire-family-baseline.json',import.meta.url);
  fs.writeFileSync(path.join(dir,'fire-family-report.json'),JSON.stringify(report,null,2));

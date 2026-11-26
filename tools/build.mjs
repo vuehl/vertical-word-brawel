@@ -120,7 +120,7 @@ addBootAssets(out,bootAssets(root));
 for(const name of ['game.js','game.json'])fs.copyFileSync(path.join(root,name),path.join(out,name));
 if(developer)developer.writeProject(root,projectRoot);
 const runtimePackages=new Set(['linkedom','typeflex','fflate','@noble/hashes','brotli','core-js','base64-js']);
-const notices=[];
+const notices=['pixelfx Soul drain\n'+fs.readFileSync(path.join(platform,'pixelfx-soul-drain-LICENSE.txt'),'utf8')];
 for(const name of runtimePackages){
   const dir=path.join(import.meta.dirname,'node_modules',name);
   const pkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json')));
