@@ -100,5 +100,8 @@
 | 修改代码后构建正式包 | `npm run build` 或双击 `build-game.cmd` |
 | 修改素材后重建资源和正式包 | `npm run build:assets` |
 | 构建独立开发测试包 | `npm run build:dev`，输出在 `验收/开发者工程/` |
+| 生成正式版手机预览 | `npm run preview` 或双击 `preview-game.cmd`，二维码在 `验收/手机预览/` |
 | 运行默认测试 | `npm test` |
 | 检查源码引用与正式包资源 | `npm run verify:source`、`npm run verify:assets` |
+
+若微信工具预览报 `ENOENT ... packs/capture_bag/game.js`，但 `minigame/game.json` 中已经是带版本后缀的分包目录，说明工具仍保留旧分包配置。完整退出微信开发者工具后重新打开当前工程；仅清理编译缓存可能无效。日常手机预览建议使用 `preview-game.cmd`：它会重新构建、检查每个资源分包的入口与内容，再打开独立工程快照生成二维码，避免沿用旧工程索引。不要手动补空的旧分包目录，它会掩盖配置不一致。

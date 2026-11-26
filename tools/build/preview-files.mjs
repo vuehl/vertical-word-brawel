@@ -22,6 +22,9 @@ export function verifyAssetPackages(project){
     const declarations=(config.subpackages||[]).filter(pack=>pack.name===name);
     if(declarations.length!==1||declarations[0].root!==packRoot)
       throw Error('资源分包声明与清单不一致：'+name);
+    const entry=packRoot+'/game.js';
+    if(!fs.existsSync(path.join(root,entry))||!fs.statSync(path.join(root,entry)).isFile())
+      throw Error('资源分包入口缺失：'+entry+'，请重新构建后预览');
     if(fs.existsSync(path.join(root,'packs',name)))
       throw Error('仍存在旧的固定资源包路径：packs/'+name);
     const file=packRoot+'/assets.br';

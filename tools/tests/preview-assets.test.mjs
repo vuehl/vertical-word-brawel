@@ -23,6 +23,7 @@ function fixture(t){
     const file=path.join(project,'minigame',info.packRoots[name],'assets.br');
     fs.mkdirSync(path.dirname(file),{recursive:true});
     fs.writeFileSync(file,packed);
+    fs.writeFileSync(path.join(path.dirname(file),'game.js'),'// Resource subpackage.\n');
     info.rawSizes[name]=Buffer.byteLength(raw);
     return file;
   }
@@ -62,6 +63,14 @@ test('preview refuses a missing archive',t=>{
   const f=fixture(t);
   fs.unlinkSync(f.world);
   assert.throws(()=>verifyAssetPackages(f.project),/ENOENT/);
+});
+
+test('preview refuses a missing or non-file subpackage entry before upload',t=>{
+  const f=fixture(t),entry=path.join(path.dirname(f.world),'game.js');
+  fs.unlinkSync(entry);
+  assert.throws(()=>verifyAssetPackages(f.project),/资源分包入口缺失：packs\/world-[a-f0-9]{16}\/game\.js/);
+  fs.mkdirSync(entry);
+  assert.throws(()=>verifyAssetPackages(f.project),/资源分包入口缺失/);
 });
 
 test('preview refuses an unversioned or wrong-version resource root',t=>{

@@ -11,6 +11,7 @@ import {assetPolicyVersion,itemIconSelectionChanged} from './build/asset-policy.
 import {gameProject} from './build/project-target.mjs';
 import {buildOpeningAtlas} from './art/build-journey-opening.mjs';
 import {stageResourcePackages,finalizeResourcePackages} from './build/resource-package-roots.mjs';
+import {verifyAssetPackages} from './build/preview-files.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
 const development=process.argv.includes('--dev');
@@ -146,6 +147,7 @@ for(const name of runtimePackages){
 }
 fs.writeFileSync(path.join(out,'packs','text','licenses.txt'),notices.join('\n\n'));
 finalizeResourcePackages(out,JSON.parse(fs.readFileSync(path.join(root,'game.json'),'utf8')));
+verifyAssetPackages(projectRoot);
 // Remove outputs from builds that shipped the engine as a separate code package.
 for(const file of ['game.js','host.js','original.js','licenses.txt','layout.bin','styles.bin'])fs.rmSync(path.join(engine,file),{force:true});
 function files(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(f=>f.isDirectory()?files(path.join(dir,f.name)):[path.join(dir,f.name)]);}
