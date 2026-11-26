@@ -29,6 +29,9 @@ export async function reviewWeatherEffects(page,dir){
       maps.update(0);r.enemies.clear();
       r.events.done=new Set(['fog','storm','meowth','blizzard','spout'].filter(name=>name!==kind));
       r.director.fire('event');
+      if(maps.speech?.kind!==kind)throw Error('Missing weather speaker for '+kind);
+      // Keep the visible fixture as the only candidate during the camera warmup.
+      if(kind==='fog')r.events.spawnT=5;
       if(maps.speech){
         const enemies=r.enemies,p=r.player.pos;
         if(kind==='blizzard')r.player.setSpecies(5);
@@ -49,7 +52,7 @@ export async function reviewWeatherEffects(page,dir){
       weatherFrame();
       if(maps.speech){
         const speech=maps.speech,actors=r.enemies;
-        const expected=kind==='blizzard'?'好冷啊，你们都去找焱取暖嘛？':'这风是从海里拧上来的？';
+        const expected={fog:'刚摸到一撒，谁掉的?',blizzard:'好冷啊，你们都去找焱取暖嘛？',spout:'这风是从海里拧上来的？'}[kind];
         if(speech.bubble?.getAttribute('aria-label')!==expected)throw Error('Missing weather line: '+expected);
         const id=speech.speaker,originalX=actors.x[id],firstPosition=speech.bubble.style.transform;
         actors.x[id]+=.8;weatherFrame();
@@ -100,25 +103,28 @@ export async function reviewWeatherEffects(page,dir){
         const speech=maps.speech,{speaker,bubble,generation}=speech,weather=maps.bliz??maps.spout;
         const advance=seconds=>{
           r.time+=seconds;
-          weather.t-=seconds;
+          if(weather)weather.t-=seconds;
+          else r.events.left-=seconds;
           maps.update(0);weatherFrame();
         };
         advance(4.1);
         if(bubble.hidden||speech.speaker!==speaker)throw Error('Living speaker lost the bubble');
+        if(weather)weather.t=25;
+        else r.events.left=25;
         r.enemies.kill(speaker);
         const next=r.enemies.spawn(19,r.player.pos.x,r.player.pos.z-2,1,1);
         if(next!==speaker)throw Error('Expected recycled speaker slot');
         maps.update(0);weatherFrame();
         if(!bubble.hidden||speech.speaker!==-1)throw Error('Recycled enemy inherited weather dialogue');
-        advance(4.99);
+        advance(9.75);
         if(!bubble.hidden||speech.speaker!==-1)throw Error('Replacement spoke during cooldown');
-        advance(.02);
+        advance(.25);
         if(bubble.hidden||!r.enemies.isAlive(speech.speaker)||speech.speaker===speaker&&speech.generation===generation)
-          throw Error('No living replacement after five seconds');
+          throw Error('No replacement after ten seconds with exactly fifteen seconds of weather left');
         if(maps.spout){
-          weather.t=6;
-          r.enemies.kill(speech.speaker);advance(0);advance(5.1);
-          if(!bubble.hidden||speech.speaker!==-1)throw Error('New line started just before the weather ended');
+          weather.t=24.99;
+          r.enemies.kill(speech.speaker);advance(0);advance(10);
+          if(!bubble.hidden||speech.speaker!==-1)throw Error('Replacement spoke with under fifteen seconds left');
         }
       }
       if(r.events.active)r.events.left=.02;

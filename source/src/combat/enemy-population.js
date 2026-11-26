@@ -215,8 +215,7 @@ function gf(e, t) {
     return;
   }
   t.used = !0;
-  let n = t.group?.getObjectByName(`Egg`);
-  n && (n.visible = !1);
+  e.interactables.remove(t);
   let r = hf(e);
   (e.sprites.get(r),
     (e.egg = { from: e.stats.kills, need: mf(e), species: r, x: t.x, y: t.y + 1.6, z: t.z, wob: 0 }),

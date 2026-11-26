@@ -1345,7 +1345,7 @@ var GS = class e {
           facility.dock.update(host.shared.uTime.value,seconds);
         }
         if(facility.kind==='bill')facility.model?.userData.updateGaze?.(
-          this.run.r.camera,this.run.player,this.hasVisual(facility),dt??0);
+          this.run.r.camera,this.run.player,!facility.used && this.hasVisual(facility),dt??0);
         if (charge) {
           charge.visible = facility.charging && !facility.used && this.hasVisual(facility);
           charge.material.uniforms.dwell.value = facility.charge;

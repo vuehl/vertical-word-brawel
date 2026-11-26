@@ -5,7 +5,7 @@ import {runLoadingSteps} from '../performance/loading-work.js';
 import {createWorkshopAssets,workshopWorldSteps,applyWorkshopLight,updateWorkshopScene} from './workshop-world.js';
 import {disposeForegroundLights} from './workshop-foreground-lights.js';
 export {updateWorkshopScene};
-export const paperStages=['童年文具乐园','弹珠梦工厂','四驱幻想城','星灯书庭'];
+export const paperStages=['同事的办公桌','弹珠梦工厂','四驱幻想城','星灯书庭'];
 export const PAPER_CAMERA={yaw:0,pitch:Math.PI*.30,distance:42,fov:37};
 export const createPaperAssets=createWorkshopAssets;
 export function disposePaperAssets(assets){

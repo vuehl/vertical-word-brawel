@@ -16,12 +16,18 @@ export class WeatherSpeech {
     this.nextSearch = run.time + .6;
   }
 
+  get remaining() {
+    const {events, mapEvents} = this.run;
+    if (this.kind === 'fog') return events.kind === 'fog' ? events.left : 0;
+    return (this.kind === 'blizzard' ? mapEvents.bliz : mapEvents.spout)?.t ?? 0;
+  }
+
   update() {
     const {enemies, time} = this.run;
     if (this.speaker < 0 || (enemies.isAlive(this.speaker) && enemies.gen[this.speaker] === this.generation)) return;
     this.speaker = this.generation = -1;
     if (this.bubble) this.bubble.hidden = true;
-    this.nextSearch = time + 5;
+    this.nextSearch = time + 10;
   }
 
   beginFrame() {
@@ -30,9 +36,7 @@ export class WeatherSpeech {
     this.count = 0;
     if (state !== 'play' || time < this.nextSearch) return false;
     if (this.speaker < 0) {
-      const maps = this.run.mapEvents;
-      const remaining = (this.kind === 'blizzard' ? maps.bliz : maps.spout)?.t ?? 0;
-      if (remaining < 4) {
+      if (this.remaining < 15) {
         this.nextSearch = Infinity;
         return false;
       }
@@ -80,9 +84,9 @@ export class WeatherSpeech {
     }
     if (!this.bubble || (this.kind === 'blizzard' && this.form !== player.speciesId)) {
       this.form = player.speciesId;
-      this.lines = this.kind === 'blizzard'
-        ? ['好冷啊，', '你们都去找'+glyphWordForSpecies(this.form)+'取暖嘛？']
-        : ['这风是从海里拧上来的？'];
+      if (this.kind === 'fog') this.lines = ['刚摸到一撒，谁掉的?'];
+      else if (this.kind === 'blizzard') this.lines = ['好冷啊，', '你们都去找'+glyphWordForSpecies(this.form)+'取暖嘛？'];
+      else this.lines = ['这风是从海里拧上来的？'];
       this.width = 20 + 14 * Math.max(...this.lines.map(line => line.length));
       this.height = 19 + 18 * this.lines.length;
       const canvas = this.bubble ??= document.createElement('canvas');

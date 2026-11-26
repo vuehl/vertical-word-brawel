@@ -8350,7 +8350,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         if (this.busy || (kind !== 'spout' && kind !== 'blizzard')) return false;
         if (kind === 'spout') this.startSpout();
         else this.startBlizzard();
-        this.speech = new WeatherSpeech(this.run, kind);
+        this.startSpeech(kind);
         return true;
       }
       renderWeather() {
@@ -8384,7 +8384,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           this.bliz && this.tickBlizzard(e),
           this.tickFlight(e));
         if (this.speech) {
-          if (this.busy) this.speech.update();
+          if (this.speech.remaining > 0) this.speech.update();
           else this.clearSpeech();
         }
       }
@@ -8819,6 +8819,10 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       }
       get busy() {
         return !!this.bliz || !!this.spout;
+      }
+      startSpeech(kind) {
+        this.clearSpeech();
+        this.speech = new WeatherSpeech(this.run, kind);
       }
       clearSpeech() {
         this.speech?.dispose();
@@ -9531,6 +9535,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (this.spawnT = 2),
           (this.boltT = 3),
           this.done.add(e));
+        if (e === 'fog') t.mapEvents.startSpeech(e);
         for (let e of this.pool()) t.sprites.get(e);
         return e === `meowth` && !this.spawnMeowth()
           ? ((this.kind = null), !1)
@@ -9551,6 +9556,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       }
       end(e = !1) {
         let t = this.run;
+        if (this.kind === 'fog' && t.mapEvents.speech?.kind === 'fog') t.mapEvents.clearSpeech();
         if (!e && this.kind) {
           let e =
             this.kind === `fog`

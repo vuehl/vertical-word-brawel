@@ -45,6 +45,8 @@ export async function verifyBillGaze(page,dir,stage){
       const reenter=pose(0,0);
       r.state='play';f.nearest=bill;f.dwellTime=f.dwellDuration/2;f.render(.016);
       const ringHidden=!bill.halo&&!bill.chargeRing&&!f.dwellRing.visible;
+      bill.used=true;f.dim(bill);
+      const used=pose(0,0);
       // Only the iris may change between these two frames. Project the
       // painted socket bounds to framebuffer pixels, including one AA pixel.
       const at=(x,y)=>player.clone().set(x/855-.5,.5-y/966,0).applyMatrix4(sprite.matrixWorld).project(camera);
@@ -57,7 +59,7 @@ export async function verifyBillGaze(page,dir,stage){
         const x=i/4%W,y=Math.floor(i/4/W);
         if(x<minX||x>maxX||y<minY||y>maxY)leaked++;
       }
-      return {idle,left,right,up,down,partial,outside,reenter,ringHidden,moved,leaked,error:gl.getError(),idleFrame,activeFrame};
+      return {idle,left,right,up,down,partial,outside,reenter,used,ringHidden,moved,leaked,error:gl.getError(),idleFrame,activeFrame};
     }finally{
       r.state=state;f.nearest=previousNearest;f.dwellTime=previousTime;
       player.copy(previous);renderer.autoClear=auto;renderer.setRenderTarget(target);f.remove(bill);
@@ -66,6 +68,7 @@ export async function verifyBillGaze(page,dir,stage){
   const {idleFrame,activeFrame,...result}=report;
   console.log('Stapler '+stage,result);
   assert.ok(!result.idle.active&&result.partial.active&&!result.outside.active&&result.reenter.active);
+  assert.equal(result.used.active,false);
   assert.ok([result.left,result.right,result.up,result.down].every(v=>v.active));
   assert.ok(result.left.center[0]+15<result.right.center[0]&&result.up.center[1]+15<result.down.center[1]);
   assert.ok(result.ringHidden&&result.moved>8&&result.leaked===0&&result.error===0);

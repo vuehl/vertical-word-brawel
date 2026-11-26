@@ -1819,7 +1819,7 @@ var u = { season: 2, name: t(`Temporada 2`), maxDex: 151, biomes: [`forest`] },
       key: `tm-case`,
       rarity: 4,
       desc: t(
-        `Tus movimientos pueden subir 2 niveles más (hasta el 10) y las fusiones 1 estrella más (hasta ★6).`,
+        `获得时角色升 1 级。持有时，普通招式最高可升至 10 级，融合招式最高可升至 ★6。`,
       ),
       mods: [],
     },

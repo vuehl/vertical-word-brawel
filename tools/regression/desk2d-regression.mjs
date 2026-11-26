@@ -11,13 +11,45 @@ export async function verifyDesk(page,dir){
  const click=async(selector,match)=>{const el=await page.waitForFunction((sel,txt)=>[...app.screen.querySelectorAll(sel)].find(el=>!txt||el.textContent.includes(txt)),{timeout:15000},selector,match);await el.evaluate(el=>el.click());await el.dispose();};
  console.log('Home',await page.evaluate(()=>app.screen.textContent.slice(0,250)));
  if(await page.evaluate(()=>!!app.screen.querySelector('.auth-body button')))await click('.auth-body button');
- await page.evaluate(async()=>{
+ const mode=process.argv.includes('--desk-pickups-only')?'single-stage':'standard';
+ await page.evaluate(async mode=>{
    if(!app.meta.account)await app.meta.load(await app.backend.guest());
    await inspected.env.prepareForest();
-   if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode:'standard'}))
+   if(!await app.startRun({species:4,biome:'forest',tier:0,boosts:[],mode}))
      throw app.lastStartError||Error('Could not start the desk route');
- });
+ },mode);
  await page.waitForFunction(()=>app.run?.terrain?.desk2d&&app.run.time>.1,{timeout:30000});
+ if(process.argv.includes('--desk-pickups-only')){
+   const pickup=await page.evaluate(()=>{
+     const r=app.run,f=r.interactables,p=r.player;
+     app.halted=true;
+     const caption=r.ui.root.querySelector('.zx-stage-caption').getAttribute('aria-label');
+     const marble=f.list.find(o=>o.kind==='nest');
+     p.pos.set(marble.x,marble.y,marble.z);
+     f.update(1/30);
+     const groundRemoved=!marble.group.parent&&!f.list.includes(marble)&&!f.markers().includes(marble);
+     const level=p.level;
+     // Use the normal chest dialog with a deterministic item pool.
+     const pool=r.meta.itemInPool;
+     r.meta.itemInPool=key=>key==='tm-case';
+     try{r.rollChestItem(false);}finally{r.meta.itemInPool=pool;}
+     const dialog=r.ui.modalEl;
+     const item=dialog.querySelector('.zx-loot-name h3').textContent;
+     dialog.querySelector('[data-item-action="take"]').click();
+     return {caption,groundRemoved,carrying:!!r.egg,item,levels:p.level-level,queued:r.pendingLevels,moveCap:p.moveCap};
+   });
+   const {caption,...effects}=pickup;
+   assert.match(caption,/^同事的办公桌 · 1\/1区/);
+   assert.deepEqual(effects,{groundRemoved:true,carrying:true,item:'蛋白粉',levels:1,queued:1,moveCap:10});
+   await page.waitForFunction(()=>{
+     const r=app.run;r.update(1/30);
+     return r.state==='modal' && r.ui.modalEl.querySelector('.zx-upgrade [data-offer]');
+   },{timeout:5000,polling:50});
+   await page.evaluate(()=>app.run.ui.modalEl.querySelector('.zx-upgrade [data-offer]').click());
+   await page.waitForFunction(()=>app.run.pendingLevels===0&&app.run.state==='play',{timeout:5000});
+   console.log('Desk caption, marble pickup and protein powder upgrade passed',pickup);
+   return;
+ }
  if(process.argv.includes('--desk-route-only')){
    const area=await page.evaluate(async()=>{
      const r=app.run;app.halted=true;r.state='play';r.godMode=true;
