@@ -103,6 +103,8 @@ function writeScript(destination,code){
   }finally{fs.rmSync(pending,{force:true});}
 }
 for(const [name,code] of result.files)writeScript(path.join(playDir,name),code);
+// Already compressed H.264; keep the original local movie in the loaded play package.
+fs.copyFileSync(path.join(root,'resources/public/assets/opening/journey.mp4'),path.join(playDir,'journey-opening.mp4'));
 for(const name of fs.readdirSync(playDir)){
   if(name.endsWith('.js')&&!result.files.has(name))fs.unlinkSync(path.join(playDir,name));
 }

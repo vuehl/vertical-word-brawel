@@ -408,7 +408,7 @@ var JI = class {
     }
     streakHud(count, remaining, time=this.runRef?.realTime??performance.now()/1000) {
       const streak = this.els.streak;
-      const visible = count > 20 && remaining > 0;
+      const visible = count >= 20 && remaining > 0;
       if (visible !== this.stkOn) {
         this.stkOn = visible;
         streak.hidden = !visible;
@@ -420,7 +420,9 @@ var JI = class {
       const number = streak.children[1];
       if(!this.comboRoller && streak.classList.contains('zx-combo'))this.comboRoller=new ComboRoller(number);
       if (count !== this.stkN) {
-        const tier = count >= 100 ? 4 : count >= 50 ? 3 : count >= 25 ? 2 : Number(count >= 10);
+        // The first visible combo (20) starts at the original count-1 color.
+        const colorCount = count - 19;
+        const tier = colorCount >= 100 ? 4 : colorCount >= 50 ? 3 : colorCount >= 25 ? 2 : Number(colorCount >= 10);
         if (streak.dataset.tier !== String(tier)) {
           streak.dataset.tier = String(tier);
           streak.style.setProperty('--sc',comboFaces[tier][1]);

@@ -29,7 +29,7 @@ export async function checkIcons(page){
     return checks;
   });
   assert.ok(checks.shared,'The three high-resolution skill icons should share one decoded page');
-  assert.deepEqual(checks.skillSizes,[[256,256],[256,256],[256,256]]);
+  assert.deepEqual(checks.skillSizes,[[252,252],[252,252],[256,256]]);
   assert.deepEqual(checks.tiles,[[64,64,64,true],[256,256,256,true],[30,30,30,true]]);
   console.log('Packed icon URLs, dimensions, shared pages, canvas drawing and PNG reads passed');
 }

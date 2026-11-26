@@ -2,6 +2,7 @@ import {VFX_SCALE} from '../source/src/effects/visual-scale.js';
 import {clearFrame,createFrame,painterFor} from '../source/src/vendor/pixelfx-blink-in.js';
 import {blinkDuration,flashTail,readyBreathPhase} from '../source/src/effects/ultimate-ready-timing.js';
 import {tile,silhouette,drawReadyPixels,packLightPixels,createReadyEmbers} from './ultimate-ready-pixels.mjs';
+import {readyIrisLayer} from './ultimate-ready-iris.mjs';
 
 const margin=Math.ceil(48*VFX_SCALE),width=tile+2*margin,height=width,fullRect=[0,0,1,1];
 
@@ -99,8 +100,11 @@ export function createReadyBlink(makeCanvas){
     if(seal?._surface){
       const box=seal.getBoundingClientRect();
       const face=seal.readyFace;
-      result.push(button(seal._surface,fullRect,0,stage,stage==='breath'?0:progress,opacity,box.x+box.width/2,box.y,box.width,box.height,view,scale,
+      const buttonOpacity=ult.ready?opacity*.48:opacity;
+      result.push(button(seal._surface,fullRect,0,stage,stage==='breath'?0:progress,buttonOpacity,box.x+box.width/2,box.y,box.width,box.height,view,scale,
         face?._surface??face,seal.readyFaceSize));
+      if(ult.ready&&ult.readyFlashAt!=null&&!seal.readyStill)
+        result.push(readyIrisLayer(box,view,scale,run.time-ult.readyFlashAt,palette.base));
     }
     return result;
   };

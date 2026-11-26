@@ -29,6 +29,8 @@
 
 启动页和进场加载页共用 `resources/public/assets/ui-paper/loading-poster.webp`。构建时把海报写入微信主包，首次启动即可显示。`resources/art/fire-stampede/` 的三段 GIF 用于重建烈焰狂奔图集和校验动画来源。修改技能原稿后运行 `node tools/art/build-fire-stampede.mjs`，再运行 `npm run build:assets` 更新微信包。
 
+每次重新启动小游戏时，新老玩家都会在进度条到 100% 后自动播放 `resources/public/assets/opening/journey.mp4`，无需点击首页按钮。原片为 780×1688、24 帧/秒、169 帧的无声视频，随玩法包保存到本地。播放期间准备桌上世界的单关，末帧用 0.8 秒叠化进入场景；战斗在叠化结束后开始计时。同一次运行中，单关结束、返回首页或切回前台都不会重播，普通关卡、多关和双人入口保持原流程，原有存档保留。`npm run test:opening` 检查自动开场、后台暂停、末帧衔接、资源失败重试、老存档重新启动和后续导航。
+
 空气斩使用 `resources/art/air-slash-reference/空气斩.gif` 的新参考录像。第 7–27 帧按每帧 20 毫秒播放，包含出手前的空帧和最后一帧拖尾，总长 0.42 秒。运行 `node tools/art/build-air-slash-reference.mjs` 从原片去除桌面底色、用相邻清晰帧补齐被字灵与命中光遮挡的部分，生成透明图集；再运行 `npm run build:assets`。游戏中接在风系「空气斩」（403）上，沿实际瞄准方向飞行，每个目标只命中一次。`npm run test:air-slash` 核验来源、帧序、不同方向与帧率、隐藏特效和清理，并输出原片与实机对照 GIF。
 
 进化参考 GIF 和光环轨迹保存在 `resources/art/upgrade/`。`node tools/art/build-evolution-screen.mjs` 使用 NumPy、Pillow、SciPy 和 OpenCV 重建光效图集、曝光和动作时间轴。再运行 `npm run build:assets` 更新小游戏资源。演出在 4.2 秒内按比例播放参考片的 171 帧，采用居中近景和爆发前暗场，覆盖场景与 HUD，结束后恢复正常镜头。`npm run test:upgrade-effects` 验证普通升级、六条进化路径、不同竖屏尺寸、低帧率、特效设置和清理。

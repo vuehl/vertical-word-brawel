@@ -56,6 +56,13 @@ globalThis.GameGlobal={};
 Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(host){
   window.__host=host;host.inspect=s=>{
     window.inspected=s;
+    // Menu/workload fixtures begin after the opening; opening-flow tests use
+    // the real boot path, including when they seed an experienced profile.
+    if(window.fixtureSkipOpening)s.env.playJourneyOpening=()=>null;
+    if(window.failOpeningResources){
+      const prepare=s.env.prepareForest;
+      s.env.prepareForest=(...args)=>{s.env.prepareForest=prepare;throw Error('测试首次资源加载失败');};
+    }
     if(window.holdHomeStatus){
       const gate=new Promise(resolve=>{window.releaseHomeStatus=resolve;}),fetch=s.env.fetch;
       s.env.fetch=(url,...args)=>{
@@ -65,7 +72,17 @@ Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(ho
       };
     }
     if(window.failFirstFrame)s.env.drawUI=()=>{throw Error('test: first game frame failed');};
-  };host.onApp=app=>window.app=app;
+  };host.onApp=app=>{
+    window.app=app;
+    if(window.fixtureSkipOpening){
+      const boot=app.boot.bind(app);
+      app.boot=async()=>{await boot();inspected.env.onBootReady=undefined;app.zixing.home();};
+    }
+    if(window.fixtureReturning){
+      const load=app.backend.loadProfile.bind(app.backend);
+      app.backend.loadProfile=async(...args)=>({...await load(...args),firstJourneyPlayed:true});
+    }
+  };
   const resolve=host.files.pathFor;window.missingAssets=new Set();
   host.files.pathFor=url=>{const p=resolve(url);if(!p)window.missingAssets.add(String(url));return p;};
   const resolveAsync=host.files.resolvePath;
@@ -107,6 +124,36 @@ globalThis.wx={
   onWindowResize:fn=>window.addEventListener('resize',fn),
   getRandomValues({length,success}){success({randomValues:crypto.getRandomValues(new Uint8Array(length)).buffer});},
   createCanvas:canvas,createOffscreenCanvas:nativeCanvas,
+  createVideoDecoder(){
+    const video=document.createElement('video'),surface=document.createElement('canvas');
+    const context=surface.getContext('2d',{willReadFrequently:true}),listeners=new Map();
+    const audit={frames:0,removed:false};(window.openingDecoders??=[]).push(audit);
+    let available=false,removed=false,index=0;
+    video.muted=true;video.preload='auto';
+    video.addEventListener('seeked',()=>{available=true;});
+    return {
+      on(name,callback){listeners.set(name,callback);},
+      async start({source}){
+        if(window.failOpeningDecoder)throw Error('test: video decode failed');
+        video.src='/'+source;
+        await new Promise((resolve,reject)=>{
+          video.onloadeddata=resolve;video.onerror=()=>reject(Error('Cannot decode opening movie'));
+        });
+        if(removed)return;
+        surface.width=video.videoWidth;surface.height=video.videoHeight;available=true;
+      },
+      getFrameData(){
+        if(removed||!available||index>=169)return null;
+        available=false;context.drawImage(video,0,0);
+        const pixels=context.getImageData(0,0,surface.width,surface.height).data;
+        audit.frames=++index;
+        if(index<169)video.currentTime=index/24;
+        else listeners.get('ended')?.();
+        return {width:surface.width,height:surface.height,data:pixels.buffer};
+      },
+      async remove(){removed=true;audit.removed=true;video.pause();video.removeAttribute('src');video.load();},
+    };
+  },
   createImage(){const img=new Image();Object.defineProperty(img,'src',{get(){return imageSrc.get.call(img);},set(path){
     const record={path:path.startsWith('data:image/')?path.slice(0,path.indexOf(',')):path,width:0,height:0};
     (window.nativeImageLoads??=[]).push(record);

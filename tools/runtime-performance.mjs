@@ -83,7 +83,10 @@ try{
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
-  await page.waitForFunction(()=>window.app?.zixing&&app.screen?.querySelector('button'),{timeout:90000});
+  await page.waitForFunction(()=>window.app?.zixing&&(app.screen?.querySelector('button')||
+    (app.run?.state==='play'&&!app.starting&&!app.entryOpening)),{timeout:90000});
+  // A fresh profile can now boot straight into its first journey.
+  await page.evaluate(()=>{if(app.run&&!app.screen)app.toMenu();});
   console.log('Home ready; creating an isolated run for workload counts.');
   if(development){
     await page.waitForFunction(()=>window.inspected?.env.__zixingDeveloper);
@@ -92,13 +95,14 @@ try{
   }
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
+  const evolutionResume=process.argv.includes('--evolution-resume');
   const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects','--difficulty','--enemy-shot'].includes(arg));
   const repeatableMap=!!iphone||deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--crowded-steering','--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
-  const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
+  const initial=await page.evaluate(async({development,repeatableMap,upgradeResume,evolutionResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
     const initial={quality:app.meta.profile.settings.quality,locked:app.meta.profile.settings.lock30Fps,fpsCap:app.fpsCap(),frameGap:app.frameGap()};
-    Object.assign(app.meta.profile.settings,{quality:upgradeResume?'low':'high',fpsLimit:60});app.applySettings();
+    Object.assign(app.meta.profile.settings,{quality:upgradeResume||evolutionResume?'low':'high',fpsLimit:60});app.applySettings();
     // Prevent the software rasterizer from monopolizing startup. Manual sample frames follow.
     window.realFrameGap=app.frameGap.bind(app);
     app.frameGap=()=>250;
@@ -116,7 +120,7 @@ try{
     // gameplay HUD once before freezing frames for deterministic measurements.
     app.run.update(1/60);
     return initial;
-  },{development,repeatableMap,upgradeResume});
+  },{development,repeatableMap,upgradeResume,evolutionResume});
   assert.equal(initial.quality,'high');assert.equal(initial.locked,iphone?.lock30??false);assert.equal(initial.fpsCap,iphone?.lock30?30:60);
   if(development)await enterDeveloperFromHome(page,dir);
   if(development&&(fireReview||process.argv.some(arg=>['--illustrated-desk','--hand-drawn-fire-spin','--fire-breath'].includes(arg)))){
@@ -195,6 +199,9 @@ try{
   }else if(process.argv.includes('--countdown-dock')){
     const {reviewCountdownDock}=await import('./regression/countdown-dock-regression.mjs');
     await reviewCountdownDock(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--evolution-resume')){
+    const {reviewEvolutionResume}=await import('./regression/evolution-resume-regression.mjs');
+    await reviewEvolutionResume(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--upgrade-effects')){
     const {reviewUpgradeEffects}=await import('./regression/upgrade-effects-regression.mjs');
     await reviewUpgradeEffects(page,dir);assert.deepEqual(errors,[]);

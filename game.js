@@ -63,6 +63,9 @@ async function launchEngine(host, play, showProgress, finishProgress) {
       // The first successful home frame stays covered until the full bar has been shown.
       finishing = true;
       if (!finishProgress(renderer)) return;
+      const enter = env.onBootReady;
+      env.onBootReady = undefined;
+      if (enter) enter();
       if (env.invalidateUI) env.invalidateUI();
       draw(renderer,...args);
       env.drawUI = draw;

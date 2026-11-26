@@ -1,5 +1,6 @@
 import {cloudSocket} from './cloud-coop.mjs';
 import {createCaptureOverlay} from './capture-bag.mjs';
+import {createJourneyOpening} from './journey-opening.mjs';
 import 'core-js/modules/es.array.at.js';
 import 'core-js/modules/es.array.flat.js';
 import 'core-js/modules/es.array.flat-map.js';
@@ -120,7 +121,7 @@ export async function setup(host) {
   uiAssets.compileStyleSelector=D.compileStyleSelector;
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
   let draw=null,active=null,captured=new Map(),pointers=new Map();
-  let lastJourneyCamera=null;
+  let lastJourneyCamera=null,journeyOpening=null;
   const upgradeCue=run=>run?.state==='play'&&!run.coop&&run.pendingLevels>0&&run.evoHold<=0&&!run.upgradeTiming.waiting(run.ult)&&run.ui.experienceReady?.()===false;
   const frozenUpgradeKey=()=>{
     const app=win.__pb,run=app?.run;
@@ -237,6 +238,7 @@ export async function setup(host) {
   function computed(el){return new Proxy(el.style,{get(t,k){if(k==='getPropertyValue')return key=>layout.box(el)?.s[key]||t.getPropertyValue(key)||'';
     const key=String(k).replace(/[A-Z]/g,m=>'-'+m.toLowerCase());return layout.box(el)?.s[key]||t.getPropertyValue(key)||(k==='gridTemplateColumns'?'1fr':'');}});}
   function show(hide){
+    journeyOpening?.pause();
     doc.hidden=hide;doc.visibilityState=hide?'hidden':'visible';doc.dispatchEvent(new D.Event('visibilitychange'));win.dispatchEvent(new D.Event(hide?'pagehide':'pageshow'));
     if(hide){draw?.releaseFrozen();for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
   }
@@ -270,6 +272,7 @@ export async function setup(host) {
   }
   function touches(kind,event){
     if(host.bootDiagnostics?.completed===false)return;
+    if(journeyOpening?.active)return;
     const run=win.__pb?.run;
     const hiddenHud=!win.__pb?.screen&&castHidesUI(run,perf.now());
     // A press begun in combat must not select a card while it is appearing.
@@ -400,6 +403,13 @@ export async function setup(host) {
       layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
+    playJourneyOpening(options={}){
+      journeyOpening?.dispose();
+      journeyOpening=createJourneyOpening(wx,{...options,now:()=>perf.now(),onDispose:()=>{
+        draw?.releaseSlot(30);uiFrames.invalidate(true,true);
+      }});
+      return journeyOpening;
+    },
     castHidesUI:run=>castHidesUI(run,perf.now()),
     castHudLeadMs,
     animateModal(wrap){modalTransition.begin(wrap,env.__pb?.run);},
@@ -496,6 +506,16 @@ export async function setup(host) {
     },
     readChineseText(){return JSON.parse(fs.readFileSync(host.files.pathFor('text/ui.json'),'utf8'));},
   });
+  const drawRegularUI=env.drawUI;
+  env.drawUI=(renderer,...args)=>{
+    if(doc.hidden&&journeyOpening?.active)return;
+    const film=journeyOpening,layer=film?.layer(uiCanvas.width,uiCanvas.height);
+    if(!layer||film.revealing)drawRegularUI(renderer,...args);
+    if(layer){
+      if(!draw)draw=compositor(renderer.getContext(),uiCanvas);
+      draw.topLayers(renderer,[layer]);
+    }
+  };
   env.window=env.self=env.globalThis=env;
   const drawCapture=createCaptureOverlay(env,host.files);
   wx.onWindowResize?.(()=>{

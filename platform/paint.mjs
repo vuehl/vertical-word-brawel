@@ -1,4 +1,5 @@
 import {drawUiPaper} from './ui-paper.mjs';
+import {irisFragment} from './ultimate-ready-iris.mjs';
 import {paintLoadingBackdrop} from '../source/src/ui/menu-scene.js';
 const colorTokens=/#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})\b|rgba?\([^)]*\)|hsla?\([^)]*\)|\b(?:white|black|transparent|red|blue|green|yellow|orange|gray|purple)\b/gi;
 import {rangeBounds} from './range.mjs';
@@ -193,6 +194,7 @@ precision highp float;
 in vec2 uv;out vec4 color;
 uniform sampler2D ui;uniform float opacity;uniform bool flip;
 uniform bool castActive;uniform vec4 castUV;uniform vec3 castTone;uniform vec3 bladeNext;
+${irisFragment}
 vec3 castKey(vec2 pos,float halfIndex,vec2 extent){
   pos=clamp(pos,.5/extent,1.-.5/extent);
   return texture(ui,vec2((halfIndex+pos.x)*.5,pos.y*castUV.z)).rgb;
@@ -205,6 +207,7 @@ vec2 castMotion(vec2 pos,float plane,vec2 extent){
   return (field*255.-128.)*(castUV.w/127.)/extent;
 }
 void main(){
+  if(irisActive){color=readyIris(uv);return;}
   if(castActive){
     if(castUV.w<0.){
       vec2 offset=uv*vec2(castUV.z,-castUV.w);
@@ -236,6 +239,8 @@ void main(){
   const flip=gl.getUniformLocation(prog,'flip');
   const cast=gl.getUniformLocation(prog,'castActive'),castUV=gl.getUniformLocation(prog,'castUV'),castTone=gl.getUniformLocation(prog,'castTone');
   const bladeNext=gl.getUniformLocation(prog,'bladeNext');
+  const irisActive=gl.getUniformLocation(prog,'irisActive'),irisBounds=gl.getUniformLocation(prog,'irisBounds');
+  const irisMotion=gl.getUniformLocation(prog,'irisMotion'),irisTone=gl.getUniformLocation(prog,'irisTone');
   const texture=gl.createTexture(),tiles=[],vao=gl.createVertexArray();
   let width=0,height=0,activeSlots=0;
   let frozen=null,frozenKey=null,frozenOwner=null,frozenWidth=0,frozenHeight=0;
@@ -269,6 +274,17 @@ void main(){
     let slots=0,lastOpacity=1;
     for(const control of layers){
       if(!control)continue;
+      gl.viewport(Math.round(control.x*sx),Math.round((canvas.height-control.y-control.height)*sy),Math.round(control.width*sx),Math.round(control.height*sy));
+      if(control.iris){
+        const {bounds,radius,angle,tone}=control.iris;
+        gl.uniform1i(irisActive,1);
+        gl.uniform4fv(irisBounds,bounds);
+        gl.uniform2f(irisMotion,radius,angle);
+        gl.uniform3f(irisTone,(tone>>16)/255,(tone>>8&255)/255,(tone&255)/255);
+        gl.drawArrays(gl.TRIANGLES,0,3);
+        gl.uniform1i(irisActive,0);
+        continue;
+      }
       const slot=control.slot||0;
       slots|=1<<slot;
       const cache=tiles[slot]??= {texture:gl.createTexture(),width:0,height:0};
@@ -297,7 +313,6 @@ void main(){
         else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,tile);
         cache.width=tile.width;cache.height=tile.height;
       }
-      gl.viewport(Math.round(control.x*sx),Math.round((canvas.height-control.y-control.height)*sy),Math.round(control.width*sx),Math.round(control.height*sy));
       const alpha=control.opacity??1;
       if(alpha!==lastOpacity){gl.uniform1f(opacity,alpha);lastOpacity=alpha;}
       if(control.castUV){
@@ -369,6 +384,7 @@ void main(){
     }finally{gl.bindVertexArray(null);renderer.resetState();}
   };
   draw.hasFrozen=hasFrozen;draw.releaseFrozen=release;
+  draw.releaseSlot=slot=>{if(tiles[slot])gl.deleteTexture(tiles[slot].texture);tiles[slot]=null;};
   draw.releaseUnused=()=>{
     if(!frozenKey)release();
     for(let slot=0;slot<tiles.length;slot++)if(tiles[slot]&&!(activeSlots&(1<<slot))){

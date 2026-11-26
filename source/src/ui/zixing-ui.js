@@ -14,6 +14,7 @@ import {createPeerHud} from '../network/coop-peer-hud.js';
 import {drawMenuGlyph,drawRouteGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from '../actors/paper-glyph-art.js';
 import {homeEntryFace,menuSymbol,itineraryStamp} from './menu-paper-art.js';
 import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,drawBattleStatus,drawStageCaption,drawUltimateSeal,drawHudClock} from './paper-hud-art.js';
+import {readyDiamondFrame} from '../effects/ultimate-ready-diamonds.js';
 import {regionAtlas} from './region-atlas-art.js';
 import {paperStages} from '../world/paper-world.js';
 import {laboratory} from '../data/catalogs.js';
@@ -226,9 +227,9 @@ export function createZixingUI(app,api) {
   if(app.zixing)return app.zixing;
   document.documentElement.classList.add('zixing');
   window.__zixingApp=app;
-  let selected=defaultStarter,selectedDestination=destinations[0],selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,authPromise=null,activeEntry=null;
+  let selected=defaultStarter,selectedDestination=destinations[0],selectedDifficulty=difficulties[window.entryViewport?0:1],labTab=0,authPromise=null,activeEntry=null,bootJourneyStarted=false;
   const scene=journeyScene();
-  const ui=app.zixing={home,choose,map,difficulty:map,multiplayer:()=>openProfilePage(coopTitle,()=>multiplayer()),lab,settings,help,stats,attachRun,loading,start,prepareProfile:ready,savedCard,settlementSaved};
+  const ui=app.zixing={home,choose,map,difficulty:map,multiplayer:()=>openProfilePage(coopTitle,()=>multiplayer()),lab,settings,help,stats,attachRun,loading,start,prepareBoot,prepareProfile:ready,savedCard,settlementSaved};
   const character=characterForSpecies;
   window.addEventListener('memorywarning',()=>{
     releaseGlyphCanvasCache();
@@ -239,6 +240,21 @@ export function createZixingUI(app,api) {
   // Older local saves have run history. A restored cloud save may only have dust or stage progress.
   const hasJourneyProgress=p=>!!(p?.firstJourneyPlayed||p?.runs?.length||p?.counters?.runs>0||
     p?.totalStardust>0||p?.biomes?.forest>0);
+  async function prepareBoot(account){
+    await ready(account);
+    if(bootJourneyStarted)return home();
+    // Every fresh game process gets the opening, including existing saves.
+    // Returning to menus or resuming from the background keeps this session.
+    bootJourneyStarted=true;
+    // Decode the first frame under the startup poster. Playback starts only
+    // after its 100% progress frame has actually been presented.
+    loadingScreen('opening');
+    const opening=window.playJourneyOpening?.({paused:true});
+    window.onBootReady=()=>{
+      opening?.resume();
+      void start({species:defaultStarter,biome:'forest',tier:0,boosts:[],mode:SINGLE_STAGE},null,opening,true);
+    };
+  }
   let battleRecovery=null;
   function recoverBattle(session,reason){
     const current=app.run;
@@ -393,11 +409,19 @@ export function createZixingUI(app,api) {
     selected=p&&canDeploy(p,last)?last:4;
     const root=screen('home','','',[]);
     root.classList.add('zx-home-fixed');
-    const startButton=button('开始旅程',()=>{
-      const travel=scene.travel('choose',()=>choose());
-      // Start the shared profile read during the zoom. The chooser handles pending reads and retries.
-      if(!profile())ready().catch(()=>{});
-      return travel;
+    let departing=false;
+    const startButton=button('开始旅程',async()=>{
+      if(departing||activeEntry||app.starting)return;
+      if(profile()&&hasJourneyProgress(profile()))return scene.travel('choose',()=>choose());
+      departing=true;startButton.disabled=true;
+      try{
+        await ready();
+        if(app.screen!==root)return;
+        if(!hasJourneyProgress(profile()))
+          return await start({species:defaultStarter,biome:'forest',tier:0,boosts:[],mode:SINGLE_STAGE});
+        return await scene.travel('choose',()=>choose());
+      }catch(error){app.notice(error.message||'读取存档失败，请重试');}
+      finally{departing=false;startButton.disabled=false;}
     },'primary zx-home-start',{'data-action':'journey'});
     const entry=(symbol,label,action,open)=>button([
       homeEntryFace(),el('span','paper-entry-content',[menuSymbol(symbol,32,true),el('span','paper-button-divider',[],{'aria-hidden':true}),el('span','paper-entry-label',label)]),
@@ -793,13 +817,15 @@ export function createZixingUI(app,api) {
     }
     update({});return {node,update};
   }
-  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null) {
+  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null,preparedOpening=null,forceOpening=false) {
     if(activeEntry||app.starting)return false;
-    const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&!hasJourneyProgress(profile());
+    const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&(forceOpening||!hasJourneyProgress(profile()));
     let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
     const view=loadingScreen('entry',!!config.coop),{node}=view;
     activeEntry=node;
+    const opening=firstJourney?(preparedOpening||window.playJourneyOpening?.()):null;
+    app.entryOpening=opening;
     const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
     const update=({phase:title,detail:message='',progress=0,teamReady,teamStatus})=>{
       if(cancelled)return;
@@ -860,11 +886,13 @@ export function createZixingUI(app,api) {
         const errorPage=screen('entry-error','暂时未能进入','',[
           el('div','zx-entry-slip',[menuSymbol('disconnected',48),el('div','zc-copy',[
             el('b','',destination),small(lastPhase||'准备场景')]),text(diagnostics.error,'zx-entry-message')],{'data-paper-surface':'album-page'}),
-        ],[button('返回选择',map),button('重新进入',()=>start(config,mapProgress),'primary',{'data-action':'retry-entry'})]);
+        ],[button('返回选择',map),button('重新进入',()=>start(config,mapProgress,null,forceOpening),'primary',{'data-action':'retry-entry'})]);
         errorPage.querySelector('.zx-body').dataset.paperSurface='flat';
       }
       return false;
     }finally{
+      opening?.dispose();
+      if(app.entryOpening===opening)app.entryOpening=null;
       diagnostics.totalMs=Math.round(performance.now()-began);
       if(cancelled)diagnostics.status='cancelled';
       if(activeEntry===node)activeEntry=null;
@@ -1758,6 +1786,8 @@ export function createZixingUI(app,api) {
     hud.hudEl.append(combo);
     const updatePeers=run.coop?createPeerHud(run,node,el):null;
     const combatFeed=installReviewBattle(hud,run,node.querySelector('.zx-hud-top'),{wordFor:glyphWordForSpecies,typeName:api.typeName,typeOf:api.speciesType});
+    // Shared by evolution results, the ultimate indicator and the final countdown.
+    const stillMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)');
     let resultSlip=null, preparedResult=null;
     function clearEvolution(){
       resultSlip?.node.remove();resultSlip?.stamp.remove();resultSlip=null;
@@ -1906,10 +1936,14 @@ export function createZixingUI(app,api) {
       const word=glyphWordForSpecies(r.player.speciesId??r.startSpecies);
       const state=active?'active':ready?'ready':'charging',type=ultimateType(r),icon=ultimateIcon(r);
       const image=icon.complete&&icon.naturalWidth?icon:null;
-      const key=[type,!!image,state,progress].join('/');
+      const palette=ready?r.ult.readyPalette:null;
+      ultimateRing.readyStill=!!stillMotion?.matches;
+      const elapsed=r.time-(r.ult.readyFlashAt??r.time);
+      const diamond=ready?readyDiamondFrame(ultimateRing.readyStill ? .52 : elapsed):0;
+      const key=[type,!!image,state,progress,diamond,palette?.base].join('/');
       if(lastSeal!==key){
         lastSeal=key;
-        drawUltimateSeal(ultimateRing,image,progress,state);
+        drawUltimateSeal(ultimateRing,image,progress,state,palette,diamond);
         ultimateRing.dataset.frame=key;ultimateRing.dataset.progress=String(progress);ultimateRing.dataset.type=type;
       }
       const label=word+'的大招，'+(ready?'可释放':active?'释放中':Math.floor(progress*100)+'%');
@@ -1948,7 +1982,7 @@ export function createZixingUI(app,api) {
     // screens use the space to its left if the pause button limits headroom.
     function placeCombo(){
       let top='',right='';
-      if(run.streak>20 && run.streakT>0){
+      if(run.streak>=20 && run.streakT>0){
         const area=hud.hudEl.getBoundingClientRect(),ult=hud.touch.ult.getBoundingClientRect();
         if(area.height && ult.height){
           const gap=16,comboHeight=108;
@@ -1999,7 +2033,10 @@ export function createZixingUI(app,api) {
       if(timePrint.dataset.frame!==timeKey){
         drawHudClock(timePrint,timeLabel,urgent,phase);timePrint.dataset.frame=timeKey;
       }
-      if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over'))return;
+      if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over')){
+        if(run.state==='play'&&(run.ult.ready||hud.touch.ult.classList.contains('ready')))hud.ultHud(run);
+        return;
+      }
       last=now;lastState=run.state;
       original(...args);
       combatFeed.syncEvent();

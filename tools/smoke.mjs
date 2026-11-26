@@ -48,6 +48,10 @@ const srv=http.createServer((req,res)=>{
   if(req.url==='/fixture.js'||req.url==='/boot.js'){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(req.url==='/fixture.js'?'window.packageData='+JSON.stringify(packageData)+';window.packageEntries='+JSON.stringify(packageEntries)+';\n'+fixture:script());}
   if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(fixtureSubpackage(game,req.url.slice(1)));}
   if(dataUrls.has(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
+  if(req.url==='/play/journey-opening.mp4'){
+    res.setHeader('content-type','video/mp4');
+    return fs.createReadStream(path.join(game,'play/journey-opening.mp4')).pipe(res);
+  }
   if(req.url==='/favicon.ico'){res.statusCode=204;return res.end();}
   res.statusCode=404;res.end();
 });
@@ -139,6 +143,8 @@ if(process.argv.includes('--legacy-runtime'))await page.evaluateOnNewDocument(()
   delete String.prototype.at;
   window.TextDecoder=window.TextEncoder=undefined;
 });
+if(!process.argv.includes('--opening-flow'))await page.evaluateOnNewDocument(()=>{window.fixtureReturning=true;window.fixtureSkipOpening=true;});
+if(process.argv.includes('--opening-retry'))await page.evaluateOnNewDocument(()=>{window.failOpeningResources=true;});
 await page.goto('http://127.0.0.1:'+srv.address().port);
 console.log('CDP',b.wsEndpoint(),dir);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -242,6 +248,10 @@ async function verifyStartup(){
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels.at(-1))),'00-background.png');
     await page.evaluate(()=>{window.beforeHomeLabel=bootLabels.length;window.releaseHomeStatus();});
+  }
+  if(process.argv.includes('--opening-flow')){
+    await (await import('./regression/opening-regression.mjs')).verifyOpening({page,dir});
+    return;
   }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));

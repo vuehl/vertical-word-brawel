@@ -1,6 +1,7 @@
 import {appearanceGlyphCanvas} from './collection-art.js';
 import {facilityNames} from '../data/active-content.js';
 import {glyphCanvas} from '../actors/paper-glyph-art.js';
+import {drawReadyDiamonds} from '../effects/ultimate-ready-diamonds.js';
 
 
 export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
@@ -563,7 +564,7 @@ function mutedSeal(source){
   }
   ctx.putImageData(pixels,0,0);mutedSeals.set(source,tile);return tile;
 }
-export function drawUltimateSeal(canvas,source,progress,state){
+export function drawUltimateSeal(canvas,source,progress,state,palette,diamondFrame=0){
   const image=source?sealFace(source):null;
   const ctx=canvas.getContext('2d');
   ctx.setTransform(canvas.width/84,0,0,canvas.height/84,0,0);ctx.clearRect(0,0,84,84);
@@ -571,6 +572,12 @@ export function drawUltimateSeal(canvas,source,progress,state){
   canvas.readyFaceSize=84;
   if(!image)return;
   ctx.drawImage(state==='charging'?mutedSeal(image):image,0,0,84,84);
+  if(state==='ready'&&palette){
+    drawReadyDiamonds(ctx,palette,diamondFrame);
+    ctx.fillStyle=palette.label;ctx.fillRect(22,58,40,15);
+    ctx.fillStyle='#27232F';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.font='bold 12px "Ziling Swei", sans-serif';ctx.fillText('释放',42,66);
+  }
   // Keep the original outer charge ring; the entire icon stays muted until ready.
   if(state!=='ready'&&progress>0){
     ctx.beginPath();ctx.arc(42,42,40.3,-Math.PI/2,-Math.PI/2+Math.PI*2*progress);
