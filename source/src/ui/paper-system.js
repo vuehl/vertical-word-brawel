@@ -52,9 +52,12 @@ export function paperDecisionActions(el,cancel,confirm){
 }
 
 export function paperDecisionPanel(el,title,hint,body,cancel,confirm){
+  cancel.dataset.paperSurface='trade-action';
+  confirm.dataset.paperSurface='trade-action';
+  confirm.classList.add('primary');
   return el('section','paper-prompt',[
     el('h2','',title),hint,...body,paperDecisionActions(el,cancel,confirm)
-  ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'album-page',tabindex:'-1'});
+  ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'record-paper',tabindex:'-1'});
 }
 
 export function openPaperPrompt({el,button,parent,screen,trigger,title,hint,body=[],confirm,onCancel,closeAction,cancelLabel}){
@@ -76,10 +79,15 @@ export function openPaperPrompt({el,button,parent,screen,trigger,title,hint,body
   }};
 }
 
+// Character dossiers and battle subviews use a full-width, level paper switch.
+export function profileSwitch(button,label,onClick,kind,attrs){
+  return button(label,onClick,'zx-plain '+kind,{...attrs,'data-paper-surface':'profile-switch'});
+}
+
 export function albumTab(el,button,label,active,onClick,attrs={}){
   const art=el('img','zc-control-face',[],{alt:'','aria-hidden':true});
   const tab=button([art,el('span','zc-control-label',label)],onClick,'zc-btn zc-filter',
-    {'data-paper-surface':attrs['data-move-group']||attrs['data-plan-tab']||attrs['data-stat-tab']!==undefined?'profile-switch':'flat',...attrs});
+    {'data-paper-surface':attrs['data-move-group']||attrs['data-plan-tab']?'profile-switch':'flat',...attrs});
   setAlbumTabActive(tab,active);
   return tab;
 }
@@ -141,6 +149,10 @@ export function fitPaperActionLabels(footer){
     }
   }
   fit();requestAnimationFrame(()=>{if(footer.isConnected)fit();});
+  if(!window.nativeUI&&typeof ResizeObserver==='function'){
+    const observer=new ResizeObserver(()=>footer.isConnected?fit():observer.disconnect());
+    observer.observe(footer);
+  }
 }
 
 export function standardFooter(footer){

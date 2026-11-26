@@ -1,7 +1,7 @@
 import {journeyScene} from './journey-scene.js';
 import {paintLoadingSlip} from './menu-scene.js';
 import {headerCutout,titleRibbon,hudPaperIcon,paperIcon,rewardPaper,arrivalPennant,evolutionResult,settlementTicket,battleDialogHeading,battleDialogFrame,stagePortrait,choiceMark} from './first-batch-art.js';
-import {albumTab,setAlbumTabActive,dockDialogClose,mountMenuDialog,openPaperPrompt,paperDecisionPanel,paperDecisionActions,paperDialogTitle,standardButton,fitPaperActionLabels,standardFooter,freePaperActions} from './paper-system.js';
+import {albumTab,setAlbumTabActive,profileSwitch,dockDialogClose,mountMenuDialog,openPaperPrompt,paperDecisionPanel,paperDecisionActions,paperDialogTitle,standardButton,fitPaperActionLabels,standardFooter,freePaperActions} from './paper-system.js';
 import {upgradeStocks,choiceQuality,choiceModel,effectScope} from './choice-presentation.js';
 import {createCollectionUI} from './collection-ui.js';
 import {canDeploy,collectionRewards} from './collection-rules.js';
@@ -312,7 +312,7 @@ export function createZixingUI(app,api) {
       flag.style.width=(Math.ceil(textMetrics.measureText(title).width)+65)+'px';
       node.classList.add('paper-menu-page');
       const family=['choose','map','difficulty','collection-moves','collection-move-detail','collection-looks','collection-plan'].includes(name)?'sail':'wave';
-      const journal=!['choose','map','difficulty'].includes(name);
+      const journal=['collection-moves','collection-looks','collection-plan','settings','lab','collection-unlock','collection-rewards'].includes(name);
       if(journal){node.classList.add('collection-journal');node.dataset.paperSurface='journal-cover';}
       node.append(el('header','zx-header '+color,[journal?null:headerCutout(family),flag,subtitle?el('small','',subtitle):null],{'data-paper-surface':'flat'}));
     }
@@ -320,7 +320,6 @@ export function createZixingUI(app,api) {
     if(content.firstElementChild?.matches('.paper-stage-slip,.zc-detail-hero,.zx-help-intro,.zx-wallet')){
       content.classList.add('paper-mounted-body');node.classList.add('paper-masthead-page');
     }
-    if(node.classList.contains('collection-journal'))content.dataset.paperSurface='bound-index';
     node.append(content);
     if(actions.length){
       const footer=standardFooter(el('footer','zx-footer',actions));
@@ -539,10 +538,10 @@ export function createZixingUI(app,api) {
       }
       const seats=Array.from({length:COOP_ROOM_SIZE},()=>{
         const tag=el('small','coop-role'),art=el('div','coop-seat-art'),name=el('b','coop-name'),state=el('small','coop-state');
-        const tile=el('div','coop-seat zx-stat-row',[tag,art,name,state],{'data-paper-surface':'destination-cover'});
+        const tile=el('div','coop-seat zx-stat-row',[tag,art,name,state],{'data-paper-surface':'route-station'});
         return {tag,art,name,state,tile};
       });
-      const roster=el('div','coop-roster zx zx-collection zc-library',[],{'data-paper-surface':'bound-index'});
+      const roster=el('div','coop-roster zx zx-collection zc-library');
       let filter='all',shownPick=null,shownFilter=null;
       function selectRoomCharacter(id){
         return perform(async()=>{
@@ -1015,13 +1014,14 @@ export function createZixingUI(app,api) {
       }
     },'primary',{'data-action':'confirm-research'}):
       button('去获取星尘',()=>{close();choose();},'primary',{'data-action':'research-adventure'});
+    dismiss.dataset.paperSurface='trade-action';act.dataset.paperSurface='trade-action';
     const summary=(label,value,cls='')=>el('div','lab-total '+cls,[el('span','',label),el('b','',number(value))]);
     const panel=el('section','zx lab-dialog',[
       el('div','lab-dialog-head',[el('div','lab-dialog-heading',[el('small','','永久研究'),el('h2','',title)]),stagePortrait({word},null,false,'move-stamp')]),
       el('div','lab-preview',[el('b','',name+'   Lv.'+level+' → '+(level+1)),el('b','',labValue(item,level)+' → '+labValue(item,level+1))]),
       summary('持有星尘',dust),summary(can?'本次消耗':'升级需要',cost),summary(can?'升级后剩余':'还差星尘',Math.abs(dust-cost),can?'':'shortfall'),
       el('small','lab-dialog-note','对所有字灵生效，从下一局起应用。'),errorNote,paperDecisionActions(el,dismiss,act),
-    ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'album-page'});
+    ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'bound-index'});
     document.querySelector('.zx-dialog')?.remove();
     popup=el('div','zx zx-modal-wrap zx-dialog lab-overlay',panel);
     mountMenuDialog(app.ui,popup,app.screen);
@@ -1084,10 +1084,11 @@ export function createZixingUI(app,api) {
       card(el('div','zx-setting',[row(el('b','','画质'),choices),description]),
         el('div','zx-setting',row(col(el('b','','锁定 30 帧'),small(frameRateHelp)),lock))),
     ],{'aria-label':'设置选项'});
-    for(const panel of scroll.children)panel.dataset.paperSurface='destination-cover';
+    for(const section of scroll.children)section.dataset.paperSurface='flat';
     const page=screen('settings','设置','仅调整当前设备的体验',[scroll],
       [small('调整即时生效'),button('返回',async()=>{await app.meta.saveNow();app.setScreen(null);back();})]);
     page.querySelector('.zx-body').dataset.paperSurface='bound-index';
+    freePaperActions(page);
   }
   function help() {
     if(document.querySelector('.zx-guide-overlay'))return;
@@ -1107,15 +1108,14 @@ export function createZixingUI(app,api) {
     panel.querySelector('h2').dataset.paperSurface='destination-ribbon';
     return panel;
   }
-  function readingDialog(host,screenNode,trigger,title,instructions,action,journal=false){
+  function readingDialog(host,screenNode,trigger,title,instructions,action){
     if(host.querySelector('.zx-guide-overlay'))return;
     const panel=el('section','zx-guide-paper',[
       el('h2','',title),
       el('div','zx-guide-scroll',instructions.map(([symbol,title,desc])=>el('div','zx-guide-row',[
-        el('span','zx-guide-mark',menuSymbol(symbol,25,journal),journal?{'data-paper-surface':'short-ink'}:{}),
-        el('div','zx-guide-copy',[el('b','',title),text(desc)])]))),
-    ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'album-page'});
-    const wrap=el('div','zx zx-modal-wrap zx-guide-overlay',journal?journalDialog(panel):panel);
+        el('span','zx-guide-mark',menuSymbol(symbol,25)),el('div','zx-guide-copy',[el('b','',title),text(desc)])]))),
+    ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'bound-index'});
+    const wrap=el('div','zx zx-modal-wrap zx-guide-overlay',panel);
     const close=()=>{wrap.remove();trigger?.focus?.({preventScroll:true});};
     const dismiss=button([],close,'',{'data-action':action});
     dockDialogClose(wrap,dismiss,'关闭'+title);
@@ -1197,11 +1197,11 @@ export function createZixingUI(app,api) {
     }
     const pane=el('div','zx-pause-pane'),body=el('div','zx-pause-body',[pane]);
     let active=initialTab;
-    const tabs=el('div','zc-album-tabs zx-pause-tabs',[['attrs','属性'],['build','本局构筑']].map(([key,label])=>
-      albumTab(el,button,label,key===active,()=>show(key),{'data-pause-tab':key})));
+    const tabs=el('div','zx-pause-tabs',[['attrs','属性'],['build','本局构筑']].map(([key,label])=>
+      profileSwitch(button,label,()=>show(key),'zx-pause-switch',{'data-pause-tab':key})),{role:'group','aria-label':'暂停资料'});
     function show(key){
       active=key;
-      for(const tab of tabs.children)setAlbumTabActive(tab,tab.dataset.pauseTab===key);
+      for(const tab of tabs.children)tab.setAttribute('aria-pressed',String(tab.dataset.pauseTab===key));
       if(key==='attrs')pane.replaceChildren(pauseAttributes(run));
       else pane.replaceChildren(inventory('招式',entries.filter(item=>item.move),'moves'),inventory('BUFF',entries.filter(item=>item.vitamin),'buffs'),inventory('道具',entries.filter(item=>!item.move&&!item.vitamin),'supplies'));
       body.scrollTop=0;
@@ -1209,7 +1209,7 @@ export function createZixingUI(app,api) {
     show(active);
     const tools=el('div','zx-row zx-pause-actions',[
       button([menuSymbol('settings',18),el('span','','设置')],()=>settings(()=>pause(run,active)),'zx-plain zx-pause-action',{'data-action':'pause-settings'}),
-      button([icon('book',18,'#27232F'),el('span','','玩法说明')],help,'zx-plain zx-pause-action',{'data-action':'help'}),
+      button([icon('book',18,'#485E82'),el('span','','玩法说明')],help,'zx-plain zx-pause-action',{'data-action':'help'}),
     ]);
     if(run.coop)tools.append(button('暂离房间',()=>{
       saveProgress(run);run.coop.room.end('已暂离',false);app.coopRoom=null;app.toMenu();
@@ -1240,14 +1240,16 @@ export function createZixingUI(app,api) {
     return wrap;
   }
   function confirmEnd(run,tab) {
-    const cancel=button('继续休整',()=>pause(run,tab),'',{'data-action':'end-cancel','data-paper-surface':'trade-action'});
-    const confirm=button('结束本局',()=>{run.endHow='quit';return run.finish(false);},'danger',{'data-action':'end-confirm','data-paper-surface':'journal-button'});
+    const cancel=button('继续休整',()=>pause(run,tab),'',{'data-action':'end-cancel'});
+    const confirm=button('结束本局',()=>{run.endHow='quit';return run.finish(false);},'danger',{'data-action':'end-confirm'});
     const hint=el('p','paper-prompt-hint',run.time<QUIT_REWARD_MIN_SECONDS
       ? '本局未满 '+QUIT_REWARD_MIN_SECONDS+' 秒，现在结束将获得 0 星尘。'
       : '结束后将按当前进度结算，本局临时强化随旅程结束。');
-    const details=el('p','zx-end-state',character(run.startSpecies).word+' · Lv.'+run.player.level+'    '+time(run.time));
-    const panel=paperDecisionPanel(el,'结束本局？',hint,[details],cancel,confirm);
-    const wrap=run.ui.modal(journalDialog(panel));
+    const details=el('div','zx-end-state',[
+      el('b','',character(run.player.speciesId).word+' · Lv.'+run.player.level),
+      el('span','',time(run.time)),
+    ]);
+    const wrap=run.ui.modal(paperDecisionPanel(el,'结束本局？',hint,[details],cancel,confirm));
     wrap.className='zx zx-modal-wrap zx-dialog paper-prompt-overlay';
     run.ui.pauseBack=()=>pause(run,tab);
   }
@@ -1313,12 +1315,47 @@ export function createZixingUI(app,api) {
   }
   function paintQuality(node,quality){node.dataset.quality=quality.key;node.dataset.rarity=quality.label;}
   function offerContent(art,title,meta,notes=[]) {
-    return [el('div','zx-choice-heading',[art,el('div','zx-choice-identity',[
-      el('b','zx-choice-title',title),el('div','zx-choice-tags',[qualityBadge(meta.quality),meta.kind?el('span','zx-choice-kind',meta.kind):null]),
-    ])]),...notes];
+    return [el('div','zx-deal-art',[art,qualityBadge(meta.quality)],{'data-paper-surface':meta.off?'record-paper':'level-art','data-quality':meta.quality.key}),
+      el('div','zx-deal-copy',[el('div','zx-deal-title',el('b','zx-choice-title',title),{'data-paper-surface':'short-ink'}),
+        meta.kind?el('small','zx-choice-kind',meta.kind):null,...notes])];
   }
   function offerBody(cards,onStats) {
     return [button([el('span','','查看当前属性'),icon('stats',15,'#65577b'),el('span','','›')],onStats,'zx-upgrade-stats',{'data-action':'upgrade-stats'}),...cards];
+  }
+  function choiceList(className,cards){
+    const list=el('div',className,cards);
+    if(cards.length<2)return list;
+    list.dataset.equalCards='true';
+    // Measure the mounted cards so both renderers share the same choice height.
+    let width=0,attempts=0;
+    const fit=()=>{
+      // Native modal transitions can attach the new choices a few frames later.
+      if(!list.isConnected){
+        if(window.nativeUI&&attempts++<90)requestAnimationFrame(fit);
+        return;
+      }
+      width=list.clientWidth;
+      if(!window.nativeUI)for(const card of cards)card.style.height='';
+      const height=Math.max(...cards.map(card=>card.offsetHeight));
+      // Native layout is recorded during drawing, after the initial RAF callbacks.
+      if(!height&&window.nativeUI&&attempts++<90){requestAnimationFrame(fit);return;}
+      if(height){
+        for(const card of cards)card.style.height=height+'px';
+        // Explicitly invalidate the native modal texture after applying the measured heights.
+        if(window.nativeUI)list.dataset.equalHeight=String(height);
+      }
+    };
+    requestAnimationFrame(()=>requestAnimationFrame(fit));
+    document.fonts?.ready.then(fit);
+    list.addEventListener('load',fit,true);
+    if(!window.nativeUI&&typeof ResizeObserver==='function'){
+      const observer=new ResizeObserver(()=>{
+        if(!list.isConnected){observer.disconnect();return;}
+        if(list.clientWidth!==width)fit();
+      });
+      observer.observe(list);
+    }
+    return list;
   }
   function levelUp(run,offers,chooseOffer,art) {
     let choosing=false;
@@ -1358,7 +1395,7 @@ export function createZixingUI(app,api) {
     const dialog=popup.querySelector('.zx-modal'),title=dialog.querySelector('h2');
     popup.classList.add('zx-upgrade-scrim');
     const header=battleDialogHeading(title,'选择 1 项强化');
-    dialog.append(header,el('div','zx-choice-list',cards),el('footer','zx-choice-actions',[
+    dialog.append(header,choiceList('zx-choice-list',cards),el('footer','zx-choice-actions',[
       button([icon('refresh',17,'#EEC659'),el('span','','重抽 · 剩余 '+run.rerolls+' 次')],()=>choose(null,'reroll'),'zx-reroll',{'data-paper-surface':'upgrade-reroll',disabled:run.rerolls<=0}),
     ]));
   }
@@ -1401,33 +1438,41 @@ export function createZixingUI(app,api) {
         const trailing=leading?null:label.match(/^(.+?)\s*([+−-]\d+(?:[.,]\d+)?%?)$/);
         const stat=leading?leading[2]:trailing?trailing[1]:label;
         const value=leading?leading[1]:trailing?.[2];
-        art.className='zx-loadout-icon';art.removeAttribute('style');
+        const statIcon={damage:'target',attackSpeed:'streak',maxHp:'blessing',moveSpeed:'dash',critChance:'aim',area:'globe',xpGain:'stardust',regen:'blessing',armor:'silver',luck:'shiny-charm',duration:'vela',statusChance:'idea'};
+        const mark=loadoutIcon(api.interfaceIcon(statIcon[args[2]?.[index]?.mods?.[0]?.stat]||'blessing'),stat);
         const badge=qualityBadge(meta.quality);
-        node.dataset.paperSurface='flat';
-        node.replaceChildren(rewardPaper('blessing',meta.quality.key),el('div','zx-blessing-row',[
-          el('div','zx-blessing-seal',art),el('div','zx-blessing-label',[badge,el('b','',stat)]),
-          value?el('b','zx-blessing-amount',value):el('span','zx-blessing-amount','✦',{'aria-hidden':'true'}),
+        node.dataset.paperSurface='level-offer';
+        node.replaceChildren(el('div','zx-blessing-row',[
+          el('div','zx-blessing-seal',mark,{'data-paper-surface':'level-art','data-quality':meta.quality.key}),el('div','zx-blessing-label',[badge,el('b','',stat)]),
+          el('div','zx-blessing-amount',el('b','',value||'✦'),{'data-paper-surface':'altar-value'}),
         ]));
-      }else node.replaceChildren(...offerContent(art,heading.textContent,meta,notes));
+      }else{
+        node.classList.add('zx-deal-card');node.dataset.paperSurface=meta.off?'record-paper':'level-offer';
+        if(meta.off){node.style.opacity='1';node.disabled=true;}
+        node.replaceChildren(...offerContent(art,heading.textContent,meta,notes));
+      }
     });
     const actions=[...wrap.querySelectorAll('.actions > button')];
     actions.forEach(node=>{node.className='zx-button zx-reroll';node.querySelectorAll('kbd').forEach(key=>key.remove());standardButton(node,node.textContent.trim());});
     const back=()=>{hud.hideModal();stats(run,()=>hud[method](...args));};
-    const statsButton=button(method==='showTrade'?'查看属性':[icon('stats',16,'#EEC659'),el('span','','查看属性')],back,'zx-choice-stats',{'data-action':'upgrade-stats'});
+    const statsButton=button(method==='showTrade'?'查看属性':[icon('stats',16,'#65577b'),el('span','','查看属性')],back,'zx-choice-stats',{'data-action':'upgrade-stats'});
     document.querySelectorAll('.run-hint').forEach(node=>node.remove());
     wrap.className='zx zx-modal-wrap';
     if(method==='showBlessing'){
       wrap.classList.add('zx-upgrade-scrim');
-      statsButton.classList.add('zx-reroll');
+      statsButton.classList.add('zx-reroll');statsButton.dataset.paperSurface='trade-action';
       const content=el('section','zx zx-modal zx-upgrade zx-choice-dialog zx-first-batch-upgrade zx-blessing-dialog',[
         battleDialogHeading(el('h2','',title),help.map(n=>n.textContent).join(' ')),
-        el('div','zx-choice-list',cards),el('footer','zx-choice-actions',[...actions,statsButton]),
+        choiceList('zx-choice-list',cards),el('footer','zx-choice-actions',[...actions,statsButton]),
       ],{role:'dialog','aria-label':title,'data-choice':method,'data-paper-surface':'flat'});
       wrap.replaceChildren(content);return;
     }
     wrap.classList.add('zx-loot-scrim');
+    for(const action of [statsButton,...actions]){
+      action.dataset.paperSurface='trade-action';action.replaceChildren(el('span','zx-trade-label',action.textContent.trim()));
+    }
     const content=el('section','zx zx-modal zx-upgrade zx-choice-dialog zx-scene-offers',[
-      ...(help.length?[el('div','zx-scene-caption',help)]:[]),el('div','zx-choice-list',cards),
+      ...(help.length?[el('div','zx-scene-caption',help)]:[]),choiceList('zx-choice-list',cards),
       el('footer','zx-choice-actions',[statsButton,...actions]),
     ],{'data-choice':method,'data-paper-surface':'flat'});
     if(method==='showTrade'&&args[1]?.kind==='fossil')content.classList.add('zx-fossil-offers');
@@ -1437,7 +1482,7 @@ export function createZixingUI(app,api) {
     const wrap=run.ui.modalEl;
     const cards=choice?[...wrap.querySelectorAll('.cards > .card')]:[...wrap.children].filter(node=>node.classList.contains('card'));
     if(!cards.length)return;
-    const title=wrap.querySelector('h1')?.textContent||'发现一件道具';
+    const title='发现道具';
     const notes=[...wrap.children].filter(node=>node.classList.contains('help')&&!/^选择一项[。！!]?$/.test(node.textContent.trim())).map(node=>text(node.textContent,'zx-item-note'));
     cards.forEach((node,index)=>{
       const body=node.querySelector('.bd'),heading=body.querySelector('h3');
@@ -1449,15 +1494,15 @@ export function createZixingUI(app,api) {
       node.dataset.itemChoice=keys[index];
       const planned=planIncludes(runPlan(run),'items',keys[index]);
       if(!choice){
-        node.className='zx-loot-display';node.dataset.paperSurface='flat';
+        node.className='zx-loot-display';node.dataset.paperSurface='level-offer';
         const badge=qualityBadge(quality);
         const affects=body.querySelector('.affects'),unused=affects?.classList.contains('none');
         const story=body.querySelector('.muted')?.textContent.trim();
         const effect=body.querySelector('p')?.textContent.trim(),count=run.player.items.get(keys[index])??0;
         const warning=unused?el('span','zx-loot-fit','当前招式用不到',{'aria-label':affects.textContent}):null;
-        const held=el('div','zx-loot-limit',[el('span','','当前持有'),el('b','',String(count))]);
-        node.replaceChildren(rewardPaper('item',quality.key),el('div','zx-loot-stage',[picture,warning]),
-          el('div','zx-loot-leaf',[el('div','zx-loot-name',[el('h3','',heading.textContent),badge]),
+        const held=el('div','zx-loot-limit',[el('span','','当前持有'),el('b','','×'+count)]);
+        node.replaceChildren(el('div','zx-loot-stage',[picture,badge,warning],{'data-paper-surface':'level-art','data-quality':quality.key}),
+          el('div','zx-loot-leaf',[el('div','zx-loot-name',el('h3','',heading.textContent),{'data-paper-surface':'short-ink'}),
             el('div','zx-loot-copy',[planned?planBadge():null,effect?text(effect,'zx-choice-description zx-loot-effect'):null,
               affects&&!unused?text(affects.textContent,'zx-loot-beneficiaries'):null,story?text(story,'zx-loot-story'):null]),held]));
         return;
@@ -1472,19 +1517,19 @@ export function createZixingUI(app,api) {
       const label=node.textContent.trim().replace(/₽/g,'金币').replace(/^无\s*[（(]/,'放弃拾取（');
       node.replaceChildren(label);node.className='zx-button'+(!choice&&index===0?' primary':' zx-item-sell');
       standardButton(node,label);
-      node.dataset.itemAction=!choice&&index===0?'take':'sell';
-      if(choice)node.dataset.paperSurface='trade-action';
+      node.dataset.itemAction=!choice&&index===0?'take':'sell';node.dataset.paperSurface='trade-action';
+      node.setAttribute('aria-label',label);
+      const amount=label.match(/\+(\d+)/);
+      if(amount&&node.dataset.itemAction==='sell')node.replaceChildren(el('span','',choice?'放弃拾取':'出售'),hudPaperIcon('coin',16),el('strong','','+'+amount[1]));
     });
     document.querySelectorAll('.run-hint').forEach(node=>node.remove());
     wrap.className='zx zx-modal-wrap';
-    const footer=el('footer','zx-item-actions',actions,{'data-paper-surface':'flat'});
+    const footer=el('footer','zx-item-actions',choice?actions:actions.reverse(),{'data-paper-surface':'flat'});
     const content=el('section','zx zx-modal zx-item-dialog '+(choice?'zx-item-pick':'zx-loot-dialog'),[
-      el('div','zx-item-body',cards),footer,
+      choiceList('zx-item-body',cards),footer,
     ],{'data-choice':choice?'showItemChoice':'showItem','data-paper-surface':'flat'});
     wrap.classList.add('zx-loot-scrim');
-    if(choice)wrap.classList.add('zx-item-pick-scrim');
     wrap.replaceChildren(battleDialogFrame(content,el('h2','',choice?'选择道具':title),choice?(notes.map(n=>n.textContent).join(' ')||'选择 1 件拾取'):''));
-    fitPaperActionLabels(footer);
   }
   function settlementSaved(ticketId,receipt){
     const dialog=app.run?.ui.modalEl;

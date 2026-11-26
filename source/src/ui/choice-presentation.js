@@ -1,28 +1,30 @@
-import {paperPalette} from './paper-shapes.js';
-
-// Rarity is a small printed accent, while every reward uses the journal stock.
 // Presentation metadata only: no reward values, rolls or callbacks are changed.
 export const qualityPalette=[
- {key:'common',label:'普通',border:'#8F8377',ink:'#62584E'},
- {key:'uncommon',label:'少见',border:'#7C9467',ink:'#49633E'},
- {key:'rare',label:'稀有',border:'#7B91A6',ink:'#4A627B'},
- {key:'epic',label:'史诗',border:'#A08AAB',ink:'#765B82'},
- {key:'legendary',label:'传说',border:'#BA913C',ink:'#815D22'},
-].map(quality=>({...quality,fill:paperPalette.card}));
-const specialQuality={key:'special',label:'特殊',fill:paperPalette.card,border:'#AF8C78',ink:'#805C48'};
-const allQualities=[...qualityPalette,specialQuality];
-export const qualityPaper=Object.fromEntries(allQualities.map(q=>[q.key,
-  [paperPalette.darkStock,paperPalette.card,paperPalette.inset,q.border,q.ink]]));
-export const upgradeStocks=Object.fromEntries(allQualities.map(q=>[q.key,
-  [paperPalette.card,paperPalette.yellow,q.ink]]));
-// The CSS fallback and native rarity ribbons use the same accent values.
-export const qualityPaletteStyle=allQualities.map(q=>`
-.zx .zx-quality-card[data-quality="${q.key}"]{background:${q.fill};border-color:var(--paper-darkStock)}
-.zx .zx-quality-badge.${q.key}{background:${q.ink};border-color:${q.ink};color:var(--paper-warmWhite)}
-.zx-level-up [data-quality="${q.key}"]>.zx-level-stamp{background:${q.ink}}
-`).join('');
+ {key:'common',label:'普通',fill:'#f0f2f3',border:'#a7afb7',ink:'#465362'},
+ {key:'uncommon',label:'少见',fill:'#e7f3e4',border:'#7eab74',ink:'#365d32'},
+ {key:'rare',label:'稀有',fill:'#e4effc',border:'#729ed1',ink:'#315f94'},
+ {key:'epic',label:'史诗',fill:'#eee5fb',border:'#a186c2',ink:'#67468b'},
+ {key:'legendary',label:'传说',fill:'#fff0c7',border:'#cca24b',ink:'#805b16'},
+];
+export const qualityPaper={
+  common:['#979CAE','#EDEEF4','#E3E6ED','#BCC2D3','#747B8F'],
+  uncommon:['#2F764B','#F0F6F1','#E0EBE5','#83B88E','#437846'],
+  rare:['#4377CE','#E5F1F9','#EBEBF8','#67AFD1','#2F69BA'],
+  epic:['#8460AD','#F1ECF8','#E8E0F6','#B89CDE','#785AA4'],
+  legendary:['#D67D5B','#F7F2DF','#F1E3C7','#D1A348','#C0623E'],
+  special:['#8A87A7','#F0EFF6','#E3E2EF','#B3ACCC','#776D92'],
+};
+// Large upgrade surfaces carry the rarity even when the badge is covered.
+export const upgradeStocks={
+  common:['#E8E0D3','#B7AA99','#544C49'],
+  uncommon:['#BCE4AD','#74BF80','#32664B'],
+  rare:['#AAD1FA','#649FD9','#2F5587'],
+  epic:['#D6B8EE','#A77ACC','#623D88'],
+  legendary:['#FFDC84','#ECA746','#895018'],
+  special:['#F3C7AA','#D99C7F','#805145'],
+};
 export function choiceQuality(rarity,label){
- const q=Number.isInteger(rarity)&&rarity>=0&&rarity<qualityPalette.length?qualityPalette[rarity]:specialQuality;
+ const q=Number.isInteger(rarity)&&rarity>=0&&rarity<qualityPalette.length?qualityPalette[rarity]:{key:'special',label:'特殊',fill:'#f4ebe0',border:'#bba68f',ink:'#6b5841'};
  return {...q,label:label||q.label};
 }
 export function choiceModel(method,args,index,tag=''){

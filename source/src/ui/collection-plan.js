@@ -2,13 +2,14 @@ import {albumTab,setAlbumTabActive} from './paper-system.js';
 
 const sections=[
   ['moves','招式','备选招式','标记想在本局习得或升级的招式。'],
-  ['vitamins','BUFF','BUFF（增益）','标记想在升级时优先选择的增益。'],
+  ['vitamins','BUFF','BUFF','标记想在升级时优先选择的增益。'],
   ['fusions','融合','融合路线','标记想在订书机合成的招式。'],
   ['items','道具','携带道具','标记想从商店购买或从扭蛋拾取的道具。'],
 ];
 
 export function openCollectionPlan({el,button,mount,footer,portrait,name,catalog,saved,save,back}){
-  const draft={},counts={},tabs={};
+  const draft={},original={},counts={},tabs={};
+  const status=el('small','zc-plan-status',[],{role:'status'});
   const nav=el('div','zc-filters zc-album-tabs');
   const tally=el('div','zc-plan-tally');
   const title=el('b'),desc=el('small'),marked=el('small','zc-plan-marked');
@@ -17,6 +18,8 @@ export function openCollectionPlan({el,button,mount,footer,portrait,name,catalog
   const updateCounts=()=>{
     for(const [key,label] of sections)counts[key].textContent=label+'  '+draft[key].size;
     marked.textContent='已标记 '+draft[current].size+' 项';
+    const dirty=sections.some(([key])=>draft[key].size!==original[key].size||[...draft[key]].some(id=>!original[key].has(id)));
+    status.textContent=dirty?'未保存':saved?'已保存':'尚未配置';
   };
   function show(section){
     const [group,,heading,hint]=section;
@@ -48,13 +51,14 @@ export function openCollectionPlan({el,button,mount,footer,portrait,name,catalog
     const [key,label]=section;
     const previous=Array.isArray(saved?.[key])?saved[key]:[];
     draft[key]=new Set(catalog[key].filter(entry=>previous.includes(entry.key)).map(entry=>entry.key));
+    original[key]=new Set(draft[key]);
     counts[key]=el('b');tally.append(counts[key]);
     tabs[key]=albumTab(el,button,label,false,()=>show(section),{'data-plan-tab':key});
     nav.append(tabs[key]);
   }
   show(sections[0]);
   const summary=el('section','zc-plan-summary',[
-    el('div','zc-plan-identity',[portrait,el('div','zc-plan-copy',[el('b','',name+'的计划'),el('small','','出战时提示已标记的选择')]),el('small','','编辑中')]),
+    el('div','zc-plan-identity',[portrait,el('div','zc-plan-copy',[el('b','',name+'的计划'),el('small','','出战时提示已标记的选择')]),status]),
     tally,
   ],{'data-paper-surface':'destination-cover'});
   const sheet=el('div','zc-plan-sheet',[

@@ -4,7 +4,7 @@ import {dockDialogClose,mountMenuDialog} from './paper-system.js';
 function showReadingDialog(el,model,trigger,closeLabel,main,kind='',footer=null){
   if(document.querySelector('.zc-move-overlay'))return;
   const overlay=el('div','zx-modal-wrap zc-move-overlay');
-  const dialog=el('div','zc-move-dialog '+kind,[],{role:'dialog','aria-modal':true,'aria-label':model.name,'data-paper-surface':'move-paper'});
+  const dialog=el('div','zc-move-dialog '+kind,[],{role:'dialog','aria-modal':true,'aria-label':model.name,'data-paper-surface':'bound-index'});
   function close(){
     window.removeEventListener('keydown',onKey,true);
     overlay.remove();
@@ -84,6 +84,13 @@ export function openMoveDialog(el,move,trigger){
         el('b','zc-range-title','随机强化范围'),pairs(ranges,'zc-growth-ranges')]);
     });
   }
+  disclosure('related','相关道具与BUFF','',()=>{
+    const related=move.related();
+    if(!related)return el('div','zc-related','暂无相关道具与BUFF');
+    related.classList.add('zc-related');
+    related.querySelector('small')?.remove();
+    return related;
+  });
   showReadingDialog(el,move,trigger,'关闭招式说明',main);
 }
 

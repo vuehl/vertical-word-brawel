@@ -29,18 +29,18 @@ function folded(ctx,w,h,{edge,top,bottom,corner=8,rim=2}){
 function poly(ctx,p,color){ctx.beginPath();ctx.moveTo(...p[0]);for(const a of p.slice(1))ctx.lineTo(...a);ctx.closePath();ctx.fillStyle=color;ctx.fill();}
 function mountedPaper(ctx,w,h,footer=false){
   const c=footer?13:11;
-  cut(ctx,0,2,w,h-2,c,paperPalette.darkStock);
-  cut(ctx,0,0,w,h-3,c,paperPalette.line);
-  cut(ctx,footer?5:2,footer?5:7,w-(footer?10:4),h-(footer?13:16),c-3,paperPalette.paper);
-  poly(ctx,[[0,h-c-3],[c+6,h-9],[c+13,h-3],[c,h-3]],paperPalette.inset);
-  poly(ctx,[[w-c-11,h-3],[w-c-4,h-9],[w,h-c-3],[w-c,h-3]],paperPalette.yellow);
+  cut(ctx,0,2,w,h-2,c,'#5D77AF');
+  cut(ctx,0,0,w,h-3,c,gradient(ctx,w,h,'#B9D0ED','#6C9BDA'));
+  cut(ctx,footer?5:2,footer?5:7,w-(footer?10:4),h-(footer?13:16),c-3,gradient(ctx,w,h,'#F4F3F8','#F0F0F7'));
+  poly(ctx,[[0,h-c-3],[c+6,h-9],[c+13,h-3],[c,h-3]],'#9EBCE7');
+  poly(ctx,[[w-c-11,h-3],[w-c-4,h-9],[w,h-c-3],[w-c,h-3]],'#5283D0');
 }
 function postcard(ctx,w,h,captionSpace=14){
   ctx.save();ctx.translate(w/2,h/2);ctx.rotate(-.055);ctx.translate(-w/2,-h/2);
-  cut(ctx,1,3,w-2,h-3,1,paperPalette.line);cut(ctx,0,0,w-2,h-4,1,paperPalette.warmWhite);
+  cut(ctx,1,3,w-2,h-3,1,'#98B1D8');cut(ctx,0,0,w-2,h-4,1,white);
   const imageHeight=Math.max(1,h-captionSpace);
-  ctx.fillStyle=paperPalette.paper;ctx.fillRect(4,4,w-10,imageHeight);
-  ctx.save();ctx.translate(4,4);paintPhotoWaves(ctx,w-10,imageHeight,paperPalette.yellow,paperPalette.inset);ctx.restore();ctx.restore();
+  ctx.fillStyle=gradient(ctx,w,h,'#E6EEF9','#C9E3F2');ctx.fillRect(4,4,w-10,imageHeight);
+  ctx.save();ctx.translate(4,4);paintPhotoWaves(ctx,w-10,imageHeight,'#4185CA','#A8CCE9');ctx.restore();ctx.restore();
 }
 
 
@@ -76,11 +76,6 @@ export function drawUiPaper(ctx,box){
   }
   // HUD cell faces use the same CSS paint on web and native, including empty and overflow slots.
   if(!key||key==='hud-cell')return false;
-  if(['button','button-muted','card','info-slip','filter'].includes(key)&&el.closest?.('.collection-journal,.lab-overlay,.paper-prompt-overlay')){
-    if(key==='button'||key==='button-muted')key='menu-action';
-    else if(key==='filter')key='profile-switch';
-    else key='destination-cover';
-  }
   const [edge,top,bottom,accent,badge]=qualityPaper[el.dataset.quality]||qualityPaper.special;
   ctx.save();
   ctx.translate(x,y);
@@ -89,11 +84,6 @@ export function drawUiPaper(ctx,box){
       ctx.fillStyle='#38343D';ctx.fillRect(0,0,w,h);
       poly(ctx,[[w*.73,0],[w,0],[w,h*.18],[w*.81,h*.13]],'#423D46');
       break;
-    case 'menu-action':{
-      const primary=has('primary')||has('zc-primary');
-      poly(ctx,[[4,0],[w,0],[w-4,h],[0,h]],el.disabled?'#B6B0AB':primary?paperPalette.yellow:'#E5DDCF');
-      break;
-    }
     case 'journal-button':
       poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],el.disabled?'#B6B0AB':paperPalette.yellow);break;
     case 'atlas-sheet':
@@ -119,7 +109,7 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'profile-switch':{
-      const on=el.getAttribute('aria-pressed')==='true'||has('active');
+      const on=el.getAttribute('aria-pressed')==='true';
       ctx.fillStyle=on?paperPalette.yellow:'#57535E';ctx.fillRect(1,1,w-2,h-2);
       if(on){ctx.strokeStyle=paperPalette.darkStock;ctx.strokeRect(4,4,w-8,h-8);}
       break;
@@ -145,14 +135,14 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'unlock-record': {
-      cut(ctx,1,4,w-1,h-4,8,'#93897C');
-      cut(ctx,0,0,w,h-4,8,'#F1EBDF');
+      cut(ctx,1,4,w-1,h-4,8,'#7189A9');
+      cut(ctx,0,0,w,h-4,8,'#F3F1FA');
       // The short folded index is printed into the paper, above the challenge.
-      poly(ctx,[[0,16],[92,16],[85,30],[92,44],[0,44]],'#EEC659');
-      poly(ctx,[[0,44],[8,44],[8,48]],'#A38C54');
+      poly(ctx,[[0,16],[92,16],[85,30],[92,44],[0,44]],'#D6E2F1');
+      poly(ctx,[[0,44],[8,44],[8,48]],'#94AAC5');
       for(let i=0;i<3;i++){
         const x=w-47+i*9;
-        poly(ctx,[[x,15],[x+5,15],[x+1,21],[x-4,21]],i===1?'#AC823B':'#C3B9A7');
+        poly(ctx,[[x,15],[x+5,15],[x+1,21],[x-4,21]],i===1?'#B67B85':'#A7BBD1');
       }
       break;
     }
@@ -175,58 +165,46 @@ export function drawUiPaper(ctx,box){
     case 'shop-index-tab':
       if(el.getAttribute('aria-pressed')==='true')poly(ctx,[[5,3],[w-2,3],[w-6,h-3],[1,h-3]],'#F1C654');
       break;
-    case 'arrival-heading': {
-      const wash=ctx.createLinearGradient(0,0,w,0);
-      wash.addColorStop(0,'rgba(51,76,101,0)');
-      wash.addColorStop(.26,'rgba(51,76,101,.93)');
-      wash.addColorStop(.7,'rgba(51,76,101,.84)');
-      wash.addColorStop(1,'rgba(51,76,101,0)');
-      poly(ctx,[[0,19],[w,8],[w-9,h-20],[0,h-9]],wash);
-      break;
+    case 'record-paper': {
+      const selected=has('selected'),unavailable=el.disabled||el.dataset.unavailable==='true';
+      ctx.fillStyle='#2B262E';ctx.fillRect(0,0,w,h);
+      ctx.fillStyle=unavailable?'#D3CED0':selected?'#F6D57B':'#EEE8DA';
+      ctx.fillRect(2,2,w-4,h-4);break;
     }
-    case 'arrival-letter': {
-      // A glyph print tucked into an open envelope. Its silhouette has no button rim.
-      poly(ctx,[[2,46],[45,12],[91,43],[96,99],[10,107]],'#829BB6');
-      poly(ctx,[[4,46],[45,16],[89,44],[87,91],[12,100]],'#CBD9E8');
-      poly(ctx,[[17,10],[78,3],[86,81],[25,90]],'#97ADC8');
-      poly(ctx,[[15,7],[76,0],[84,78],[23,86]],'#F3F1FA');
-      poly(ctx,[[20,12],[72,6],[79,67],[27,73]],'#D4E6EF');
-      poly(ctx,[[3,46],[47,69],[92,42],[96,99],[10,106]],'#9FBAD4');
-      poly(ctx,[[10,106],[38,71],[49,74],[67,62],[96,99]],'#BFD2E4');
-      poly(ctx,[[3,46],[47,65],[92,42],[50,75],[43,75]],'#DDE7F0');
-      poly(ctx,[[40,65],[51,64],[53,76],[44,78]],'#B76678');
-      break;
-    }
+    case 'arrival-heading':
+      poly(ctx,[[0,10],[w,3],[w-8,h-10],[0,h-4]],'#322B34');break;
+    case 'arrival-letter':
+      poly(ctx,[[2,42],[w*.45,8],[w-6,40],[w-4,h-7],[8,h-2]],'#C9B58B');
+      poly(ctx,[[14,9],[w-20,4],[w-14,h-36],[20,h-27]],'#F6ECD2');
+      poly(ctx,[[2,42],[w*.49,65],[w-6,40],[w-4,h-7],[8,h-2]],'#DFCC9F');
+      poly(ctx,[[2,42],[w*.49,62],[w-6,40],[w*.50,71]],'#F7E8C1');break;
     case 'arrival-flag':
-      poly(ctx,[[0,1],[w,1],[w-5,h/2],[w,h-1],[0,h-1]],'#DCC1C7');break;
-    case 'companion-slip': {
-      cut(ctx,0,3,w,h-3,8,'#8A9EB9');
-      cut(ctx,0,0,w,h-4,8,'#EBEEF6');
-      poly(ctx,[[0,8],[8,0],[86,0],[76,h-4],[8,h-4],[0,h-12]],'#B3C8DF');
-      poly(ctx,[[w-38,0],[w-26,0],[w-33,7],[w-45,7]],'#869FBB');
-      break;}
+      poly(ctx,[[0,1],[w,1],[w-5,h-1],[0,h-1]],'#EFC554');break;
+    case 'companion-slip':
+      ctx.fillStyle='#2B262E';ctx.fillRect(0,0,w,h);
+      ctx.fillStyle='#EEE8DA';ctx.fillRect(2,2,w-4,h-4);
+      poly(ctx,[[2,2],[84,2],[72,h-2],[2,h-2]],'#DCCDAF');break;
     case 'shop-offer': {
       const [stock,print]=upgradeStocks[el.dataset.quality]||upgradeStocks.common;
       ctx.fillStyle='#2B262E';ctx.fillRect(0,0,w,h);ctx.fillStyle=stock;ctx.fillRect(2,2,w-4,h-4);
       ctx.fillStyle=print;ctx.fillRect(2,2,Math.round(w*.23),h-4);break;
     }
     case 'item-offer':
-      cut(ctx,0,0,w,h,4,paperPalette.darkStock);
-      cut(ctx,2,2,w-4,h-6,2,'#FBF5E8');
-      poly(ctx,[[2,5],[5,2],[66,2],[57,h-4],[4,h-4],[2,h-6]],paperPalette.yellow);
-      break;
+      cut(ctx,0,3,w,h-3,4,'#483F48');cut(ctx,0,0,w,h-4,4,top);
+      poly(ctx,[[0,5],[5,0],[70,0],[60,h-4],[5,h-4],[0,h-9]],bottom);
+      poly(ctx,[[0,5],[5,0],[10,0],[7,h-4],[5,h-4],[0,h-9]],accent);break;
     case 'scene-bulletin': {
       poly(ctx,[[4,1],[w-1,0],[w-8,h-3],[0,h]],'#302A33');
       poly(ctx,[[4,1],[9,1],[5,h],[0,h]],'#EFC554');break;
     }
-    case 'capture-track': {
-      const accent=has('escaped')?'#ED927E':'#EFC554';
-      poly(ctx,[[5,0],[w,0],[w,h-11],[w-11,h],[0,h],[0,5]],'#2B262E');
-      poly(ctx,[[5,2],[74,2],[63,h-4],[2,h-4],[2,6]],'#F0E8D5');
-      poly(ctx,[[2,h-8],[63,h-8],[62,h-3],[2,h-3]],accent);break;
+    case 'ultimate-call': {
+      const shape=[[0,6],[8,0],[w-12,0],[w,h*.5],[w-16,h-5],[7,h-3],[0,h-11]];
+      ctx.save();ctx.translate(0,3);poly(ctx,shape,'#7894BE');ctx.restore();poly(ctx,shape,'#344967');
+      poly(ctx,[[0,6],[8,0],[49,0],[43,h-3],[7,h-3],[0,h-11]],'#D5E2F0');
+      poly(ctx,[[w-43,0],[w-25,0],[w-30,5],[w-49,5]],'#CB8595');
+      poly(ctx,[[w-10,8],[w-1,h*.5],[w-15,h-6],[w-23,h-6],[w-9,h*.5],[w-15,11]],'#526D90');
+      const x=w-24,y=h*.5;poly(ctx,[[x-5,y],[x-1,y-1],[x,y-6],[x+2,y-1],[x+6,y],[x+1,y+2],[x,y+6],[x-1,y+2]],'#BBD0E8');break;
     }
-    case 'capture-step':
-      poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],has('on')?'#EFC554':'#49434D');break;
     case 'fusion-slip':
       ctx.fillStyle='#2B262E';ctx.fillRect(0,0,w,h);ctx.fillStyle=has('unavailable')?'#DAD6D8':'#FAE8AD';ctx.fillRect(2,2,w-4,h-4);break;
     case 'fusion-plus':
@@ -243,8 +221,8 @@ export function drawUiPaper(ctx,box){
       break;
     case 'album-page':
     case 'move-paper':
-      cut(ctx,0,2,w,h-2,7,'#93897C');
-      cut(ctx,0,0,w,h-3,7,'#F1EBDF');
+      cut(ctx,0,2,w,h-2,7,'#819CBB');
+      cut(ctx,0,0,w,h-3,7,'#F3F1FA');
       break;
     case 'plan-sheet': {
       // Ruled notebook margin and the torn bottom edge of the reference sheet.
@@ -260,13 +238,12 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'lab-balance':
-      cut(ctx,0,3,w,h-3,6,'#27232F');cut(ctx,0,0,w,h-3,6,'#514B52');
-      poly(ctx,[[0,6],[6,0],[75,0],[59,h-3],[6,h-3],[0,h-9]],'#332D35');
+      ctx.fillStyle='#302B33';ctx.fillRect(0,0,w,h);
+      poly(ctx,[[0,0],[72,0],[60,h],[0,h]],'#443C41');
       break;
     case 'lab-price': {
       const poor=el.dataset.poor==='true',height=Math.min(h-3,34),top=Math.floor((h-height)/2);
-      cut(ctx,0,top+2,w,height,4,poor?'#ADA395':'#66543A');
-      cut(ctx,0,top,w,height,4,poor?'#DFD6C6':'#EEC659');
+      poly(ctx,[[4,top],[w,top],[w-4,top+height],[0,top+height]],poor?'#D8D0C5':paperPalette.yellow);
       break;
     }
     case 'move-stamp': {
@@ -278,21 +255,24 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'heading-strip':
-      poly(ctx,[[-12,h-7],[w+12,h-7],[w+3,h+3],[-20,h+3]],paperPalette.yellow);break;
+      poly(ctx,[[-12,h-7],[w+12,h-7],[w+3,h+3],[-20,h+3]],'#CDDBF3');break;
     case 'dialog-title': {
       const length=Math.min(w-8,Math.max(76,el.textContent.length*19+19)),left=(w-length)/2;
-      poly(ctx,[[left,h*.64],[left+length,h*.64],[left+length-9,h*.92],[left-6,h*.92]],paperPalette.yellow);
+      poly(ctx,[[left,h*.64],[left+length,h*.64],[left+length-9,h*.92],[left-6,h*.92]],'#DBE5F4');
       break;}
     case 'menu-background':
-      ctx.fillStyle=paperPalette.darkStock;ctx.fillRect(0,0,w,h);
+      ctx.fillStyle=has('paper-menu-page')?paperPalette.navy:gradient(ctx,w,h,'#312F52','#20223A');ctx.fillRect(0,0,w,h);
+      if(has('paper-menu-page'))break;
+      poly(ctx,[[w*.4,h],[w,h-34],[w,h]],'#416DB1');
+      poly(ctx,[[w*.72,h],[w,h-34],[w,h-15]],'#6894D9');
       break;
     case 'postcard':postcard(ctx,w,h);break;
     case 'info-slip': {
       const wallet=has('zx-wallet'),photo=el.firstElementChild?.classList?.contains('paper-portrait');
       const inset=photo?Math.min(15,h*.13):2,left=photo?9:0;
-      cut(ctx,left+3,inset+5,w-left-3,h-inset*2,9,paperPalette.darkStock);
-      cut(ctx,left,inset,w-left-4,h-inset*2,6,paperPalette.line);
-      cut(ctx,left+1,inset+1,w-left-7,h-inset*2-4,5,wallet?paperPalette.cover:paperPalette.paper);
+      cut(ctx,left+3,inset+5,w-left-3,h-inset*2,9,'#4975BF');
+      cut(ctx,left,inset,w-left-4,h-inset*2,6,wallet?'#658ACB':'#BECDE9');
+      cut(ctx,left+1,inset+1,w-left-7,h-inset*2-4,5,gradient(ctx,w,h,wallet?'#5A85C4':white,wallet?'#354F91':'#EBEEF8'));
       break;}
     case 'map-print':
       cut(ctx,2,4,w-2,h-4,15,'#8E98BA');
@@ -345,11 +325,15 @@ export function drawUiPaper(ctx,box){
       }
       const primary=has('primary')||has('zc-primary')||has('purple')||has('zx-buy');
       const coral=has('danger');
-      const choiceAction=!!el.closest?.('.zx-blessing-dialog,.zx-scene-offers');
-      const face=el.disabled||key==='button-muted'?paperPalette.disabled:coral?paperPalette.danger:
-        primary?paperPalette.yellow:choiceAction?paperPalette.darkStock:paperPalette.inset;
-      cut(ctx,0,3,w,h-3,5,paperPalette.darkStock);
-      cut(ctx,0,0,w,h-3,5,face);
+      const colors=key==='button-muted'?['#C5D3E6','#C5D3E6','#8399B9']:coral?['#E08188','#C95968','#A14559']:primary?[paperPalette.blueStart,paperPalette.blueEnd,'#435BAC']:[white,'#EFEFF9','#4F89D3'];
+      // One thin perimeter and one shallow folded lower edge. The front face
+      // remains square; no bevelled side panels or bright cyan substitute.
+      cut(ctx,0,3,w,h-3,5,colors[2]);
+      cut(ctx,0,0,w,h-3,5,primary||coral?'#D7E5F5':'#5989D6');
+      const face=ctx.createLinearGradient(0,0,0,h);face.addColorStop(0,colors[0]);face.addColorStop(1,colors[1]);
+      cut(ctx,.8,.8,w-1.6,h-5,4.4,face);
+      ctx.fillStyle=primary||coral?'#B0CCEB':'#D9E3F6';ctx.fillRect(6,h-5,w-12,1);
+      poly(ctx,[[.8,h-8],[5,h-4],[w-5,h-4],[w-.8,h-8],[w-5,h-2],[5,h-2]],primary||coral?colors[2]:'#90BAE3');
       break;
     }
     case 'header':{
@@ -366,8 +350,8 @@ export function drawUiPaper(ctx,box){
       mountedPaper(ctx,w,h,true);
       break;
     case 'card':
-      cut(ctx,0,2,w,h-2,5,has('on')||has('selected')?paperPalette.yellow:paperPalette.line);
-      cut(ctx,1,1,w-2,h-5,4,paperPalette.card);
+      cut(ctx,0,2,w,h-2,5,has('on')||has('selected')?'#397ACE':'#B2BDD8');
+      cut(ctx,1,1,w-2,h-5,4,gradient(ctx,w,h,white,'#EBEDF9'));
       break;
     case 'look-photo':
       postcard(ctx,w,h-1,37);
@@ -388,34 +372,39 @@ export function drawUiPaper(ctx,box){
       // Compact bookmarks have the same folded face and full-size touch area.
       const inset=has('zc-filter')&&el.parentElement?.parentElement?.classList.contains('zc-library-paper')?5:0;
       const active=has('active')||has('on'),corner=1;
-      cut(ctx,0,4+inset,w,h-6-2*inset,corner,paperPalette.darkStock);
-      cut(ctx,0,1+inset,w,h-6-2*inset,corner,active?paperPalette.yellow:paperPalette.inset);
+      cut(ctx,0,4+inset,w,h-6-2*inset,corner,active?'#A75768':'#A6B9DD');
+      cut(ctx,0,1+inset,w,h-6-2*inset,corner,gradient(ctx,w,h,active?paperPalette.tabStart:'#E0E7F5',active?paperPalette.tabEnd:'#CFD9EF'));
       break;}
     case 'upgrade-reroll':
       poly(ctx,[[5,1],[w,1],[w-5,h-1],[0,h-1]],el.disabled?'#524D54':paperPalette.darkStock);
       break;
     case 'level-offer': {
       const [face]=upgradeStocks[el.dataset.quality]||upgradeStocks.special;
-      ctx.fillStyle=paperPalette.darkStock;ctx.fillRect(0,0,w,h);ctx.fillStyle=face;ctx.fillRect(2,2,w-4,h-4);break;
+      ctx.fillStyle='#29262C';ctx.fillRect(0,0,w,h);ctx.fillStyle=face;ctx.fillRect(2,2,w-4,h-4);break;
     }
     case 'level-art': {
       const [face,band]=upgradeStocks[el.dataset.quality]||upgradeStocks.special;
       ctx.fillStyle=band;ctx.fillRect(0,0,w,h);
       ctx.globalAlpha*=.36;poly(ctx,[[w*.65,0],[w,0],[w*.37,h],[0,h]],face);break;
     }
+    case 'altar-value':
+      poly(ctx,[[9,0],[w,0],[w,h],[0,h],[6,h*.63],[2,h*.63]],'#2B262E');break;
     case 'level-title':
       poly(ctx,[[0,0],[w,0],[w,h*.48],[w-8,h*.69],[w-2,h*.69],[w-14,h],[0,h]],'#2B262E');break;
      case 'upgrade-card': {
-      cut(ctx,0,3,w,h-3,4,paperPalette.darkStock);cut(ctx,0,0,w,h-4,4,top);
+      cut(ctx,0,3,w,h-3,4,'#322C36');cut(ctx,0,0,w,h-4,4,'#F3EEE4');
       poly(ctx,[[0,4],[4,0],[9,0],[7,h-4],[0,h-4]],accent);
       poly(ctx,[[w-15,0],[w-4,0],[w,4],[w,14]],bottom);
       ctx.fillStyle=edge;ctx.fillRect(9,h-5,w-16,1);break;
     }
     case 'rarity': {
+      const rarity=el.dataset.quality;
+      const ribbon=rarity==='legendary'?'#B25C3E':rarity==='common'?'#6C778D':badge;
+      const fold=rarity==='legendary'?'#8E4535':rarity==='common'?'#525B6F':edge;
       ctx.beginPath();
       ctx.moveTo(0,7);ctx.lineTo(6,2);ctx.lineTo(w-1,0);
       ctx.lineTo(w-1,h-6);ctx.lineTo(w-6,h-1);ctx.lineTo(2,h-1);
-      ctx.closePath();ctx.fillStyle=badge;ctx.fill();
+      ctx.closePath();ctx.fillStyle=gradient(ctx,w,h,ribbon,fold);ctx.fill();
       ctx.beginPath();ctx.moveTo(w-6,h-1);ctx.lineTo(w-6,h-6);ctx.lineTo(w-1,h-6);
       ctx.closePath();ctx.fillStyle='#27264836';ctx.fill();
       break;
@@ -438,27 +427,22 @@ export function drawUiPaper(ctx,box){
       cut(ctx,3,2,w-6,h-7,4,box.s.vars?.['--boss-seal-face']||'#F0DEE6');
       break;
     case 'guide-seal': {
-      const accent=box.s.vars?.['--rc']||'#7EA3CF';
-      cut(ctx,0,1,w,h-1,8,'#475C7D');
-      cut(ctx,1,0,w-2,h-3,7,'#A9BDD7');
-      cut(ctx,3,2,w-6,h-7,5,'#EEF0F7');
-      cut(ctx,w/2-4,h-6,8,3,1,accent);
-      break;
+      const r=Math.min(w,h)/2;
+      ctx.fillStyle='#302A32';ctx.beginPath();ctx.arc(w/2,h/2,r,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#F3E8CD';ctx.beginPath();ctx.arc(w/2,h/2,Math.max(0,r-2),0,Math.PI*2);ctx.fill();break;
     }
     case 'guide-distance':
-      cut(ctx,0,1,w,h-1,4,'#A3B6CD');
-      cut(ctx,0,0,w,h-2,4,'#E8EDF6');
-      break;
+      poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],'#302A32');break;
     case 'arcade': {
-      cut(ctx,2,5,w-2,h-5,12,paperPalette.darkStock);
-      cut(ctx,0,0,w-3,h-5,12,paperPalette.paper);
-      cut(ctx,4,3,w-11,48,8,paperPalette.darkStock);
-      cut(ctx,6,4,w-15,42,7,paperPalette.cover);
+      cut(ctx,2,5,w-2,h-5,12,'#384967');
+      cut(ctx,0,0,w-3,h-5,12,gradient(ctx,w,h,'#BFD0E4','#8FAAC8'));
+      cut(ctx,4,3,w-11,48,8,'#4A6689');
+      cut(ctx,6,4,w-15,42,7,gradient(ctx,w,48,'#55769E','#425A80'));
       for(const x of [11,w-17]){
-        ctx.fillStyle=paperPalette.yellow;ctx.fillRect(x,23,4,4);
-        ctx.fillStyle=paperPalette.muted;ctx.fillRect(x,24,3,1);
+        ctx.fillStyle='#CAD9E8';ctx.fillRect(x,23,4,4);
+        ctx.fillStyle='#8198B7';ctx.fillRect(x,24,3,1);
       }
-      cut(ctx,9,h-66,w-21,57,6,paperPalette.inset);
+      cut(ctx,9,h-66,w-21,57,6,'#7892AE');
       break;
     }
     case 'portrait-strap':

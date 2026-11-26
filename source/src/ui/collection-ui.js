@@ -302,7 +302,7 @@ export function createCollectionUI(app,api,kit){
       const hero=el('div','zc-unlock-identity',[portrait(id),el('div','zc-unlock-name',[
         el('h2','',c.word),el('span','',api.typeName(c.type)+'属性')])]);
       const sheet=el('div','zc-unlock-record',[el('h3','zc-challenge-task','未解锁'),
-        el('p','zc-discovery-copy','这个字灵尚未开放出战。')],{'data-paper-surface':'unlock-record'});
+        el('p','zc-discovery-copy','这个字灵尚未开放出战。')],{'data-paper-surface':'bound-index'});
       const node=mount('collection-unlock','解锁字灵','',[hero,sheet],[choice('返回',back,'zc-back',{'data-action':'collection-back'})]);
       node.dataset.unlockState='locked';
       node.querySelector('.zx-body').dataset.paperSurface='flat';
@@ -340,7 +340,7 @@ export function createCollectionUI(app,api,kit){
       }
       body.push(alt);
     }
-    const sheet=el('div','zc-unlock-record',body,{'data-paper-surface':'unlock-record','data-many':pr.parts.length>1});
+    const sheet=el('div','zc-unlock-record',body,{'data-paper-surface':'bound-index','data-many':pr.parts.length>1});
     const actions=unknown?[choice('返回',back,'zc-back',{'data-action':'collection-back'})]:available?
       footer(()=>appearances(id,()=>unlock(id,back)),'查看外观',false,back):footer(()=>{
       p().collection??={};p().collection.track=tracked?null:id;app.meta.save();unlock(id,back);
@@ -363,7 +363,7 @@ export function createCollectionUI(app,api,kit){
       const c=char(entry.id);return el('div','zc-reward',[portrait(entry.id,entry.look),el('div','zc-copy',[el('b','',c.word+' · '+(entry.kind==='base'?'新字灵':appearanceName(entry.look))),note(entry.kind==='base'?'已加入可出战库':'字灵与外观均已解锁')])]);
     })];
     if(pager.pages>1)content.push(el('div','zc-pager',[choice('‹',()=>rewards(entries,back,pager.page-1),'',{'aria-label':'上一页',disabled:pager.page===0}),note((pager.page+1)+' / '+pager.pages+' 页'),choice('›',()=>rewards(entries,back,pager.page+1),'',{'aria-label':'下一页',disabled:pager.page===pager.pages-1})]));
-    const node=mount('collection-rewards','本局新收录','',[el('div','zc-register',content,{'data-paper-surface':'album-page'})],footer(()=>open(),'选择字灵',false,back));
+    const node=mount('collection-rewards','本局新收录','',[el('div','zc-register',content,{'data-paper-surface':'bound-index'})],footer(()=>open(),'选择字灵',false,back));
     node.querySelector('.zx-body').dataset.paperSurface='flat';
   }
   let size=0;

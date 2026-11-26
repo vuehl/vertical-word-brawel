@@ -141,9 +141,10 @@ html.zixing .zx-combat-feed .mini .bb-sub.move{color:var(--boss-accent)}
 .zx-guide-pin>.cp-tip{position:absolute;left:0;top:0;width:0;height:0;border:0!important;background:transparent;transform:none!important;overflow:visible;filter:none}
 .zx-guide-pin>.cp-tip>.zx-guide-needle{position:absolute;left:-32px;top:-32px;width:64px;height:64px;pointer-events:none}
 .zx-guide-pin>.cp-ic{left:-17px;top:-17px;width:34px;height:34px;transform:none!important;animation:none;filter:none}
-.zx-guide-pin .mapbadge{display:flex;align-items:center;justify-content:center;width:34px;height:34px;overflow:visible;border:0;border-radius:7px;background:#E9EEF7;box-shadow:none}
-.zx-guide-pin .mapbadge>canvas,.zx-guide-pin .mapbadge>img{height:23px;width:23px;object-fit:contain}
-.zx-guide-pin>.cp-d{top:19px;min-width:38px;padding:1px 5px 3px;font-size:11px;line-height:15px;color:#374C6C;background:#E8EDF6;border:0;border-radius:2px;box-shadow:none;white-space:nowrap}
+.zx-guide-pin .mapbadge{display:flex;align-items:center;justify-content:center;width:34px;height:34px;overflow:visible;border:0;border-radius:50%;background:#F3E8CD;box-shadow:none}
+.zx-guide-pin .mapbadge>canvas,.zx-guide-pin .mapbadge>img{height:26px;width:26px;object-fit:contain}
+html.zixing .zx-combat-overlay .compass>.cp-d{position:absolute;left:-32px;top:28px;width:64px;min-width:0;height:19px;padding:1px 3px;transform:none;border:0;border-radius:0;box-shadow:none;background:#302A32;color:#FFF5DF;font-size:11px;font-weight:800;line-height:17px;white-space:nowrap;text-shadow:none;text-align:center;display:flex;align-items:center;justify-content:center}
+html.zixing .zx-combat-overlay .mktag>.cp-d{top:-19px}
 .zx-combat-feed .coop-team{position:relative;left:0!important;top:0!important;width:100%;flex-direction:row;align-items:flex-start;gap:6px;scale:1}
 .zx-combat-feed .coop-mate{flex:1;min-width:0;max-width:50%;height:auto;min-height:43px;padding:2px 4px 4px;gap:4px;background:#E8ECF5;border-bottom:2px solid #90A5C5;border-radius:3px}
 .zx-combat-feed .coop-med{width:32px;height:32px;box-shadow:none}

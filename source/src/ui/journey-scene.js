@@ -5,7 +5,7 @@ import {paintLoadingBackdrop} from './menu-scene.js';
 
 // Each shot anchors the portrait ring to the same point on the desk.
 const shots={home:0,choose:1,map:1};
-const showsIdlePortrait=shot=>shot==='home'||shot==='choose';
+const showsIdlePortrait=shot=>shot==='home'||shot==='choose'||shot==='map';
 const mix=(from,to,t)=>from+(to-from)*t;
 const reduced=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 const ease=t=>t*t*(3-2*t);

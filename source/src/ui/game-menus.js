@@ -15,7 +15,7 @@ import {g_, O_} from "../combat/skills.js";
 import {nv} from "../combat/player.js";
 import {ultimateChargeRate} from '../combat/stat-multipliers.js';
 import {movePool as Vb, Wb, Zb, lS, fusionRequiredLevel} from "../combat/upgrade-offers.js";
-import {zE, VE, WE, tD, nD, rD, DD, kD, catalogFusionIcon, catalogMoveMeta, BD, XD, ZD, pO} from "./move-details.js";
+import {uD, zE, VE, WE, tD, nD, rD, DD, kD, catalogFusionIcon, catalogMoveMeta, BD, XD, ZD, pO} from "./move-details.js";
 import {SO} from "../data/player-profile.js";
 import {ta} from "./controls.js";
 import {Tc} from "../actors/sprite-assets.js";
@@ -104,7 +104,8 @@ function ZX(app) {
           const level=trigger.querySelector('.zc-move-level')?.textContent??'';
           const fusion=move.fusion && lS.find(def=>def.key===move.fusion.key);
           onInspect({name:move.name,icon:fusion?catalogFusionIcon(fusion):ZC(move.type,32),meta:catalogMoveMeta(move),
-            desc:move.desc,level:level==='初始'?'初始习得':level,featured,others,growth,note},trigger);
+            desc:move.desc,level:level==='初始'?'初始习得':level,featured,others,growth,note,
+            related:()=>uD(move,ctx,true,key=>app.meta.itemInPool(key))},trigger);
         }});
     },
     moveTitle: id => k.movesByKey.get(pt.get(id).kit[0])?.name || '自动攻击',
@@ -150,6 +151,7 @@ function ZX(app) {
     facilityIcon: kind => Zt(facilityIconFile(kind)),
     itemIcon,
     itemRarity: id => sn.get(id)?.rarity,
+    interfaceIcon: key => Zt(`ui/icons/${key}.png`),
     glyphs: run => installGlyphs(run,{Texture:Wr,colorSpace:pi,species:id=>k.get(id)}),
   });
 }

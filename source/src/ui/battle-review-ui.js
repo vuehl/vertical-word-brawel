@@ -1,10 +1,10 @@
+import {createCaptureTicket} from './capture-ticket.js';
 import {castTitleLayout,castTitleLeft,castTitlePose,flameOpeningBand,titleCenter,titleFont,titleLine,titleWidth} from '../effects/ultimate-cast-layout.js';
 import {drawWeatherTime} from './paper-hud-art.js';
 import {weatherStyle,weatherFill,drawWeatherMark} from './weather-presentation.js';
 import {glyphPreview} from '../actors/zixing-glyphs.js';
 import {summonerBarColors} from './battle-review-style.js';
 import {planIncludes,runPlan} from '../combat/battle-plan.js';
-import {upgradeStocks} from './choice-presentation.js';
 import {battleDialogFrame,hudPaperIcon} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,dockDialogClose,standardButton} from './paper-system.js';
 const el=(tag,cls='',children=[],attrs={})=>{
@@ -36,14 +36,12 @@ export function qualityBadge(quality){
 export const planBadge=()=>el('small','zc-plan-badge','★ 计划中');
 export function itemOffer(node,{key,name,picture,quality,effects,held,planned}){
   node.className='zx-item-card zx-quality-card zx-item-option';
-  node.dataset.paperSurface='item-offer';node.dataset.quality=quality.key;node.dataset.rarity=quality.label;node.dataset.itemChoice=key;
+  node.dataset.paperSurface='level-offer';node.dataset.quality=quality.key;node.dataset.rarity=quality.label;node.dataset.itemChoice=key;
   picture.classList.add('zx-item-image');
   const badge=qualityBadge(quality);
-  badge.dataset.paperSurface='destination-ribbon';
-  badge.style.color=upgradeStocks[quality.key][0];
-  const art=el('div','zx-pick-art',picture);
+  const art=el('div','zx-pick-art',[picture,badge],{'data-paper-surface':'level-art','data-quality':quality.key});
   const copy=el('div','zx-pick-copy',[
-    el('div','zx-pick-name',[el('b','',name),badge]),
+    el('div','zx-pick-name',el('b','',name),{'data-paper-surface':'short-ink'}),
     planned?planBadge():null,
     ...effects.map(line=>el('p','zx-pick-effect',line.replace(/₽/g,'金币'))),
     held?el('small','zx-pick-held',held):null,
@@ -104,7 +102,7 @@ export function shopShelves(panel,previousView){
 }
 export function fullParty({hud,party,incoming,choose,role}){
   const pick=index=>{if(!wrap.isConnected)return;choose(index);};
-  const portrait=member=>el('div','zx-party-photo',glyphPreview(member.species,1));
+  const portrait=member=>el('div','zx-party-photo',glyphPreview(member.species,1),{'data-paper-surface':'flat'});
   const rows=party.flatMap((member,index)=>{
     if(member.shiny)return [];
     const stats=el('div','zx-party-tallies',[
@@ -112,7 +110,7 @@ export function fullParty({hud,party,incoming,choose,role}){
     ]);
     const row=el('button','zx-party-pick',[portrait(member),el('div','zx-party-copy',[
       el('b','',member.name),el('small','',role(member.types[0])),stats,
-    ]),el('span','zx-party-send','送别')],{type:'button','data-party-slot':index,'data-paper-surface':'companion-slip',
+    ]),el('span','zx-party-send','送别',{'data-paper-surface':'trade-action'})],{type:'button','data-party-slot':index,'data-paper-surface':'companion-slip',
       'aria-label':'送别'+member.name+'并招募'+incoming.name,onclick:()=>pick(index)});
     return [row];
   });
@@ -127,7 +125,7 @@ export function fullParty({hud,party,incoming,choose,role}){
     el('span','','选择要送别的伙伴'),el('i','',[],{'aria-hidden':true}),
   ]);
   const panel=el('section','zx zx-modal zx-party-roster',[
-    candidate,instruction,el('div','zx-review-content',rows),button('放弃招募',()=>pick(-1),'secondary',{'data-party-slot':'-1'}),
+    candidate,instruction,el('div','zx-review-content',rows),button(el('span','zx-trade-label','放弃招募'),()=>pick(-1),'secondary',{'data-party-slot':'-1','data-paper-surface':'trade-action'}),
   ],{role:'dialog','aria-label':'同行位已满','data-paper-surface':'flat'});
   const wrap=hud.modal(battleDialogFrame(panel,el('h2','','同行位已满')));
   wrap.className='zx zx-modal-wrap zx-loot-scrim';return wrap;
@@ -192,17 +190,20 @@ export function styleReviewDialog(pane,...classes){
       const original=action.textContent.trim(),amount=original.match(/\+([\d,.\s]+)\s*(?:₽|金币)/);
       action.className='zx-review-button secondary';action.textContent='遗忘';action.dataset.action='forget-entry';
       action.setAttribute('aria-label',copy.querySelector('h4').textContent+' · '+original.replace(/₽/g,'金币'));
-      standardButton(action,'遗忘');row.className='zx-forget-row';row.dataset.paperSurface='move-paper';
+      action.dataset.paperSurface='trade-action';action.replaceChildren(el('span','zx-trade-label','遗忘'));
+      row.className='zx-forget-row';row.dataset.paperSurface='record-paper';
       copy.className='zx-forget-copy';
       copy.lastElementChild.textContent=copy.lastElementChild.textContent.replace(/₽/g,'金币');
-      row.replaceChildren(el('div','zx-forget-art',art),copy,el('div','zx-forget-action',[
+      row.replaceChildren(el('div','zx-forget-art',art,{'data-paper-surface':'level-art','data-quality':'common'}),copy,el('div','zx-forget-action',[
         action,amount?shopAmount(amount[1].trim(),{credit:true}):null,
       ]));
     }
     body.replaceChildren(...rows,...(remaining?[note(remaining.textContent)]:[]));
     content.dataset.paperSurface='flat';
   }
-  pane.className='zx zx-modal-wrap zx-review-overlay '+classes.join(' ');
+  const itemList=classes.includes('zx-review-copy');
+  if(itemList)content.classList.add('zx-item-dialog');
+  pane.className='zx zx-modal-wrap '+(itemList?'zx-loot-scrim':'zx-review-overlay')+' '+classes.join(' ');
   const title=content.querySelector('h1'),heading=title?.closest('.zx-review-heading');
   let subtitle=heading?.querySelector('.zx-review-note')?.textContent;
   if(classes.includes('zx-fusion-list')||classes.includes('zx-fusion-preview')||classes.includes('zx-review-copy'))content.dataset.paperSurface='flat';
@@ -301,7 +302,8 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
     const content=el('div','zx-review-content zx-review-fusion-list');
     for(const [index,o] of offers.entries()){
       const open=button('查看',()=>{listScroll=content.scrollTop;preview(index);},'zx-plain',{'data-action':'view-fusion','data-paper-surface':'flat','aria-label':'查看'+o.r.name});
-      const fuse=button(el('span','zx-trade-label','融合'),()=>{if(!ready(o))return;session.select(index);session.submit();},'primary zx-fuse-action',{'data-action':'confirm-fusion','data-paper-surface':'trade-action','aria-label':'融合'+o.r.name,disabled:!ready(o)});
+      const fuseLabel=ready(o)?'融合':'无法融合';
+      const fuse=button(el('span','zx-trade-label',fuseLabel),()=>{if(!ready(o))return;session.select(index);session.submit();},'primary zx-fuse-action',{'data-action':'confirm-fusion','data-paper-surface':'trade-action','aria-label':fuseLabel+' · '+o.r.name,disabled:!ready(o)});
       const figure=Array.from(details(o.r)?.children??[]).find(cell=>cell.firstElementChild?.textContent==='伤害');
       const damage=figure?el('div','zx-recipe-damage',[el('small','','伤害'),el('b','',Array.from(figure.childNodes).slice(1).map(n=>n.textContent).join(''))]):null;
       content.append(card(o,[identity(o),open],[damage,el('div','zx-recipe-bottom',[ingredients(o),fuse])],
@@ -317,10 +319,6 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
   };
   list();return session;
 }
-function searchIcon(){
-  const n=el('canvas','zx-review-search',[],{width:40,height:40,'aria-hidden':true});n.width=n.height=40;n.dataset.static='true';
-  const c=n.getContext('2d');c.strokeStyle='#526d60';c.lineWidth=3;c.beginPath();c.arc(16,16,11,0,Math.PI*2);c.stroke();c.beginPath();c.moveTo(24,24);c.lineTo(36,36);c.stroke();return n;
-}
 export function showReviewCompanion({hud,current,incoming,dust,done,portrait,typeBadge,role}){
   const session=selectionSession(done),records=[current,incoming];
   const detail=index=>{
@@ -330,21 +328,21 @@ export function showReviewCompanion({hud,current,incoming,dust,done,portrait,typ
       el('section','zx-review-section',[el('h2','','同行效果'),note(role(r.types[0]))]),
       el('div','zx-review-stats',[el('span','','羁绊 '+(r.bond||0)),el('span','','击败 '+(r.kills||0)),el('span','','累计伤害 '+Math.round(r.damage||0))]),
     ]),el('div','zx-review-footer',button('返回',render,'secondary',{'data-action':'companion-back'})));
-    styleReviewDialog(pane);
+    const panel=styleReviewDialog(pane,'zx-companion-detail');panel.dataset.paperSurface='record-paper';
   };
   const render=()=>{
     const cards=records.map((r,index)=>{
       const selected=session.selected===!!index;
       return el('div','zx-review-companion'+(selected?' selected':''),[
         button([el('div','zx-review-choice-head',[check(selected),el('span','zx-review-tag',index?'新捕获':'当前同行')]),el('div','zx-review-companion-art',portrait(r.species)),el('h2','',r.name),el('div','zx-review-type-row',r.types.map(typeBadge)),note(index?'刚刚捕获':'羁绊 '+(r.bond||0)),note(role(r.types[0]))],()=>{session.select(!!index);render();},'zx-review-companion-select',{role:'radio','aria-checked':selected,'data-companion':index}),
-        button([searchIcon(),'查看'],()=>detail(index),'secondary',{'data-action':'view-companion','aria-label':'查看'+r.name}),
-      ]);
+        button(el('span','zx-trade-label','查看'),()=>detail(index),'secondary',{'data-action':'view-companion','data-paper-surface':'trade-action','aria-label':'查看'+r.name}),
+      ],{'data-paper-surface':'record-paper'});
     });
     const selected=session.selected===null?null:records[Number(session.selected)];
     const pane=hud.modal(heading('选择同行字灵','本局仅保留一位稀有同行'),el('div','zx-review-content',[
-      el('div','zx-review-companions',cards),el('div','zx-review-reward',note('图鉴登记与 '+dust+' 星星沙子已获得，不受同行选择影响。')),
-    ]),el('div','zx-review-footer',button(selected?'确认同行 · '+selected.name:'请选择同行字灵',()=>session.submit(),'primary',{'data-action':'confirm-companion',disabled:!selected})));
-    styleReviewDialog(pane,'zx-companion-dialog');
+      el('div','zx-review-companions',cards),el('div','zx-review-reward',note('图鉴登记与 '+dust+' 星星沙子已获得，不受同行选择影响。'),{'data-paper-surface':'flat'}),
+    ]),el('div','zx-review-footer',button(el('span','zx-trade-label',selected?'确认同行 · '+selected.name:'请选择同行字灵'),()=>session.submit(),'primary',{'data-action':'confirm-companion','data-paper-surface':'trade-action',disabled:!selected})));
+    styleReviewDialog(pane,'zx-companion-dialog').dataset.paperSurface='flat';
   };
   render();return session;
 }
@@ -496,32 +494,22 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     feed.append(bulletin);bulletinTimer=setTimeout(clearBulletin,rare?5200:3200);
   };
   let tracking=null,announcement=null;
-  const clearTrack=()=>{tracking?.remove();tracking=null;};
+  const clearTrack=()=>{tracking?.element.remove();tracking=null;hud.root.classList.remove('zx-catching-letter');};
   const oldStart=hud.captureStart.bind(hud);
   hud.captureStart=(species,shiny,master,friend=false,word)=>{
-    clearBulletin();clearTrack();captureWord=word||wordFor(species);session++;oldStart(species,shiny,master,friend,word);
+    clearBulletin();clearTrack();captureWord=word||wordFor(species);session++;oldStart(species,shiny,master,friend,captureWord);
     const film=hud.capEl;
     const plate=film?.querySelector('.cap-plate');
     if(!plate)return;
-    const portrait=plate.querySelector('.cap-pt').firstElementChild,balls=plate.querySelector('.cap-pips');
-    balls.className='zx-catch-pips';
-    const caption=friend?'招募伙伴':'抓字中';
-    const trait=[shiny?'异色':'',master&&!friend?'大师球':''].filter(Boolean).join(' · ');
-    const title=el('div','zx-catch-title',[el('b','',caption),trait?el('small','',trait):null]);
-    for(const pip of balls.children)pip.dataset.paperSurface='capture-step';
-    tracking=el('div','zx-catch-track',[el('span','zx-call-portrait',portrait),
-      el('div','zx-call-copy',[title,balls]),
-    ],{role:'status','aria-live':'polite','aria-label':[captureWord,caption,trait].filter(Boolean).join(' · '),'data-paper-surface':'capture-track'});
-    for(const bar of film.querySelectorAll('.lb'))bar.remove();
-    film.classList.add('zx','zx-capture-focus');film.dataset.uiRegion='capture-stage';
-    plate.replaceWith(tracking);hud.root.append(film);
+    const portrait=plate.querySelector('.cap-pt').firstElementChild;
+    tracking=createCaptureTicket(portrait,captureWord,{friend,shiny,master});
+    film.classList.add('zx','zx-capture-focus');
+    film.replaceChildren(tracking.element);hud.root.classList.add('zx-catching-letter');hud.root.append(film);
   };
   const oldShake=hud.captureShake.bind(hud),oldEnd=hud.captureEnd.bind(hud);
   hud.captureShake=step=>{
     if(!tracking){oldShake(step);return;}
-    const balls=tracking.querySelectorAll('.zx-catch-pips i');
-    balls.forEach((ball,i)=>ball.classList.toggle('on',i<step));
-    tracking.setAttribute('aria-label',captureWord+' · '+tracking.querySelector('.zx-catch-title').textContent+' · '+step+'/'+balls.length);
+    tracking.progress(step);
   };
   hud.captureEnd=()=>{const film=hud.capEl;oldEnd();clearTrack();film?.remove();};
   let announceFrame=0;
@@ -568,10 +556,7 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   hud.captureResult=ok=>{
     if(ok)lastSuccess=session;
     if(tracking){
-      const result=ok?'抓字成功':'抓字失败';
-      tracking.classList.add(ok?'caught':'escaped');
-      tracking.querySelector('.zx-catch-title b').textContent=result;
-      tracking.setAttribute('aria-label',captureWord+' · '+result);
+      tracking.result(ok);
       return;
     }
     queue.push({word:captureWord||wordFor(run.capture?.species),ok});wake();

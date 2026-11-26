@@ -662,6 +662,149 @@ function iD(e, t) {
     ),
   );
 }
+function aD(e) {
+  let t = g_[e.arch],
+    n = [e.cls === `physical` ? `physical` : `special`];
+  return (
+    t.stats.includes(`count`) && n.push(`projectiles`),
+    t.stats.includes(`area`) && n.push(`area`),
+    t.stats.includes(`dur`) && n.push(`duration`),
+    t.stats.includes(`speed`) && n.push(`projSpeed`),
+    e.status && e.arch !== `weather` && e.arch !== `buff` && n.push(`statusChance`, `statusDamage`),
+    (e.arch === `bolt` || e.arch === `barrage`) && n.push(`bounces`),
+    e.arch === `weather` || e.arch === `buff`
+      ? { all: [`attackSpeed`, `duration`], specific: [`duration`] }
+      : {
+          all: [...n, `damage`, `attackSpeed`, `critChance`, `critDamage`, `eliteDamage`, `superEffective`],
+          specific: n,
+        }
+  );
+}
+var oD = {
+  "smooth-rock": (e) => e.arch === `bolt` || e.arch === `barrage`,
+  "black-sludge": (e) => e.status === `poison`,
+  "flame-orb": (e) => e.status === `burn`,
+  "binding-band": (e) =>
+    e.status === `root` ||
+    e.status === `stun` ||
+    e.status === `paralysis` ||
+    e.status === `freeze` ||
+    e.status === `sleep`,
+};
+function sD(e) {
+  let { all: t, specific: n } = aD(e),
+    r = new Set(t);
+  return {
+    stats: t,
+    specific: n,
+    items: tt.filter((t) =>
+      dn[t.key]
+        ? dn[t.key] === e.type
+        : oD[t.key]
+          ? oD[t.key](e)
+          : t.mods.some((e) => r.has(e.stat) && ((e.mul ?? 1) > 1 || (e.add ?? 0) > 0)),
+    ),
+    vits: m.filter((e) => !e.dice && (r.has(e.stat) || e.extra?.some((e) => r.has(e.stat)))),
+  };
+}
+var cD = (e) => k.items[e]?.name ?? sn.get(e)?.name ?? e;
+function lD(e, t, n) {
+  if (e === `item`) {
+    let e = n.items?.get(t) ?? 0;
+    return X(
+      `span`,
+      { class: `mv-chip` + (e ? ` have` : ``), title: sn.get(t)?.desc ?? `` },
+      Q(t),
+      cD(t),
+      e ? X(`b`, {}, `×` + e) : null,
+    );
+  }
+  let r = Ne.get(t),
+    i = n.vitamins?.get(t);
+  return X(
+    `span`,
+    { class: `mv-chip vit` + (i ? ` have` : ``), title: r.desc },
+    Q(r.icon),
+    r.name,
+    i ? X(`b`, {}, c(`Nv. {lvl}`, { lvl: i.level })) : null,
+  );
+}
+function uD(e, t, n, availableItem = () => true) {
+  let r = sD(e),
+    i = (e) => tv[e]?.[0] ?? e;
+  r.items = r.items.filter(item => availableItem(item.key));
+  if (e.arch === `weather` && r.items.length + r.vits.length === 0) return null;
+  let a = X(`div`, { class: `mv-sec` }, X(`small`, {}, c(`Lo que lo mejora`))),
+    o = new Set(r.specific),
+    s = (e) => ({
+      items: r.items.filter(
+        (t) =>
+          !dn[t.key] &&
+          !oD[t.key] &&
+          t.mods.some((t) => t.stat === e && ((t.mul ?? 1) > 1 || (t.add ?? 0) > 0)),
+      ),
+      vits: r.vits.filter((t) => t.stat === e),
+    }),
+    l = r.items.filter((e) => dn[e.key] || oD[e.key]);
+  if (!n) {
+    a.append(X(`p`, { class: `mv-stats` }, r.stats.map(i).join(` · `)));
+    let e = [],
+      n = new Set(),
+      o = (r, i) => {
+        let a = r + i;
+        n.has(a) || (n.add(a), e.push(lD(r, i, t)));
+      };
+    for (let e of l) o(`item`, e.key);
+    for (let e of r.specific) {
+      let t = s(e);
+      (t.vits.forEach((e) => o(`vit`, e.key)), t.items.forEach((e) => o(`item`, e.key)));
+    }
+    for (let e of r.vits) t.vitamins?.has(e.key) && o(`vit`, e.key);
+    for (let e of r.items) t.items?.has(e.key) && o(`item`, e.key);
+    let u = e.slice(0, 10);
+    return (
+      u.length && a.append(X(`div`, { class: `mv-chips` }, ...u)),
+      e.length > u.length &&
+        a.append(
+          X(
+            `p`,
+            { class: `mv-more` },
+            c(`y {n} más: toca el movimiento para verlos todos`, { n: e.length - u.length }),
+          ),
+        ),
+      a
+    );
+  }
+  for (let e of r.stats) {
+    let n = s(e);
+    (n.items.length || n.vits.length) &&
+      a.append(
+        X(
+          `div`,
+          { class: `mv-group` },
+          X(`b`, {}, i(e), o.has(e) ? X(`i`, {}, c(`específico`)) : null),
+          X(
+            `div`,
+            { class: `mv-chips` },
+            ...n.vits.map((e) => lD(`vit`, e.key, t)),
+            ...n.items.map((e) => lD(`item`, e.key, t)),
+          ),
+        ),
+      );
+  }
+  return (
+    l.length &&
+      a.append(
+        X(
+          `div`,
+          { class: `mv-group` },
+          X(`b`, {}, c(`Solo para este movimiento`), X(`i`, {}, c(`específico`))),
+          X(`div`, { class: `mv-chips` }, ...l.map((e) => lD(`item`, e.key, t))),
+        ),
+      ),
+    a
+  );
+}
 function dD(e) {
   let t = k.moves.get(e)?.key;
   return t ? y.filter((e) => e.kit.includes(t)).map((e) => e.id) : [];
@@ -2767,6 +2910,7 @@ function yO(e, t = `btn small ghost gl-btn`) {
 }
 
 export {
+  uD,
   zE,
   VE,
   WE,
