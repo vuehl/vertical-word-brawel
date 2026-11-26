@@ -104,7 +104,13 @@ await page.evaluateOnNewDocument(()=>{
     return loc;
   };
   gl.uniform1i=function(loc,value){
-    if(loc && bootLocations.has(loc))window.bootPercentages.push(value);
+    if(loc && bootLocations.has(loc)){
+      window.bootPercentages.push(value);
+      if(value===100 && !window.checkedFullBar){
+        window.checkedFullBar=true;
+        requestAnimationFrame(()=>{window.fullBarBeforeHome=!GameGlobal.pokebonk.bootDiagnostics.completed;});
+      }
+    }
     return set.call(this,loc,value);
   };
 });
@@ -267,7 +273,7 @@ async function verifyStartup(){
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels.at(-1))),'00-background.png');
     await verifyMotion();
-    await page.evaluate(()=>window.releaseHomeStatus());
+    await page.evaluate(()=>{window.beforeHomeLabel=bootLabels.length;window.releaseHomeStatus();});
   }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
@@ -275,6 +281,11 @@ async function verifyStartup(){
   await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
   if(!baseline){
     await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed&&requestedPackages.includes('world'));
+    assert.ok(await page.evaluate(()=>window.fullBarBeforeHome && bootLabels.includes('100.0%')),
+      'The completed bar must survive a display frame before the home handoff');
+    if(retryInstall)assert.ok(await page.evaluate(()=>bootLabels.slice(beforeHomeLabel).some(label=>{
+      const value=parseFloat(label);return value>parseFloat(bootLabels[beforeHomeLabel-1]) && value<100;
+    })),'The remaining progress must animate before reaching 100%');
     assert.ok(await page.evaluate(()=>app.screen.dataset.page==='home'&&bootPercentages.includes(100)&&!requestedPackages.includes('art')),
       'Home must be usable while the first background download is held');
     assert.ok(await page.evaluate(()=>!requestedPackages.includes('capture_bag')),'Capture effects are only needed in a run');
@@ -389,7 +400,6 @@ async function verifyStartup(){
     const values=await page.evaluate(()=>bootPercentages);
     assert.equal(values[0],0);assert.equal(values.at(-1),100);
     for(let i=1;i<values.length;i++)assert.ok(values[i]>=values[i-1],'Progress moved backwards');
-    assert.equal(values.filter(n=>n===100).length,1);
     if(errors.length)throw Error(errors[0]);
     return;
   }
@@ -585,7 +595,6 @@ async function verifyStartup(){
   assert.equal(values[0],0);
   for(let i=1;i<values.length;i++)assert.ok(values[i]>=values[i-1],'Progress moved backwards');
   assert.equal(values[values.length-1],100);
-  assert.equal(values.filter(n=>n===100).length,1);
   console.log('Boot percentages through the first home frame:',[...new Set(values)].join(', '));
 }
 try{

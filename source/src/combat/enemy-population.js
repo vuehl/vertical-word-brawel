@@ -723,6 +723,7 @@ var Df = 0.4,
         f = (this.sepOdd ^= 1),
         p = ++this.lodFrame;
       const proxySquashDecay = this.remotes || t.coop?.monsters ? Math.exp(-e * 10) : 1;
+      const warmth = t.mapEvents?.bliz && t.mapEvents.speech;
       for (let i = this.firstAlive; i < this.n; i++) {
         if (!this.alive[i]) continue;
         if (this.dying[i] > 0) {
@@ -758,13 +759,14 @@ var Df = 0.4,
           g = a,
           _ = o,
           targetSlot = 0;
-        if (u > 2) {
+        const seekingWarmth = warmth && i === warmth.speaker && this.gen[i] === warmth.generation;
+        if (!seekingWarmth && u > 2) {
           let e = 1 / 0;
           for (let t = 0; t < u; t += 2) {
             let n = (l[t] - this.x[i]) ** 2 + (l[t + 1] - this.z[i]) ** 2;
             n < e && ((e = n), (g = l[t]), (_ = l[t + 1]), (targetSlot=t/2));
           }
-        } else u === 2 && ((g = l[0]), (_ = l[1]));
+        } else !seekingWarmth && u === 2 && ((g = l[0]), (_ = l[1]));
         let v = g !== a || _ !== o;
         if (!(this.flags[i] & wf)) {
           let e = this.x[i] - g,
@@ -873,6 +875,7 @@ var Df = 0.4,
               ? ((O = this.dirX[i]), (te = this.dirZ[i]), (b *= 2.4))
               : e <= 0 && (this.dirX[i] !== 0 || this.dirZ[i] !== 0) && (b *= 0.6);
         }
+        if (seekingWarmth) { O = w; te = E; }
         if(x && O===w && te===E && r.steerDeskEnemy){
           if(t.time>=this.deskNavUntil[i]){
             const interval=this.count>=100 && ee>24 ? .48 : .18;
@@ -1151,6 +1154,8 @@ var Df = 0.4,
       let e = this.run,
         t = e.sprites,
         n = e.focusIdx;
+      const speech = e.mapEvents?.speech;
+      const trackSpeech = speech?.beginFrame();
       (e.enemyShadowCells??=new Set()).clear();
       for (let r = this.firstAlive; r < this.n; r++) {
         if (!this.alive[r] || this.flags[r] & 32768) continue;
@@ -1280,6 +1285,9 @@ var Df = 0.4,
           if(!remaining||f)continue;
           glyphRect=d.zxStrokeFrames[remaining-1];
         }
+        if (trackSpeech && !f && d.ready && !(u & (R.Object | R.Capture | R.Treasure | R.Boss | R.Alpha | R.Totem | R.Summoner))) {
+          speech.observe(r,c,this.y[r]+Math.max(0,this.scale[r]-1.2)*.1+.08,l,d);
+        }
         if (
           (d.push(
             c,
@@ -1307,6 +1315,7 @@ var Df = 0.4,
           t.shadows.push(c, Number.isNaN(n) ? e.terrain.surface(c, l) : n, l, this.radius[r] * 2.4);
         }
       }
+      speech?.endFrame();
     }
     clear() {
       (this.alive.fill(0),

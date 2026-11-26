@@ -39,13 +39,14 @@ function wechatShareCard() {
   return card;
 }
 
-async function launchEngine(host, play, showProgress) {
+async function launchEngine(host, play, showProgress, finishProgress) {
   const env = await play.setup(host);
   if (host.onApp) env.onApp = host.onApp;
   let booted = false;
   const firstFrame = new Promise((resolve, reject) => {
     const draw = env.drawUI;
     let failures = 0;
+    let finishing = false;
     env.onBootRenderError = error => {
       if (++failures >= 3) {
         env.onBootRenderError = undefined;
@@ -54,13 +55,14 @@ async function launchEngine(host, play, showProgress) {
     };
     env.drawUI = (renderer,...args) => {
       renderer.resetState();
-      draw(renderer,...args);
+      if (!finishing) draw(renderer,...args);
       if (!booted) {
         showProgress(undefined,renderer);
         return;
       }
-      // Complete the bar only after the real home frame succeeds.
-      showProgress(100,renderer);
+      // The first successful home frame stays covered until the full bar has been shown.
+      finishing = true;
+      if (!finishProgress(renderer)) return;
       if (env.invalidateUI) env.invalidateUI();
       draw(renderer,...args);
       env.drawUI = draw;
@@ -97,6 +99,7 @@ async function start() {
   wx.onShow(receiveInvite);
   let phase = '创建画面', splash, shown = 0, animationTimer, activeRenderer;
   let lastPaint = began, lastStep = began, displayed = 0, waitingForRetry = false;
+  let finishStart = null, finishFrom = 0, fullSince = null;
   function stage(title) {
     phase = title;
     const ms=Date.now()-began;
@@ -106,15 +109,16 @@ async function start() {
   function paintProgress(renderer) {
     if (!splash || waitingForRetry) return;
     lastPaint = Date.now();
-    // Spread batched callbacks over visible updates. Keep the sweep moving
-    // at a stalled milestone and hand off immediately on a successful frame.
-    if (shown === 100) displayed = 100;
-    else if (lastPaint - lastStep >= 90) {
+    if (finishStart !== null) {
+      const t = Math.max(0, (lastPaint - finishStart) / 160);
+      displayed = t >= 1 ? 100 : Math.max(displayed, Math.floor((finishFrom + (100 - finishFrom) * t) * 10) / 10);
+    } else if (lastPaint - lastStep >= 90) {
       displayed = Math.min(Math.round(shown * 10) / 10, displayed + 3);
       lastStep = lastPaint;
     }
     try {
       splash.draw(displayed, !!renderer, ((lastPaint - began) % 1800) / 1800, phase);
+      if (displayed === 100 && fullSince === null) fullSince = Date.now();
     } catch (error) {
       console.warn('[宝可梦启动] 无法更新加载进度', error);
       splash.dispose();
@@ -132,6 +136,16 @@ async function start() {
       activeRenderer = renderer;
       paintProgress(renderer);
     }
+  }
+  function finishProgress(renderer) {
+    if (!splash || (fullSince !== null && Date.now() - fullSince >= 120)) return true;
+    if (finishStart === null) {
+      clearInterval(animationTimer);
+      finishStart = Date.now();
+      finishFrom = displayed;
+    }
+    paintProgress(renderer);
+    return !splash;
   }
   host.bootStage=(title,value,renderer)=>{stage(title);showProgress(value,renderer);};
   async function prepareResources(jobs) {
@@ -178,7 +192,7 @@ async function start() {
     if (!gl) throw Error('当前微信环境无法创建 WebGL 2 画面，请更新微信后重新进入。');
     splash = await require('./boot-screen')(gl);
     animationTimer = setInterval(() => {
-      if (shown < 100 && Date.now() - lastPaint >= 75) paintProgress(activeRenderer);
+      if (Date.now() - lastPaint >= 75) paintProgress(activeRenderer);
     }, 100);
     console.info('[宝可梦启动] 启动画面已提交', Date.now() - began, 'ms');
     const files = require('./files');
@@ -222,7 +236,7 @@ async function start() {
     if (!resourcesReady) return;
     stage('正在打开首页');
     showProgress(70);
-    await withTimeout(launchEngine(host,play,showProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
+    await withTimeout(launchEngine(host,play,showProgress,finishProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
     host.bootDiagnostics.completed=true;
     host.bootDiagnostics.totalMs=Date.now()-began;
     host.bootDiagnostics.text = files.diagnostics.packs.text;

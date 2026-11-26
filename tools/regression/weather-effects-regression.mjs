@@ -29,12 +29,45 @@ export async function reviewWeatherEffects(page,dir){
       maps.update(0);r.enemies.clear();
       r.events.done=new Set(['fog','storm','meowth','blizzard','spout'].filter(name=>name!==kind));
       r.director.fire('event');
+      if(maps.speech){
+        const enemies=r.enemies,p=r.player.pos;
+        if(kind==='blizzard')r.player.setSpecies(5);
+        enemies.clear();
+        const actor=enemies.spawn(19,p.x+3,p.z-2,1,1,8);
+        if(actor<0)throw Error('Missing weather speaker fixture');
+        const x=enemies.x[actor];
+        enemies.x[actor]=p.x+200;
+        r.time+=1;weatherFrame();
+        if(maps.speech.bubble)throw Error('An offscreen monster spoke');
+        enemies.x[actor]=x;
+      }
       for(let i=0;i<65;i++){
         r.time+=1/30;
         r.events.update(1/30);maps.update(1/30);r.vfx.update(1/30);
       }
       r.performance={...r.performance,hudInterval:0};
       weatherFrame();
+      if(maps.speech){
+        const speech=maps.speech,actors=r.enemies;
+        const expected=kind==='blizzard'?'好冷啊，你们都去找焱取暖嘛？':'这风是从海里拧上来的？';
+        if(speech.bubble?.getAttribute('aria-label')!==expected)throw Error('Missing weather line: '+expected);
+        const id=speech.speaker,originalX=actors.x[id],firstLeft=speech.bubble.style.left;
+        actors.x[id]+=.8;weatherFrame();
+        if(speech.bubble.style.left===firstLeft)throw Error('Weather bubble did not follow its speaker');
+        if(kind==='blizzard'){
+          const p=r.player.pos,distance=()=>Math.hypot(actors.x[id]-p.x,actors.z[id]-p.z);
+          const before=distance();
+          for(let i=0;i<6;i++){r.time+=1/30;actors.update(1/30);}
+          if(distance()>=before)throw Error('Blizzard speaker did not approach the hero');
+          r.player.setSpecies(6);weatherFrame();
+          if(speech.bubble.getAttribute('aria-label')!=='好冷啊，你们都去找燚取暖嘛？')throw Error('Stale hero form');
+          r.player.setSpecies(5);weatherFrame();
+        }
+        actors.spawn(19,r.player.pos.x-3,r.player.pos.z,1,1);
+        actors.x[id]=originalX+200;weatherFrame();
+        if(speech.bubble.style.display!=='none'||speech.speaker!==id)throw Error('Offscreen speaker kept or transferred its bubble');
+        actors.x[id]=originalX;weatherFrame();
+      }
       const layer=maps.paperWeather?.mesh,funnel=maps.spout?.mesh;
       if(!layer?.visible||kind==='spout'&&!funnel?.visible)throw Error('Missing '+kind+' in the world scene');
       const active=weatherPixels();
@@ -60,12 +93,21 @@ export async function reviewWeatherEffects(page,dir){
   async function expire(){
     const clean=await page.evaluate(()=>{
       const r=app.run,maps=r.mapEvents,funnel=maps.spout?.mesh;
+      if(maps.speech?.bubble){
+        const {speaker,bubble}=maps.speech;
+        r.enemies.kill(speaker);
+        const next=r.enemies.spawn(19,r.player.pos.x,r.player.pos.z-2,1,1);
+        if(next!==speaker)throw Error('Expected recycled speaker slot');
+        maps.update(0);weatherFrame();
+        if(bubble.parentNode||maps.speech)throw Error('Recycled enemy inherited weather dialogue');
+      }
       if(r.events.active)r.events.left=.02;
       if(maps.bliz)maps.bliz.t=.02;
       if(maps.spout)maps.spout.t=.02;
       for(let i=0;i<95;i++){r.events.update(1/30);maps.update(1/30);}
       weatherFrame();
-      return !maps.paperWeather.mesh.visible&&!funnel?.parent&&r.ui.els.event.style.display==='none';
+      return !maps.paperWeather.mesh.visible&&!funnel?.parent&&r.ui.els.event.style.display==='none'&&
+        !r.ui.hudEl.querySelector('.weather-speech');
     });
     assert.ok(clean,'Expired weather should disappear from the scene and HUD');
   }

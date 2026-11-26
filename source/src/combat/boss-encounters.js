@@ -5,6 +5,7 @@ import {finalBossSpecies} from '../data/character-rules.js';
 import {FOREST_COMBAT_ZONES, SINGLE_STAGE} from '../data/lite-rules.js';
 import {ENEMY_HEALTH_SCALE} from '../performance/spawn-budget.js';
 import {PaperWeather} from '../effects/paper-weather.js';
+import {WeatherSpeech} from '../ui/weather-speech.js';
 import {chineseText as c} from '../data/chinese-text.js';
 import {Dn as T, Rr as Je} from '../data/config.js';
 import {E as yr, I as Cr, K as Tr, ct as Kr, w as Ei} from '../vendor/three-DmSYIDKK.js';
@@ -8306,6 +8307,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       spout = null;
       bliz = null;
       paperWeather = null;
+      speech = null;
       flying = -1;
       relaunch = 0;
       look = {
@@ -8348,6 +8350,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         if (this.busy || (kind !== 'spout' && kind !== 'blizzard')) return false;
         if (kind === 'spout') this.startSpout();
         else this.startBlizzard();
+        this.speech = new WeatherSpeech(this.run, kind);
         return true;
       }
       renderWeather() {
@@ -8380,6 +8383,11 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           this.spout && this.tickSpout(e),
           this.bliz && this.tickBlizzard(e),
           this.tickFlight(e));
+        const speech = this.speech;
+        if (speech && (!this.busy || t.time >= speech.expires ||
+            (speech.speaker >= 0 && (!t.enemies.isAlive(speech.speaker) || t.enemies.gen[speech.speaker] !== speech.generation)))) {
+          this.clearSpeech();
+        }
       }
       startSpout() {
         let e = this.run,
@@ -8807,7 +8815,12 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       get busy() {
         return !!this.bliz || !!this.spout;
       }
+      clearSpeech() {
+        this.speech?.dispose();
+        this.speech = null;
+      }
       clear() {
+        this.clearSpeech();
         (this.spout &&
           (this.run.r.scene.remove(this.spout.mesh),
           this.spout.mesh.geometry.dispose(),

@@ -265,6 +265,7 @@ export async function setup(host) {
     pointers.delete(id);captured.delete(id);
   }
   function touches(kind,event){
+    if(host.bootDiagnostics?.completed===false)return;
     const run=win.__pb?.run;
     const hiddenHud=!win.__pb?.screen&&castHidesUI(run,perf.now());
     // A press begun in combat must not select a card while it is appearing.
