@@ -4,11 +4,29 @@
   "iOSHighPerformance+": true,
   "showStatusBar": false,
   "subpackages": [
-    {"name": "play", "root": "play"},
-    {"name": "art", "root": "packs/art"},
-    {"name": "world", "root": "packs/world"},
-    {"name": "text", "root": "packs/text"},
-    {"name": "dragon_summon", "root": "packs/dragon_summon"},
-    {"name": "capture_bag", "root": "packs/capture_bag"}
+    {
+      "name": "play",
+      "root": "play"
+    },
+    {
+      "name": "art",
+      "root": "packs/art-69edc56aec234b50"
+    },
+    {
+      "name": "world",
+      "root": "packs/world-98e6b287d7f50c26"
+    },
+    {
+      "name": "text",
+      "root": "packs/text-ecad35826ed9bbc8"
+    },
+    {
+      "name": "dragon_summon",
+      "root": "packs/dragon_summon-aec09af7e219f1cc"
+    },
+    {
+      "name": "capture_bag",
+      "root": "packs/capture_bag-e5ea0f7c24f230ff"
+    }
   ]
 }

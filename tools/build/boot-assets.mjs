@@ -85,6 +85,9 @@ export function addBootAssets(out, assets) {
   const {bytes,rawSize}=packStream(entries,'text');
   info.packs.text=hash(bytes);
   info.rawSizes.text=rawSize;
+  // These files are in canonical staging directories until build finalization.
+  // Do not leave last preview's roots paired with a newly injected text hash.
+  delete info.packRoots;
   fs.writeFileSync(archive+'.next',bytes);
   fs.renameSync(archive+'.next',archive);
   fs.writeFileSync(manifestPath+'.next','module.exports = '+JSON.stringify(info)+';\n');

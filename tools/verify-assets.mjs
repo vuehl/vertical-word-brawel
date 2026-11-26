@@ -36,7 +36,11 @@ assert.equal(events.length,0,'Review excluded event assets if events are enabled
 const declaredPacks=new Set(JSON.parse(fs.readFileSync(path.join(root,'game.json'))).subpackages.map(p=>p.name));
 for(const pack of Object.keys(index.packs))assert.ok(declaredPacks.has(pack),'Missing subpackage '+pack);
 for(const [group,expected] of Object.entries(index.packs)){
-  const raw=fs.readFileSync(path.join(root,'minigame/packs',group,'assets.br'));
+  assert.equal(index.packRoots[group],'packs/'+group+'-'+expected);
+  const generatedConfig=JSON.parse(fs.readFileSync(path.join(root,'minigame/game.json'),'utf8'));
+  assert.equal(generatedConfig.subpackages.find(pkg=>pkg.name===group)?.root,index.packRoots[group]);
+  assert.equal(fs.existsSync(path.join(root,'minigame/packs',group)),false,'Do not ship mutable resource roots');
+  const raw=fs.readFileSync(path.join(root,'minigame',index.packRoots[group],'assets.br'));
   assert.equal(digest(raw).slice(0,16),expected);
   const decoded=brotliDecompressSync(raw);
   assert.equal(decoded.length,index.rawSizes[group]);

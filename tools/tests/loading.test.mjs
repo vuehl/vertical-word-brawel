@@ -72,8 +72,12 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
   }
   const info={packs:{world:'1111111111111111',art:'2222222222222222',text:'3333333333333333'},rawSizes:{world:4,art:4,text:4},
     files:Object.fromEntries(Object.keys(recipes).map(file=>['assets/models/'+file,'world/'+file])),sprites:{}};
+  info.packRoots=Object.fromEntries(Object.entries(info.packs).map(([name,revision])=>[name,'packs/'+name+'-'+revision]));
+  const archive=name=>info.packRoots[name]+'/assets.br';
   const runtime={decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text'}[new Uint8Array(raw)[0]]],decodeBrotli};
-  const context={module:{exports:{}},console,Uint8Array,Date,clearTimeout,
+  // Fault cases deliberately warn with errors from another VM realm. Keep
+  // those expected logs out of Node's test-worker error serialization.
+  const context={module:{exports:{}},console:{warn(){},info(){}},Uint8Array,Date,clearTimeout,
     setTimeout:(fn,ms)=>{if(ms===0)yields++;return setTimeout(fn,ms===30000&&stalledWrite?10:ms);},
     wx:{env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>manager,loadSubpackage(options){
       downloads[options.name]=(downloads[options.name]||0)+1;
@@ -85,7 +89,7 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
       throw Error(name);}
   };
   vm.runInNewContext(fs.readFileSync(new URL('../../platform/files.js',import.meta.url),'utf8'),context);
-  return {api:context.module.exports,data,dirs,downloads,info,manager,runtime,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
+  return {api:context.module.exports,data,dirs,downloads,info,manager,runtime,archive,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
     get io(){return {asyncReads,syncReads,asyncWrites};},failNext(file,message='simulated disk error'){failFile=file;writeError=message;}};
 }
 
@@ -118,10 +122,41 @@ test('a locked obsolete cache does not prevent text installation, and byte-only 
 });
 test('an already mounted archive installs without requesting the package again',async()=>{
   const f=installer();
-  f.data.set('packs/text/assets.br',new Uint8Array(4));
+  f.data.set(f.archive('text'),new Uint8Array(4));
   await f.api.init();
   assert.deepEqual(f.downloads,{});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
+});
+
+test('an obsolete mounted path cannot finish a new revision download timer',async t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout']});
+  const f=installer({loadSubpackage(){}});
+  f.data.set('packs/text/assets.br',new Uint8Array(4));
+  f.data.set('packs/text-aaaaaaaaaaaaaaaa/assets.br',new Uint8Array(4));
+  let finished=false;
+  const ready=f.api.loadPackage('text').then(()=>{finished=true;});
+  t.mock.timers.tick(1500);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.downloads,{text:1});
+  assert.equal(finished,false,'The old package must not satisfy the availability poll');
+  f.data.set(f.archive('text'),new Uint8Array(4));
+  t.mock.timers.tick(1500);
+  await ready;
+  assert.equal(finished,true,'A mounted current revision still handles a missing callback');
+});
+
+test('an obsolete mounted archive cannot suppress retry after a failed download',async t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout']});
+  const f=installer({loadSubpackage({success,fail}){
+    if(f.downloads.text===1)queueMicrotask(()=>fail({errMsg:'temporary network failure'}));
+    else {f.data.set(f.archive('text'),new Uint8Array(4));queueMicrotask(success);}
+  }});
+  f.data.set('packs/text/assets.br',new Uint8Array(4));
+  const ready=f.api.loadPackage('text');
+  await new Promise(resolve=>setImmediate(resolve));
+  t.mock.timers.tick(500);
+  await ready;
+  assert.deepEqual(f.downloads,{text:2});
 });
 test('a second launch skips downloads, decoding, writes and obsolete cache cleanup until home',async()=>{
   const f=installer(),base='/userdata/pokebonk-assets',old=base+'/world-aaaaaaaaaaaaaaaa';
@@ -146,7 +181,7 @@ test('a full disk reclaims obsolete pack files and retries the interrupted insta
   assert.equal(f.asyncRemovals,0);
 });
 test('an archive mounted without a completion callback is picked up during the first download',{timeout:5000},async()=>{
-  const f=installer({loadSubpackage(){queueMicrotask(()=>f.data.set('packs/text/assets.br',new Uint8Array(4)));}});
+  const f=installer({loadSubpackage(){queueMicrotask(()=>f.data.set(f.archive('text'),new Uint8Array(4)));}});
   await f.api.init();
   assert.deepEqual(f.downloads,{text:1});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
@@ -224,16 +259,47 @@ test('older native file APIs can still install and materialize a model',async()=
   assert.equal(fixture.io.syncReads,2);assert.ok(fixture.data.has(file));assert.ok(fixture.yields>0);
 });
 
-function realTextInstaller(){
-  const f=installer(),contents=Buffer.from('开场资源 '.repeat(80));
+function realTextInstaller(options){
+  const f=installer(options),contents=Buffer.from('开场资源 '.repeat(80));
   const packed=packStream({'test.txt':contents},'text');
   const raw=brotliDecompressSync(packed.bytes);
-  f.data.set('packs/text/assets.br',packed.bytes);
+  f.data.set(f.archive('text'),packed.bytes);
   f.info.rawSizes.text=packed.rawSize;
   f.runtime.resourceEntries=resourceEntries;
   const installed='/userdata/pokebonk-assets/text-'+f.info.packs.text+'/';
   return {...f,contents,packed,raw,installed};
 }
+
+test('a cold launch downloads and reads the required revision while old iOS mounts remain',async()=>{
+  const f=realTextInstaller({loadSubpackage({success}){
+    f.data.set(f.archive('text'),f.packed.bytes);
+    queueMicrotask(success);
+  }});
+  const old=packStream({'old.txt':Buffer.from('previous preview')},'text');
+  f.data.delete(f.archive('text'));
+  f.data.set('packs/text/assets.br',old.bytes);
+  f.data.set('packs/text-aaaaaaaaaaaaaaaa/assets.br',old.bytes);
+  const reads=[];
+  f.manager.readCompressedFile=({filePath,success})=>{
+    reads.push(filePath);success({data:brotliDecompressSync(f.data.get(filePath))});
+  };
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:1});
+  assert.deepEqual(reads,[f.archive('text')]);
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+  assert.ok(!f.data.has(f.installed+'old.txt'));
+  assert.ok(f.data.has(f.installed+'.ready'));
+});
+
+test('a manifest cannot point a new revision at a legacy or older archive path',async()=>{
+  for(const root of [undefined,'packs/text','packs/text-aaaaaaaaaaaaaaaa']){
+    const f=installer();f.info.packRoots.text=root;
+    f.data.set('packs/text/assets.br',new Uint8Array(4));
+    await assert.rejects(f.api.init(),/资源分包版本路径无效 text/);
+    assert.ok(![...f.data.keys()].some(file=>file.endsWith('/.ready')));
+    assert.deepEqual(f.downloads,{});
+  }
+});
 
 test('native decompression accepts direct buffers, wrapped buffers and exact binary views',async t=>{
   for(const mode of ['async-direct','async-wrapped','async-view','sync-wrapped','sync-view'])await t.test(mode,async()=>{
@@ -275,13 +341,13 @@ test('fallback reads compressed or already-expanded files without decoding a pay
 test('an older mounted archive fails length validation without committing its cache, then retries',async()=>{
   const f=realTextInstaller(),expected=f.info.rawSizes.text;
   const old=packStream({'test.txt':Buffer.from('old')},'text');
-  f.data.set('packs/text/assets.br',old.bytes);
+  f.data.set(f.archive('text'),old.bytes);
   f.manager.readCompressedFile=({success})=>success({data:brotliDecompressSync(old.bytes)});
   f.manager.readCompressedFileSync=()=>brotliDecompressSync(old.bytes);
   await assert.rejects(f.api.init(),error=>error.message.includes('预期 '+expected)&&error.message.includes('js='+old.rawSize));
   assert.ok(!f.data.has(f.installed+'.ready'));
   assert.ok(!f.data.has(f.installed+'test.txt'));
-  f.data.set('packs/text/assets.br',f.packed.bytes);
+  f.data.set(f.archive('text'),f.packed.bytes);
   await f.api.init();
   assert.ok(f.data.has(f.installed+'.ready'));
   assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);

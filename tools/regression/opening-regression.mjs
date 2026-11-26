@@ -3,6 +3,18 @@ import path from 'node:path';
 import {writeFile} from 'node:fs/promises';
 
 export async function verifyOpening({page,dir}){
+  const retrying=await page.evaluate(()=>!!window.failOpeningResources||!!window.testOpeningImageFailure);
+  if(!retrying){
+    // Keep scene downloads blocked after the engine is ready. The original
+    // bar must keep ownership, with no second progressbar or movie playback.
+    await page.waitForFunction(()=>app.entryOpening?.frameCount===1&&requestedPackages.includes('world')&&requestedPackages.includes('art'));
+    await new Promise(resolve=>setTimeout(resolve,250));
+    assert.deepEqual(await page.evaluate(()=>({complete:GameGlobal.pokebonk.bootDiagnostics.completed,
+      full:bootLabels.includes('100%'),frames:app.entryOpening.frameCount,
+      secondBar:!!app.screen.querySelector('[role="progressbar"]')})),
+    {complete:false,full:false,frames:1,secondBar:false});
+    await page.evaluate(()=>releaseOptionalDownloads());
+  }
   if(await page.evaluate(()=>!!window.testOpeningImageFailure))await page.evaluate(()=>releaseOptionalDownloads());
   if(await page.evaluate(()=>!!window.failOpeningResources||!!window.testOpeningImageFailure)){
     await page.waitForFunction(()=>app.screen?.dataset.page==='entry-error',{timeout:60000});
@@ -17,7 +29,8 @@ export async function verifyOpening({page,dir}){
     if(!GameGlobal.pokebonk.bootDiagnostics.completed||!(app.entryOpening?.frameCount>0))return false;
     const env=inspected.env,draw=env.drawUI;
     window.openingAudit={fadeFrames:0,times:[],images:{},framesBeforeHide:app.entryOpening.frameCount,
-      entryScreen:app.screen?.dataset.page};
+      entryScreen:app.screen?.dataset.page,scenePrepared:app.zixing.entryDiagnostics.phases.at(-1)?.phase,
+      secondBar:!!app.screen?.querySelector('[role="progressbar"]'),timeAtHandoff:app.run?.time};
     env.drawUI=(...args)=>{
       const result=draw(...args),film=app.entryOpening;
       if(film?.revealing){openingAudit.fadeFrames++;openingAudit.times.push(app.run.time);}
@@ -30,6 +43,10 @@ export async function verifyOpening({page,dir}){
   },{timeout:60000});
   assert.ok(await page.evaluate(()=>bootLabels.includes('100%')));
   assert.equal(await page.evaluate(()=>openingAudit.entryScreen),'entry');
+  if(!retrying){
+    assert.deepEqual(await page.evaluate(()=>[openingAudit.scenePrepared,openingAudit.secondBar,openingAudit.timeAtHandoff]),
+      ['准备完成',false,0],'Boot completes only with a prepared scene, no second bar and no elapsed battle time');
+  }
   await new Promise(resolve=>setTimeout(resolve,300));
   assert.ok(await page.evaluate(()=>app.entryOpening.frameCount===openingAudit.framesBeforeHide));
   await page.evaluate(()=>{fixtureShow();releaseOptionalDownloads();});

@@ -83,7 +83,7 @@ export class App {
     } catch (error) {
       throw Error("游戏数据读取失败：" + (error.message || error));
     }
-    window.bootStage?.('游戏数据已就绪',90);
+    window.bootStage?.('游戏数据已就绪',84);
     for (let t = 0; !this.r; t++)
       try {
         this.r = new SceneRenderer(canvas);
@@ -92,7 +92,7 @@ export class App {
         await new Promise(resolve => setTimeout(resolve, 500));
         if (t >= 2) throw Error("WebGL 2 初始化失败：" + (error.message || error));
       }
-    window.bootStage?.('画面引擎已就绪',95,this.r.renderer);
+    window.bootStage?.('画面引擎已就绪',86,this.r.renderer);
     ((this.r.onLost = (e) => this.contextLost(e)),
       initializeControls(),
       (this.input = new GameInput(canvas)),
@@ -154,7 +154,7 @@ export class App {
       requestAnimationFrame(this.loop),
       (this.meta.onError = (error) => this.notice(error)));
     await this.backend.status();
-    window.bootStage?.('读取本机登录状态',98);
+    window.bootStage?.('读取本机登录状态',88);
     const account = await this.backend.restore();
     const ui=gameInterface(this);
     await ui.prepareBoot(account);

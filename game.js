@@ -60,7 +60,7 @@ async function launchEngine(host, play, showProgress, finishProgress) {
         showProgress(undefined,renderer);
         return;
       }
-      // The first successful home frame stays covered until the full bar has been shown.
+      // The prepared scene and opening frame stay covered until the full bar has been shown.
       finishing = true;
       if (!finishProgress(renderer)) return;
       const enter = env.onBootReady;

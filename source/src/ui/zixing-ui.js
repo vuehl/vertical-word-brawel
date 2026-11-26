@@ -246,14 +246,24 @@ export function createZixingUI(app,api) {
     // Every fresh game process gets the opening, including existing saves.
     // Returning to menus or resuming from the background keeps this session.
     bootJourneyStarted=true;
-    // Decode the first frame under the startup poster. Playback starts only
-    // after its 100% progress frame has actually been presented.
-    loadingScreen('opening');
+    // Prepare the scene and decode the first movie frame under the original
+    // startup poster. Its single bar owns all work until playback can begin.
     const opening=window.playJourneyOpening?.({paused:true});
-    window.onBootReady=()=>{
-      opening?.resume();
-      void start({species:defaultStarter,biome:'forest',tier:0,boosts:[],mode:SINGLE_STAGE},null,opening,true);
-    };
+    const config={species:defaultStarter,biome:'forest',tier:0,boosts:[],mode:SINGLE_STAGE};
+    if(!opening){
+      window.onBootReady=()=>{void start(config,null,null,true);};
+      return;
+    }
+    let sceneReady;
+    const prepared=new Promise(resolve=>{sceneReady=resolve;});
+    const entering=start(config,null,opening,true,({progress,phase})=>{
+      window.bootStage?.(phase||'正在准备场景',88+11*progress);
+      if(progress===1)sceneReady();
+    });
+    window.onBootReady=()=>opening.resume();
+    // Entry waits for the film to finish; boot only waits for the prepared
+    // scene and first frame. Failed entry must also uncover its retry page.
+    await Promise.race([Promise.all([prepared,opening.ready]),entering]);
   }
   let battleRecovery=null;
   function recoverBattle(session,reason){
@@ -789,10 +799,10 @@ export function createZixingUI(app,api) {
     const synced=mapRead;
     synced.then(()=>{if(enter.isConnected)refresh();});
   }
-  function loadingScreen(name,coop=false){
-    const ticket=el('canvas','zx-entry-ticket',[],{width:780,height:152,'data-static':'true',
+  function loadingScreen(name,coop=false,onBootProgress=null){
+    const ticket=onBootProgress?null:el('canvas','zx-entry-ticket',[],{width:780,height:152,'data-static':'true',
       role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100});
-    const node=screen(name,'','',[ticket]);
+    const node=screen(name,'','',ticket?[ticket]:[]);
     node.classList.add('zx-loading-screen','journey-entry');
     node.querySelector('.zx-body').dataset.paperSurface='flat';
     scene.mount(node);
@@ -809,6 +819,7 @@ export function createZixingUI(app,api) {
       const label=teamStatus||captions[phase]||'正在布置场景';
       if(next===shown&&label===caption)return shown;
       shown=next;caption=label;
+      if(onBootProgress){onBootProgress({progress:shown/100,phase});return shown;}
       const ctx=ticket.getContext('2d');
       ctx.setTransform(2,0,0,2,0,100);ctx.clearRect(0,-50,390,76);
       paintLoadingSlip(ctx,shown,caption);
@@ -817,12 +828,12 @@ export function createZixingUI(app,api) {
     }
     update({});return {node,update};
   }
-  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null,preparedOpening=null,forceOpening=false) {
+  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null,preparedOpening=null,forceOpening=false,onBootProgress=null) {
     if(activeEntry||app.starting)return false;
     const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&(forceOpening||!hasJourneyProgress(profile()));
     let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
-    const view=loadingScreen('entry',!!config.coop),{node}=view;
+    const view=loadingScreen('entry',!!config.coop,onBootProgress),{node}=view;
     activeEntry=node;
     const opening=firstJourney?(preparedOpening||window.playJourneyOpening?.()):null;
     app.entryOpening=opening;

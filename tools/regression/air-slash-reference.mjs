@@ -90,7 +90,8 @@ export async function reviewAirSlashReference(page,dir){
   await sharp(Buffer.concat(raw),{raw:{width:782,height:844*raw.length,channels:3,pageHeight:844}})
     .gif({delay:20,loop:0,effort:3,dither:.2}).toFile(path.join(dir,'空气斩-原片与实机.gif'));
   const game=path.resolve(process.env.POKEBONK_GAME||path.join(import.meta.dirname,'../../minigame'));
-  const build=Object.fromEntries(['assets.js','packs/art/assets.br','play/presentation.js','play/combat.js'].map(file=>
+  const assetIndex=JSON.parse(fs.readFileSync(path.join(game,'assets.js'),'utf8').replace(/^module\.exports\s*=\s*/,'').replace(/;\s*$/,''));
+  const build=Object.fromEntries(['assets.js',assetIndex.packRoots.art+'/assets.br','play/presentation.js','play/combat.js'].map(file=>
     [file,createHash('sha256').update(fs.readFileSync(path.join(game,file))).digest('hex')]));
   fs.writeFileSync(path.join(dir,'实机验证.json'),JSON.stringify({environment:'Compiled WeChat package in Chrome SwiftShader, 390 × 844 at 2x; not phone FPS.',source:atlas.sha256,build,samples,settings,frames},null,2)+'\n');
   console.log('Air Slash verified:',samples.length,'direction/frame-rate cases; 50 reference exposures; settings and cleanup.');

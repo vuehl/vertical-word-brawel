@@ -10,6 +10,7 @@ import {lowerUnicodeRegexes} from './build/device-syntax.mjs';
 import {assetPolicyVersion,itemIconSelectionChanged} from './build/asset-policy.mjs';
 import {gameProject} from './build/project-target.mjs';
 import {buildOpeningAtlas} from './art/build-journey-opening.mjs';
+import {stageResourcePackages,finalizeResourcePackages} from './build/resource-package-roots.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
 const development=process.argv.includes('--dev');
@@ -19,10 +20,11 @@ const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
 // Generate pages before either the full or incremental startup archive reads them.
 await buildOpeningAtlas(root);
+const resourcePackagesReady=stageResourcePackages(out);
 const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
 if(installedAssets?.policyVersion!==assetPolicyVersion||itemIconSelectionChanged(installedAssets.files)||
-  (developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
+  (developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!resourcePackagesReady||process.argv.includes('--assets'))
   execFileSync(process.execPath,[path.join(import.meta.dirname,'build/assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{
@@ -128,7 +130,9 @@ writeBootPoster(root,out);
 fs.rmSync(path.join(out,'boot-hero-art.js'),{force:true});
 fs.copyFileSync(path.join(platform,'resource-codec.js'),path.join(out,'resource-codec.js'));
 addBootAssets(out,bootAssets(root));
-for(const name of ['game.js','game.json'])fs.copyFileSync(path.join(root,name),path.join(out,name));
+fs.copyFileSync(path.join(root,'game.js'),path.join(out,'game.js'));
+// finalizeResourcePackages publishes game.json once the versioned roots exist.
+// Never expose the source config's temporary canonical paths to DevTools.
 if(developer)developer.writeProject(root,projectRoot);
 const runtimePackages=new Set(['linkedom','typeflex','fflate','@noble/hashes','brotli','core-js','base64-js']);
 const notices=['pixelfx Soul drain\n'+fs.readFileSync(path.join(platform,'pixelfx-soul-drain-LICENSE.txt'),'utf8')];
@@ -141,6 +145,7 @@ for(const name of runtimePackages){
   for(const dep of Object.keys(pkg.dependencies||{}))if(fs.existsSync(path.join(import.meta.dirname,'node_modules',dep,'package.json')))runtimePackages.add(dep);
 }
 fs.writeFileSync(path.join(out,'packs','text','licenses.txt'),notices.join('\n\n'));
+finalizeResourcePackages(out,JSON.parse(fs.readFileSync(path.join(root,'game.json'),'utf8')));
 // Remove outputs from builds that shipped the engine as a separate code package.
 for(const file of ['game.js','host.js','original.js','licenses.txt','layout.bin','styles.bin'])fs.rmSync(path.join(engine,file),{force:true});
 function files(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(f=>f.isDirectory()?files(path.join(dir,f.name)):[path.join(dir,f.name)]);}

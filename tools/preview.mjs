@@ -1,8 +1,8 @@
-// Always preview this checkout, even when another project uses the same AppID.
+// Preview a verified immutable copy of this checkout, with a fresh IDE index.
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {buildHashes,verifyAssetPackages} from './build/preview-files.mjs';
+import {createPreviewSnapshot,verifyPreviewSnapshot} from './build/preview-snapshot.mjs';
 import {verifyDeveloperPreview,writeDeveloperPreviewPage} from './developer/preview-support.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
@@ -24,44 +24,48 @@ function runCLI(args){
 }
 
 execFileSync(process.execPath,[path.join(import.meta.dirname,'build.mjs'),...(development?['--dev']:[])],{cwd:root,stdio:'inherit',windowsHide:true});
-verifyAssetPackages(projectRoot);
 fs.mkdirSync(output,{recursive:true});
-const hashes=buildHashes(projectRoot);
-const developerBuild=development?verifyDeveloperPreview(projectRoot):null;
+const stamp=Date.now();
+const snapshot=createPreviewSnapshot({sourceProject:projectRoot,output,stamp});
+const {snapshotProject,sourceProject,hashes,projectConfigHash}=snapshot;
+const developerBuild=development?verifyDeveloperPreview(snapshotProject):null;
 if(development){
-  console.log('开发测试工程：'+projectRoot+'\n开发构建：'+developerBuild);
-  // Keep the visible IDE project consistent with the package being previewed.
-  runCLI(['open','--project',projectRoot]);
+  console.log('开发测试工程快照：'+snapshotProject+'\n开发构建：'+developerBuild);
 }
-runCLI(['cache','--clean','compile','--project',projectRoot]);
+console.log('预览来源：'+sourceProject+'\n本次工程快照：'+snapshotProject);
+// Register the fresh project before compiling. Reusing the mutable checkout
+// can leave renamed versioned subpackages absent from DevTools' file index.
+runCLI(['open','--project',snapshotProject]);
+runCLI(['cache','--clean','compile','--project',snapshotProject]);
 const qr=path.join(output,'预览二维码.jpg');
 // Some IDE versions return exit code 0 even after a compilation error. Write
 // to fresh paths and validate the result before replacing a usable preview.
-const stamp=Date.now(),nextQR=path.join(output,'preview-'+stamp+'.jpg'),nextInfo=path.join(output,'preview-'+stamp+'.json');
+const nextQR=path.join(output,'preview-'+stamp+'.jpg'),nextInfo=path.join(output,'preview-'+stamp+'.json');
 let preview;
 try{
-  runCLI(['preview','--project',projectRoot,'--qr-format','image','--qr-output',nextQR,'--info-output',nextInfo]);
+  runCLI(['preview','--project',snapshotProject,'--qr-format','image','--qr-output',nextQR,'--info-output',nextInfo]);
   if(!fs.existsSync(nextQR)||!fs.existsSync(nextInfo))throw Error('微信预览没有生成新二维码，旧预览未更新；请重新打开工程后重试。');
   preview=JSON.parse(fs.readFileSync(nextInfo,'utf8'));
   if(!(preview.size?.total>0)||fs.statSync(nextQR).size===0)throw Error('微信预览结果不完整');
-  const declared=JSON.parse(fs.readFileSync(path.join(projectRoot,'minigame/game.json'),'utf8')).subpackages;
+  const declared=JSON.parse(fs.readFileSync(path.join(snapshotProject,'minigame/game.json'),'utf8')).subpackages;
   const expected=['TOTAL','main',...declared.map(p=>'/'+p.root.replace(/\/$/,'')+(p.root.endsWith('.js')?'':'/'))].sort();
   const actual=preview.size.packages.map(p=>p.name).sort();
   if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error('预览分包清单仍是旧版，请重新打开工程后重试');
-  if(JSON.stringify(buildHashes(projectRoot))!==JSON.stringify(hashes))throw Error('预览期间运行包发生变化，请重新生成预览');
+  verifyPreviewSnapshot(snapshot);
   fs.renameSync(nextQR,qr);fs.renameSync(nextInfo,path.join(output,'preview-info.json'));
 }finally{
   for(const file of [nextQR,nextInfo])fs.rmSync(file,{force:true});
 }
 const createdAt=new Date().toISOString();
-fs.writeFileSync(path.join(output,'build-info.json'),JSON.stringify({project:projectRoot,development,developerBuild,createdAt,previewTotalBytes:preview.size.total,hashes},null,2)+'\n');
+fs.writeFileSync(path.join(output,'build-info.json'),JSON.stringify({project:snapshotProject,sourceProject,snapshotProject,
+  development,developerBuild,createdAt,previewTotalBytes:preview.size.total,projectConfigHash,hashes},null,2)+'\n');
 console.log('预览二维码：'+qr);
 if(development){
   // A fresh filename also prevents a chat/image viewer from reusing old pixels.
   const sharedQR=path.join(output,'开发测试-'+stamp+'.jpg');fs.copyFileSync(qr,sharedQR);
   console.log('本次开发测试二维码：'+sharedQR);
   const page=path.join(output,'开发测试入口-'+stamp+'.html');
-  writeDeveloperPreviewPage({file:page,qr:sharedQR,project:projectRoot,buildId:developerBuild,createdAt:new Date(createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})+'（北京时间）'});
+  writeDeveloperPreviewPage({file:page,qr:sharedQR,project:snapshotProject,buildId:developerBuild,createdAt:new Date(createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})+'（北京时间）'});
   console.log('本次扫码页面：'+page+'\n扫码后请确认首页显示：开发测试版 DEV 8');
   if(process.platform==='win32'&&!process.argv.includes('--no-open')){
     try{

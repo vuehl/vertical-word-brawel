@@ -73,9 +73,16 @@ async function readBrotli(archive,expected) {
   }
   throw Error('解压后长度不符 '+archive+'（预期 '+expected+'；'+attempts.join(', ')+'）');
 }
+function archiveFor(name) {
+  const root=info.packRoots&&info.packRoots[name];
+  // A stable path can still point at a mounted package from an older preview.
+  // The archive location must carry the revision required by this main bundle.
+  if(root!=='packs/'+name+'-'+info.packs[name])throw Error('资源分包版本路径无效 '+name);
+  return root+'/assets.br';
+}
 function packageAvailable(name) {
   return name === 'play' ? !!(GameGlobal.pokebonkPlayEntry && GameGlobal.pokebonkPlayEntry.api)
-    : exists('packs/' + name + '/assets.br');
+    : exists(archiveFor(name));
 }
 function downloadPackage(name, progress) {
   return new Promise((resolve,reject) => {
@@ -111,8 +118,8 @@ function downloadPackage(name, progress) {
   });
 }
 async function loadPackage(name, progress) {
-  // A packaged archive can already be mounted even if WeChat missed the
-  // download callback. The normal unpacker still validates its contents.
+  // Only this revision can satisfy an already-mounted check. Old preview
+  // directories must not bypass loadSubpackage or finish its download timer.
   if (packageAvailable(name)) return;
   try {
     await downloadPackage(name, progress);
@@ -135,7 +142,7 @@ async function unpack(name, revision, progress) {
   // A retry overwrites every file of this same immutable revision. Only the
   // final ready marker makes the installation visible to other callers.
   if (!exists(dir)) fs().mkdirSync(dir, true);
-  const archive = 'packs/' + name + '/assets.br';
+  const archive = archiveFor(name);
   report(name,'unpack');await yieldTask();
   const unpackAt=Date.now(),raw=await readBrotli(archive,info.rawSizes[name]);
   stats.unpackMs=Date.now()-unpackAt;

@@ -4,6 +4,13 @@ import {toByteArray} from 'base64-js';
 import {width,height} from '../../resources/public/config/desk2d-layout.json';
 window.deskArtSize={width,height};
 const storage=new Map(),dirs=new Set(['/userdata']),data=new Map(),archives=new Map(),events={};
+if(window.fixtureStaleResourcePack){
+  // A previous preview remains mounted when a new main package starts.
+  // The historical hash is the package identified by the iOS error report.
+  window.staleResourcePaths=['packs/text/assets.br','packs/text-0a52aa1af1cc953e/assets.br'];
+  for(const file of window.staleResourcePaths)archives.set(file,Uint8Array.of(6,0,0,0));
+  window.resourcePackageReads=[];
+}
 // Simulate optional downloads stalling until the guest screen is usable.
 const optionalDownloadGate = new Promise(resolve => { window.releaseOptionalDownloads=resolve; });
 const textDownloadGate = new Promise(resolve => { window.releaseTextDownload=resolve; });
@@ -24,7 +31,10 @@ window.loadFixtureData=async name=>{
     archives.set(file,new Uint8Array(await response.arrayBuffer()));
   }
 };
-function bytes(path){const v=data.get(path)||archives.get(path);if(!v)throw Error('Missing file '+path);return v;}
+function bytes(path){
+  if(window.resourcePackageReads&&path.startsWith('packs/'))window.resourcePackageReads.push(path);
+  const v=data.get(path)||archives.get(path);if(!v)throw Error('Missing file '+path);return v;
+}
 const fs={
   accessSync(path){if(!dirs.has(path)&&!data.has(path)&&!archives.has(path))throw Error('ENOENT '+path);},
   mkdirSync(path){dirs.add(path);},rmdirSync(path){for(const f of [...data.keys()])if(f.startsWith(path+'/'))data.delete(f);dirs.delete(path);},
@@ -170,7 +180,7 @@ globalThis.wx={
       if(o.name!=='play'&&o.name!=='text')await optionalDownloadGate;
       await window.loadFixtureData(o.name);
       // Reproduce a device reporting package success before evaluating its entry.
-      o.success();
+      if(o.name!=='text'||!window.fixtureMissingTextCallback)o.success();
       if(o.name==='play')window.playDownloaded=true;
       setTimeout(()=>window.runFixtureEntry(o.name).catch(e=>{window.problem=e.message;console.error(e);}),100);
     }catch(e){o.fail(e);}})();

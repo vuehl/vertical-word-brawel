@@ -21,7 +21,7 @@ import {reviewAltarRing} from './regression/altar-ring-regression.mjs';
 import {reviewRunSettlement,reviewStartupLatency} from './regression/startup-regression.mjs';
 import {prepareReturningPlayer,verifyEntry} from './regression/entry-regression.mjs';
 import {gameProject} from './build/project-target.mjs';
-const root=path.resolve(import.meta.dirname,'..'),game=path.join(gameProject(root,process.argv.includes('--dev')),'minigame');
+const root=path.resolve(import.meta.dirname,'..'),game=path.resolve(process.env.POKEBONK_GAME||path.join(gameProject(root,process.argv.includes('--dev')),'minigame'));
 const chrome=process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check');fs.mkdirSync(dir,{recursive:true});
 const fixture=(await build({bundle:true,entryPoints:[path.join(import.meta.dirname,'build/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
@@ -127,6 +127,8 @@ if(process.argv.includes('--eager-entry'))await page.evaluateOnNewDocument(()=>{
 if(process.argv.includes('--entry-file-fallback'))await page.evaluateOnNewDocument(()=>{window.failEntryInline=true;});
 if(failFrame)await page.evaluateOnNewDocument(()=>{window.failFirstFrame=true;});
 if(process.argv.includes('--retry-text'))await page.evaluateOnNewDocument(()=>{window.dropTextOnce=true;});
+if(process.argv.includes('--stale-resource-pack'))await page.evaluateOnNewDocument(()=>{window.fixtureStaleResourcePack=true;});
+if(process.argv.includes('--missing-text-callback'))await page.evaluateOnNewDocument(()=>{window.fixtureMissingTextCallback=true;});
 if(process.argv.includes('--legacy-runtime'))await page.evaluateOnNewDocument(()=>{
   // Some phone 2D contexts only implement the older path primitives.
   for(const method of ['ellipse','roundRect','setLineDash'])delete CanvasRenderingContext2D.prototype[method];
@@ -176,6 +178,13 @@ async function verifyProgressImage(percent, filename){
 async function verifyStartup(){
   await page.waitForFunction(()=>window.textRequested&&window.playDownloaded||window.problem,{timeout:20000});
   if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
+  if(process.argv.includes('--stale-resource-pack')){
+    assert.deepEqual(await page.evaluate(()=>({
+      mounted:staleResourcePaths.map(path=>{wx.getFileSystemManager().accessSync(path);return true;}),
+      downloads:requestedPackages.filter(name=>name==='text').length,
+      reads:resourcePackageReads,
+    })),{mounted:[true,true],downloads:1,reads:[]},'Stale mounted resources must not skip the current package download');
+  }
   const baseline=process.argv.includes('--baseline');
   await page.waitForFunction(floor=>bootPercentages[bootPercentages.length-1]>=floor,{},baseline?35:40);
   const playReady=await page.evaluate(()=>bootPercentages[bootPercentages.length-1]);
@@ -245,10 +254,23 @@ async function verifyStartup(){
     return;
   }
   if(!checkGlyphGate){
-    await page.waitForFunction(floor=>window.homeStatusRequested && window.bootPercentages.at(-1)>=floor ||window.problem,{timeout:60000},baseline?97:95);
+    await page.waitForFunction(floor=>window.homeStatusRequested && window.bootPercentages.at(-1)>=floor ||window.problem,{timeout:60000},baseline?97:86);
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels.at(-1))),'00-background.png');
     await page.evaluate(()=>{window.beforeHomeLabel=bootLabels.length;window.releaseHomeStatus();});
+  }
+  if(process.argv.includes('--stale-resource-pack')){
+    const audit=await page.evaluate(()=>({
+      current:packageData.text.find(file=>file.endsWith('/assets.br')),
+      old:staleResourcePaths,
+      reads:resourcePackageReads,
+      downloads:requestedPackages.filter(name=>name==='text').length,
+    }));
+    assert.match(audit.current,/^packs\/text-[a-f0-9]{16}\/assets\.br$/);
+    assert.ok(audit.reads.includes(audit.current),'Startup must decode the current content-addressed archive');
+    assert.ok(audit.old.every(file=>!audit.reads.includes(file)),'Startup must never read an old mounted archive');
+    assert.equal(audit.downloads,1,'A current mounted package can complete even without its callback');
+    console.log('Stale mounted resource packages ignored; current archive loaded:',audit.current);
   }
   if(process.argv.includes('--opening-flow')){
     await (await import('./regression/opening-regression.mjs')).verifyOpening({page,dir});

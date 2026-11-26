@@ -39,8 +39,10 @@ test('stalled or failed decoding cannot trap entry behind a movie',async()=>{
   const stalled=fixture({stall:true});
   for(let i=0;i<83;i++)stalled.step(100);
   assert.match((await stalled.film.finished).error.message,/超时/);await stalled.film.reveal();
+  assert.match((await stalled.film.ready).error.message,/超时/);
   assert.equal(stalled.film.active,false);assert.equal(stalled.removed,1);
   const failed=fixture({reject:true});assert.match((await failed.film.finished).error.message,/broken movie/);await failed.film.reveal();
+  assert.match((await failed.film.ready).error.message,/broken movie/);
   assert.equal(failed.film.active,false);assert.equal(failed.removed,1);
 });
 
@@ -59,4 +61,20 @@ test('startup can prepare the first frame without playing behind the progress ba
   assert.equal(film.frameCount,1);
   film.resume();film.layer(390,844);time+=50;film.layer(390,844);
   assert.equal(film.frameCount,2);film.dispose();
+});
+
+test('boot waits for a decoded frame, and a cancelled preload releases the wait',async()=>{
+  let loaded=false,time=0,ready=false;
+  const film=createJourneyOpening(null,{paused:true,now:()=>time,createSource:()=>({
+    on(){},start(){},remove(){},
+    getFrameData:()=>loaded?{width:1,height:1,data:new Uint8Array(4).buffer}:null,
+  })});
+  film.ready.then(()=>{ready=true;});
+  film.layer(390,844);await Promise.resolve();assert.equal(ready,false);
+  loaded=true;time+=50;film.layer(390,844);await film.ready;
+  assert.equal(ready,true);assert.equal(film.frameCount,1);
+  time+=2000;film.layer(390,844);assert.equal(film.frameCount,1);
+  film.dispose();
+  const cancelled=fixture({stall:true});cancelled.film.dispose();await cancelled.film.ready;
+  assert.equal(cancelled.film.active,false);
 });

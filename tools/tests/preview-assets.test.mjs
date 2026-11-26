@@ -10,28 +10,33 @@ import {verifyAssetPackages} from '../build/preview-files.mjs';
 function fixture(t){
   const project=fs.mkdtempSync(path.join(os.tmpdir(),'ziling-preview-assets-'));
   t.after(()=>fs.rmSync(project,{recursive:true,force:true}));
-  const info={packs:{},rawSizes:{}};
-  const save=()=>fs.writeFileSync(path.join(project,'minigame/assets.js'),'module.exports = '+JSON.stringify(info)+';\n');
+  const info={packs:{},rawSizes:{},packRoots:{}},config={subpackages:[]};
+  const save=()=>{
+    fs.writeFileSync(path.join(project,'minigame/assets.js'),'module.exports = '+JSON.stringify(info)+';\n');
+    fs.writeFileSync(path.join(project,'minigame/game.json'),JSON.stringify(config));
+  };
   function pack(name,raw){
     const packed=brotliCompressSync(Buffer.from(raw));
-    const file=path.join(project,'minigame/packs',name,'assets.br');
+    info.packs[name]=createHash('sha256').update(packed).digest('hex').slice(0,16);
+    info.packRoots[name]='packs/'+name+'-'+info.packs[name];
+    config.subpackages.push({name,root:info.packRoots[name]});
+    const file=path.join(project,'minigame',info.packRoots[name],'assets.br');
     fs.mkdirSync(path.dirname(file),{recursive:true});
     fs.writeFileSync(file,packed);
-    info.packs[name]=createHash('sha256').update(packed).digest('hex').slice(0,16);
     info.rawSizes[name]=Buffer.byteLength(raw);
     return file;
   }
   pack('text','current text package');
   const world=pack('world','current world package');
   save();
-  return {project,info,world,save};
+  return {project,info,config,world,save};
 }
 
 test('preview checks every archive against the current index and rejects a stale package',t=>{
   const f=fixture(t);
   assert.doesNotThrow(()=>verifyAssetPackages(f.project));
   fs.writeFileSync(f.world,brotliCompressSync(Buffer.from('older world package')));
-  assert.throws(()=>verifyAssetPackages(f.project),/资源包版本与清单不一致：packs\/world\/assets\.br/);
+  assert.throws(()=>verifyAssetPackages(f.project),/资源包版本与清单不一致：packs\/world-[a-f0-9]{16}\/assets\.br/);
 });
 
 test('preview re-reads changed metadata and rejects an incorrect decompressed length',t=>{
@@ -39,19 +44,46 @@ test('preview re-reads changed metadata and rejects an incorrect decompressed le
   assert.doesNotThrow(()=>verifyAssetPackages(f.project));
   f.info.rawSizes.text++;
   f.save();
-  assert.throws(()=>verifyAssetPackages(f.project),/资源包解压长度与清单不一致：packs\/text\/assets\.br/);
+  assert.throws(()=>verifyAssetPackages(f.project),/资源包解压长度与清单不一致：packs\/text-[a-f0-9]{16}\/assets\.br/);
 });
 
 test('preview refuses corrupt bytes even if the index hash matches them',t=>{
   const f=fixture(t),bad=Buffer.from([0]);
   fs.writeFileSync(f.world,bad);
   f.info.packs.world=createHash('sha256').update(bad).digest('hex').slice(0,16);
+  f.info.packRoots.world='packs/world-'+f.info.packs.world;
+  f.config.subpackages.find(pack=>pack.name==='world').root=f.info.packRoots.world;
+  fs.renameSync(path.dirname(f.world),path.join(f.project,'minigame',f.info.packRoots.world));
   f.save();
-  assert.throws(()=>verifyAssetPackages(f.project),/资源包无法解压：packs\/world\/assets\.br/);
+  assert.throws(()=>verifyAssetPackages(f.project),/资源包无法解压：packs\/world-[a-f0-9]{16}\/assets\.br/);
 });
 
 test('preview refuses a missing archive',t=>{
   const f=fixture(t);
   fs.unlinkSync(f.world);
   assert.throws(()=>verifyAssetPackages(f.project),/ENOENT/);
+});
+
+test('preview refuses an unversioned or wrong-version resource root',t=>{
+  const f=fixture(t);
+  for(const root of ['packs/text','packs/text-0000000000000000']){
+    f.info.packRoots.text=root;
+    f.save();
+    assert.throws(()=>verifyAssetPackages(f.project),/资源包路径与版本不一致：text/);
+  }
+});
+
+test('preview refuses stale or duplicate subpackage declarations',t=>{
+  const f=fixture(t),text=f.config.subpackages.find(pack=>pack.name==='text');
+  text.root='packs/text';f.save();
+  assert.throws(()=>verifyAssetPackages(f.project),/资源分包声明与清单不一致：text/);
+  text.root=f.info.packRoots.text;
+  f.config.subpackages.push({...text});f.save();
+  assert.throws(()=>verifyAssetPackages(f.project),/资源分包声明与清单不一致：text/);
+});
+
+test('preview refuses leftover canonical directories even beside valid versioned packages',t=>{
+  const f=fixture(t);
+  fs.mkdirSync(path.join(f.project,'minigame/packs/text'));
+  assert.throws(()=>verifyAssetPackages(f.project),/仍存在旧的固定资源包路径：packs\/text/);
 });

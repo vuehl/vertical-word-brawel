@@ -7,20 +7,22 @@ export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=
   createSource=()=>createOpeningFrames(wx,{pathFor})}={}) {
   let decoder=null,frame=null,count=0,clock=null,credit=1000/openingFilm.fps;
   let stalled=0,ended=false,done=false,disposed=false,revealing=false,fade=0,failure=null;
-  let finish,uncover;
+  let finish,uncover,firstFrame;
+  const ready=new Promise(resolve=>{firstFrame=resolve;});
   const finished=new Promise(resolve=>{finish=resolve;});
   const revealed=new Promise(resolve=>{uncover=resolve;});
   const stopDecoder=()=>{
     const old=decoder;decoder=null;
     try{Promise.resolve(old?.remove()).catch(()=>{});}catch{}
   };
-  const complete=()=>{if(done)return;done=true;stopDecoder();finish(failure?{error:failure}:undefined);};
+  const complete=()=>{if(done)return;done=true;stopDecoder();firstFrame(failure?{error:failure}:undefined);finish(failure?{error:failure}:undefined);};
   const fail=error=>{
     failure=error instanceof Error?error:Error(error?.errMsg||String(error));
     console.warn('[字由搏击] 开场动画播放失败',failure.message);
     complete();
   };
   const api={
+    ready,
     finished,
     get active(){return !disposed;},
     get revealing(){return revealing;},
@@ -48,6 +50,7 @@ export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=
               if(!next.canvas&&next.data.byteLength!==next.width*next.height*4)throw Error('视频帧格式异常');
               frame=next.canvas||{width:next.width,height:next.height,pixels:new Uint8Array(next.data)};
               changed=true;count++;stalled=0;credit=Math.max(0,credit-1000/openingFilm.fps);
+              firstFrame();
               // The last frame remains on the GPU until the world is ready.
               if(count>=openingFilm.frames)complete();
             }else if(ended&&frame)complete();
