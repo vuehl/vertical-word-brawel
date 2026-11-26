@@ -1,4 +1,5 @@
 import {chineseText as c} from "../data/chinese-text.js";
+import {classDamageMultiplier} from './stat-multipliers.js';
 import {vl, random as F, I, L, Sl, wl, Fl} from "../effects/battle-particles.js";
 import {R, xf, Cf} from "./enemy-population.js";
 import {Kp, qp} from "../effects/move-particles.js";
@@ -1650,7 +1651,7 @@ var e_ = class {
         s = t,
         l = 1;
       if (!n.fixed) {
-        s *= a.damage * (n.cls === `physical` ? a.physical : a.special);
+        s *= classDamageMultiplier(a, n.cls);
         let t = r.player.items.get(`thick-club`);
         t && n.cls === `physical` && (s *= 1 + Math.min(0.5, Math.max(0, a.armor) / 200) * t);
         let c = n.slot != null && n.slot >= 10 ? r.allies.typesFor(n.slot) : null;

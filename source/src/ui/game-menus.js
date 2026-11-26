@@ -13,6 +13,7 @@ import {typeColors as Ni, typeNames as Pi, gameData as k} from "../data/game-dat
 import {gh, Xh, Zh, Qh} from "../combat/ultimate-moves.js";
 import {g_, O_} from "../combat/skills.js";
 import {nv} from "../combat/player.js";
+import {ultimateChargeRate} from '../combat/stat-multipliers.js';
 import {movePool as Vb, Wb, Zb, lS, fusionRequiredLevel} from "../combat/upgrade-offers.js";
 import {zE, VE, WE, tD, nD, rD, uD, DD, kD, catalogFusionIcon, catalogMoveMeta, BD, XD, ZD, pO} from "./move-details.js";
 import {SO} from "../data/player-profile.js";
@@ -51,8 +52,12 @@ function ZX(app) {
   const itemIcon=id=>Zt(k.items[id]?.icon||`items/${id}.png`);
   return createZixingUI(app, {
     defaults: SO,
-    speciesInfo: id => k.get(id),
-    startingMaxHp: id => Math.round(zE(k.get(id), pt.get(id)?.passive ?? '', app.meta.labStats()).stats.maxHp),
+    startingStats(id, includeResearch=true) {
+      const ability=pt.get(id)?.passive??'';
+      const {stats}=zE(k.get(id),ability,includeResearch?app.meta.labStats():{});
+      stats.ultCharge=ultimateChargeRate(ability,null,includeResearch?app.meta.lab('ult'):0);
+      return stats;
+    },
     evolutionIds: id => k.evolutionsOf(id).map(actor=>actor.id),
     evolutionLevel: (from,to) => k.runEvolution(from,k.get(to)).level,
     planCatalog(id) {

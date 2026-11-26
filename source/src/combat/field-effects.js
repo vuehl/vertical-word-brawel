@@ -524,8 +524,8 @@ var Yp = 3e3,
         this.glow.end());
     }
   },
-  nm = 16722474,
-  rm = 16765128,
+  nm = 0xde2424,
+  rm = 0xf2afa6,
   im = 7;
 function am(e) {
   switch (e) {

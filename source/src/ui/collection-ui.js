@@ -2,7 +2,7 @@ import {photoPaper,photoTilt,stagePortrait,albumPhotoMount,albumPreviewCorners} 
 import {collectionRoster,collectionCharacter,collectionState,appearanceName,appearanceOwned,canDeploy,pageOf,collectionPageSize,challengePresentation} from './collection-rules.js';
 import {starterSpecies} from '../data/starter-characters.js';
 import {drawAppearanceGlyph} from './collection-art.js';
-import {profilePrint} from './collection-profile.js';
+import {profilePrint,startingAttributeDetails} from './collection-profile.js';
 import {glyphText} from '../data/zixing-identity.js';
 import {openMoveDialog,openUltimateDialog} from './collection-move-dialog.js';
 import {openCollectionPlan} from './collection-plan.js';
@@ -67,14 +67,17 @@ export function createCollectionUI(app,api,kit){
     const actor=collectionRoster.find(entry=>entry.id===selected);
     const section=el('section','journey-info',[],{'aria-label':'字灵资料'});
     const turn=el('button','journey-face-toggle',[],{type:'button','data-action':'flip-profile','data-paper-surface':'flat'});
+    const details=el('button','journey-stats-details',[],{type:'button','data-action':'stat-details','data-paper-surface':'flat','aria-label':'查看全部开局属性'});
+    details.addEventListener('click',()=>detail(selected,2));
     function showFace(){
       const art=profilePrint(selected,actor,api,profileFace);
-      const other=profileFace==='stats'?'进阶路线':'基础属性';
+      const other=profileFace==='stats'?'进阶路线':'开局属性';
+      details.hidden=profileFace!=='stats'||selected==null;
       turn.setAttribute('aria-label','切换至'+other);
       section.dataset.face=profileFace;
       // Keep focus, the live scene and the roster scroll position on a flip.
       if(section.firstElementChild)section.firstElementChild.replaceWith(art);
-      else section.append(art,turn);
+      else section.append(art,details,turn);
     }
     turn.addEventListener('click',()=>{
       profileFace=profileFace==='stats'?'route':'stats';showFace();
@@ -207,10 +210,26 @@ export function createCollectionUI(app,api,kit){
       el('div','zc-filters',[...['起手招式','进阶路线','角色属性'].map((label,index)=>choice(label,()=>detail(id,index),'zc-filter'+(tab===index?' active':''),{'data-detail-tab':index}))])];
     if(tab===0){content.push(bodyCard(row(icon('fire',24),el('div','zc-copy',[el('b','',c.move+' · 自动攻击'),note(glyphText(api.moveDescription(id)))])),row(icon('spark',24),el('div','zc-copy',[el('b','',c.ult+' · 大招'),note(glyphText(api.ultDescription(id)))]))));
     }else if(tab===1){content.push(bodyCard(el('b','','进阶路线'),routes.length?el('div','zc-evolutions',routes.map(route=>row(...route.flatMap((n,i)=>[...(i?[el('span','','→')]:[]),el('div','zc-evolution',[glyph(n),el('b','',char(n).word)])])))):note('单字定形 · 无进阶')));
-    }else{const stats=api.baseStats(id,app.meta.labStats());content.push(bodyCard(...[['最大生命',stats.maxHp],['伤害倍率',stats.damage],['攻击速度',stats.attackSpeed],['移动速度',stats.moveSpeed],['护甲',stats.armor],['暴击率',Math.round((stats.critChance??0)*100)+'%']].map(([name,value])=>el('div','zc-stat',[note(name),el('b','',typeof value==='number'?String(Math.round(value*100)/100):value??'—')]))),note('包含当前研究所加成'));
+    }else{
+      content.push(attributePanel(id),note('开局属性包含当前永久加成。'));
     }
     mount('collection-detail',c.word+' · 字灵详情','查看不会改变当前选择',content,footer(()=>appearances(id,()=>detail(id,tab)),'查看外观',false,render));
   }
+  function attributePanel(id){
+    const panel=bodyCard(...startingAttributeDetails(api.startingStats(id))
+      .map(([name,value])=>el('div','zc-stat',[note(name),el('b','',value)])));
+    panel.classList.add('zc-starting-attributes');
+    return panel;
+  }
+  app.meta.onProfileAdopted=()=>{
+    const page=app.screen;
+    if(page?.dataset.page==='choose'&&profileFace==='stats'){
+      const print=page.querySelector('.journey-profile-print');
+      if(print)print.replaceWith(profilePrint(selected,null,api,'stats'));
+    }else if(page?.dataset.page==='collection-detail'&&detailTab===2){
+      page.querySelector('.zc-starting-attributes')?.replaceWith(attributePanel(viewId));
+    }
+  };
   let appearanceBack=render;
   function appearances(id,back=render,preview=activeLook(id)){
     rememberList();

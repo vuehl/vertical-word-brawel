@@ -27,6 +27,7 @@ import {castToneForType, readyPaletteForType} from "../effects/effect-colors.js"
 import {ta, aa, Da, Na, Pa, uo} from "../ui/controls.js";
 import {Rh, zh, J, Xh, Zh, Qh} from "./ultimate-moves.js";
 import {Fg} from "./skills.js";
+import {ultimateChargeRate} from './stat-multipliers.js';
 
 var xw = {
     forest: [`mud`, `bramble`],
@@ -2442,12 +2443,7 @@ var iT = Math.PI / 180,
     }
     rate() {
       let e = this.run.player;
-      return (
-        (e.ability === `lunar-blessing` ? 1.3 : 1) *
-        (e.items.has(`soul-dew`) ? 1.4 : 1) *
-        (e.items.has(`poke-flute`) ? 1.25 : 1) *
-        (1 + 0.04 * this.run.meta.lab(`ult`))
-      );
+      return ultimateChargeRate(e.ability, e.items, this.run.meta.lab(`ult`));
     }
     add(e) {
       if (this.active > 0) return;

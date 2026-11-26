@@ -1,4 +1,5 @@
 import {tv, nv, av, uv, ev, iv, ov} from "../combat/player.js";
+import {classDamageMultiplier} from '../combat/stat-multipliers.js';
 import {chineseText as c} from "../data/chinese-text.js";
 import {
   jr as sn,
@@ -295,7 +296,7 @@ function VE(e, t, n, r) {
     c = r ?? (n == null && o ? o.mods : BE(s)),
     l = e.dmg * 1.3 * c.dmg * (1 + (s - 1) * 0.04),
     u = t.types.includes(e.type) ? (t.adaptability ? 1.5625 : 1.25) : 1,
-    d = l * i.damage * (e.cls === `physical` ? i.physical : i.special) * u * (i.typeBoost[e.type] ?? 1),
+    d = l * classDamageMultiplier(i,e.cls) * u * (i.typeBoost[e.type] ?? 1),
     f = Math.max(1, Math.floor(e.count + c.count + (a.stats.includes(`count`) ? i.projectiles : 0))),
     p = Math.max(e.fusion ? 0.6 : 0.12, (e.cd * c.cd) / i.attackSpeed),
     m = e.fusion ? e.area * R_(c.area * i.area) : e.area * c.area * i.area,

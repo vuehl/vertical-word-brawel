@@ -18,6 +18,7 @@ import {readyBreathPhase,breathPeriod} from '../effects/ultimate-ready-timing.js
 import {regionAtlas,atlasSymbol} from './region-atlas-art.js';
 import {paperStages} from '../world/paper-world.js';
 import {laboratory} from '../data/catalogs.js';
+import {ultimateResearchBonus} from '../combat/stat-multipliers.js';
 import {prepareHudImage,waitForLoadingPaint} from '../performance/loading-work.js';
 import {selectGraphicsQuality} from '../performance/performance-profile.js';
 import {ExperienceRing} from '../combat/experience-ring.js';
@@ -895,7 +896,7 @@ export function createZixingUI(app,api) {
       button('如何获得  ›',dustHelp,'zx-plain',{'data-action':'dust-help','data-paper-surface':'flat'})],{'data-paper-surface':'lab-balance'});
   }
   function labValue(item,level) {
-    const value=(item.per??(item.id==='ult'?.04:0))*level;
+    const value=item.id==='ult'?ultimateResearchBonus(level):item.per*level;
     return '+'+(['maxHp','armor','luck','pickupRange','regen'].includes(item.stat)?Number(value.toFixed(2))+(item.stat==='regen'?'/秒':item.stat==='pickupRange'?' 厘米':''):percent(value));
   }
   function researchRow(item) {
@@ -1110,7 +1111,7 @@ export function createZixingUI(app,api) {
     mountMenuDialog(host,wrap,screenNode);dismiss.focus();
   }
   function stats(run=null,back=choose,tab=0) {
-    const c=run?character(run.player.speciesId):current(),s=run?run.player.stats:api.baseStats(selected,app.meta.labStats());
+    const c=run?character(run.player.speciesId):current(),s=run?run.player.stats:api.startingStats(selected);
     const item=(label,value,note,click)=>{const a=card(small(label),el('strong','',value),small(note));if(click){a.setAttribute('role','button');a.addEventListener('click',click);}return a;};
     const preview=()=>stats(run,back,tab);
     const body=[el('div','paper-info-hero',[glyph(c),col(el('b','',c.word+' · '+(run?'Lv.'+run.player.level:'开局属性')),small(run?'桌上世界 · 已暂停':'基础 + 永久研究'))]),
@@ -1124,8 +1125,8 @@ export function createZixingUI(app,api) {
     screen('stats',run?'当前属性':'文字属性',run?'查看时保持暂停 · 本局属性':'开局预览 · 不包含局内临时强化',body,[button('返回',()=>{app.setScreen(null);back();})],'blue');
   }
   function damageSources(run,back) {
-    const total=run?run.player.stats.damage:api.baseStats(selected,app.meta.labStats()).damage;
-    const base=run?api.baseStats(run.player.speciesId,{},run.player.evoStage+run.player.growth).damage:1;
+    const total=run?run.player.stats.damage:api.startingStats(selected).damage;
+    const base=run?api.baseStats(run.player.speciesId,{},run.player.evoStage+run.player.growth).damage:api.startingStats(selected,false).damage;
     const research=app.meta.labStats().damage||0;
     screen('damage','伤害加成来源','当前属性 / 全局伤害倍率',[
       el('div','zx-hero',[el('h1','',percent(total)),small('当前全局伤害倍率')]),

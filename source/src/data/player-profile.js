@@ -422,6 +422,7 @@ var KO = 300,
         MO(e, XO);
       } catch {}
       this.openBiomes();
+      this.onProfileAdopted?.();
     }
     rebase(e) {
       let t = this.profile,

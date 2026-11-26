@@ -1,7 +1,27 @@
 import {glyphCanvas,glyphTone,glyphWordForSpecies} from '../actors/paper-glyph-art.js';
 import {starterWords} from '../data/starter-characters.js';
+import {classDamageMultiplier} from '../combat/stat-multipliers.js';
 
-const attributes=[['hp','生命'],['atk','物攻'],['def','物防'],['spa','特攻'],['spd','特防'],['spe','速度']];
+const percent=value=>Number((value*100).toFixed(1))+'%';
+const flat=value=>String(Number(value.toFixed(1)));
+const attributes=[
+  ['生命','最大生命',s=>Math.round(s.maxHp).toString()],
+  ['物攻','物理伤害倍率',s=>percent(classDamageMultiplier(s,'physical'))],
+  ['护甲','护甲',s=>flat(s.armor)],
+  ['特攻','特殊伤害倍率',s=>percent(classDamageMultiplier(s,'special'))],
+  ['攻速','攻击速度',s=>percent(s.attackSpeed)],
+  ['移速','移动速度',s=>percent(s.moveSpeed)],
+];
+const otherAttributes=[
+  ['全局伤害倍率',s=>percent(s.damage)],['暴击率',s=>percent(s.critChance)],
+  ['攻击范围',s=>percent(s.area)],['生命回复',s=>Number(s.regen.toFixed(2))+' / 秒'],
+  ['拾取范围',s=>flat(s.pickupRange)+' 厘米'],['经验获取',s=>percent(s.xpGain)],
+  ['金币获取',s=>percent(s.gold)],['幸运',s=>flat(s.luck)],['大招充能速度',s=>percent(s.ultCharge)],
+];
+export function startingAttributeDetails(stats){
+  return [...attributes.map(([,name,format])=>[name,format]),...otherAttributes]
+    .map(([name,format])=>[name,format(stats)]);
+}
 const wordFor=id=>starterWords[id]||glyphWordForSpecies(id);
 
 function paper(width,height,cls){
@@ -32,24 +52,24 @@ function indexPaper(c,face,modeLevels){
   shape(c,[[352,0],[359,6],[352,6]],'#A4B9CE');
   c.fillStyle='#BCCDDC';c.fillRect(12,32,336,1);
   c.fillStyle='#B86F7D';c.fillRect(13,13,3,12);
-  text(c,face==='stats'?'基础属性':modeLevels?'进阶路线（单关 / 多关）':'进阶路线',22,19.5,14,'#2D435D','bold');
+  text(c,face==='stats'?'开局属性 ›':modeLevels?'进阶路线（单关 / 多关）':'进阶路线',22,19.5,14,'#2D435D','bold');
   c.strokeStyle='#506A85';c.lineWidth=1.5;c.lineJoin='round';c.lineCap='round';
   c.beginPath();c.moveTo(260,10);c.lineTo(273,10);c.lineTo(269.5,7);
   c.moveTo(273,16);c.lineTo(260,16);c.lineTo(263.5,19);c.stroke();
-  text(c,face==='stats'?'进阶路线':'基础属性',310,14,12,'#385671','bold','center');
+  text(c,face==='stats'?'进阶路线':'开局属性',310,14,12,'#385671','bold','center');
 }
 function drawAttributes(c,stats,base){
-  // The bars compare the six species attributes on their shared base scale.
-  const total=base?attributes.reduce((sum,[key])=>sum+base[key],0):0;
-  attributes.forEach(([key,label],i)=>{
-    const col=i%3,x=13+col*114,y=i<3?46:66,r=total?base[key]*6/total:0;
+  const labels=[];
+  attributes.forEach(([label,name,format],i)=>{
+    const col=i%3,x=13+col*114,y=i<3?46:66;
+    const current=stats?format(stats):'—';
     text(c,label,x,y,12,'#475D75');
-    const bar=x+31,track=40;
-    c.fillStyle='#D1DCE7';c.fillRect(bar,y-2,track,4);
-    c.fillStyle=r<.85?'#B47381':r<1.2?'#6286B0':'#548572';c.fillRect(bar,y-2,track*Math.min(1,r/2),4);
-    text(c,stats?String(stats[key]):'—',x+99,y,13,'#2D435D','bold','right');
+    const changed=base&&current!==format(base);
+    text(c,current,x+102,y,12,changed?'#356D58':'#2D435D','bold','right');
+    labels.push(name+' '+current);
   });
   for(const x of [119,233]){c.fillStyle='#D1DBE4';c.fillRect(x,41,1,31);}
+  return labels.join('，');
 }
 function drawRoute(c,id,rows){
   const stamp=(species,x,y,size)=>{
@@ -98,10 +118,9 @@ export function profilePrint(id,actor,api,face){
   indexPaper(ctx,face,actor?.singleStageEvoLevels);
   let label;
   if(face==='stats'){
-    const base=id==null?null:api.speciesInfo(id).stats;
-    const stats=base?{...base,hp:api.startingMaxHp(id)}:null;
-    drawAttributes(ctx,stats,base);
-    label='基础属性，'+attributes.map(([key,name])=>name+' '+(stats?.[key]??'—')).join('，');
+    const stats=id==null?null:api.startingStats(id);
+    const base=id==null?null:api.startingStats(id,false);
+    label='开局属性，'+drawAttributes(ctx,stats,base);
   }else{
     const rows=routes(id,actor,api);
     if(actor?.singleStageEvoLevels)for(const row of rows){

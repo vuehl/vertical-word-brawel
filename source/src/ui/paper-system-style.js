@@ -848,7 +848,8 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .screen.zx.zc-library.journey-prep .journey-info{position:relative;flex:none;width:100%;height:82px;margin:0 0 4px;background:transparent}
 .journey-info>.journey-profile-print{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:fill;pointer-events:none}
 .screen.zx.zc-library.journey-prep .journey-face-toggle{position:absolute;right:0;top:0;width:32%;height:44px;min-height:44px;padding:0;border:0;background:transparent;box-shadow:none;cursor:pointer}
-.journey-face-toggle:focus-visible{outline:2px solid #6083AE;outline-offset:-3px}
+.screen.zx.zc-library.journey-prep .journey-stats-details{position:absolute;left:0;top:0;width:66%;height:44px;min-height:44px;padding:0;border:0;background:transparent;box-shadow:none;cursor:pointer}
+.journey-face-toggle:focus-visible,.journey-stats-details:focus-visible{outline:2px solid #6083AE;outline-offset:-3px}
 .screen.zx.zc-library.journey-prep .zc-list-sheet{padding:7px 8px 3px;border:0;background:#E5EBF3}
 .screen.zx.zc-library.journey-prep .journey-commands{display:flex;flex:none;flex-direction:row;align-items:center;height:48px;padding:1px 5px 3px;gap:3px;background:#E5EBF3;border-top:1px solid #C6D3E0;border-bottom:2px solid #A4B8CF}
 .screen.zx.zc-library.journey-prep .journey-commands>.zc-dossier-action{position:relative;flex:1;min-width:0;height:44px;min-height:44px;margin:0;padding:0}
