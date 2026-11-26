@@ -12,6 +12,32 @@ export async function prepareReturningPlayer(page){
   });
 }
 
+export async function verifyMapRefresh({page,tap}){
+  // Hold the cloud read while navigating with the saved difficulty limits.
+  await page.evaluate(()=>{
+    const load=app.backend.loadProfile.bind(app.backend);
+    const gate=new Promise(resolve=>{window.releaseMapRead=resolve;});
+    window.mapReads=0;
+    app.backend.loadProfile=async(...args)=>{
+      mapReads++;
+      await gate;
+      const profile=await load(...args);
+      profile.biomes.forest=1;
+      app.backend.loadProfile=load;
+      return profile;
+    };
+  });
+  await tap('[data-action="collection-next"]');
+  await page.waitForFunction(()=>app.screen.dataset.page==='map'&&mapReads===1,{timeout:5000});
+  assert.ok(await page.evaluate(()=>app.screen.querySelector('[data-tier="1"]').disabled));
+  await tap('[data-action="route-back"]');
+  await tap('[data-action="collection-next"]');
+  await page.waitForFunction(()=>app.screen.dataset.page==='map');
+  await page.evaluate(()=>releaseMapRead());
+  await page.waitForFunction(()=>!app.screen.querySelector('[data-tier="1"]').disabled);
+  assert.equal(await page.evaluate(()=>mapReads),1);
+}
+
 export async function verifyEntry({page,tap,dir}){
   const screen=name=>page.waitForFunction(name=>app.screen?.dataset.page===name,{},name);
   const capture=name=>page.screenshot({path:path.join(dir,name+'.png')});
@@ -114,7 +140,10 @@ export async function verifyEntry({page,tap,dir}){
   assert.ok(await page.evaluate(()=>inspected.doc.querySelector('.zc-ultimate-dialog')?.textContent.includes('属性相性')));
   await tap('[data-action="move-close"]');
   await tap('[data-action="moves-back"]');await tap('[data-filter="all"]');
+  await verifyMapRefresh({page,tap});
+  await tap('[data-action="route-back"]');
   await chooseMap();await capture('02-stages');
+  await page.waitForFunction(()=>app.screen.querySelector('[data-tier="1"]').disabled);
   const selected=()=>page.evaluate(()=>app.screen.querySelector('.zx-album-mode[aria-pressed="true"]').dataset.mode);
   assert.equal(await selected(),'single-stage');
   assert.ok(await page.evaluate(()=>app.screen.querySelector('[data-tier="1"]').disabled));

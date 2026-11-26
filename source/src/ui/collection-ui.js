@@ -134,19 +134,10 @@ export function createCollectionUI(app,api,kit){
     const album=rosterPicker(selected,filter,id=>{filter=id;resetList();render();},selectFromAlbum);
     album.append(characterCommands());
     const content=[el('div','journey-air',[],{'aria-hidden':'true'}),profileSlip(),album];
-    let committing=false;
-    const start=async()=>{
-      if(committing||selected===null||!owned(selected))return;
-      committing=true;
-      const page=app.screen;
-      page.style.pointerEvents='none';
-      try{await confirm(selected);}
-      finally{committing=false;if(app.screen===page)page.style.pointerEvents='';}
-    };
     const disabled=selected===null||!owned(selected);
     const actions=[
       choice('返回',()=>scene.travel('home',home),'zc-back',{'data-action':'collection-back'}),
-      choice('选择关卡',start,'zc-primary',{'data-action':'collection-next',disabled}),
+      choice('选择关卡',()=>confirm(selected),'zc-primary',{'data-action':'collection-next',disabled}),
     ];
     const node=mount('choose','选择字灵','',content,actions);
     freePaperActions(node);

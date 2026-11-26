@@ -92,7 +92,7 @@ export async function reviewBattlePacing(page) {
       assert.equal(sample.drafts[0].offers.length,3);
       assert.ok(sample.drafts[0].time <= 19);
       assert.ok(sample.openingHp > 0);
-      const levels=mode==='single-stage'?[12,30]:[18,40];
+      const levels=mode==='single-stage'?[12,24]:[18,36];
       const attained=levels.filter(level=>sample.level>=level);
       assert.deepEqual(sample.forms.map(f => f.id), (species === 4 ? [5,6] : [17,18]).slice(0,attained.length));
       assert.deepEqual(sample.forms.map(f => f.requiredLevel), attained);

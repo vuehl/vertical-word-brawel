@@ -2,6 +2,7 @@ import {FOREST_ROUTE} from '../../source/src/data/lite-rules.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {verifyMapRefresh} from './entry-regression.mjs';
 
 // Delay acknowledgements at the transport boundary while the actual room UI is active.
 export async function reviewNetworkActions({page,tap,resize,dir}) {
@@ -74,19 +75,7 @@ export async function reviewNetworkActions({page,tap,resize,dir}) {
       app.screen.querySelector('[aria-pressed="true"]').dataset.species===String(id) &&
       !app.screen.querySelector('[role="status"]'),id));
   }
-  await page.evaluate(()=>{
-    const resync=app.meta.resync.bind(app.meta);
-    app.meta.resync=async(...args)=>{
-      app.meta.resync=resync;
-      await new Promise(resolve=>window.releaseMapRead=resolve);
-      return resync(...args);
-    };
-  });
-  await tap('.zx-footer button','选择关卡');
-  assert.ok(await page.evaluate(()=>chooserBody===app.screen.querySelector('.zx-body')));
-  await page.waitForFunction(()=>typeof releaseMapRead==='function');
-  await page.evaluate(()=>releaseMapRead());
-  await tap('.zx-footer button','选择难度');
+  await verifyMapRefresh({page,tap});
   await tap('[data-action="enter"]');
   await page.waitForFunction(()=>app.run?.state==='play' && !app.screen,{timeout:90000});
   await page.evaluate(()=>{
@@ -99,7 +88,7 @@ export async function reviewNetworkActions({page,tap,resize,dir}) {
   await page.evaluate(()=>ackFinish());
   await page.waitForFunction(()=>app.screen?.dataset.page==='summary');
   assert.match(await page.evaluate(()=>app.screen.textContent),/星尘 \+/);
-  console.log('Lobby art fits all three widths; room actions and solo character selection stay in place');
+  console.log('Verified lobby actions and map navigation during a delayed profile read.');
 }
 
 // Run the real packaged game through entry, every forest area and a restart.

@@ -650,12 +650,14 @@ export function createZixingUI(app,api) {
   }
   let collection;
   function getCollection() {
-    collection??=createCollectionUI(app,api,{el,button,icon,screen,home,scene,confirm:async id=>{
+    collection??=createCollectionUI(app,api,{el,button,icon,screen,home,scene,confirm:id=>{
       if(!canDeploy(profile(),id))return;
-      if(!profile().starter)await app.meta.chooseStarter(id);
-      selected=id;profile().lastSpecies=id;await app.meta.saveNow();await app.meta.resync();
-      if(!canDeploy(profile(),id))throw Error('字灵状态已变化，请重新选择。');
-      await scene.travel('map',map);
+      selected=id;
+      if(profile().lastSpecies!==id){
+        profile().lastSpecies=id;
+        void app.meta.saveNow();
+      }
+      return scene.travel('map',map);
     }});
     ui.collection=collection;return collection;
   }
@@ -663,8 +665,8 @@ export function createZixingUI(app,api) {
     if(!profile())return loadPage('选择字灵','正在读取存档',ready,()=>choose(preserve),home,'choose');
     getCollection().open(!preserve);
   }
+  let mapRead=null;
   function map() {
-    const progress=profile().stageUnlocks??profile().biomes??{};
     const tierLimit=()=>Math.max(0,Math.min(2,app.meta.biomeTier(selectedDestination.id)));
     function stateMark(node,state){
       const prev=node.querySelector('.paper-choice-mark');
@@ -676,14 +678,11 @@ export function createZixingUI(app,api) {
     const modeHint=el('small','zx-difficulty-hint');
     const indexHeading=el('div','journey-station-key',el('b','','后续关卡'));
 
-    const stations=destinations.map(stage=>{
-      const status=stage.released?stage.station:stage.id in progress?'内容待开放':'暂未开放';
-      const hint=!stage.released&&stage.id in progress?'进度已解锁 · 内容待开放':status;
-      return el('button','zx-album-station',[stagePrint(stage.art,'zx-station-print'),
-        el('small','journey-station-label',status),el('div','zx-destination-caption',el('b','zx-destination-title',stage.name))],{type:'button','data-stage':stage.id,
-        'data-paper-surface':'route-station',disabled:!stage.released,'aria-label':stage.name+' · '+hint,
-        onclick:()=>{if(stage.released&&stage!==selectedDestination){selectedDestination=stage;refresh();}}});
-    });
+    const syncNote=small('');
+    const stations=destinations.map(stage=>el('button','zx-album-station',[stagePrint(stage.art,'zx-station-print'),
+      el('small','journey-station-label'),el('div','zx-destination-caption',el('b','zx-destination-title',stage.name))],{type:'button','data-stage':stage.id,
+      'data-paper-surface':'route-station',disabled:!stage.released,
+      onclick:()=>{if(stage.released&&stage!==selectedDestination){selectedDestination=stage;refresh();}}}));
     const modes=difficulties.map(option=>el('button','zx-album-mode',[
       el('h3','',option.name),
     ],{type:'button','data-tier':option.tier,'data-mode':option.mode,
@@ -695,11 +694,14 @@ export function createZixingUI(app,api) {
       departing=true;
       const page=app.screen,config={species:selected,biome:selectedDestination.id,tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode};
       try{
-        await scene.travel('entry',()=>app.screen===page&&page.dataset.page==='map'?start(config):false);
+        await scene.travel('entry',()=>app.screen===page&&page.dataset.page==='map'?start(config,synced):false);
       }finally{departing=false;}
     },'primary',{'data-action':'enter'});
     let stamp,stampMode;
     function refresh(){
+      const progress=profile().stageUnlocks??profile().biomes??{};
+      syncNote.hidden=!profile().cloudSaveError;
+      updateText(syncNote,syncNote.hidden?'':'当前显示本机进度 · '+profile().cloudSaveError);
       const max=tierLimit();
       if(selectedDifficulty.tier>max)selectedDifficulty=difficulties[1+max];
       stations.forEach((node,i)=>{
@@ -710,6 +712,9 @@ export function createZixingUI(app,api) {
         const parent=chosen?feature:otherStations;
         if(node.parentNode!==parent)parent.append(node);
         const stationTag=node.querySelector('.journey-station-label');
+        const status=stage.released?stage.station:stage.id in progress?'内容待开放':'暂未开放';
+        updateText(stationTag,status);
+        node.setAttribute('aria-label',stage.name+' · '+(!stage.released&&stage.id in progress?'进度已解锁 · 内容待开放':status));
         stationTag.dataset.paperSurface=chosen?'destination-ribbon':'flat';
         stationTag.hidden=false;
 
@@ -740,12 +745,16 @@ export function createZixingUI(app,api) {
       el('section','zx-station-list',[feature,el('div','journey-station-index',[indexHeading,otherStations],{'data-paper-surface':'journey-stations'})],{'aria-label':'出发地点'}),
       el('section','zx-route-paper',[el('div','zx-difficulty-heading',[el('h2','zx-album-heading','挑战难度'),modeHint]),
         albumRows(modes,4,'zx-mode-list')],{'aria-label':'挑战难度'}),
-      profile().cloudSaveError?small('当前显示本机进度 · '+profile().cloudSaveError):null,
+      syncNote,
     ],[enter,button('返回',()=>scene.travel('choose',()=>choose(true)),'',{'data-action':'route-back'})]);
     node.classList.add('zx-route-page');
     scene.mount(node,current(),app.meta.skinFor(selected));
     node.querySelector('.zx-body').dataset.paperSurface='flat';
     freePaperActions(node);
+    // Reuse an in-flight read if the player goes back and opens the map again.
+    mapRead??=app.meta.resync().finally(()=>{mapRead=null;});
+    const synced=mapRead;
+    synced.then(()=>{if(enter.isConnected)refresh();});
   }
   function journeyLoadingScreen(config){
     const ticket=el('canvas','zx-entry-ticket',[],{width:780,height:152,'data-static':'true',
@@ -755,7 +764,7 @@ export function createZixingUI(app,api) {
     node.querySelector('.zx-body').dataset.paperSurface='flat';
     scene.mount(node,character(config.species),app.meta.skinFor(config.species));
     const captions={
-      '保存出发设置':'正在保存出发设置','准备对局':'正在布置桌上世界',
+      '同步关卡进度':'正在同步关卡进度','保存出发设置':'正在保存出发设置','准备对局':'正在布置桌上世界',
       '绘制桌面与纸张':'正在绘制桌面','准备角色与场景物件':'正在布置桌上世界','摆放场景物件':'正在摆放桌面物件',
       '准备字灵':'正在准备字灵','准备战斗特效':'正在准备战斗特效','准备场景特效':'正在准备场景特效',
       '准备进入场景':'正在绘制首帧','准备完成':'桌上世界已就绪',
@@ -801,7 +810,7 @@ export function createZixingUI(app,api) {
     };
     update({progress:0});return {node,update};
   }
-  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode}) {
+  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null) {
     if(activeEntry||app.starting)return false;
     const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&!hasJourneyProgress(profile());
     let cancelled=false,lastPhase='',lastDetailAt=0;
@@ -838,6 +847,17 @@ export function createZixingUI(app,api) {
         update({phase:action+name+'资源',detail:pending.phase==='download'?'正在下载所需资源':pending.total?pending.completed+' / '+pending.total:'正在处理资源',progress});
       });
       if(abandoned())return false;
+      if(mapProgress){
+        if(mapRead===mapProgress)update({phase:'同步关卡进度',progress:.4});
+        await mapProgress;
+        if(abandoned())return false;
+        if(config.tier>Math.max(0,app.meta.biomeTier(config.biome))){
+          diagnostics.status='cancelled';
+          map();
+          app.notice('关卡进度已更新，请重新选择难度。');
+          return false;
+        }
+      }
       update({phase:'保存出发设置',progress:.4});
       if(!profile().starter)await app.meta.chooseStarter(config.species);
       if(abandoned())return false;
@@ -858,7 +878,7 @@ export function createZixingUI(app,api) {
         const errorPage=screen('entry-error','暂时未能进入','',[
           el('div','zx-entry-slip',[menuSymbol('disconnected',48),el('div','zc-copy',[
             el('b','',destination),small(lastPhase||'准备场景')]),text(diagnostics.error,'zx-entry-message')],{'data-paper-surface':'album-page'}),
-        ],[firstJourney?button('返回首页',home):button('返回选择',map),button('重新进入',()=>start(config),'primary',{'data-action':'retry-entry'})]);
+        ],[firstJourney?button('返回首页',home):button('返回选择',map),button('重新进入',()=>start(config,mapProgress),'primary',{'data-action':'retry-entry'})]);
         errorPage.querySelector('.zx-body').dataset.paperSurface='flat';
       }
       return false;

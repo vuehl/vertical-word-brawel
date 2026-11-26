@@ -56,7 +56,7 @@ test('single-stage and multi-stage runs have independent thresholds for both sta
     const single=rosterForMode(actor,'single-stage');
     for(const mode of ['standard','classic']){
       const multi=rosterForMode(actor,mode);
-      assert.deepEqual(single.evoLevels,[12,30]);assert.deepEqual(multi.evoLevels,[18,40]);
+      assert.deepEqual(single.evoLevels,[12,24]);assert.deepEqual(multi.evoLevels,[18,36]);
       if(actor.branch){assert.equal(single.evoLevel,12);assert.equal(multi.evoLevel,18);}
     }
   }
@@ -100,6 +100,17 @@ test('rejoining restores wave time, keeps a wind branch and migrates only old ev
     assert.deepEqual(cards,[30,60]);
     assert.deepEqual(timeline.map(event=>!!event.done),[true,true,true,false,false]);
     assert.deepEqual([run.time,run.stageTime],[261,253]);
+  }
+});
+
+test('rejoining updates the old second evolution threshold and keeps later confirmations',()=>{
+  for(const [version,saved,expected] of [[4,40,36],[4,43,43],[5,40,40]]){
+    const player={speciesId:58,moves:[],pos:{set(){}},xpFor:()=>30,recompute(){}};
+    const run={player,coop:{},camTarget:{copy(){}},director:{timeline:[]},planEvolution:()=>({to:59,level:36})};
+    const data={v:version,stage:1,player:{speciesId:58,evoStage:1,level:34},pos:[0,0,0],
+      moves:[],run:{nextEvo:{to:59,level:saved}}};
+    restoreProgress(run,data,{stage:1,time:60,stageTime:60});
+    assert.deepEqual(run.nextEvo,{to:59,level:expected});
   }
 });
 

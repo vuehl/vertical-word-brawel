@@ -86,11 +86,11 @@ export async function reviewDeveloperEvolution(page,dir){
     if(choice===58){await dev('evolve-next');assert.equal((await state()).level,18);assert.deepEqual((await state()).choices,[17,58]);}
     await tap('[data-branch-id="'+choice+'"]');
     assert.equal((await state()).id,16,'Branch choice must still require evolution confirmation');
-    const middle=await finish();assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:40});
+    const middle=await finish();assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:36});
     await dev('open');await preview(choice===17?'讽':'飒');
     await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({mode:'timed',time:180,count:0,boss:'none'}));
     await dev('close');assert.equal((await state()).id,choice);assert.deepEqual((await state()).choices,[]);
-    await dev('open');await dev('evolve-next');assert.equal((await state()).level,40);
+    await dev('open');await dev('evolve-next');assert.equal((await state()).level,36);
     const final=await finish();assert.equal(final.id,end);assert.equal(final.next,null);assert.equal(final.stage,2);
     assert.equal(final.ult,end===18?'刮倒一片':'跑得没影');assert.equal(final.ability,'');
     await dev('open');assert.equal(await page.evaluate(()=>inspected.doc.querySelector('[data-dev-action="evolve-next"]').disabled),true);

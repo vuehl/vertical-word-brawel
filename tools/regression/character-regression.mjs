@@ -37,7 +37,7 @@ export async function reviewCharacters(page,dir) {
         for(let i=0;i<210;i++)r.update(1/30);
         return {preview,species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
-      assert.equal(first.species,branch);assert.equal(first.next.level,mode==='single-stage'?30:40);report.branches.push(first);
+      assert.equal(first.species,branch);assert.equal(first.next.level,mode==='single-stage'?24:36);report.branches.push(first);
       assert.equal(first.ultimate,({5:'一点火苗',17:'刮倒一片',58:'跑得没影'})[branch]);
       const second=await page.evaluate(()=>{
         const r=app.run;r.state='play';r.player.level=r.nextEvo.level;r.tryEvolve();

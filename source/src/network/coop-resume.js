@@ -34,7 +34,7 @@ export function saveProgress(run) {
   if(!p || !coop || coop.ended || run.state==='over' || run.state==='transition' || run.buildingStage)return;
   const fields=(object,keys)=>Object.fromEntries(keys.map(key=>[key,object[key]]));
   const world=worldProgress(run);
-  const data={v:4,seat:coop.room.me,party:coop.party,stage:run.stage,world,
+  const data={v:5,seat:coop.room.me,party:coop.party,stage:run.stage,world,
     run:fields(run,['stats','gold','keys','goldSpent','springShoesState','splits','pendingLevels','rerolls','skips','tempMods','curses','nextEvo']),
     player:fields(p,['speciesId','evoStage','level','xp','growth','hp','shield','overheal','revives','dead']),
     bleed:coop.bleed,out:coop.out,pos:[p.pos.x,p.pos.y,p.pos.z],
@@ -78,7 +78,11 @@ export function restoreProgress(run,data,world) {
     if(openingMoveId!=null && !p.moves.some(Boolean))p.addMove(openingMoveId);
     p.recompute();p.hp=Math.min(data.player.hp,p.maxHp);p.xpNext=p.xpFor(p.level);
     if(!('nextEvo' in data.run))run.nextEvo=run.planEvolution(p.speciesId,1);
-    else if((data.v ?? 1)<4 && run.nextEvo){
+    else if(data.v===4 && p.evoStage===1 && run.nextEvo?.level===40){
+      // Version 4 stored the old multi-stage threshold in every co-op checkpoint.
+      const plan=run.planEvolution(p.speciesId,1);
+      if(plan)run.nextEvo={...run.nextEvo,level:plan.level};
+    }else if((data.v ?? 1)<4 && run.nextEvo){
       // Keep the chosen branch. Versions 2 and 3 can also have a later threshold
       // when the player confirmed the preceding evolution several levels late.
       const plan=run.planEvolution(p.speciesId,1);
