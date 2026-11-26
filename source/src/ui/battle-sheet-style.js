@@ -1,4 +1,13 @@
 export const battleSheetStyle = `
+.zx.zx-modal-wrap.zx-item-pick-scrim{background:rgba(33,29,41,.79)}
+.zx .zx-item-pick .zx-item-body>.zx-item-option[data-paper-surface="item-offer"]{background:linear-gradient(95deg,#EEC659 60px,#FBF5E8 61px);box-shadow:inset 0 0 0 2px #27232F,inset 0 -4px 0 #27232F;border-radius:3px}
+.zx .zx-item-pick .zx-item-actions>.zx-item-sell[data-paper-surface="trade-action"],.zx .zx-item-pick .zx-item-sell>.zx-action-line{color:#FFF8E9}
+@media(max-height:660px){
+.zx-item-pick-scrim .zx-paper-upgrade-head{height:54px;min-height:54px}
+.zx .zx-item-pick .zx-item-body>.zx-item-option.zx-quality-card{min-height:80px;padding:6px 11px 8px 9px}
+.zx-item-pick .zx-pick-copy{gap:2px}
+.zx-item-pick .zx-pick-effect{line-height:18px}
+}
 .zx [data-paper-surface="trade-action"]{color:#FFF6E6;background:#2B262E;border:0;border-radius:0;box-shadow:none;clip-path:polygon(5% 0,100% 0,95% 100%,0 100%)}
 .zx [data-paper-surface="trade-action"].primary,.zx [data-paper-surface="trade-action"].armed{color:#28232C;background:#F1C654}
 .zx [data-paper-surface="trade-action"]:disabled{color:#554D55;background:#C9C2C6;opacity:1}

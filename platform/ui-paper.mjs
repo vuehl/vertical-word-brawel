@@ -211,9 +211,10 @@ export function drawUiPaper(ctx,box){
       ctx.fillStyle=print;ctx.fillRect(2,2,Math.round(w*.23),h-4);break;
     }
     case 'item-offer':
-      cut(ctx,0,3,w,h-3,4,'#483F48');cut(ctx,0,0,w,h-4,4,top);
-      poly(ctx,[[0,5],[5,0],[70,0],[60,h-4],[5,h-4],[0,h-9]],bottom);
-      poly(ctx,[[0,5],[5,0],[10,0],[7,h-4],[5,h-4],[0,h-9]],accent);break;
+      cut(ctx,0,0,w,h,4,paperPalette.darkStock);
+      cut(ctx,2,2,w-4,h-6,2,'#FBF5E8');
+      poly(ctx,[[2,5],[5,2],[66,2],[57,h-4],[4,h-4],[2,h-6]],paperPalette.yellow);
+      break;
     case 'scene-bulletin': {
       poly(ctx,[[4,1],[w-1,0],[w-8,h-3],[0,h]],'#302A33');
       poly(ctx,[[4,1],[9,1],[5,h],[0,h]],'#EFC554');break;

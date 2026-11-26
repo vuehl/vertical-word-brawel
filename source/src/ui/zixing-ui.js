@@ -1099,16 +1099,23 @@ export function createZixingUI(app,api) {
       ['collect','攻击与拾取',`招式自动释放，靠近即可拾取经验、金币和道具。碰到蓝骰子即可免费抽取道具，红骰子消耗标价金币。`],
       ['burst','释放大招','大招就绪后，点大招按钮释放。'],
     ];
-    readingDialog(host,host===pauseSheet?pauseSheet:app.screen,trigger,'玩法说明',instructions,'guide-close');
+    readingDialog(host,host===pauseSheet?pauseSheet:app.screen,trigger,'玩法说明',instructions,'guide-close',true);
   }
-  function readingDialog(host,screenNode,trigger,title,instructions,action){
+  function journalDialog(panel){
+    panel.classList.add('zx-journal-dialog');
+    panel.dataset.paperSurface='bound-index';
+    panel.querySelector('h2').dataset.paperSurface='destination-ribbon';
+    return panel;
+  }
+  function readingDialog(host,screenNode,trigger,title,instructions,action,journal=false){
     if(host.querySelector('.zx-guide-overlay'))return;
     const panel=el('section','zx-guide-paper',[
       el('h2','',title),
       el('div','zx-guide-scroll',instructions.map(([symbol,title,desc])=>el('div','zx-guide-row',[
-        el('span','zx-guide-mark',menuSymbol(symbol,25)),el('div','zx-guide-copy',[el('b','',title),text(desc)])]))),
+        el('span','zx-guide-mark',menuSymbol(symbol,25,journal),journal?{'data-paper-surface':'short-ink'}:{}),
+        el('div','zx-guide-copy',[el('b','',title),text(desc)])]))),
     ],{role:'dialog','aria-modal':true,'aria-label':title,'data-paper-surface':'album-page'});
-    const wrap=el('div','zx zx-modal-wrap zx-guide-overlay',panel);
+    const wrap=el('div','zx zx-modal-wrap zx-guide-overlay',journal?journalDialog(panel):panel);
     const close=()=>{wrap.remove();trigger?.focus?.({preventScroll:true});};
     const dismiss=button([],close,'',{'data-action':action});
     dockDialogClose(wrap,dismiss,'关闭'+title);
@@ -1233,13 +1240,14 @@ export function createZixingUI(app,api) {
     return wrap;
   }
   function confirmEnd(run,tab) {
-    const cancel=button('继续休整',()=>pause(run,tab),'',{'data-action':'end-cancel'});
-    const confirm=button('结束本局',()=>{run.endHow='quit';return run.finish(false);},'danger',{'data-action':'end-confirm'});
+    const cancel=button('继续休整',()=>pause(run,tab),'',{'data-action':'end-cancel','data-paper-surface':'trade-action'});
+    const confirm=button('结束本局',()=>{run.endHow='quit';return run.finish(false);},'danger',{'data-action':'end-confirm','data-paper-surface':'journal-button'});
     const hint=el('p','paper-prompt-hint',run.time<QUIT_REWARD_MIN_SECONDS
       ? '本局未满 '+QUIT_REWARD_MIN_SECONDS+' 秒，现在结束将获得 0 星尘。'
       : '结束后将按当前进度结算，本局临时强化随旅程结束。');
     const details=el('p','zx-end-state',character(run.startSpecies).word+' · Lv.'+run.player.level+'    '+time(run.time));
-    const wrap=run.ui.modal(paperDecisionPanel(el,'结束本局？',hint,[details],cancel,confirm));
+    const panel=paperDecisionPanel(el,'结束本局？',hint,[details],cancel,confirm);
+    const wrap=run.ui.modal(journalDialog(panel));
     wrap.className='zx zx-modal-wrap zx-dialog paper-prompt-overlay';
     run.ui.pauseBack=()=>pause(run,tab);
   }
@@ -1465,6 +1473,7 @@ export function createZixingUI(app,api) {
       node.replaceChildren(label);node.className='zx-button'+(!choice&&index===0?' primary':' zx-item-sell');
       standardButton(node,label);
       node.dataset.itemAction=!choice&&index===0?'take':'sell';
+      if(choice)node.dataset.paperSurface='trade-action';
     });
     document.querySelectorAll('.run-hint').forEach(node=>node.remove());
     wrap.className='zx zx-modal-wrap';
@@ -1473,6 +1482,7 @@ export function createZixingUI(app,api) {
       el('div','zx-item-body',cards),footer,
     ],{'data-choice':choice?'showItemChoice':'showItem','data-paper-surface':'flat'});
     wrap.classList.add('zx-loot-scrim');
+    if(choice)wrap.classList.add('zx-item-pick-scrim');
     wrap.replaceChildren(battleDialogFrame(content,el('h2','',choice?'选择道具':title),choice?(notes.map(n=>n.textContent).join(' ')||'选择 1 件拾取'):''));
     fitPaperActionLabels(footer);
   }

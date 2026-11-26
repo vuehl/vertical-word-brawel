@@ -3,6 +3,7 @@ import {weatherStyle,weatherFill,drawWeatherMark} from './weather-presentation.j
 import {glyphPreview} from '../actors/zixing-glyphs.js';
 import {summonerBarColors} from './battle-review-style.js';
 import {planIncludes,runPlan} from '../combat/battle-plan.js';
+import {upgradeStocks} from './choice-presentation.js';
 import {battleDialogFrame,hudPaperIcon} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,dockDialogClose,standardButton} from './paper-system.js';
 const el=(tag,cls='',children=[],attrs={})=>{
@@ -37,6 +38,8 @@ export function itemOffer(node,{key,name,picture,quality,effects,held,planned}){
   node.dataset.paperSurface='item-offer';node.dataset.quality=quality.key;node.dataset.rarity=quality.label;node.dataset.itemChoice=key;
   picture.classList.add('zx-item-image');
   const badge=qualityBadge(quality);
+  badge.dataset.paperSurface='destination-ribbon';
+  badge.style.color=upgradeStocks[quality.key][0];
   const art=el('div','zx-pick-art',picture);
   const copy=el('div','zx-pick-copy',[
     el('div','zx-pick-name',[el('b','',name),badge]),

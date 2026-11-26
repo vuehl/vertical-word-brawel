@@ -155,12 +155,12 @@ html.zixing .zx .zx-review-recipe>.zx-review-button{position:absolute;right:12px
 .zx .zx-fusion-empty{gap:6px;padding:20px 20px 24px 30px}
 .zx .zx-combat-shell>section.zx-item-pick{width:100%;max-width:366px;align-self:center;gap:14px;padding:0 5px 4px;border:0;box-shadow:none;background:transparent}
 .zx .zx-item-pick>.zx-item-body{display:flex;flex-direction:column;gap:9px;min-height:0;flex:0 1 auto;padding:0;scrollbar-width:none}
-.zx .zx-item-pick .zx-item-body>.zx-item-option.zx-quality-card{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;min-width:0;min-height:94px;gap:13px;flex:none;text-align:left;padding:11px 13px 14px 9px;border:0;background:#E9EEF6}
+.zx .zx-item-pick .zx-item-body>.zx-item-option.zx-quality-card{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;min-width:0;min-height:94px;gap:13px;flex:none;text-align:left;padding:11px 13px 14px 9px;border:0;background:#FBF5E8}
 .zx .zx-pick-art{width:48px;flex:none;display:flex;justify-content:center;align-items:center}.zx .zx-pick-art>.zx-item-image{width:45px;height:45px;margin:0;object-fit:contain}
 .zx .zx-pick-copy{min-width:0;flex:1;display:flex;flex-direction:column;align-items:stretch;gap:3px;padding-left:5px}
 .zx .zx-pick-name{display:flex;flex-direction:row;justify-content:space-between;align-items:center;gap:6px}
-.zx .zx-pick-name>b{font-size:17px;line-height:22px;color:#263751}.zx .zx-pick-name>.zx-quality-badge{flex:none;font-size:12px;line-height:17px;padding:1px 7px;color:#F3F1FA}
-.zx .zx-pick-effect{font-size:14px;line-height:20px;color:#304660;white-space:normal;margin:0}.zx .zx-pick-held{font-size:12px;line-height:16px;color:#586C85}
+.zx .zx-pick-name>b{font-size:17px;line-height:22px;color:#27232F}.zx .zx-pick-name>.zx-quality-badge{flex:none;font-size:13px;line-height:18px;padding:1px 12px 1px 7px;border:0;border-radius:0;background:#27232F;clip-path:polygon(0 0,100% 0,calc(100% - 8px) 100%,0 100%)}
+.zx .zx-pick-effect{font-size:14px;line-height:20px;color:#383239;white-space:normal;margin:0}.zx .zx-pick-held{font-size:12px;line-height:16px;color:#655A4D}
 .zx .zx-item-pick>.zx-item-actions{padding:0;border-top:0}
 html.zixing .zx.zx-modal-wrap.zx-review-forget{background:rgba(31,34,55,.84)}
 html.zixing .zx .zx-combat-shell>section.zx-review-forget{width:100%;max-width:362px;align-self:center;background:transparent;border:0;box-shadow:none;padding:0 8px;gap:12px}
@@ -206,8 +206,6 @@ html.zixing .zx-capture-focus>.zx-catch-track{width:248px;max-width:90%;height:8
 .zx .zx-review-copy>.zx-item-body{flex:0 1 auto;overflow-y:auto;scrollbar-width:thin;min-height:0;max-height:55vh;gap:9px;padding:0 7px 0 0}
 .zx .zx-review-copy .zx-item-option:disabled{opacity:1}
 .zx .zx-review-copy .zx-item-option:disabled .zx-pick-held{color:#723E50;font-weight:700}
-.zx .zx-review-copy .zx-item-option[data-quality="rare"] .zx-pick-name>b{color:#244E7E}
-.zx .zx-review-copy .zx-pick-name>.zx-quality-badge.rare{background:#2F69BA;color:#FFF}
 html.zixing .zx.zx-modal-wrap.zx-under-team{display:none}
 html.zixing .zx.zx-team-overlay{position:fixed;inset:0;z-index:950;background:rgba(32,36,56,.78)}
 .zx .zx-combat-shell>.zx-team-reading{width:100%;max-width:360px;align-self:center;height:53vh;min-height:0;padding:11px 12px 13px;gap:9px;border:0;display:flex;flex-direction:column;background:#EEF0F8}
@@ -570,7 +568,7 @@ html.zixing .zx.zx-square-hud .zx-hud-pause,.zx.zx-square-hud .zx-battle-lane{to
 
 
 .lab-research-error{margin:3px 0;padding:6px 9px;border-left:3px solid #BF7181;background:#F3E6EC;color:#7D394C;font-size:14px;line-height:20px}.lab-research-error[hidden]{display:none}
-.zx-end-state{margin:4px 0 9px;padding:8px 10px;background:#DEE7F2;color:#405878;font-size:15px}
+.zx-end-state{margin:4px 0 9px;padding:8px 10px;background:#E5DCCB;border-left:3px solid #BA913C;color:#40382F;font-size:15px}
 html.zixing .run-hint{width:230px;max-width:70vw;left:10px;right:auto;top:174px;bottom:auto;height:auto;min-height:0;transform:none;margin:0;align-items:center;gap:7px;padding:7px 10px;border:0;border-left:3px solid #AAC5DF;border-radius:2px;box-shadow:none;background:rgba(36,46,66,.92);color:#EEF1F7}
 html.zixing .run-hint b{font-size:14px;line-height:19px;color:#EEF1F7}
 html.zixing .run-hint div>span{font-size:12px;line-height:17px;color:#D9E5F1}

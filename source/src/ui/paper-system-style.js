@@ -684,6 +684,11 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .zx-guide-copy>b{font-size:16px;line-height:21px;color:#27232F}
 .zx-guide-copy>p{margin:0;font-size:14px;line-height:21px;color:#62584E}
 .zx-guide-row:last-child{border-bottom:0}
+.zx .zx-journal-dialog{background:#F1EBDF;border:0;border-radius:0}
+.zx .zx-journal-dialog>h2{align-self:flex-start;flex:none;margin:0 0 5px;padding:3px 20px 4px 10px;border:0;background:#27232F;color:#FFF8E9;clip-path:polygon(0 0,100% 0,calc(100% - 8px) 100%,0 100%);font-size:22px;line-height:28px}
+.zx-journal-dialog .zx-guide-mark{background:#2B262E;border-radius:0;clip-path:polygon(0 0,100% 0,100% 70%,70% 100%,0 100%)}
+.zx.paper-prompt-overlay .zx-journal-dialog .paper-decision-actions>[data-paper-surface="trade-action"]{color:#FFF8E9!important}
+.zx.paper-prompt-overlay .zx-journal-dialog .paper-decision-actions>[data-paper-surface="journal-button"]{background:#EEC659;color:#27232F!important;border:0;border-radius:0;box-shadow:none;clip-path:polygon(3% 0,100% 0,97% 100%,0 100%)}
 .screen.zx>.paper-screen-footer.paper-covered-actions,.zx-home-fixed .zx-home-foot.paper-covered-actions,.zx-pause-footer>.paper-back.paper-covered-actions{opacity:0;pointer-events:none}
 .zc-related{display:flex;flex-direction:column;gap:8px;padding:3px 1px 10px;color:#34415B}
 .zc-related .mv-group>b,.zc-detail-note{color:#53657F;font-size:12px}
