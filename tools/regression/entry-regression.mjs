@@ -42,6 +42,36 @@ export async function verifyEntry({page,tap,dir}){
   const screen=name=>page.waitForFunction(name=>app.screen?.dataset.page===name,{},name);
   const capture=name=>page.screenshot({path:path.join(dir,name+'.png')});
   const journey=()=>tap('[data-action="journey"]');
+  async function checkPortraitTravel(action,destination){
+    await page.waitForFunction(()=>!!app.screen._journeyIdle);
+    await page.evaluate(destination=>{
+      const page=app.screen,now=()=>inspected.env.performance.now();
+      const initial=page._journeyIdle(now());
+      const movingPoses=new Set(),arrivalPoses=new Set();
+      let lastY=initial.cy;
+      const check=window.portraitTravel={stable:true,done:false};
+      function sample(){
+        const camera=page._journeyCamera||page._journeyIdle?.(now());
+        check.stable&&=camera?.actor===initial.actor&&camera.size===initial.size;
+        if(page._journeyCamera){
+          if(camera.cy!==lastY)movingPoses.add(camera.frame);
+          if(page.dataset.page===destination)arrivalPoses.add(camera.frame);
+          lastY=camera.cy;
+        }
+        if(page.dataset.page===destination&&page._journeyIdle){
+          Object.assign(check,{movingPoses:movingPoses.size,arrivalPoses:arrivalPoses.size,done:true});
+        }
+        else requestAnimationFrame(sample);
+      }
+      sample();
+    },destination);
+    await tap('[data-action="'+action+'"]');
+    await page.waitForFunction(()=>portraitTravel.done);
+    const {stable,movingPoses,arrivalPoses}=await page.evaluate(()=>portraitTravel);
+    assert.ok(stable,action+' should keep the idle portrait at its resting size throughout travel');
+    assert.ok(movingPoses>1,action+' should advance the idle animation while the portrait is moving');
+    assert.ok(arrivalPoses>1,action+' should continue animating as the destination controls fade in');
+  }
   await screen('home');
   await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed);
   await page.waitForFunction(()=>app.screen.querySelector('.journey-scene')?.dataset.word==='炎'&&
@@ -56,14 +86,14 @@ export async function verifyEntry({page,tap,dir}){
     env.prepareForest=()=>{env.prepareForest=prepare;throw Error('测试首次资源加载失败');};
   });
   const startFirst=async()=>{
-    await journey();await screen('choose');await tap('[data-action="collection-next"]');await screen('map');
+    await checkPortraitTravel('journey','choose');await tap('[data-action="collection-next"]');await screen('map');
     await tap('[data-action="enter"]');
   };
   await startFirst();await screen('entry-error');
   assert.ok(!await page.evaluate(()=>app.meta.profile.firstJourneyPlayed));
   await tap('.paper-back');await screen('map');
   await tap('[data-action="route-back"]');await screen('choose');
-  await tap('[data-action="collection-back"]');await screen('home');
+  await checkPortraitTravel('collection-back','home');
   assert.deepEqual(await homeActions(),['settings','journey','multiplayer','lab','help']);
   await startFirst();
   await page.waitForFunction(()=>app.run?.state==='play'&&!app.screen,{timeout:90000});

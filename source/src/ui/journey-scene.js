@@ -146,13 +146,13 @@ export function journeyScene(){
     const compact=h<=680;
     const airHeight=compact?Math.max(66,h*.19):Math.min(w*.45,h*.274);
     const cx=w*.5,cy=mix(h*.477,(compact?54:62)+airHeight/2,pose);
-    const size=mix(Math.min(w*.365,h*.21),Math.min(w*.345,h*.21,airHeight/1.3),pose);
+    const size=Math.min(w*.345,h*.21,airHeight/1.3);
     const scale=Math.max(w/390,(h+margin)/844)*mix(2.26,2.10,pose);
     const x=cx-scale*mix(172,174,pose),y=cy-scale*370;
     const page=node.parentNode;
     page._journeyIdle=null;
-    const showIdle=word&&idleSheet&&showsIdlePortrait(node.dataset.shot)&&!moving&&!blending&&!reduced();
-    if(window.nativeUI&&showIdle&&desk){
+    const showIdle=word&&idleSheet&&showsIdlePortrait(node.dataset.shot)&&!reduced();
+    if(window.nativeUI&&showIdle&&!moving&&!blending&&desk){
       page._journeyCamera=null;
       const camera={desk,x,y,width:390*scale,height:844*scale,cx,cy,size:size*portraitLayerScale};
       let last;
@@ -165,13 +165,15 @@ export function journeyScene(){
       return;
     }
     if(window.nativeUI&&(moving||blending)&&desk&&node.dataset.shot!=='entry'){
-      if(word&&!actorLayer){
+      if(word&&!showIdle&&!actorLayer){
         actorLayer=document.createElement('canvas');
         actorLayer.width=actorLayer.height=Math.ceil(actor.width*portraitLayerScale);
         drawActor(actorLayer.getContext('2d'),actorLayer.width/2,actorLayer.height/2,actor.width);
       }
       // The native compositor can move these two textures without repainting the album.
-      page._journeyCamera={desk,x,y,width:390*scale,height:844*scale,actor:word&&actorLayer,cx,cy,size:size*portraitLayerScale};
+      const portrait=showIdle?idleLayer(performance.now()):word&&actorLayer;
+      page._journeyCamera={desk,x,y,width:390*scale,height:844*scale,actor:portrait,
+        frame:showIdle?idle.frame:undefined,cx,cy,size:size*portraitLayerScale};
       return;
     }
     page._journeyCamera=null;
@@ -192,7 +194,7 @@ export function journeyScene(){
       const layer=idleLayer(performance.now());
       const side=size*portraitLayerScale;
       ctx.drawImage(layer,cx-side/2,cy-side/2,side,side);
-      if(!window.nativeUI&&!webFrame)webFrame=window.requestAnimationFrame(()=>{webFrame=0;paint();});
+      if(!window.nativeUI&&!moving&&!webFrame)webFrame=window.requestAnimationFrame(()=>{webFrame=0;paint();});
     }else if(word)drawActor(ctx,cx,cy,size);
     window.invalidateUI?.();
   }
@@ -208,7 +210,8 @@ export function journeyScene(){
       const value=from+(to-from)*ease(t);
       if(window.nativeUI){
         page._journeyFade=value===1?null:{scene:1,controls:value};
-        if(blending!==(t<1)){blending=t<1;paint();}
+        // Once the camera arrives, fade ticks keep the idle animation playing.
+        if(blending!==(t<1)||(!moving&&page._journeyCamera?.frame!=null)){blending=t<1;paint();}
       }else for(const el of controls)el.style.opacity=t===1&&to===1?'':String(value);
       if(!page._journeyCamera)window.invalidateUI?.();
     },()=>ticket===presentation&&node.parentNode===page&&page.isConnected);
