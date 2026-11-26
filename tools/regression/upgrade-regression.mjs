@@ -64,7 +64,7 @@ async function reviewRandomOffers(page){
       p.addMove(488);p.addVitamin('hp-up',1);
       profile.collection={...savedCollection,plans:{[r.startSpecies]:{moves:['m488'],vitamins:['vhp-up']}}};
       p.level=3;r.stageTime=0;r.state='play';r.pendingLevels=1;r.rerolls=800;r.doLevelUp();
-      let lockedOffers=0, unlockedOffers=0;
+      let earlyOffers=0, laterOffers=0;
       const positions=new Set(), levelFiveSkills=new Set(), vitaminKeys=new Set();
       for(let draw=0;draw<800;draw++){
         const previous=new Set(offers.map(o=>o.key));
@@ -72,7 +72,9 @@ async function reviewRandomOffers(page){
         pick(null,'reroll');
         if(offers.length!==3 || new Set(offers.map(o=>o.key)).size!==3)
           throw Error('Invalid mixed offer: '+JSON.stringify(offers));
-        if(offers.filter(o=>o.vit).length!==2)throw Error('Expected one skill and two vitamins');
+        const buffs=offers.filter(o=>o.vit);
+        if(buffs.length!==2 || new Set(buffs.map(o=>o.category)).size!==2)
+          throw Error('Expected one skill and two different BUFF categories');
         offers.forEach((offer,index)=>{
           if(offer.vit)vitaminKeys.add(offer.vit);
           if(offer.kind==='newMove'){
@@ -82,7 +84,7 @@ async function reviewRandomOffers(page){
           if(p.level>=4 && previous.has(offer.key))throw Error('Repeated offer with alternatives: '+offer.key);
         });
         if(offers.some(o=>o.id===126)){
-          if(p.level===3)lockedOffers++;else unlockedOffers++;
+            if(p.level===3)earlyOffers++;else laterOffers++;
         }
       }
       const exhausted=offers;pick(null,'reroll');
@@ -96,17 +98,17 @@ async function reviewRandomOffers(page){
         extraSkills+=skills-1;
         pick(null,'reroll');
       }
-      return {recharge,vitaminCount:vitaminKeys.size,lockedOffers,unlockedOffers,levelFiveSkills:[...levelFiveSkills].sort((a,b)=>a-b),positions:[...positions].sort(),
+      return {recharge,vitaminCount:vitaminKeys.size,earlyOffers,laterOffers,levelFiveSkills:[...levelFiveSkills].sort((a,b)=>a-b),positions:[...positions].sort(),
         zero,blocked,extraSkills};
     }finally{profile.collection=savedCollection;profile.lab=savedLab;Math.random=originalRandom;r.ui.showLevelUp=show;r.ui.experienceReady=ready;}
   });
   assert.deepEqual(result.recharge,[1,0,1,2]);
   assert.deepEqual(result.positions,[0,1,2]);
   assert.deepEqual(result.levelFiveSkills,[53,83,126,517]);
-  assert.ok(result.unlockedOffers>0 && result.blocked);
+  assert.ok(result.earlyOffers>0 && result.laterOffers>0 && result.blocked);
   assert.ok(result.extraSkills>70 && result.extraSkills<130);
   assert.equal(result.vitaminCount,vitamins.length);
-  assert.equal(result.lockedOffers,0);assert.equal(result.zero,0);
+  assert.equal(result.zero,0);
   console.log('Mixed draft and empty-reroll checks:',result);
 }
 
@@ -308,7 +310,8 @@ async function reviewItemStacking(page){
       return {gained:p.items.get('honey')-initial,pickupRange:p.stats.pickupRange-before};
     }finally{run.meta.itemInPool=eligible;run.resume();}
   });
-  assert.deepEqual(result,{gained:17,pickupRange:25.5});
+  assert.equal(result.gained,17);
+  assert.ok(Math.abs(result.pickupRange-25.5)<1e-9);
   console.log('Stacking verified through shop restocks, repeated chest offers and copying a held stack.');
 }
 

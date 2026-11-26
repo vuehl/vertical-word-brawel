@@ -102,6 +102,31 @@ function drawOfferPage(pool, count, history) {
   history.previous = new Set(page.map(offer => offer.key));
   return F.shuffle(page);
 }
+function drawCategoryPage(pool, count, histories, alreadyOnPage = []) {
+  const groups = new Map();
+  for (const offer of pool) {
+    if (!groups.has(offer.category)) groups.set(offer.category, {pool: [], slots: 0, prior: 0});
+    groups.get(offer.category).pool.push(offer);
+  }
+  for (const offer of alreadyOnPage) {
+    const group = groups.get(offer.category);
+    if (group) group.prior++;
+  }
+  // Draw uniformly among the least-represented eligible categories on this page.
+  const size = Math.min(count, pool.length);
+  for (let slot = 0; slot < size; slot++) {
+    const available = [...groups.values()].filter(group => group.slots < group.pool.length);
+    const minimum = Math.min(...available.map(group => group.prior + group.slots));
+    F.pick(available.filter(group => group.prior + group.slots === minimum)).slots++;
+  }
+  const page = [];
+  for (const [category, group] of groups) {
+    if (!group.slots) continue;
+    if (!histories.has(category)) histories.set(category, {seen: new Set(), previous: new Set()});
+    page.push(...drawOfferPage(group.pool, group.slots, histories.get(category)));
+  }
+  return F.shuffle(page);
+}
 function canUpgradeMove(player, slot) {
   const move = player.moves[slot];
   return slot < player.moveSlots && move && formMove(move.def.id, player.speciesId) && move.level < player.capOf(move);
@@ -129,18 +154,18 @@ function Ub(run, count) {
   for (const vitamin of m) {
     const key = 'v'+vitamin.key, current = player.vitamins.get(vitamin.key);
     if (run.banished.has(key) || !player.canTakeVitamin(vitamin.key)) continue;
-    vitamins.push({kind:current?'upVit':'newVit', vit:vitamin.key, key});
+    vitamins.push({kind:current?'upVit':'newVit', vit:vitamin.key, key, category:vitamin.category});
   }
   // Each full group of three has one move. Give an extra slot the same 1:2 odds.
   const targetMoves = Math.floor(count / 3) + Number(count % 3 > 0 && Math.random() < (count % 3) / 3);
   const moveCount = Math.min(moves.length, Math.max(targetMoves, count - vitamins.length));
   const history = run.upgradeOfferHistory ??= {
     moves: {seen:new Set(), previous:new Set()},
-    vitamins: {seen:new Set(), previous:new Set()},
+    vitamins: new Map(),
   };
   const offers = F.shuffle([
     ...drawOfferPage(moves, moveCount, history.moves),
-    ...drawOfferPage(vitamins, count - moveCount, history.vitamins),
+    ...drawCategoryPage(vitamins, count - moveCount, history.vitamins),
   ]);
   for (const offer of offers) {
     if (offer.kind !== 'newMove') offer.rarity = Hb(run);
@@ -230,17 +255,12 @@ function canOfferItem(run, key) {
 function drawItemKeys(run, count, minimumRarity = 0) {
   const eligible = tt.filter(item => canOfferItem(run, item.key));
   const preferred = eligible.filter(item => item.rarity >= minimumRarity);
-  const history = run.itemOfferHistory ??= {seen:new Set(), previous:new Set()};
-  let page;
-  if (preferred.length >= count) {
-    page = drawOfferPage(preferred, count, history);
-  } else {
+  const history = run.itemOfferHistory ??= new Map();
+  const page = drawCategoryPage(preferred, count, history);
+  if (page.length < count) {
     const fallback = eligible.filter(item => item.rarity < minimumRarity);
-    page = F.shuffle([...preferred, ...drawOfferPage(fallback, count - preferred.length, history)]);
-    for (const item of preferred) {
-      history.seen.add(item.key);
-      history.previous.add(item.key);
-    }
+    page.push(...drawCategoryPage(fallback, count - page.length, history, page));
+    F.shuffle(page);
   }
   const keys = page.map(item => item.key);
   if (keys.includes(springShoesKey)) run.springShoesState = 'offered';
