@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {createHash} from 'node:crypto';
 import {brotliDecompressSync} from 'node:zlib';
+import decodeBrotli from 'brotli/decompress.js';
 import {packStream} from '../build/pack-resources.mjs';
 import {resourceEntries} from '../build/resource-stream.mjs';
 import codec from '../../platform/resource-codec.js';
@@ -46,11 +48,21 @@ test('cooperative model expansion preserves every byte and yields between batche
   assert.equal(timedYields,11,'The time budget can yield before the four-file limit');
 });
 
-function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSubpackage}={}){
+const revisionOf=bytes=>createHash('sha256').update(bytes).digest('hex').slice(0,16);
+function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSubpackage,sceneBytes,nativeWrongLength=false}={}){
   const {pool,recipes}=models(),data=new Map(),dirs=new Set(),downloads={};
-  const archives={world:[['model-parts.bin',pool],['model-map.json',Buffer.from(JSON.stringify(recipes))]],art:[],text:[]};
-  let failFile=null,writeError,yields=0,asyncReads=0,syncReads=0,asyncWrites=0,asyncRemovals=0;
-  const compressed=filePath=>Uint8Array.of(filePath.includes('world')?1:filePath.includes('text')?3:2,0,0,0).buffer;
+  const contents={world:{'model-parts.bin':pool,'model-map.json':Buffer.from(JSON.stringify(recipes))},art:{},text:{'message.txt':Buffer.from('文字资源')}};
+  const archives=Object.fromEntries(Object.entries(contents).map(([name,entries])=>[name,packStream(entries,name)]));
+  if(sceneBytes)archives.world={bytes:sceneBytes,rawSize:sceneBytes.length};
+  const info={packs:{},rawSizes:{},archiveFiles:{},
+    files:Object.fromEntries(Object.keys(recipes).map(file=>['assets/models/'+file,'world/'+file])),sprites:{}};
+  for(const [name,{bytes,rawSize}] of Object.entries(archives)){
+    info.packs[name]=revisionOf(bytes);info.rawSizes[name]=rawSize;
+    info.archiveFiles[name]='assets-'+info.packs[name]+(name==='world'?'.bin':'.br');
+  }
+  const mount=name=>data.set('packs/'+name+'/'+info.archiveFiles[name],archives[name].bytes);
+  let failFile=null,writeError,yields=0,asyncReads=0,syncReads=0,asyncWrites=0,asyncRemovals=0,jsDecodes=0;
+  const compressed=filePath=>nativeWrongLength?new Uint8Array(3).buffer:Uint8Array.from(brotliDecompressSync(data.get(filePath))).buffer;
   const manager={
     accessSync(p){if(!data.has(p)&&!dirs.has(p))throw Error('ENOENT');},
     mkdirSync(p){dirs.add(p);},
@@ -65,25 +77,25 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
   if(nativeAsync){
     // Reproduce a native recursive deletion that never delivers a callback.
     manager.rmdir=()=>{asyncRemovals++;};
-    manager.readCompressedFile=({filePath,success})=>{asyncReads++;queueMicrotask(()=>success({data:compressed(filePath)}));};
+    manager.readCompressedFile=({filePath,success,fail})=>{asyncReads++;queueMicrotask(()=>{try{success({data:compressed(filePath)});}catch(error){fail(error);}});};
+    manager.readFile=({filePath,success,fail})=>{queueMicrotask(()=>{try{success({data:manager.readFileSync(filePath)});}catch(error){fail(error);}});};
     manager.writeFile=({filePath,data:bytes,success,fail})=>{asyncWrites++;if(stalledWrite)return;
       queueMicrotask(()=>{try{manager.writeFileSync(filePath,bytes);success({});}catch(error){fail(error);}});};
   }
-  const info={packs:{world:'1111111111111111',art:'2222222222222222',text:'3333333333333333'},rawSizes:{world:4,art:4,text:4},
-    files:Object.fromEntries(Object.keys(recipes).map(file=>['assets/models/'+file,'world/'+file])),sprites:{}};
   const context={module:{exports:{}},console,Uint8Array,Date,clearTimeout,
     setTimeout:(fn,ms)=>{if(ms===0)yields++;return setTimeout(fn,ms===30000&&stalledWrite?10:ms);},
     wx:{env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>manager,loadSubpackage(options){
       downloads[options.name]=(downloads[options.name]||0)+1;
-      if(loadSubpackage)return loadSubpackage(options);
-      queueMicrotask(options.success);
+      if(loadSubpackage)return loadSubpackage(options,mount);
+      queueMicrotask(()=>{mount(options.name);options.success();});
     }},
     require(name){if(name==='./assets')return info;if(name==='./resource-codec')return codec;
-      if(name==='./resource-runtime')return {decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text'}[new Uint8Array(raw)[0]]]};
+      if(name==='./resource-runtime')return {archiveRevision:revisionOf,decodeText:bytes=>Buffer.from(bytes).toString(),
+        resourceEntries,decodeBrotli(bytes,rawSize){jsDecodes++;return decodeBrotli(bytes,rawSize);}};
       throw Error(name);}
   };
   vm.runInNewContext(fs.readFileSync(new URL('../../platform/files.js',import.meta.url),'utf8'),context);
-  return {api:context.module.exports,data,dirs,downloads,info,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
+  return {api:context.module.exports,data,dirs,downloads,info,archives,contents,mount,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},get jsDecodes(){return jsDecodes;},
     get io(){return {asyncReads,syncReads,asyncWrites};},failNext(file,message='simulated disk error'){failFile=file;writeError=message;}};
 }
 
@@ -101,10 +113,10 @@ test('a cold launch with obsolete archives completes even if recursive deletion 
   assert.deepEqual(f.downloads,{text:1});
 });
 test('a locked obsolete cache does not prevent text installation, and byte-only downloads report progress',async()=>{
-  const f=installer({lockedCache:true,loadSubpackage({success}){
+  const f=installer({lockedCache:true,loadSubpackage({name,success},mount){
     return {onProgressUpdate(notify){
       notify({totalBytesWritten:50,totalBytesExpectedToWrite:200});
-      queueMicrotask(success);
+      queueMicrotask(()=>{mount(name);success();});
     }};
   }});
   f.dirs.add('/userdata/pokebonk-assets/text-cccccccccccccccc');
@@ -116,10 +128,97 @@ test('a locked obsolete cache does not prevent text installation, and byte-only 
 });
 test('an already mounted archive installs without requesting the package again',async()=>{
   const f=installer();
-  f.data.set('packs/text/assets.br',new Uint8Array(4));
+  f.mount('text');
   await f.api.init();
   assert.deepEqual(f.downloads,{});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
+});
+test('old text archives cannot satisfy the current preview even when their decoded lengths match',async()=>{
+  const f=installer();
+  const old=packStream({'message.txt':Buffer.from('旧版资源')},'text');
+  assert.equal(old.rawSize,f.info.rawSizes.text);
+  assert.notEqual(revisionOf(old.bytes),f.info.packs.text);
+  f.data.set('packs/text/assets.br',old.bytes);
+  f.data.set('packs/text/assets-'+revisionOf(old.bytes)+'.br',old.bytes);
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:1});
+  const prefix='/userdata/pokebonk-assets/text-'+f.info.packs.text+'/';
+  assert.deepEqual(Buffer.from(f.data.get(prefix+'message.txt')),f.contents.text['message.txt']);
+  assert.equal(f.data.get(prefix+'.ready'),f.info.packs.text);
+});
+
+test('same-length damaged text bytes are rejected before any writes and remounted once',async()=>{
+  const f=installer({loadSubpackage({name,success},mount){
+    assert.equal(name,'text');
+    assert.equal(f.io.asyncReads,0,'A bad archive must fail before native decompression');
+    assert.ok(![...f.data.keys()].some(file=>file.startsWith('/userdata/')),'No partial install before version validation');
+    mount(name);queueMicrotask(success);
+  }});
+  const damaged=Buffer.from(f.archives.text.bytes);damaged[damaged.length-1]^=1;
+  f.data.set('packs/text/'+f.info.archiveFiles.text,damaged);
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:1});
+  const prefix='/userdata/pokebonk-assets/text-'+f.info.packs.text+'/';
+  assert.deepEqual(Buffer.from(f.data.get(prefix+'message.txt')),f.contents.text['message.txt']);
+  assert.equal(f.data.get(prefix+'.ready'),f.info.packs.text);
+});
+
+test('a persistently wrong text package fails without a ready marker and the next entry can recover',async()=>{
+  let repaired=false;
+  const f=installer({loadSubpackage({name,success},mount){
+    if(repaired)mount(name);
+    queueMicrotask(success);
+  }});
+  const old=packStream({'message.txt':Buffer.from('旧版资源')},'text');
+  f.data.set('packs/text/'+f.info.archiveFiles.text,old.bytes);
+  const prefix='/userdata/pokebonk-assets/text-'+f.info.packs.text+'/';
+  await assert.rejects(f.api.init(),/版本校验失败/);
+  assert.deepEqual(f.downloads,{text:1});
+  assert.ok(!f.data.has(prefix+'.ready'));assert.ok(!f.data.has(prefix+'message.txt'));
+  repaired=true;
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:2});
+  assert.deepEqual(Buffer.from(f.data.get(prefix+'message.txt')),f.contents.text['message.txt']);
+  assert.equal(f.data.get(prefix+'.ready'),f.info.packs.text);
+});
+
+test('wrong lengths from both native Brotli APIs fall back to the real JS decoder',async()=>{
+  const f=installer({nativeWrongLength:true});
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:1});
+  assert.equal(f.io.asyncReads,1);assert.equal(f.io.syncReads,1);assert.equal(f.jsDecodes,1);
+  const prefix='/userdata/pokebonk-assets/text-'+f.info.packs.text+'/';
+  assert.deepEqual(Buffer.from(f.data.get(prefix+'message.txt')),f.contents.text['message.txt']);
+  assert.equal(f.data.get(prefix+'.ready'),f.info.packs.text);
+});
+
+test('a mounted world from an older preview cannot satisfy a new scene install',async()=>{
+  const desk=Buffer.from('new scene tile'),sceneBytes=packStream({'desk.webp':desk},'world').bytes;
+  const f=installer({sceneBytes,loadSubpackage({name,success},mount){
+    mount(name);
+    queueMicrotask(success);
+  }});
+  f.data.set('packs/world/assets.br',packStream({'desk.webp':Buffer.from('old')},'art').bytes);
+  f.data.set('packs/world/assets-0123456789abcdef.bin',sceneBytes.subarray(0,5));
+  await f.api.prepareForest();
+  assert.equal(f.downloads.world,1);
+  assert.deepEqual(Buffer.from(f.data.get('/userdata/pokebonk-assets/world-'+f.info.packs.world+'/desk.webp')),desk);
+});
+test('a corrupt mounted scene is remounted once and a subsequent entry can recover',async()=>{
+  const sceneBytes=packStream({'desk.webp':Buffer.from('scene tile')},'world').bytes;
+  const damaged=Buffer.from(sceneBytes);damaged[damaged.length-1]^=1;
+  const f=installer({sceneBytes,loadSubpackage({name,success},mount){
+    if(name!=='world'||f.downloads.world===2)mount(name);
+    queueMicrotask(success);
+  }});
+  const file='packs/world/'+f.info.archiveFiles.world;
+  const ready='/userdata/pokebonk-assets/world-'+f.info.packs.world+'/.ready';
+  f.data.set(file,damaged);
+  await assert.rejects(f.api.prepareForest(),/版本校验失败/);
+  assert.equal(f.downloads.world,1);assert.ok(!f.data.has(ready));
+  f.data.set(file,sceneBytes.subarray(0,4));
+  await f.api.prepareForest();
+  assert.equal(f.downloads.world,2);assert.ok(f.data.has(ready));
 });
 test('a second launch skips downloads, decoding, writes and obsolete cache cleanup until home',async()=>{
   const f=installer(),base='/userdata/pokebonk-assets',old=base+'/world-aaaaaaaaaaaaaaaa';
@@ -144,7 +243,7 @@ test('a full disk reclaims obsolete pack files and retries the interrupted insta
   assert.equal(f.asyncRemovals,0);
 });
 test('an archive mounted without a completion callback is picked up during the first download',{timeout:5000},async()=>{
-  const f=installer({loadSubpackage(){queueMicrotask(()=>f.data.set('packs/text/assets.br',new Uint8Array(4)));}});
+  const f=installer({loadSubpackage({name},mount){queueMicrotask(()=>mount(name));}});
   await f.api.init();
   assert.deepEqual(f.downloads,{text:1});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
@@ -152,8 +251,8 @@ test('an archive mounted without a completion callback is picked up during the f
 test('download progress resets the ten-second inactivity limit before a single retry',async t=>{
   t.mock.timers.enable({apis:['Date','setTimeout']});
   let notify;
-  const f=installer({loadSubpackage({success}){
-    if(f.downloads.text===2)queueMicrotask(success);
+  const f=installer({loadSubpackage({name,success},mount){
+    if(f.downloads.text===2)queueMicrotask(()=>{mount(name);success();});
     return {onProgressUpdate(fn){notify=fn;}};
   }});
   const ready=f.api.loadPackage('text');
@@ -170,7 +269,7 @@ test('download progress resets the ten-second inactivity limit before a single r
 });
 test('entering during background preparation joins the download and starts the remaining pack',async()=>{
   const pending={};
-  const f=installer({loadSubpackage({name,success}){pending[name](success);}});
+  const f=installer({loadSubpackage({name,success},mount){pending[name](()=>{mount(name);success();});}});
   const world=new Promise(resolve=>{pending.world=resolve;});
   const art=new Promise(resolve=>{pending.art=resolve;});
   const background=f.api.preloadForest();
@@ -191,7 +290,7 @@ test('native async installs coalesce, report progress and leave unused models on
   assert.equal(fixture.data.get(prefix+'.ready'),fixture.info.packs.world);
   assert.equal([...fixture.data.keys()].filter(k=>k.endsWith('.glb')).length,0);
   assert.ok(fixture.data.has(prefix+'model-parts.bin'));assert.ok(fixture.data.has(prefix+'model-map.json'));
-  assert.equal(fixture.io.asyncReads,2);assert.equal(fixture.io.syncReads,0);assert.equal(fixture.io.asyncWrites,2);
+  assert.equal(fixture.io.asyncReads,1);assert.equal(fixture.io.syncReads,0);assert.equal(fixture.io.asyncWrites,2);
   for(const events of [progressA,progressB])for(const phase of ['download','unpack','write','ready'])assert.ok(events.some(s=>s.phase===phase),phase);
   await fixture.api.prepareForest();assert.deepEqual(fixture.downloads,{world:1,art:1});
 });
@@ -201,7 +300,7 @@ test('an interrupted install has no ready marker and can be retried',async()=>{
   const ready='/userdata/pokebonk-assets/world-'+fixture.info.packs.world+'/.ready';
   assert.ok(!fixture.data.has(ready));
   await fixture.api.prepareForest();assert.ok(fixture.data.has(ready));
-  assert.equal(fixture.downloads.world,2);assert.equal(fixture.downloads.art,1);
+  assert.equal(fixture.downloads.world,1);assert.equal(fixture.downloads.art,1);
 });
 
 test('models restore on demand with identical bytes, coalesce, and retry failed writes',async()=>{
@@ -219,7 +318,7 @@ test('models restore on demand with identical bytes, coalesce, and retry failed 
 test('older native file APIs can still install and materialize a model',async()=>{
   const fixture=installer({nativeAsync:false});await fixture.api.prepareForest();
   const file=await fixture.api.resolvePath('assets/models/model-0.glb');
-  assert.equal(fixture.io.syncReads,2);assert.ok(fixture.data.has(file));assert.ok(fixture.yields>0);
+  assert.equal(fixture.io.syncReads,1);assert.ok(fixture.data.has(file));assert.ok(fixture.yields>0);
 });
 
 test('previously installed models work without recipes or another download',async()=>{

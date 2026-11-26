@@ -3,6 +3,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import {deskTilt} from '../../source/src/world/desk-framing.js';
 import {deskLayers,deskAtlasFile} from '../../source/src/world/desk-stage-layout.js';
+import {deskPrintLayers} from './desk-scenery.mjs';
 
 // Print the north-up plan from the battle layers before shipping it to phones.
 export async function writeDeskMapAtlas(pub){
@@ -13,9 +14,9 @@ export async function writeDeskMapAtlas(pub){
 }
 
 async function printDesk(pub,width,height,layers,file){
-  const tiles=layers.flatMap(layer=>layer.parts.map(([file,left,top])=>({
-    input:path.join(pub,'assets/env/desk2d',file),left,top,
-  })));
+  const furnished=layers.some(layer=>layer.name==='toy0');
+  const tiles=deskPrintLayers(pub,layers,furnished).flatMap(({parts})=>
+    parts.map(({input,left,top})=>({input,left,top})));
   const {data:scene,info}=await sharp({create:{width,height,channels:4,background:'#e7dfcd'}})
     .composite(tiles).raw().toBuffer({resolveWithObject:true});
   const density=640/Math.max(width,height/deskTilt);
@@ -39,6 +40,15 @@ async function printDesk(pub,width,height,layers,file){
       pixels[i+3]=Math.round(255*vertical*edgeAlpha(Math.min(x+.5,w-x-.5),shortSide*.075));
     }
   }
-  await sharp(pixels,{raw:{width:w,height:h,channels:4}}).webp({quality:95,alphaQuality:100})
-    .toFile(path.join(pub,'assets/ui-paper',file));
+  const output=path.join(pub,'assets/ui-paper',file);
+  const next=await sharp(pixels,{raw:{width:w,height:h,channels:4}}).webp({quality:95,alphaQuality:100}).toBuffer();
+  const previous=await fs.readFile(output).catch(error=>{if(error.code!=='ENOENT')throw error;});
+  if(previous?.equals(next))return;
+  const temporary=output+'.'+process.pid+'.tmp';
+  try{
+    await fs.writeFile(temporary,next);
+    await fs.rename(temporary,output);
+  }finally{
+    await fs.rm(temporary,{force:true});
+  }
 }

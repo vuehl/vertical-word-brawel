@@ -13,7 +13,7 @@ previous=json.loads(manifest.read_text()) if manifest.exists() else None
 if desk_only and (not previous or (W,H)!=(previous['width'],previous['height'])):
  raise ValueError('Map registration changed. Regenerate all layers.')
 layers=[];rows=[];contours={};S=12
-order=['desk','shelf','wires','wacom','ID-card','tea-bag','keyboard','bell','box','cup','hushoushuang','mouse','pen','medicine','teethpicks','toy0','toy1','toy2','toy3','xiangdai','zhi','notebook','bottle']
+order=['desk','wires','shelf','wacom','ID-card','tea-bag','keyboard','bell','box','cup','hushoushuang','mouse','pen','medicine','teethpicks','toy0','toy1','toy2','toy3','xiangdai','zhi','notebook','bottle']
 
 def registered_layer(name):
  with Image.open(root/(name+'.png')) as source:
@@ -29,6 +29,9 @@ def registered_layer(name):
    part=part.resize((475,544),Image.Resampling.LANCZOS)
   elif name=='wacom':
    l-=13;t+=5
+  elif name=='toy0':
+   # The cat continues into the exterior painting above the map.
+   t-=8
   image=Image.new('RGBA',(W,H))
   image.paste(part,(l,t))
   return image
@@ -99,8 +102,7 @@ def save_depth(file):
 
 save_depth('shelf-depth-bare.png')
 for name,post in shelf['hanging'].items():
- with Image.open(root/(name+'.png')) as decoration:
-  alpha=np.asarray(decoration.getchannel('A').crop((left,top,right,bottom)))
+ alpha=np.asarray(registered_layer(name).getchannel('A').crop((left,top,right,bottom)))
  cover=np.maximum(cover,alpha)
  if post is not None: depth[alpha>0]=depth_at[post]
 save_depth('shelf-depth.png')

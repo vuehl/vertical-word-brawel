@@ -19,6 +19,8 @@ import {runtimeData,runtimeSpecies} from './build/runtime-data.mjs';
 import {unpackMeshBytes} from '../source/src/effects/dragon-summon-hd/mesh-bytes.js';
 import {dragonDirectory} from './build/dragon-summon-pack.mjs';
 import {isAtlasIcon} from './build/icon-atlases.mjs';
+import {bakeDeskScenery} from './art/desk-scenery.mjs';
+import {deskBattleLayers} from '../source/src/world/desk-stage-layout.js';
 import {portalScreenAtlas} from '../source/src/effects/portal-screen-atlas.js';
 const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'resources/public');
 const packs={};
@@ -33,9 +35,13 @@ assert.equal(events.length,0,'Review excluded event assets if events are enabled
 const declaredPacks=new Set(JSON.parse(fs.readFileSync(path.join(root,'game.json'))).subpackages.map(p=>p.name));
 for(const pack of Object.keys(index.packs))assert.ok(declaredPacks.has(pack),'Missing subpackage '+pack);
 for(const [group,expected] of Object.entries(index.packs)){
-  const raw=fs.readFileSync(path.join(root,'minigame/packs',group,'assets.br'));
+  const filename=index.archiveFiles[group];
+  assert.equal(filename,'assets-'+expected+(group==='world'?'.bin':'.br'));
+  assert.deepEqual(fs.readdirSync(path.join(root,'minigame/packs',group))
+    .filter(file=>/^assets(?:-[a-f0-9]{16})?\.(?:br|bin)$/.test(file)),[filename],'Remove obsolete archives for '+group);
+  const raw=fs.readFileSync(path.join(root,'minigame/packs',group,filename));
   assert.equal(digest(raw).slice(0,16),expected);
-  const decoded=brotliDecompressSync(raw);
+  const decoded=filename.endsWith('.bin')?raw:brotliDecompressSync(raw);
   assert.equal(decoded.length,index.rawSizes[group]);
   const files=packs[group]=Object.create(null);
   unpackStream(decoded,(name,data)=>{files[name]=data;});
@@ -247,11 +253,18 @@ assert.deepEqual(models,['assets/models/ball.glb']);
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
 const deskDevices=JSON.parse(fs.readFileSync(path.join(pub,'config/desk2d-devices.json'),'utf8'));
 const deskLayout=JSON.parse(fs.readFileSync(path.join(pub,'config/desk2d-layout.json'),'utf8'));
-const deskTiles=deskLayout.layers.flatMap(layer=>layer.parts.map(([name])=>'assets/env/desk2d/'+name));
-assert.deepEqual(Object.keys(index.files).filter(key=>/^assets\/env\/desk2d\/[^/]+-\d+\.webp$/.test(key)).sort(),
+const exterior=JSON.parse(fs.readFileSync(path.join(pub,'config/desk-exterior.json'),'utf8'));
+const deskFiles=stage=>deskBattleLayers(stage,deskLayout).flatMap(layer=>layer.parts.map(([name])=>'assets/env/desk2d/'+name));
+const deskTiles=[...deskFiles(4),...deskFiles(1),...exterior.parts.map(([name])=>'assets/env/desk2d/'+name)];
+assert.deepEqual(Object.keys(index.files).filter(key=>/^assets\/env\/desk2d\/(?:[^/]+-\d+\.webp|(?:furnished|exterior)\/.*)$/.test(key)).sort(),
   deskTiles.sort(),'Packed map tiles must match the current layout');
-for(const key of deskTiles)
+for(const key of [...deskFiles(4),...exterior.parts.map(([file])=>'assets/env/desk2d/'+file)])
   assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed map tile '+key);
+await bakeDeskScenery(pub,(file,data)=>assert.equal(digest(bytes('assets/env/desk2d/'+file)),digest(data),'Stale baked tile '+file));
+for(const {name,parts} of deskLayout.layers.filter(layer=>['cup','zhi'].includes(layer.name))){
+  for(const [file] of parts)assert.equal(digest(bytes('assets/env/desk2d/furnished/'+file)),
+    digest(fs.readFileSync(path.join(pub,'assets/env/desk2d',file))),name+' must keep its original sprite');
+}
 const paperDirectory='assets/ui-paper/';
 const paperImages=fs.readdirSync(path.join(pub,paperDirectory)).filter(name=>/\.(png|webp)$/.test(name));
 assert.ok(paperImages.includes('journey-desk.webp'),'Missing menu backdrop');
@@ -294,6 +307,7 @@ for(const kind of Object.keys(facilityNames)){
   }
 }
 for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.startsWith('assets/env/'))) {
+  if(deskTiles.includes(key))continue; // Checked against the bare or baked artwork above.
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }

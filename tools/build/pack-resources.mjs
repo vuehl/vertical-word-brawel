@@ -20,9 +20,12 @@ export function packStream(entries,pack,filters={}) {
   const header=Buffer.alloc(4);
   header.writeUInt32LE(manifest.length);
   const raw=Buffer.concat([header,manifest,...payloads]);
+  // The scene is mostly WebP. Avoid a second decoder on the entry path for
+  // a saving of about 52 KiB across the entire scene.
+  if(pack==='world')return {bytes:raw,rawSize:raw.length};
   const bytes=brotliCompressSync(raw,{params:{
     [constants.BROTLI_PARAM_QUALITY]:pack==='art'?10:11,
-    [constants.BROTLI_PARAM_LGWIN]:pack==='art'?20:pack==='world'?23:22,
+    [constants.BROTLI_PARAM_LGWIN]:pack==='art'?20:22,
     [constants.BROTLI_PARAM_SIZE_HINT]:raw.length
   }});
   return {bytes,rawSize:raw.length};

@@ -60,7 +60,8 @@ try{
   const page=await browser.newPage(),errors=[];
   page.on('pageerror',e=>{errors.push(String(e));console.error('Runtime error:',String(e));});
   page.on('console',m=>{if(m.type()==='error'&&/WebGLProgram|Shader Error|VALIDATE_STATUS/.test(m.text())){errors.push(m.text());if(process.argv.includes('--debug-shaders'))console.error(m.text().slice(0,1800));}});
-  const iphone=process.argv.includes('--ios-late-game')?iphoneCases[process.env.POKEBONK_IPHONE||'13']:null;
+  const iphone=process.argv.includes('--ios-late-game')||(process.argv.includes('--desk-scenery-cost')&&process.env.POKEBONK_IPHONE)
+    ?iphoneCases[process.env.POKEBONK_IPHONE||'13']:null;
   if(process.argv.includes('--ios-late-game')&&!iphone)throw Error('Unknown iPhone fixture');
   await page.setViewport(iphone?.viewport||{width:390,height:844,deviceScaleFactor:3});
   if(iphone)await page.evaluateOnNewDocument(model=>{
@@ -92,7 +93,7 @@ try{
   }
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
-  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects','--difficulty'].includes(arg));
+  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--desk-scenery-cost','--weather-effects','--difficulty'].includes(arg));
   const repeatableMap=!!iphone||deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--crowded-steering','--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
@@ -125,7 +126,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(iphone){
+  if(process.argv.includes('--desk-scenery-cost')){
+    const {reviewDeskSceneryCost}=await import('./regression/desk-scenery-cost.mjs');
+    await reviewDeskSceneryCost(page,dir);assert.deepEqual(errors,[]);
+  }else if(iphone){
     await reviewIOSLateGame(page,dir,iphone);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--crowded-steering')){
     const {reviewCrowdedSteering}=await import('./regression/crowded-steering.mjs');

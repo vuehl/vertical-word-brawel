@@ -19,7 +19,8 @@ fs.mkdirSync(engine,{recursive:true});
 const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
 if(installedAssets?.policyVersion!==assetPolicyVersion||itemIconSelectionChanged(installedAssets.files)||
-  (developer&&installedAssets?.developerAssetKey!==developer.assetKey())||!fs.existsSync(path.join(out,'packs/art/assets.br'))||process.argv.includes('--assets'))
+  (developer&&installedAssets?.developerAssetKey!==developer.assetKey())||
+  !installedAssets.archiveFiles||Object.entries(installedAssets.archiveFiles).some(([name,file])=>!fs.existsSync(path.join(out,'packs',name,file)))||process.argv.includes('--assets'))
   execFileSync(process.execPath,[path.join(import.meta.dirname,'build/assets.mjs'),...(development?['--dev']:[])],{stdio:'inherit',windowsHide:true});
 const read=(f)=>fs.readFileSync(path.join(src,f),'utf8').replace(/\r\n/g,'\n');
 const replace=(s,from,to)=>{

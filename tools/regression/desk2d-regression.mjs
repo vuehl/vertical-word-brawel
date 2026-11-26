@@ -19,6 +19,11 @@ export async function verifyDesk(page,dir){
      throw app.lastStartError||Error('Could not start the desk route');
  },mode);
  await page.waitForFunction(()=>app.run?.terrain?.desk2d&&app.run.time>.1,{timeout:30000});
+ if(process.argv.includes('--desk-exterior-only')){
+   const {verifyDeskExterior}=await import('./desk-exterior-regression.mjs');
+   await verifyDeskExterior(page,dir);
+   return;
+ }
  if(process.argv.includes('--desk-pickups-only')){
    const pickup=await page.evaluate(()=>{
      const r=app.run,f=r.interactables,p=r.player;
@@ -216,7 +221,7 @@ export async function verifyDesk(page,dir){
    return {cableError,mouseBlocked,stage:t.zxStage,layers:[...new Set(t.group.children.map(c=>c.name))],colliders:t.colliders.length,spawnFree:!t.hitProp(p.x,.3,p.z,1),maxCenterError,wireBlocked:t.colliders.some(c=>c.kind==='wires'),facilities:r.interactables.list.every(f=>f.model?.name.startsWith('desk2d/device-')&&(f.kind!=='boss'||!!f.dock))};
  });
  assert.ok(stats.maxCenterError<1e-6,'The player stays centered at all four corners, while airborne and during the ultimate-ready cue');
- assert.equal(stats.layers.length,23);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
+ assert.deepEqual(stats.layers.sort(),['desk2d/cup','desk2d/desk','desk2d/exterior','desk2d/zhi']);assert.ok(stats.cableError<.001&&stats.mouseBlocked>1&&stats.spawnFree&&stats.facilities&&!stats.wireBlocked,JSON.stringify(stats));console.log(stats);
  await page.screenshot({path:path.join(dir,'stage1.png')});
  if(process.argv.includes('--desk-placement-only')){
    await page.evaluate(async()=>{

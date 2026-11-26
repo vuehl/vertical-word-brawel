@@ -10,7 +10,8 @@ import {installBillGaze} from '../effects/bill-gaze.js';
 import {ht as Vector3,w as Color,y as BufferGeometry,v as Attribute,I as Group,et as PlaneGeometry,K as Mesh,q as BasicMaterial,dt as Texture,ot as SRGB} from '../vendor/three-DmSYIDKK.js';
 import {paperBox,hitsPaperBox} from './paper-collision.js';
 import {createDeskNavigation,createSpawnPlacement} from './desk-navigation.js';
-import {deskLayers,deskAtlasFile} from './desk-stage-layout.js';
+import {deskBattleLayers,deskAtlasFile} from './desk-stage-layout.js';
+import {deskExteriorGeometry,deskExteriorParts} from './desk-exterior.js';
 
 import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame,deskPlayFrame} from './desk-framing.js';
 const xAt=px=>(px-layout.width/2)/pixelsPerUnit;
@@ -21,7 +22,7 @@ const halfWidth=xAt(layout.width),halfDepth=zAt(layout.height);
 const propHeight=1.2;
 export const isDeskStage=t=>!!t.mapRules.desk;
 export function initDesk(t){
-  const stage=t.biome.zxStage, layers=deskLayers(stage,layout.layers);
+  const stage=t.biome.zxStage, layers=deskBattleLayers(stage,layout);
   t.desk2d=true;t.zxPaper=true;t.zxStage=stage;t.group.name='desk-map-2d';
   t.hasWater=t.frozen=t.isLava=false;t.waterLevel=-99;t.minH=t.maxH=0;
   t.heights.fill(0);t.pathMask.fill(0);t.landmarks=[];t.zxProps=[];
@@ -35,6 +36,7 @@ export function initDesk(t){
   t.inBounds=(x,z,n=0)=>Math.abs(x)<halfWidth-n&&Math.abs(z)<halfDepth-n;
   t.isFlatOpen=(x,z)=>t.inBounds(x,z,1)&&!t.hitProp(x,.3,z,1);
   t.deskOwned=[];t.deskTextures=new Map();
+  t.deskExteriorSheets=[];
   t.deskFadeMaterials={cup:[],zhi:[]};
   const walkThroughProps=[];
   for(const [kind,l,rawTop,r,rawBottom] of (bossSite?[]:layout.rects)){
@@ -107,18 +109,30 @@ export function initDesk(t){
   const geometry=new PlaneGeometry(1,1);geometry.rotateX(-Math.PI/2);t.deskOwned.push(geometry);
   t.deskReady=(async()=>{
     const jobs=layers.flatMap(({name,parts},layer)=>parts.map(part=>({name,layer,part})));
+    // The furnished areas share the cat and its continuation on the shelf.
+    if(stage!==4)
+      for(const part of deskExteriorParts)jobs.push({name:'exterior',layer:layers.length,part});
     async function load(){
       while(jobs.length&&!t.disposed){
-        const {name,layer,part:[file,x,y,w,h]}=jobs.shift();
-        const texture=await deskTexture(t,file);
+        const {name,layer,part}=jobs.shift();
+        const texture=await deskTexture(t,part[0]);
         if(t.disposed)return;
-        const material=new BasicMaterial({map:texture,transparent:layer!==0,depthWrite:false,fog:false,toneMapped:false});
+        const material=new BasicMaterial({map:texture,transparent:layer!==0&&name!=='exterior',depthWrite:false,fog:false,toneMapped:false});
         t.deskFadeMaterials[name]?.push(material);
         t.deskOwned.push(material);
         const sheet=new Mesh(geometry,material);sheet.name='desk2d/'+name;
-        sheet.scale.set(w/pixelsPerUnit,1,h/(pixelsPerUnit*tilt));
-        sheet.position.set(xAt(x+w/2),-.05,zAt(y+h/2));
-        sheet.renderOrder=-100+layer;t.group.add(sheet);
+        if(name==='exterior'){
+          texture.generateMipmaps=false;texture.minFilter=texture.magFilter;
+          sheet.geometry=deskExteriorGeometry(part,texture.image,xAt,zAt);
+          t.deskOwned.push(sheet.geometry);
+          t.deskExteriorSheets.push(sheet);
+        }else{
+          const [,x,y,w,h]=part;
+          sheet.scale.set(w/pixelsPerUnit,1,h/(pixelsPerUnit*tilt));
+          sheet.position.set(xAt(x+w/2),-.05,zAt(y+h/2));
+        }
+        // The outer strips overlap the floor gutter, below all foreground props.
+        sheet.renderOrder=name==='exterior'?-101:-100+layer;t.group.add(sheet);
       }
     }
     const atlas=loadDeskImage('/assets/ui-paper/'+deskAtlasFile(stage)).then(image=>{
@@ -157,6 +171,13 @@ export function deskCamera(run,progress,bend=0,p=run.player.pos){
   c.position.set(x,y+distance*tilt,z+distance*Math.cos(pitch));c.lookAt(x,y,z);
   c.projectionMatrix.makeOrthographic(-w,w,h,-h,c.near,c.far,c.coordinateSystem);
   c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
+  // The long perimeter planes have large bounding spheres. Cull against the
+  // actual orthographic footprint on the artwork, including a jumping focus.
+  const groundZ=z-(y+.05)/Math.tan(pitch),depth=h/tilt;
+  for(const sheet of t.deskExteriorSheets){
+    const {min,max}=sheet.geometry.boundingBox;
+    sheet.visible=min.x<=x+w&&max.x>=x-w&&min.z<=groundZ+depth&&max.z>=groundZ-depth;
+  }
   t.deskCamera=c;run.camYaw=0;run.camPitch=pitch;run.camDist=distance;run.camLift=0;
 }
 function deskGeometry(t,key,strips,resolution=128,rows=resolution){

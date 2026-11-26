@@ -2,7 +2,7 @@
 const fs = () => wx.getFileSystemManager();
 const info = require('./assets');
 const {restoreModel} = require('./resource-codec');
-const {restoreSprite,encodeImageData,resourceEntries,decodeBrotli,decodeText} = require('./resource-runtime');
+const {restoreSprite,encodeImageData,resourceEntries,decodeBrotli,decodeText,archiveRevision} = require('./resource-runtime');
 const hydratedSprites = new Set();
 const installs = new Map();
 const packStates = new Map();
@@ -35,7 +35,7 @@ async function writeFile(filePath,data,encoding) {
   if(typeof fs().writeFile==='function')await fileCall('writeFile',Object.assign({filePath,data},encoding?{encoding}:{}));
   else fs().writeFileSync(filePath,data,encoding);
 }
-async function readBrotli(archive,expected) {
+async function readBrotli(archive,expected,packedBytes) {
   const manager=fs();let raw;
   if(typeof manager.readCompressedFile==='function'){
     try {raw=(await fileCall('readCompressedFile',{filePath:archive,compressionAlgorithm:'br'})).data;}
@@ -47,17 +47,20 @@ async function readBrotli(archive,expected) {
     catch(error){console.warn('[字由搏击] 原生解压失败，使用备用解码器',archive,error);}
   }
   if(!raw||raw.byteLength!==expected){
-    const bytes=new Uint8Array(await readFile(archive));await yieldTask();
+    const bytes=packedBytes||new Uint8Array(await readFile(archive));await yieldTask();
     raw=decodeBrotli(bytes,expected);
   }
   if(!raw||raw.byteLength!==expected)throw Error('解压后长度不符 '+archive);
   return raw;
 }
+function archivePath(name) {
+  return 'packs/' + name + '/' + info.archiveFiles[name];
+}
 function packageAvailable(name) {
   return name === 'play' ? !!(GameGlobal.pokebonkPlayEntry && GameGlobal.pokebonkPlayEntry.api)
-    : exists('packs/' + name + '/assets.br');
+    : exists(archivePath(name));
 }
-function downloadPackage(name, progress) {
+function downloadPackage(name, progress, acceptMounted=true) {
   return new Promise((resolve,reject) => {
     let timer, lastBytes = 0, lastPercent = 0, done = false;
     function finish(error) {
@@ -69,7 +72,7 @@ function downloadPackage(name, progress) {
     }
     let lastProgress = Date.now();
     function checkDownload() {
-      if (packageAvailable(name)) return finish();
+      if (acceptMounted && packageAvailable(name)) return finish();
       const remaining = 10000 - (Date.now() - lastProgress);
       if (remaining <= 0) return finish('下载长时间没有进展，请检查网络后重试');
       timer = setTimeout(checkDownload, Math.min(1500, remaining));
@@ -105,19 +108,43 @@ async function loadPackage(name, progress) {
     catch (retryError) { if (!packageAvailable(name)) throw retryError; }
   }
 }
+async function readArchive(name,archive,revision,onProgress) {
+  const read=async()=>{
+    const data=await readFile(archive);
+    const bytes=data instanceof Uint8Array?data:new Uint8Array(data);
+    // Both compressed and raw packages must match the main package manifest.
+    // A decompressed length alone cannot detect an older, equally sized pack.
+    if(archiveRevision(bytes)!==revision)
+      throw Error('资源包版本校验失败 '+archive);
+    if(!archive.endsWith('.bin'))return readBrotli(archive,info.rawSizes[name],bytes);
+    if(bytes.length!==info.rawSizes[name])
+      throw Error('资源包长度不符 '+archive+'（读取 '+bytes.length+' 字节，预期 '+info.rawSizes[name]+' 字节）');
+    return bytes;
+  };
+  try{return await read();}
+  catch(error){
+    console.warn('[字由搏击] 重新加载当前版本的资源包',name,error);
+    report(name,'download',0,100);
+    await downloadPackage(name,onProgress,false);
+    report(name,'unpack');
+    return read();
+  }
+}
 async function unpack(name, revision, progress) {
   const dir = base + '/' + name + '-' + revision;
   const began=Date.now(),stats=diagnostics.packs[name]={cached:false,writes:0,rawBytes:info.rawSizes[name]};
   if (exists(dir + '/.ready')) {stats.cached=true;stats.totalMs=Date.now()-began;report(name,'ready',1,1);return;}
   report(name,'download',0,100);
-  await loadPackage(name,p=>{if(progress)progress(p);report(name,'download',p,100);});
+  const onProgress=p=>{if(progress)progress(p);report(name,'download',p,100);};
+  await loadPackage(name,onProgress);
   stats.loadMs=Date.now()-began;
   // A retry overwrites every file of this same immutable revision. Only the
   // final ready marker makes the installation visible to other callers.
   if (!exists(dir)) fs().mkdirSync(dir, true);
-  const archive = 'packs/' + name + '/assets.br';
+  const archive = archivePath(name);
   report(name,'unpack');await yieldTask();
-  const unpackAt=Date.now(),raw=await readBrotli(archive,info.rawSizes[name]);
+  const unpackAt=Date.now();
+  const raw=await readArchive(name,archive,revision,onProgress);
   stats.unpackMs=Date.now()-unpackAt;
   // Advancing the iterator decodes each filtered file. Give the splash
   // time to present frames even before the first native write begins.

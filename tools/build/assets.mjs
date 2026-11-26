@@ -6,6 +6,7 @@ import {brotliCompressSync,constants} from 'node:zlib';
 import {execFileSync} from 'node:child_process';
 import sharp from 'sharp';
 import {writeDeskMapAtlas} from '../art/desk-map-atlas.mjs';
+import {bakeDeskScenery} from '../art/desk-scenery.mjs';
 import {bootAssets} from './boot-assets.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
 import {isAtlasIcon,packIconAtlases} from './icon-atlases.mjs';
@@ -56,6 +57,11 @@ function sourceFor(key) {
 const buckets = {pmd:'art', icons:'art', portraits:'art', items:'art', front:'art',
   ui:'world', env:'world', models:'world', glyphs:'art', vfx:'art', sfx:'text', music:'sound'};
 const selected = new Set();
+await bakeDeskScenery(pub,(file,bytes)=>{
+  const key='assets/env/desk2d/'+file;
+  add('world',key,bytes);
+  selected.add(key);
+});
 const icons=[];
 const excluded = new Map();
 for (const folder of ['assets', 'overrides/assets']) {
@@ -116,7 +122,7 @@ for (const weight of ['regular','bold']) add('text','fonts/'+weight+'.ttf',fs.re
 add('text','fonts/OFL.txt',fs.readFileSync(path.join(pub,'fonts/swei/SIL_Open_Font_License_1.1.txt')));
 for (const name of ['LICENSE','THIRD-PARTY-NOTICES.md']) add('text',name,fs.readFileSync(path.join(source,name)),'.txt');
 for (const [key,bytes] of Object.entries(bootAssets(root))) add('text',key,bytes);
-const meta = {}, rawSizes = {};
+const meta = {}, rawSizes = {}, archiveFiles = {};
 // Remove obsolete generated music packages as well as their index entries.
 const packRoot=path.resolve(out,'packs');
 if(fs.existsSync(packRoot))for(const entry of fs.readdirSync(packRoot,{withFileTypes:true})){
@@ -130,19 +136,27 @@ for (const [name, entries] of Object.entries(packs)) {
   const {bytes,rawSize}=packStream(entries,name,filters[name]);
   const dir=path.join(out,'packs',name);
   fs.mkdirSync(dir,{recursive:true});
-  fs.writeFileSync(path.join(dir,'assets.br'),bytes);
+  meta[name]=hash(bytes);
+  const filename=archiveFiles[name]='assets-'+meta[name]+(name==='world'?'.bin':'.br');
+  fs.writeFileSync(path.join(dir,filename),bytes);
   fs.rmSync(path.join(dir,'assets.zip'),{force:true});
   fs.writeFileSync(path.join(dir,'game.js'),'// Local resource subpackage.\n');
-  meta[name]=hash(bytes);
   rawSizes[name]=rawSize;
   console.log(name, Object.keys(entries).length, (bytes.length/1048576).toFixed(2)+' MiB');
 }
 const devMetadata=developer?{developerAssetKey:developer.assetKey()}:{};
-fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,...devMetadata,packs:meta,rawSizes,files:index,iconFrames,sprites:generatedSprites})+';\n');
+fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({policyVersion:assetPolicyVersion,...devMetadata,packs:meta,rawSizes,archiveFiles,files:index,iconFrames,sprites:generatedSprites})+';\n');
+for(const [name,current] of Object.entries(archiveFiles)){
+  const dir=path.join(packRoot,name);
+  for(const filename of fs.readdirSync(dir)){
+    if(filename!==current && /^(?:assets\.br|assets-[a-f0-9]{16}\.(?:bin|br))$/.test(filename))
+      fs.unlinkSync(path.join(dir,filename));
+  }
+}
 const reportDir=projectRoot===root?path.join(root,'验收'):projectRoot;fs.mkdirSync(reportDir,{recursive:true});
 fs.writeFileSync(path.join(reportDir,'资源打包清单.json'),JSON.stringify({
   policyVersion:assetPolicyVersion,mappedResources:Object.keys(index).length,runtimeSpecies:runtimeSpecies.length,musicTracks,
-  packs:Object.fromEntries(Object.keys(meta).map(name=>[name,{files:Object.keys(packs[name]).length,rawBytes:rawSizes[name],packedBytes:fs.statSync(path.join(out,'packs',name,'assets.br')).size}])),
+  packs:Object.fromEntries(Object.keys(meta).map(name=>[name,{files:Object.keys(packs[name]).length,rawBytes:rawSizes[name],packedBytes:fs.statSync(path.join(out,'packs',name,archiveFiles[name])).size}])),
   excluded:[...excluded].sort(([a],[b])=>a.localeCompare(b)).map(([key,reason])=>({key,reason})),
 },null,2)+'\n');
 fs.rmSync(temp,{recursive:true});

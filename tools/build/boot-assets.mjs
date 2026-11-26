@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createRequire} from 'node:module';
 import {brotliDecompressSync} from 'node:zlib';
 import postcss from 'postcss';
 import sharp from 'sharp';
@@ -63,12 +62,16 @@ export function bootAssets(root) {
 // Put the UI data there too, so it needn't be downloaded before game.js runs.
 export function addBootAssets(out, assets) {
   const manifestPath = path.join(out,'assets.js');
-  const info = createRequire(import.meta.url)(manifestPath);
+  // A full asset build may replace the manifest between incremental builds.
+  // Read the current file instead of reusing Node's cached module export.
+  const info = JSON.parse(fs.readFileSync(manifestPath,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,''));
   const files = Object.entries(assets).map(([key,data])=>({key,data,name:hash(data)+path.extname(key)}));
-  const archive = path.join(out,'packs/text/assets.br');
+  const directory = path.join(out,'packs/text');
+  const currentFile = info.archiveFiles.text;
+  const archive = path.join(directory,currentFile);
   const packed = fs.readFileSync(archive);
   const removed=Object.keys(info.files).filter(key=>key.startsWith('assets/ui-paper/')&&!Object.hasOwn(assets,key));
-  if (!removed.length && hash(packed)===info.packs.text && files.every(({key,name})=>info.files[key]==='text/'+name)) return;
+  if (!removed.length && currentFile==='assets-'+info.packs.text+'.br' && hash(packed)===info.packs.text && files.every(({key,name})=>info.files[key]==='text/'+name)) return;
   const entries = Object.create(null);
   unpackStream(brotliDecompressSync(packed), (name,bytes)=>{entries[name]=bytes;});
   for(const key of removed){
@@ -85,8 +88,22 @@ export function addBootAssets(out, assets) {
   const {bytes,rawSize}=packStream(entries,'text');
   info.packs.text=hash(bytes);
   info.rawSizes.text=rawSize;
-  fs.writeFileSync(archive+'.next',bytes);
-  fs.renameSync(archive+'.next',archive);
-  fs.writeFileSync(manifestPath+'.next','module.exports = '+JSON.stringify(info)+';\n');
-  fs.renameSync(manifestPath+'.next',manifestPath);
+  info.archiveFiles.text='assets-'+info.packs.text+'.br';
+  const nextArchive=path.join(directory,info.archiveFiles.text);
+  try{
+    fs.writeFileSync(nextArchive+'.next',bytes);
+    fs.renameSync(nextArchive+'.next',nextArchive);
+    fs.writeFileSync(manifestPath+'.next','module.exports = '+JSON.stringify(info)+';\n');
+    fs.renameSync(manifestPath+'.next',manifestPath);
+  }finally{
+    fs.rmSync(nextArchive+'.next',{force:true});
+    fs.rmSync(manifestPath+'.next',{force:true});
+  }
+  // Keep the previous archive available until the manifest points to the new
+  // complete payload, then remove obsolete versions from the package.
+  for(const filename of fs.readdirSync(directory)){
+    if(filename!==info.archiveFiles.text && /^(?:assets\.br|assets-[a-f0-9]{16}\.br)$/.test(filename)){
+      fs.rmSync(path.join(directory,filename));
+    }
+  }
 }
