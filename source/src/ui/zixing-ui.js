@@ -1740,6 +1740,7 @@ export function createZixingUI(app,api) {
       return preparedResult;
     }
     hud.showEvolution=(from,to)=>{
+      combatFeed.clearAnnouncement();
       clearEvolution();
       if(from==null)preparedResult=null;
       else evolutionCard(from,to);

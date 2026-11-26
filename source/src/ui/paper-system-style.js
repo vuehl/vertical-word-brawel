@@ -690,10 +690,7 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .zx.paper-prompt-overlay .zx-journal-dialog .paper-decision-actions>[data-paper-surface="trade-action"]{color:#FFF8E9!important}
 .zx.paper-prompt-overlay .zx-journal-dialog .paper-decision-actions>[data-paper-surface="journal-button"]{background:#EEC659;color:#27232F!important;border:0;border-radius:0;box-shadow:none;clip-path:polygon(3% 0,100% 0,97% 100%,0 100%)}
 .screen.zx>.paper-screen-footer.paper-covered-actions,.zx-home-fixed .zx-home-foot.paper-covered-actions,.zx-pause-footer>.paper-back.paper-covered-actions{opacity:0;pointer-events:none}
-.zc-related{display:flex;flex-direction:column;gap:8px;padding:3px 1px 10px;color:#34415B}
-.zc-related .mv-group>b,.zc-detail-note{color:#53657F;font-size:12px}
-.zc-related .mv-chips{display:flex;flex-direction:row;flex-wrap:wrap;gap:4px}
-.zc-related .mv-chip{background:#E0E9F4;color:#334763;font-size:12px}
+.zc-detail-note{color:#53657F;font-size:12px}
 @media(max-height:660px){
  .screen.zx.zc-library>.zx-header,.screen.zx.zc-move-page>.zx-header{height:54px;min-height:54px}
  .zc-profile-print{height:139px}

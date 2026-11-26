@@ -25,6 +25,8 @@ import {dispatchApi} from './game-api.mjs';
 import {rangeValueAt,repairVolumeSettings} from './range.mjs';
 import {createUIFrameCache} from './ui-cache.mjs';
 import {createControlLayer,createCanvasLayer,createHUDLayer} from './control-layer.mjs';
+import {castHidesUI,castHudLeadMs,createUltimateCast} from './ultimate-cast.mjs';
+import {createComboNameplate} from './ultimate-nameplate.mjs';
 import {createModalTransition} from './modal-transition.mjs';
 import {gameViewport} from './viewport.mjs';
 import {createMutationTargets} from './mutation-targets.mjs';
@@ -61,6 +63,7 @@ export async function setup(host) {
     if(tile)tile.invalidate();else uiFrames.invalidate();
   });
   const controls=createControlLayer(makeCanvas);
+  let ultimateCast,comboNameplate;
   const minimap=createCanvasLayer(makeCanvas,'minimap');
   const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
   readDevicePerformance(wx,device).then(()=>win.dispatchEvent(new D.Event('deviceperformancechange')));
@@ -77,9 +80,11 @@ export async function setup(host) {
   soloLayers.push(createHUDLayer(makeCanvas,'streak',22));
   soloLayers.push(createHUDLayer(makeCanvas,'toasts',19));
   soloLayers.push(createHUDLayer(makeCanvas,'stage-intro',20));
-  soloLayers.push(createHUDLayer(makeCanvas,'ultimate-cutin',21));
+  const castNameplate=createHUDLayer(makeCanvas,'ultimate-cutin',21);
+  soloLayers.push(castNameplate);
   soloLayers.push(createHUDLayer(makeCanvas,'evolution-result',23));
   soloLayers.push(createHUDLayer(makeCanvas,'evolution-stamp',24));
+  const normalSoloLayers=soloLayers.filter(tile=>tile!==castNameplate);
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
@@ -101,6 +106,12 @@ export async function setup(host) {
   const fonts={};
   for(const weight of ['regular','bold'])fonts[weight]=wx.loadFont(host.files.pathFor('fonts/'+weight+'.ttf'))||'sans-serif';
   host.fonts=fonts;
+  function prepareCastArt(){
+    const castFont=wx.loadFont(host.files.pathFor('fonts/cast-title.ttf'))||fonts.bold;
+    comboNameplate=createComboNameplate(makeCanvas,castFont,()=>wx.createImage(),host.files.pathFor('fonts/cast-title-glyphs.webp'));
+    ultimateCast=createUltimateCast(()=>wx.createImage(),makeCanvas,
+      host.files.pathFor,path=>wx.getFileSystemManager().readFileSync(path));
+  }
   const uiAssets=await readUIAssets(host.files);
   uiAssets.compileStyleSelector=D.compileStyleSelector;
   let layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);
@@ -255,8 +266,10 @@ export async function setup(host) {
   }
   function touches(kind,event){
     if(host.bootDiagnostics?.completed===false)return;
+    const run=win.__pb?.run;
+    const hiddenHud=!win.__pb?.screen&&castHidesUI(run,perf.now());
     // A press begun in combat must not select a card while it is appearing.
-    if(modalTransition.active){
+    if(modalTransition.active||(hiddenHud&&run.state!=='play')){
       for(const [id,p] of pointers)cancelPointer(id,p,event.timeStamp);
       return;
     }
@@ -297,7 +310,11 @@ export async function setup(host) {
       if(kind==='down'){
         if(x<0||y<0||x>=view.w||y>=view.h)continue;
         const entry=env.__zixingApp?.screen;
-        const target=layout.hit(x,y);
+        let target=layout.hit(x,y);
+        if(hiddenHud){
+          // Track button contacts through release without giving them the stick.
+          target=target.closest?.('.tc-btn')?doc.body:run.ui.touch.el;
+        }
         const entryButton=entry?.dataset.page==='home'&&entry.contains(target)&&target.closest?.('button');
         p={target,entryButton,x,y,lastX:x,lastY:y,scrolled:false};pointers.set(id,p);
       }
@@ -379,6 +396,8 @@ export async function setup(host) {
       layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
+    castHidesUI:run=>castHidesUI(run,perf.now()),
+    castHudLeadMs,
     animateModal(wrap){modalTransition.begin(wrap,env.__pb?.run);},
     closeAnimatedModal(wrap,done,keepBackdrop){modalTransition.close(wrap,done,keepBackdrop,perf.now());},
     modalAnimating:()=>modalTransition.active,
@@ -402,6 +421,7 @@ export async function setup(host) {
       modalTransition.advance(now);
       mutations(observer.takeRecords());
       const run=env.__pb?.run,state=run?.state;
+      if(run&&!ultimateCast)prepareCastArt();
       const captureTrack=drawCapture(renderer,env.__zixingApp?.run);
       const overlay=modalTransition.element;
       layout.setOverlay(overlay);
@@ -446,12 +466,23 @@ export async function setup(host) {
       const finishedJourney=!!lastJourneyCamera;
       lastJourneyCamera=null;
       if(opaque&&!changed)return;
+      const cast=!opaque&&run&&ultimateCast(run,view,scale,now);
+      const title=cast&&comboNameplate(run,cast.band,scale,now);
+      if(!opaque&&castHidesUI(run,now)){
+        draw(renderer,changed,false,[],frozenFrame||frozenUpgradeKey(),run,0);
+        run.dragonHd?.drawFlash(renderer);
+        run.vfx?.upgrade?.screen?.draw(renderer);
+        draw.topLayers(renderer,[cast?.flame,title,cast?.blade]);
+        return;
+      }
       modalTransition.prepare(layout,view,scale);
       const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
-      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,...controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),speech.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...soloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
+      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,...controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),speech.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...normalSoloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
       draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
       run?.dragonHd?.drawFlash(renderer);
       run?.vfx?.upgrade?.screen?.draw(renderer);
+      const plate=castNameplate.draw(layout,view,scale,playing);
+      if(plate||cast)draw.topLayers(renderer,[plate,cast?.flame,title,cast?.blade]);
       if(finishedJourney)draw.releaseUnused();
       if(overlay)modalTransition.presented(perf.now());
     },

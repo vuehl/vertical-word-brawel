@@ -227,14 +227,6 @@ export function drawUiPaper(ctx,box){
     }
     case 'capture-step':
       poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],has('on')?'#EFC554':'#49434D');break;
-    case 'ultimate-call': {
-      const shape=[[0,6],[8,0],[w-12,0],[w,h*.5],[w-16,h-5],[7,h-3],[0,h-11]];
-      ctx.save();ctx.translate(0,3);poly(ctx,shape,'#7894BE');ctx.restore();poly(ctx,shape,'#344967');
-      poly(ctx,[[0,6],[8,0],[49,0],[43,h-3],[7,h-3],[0,h-11]],'#D5E2F0');
-      poly(ctx,[[w-43,0],[w-25,0],[w-30,5],[w-49,5]],'#CB8595');
-      poly(ctx,[[w-10,8],[w-1,h*.5],[w-15,h-6],[w-23,h-6],[w-9,h*.5],[w-15,11]],'#526D90');
-      const x=w-24,y=h*.5;poly(ctx,[[x-5,y],[x-1,y-1],[x,y-6],[x+2,y-1],[x+6,y],[x+1,y+2],[x,y+6],[x-1,y+2]],'#BBD0E8');break;
-    }
     case 'fusion-slip':
       ctx.fillStyle='#2B262E';ctx.fillRect(0,0,w,h);ctx.fillStyle=has('unavailable')?'#DAD6D8':'#FAE8AD';ctx.fillRect(2,2,w-4,h-4);break;
     case 'fusion-plus':

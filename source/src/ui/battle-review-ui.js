@@ -1,3 +1,4 @@
+import {castTitleLayout,castTitleLeft,castTitlePose,flameOpeningBand,titleCenter,titleFont,titleLine,titleWidth} from '../effects/ultimate-cast-layout.js';
 import {drawWeatherTime} from './paper-hud-art.js';
 import {weatherStyle,weatherFill,drawWeatherMark} from './weather-presentation.js';
 import {glyphPreview} from '../actors/zixing-glyphs.js';
@@ -523,17 +524,46 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     tracking.setAttribute('aria-label',captureWord+' · '+tracking.querySelector('.zx-catch-title').textContent+' · '+step+'/'+balls.length);
   };
   hud.captureEnd=()=>{const film=hud.capEl;oldEnd();clearTrack();film?.remove();};
-  let announceTimer=0;
-  const clearAnnouncement=()=>{clearTimeout(announceTimer);announcement?.remove();announcement=null;};
-  hud.ultCutIn=(species,name)=>{
+  let announceFrame=0;
+  function positionAnnouncement(){
+    if(!announcement)return;
+    const screen=run.r.canvas.getBoundingClientRect(),root=hud.root.getBoundingClientRect();
+    const center=flameOpeningBand({x:0,y:0,width:screen.width,height:screen.height});
+    announcement.band=center;
+    const zoom=center.zoom,h=announcement.titleLayout.height;
+    Object.assign(announcement.style,{width:titleWidth*zoom+'px',height:h*zoom+'px',
+      fontSize:titleFont*zoom+'px',lineHeight:titleLine*zoom+'px',
+      left:screen.left-root.left+castTitleLeft(center)+'px',top:screen.top-root.top+center.y-h*zoom/2+'px'});
+  }
+  const clearAnnouncement=()=>{
+    cancelAnimationFrame(announceFrame);window.removeEventListener('resize',positionAnnouncement);
+    announcement?.remove();announcement=null;
+  };
+  hud.ultCutIn=(species,name,tint)=>{
     clearAnnouncement();
-    announcement=el('div','zx-ultimate-call',[
-      el('span','zx-call-portrait',glyphPreview(species,1)),
-      el('div','zx-call-copy',[el('small','','大招'),el('b','',name)]),
-    ],{role:'status','aria-label':'大招 · '+name,'data-paper-surface':'ultimate-call','data-ui-layer':'ultimate-cutin'});
-    announcement.style.width=Math.min(288,Math.max(198,Array.from(name).length*18+77))+'px';
-    feed.append(announcement);
-    announceTimer=setTimeout(clearAnnouncement,1300);
+    if(run.ult.castBanner&&window.castHidesUI){
+      run.ult.castBanner.name=name;
+      return;
+    }
+    const title=castTitleLayout(name);
+    const plate=el('b','zx-ultimate-call',title.rows.map(row=>el('span','',row)),{role:'status','aria-label':name});
+    announcement=el('div','zx zx-cast-nameplate',[plate],{'data-ui-layer':'ultimate-cutin'});
+    announcement.titleLayout=title;
+    const rgb=run.ult.castBanner?.color;
+    plate.style.color=Number.isFinite(rgb)?'#'+rgb.toString(16).padStart(6,'0'):tint||'#81ceef';
+    hud.root.append(announcement);positionAnnouncement();
+    window.addEventListener('resize',positionAnnouncement);
+    const start=run.ult.castBanner?.start??performance.now();
+    function drawName(){
+      const age=performance.now()-start;
+      if(age>=2000){clearAnnouncement();return;}
+      const pose=castTitlePose(announcement.band,Math.floor(age*.03)/.03,2000),zoom=announcement.band.zoom;
+      announcement.style.clipPath='inset(0 0 0 '+(titleWidth-pose.reveal)*zoom+'px)';
+      plate.style.transform='translateX('+((titleCenter-titleWidth/2+pose.offset)*zoom)+'px)';
+      plate.style.opacity=String(pose.alpha);
+      announceFrame=requestAnimationFrame(drawName);
+    }
+    drawName();
   };
   hud.captureResult=ok=>{
     if(ok)lastSuccess=session;
@@ -596,5 +626,5 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
       if(top!==y)marker.style.top=Math.ceil(top)+'px';
     }
   }
-  return {queue,lane,syncEvent,placeTeam,placeMarkers};
+  return {queue,lane,syncEvent,placeTeam,placeMarkers,clearAnnouncement};
 }
