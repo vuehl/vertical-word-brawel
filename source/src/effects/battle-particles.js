@@ -1,4 +1,5 @@
 import {VFX_SCALE} from './visual-scale.js';
+import {comboLettering} from './combo-lettering.js';
 import {w as Ei, B as gr, H as Sr, ct as Kr, et as Yr, j as ii, b as Wr, ot as pi, I as Cr} from "../vendor/three-DmSYIDKK.js";
 import {createStylizedEffectAtlas, EFFECT_CELL} from "./stylized-effect-atlas.js";
 import {battleParticleImages} from "../data/item-icons.js";
@@ -1315,10 +1316,11 @@ function drawCutGlyphRow(ctx,glyphs,top,bottom,extraContours={},outline=true){
   const face=ctx.createLinearGradient(0,8,0,55);
   face.addColorStop(0,top);
   face.addColorStop(1,bottom);
-  const passes=outline?[[1,10,'#656565'],[0,8,'#ffffff'],[0,0,face]]:[[0,0,face]];
+  const edges=outline===true?[[1,10,'#656565'],[0,8,'#ffffff']]:outline||[];
+  const passes=[...edges,[0,0,face]];
   for(let j=0;j<glyphs.length;j++){
     ctx.save();ctx.translate(j*64,0);
-    const ch=glyphs[j],contours=damageContours[ch]??extraContours[ch];
+    const ch=glyphs[j],contours=extraContours[ch]??damageContours[ch];
     for(const [offset,width,color] of passes){
       ctx.save();ctx.translate(0,offset);ctx.strokeStyle=ctx.fillStyle=color;ctx.lineWidth=width||1;
       if(contours){
@@ -1346,43 +1348,61 @@ function drawDamageRows(ctx,glyphs){
     ctx.restore();
   }
 }
-// Cut-stroke lettering for the HUD caption. Outlines follow each stroke.
-const comboLetterContours={
-  '连':[
-    [8,10,12,6,22,13,18,19],
-    [5,25,20,23,22,28,16,35,19,40,15,46,8,46,11,40,9,36,14,30,6,31],
-    [5,50,12,44,20,45,28,49,39,50,59,48,54,57,36,57,25,55,15,50,9,55,4,55],
-    [23,13,56,11,56,17,22,20],
-    [32,6,40,6,34,17,30,24,54,22,54,28,23,31,22,26],
-    [21,35,58,32,57,39,21,42],
-    [38,19,45,18,45,46,38,48]
-  ],
-  '击':[
-    [12,13,52,11,51,19,12,21],
-    [6,27,58,24,57,32,6,35],
-    [28,6,36,5,36,49,28,50],
-    [10,39,18,37,18,48,47,46,47,37,55,35,54,53,10,56]
-  ],
-};
 const comboFaces=[
-  ['#59cdff','#009de0'],['#fff18a','#ffdf00'],['#ff7575','#ff1818'],['#dc9eff','#b52bff'],
-  ['#ff635d','#ff394d'],
+  ['#f0f4fa','#bdc8d7'],['#74ffc1','#37e4ad'],['#40ffec','#21ddd9'],['#ff9a8b','#ff7368'],
+  ['#b6ffef','#74f5e1'],
 ];
-// Right-side ink extent from the glyph center, including the 5px outline.
+// Crisp dark keyline and a short hard shadow, shared by every tier.
+const comboOutline=[[2.2,6.8,'#17233a'],[0,4.4,'#17233a']];
+const comboCell=72,comboCanvasWidth=640;
 const comboDigitRight=Array.from({length:10},(_,digit)=>{
   const xs=damageContours[digit].flatMap(ring=>ring.filter((_,index)=>index%2===0));
-  return (Math.max(...xs)+5-32)/64;
+  return (Math.max(...xs)+5.5-32)/64;
 });
 const comboSheets=[];
+const comboPulseDuration=.30;
 const comboRainbowPeriod=256;
 let comboRainbowStrip;
+const comboSlashThemes=[
+  ['#7588a3','#eef4ff'],['#2fae8f','#bdffe6'],['#6558df','#ffe735'],
+  ['#ffe665','#fff8de'],['#8d73f4','#fff19a'],
+];
+const comboSlashShapes=[[.63,.79,.77],[.65,.83,.75],[.61,.78,.81],[.67,.84,.80]].map(([rise,tooth,cut])=>
+  [[0,.52],[.055,.10],[.55,.04],[rise,-.14],[rise+.045,.20],[tooth,.035],
+    [tooth+.045,.26],[1,-.05],[.935,.47],[.865,.39],[cut,.65],[cut-.065,.46],[.06,.70]]);
+function comboSlashPath(ctx,left,width,height,variant){
+  const points=comboSlashShapes[variant];
+  ctx.beginPath();
+  for(let i=0;i<points.length;i++)ctx[i?'lineTo':'moveTo'](left+points[i][0]*width,points[i][1]*height);
+  ctx.closePath();
+}
+function paintComboSlash(ctx,width,height,tier,variant,age,progress){
+  const kick=Math.max(0,1-age/.18),reveal=1-Math.max(0,1-age/.065)**3;
+  const w=width*(.85+.15*reveal),left=-w/2;
+  ctx.save();ctx.translate((variant%2?1:-1)*kick*2,-kick*2);
+  ctx.save();ctx.translate(3,6);ctx.globalAlpha=.7;ctx.fillStyle='#17233a';
+  comboSlashPath(ctx,left,w,height,variant);ctx.fill();ctx.restore();
+  ctx.save();ctx.translate(0,3);ctx.fillStyle=comboSlashThemes[tier][1];
+  comboSlashPath(ctx,left,w,height,variant);ctx.fill();ctx.restore();
+  comboSlashPath(ctx,left,w,height,variant);ctx.fillStyle='#3c405a';ctx.fill();ctx.clip();
+  // The filled part of the lightning is the existing right-to-left combo timer.
+  const remaining=left+w*(1-progress);
+  ctx.fillStyle=comboSlashThemes[tier][0];ctx.fillRect(remaining,-height*.3,w*progress,height*1.1);
+  if(age<.09){
+    const x=left+w*Math.min(1,age/.09);
+    ctx.globalAlpha=.75*(1-age/.09);ctx.fillStyle='#fffdf0';ctx.beginPath();
+    ctx.moveTo(x,-height*.3);ctx.lineTo(x+w*.12,-height*.3);
+    ctx.lineTo(x-w*.04,height);ctx.lineTo(x-w*.16,height);ctx.closePath();ctx.fill();
+  }
+  ctx.restore();
+}
 function rainbowStrip(){
   if(comboRainbowStrip)return comboRainbowStrip;
   // Tile two identical cycles so the timer and glyphs can sample across the seam.
   const strip=document.createElement('canvas');
   strip.width=2*comboRainbowPeriod;strip.height=4;
   const ctx=strip.getContext('2d'),gradient=ctx.createLinearGradient(0,0,strip.width,0);
-  const colors=['#ff394d','#ff981f','#ffda22','#2bd478','#13cde5','#397dff','#9b54ff','#f541a5'];
+  const colors=['#ff8d84','#ffce70','#fff078','#a4ff72','#70fff1','#81c6ff','#cc96ff','#ff8bd0'];
   for(let i=0;i<=colors.length*2;i++)gradient.addColorStop(i/(colors.length*2),colors[i%colors.length]);
   ctx.fillStyle=gradient;ctx.fillRect(0,0,strip.width,strip.height);
   comboRainbowStrip=strip;
@@ -1391,48 +1411,62 @@ function rainbowStrip(){
 function comboSheet(tier){
   if(!comboSheets[tier]){
     const sheet=document.createElement('canvas');
-    sheet.width=13*64;sheet.height=tier===4?128:64;
+    sheet.width=13*64;sheet.height=128;
     const ctx=sheet.getContext('2d'),glyphs='0123456789×连击';
-    drawCutGlyphRow(ctx,glyphs,...comboFaces[tier],comboLetterContours);
-    if(tier===4){
-      ctx.translate(0,64);
-      drawCutGlyphRow(ctx,glyphs,'#ffffff','#ffffff',comboLetterContours,false);
-    }
+    // Only the caption has a separate contour table; digits reuse damageContours.
+    drawCutGlyphRow(ctx,glyphs,...comboFaces[tier],comboLettering,comboOutline);
+    ctx.translate(0,64);
+    // Face-only highlight: the impact never flashes the dark outline white.
+    drawCutGlyphRow(ctx,glyphs,tier===4?'#ffffff':'#fff7dd',tier===4?'#ffffff':'#ffe4b6',comboLettering,false);
     comboSheets[tier]=sheet;
   }
   return comboSheets[tier];
 }
 // Wheels use an unwrapped position so another kill can retarget a roll in flight.
 function comboWheelAt(wheel,time){
-  const t=Math.max(0,Math.min(1,(time-wheel.start)/.23));
-  return t===1?wheel.to:wheel.to-(wheel.to-wheel.from)*(1-t)**2;
+  const t=Math.max(0,Math.min(1,(time-wheel.start)/.10));
+  return t===1?wheel.to:wheel.to-(wheel.to-wheel.from)*(1-t)**3;
 }
 class ComboRoller {
   constructor(label){
     this.label=label;
     this.canvas=document.createElement('canvas');
-    this.canvas.width=352;this.canvas.height=216;
-    this.canvas.style.width='176px';this.canvas.style.height='108px';
+    this.canvas.width=comboCanvasWidth;this.canvas.height=216;
+    this.canvas.style.width=(comboCanvasWidth/2)+'px';this.canvas.style.height='108px';
     this.canvas.style.display='block';this.canvas.setAttribute('role','img');
     label.replaceChildren(this.canvas);
-    this.wheels=[];this.paintedAt=-1;this.active=false;this.frame=0;
+    this.wheels=[];this.paintedAt=-1;this.active=false;this.frame=0;this.slashVariant=-1;
   }
   reset(){this.wheels.length=0;this.count=null;this.active=false;this.pulseStart=null;}
   scaleAt(time){
     if(this.pulseStart==null)return 1;
     const age=Math.max(0,time-this.pulseStart);
-    const rising=age<.09;
-    const t=rising?age/.09:Math.min(1,(age-.09)/.23);
-    const eased=t*t*(3-2*t);
+    // Retain the original 1.4x peak and resting size; sharpen only the timing.
     const peak=1.4;
-    return rising?this.pulseFrom+(peak-this.pulseFrom)*eased:peak+(1-peak)*eased;
+    if(age<.032)return this.pulseFrom+(peak-this.pulseFrom)*(1-(1-age/.032)**3);
+    if(age<.075)return peak;
+    if(age<.20){
+      const t=(age-.075)/.125;
+      return peak+(.97-peak)*(1-(1-t)**3);
+    }
+    const t=Math.min(1,(age-.20)/(comboPulseDuration-.20));
+    return .97+.03*t*t*(3-2*t);
   }
   setCount(count,time){
     const length=String(count).length;
+    // Grow the surface to the left for long counts; never reduce glyph size.
+    const canvasWidth=Math.max(comboCanvasWidth,Math.ceil((2.85+.70*(length-1)+.42)*comboCell*1.4)+38);
+    if(this.canvas.width!==canvasWidth){
+      this.canvas.width=canvasWidth;this.canvas.style.width=(canvasWidth/2)+'px';
+      this.label.style.width=(canvasWidth/2)+'px';
+      if(this.label.parentElement)this.label.parentElement.style.width=(canvasWidth/2)+'px';
+      this.rainbowFaces=null;this.rainbowShade=null;
+    }
     const roll=this.count!=null && count>this.count;
     if(roll || this.count==null){
       this.pulseFrom=this.scaleAt(time);
       this.pulseStart=time;
+      this.slashVariant=(this.slashVariant+1)%comboSlashShapes.length;
     }else{
       this.pulseStart=null;
     }
@@ -1454,20 +1488,25 @@ class ComboRoller {
     this.lastPhase=phase;
     this.paintedAt=time;this.active=false;
     const ctx=this.canvas.getContext('2d');
-    const length=this.wheels.length,large=this.count>=50;
+    const length=this.wheels.length;
     let faces;
     if(rainbow){
       if(!this.rainbowFaces){
         const layer=document.createElement('canvas');
         layer.width=this.canvas.width;layer.height=this.canvas.height;
         this.rainbowFaces=layer.getContext('2d');
+        const shade=this.rainbowFaces.createLinearGradient(0,68,0,148);
+        shade.addColorStop(0,'rgba(255,255,255,.10)');
+        shade.addColorStop(.5,'rgba(255,255,255,0)');
+        shade.addColorStop(1,'rgba(220,250,255,.025)');
+        this.rainbowShade=shade;
       }
       faces=this.rainbowFaces;
       faces.clearRect(0,0,this.canvas.width,this.canvas.height);
     }
-    // Center the complete line and reserve its peak width for the 40% pulse.
+    // All tiers and digit counts use the same large glyph cell.
     const lastCenter=2.85+.70*(length-1);
-    const cell=Math.min(large?88:74,326/(1.4*(lastCenter+.38)));
+    const cell=comboCell;
     const units=comboWheelAt(this.wheels[0],time),whole=Math.floor(units);
     const edge=units===whole?comboDigitRight[whole%10]:Math.max(comboDigitRight[whole%10],comboDigitRight[(whole+1)%10]);
     const lineWidth=(lastCenter+edge)*cell;
@@ -1475,28 +1514,26 @@ class ComboRoller {
     const pitch=.70*cell,right=left+lastCenter*cell;
     ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
     const scale=this.scaleAt(time);
-    this.active=this.pulseStart!=null && time-this.pulseStart<.32;
-    const centerX=this.canvas.width*.5,width=lineWidth*scale,angle=-13*Math.PI/180;
+    const age=this.pulseStart==null?1:Math.max(0,time-this.pulseStart);
+    const flash=Math.max(0,1-age/.065)*.12;
+    this.active=this.pulseStart!=null && age<comboPulseDuration;
+    const centerX=this.canvas.width*.5,width=lineWidth*scale,angle=-8*Math.PI/180;
     // Rotate the label and timer together, reserving the right edge for the pulse.
     ctx.save();ctx.translate(this.canvas.width-19-width*Math.cos(angle)/2,92);ctx.rotate(angle);
-    const barY=cell*.50*scale+7,start=-width/2;
-    ctx.fillStyle='rgba(26,32,42,.58)';ctx.fillRect(start,barY,width,8);
-    const fillStart=start+width*(1-progress);
-    if(rainbow){
-      ctx.drawImage(rainbowStrip(),phase+(1-progress)*comboRainbowPeriod,0,progress*comboRainbowPeriod,4,
-        fillStart,barY,width*progress,8);
-    }else{
-      const fill=ctx.createLinearGradient(start,barY,start,barY+8);
-      fill.addColorStop(0,comboFaces[tier][0]);fill.addColorStop(1,comboFaces[tier][1]);
-      ctx.fillStyle=fill;ctx.fillRect(fillStart,barY,width*progress,8);
-    }
+    paintComboSlash(ctx,width,cell*scale,tier,this.slashVariant,age,progress);
     ctx.scale(scale,scale);ctx.translate(-centerX,-cy);
-    ctx.beginPath();ctx.rect(0,cy-40,this.canvas.width,80);ctx.clip();
+    const wheelStep=cell*1.04;
+    ctx.beginPath();ctx.rect(0,cy-wheelStep/2,this.canvas.width,wheelStep);ctx.clip();
     const sheet=comboSheet(tier);
     const glyph=(digit,x,y,size)=>{
       const dx=x-size/2,dy=y-size/2;
       ctx.drawImage(sheet,digit*64,0,64,64,dx,dy,size,size);
       if(faces)faces.drawImage(sheet,digit*64,64,64,64,dx,dy,size,size);
+      else if(flash>0){
+        const alpha=ctx.globalAlpha;ctx.globalAlpha=alpha*flash;
+        ctx.drawImage(sheet,digit*64,64,64,64,dx,dy,size,size);
+        ctx.globalAlpha=alpha;
+      }
     };
     glyph(11,left+.50*cell,cy,cell);
     glyph(12,left+1.47*cell,cy,cell);
@@ -1504,12 +1541,18 @@ class ComboRoller {
     for(let i=0;i<length;i++){
       const w=this.wheels[i],pos=comboWheelAt(w,time),base=Math.floor(pos),fraction=pos-base,x=right-i*pitch;
       if(pos!==w.to)this.active=true;
-      if(!(w.blank&&base<w.to))glyph(base%10,x,cy-80*fraction,cell);
-      if(fraction>0)glyph((base+1)%10,x,cy+80-80*fraction,cell);
+      if(!(w.blank&&base<w.to))glyph(base%10,x,cy-wheelStep*fraction,cell);
+      if(fraction>0)glyph((base+1)%10,x,cy+wheelStep*(1-fraction),cell);
     }
     if(faces){
       faces.save();faces.globalCompositeOperation='source-in';
       faces.drawImage(rainbowStrip(),phase,0,comboRainbowPeriod,4,left,0,lineWidth,this.canvas.height);
+      faces.globalCompositeOperation='source-atop';faces.fillStyle=this.rainbowShade;
+      faces.fillRect(left,0,lineWidth,this.canvas.height);
+      if(flash>0){
+        faces.globalAlpha=flash;faces.fillStyle='#fff4da';
+        faces.fillRect(left,0,lineWidth,this.canvas.height);
+      }
       faces.restore();
       ctx.drawImage(faces.canvas,0,0);
     }

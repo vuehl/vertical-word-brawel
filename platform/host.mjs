@@ -86,7 +86,9 @@ export async function setup(host) {
   soloLayers.push(castNameplate);
   soloLayers.push(createHUDLayer(makeCanvas,'evolution-result',23));
   soloLayers.push(createHUDLayer(makeCanvas,'evolution-stamp',24));
-  const normalSoloLayers=soloLayers.filter(tile=>tile!==castNameplate);
+  const bossArrival=createHUDLayer(makeCanvas,'boss-arrival',28);
+  soloLayers.push(bossArrival);
+  const normalSoloLayers=soloLayers.filter(tile=>tile!==castNameplate&&tile!==bossArrival);
   const teamLayer=createHUDLayer(makeCanvas,'coop-team',18);
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
@@ -439,10 +441,12 @@ export async function setup(host) {
         // ancestors of every box separately for every tile, then again for the base.
         const groups=new Map(),base=[],tiles=run?.coop?coopTiles:soloTiles;
         if(playing)for(const tile of activeHudLayers())tile.refreshIfDirty(layout);
+        else bossArrival.refreshIfDirty(layout);
         for(const box of boxes){
           if(camera&&box.el.dataset?.journeyBackdrop==='true')continue;
           const element=box.el.nodeType===1?box.el:box.el.parentElement;
-          const tile=playing?tiles.get(layerId(element)):null;
+          // Arrival cut-ins also run during cinematics, when HUD tiles are disabled.
+          const id=layerId(element),tile=id==='boss-arrival'?bossArrival:playing?tiles.get(id):null;
           if(tile){
             let parts=groups.get(tile);
             if(!parts)groups.set(tile,parts=[]);
@@ -470,11 +474,12 @@ export async function setup(host) {
       if(opaque&&!changed)return;
       const cast=!opaque&&run&&ultimateCast(run,view,scale,now);
       const title=cast&&comboNameplate(run,cast.band,scale,now);
+      const arrival=bossArrival.draw(layout,view,scale,!opaque);
       if(!opaque&&castHidesUI(run,now)){
         draw(renderer,changed,false,[],frozenFrame||frozenUpgradeKey(),run,0);
         run.dragonHd?.drawFlash(renderer);
         run.vfx?.upgrade?.screen?.draw(renderer);
-        draw.topLayers(renderer,[cast?.flame,title,cast?.blade]);
+        draw.topLayers(renderer,[cast?.flame,title,cast?.blade,arrival]);
         return;
       }
       modalTransition.prepare(layout,view,scale);
@@ -485,7 +490,7 @@ export async function setup(host) {
       run?.dragonHd?.drawFlash(renderer);
       run?.vfx?.upgrade?.screen?.draw(renderer);
       const plate=castNameplate.draw(layout,view,scale,playing);
-      if(plate||cast)draw.topLayers(renderer,[plate,cast?.flame,title,cast?.blade]);
+      if(plate||cast||arrival)draw.topLayers(renderer,[plate,cast?.flame,title,cast?.blade,arrival]);
       if(finishedJourney)draw.releaseUnused();
       if(overlay)modalTransition.presented(perf.now());
     },

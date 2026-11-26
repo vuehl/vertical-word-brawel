@@ -1757,7 +1757,6 @@ export function createZixingUI(app,api) {
     combo.firstElementChild.dataset.paperText=combo.children[1].dataset.paperText='outlined';
     hud.hudEl.append(combo);
     const updatePeers=run.coop?createPeerHud(run,node,el):null;
-    hud.prepareEntryIcons=()=>Promise.all(Array.from(node.querySelectorAll('.zx-loadout-icon'),prepareHudImage));
     const combatFeed=installReviewBattle(hud,run,node.querySelector('.zx-hud-top'),{wordFor:glyphWordForSpecies,typeName:api.typeName,typeOf:api.speciesType});
     let resultSlip=null, preparedResult=null;
     function clearEvolution(){
@@ -1886,27 +1885,43 @@ export function createZixingUI(app,api) {
     const ultimateRing=el('canvas','zx-ult-progress',[],{width:168,height:168,'data-static':'true'});
     hud.touch.ult.append(ultimateRing);
     hud.touch.ult.setAttribute('role','button');
-    const stillMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)');
     let lastSeal='',lastActionLabel='';
+    const ultimateIcons=new Map();
+    const ultimateType=r=>r.player.types[0];
+    const ultimateIcon=r=>{
+      const type=ultimateType(r);
+      if(!ultimateIcons.has(type)){
+        const image=new Image();
+        image.alt=api.typeName(type)+'属性';
+        image.src=api.moveIcon({type});
+        ultimateIcons.set(type,image);
+      }
+      return ultimateIcons.get(type);
+    };
     hud.ultHud=r=>{
       const active=r.ult.active>0,ready=r.ult.ready&&!active&&!r.player.dead;
       for(const [name,on] of [['ready',ready],['active',active],['deny',r.ult.denyT>0]])hud.touch.ult.classList.toggle(name,on);
       const rounded=Math.round(Math.max(0,Math.min(1,r.ult.charge))*1000)/1000;
       const progress=r.ult.ready?rounded:Math.min(.999,rounded);
       const word=glyphWordForSpecies(r.player.speciesId??r.startSpecies);
-      const pulse=ready&&!stillMotion?.matches?Math.floor(performance.now()/85)%18:0;
-      const state=active?'active':ready?'ready':'charging',look=r.skinLook;
-      const key=[word,look,state,progress,pulse].join('/');
+      const state=active?'active':ready?'ready':'charging',type=ultimateType(r),icon=ultimateIcon(r);
+      const image=icon.complete&&icon.naturalWidth?icon:null;
+      const key=[type,!!image,state,progress].join('/');
       if(lastSeal!==key){
         lastSeal=key;
-        drawUltimateSeal(ultimateRing,word,character(r.player.speciesId).tone,look,progress,state,pulse);
-        ultimateRing.dataset.frame=key;ultimateRing.dataset.progress=String(progress);
+        drawUltimateSeal(ultimateRing,image,progress,state);
+        ultimateRing.dataset.frame=key;ultimateRing.dataset.progress=String(progress);ultimateRing.dataset.type=type;
       }
       const label=word+'的大招，'+(ready?'可释放':active?'释放中':Math.floor(progress*100)+'%');
       if(lastActionLabel!==label){
         lastActionLabel=label;hud.touch.ult.setAttribute('aria-label',label);
         hud.touch.ult.setAttribute('aria-disabled',String(!ready));
       }
+    };
+    hud.prepareEntryIcons=async()=>{
+      await Promise.all([...Array.from(node.querySelectorAll('.zx-loadout-icon'),prepareHudImage),
+        prepareHudImage(ultimateIcon(run))]);
+      hud.ultHud(run);
     };
     const original=hud.hud.bind(hud);
     let last=-Infinity,lastState='',lastSupplies='',lastHealth='',healthFrame=0;
@@ -1933,7 +1948,7 @@ export function createZixingUI(app,api) {
     // screens use the space to its left if the pause button limits headroom.
     function placeCombo(){
       let top='',right='';
-      if(run.streak>=1 && run.streakT>0){
+      if(run.streak>20 && run.streakT>0){
         const area=hud.hudEl.getBoundingClientRect(),ult=hud.touch.ult.getBoundingClientRect();
         if(area.height && ult.height){
           const gap=16,comboHeight=108;

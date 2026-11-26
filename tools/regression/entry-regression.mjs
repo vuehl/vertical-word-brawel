@@ -261,13 +261,27 @@ export async function verifyEntry({page,tap,dir}){
   assert.ok(audit.image);
   await writeFile(path.join(dir,'03-camera-departure.png'),Buffer.from(audit.image.split(',')[1],'base64'));
   assert.ok(await page.evaluate(()=>!!app.run.ui.root.querySelector('.zx-square-hud .zx-stage-caption')));
+  const comboThresholds=await page.evaluate(()=>{
+    const hud=app.run.ui;
+    const states=[0,1,19,20,21,24,25,49,50,99,100,0,20,21].map(count=>{
+      hud.streakHud(count,3,app.run.realTime);
+      return {count,visible:!hud.els.streak.hidden,tier:Number(hud.els.streak.dataset.tier)};
+    });
+    hud.streakHud(21,0,app.run.realTime);
+    return {states,expiredHidden:hud.els.streak.hidden};
+  });
+  for(const state of comboThresholds.states){
+    assert.equal(state.visible,state.count>20,'Combo visibility at '+state.count);
+    if(state.visible)assert.equal(state.tier,state.count>=100?4:state.count>=50?3:state.count>=25?2:1);
+  }
+  assert.equal(comboThresholds.expiredHidden,true,'Expired combos must hide');
   await page.evaluate(()=>{
     const run=app.run;
     run.enemies.clear();
     run.godMode=true;
     run.player.items.clear();
     run.player.vitamins.clear();
-    run.streak=7;run.streakT=3;
+    run.streak=21;run.streakT=3;
     run.player.items.set('revive',2);
     run.player.vitamins.set('protein',{level:1});
     run.player.vitamins.set('hp-up',{level:2});
@@ -275,7 +289,7 @@ export async function verifyEntry({page,tap,dir}){
   await page.waitForFunction(()=>{
     const root=app.run.ui.root,combo=root.querySelector('.zx-combo>b');
     const cells=[...root.querySelectorAll('.vitamin-rail .zx-mini-slot,.zx-hud-supplies .zx-mini-slot')];
-    if(combo?.textContent!=='×7'||combo.offsetWidth!==176||cells.length!==2)return false;
+    if(combo?.textContent!=='×21'||combo.offsetWidth!==320||cells.length!==2)return false;
     if(root.querySelector('.zx-combo>small').offsetWidth||root.querySelector('.zx-combo>i').offsetHeight)return false;
     const boxes=cells.map(c=>c.getBoundingClientRect());
     return boxes.every(b=>b.width===24&&b.height===24)&&boxes[1].x>=boxes[0].right;
@@ -291,7 +305,7 @@ export async function verifyEntry({page,tap,dir}){
       return {count:streak.children[1].textContent,opacity:inspected.layout.box(streak.children[1].firstChild)?.opacity,
         remaining:Number(streak.children[2].getAttribute('aria-valuenow'))};
     }
-    run.streak=7;run.streakT=.9;
+    run.streak=21;run.streakT=.9;
     const fading=sample();
     run.onKill();
     const renewed=sample();
@@ -299,7 +313,7 @@ export async function verifyEntry({page,tap,dir}){
     return {fading,renewed};
   });
   assert.ok(comboStates.fading.opacity>0&&comboStates.fading.opacity<.7&&comboStates.fading.remaining>0&&comboStates.fading.remaining<=1,JSON.stringify(comboStates));
-  assert.ok(comboStates.renewed.count==='×8'&&comboStates.renewed.remaining>2.4,JSON.stringify(comboStates));
+  assert.ok(comboStates.renewed.count==='×22'&&comboStates.renewed.remaining>2.4,JSON.stringify(comboStates));
   await page.waitForFunction(()=>!app.run.ui.els.streak.offsetWidth);
   const rainbow=await page.evaluate(()=>{
     const hud=app.run.ui;

@@ -201,6 +201,11 @@ export async function deskDevice(t,kind,tier=0){
     const top=Math.min(...outline.map(s=>s[1])),bottom=Math.max(...outline.map(s=>s[1]+1));
     const centreY=size*(.8-(top+bottom)/256);
     root.userData.ringAnchor={x:size*((left+right)/256-.5),y:centreY*Math.cos(pitch),z:-centreY*tilt};
+    const foliage=[...layers.idle,...layers.active,...layers.tint];
+    const labelY=size*(.8-Math.min(...foliage.map(s=>s[1]))/128);
+    root.userData.labelAnchor=new Vector3(
+      size*((Math.min(...foliage.map(s=>s[0]))+Math.max(...foliage.map(s=>s[2])))/256-.5),
+      labelY*Math.cos(pitch),-labelY*tilt);
   }
   if(kind==='bill'){
     const entries=await Promise.all(Object.entries(billLayers).map(async ([name,file])=>[name,await deskTexture(t,file)]));

@@ -589,6 +589,8 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     const ultimate=hud.touch.ult.getBoundingClientRect();
     const controlBottom=hud.touch.act.style.display==='none'?ultimate.bottom:hud.touch.act.getBoundingClientRect().bottom;
     for(const marker of markers){
+      // Onscreen enemy distances stay attached below the feet, not the HUD lane.
+      if(marker===hud.markTag&&marker.classList.contains('at-feet'))continue;
       const direction=directions.get(marker);
       if(direction){
         const badge=marker.children[1].firstElementChild;

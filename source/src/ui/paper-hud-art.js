@@ -2,7 +2,25 @@ import {appearanceGlyphCanvas} from './collection-art.js';
 import {facilityNames} from '../data/active-content.js';
 import {glyphCanvas} from '../actors/paper-glyph-art.js';
 
+
 export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
+
+export function drawAltarProgress(canvas,percent){
+  const ctx=canvas.getContext('2d'),size=48,center=size/2,radius=20;
+  const color='#FFB84D';
+  ctx.setTransform(canvas.width/size,0,0,canvas.height/size,0,0);
+  ctx.clearRect(0,0,size,size);
+  ctx.beginPath();ctx.arc(center,center,radius,0,Math.PI*2);
+  ctx.fillStyle='#211d2680';ctx.fill();
+  ctx.lineWidth=3;ctx.strokeStyle='#ffffff40';ctx.stroke();
+  if(percent>0){
+    ctx.beginPath();ctx.arc(center,center,radius,-Math.PI/2,-Math.PI/2+Math.PI*2*percent/100);
+    ctx.lineCap='round';ctx.strokeStyle=color;ctx.stroke();
+  }
+  ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.lineWidth=2;ctx.lineJoin='round';ctx.strokeStyle='#211d26';ctx.strokeText(percent+'%',center,center+.5);
+  ctx.fillStyle='#ffffff';ctx.fillText(percent+'%',center,center+.5);
+}
 const friendColors=['#246baa','#15826b','#7850a1'];
 export const friendColor=slot=>friendColors[slot]||friendColors[0];
 
@@ -524,7 +542,15 @@ export function drawStageCaption(canvas,stage,detail){
   }
 }
 
-// Cache the desaturated cutout by its source, so an evolved form or skin has its own seal.
+// Give the native ready glow a standalone image, not the shared icon atlas.
+const sealFaces=new WeakMap();
+function sealFace(source){
+  if(sealFaces.has(source))return sealFaces.get(source);
+  const tile=document.createElement('canvas');tile.width=source.width;tile.height=source.height;
+  tile.getContext('2d').drawImage(source,0,0);
+  sealFaces.set(source,tile);return tile;
+}
+// Reuse the desaturated attribute icon while the ultimate charges.
 const mutedSeals=new WeakMap();
 function mutedSeal(source){
   if(mutedSeals.has(source))return mutedSeals.get(source);
@@ -537,39 +563,19 @@ function mutedSeal(source){
   }
   ctx.putImageData(pixels,0,0);mutedSeals.set(source,tile);return tile;
 }
-export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame){
-  const ctx=canvas.getContext('2d'),ready=state==='ready',active=state==='active';
-  const wave=(1-Math.cos(frame*Math.PI/9))/2,turn=Math.PI*2,start=-Math.PI/2;
+export function drawUltimateSeal(canvas,source,progress,state){
+  const image=source?sealFace(source):null;
+  const ctx=canvas.getContext('2d');
   ctx.setTransform(canvas.width/84,0,0,canvas.height/84,0,0);ctx.clearRect(0,0,84,84);
-  const disk=(radius,color)=>{ctx.beginPath();ctx.arc(42,42,radius,0,turn);ctx.fillStyle=color;ctx.fill();};
-  const arc=(radius,width,color,from,to)=>{
-    ctx.beginPath();ctx.arc(42,42,radius,from,to);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();
-  };
-  ctx.lineCap='round';
-  disk(40,'#2D2731');disk(37.6,ready?'#EEC659':'#716671');disk(34.7,ready?'#FFF0CC':'#39323C');
-  if(ready){
-    // A moving glint and breathing cutout are confined to the button's hit area.
-    const a=start+turn*frame/18;
-    arc(37.7,3.4,'#FFF3CC',a,a+.55);
-    arc(40.8,1.4,'rgba(255,216,139,'+(.28+.6*wave)+')',0,turn);
-  }else if(progress>0){
-    arc(37.1,3.4,active?'#EEC659':'#CFC4B4',start,start+turn*progress);
-  }
-  const image=appearanceGlyphCanvas(word,tone,look),size=ready?53+2.6*wave:51;
   canvas.readyFace=image;
-  canvas.readyFaceSize=size;
-  if(ready){
-    for(const [x,y,r] of [[16,32,2.7],[67,46,2.2]]){
-      const reach=r*(.72+.42*wave);
-      ctx.beginPath();ctx.moveTo(x,y-reach*1.6);ctx.lineTo(x+reach*.54,y);
-      ctx.lineTo(x,y+reach*1.6);ctx.lineTo(x-reach*.54,y);ctx.closePath();ctx.fillStyle='#F8DBA0';ctx.fill();
-    }
+  canvas.readyFaceSize=84;
+  if(!image)return;
+  ctx.drawImage(state==='charging'?mutedSeal(image):image,0,0,84,84);
+  // Keep the original outer charge ring; the entire icon stays muted until ready.
+  if(state!=='ready'&&progress>0){
+    ctx.beginPath();ctx.arc(42,42,40.3,-Math.PI/2,-Math.PI/2+Math.PI*2*progress);
+    ctx.strokeStyle=state==='active'?'#EEC659':'#CFC4B4';ctx.lineWidth=3.4;ctx.lineCap='round';ctx.stroke();
   }
-  ctx.drawImage(state==='charging'?mutedSeal(image):image,42-size/2,34.5-size/2,size,size);
-  ctx.fillStyle=ready?'#EEC659':'#302934';ctx.fillRect(22,58,40,15);
-  ctx.fillStyle=ready?'#27232F':'#FFF1D8';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.font='bold 12px "Ziling Swei", sans-serif';
-  ctx.fillText(ready?'释放':active?'释放中':Math.floor(progress*100)+'%',42,66);
 }
 
 // Both counters draw on a 2x canvas with one font and optical baseline.

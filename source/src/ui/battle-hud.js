@@ -14,7 +14,7 @@ import {facilityNames} from "../data/active-content.js";
 import {SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, remainingZoneSeconds, enemyDifficultyText} from "../data/lite-rules.js";
 import {enemySpeciesWord} from "../data/character-rules.js";
 import {runPlan, planIncludes} from "../combat/battle-plan.js";
-import {bossDistanceText, buildingMapName, drawCompassDial} from "./paper-hud-art.js";
+import {bossDistanceText, buildingMapName, drawCompassDial, drawAltarProgress} from "./paper-hud-art.js";
 import {weatherMark, weatherStyle} from "./weather-presentation.js";
 import {glyphPreview} from "../actors/zixing-glyphs.js";
 import {EVOLUTION_REVEAL} from "../effects/upgrade-effects.js";
@@ -408,7 +408,7 @@ var JI = class {
     }
     streakHud(count, remaining, time=this.runRef?.realTime??performance.now()/1000) {
       const streak = this.els.streak;
-      const visible = count >= 1 && remaining > 0;
+      const visible = count > 20 && remaining > 0;
       if (visible !== this.stkOn) {
         this.stkOn = visible;
         streak.hidden = !visible;
@@ -1291,10 +1291,12 @@ var JI = class {
           (y ? { x: y.x, z: y.z } : null);
       if (b) {
         const distance = Math.hypot(b.x - e.player.pos.x, b.z - e.player.pos.z),
-          bossFlags = R.Boss | R.Alpha | R.Totem | R.Summoner,
-          markerText = b===bossTarget || (b.i!=null && (e.enemies.flags[b.i]&bossFlags)) ? bossDistanceText(distance)
+          bossFlags = R.Boss | R.Elite | R.Alpha | R.Totem | R.Summoner,
+          atFeet = b.i!=null && e.enemies.isAlive(b.i) && !!(e.enemies.flags[b.i]&bossFlags),
+          markerText = b===bossTarget || atFeet ? bossDistanceText(distance)
             : c(`{n} m`, { n: Math.round(distance) });
-        let t = this.project(e, b.x, e.terrain.height(b.x, b.z) + 2, b.z),
+        this.markTag.classList.toggle('at-feet',atFeet);
+        let t = this.project(e, b.x, atFeet ? e.enemies.y[b.i] : e.terrain.height(b.x, b.z) + 2, b.z),
           n = innerWidth / 2,
           r = innerHeight / 2,
           i = t.x - n,
@@ -1396,15 +1398,22 @@ var JI = class {
         if (distance >= range || !facilities.hasVisual(facility)) continue;
         if (facility.used && !wave && kind !== 'meowth' && kind !== 'hypno' && kind !== 'slots' && kind !== 'portal') continue;
 
-        let label, className = 'wlabel';
+        let label, progress = null, className = 'wlabel';
         if (kind === 'chest' || kind === 'slots') {
           const cost = facilities.interactionCost(facility);
           if (run.gold < cost) continue;
           className += ' cost';
           label = cost ? cost + ' 金币' : buildingMapName(facility);
         } else if (kind === 'altar') {
-          if (facility.charge > 0 || distance < facility.r) continue;
-          label = facilityNames.altar;
+          if (facility.charge >= 1) continue;
+          if (facility.charging) {
+            className += ' altar-progress';
+            progress = Math.floor(Math.max(0,Math.min(1,facility.charge))*100);
+            label = progress + '%';
+          } else {
+            if (facility.charge > 0 || distance < facility.r) continue;
+            label = facilityNames.altar;
+          }
         } else if (wave) {
           className += ' nocost';
           label = c(`Quedan {n}`, {n: data.left});
@@ -1416,11 +1425,18 @@ var JI = class {
         if (!label) continue;
         if (kind === 'boss' && run.hints?.site === facility && run.hints.el?.parentNode) continue;
         const height = facility.group?.userData.h ?? 2.5;
-        const point = this.project(run, facility.x, facility.y + height + 0.5, facility.z);
+        const anchor = kind === 'altar' && facility.model?.userData.labelAnchor;
+        let point;
+        if (anchor) {
+          facility.model.updateWorldMatrix(true,false);
+          const position = facility.model.localToWorld(this.v.copy(anchor));
+          point = this.project(run,position.x,position.y,position.z);
+          point.y -= 6;
+        } else point = this.project(run, facility.x, facility.y + height + 0.5, facility.z);
         // Reserve a full Chinese glyph per character plus padding and the shadow.
-        const halfWidth = 17 + label.length * (kind === 'meowth' ? 7 : 6);
+        const halfWidth = progress !== null ? 26 : 17 + label.length * (kind === 'meowth' ? 7 : 6);
         if (!(point.vis && point.x >= halfWidth && point.x <= innerWidth - halfWidth &&
-              point.y >= 30 && point.y <= innerHeight - 4)) continue;
+              point.y >= (progress !== null ? 50 : 30) && point.y <= innerHeight - 4)) continue;
 
         let node = this.worldLabelNodes.get(facility);
         if (!node) {
@@ -1430,7 +1446,28 @@ var JI = class {
         }
         visible.add(facility);
         if (node.className !== className) node.className = className;
-        if (node.textContent !== label) node.textContent = label;
+        if (progress !== null) {
+          let canvas=node.firstElementChild;
+          if (!canvas) {
+            canvas=X('canvas',{'data-static':'true','aria-hidden':'true'});
+            canvas.width=canvas.height=144;
+            node.replaceChildren(canvas);
+            node.setAttribute('role','progressbar');
+            node.setAttribute('aria-label','祭坛激活进度');
+            node.setAttribute('aria-valuemin','0');node.setAttribute('aria-valuemax','100');
+          }
+          const key=String(progress);
+          if (canvas.dataset.frame !== key) {
+            drawAltarProgress(canvas,progress);
+            canvas.dataset.frame=key;
+            node.setAttribute('aria-valuenow',String(progress));node.setAttribute('aria-valuetext',label);
+          }
+        } else {
+          if (node.hasAttribute('role')) {
+            for (const attr of ['role','aria-label','aria-valuemin','aria-valuemax','aria-valuenow','aria-valuetext'])node.removeAttribute(attr);
+          }
+          if (node.textContent !== label) node.textContent = label;
+        }
         node.style.left = Math.round(point.x) + 'px';
         node.style.top = Math.round(point.y) + 'px';
         node.style.opacity = String(Math.min(1, (range - distance) / (landmark ? 5 : 2)));

@@ -491,11 +491,11 @@ html.zixing .tc.zx-paper-touch{--zx-ult-size:min(calc(84px * var(--tcs,1)),calc(
 .zx.zx-square-hud .zx-hud-profile{position:absolute;left:0;top:3px;right:auto;width:210px;height:84px;overflow:visible;pointer-events:none}
 .zx.zx-square-hud .zx-profile-art{position:absolute;left:0;top:0;width:210px;height:52px;background:transparent}
 .zx.zx-square-hud .zx-status-values{display:none}
-html.zixing #hud>.streak.zx-combo{position:absolute;left:auto;right:2px;top:30%;bottom:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;width:176px;margin:0;padding:0;transform:none;text-align:right;pointer-events:none}
+html.zixing #hud>.streak.zx-combo{position:absolute;left:auto;right:2px;top:30%;bottom:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;width:320px;margin:0;padding:0;transform:none;text-align:right;pointer-events:none}
 html.zixing #hud>.zx-combo[hidden]{display:none}
 html.zixing #hud>.zx-combo>small{display:none}
 html.zixing #hud>.zx-combo>b{display:block;color:var(--sc);font-size:27px;line-height:32px;font-weight:900;text-align:right;-webkit-text-stroke:2px #F3F1FA;paint-order:stroke fill;text-shadow:0 1px 2px #293349;animation:none}
-html.zixing #hud>.zx-combo>b{width:176px;height:108px;margin:0;line-height:0}
+html.zixing #hud>.zx-combo>b{width:320px;height:108px;margin:0;line-height:0}
 html.zixing #hud>.zx-combo>*{opacity:var(--streak-alpha,1)}
 html.zixing #hud>.zx-combo>i{position:absolute;width:0;height:0;margin:0;background:transparent}
 html.zixing #hud>.zx-combo>i>u{display:none}

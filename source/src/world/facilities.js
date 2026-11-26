@@ -1385,7 +1385,7 @@ var GS = class e {
         if(facility.kind==='bill')facility.model?.userData.updateGaze?.(
           this.run.r.camera,this.run.player,!facility.used && this.hasVisual(facility),dt??0);
         if (charge) {
-          charge.visible = facility.charging && !facility.used && this.hasVisual(facility);
+          charge.visible = facility.charging && facility.charge < 1 && !facility.used && this.hasVisual(facility);
           charge.material.uniforms.dwell.value = facility.charge;
         }
       }
@@ -1595,6 +1595,7 @@ var GS = class e {
       e.charge = 1;
       e.charging = false;
       if (e.chargeRing) e.chargeRing.visible = false;
+      r.ui.removeWorldLabel(e);
       ((e.used = !0),
         this.dim(e),
         n || r.coop?.altarDone(e.x, e.z),

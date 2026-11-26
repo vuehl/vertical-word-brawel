@@ -25,7 +25,9 @@ html.zixing .zx-review-boss .bb-sub{font-size:12px;line-height:16px;padding:0;co
 html.zixing .zx-review-boss.immune .bb-bar>i{background:repeating-linear-gradient(135deg,#c8c8d8 0px,#c8c8d8 8px,#a8a8b8 8px,#a8a8b8 16px)}
 html.zixing .zx-review-boss.shield .bb-bar>i{background:#6ac0ff}
 .zx canvas.zx-review-capture-flag{position:absolute;top:157px;right:2px;width:140px;height:36px;pointer-events:none;z-index:3}
-html.zixing .zx-review-arrival{position:absolute;left:0;right:0;top:182px;height:186px;z-index:70;pointer-events:none}
+html.zixing .zx-review-arrival{position:absolute;left:0;right:0;top:182px;height:186px;z-index:1000;pointer-events:none}
+html.zixing .wlabel.altar-progress{display:block;width:48px;height:48px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;pointer-events:none}
+html.zixing .wlabel.altar-progress>canvas{display:block;width:48px;height:48px}
 html.zixing canvas.zx-review-boss-art{position:absolute;left:0;top:0;width:100%;height:186px;pointer-events:none}
 html.zixing .zx-modal.zx-review-dialog{font-family:inherit;color:#302d3d;background:#f8f5e9;border:1px solid #b8c6ac;border-radius:18px;box-shadow:0 4px 0 #899579;padding:18px 14px;gap:14px;width:100%;max-width:440px;min-height:0;max-height:100%;overflow:hidden;text-align:left;align-items:stretch;font-size:14px;line-height:1.5}
 html.zixing .zx-review-dialog *{box-sizing:border-box;text-shadow:none;letter-spacing:0}
@@ -145,6 +147,7 @@ html.zixing .zx-combat-feed .mini .bb-sub.move{color:var(--boss-accent)}
 .zx-guide-pin .mapbadge>canvas,.zx-guide-pin .mapbadge>img{height:26px;width:26px;object-fit:contain}
 html.zixing .zx-combat-overlay .compass>.cp-d{position:absolute;left:-32px;top:28px;width:64px;min-width:0;height:19px;padding:1px 3px;transform:none;border:0;border-radius:0;box-shadow:none;background:#302A32;color:#FFF5DF;font-size:11px;font-weight:800;line-height:17px;white-space:nowrap;text-shadow:none;text-align:center;display:flex;align-items:center;justify-content:center}
 html.zixing .zx-combat-overlay .mktag>.cp-d{top:-19px}
+html.zixing .zx-combat-overlay .mktag.at-feet>.cp-d{top:6px}
 .zx-combat-feed .coop-team{position:relative;left:0!important;top:0!important;width:100%;flex-direction:row;align-items:flex-start;gap:6px;scale:1}
 .zx-combat-feed .coop-mate{flex:1;min-width:0;max-width:50%;height:auto;min-height:43px;padding:2px 4px 4px;gap:4px;background:#E8ECF5;border-bottom:2px solid #90A5C5;border-radius:3px}
 .zx-combat-feed .coop-med{width:32px;height:32px;box-shadow:none}

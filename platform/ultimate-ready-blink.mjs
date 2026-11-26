@@ -36,11 +36,10 @@ function createLayer(makeCanvas,slot,ramp,drawEmbers){
       entry={revision,face,faceSize,shape:silhouette(reader.getImageData(0,0,tile,tile).data)};
       if(face){
         entry.shape.cx=entry.shape.cy=tile/2;
-        // The opaque button disk supplies the outer contour. Use the actual
-        // seal artwork for the flash, preserving cutouts inside the glyph.
+        // Keep the flash aligned with the full-size, centered attribute artwork.
         reader.clearRect(0,0,tile,tile);
         const side=faceSize*tile/84;
-        reader.drawImage(face,(tile-side)/2,34.5*tile/84-side/2,side,side);
+        reader.drawImage(face,(tile-side)/2,(tile-side)/2,side,side);
         entry.shape.face=silhouette(reader.getImageData(0,0,tile,tile).data);
       }
       cache.set(rect,entry);
@@ -101,7 +100,7 @@ export function createReadyBlink(makeCanvas){
       const box=seal.getBoundingClientRect();
       const face=seal.readyFace;
       result.push(button(seal._surface,fullRect,0,stage,stage==='breath'?0:progress,opacity,box.x+box.width/2,box.y,box.width,box.height,view,scale,
-        face?._surface??face,stage==='breath'?51:seal.readyFaceSize));
+        face?._surface??face,seal.readyFaceSize));
     }
     return result;
   };

@@ -133,6 +133,9 @@ try{
   }else if(process.argv.includes('--region-atlas')){
     const {reviewRegionAtlas}=await import('./regression/region-atlas-regression.mjs');
     await reviewRegionAtlas(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--battle-labels')){
+    const {reviewBattleLabels}=await import('./regression/battle-labels-regression.mjs');
+    await reviewBattleLabels(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--ultimate-ready')){
     const {reviewUltimateReady}=await import('./regression/ultimate-ready-regression.mjs');
     await reviewUltimateReady(page,dir);assert.deepEqual(errors,[]);
