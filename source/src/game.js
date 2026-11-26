@@ -293,7 +293,7 @@ export class App {
       onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
       await waitForLoadingPaint(this.r.renderer),
       await e.coop?.room.waitForBattleStart((title,teamReady)=>onLoadProgress?.({phase:title,teamStatus:title,teamReady,progress:1})),
-      await this.entryOpening?.finished,
+      await this.entryOpening?.finished.then(result=>{if(result?.error)throw result.error;}),
       // Remove the opaque page and submit the first playable frame in the same turn.
       this.setScreen(null),
       await this.revealOpening(),

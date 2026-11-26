@@ -48,6 +48,10 @@ const server=http.createServer((req,res)=>{
   if(req.url==='/fixture.js'||req.url==='/boot.js'){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(req.url==='/boot.js'?boot:'window.packageData='+JSON.stringify(packageData)+';window.packageEntries='+JSON.stringify(packageEntries)+';'+fixture);}
   if(Object.values(packageEntries).includes(req.url.slice(1))){res.setHeader('content-type','application/javascript;charset=utf-8');return res.end(fixtureSubpackage(game,req.url.slice(1)));}
   if(urls.has(req.url))return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
+  if(/^\/play\/opening\/p\d{2}\.webp$/.test(req.url)){
+    res.setHeader('content-type','image/webp');
+    return fs.createReadStream(path.join(game,req.url.slice(1))).pipe(res);
+  }
   res.statusCode=404;res.end();
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -61,7 +65,7 @@ try{
   page.on('pageerror',error=>{errors.push(String(error));console.error(String(error));});
   page.on('console',message=>{if(message.type()==='error'&&/WebGLProgram|Shader Error|VALIDATE_STATUS/.test(message.text()))errors.push(message.text());});
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
-  await page.evaluateOnNewDocument(()=>{window.fixturePlatform='devtools';window.phoneLayout=true;});
+  await page.evaluateOnNewDocument(()=>{window.fixturePlatform='devtools';window.phoneLayout=true;window.fixtureSkipOpening=true;});
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});

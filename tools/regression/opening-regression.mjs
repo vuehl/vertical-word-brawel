@@ -3,7 +3,8 @@ import path from 'node:path';
 import {writeFile} from 'node:fs/promises';
 
 export async function verifyOpening({page,dir}){
-  if(await page.evaluate(()=>!!window.failOpeningResources)){
+  if(await page.evaluate(()=>!!window.testOpeningImageFailure))await page.evaluate(()=>releaseOptionalDownloads());
+  if(await page.evaluate(()=>!!window.failOpeningResources||!!window.testOpeningImageFailure)){
     await page.waitForFunction(()=>app.screen?.dataset.page==='entry-error',{timeout:60000});
     assert.equal(await page.evaluate(()=>!!app.meta.profile.firstJourneyPlayed),false);
     assert.ok(await page.evaluate(()=>openingDecoders.every(d=>d.removed)));
@@ -73,7 +74,7 @@ export async function verifyOpening({page,dir}){
       retained:{stardust:p.stardust,totalStardust:p.totalStardust,lab:p.lab,biomes:p.biomes,
         unlocked:p.unlocked,starter:p.starter,runs:p.counters.runs}};
   });
-  await page.evaluateOnNewDocument(()=>{window.holdHomeStatus=false;window.failOpeningResources=false;});
+  await page.evaluateOnNewDocument(()=>{window.holdHomeStatus=false;window.failOpeningResources=false;window.failOpeningPageOnce=false;});
   await page.reload();
   await page.waitForFunction(()=>window.releaseTextDownload&&window.wx);
   await page.evaluate(async saved=>{

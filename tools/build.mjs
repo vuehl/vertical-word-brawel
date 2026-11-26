@@ -9,6 +9,7 @@ import {addBootAssets,bootAssets,writeBootPoster} from './build/boot-assets.mjs'
 import {lowerUnicodeRegexes} from './build/device-syntax.mjs';
 import {assetPolicyVersion,itemIconSelectionChanged} from './build/asset-policy.mjs';
 import {gameProject} from './build/project-target.mjs';
+import {buildOpeningAtlas} from './art/build-journey-opening.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'), src=path.join(root,'source'), platform=path.join(root,'platform');
 const development=process.argv.includes('--dev');
@@ -103,8 +104,11 @@ function writeScript(destination,code){
   }finally{fs.rmSync(pending,{force:true});}
 }
 for(const [name,code] of result.files)writeScript(path.join(playDir,name),code);
-// Already compressed H.264; keep the original local movie in the loaded play package.
-fs.copyFileSync(path.join(root,'resources/public/assets/opening/journey.mp4'),path.join(playDir,'journey-opening.mp4'));
+// The source movie stays in resources; phones play its native image pages.
+fs.rmSync(path.join(playDir,'journey-opening.mp4'),{force:true});
+const opening=await buildOpeningAtlas(root),openingDir=path.join(playDir,'opening');
+fs.mkdirSync(openingDir,{recursive:true});
+for(const name of opening.files)fs.copyFileSync(path.join(opening.dir,name),path.join(openingDir,name));
 for(const name of fs.readdirSync(playDir)){
   if(name.endsWith('.js')&&!result.files.has(name))fs.unlinkSync(path.join(playDir,name));
 }
