@@ -1,10 +1,12 @@
 // Shared flat cut-paper motif for menu headers, photos and upgrade cards.
 // Coordinates are independent of viewport and contain no baked text or texture.
-// Sampled from the right-hand library reference. CSS and the native painter
-// share these inks; the palette applies to system paper, not to game sprites.
+// CSS, reward canvases and the native painter share the current journal inks.
+// These are system surfaces; character and skill colours remain independent.
 export const paperPalette=Object.freeze({
   darkStock:'#27232F', warmWhite:'#FFF8E9', yellow:'#EEC659',
-  navy:'#292943', ink:'#292742', paper:'#F3F1FA',
+  navy:'#27232F', ink:'#27232F', paper:'#F1EBDF',
+  card:'#FBF5E8', inset:'#E1D7C4', line:'#C9BDAB', muted:'#62584E',
+  cover:'#38343D', disabled:'#B6B0AB', danger:'#BF7181',
   titleStart:'#D1646D', titleEnd:'#DA7A81', tabStart:'#DC7472', tabEnd:'#D87070',
   blueStart:'#376FC8', blueEnd:'#326AC5',
 });

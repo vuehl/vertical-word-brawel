@@ -29,18 +29,18 @@ function folded(ctx,w,h,{edge,top,bottom,corner=8,rim=2}){
 function poly(ctx,p,color){ctx.beginPath();ctx.moveTo(...p[0]);for(const a of p.slice(1))ctx.lineTo(...a);ctx.closePath();ctx.fillStyle=color;ctx.fill();}
 function mountedPaper(ctx,w,h,footer=false){
   const c=footer?13:11;
-  cut(ctx,0,2,w,h-2,c,'#5D77AF');
-  cut(ctx,0,0,w,h-3,c,gradient(ctx,w,h,'#B9D0ED','#6C9BDA'));
-  cut(ctx,footer?5:2,footer?5:7,w-(footer?10:4),h-(footer?13:16),c-3,gradient(ctx,w,h,'#F4F3F8','#F0F0F7'));
-  poly(ctx,[[0,h-c-3],[c+6,h-9],[c+13,h-3],[c,h-3]],'#9EBCE7');
-  poly(ctx,[[w-c-11,h-3],[w-c-4,h-9],[w,h-c-3],[w-c,h-3]],'#5283D0');
+  cut(ctx,0,2,w,h-2,c,paperPalette.darkStock);
+  cut(ctx,0,0,w,h-3,c,paperPalette.line);
+  cut(ctx,footer?5:2,footer?5:7,w-(footer?10:4),h-(footer?13:16),c-3,paperPalette.paper);
+  poly(ctx,[[0,h-c-3],[c+6,h-9],[c+13,h-3],[c,h-3]],paperPalette.inset);
+  poly(ctx,[[w-c-11,h-3],[w-c-4,h-9],[w,h-c-3],[w-c,h-3]],paperPalette.yellow);
 }
 function postcard(ctx,w,h,captionSpace=14){
   ctx.save();ctx.translate(w/2,h/2);ctx.rotate(-.055);ctx.translate(-w/2,-h/2);
-  cut(ctx,1,3,w-2,h-3,1,'#98B1D8');cut(ctx,0,0,w-2,h-4,1,white);
+  cut(ctx,1,3,w-2,h-3,1,paperPalette.line);cut(ctx,0,0,w-2,h-4,1,paperPalette.warmWhite);
   const imageHeight=Math.max(1,h-captionSpace);
-  ctx.fillStyle=gradient(ctx,w,h,'#E6EEF9','#C9E3F2');ctx.fillRect(4,4,w-10,imageHeight);
-  ctx.save();ctx.translate(4,4);paintPhotoWaves(ctx,w-10,imageHeight,'#4185CA','#A8CCE9');ctx.restore();ctx.restore();
+  ctx.fillStyle=paperPalette.paper;ctx.fillRect(4,4,w-10,imageHeight);
+  ctx.save();ctx.translate(4,4);paintPhotoWaves(ctx,w-10,imageHeight,paperPalette.yellow,paperPalette.inset);ctx.restore();ctx.restore();
 }
 
 
@@ -278,24 +278,21 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'heading-strip':
-      poly(ctx,[[-12,h-7],[w+12,h-7],[w+3,h+3],[-20,h+3]],'#CDDBF3');break;
+      poly(ctx,[[-12,h-7],[w+12,h-7],[w+3,h+3],[-20,h+3]],paperPalette.yellow);break;
     case 'dialog-title': {
       const length=Math.min(w-8,Math.max(76,el.textContent.length*19+19)),left=(w-length)/2;
-      poly(ctx,[[left,h*.64],[left+length,h*.64],[left+length-9,h*.92],[left-6,h*.92]],'#DBE5F4');
+      poly(ctx,[[left,h*.64],[left+length,h*.64],[left+length-9,h*.92],[left-6,h*.92]],paperPalette.yellow);
       break;}
     case 'menu-background':
-      ctx.fillStyle=has('paper-menu-page')?paperPalette.navy:gradient(ctx,w,h,'#312F52','#20223A');ctx.fillRect(0,0,w,h);
-      if(has('paper-menu-page'))break;
-      poly(ctx,[[w*.4,h],[w,h-34],[w,h]],'#416DB1');
-      poly(ctx,[[w*.72,h],[w,h-34],[w,h-15]],'#6894D9');
+      ctx.fillStyle=paperPalette.darkStock;ctx.fillRect(0,0,w,h);
       break;
     case 'postcard':postcard(ctx,w,h);break;
     case 'info-slip': {
       const wallet=has('zx-wallet'),photo=el.firstElementChild?.classList?.contains('paper-portrait');
       const inset=photo?Math.min(15,h*.13):2,left=photo?9:0;
-      cut(ctx,left+3,inset+5,w-left-3,h-inset*2,9,'#4975BF');
-      cut(ctx,left,inset,w-left-4,h-inset*2,6,wallet?'#658ACB':'#BECDE9');
-      cut(ctx,left+1,inset+1,w-left-7,h-inset*2-4,5,gradient(ctx,w,h,wallet?'#5A85C4':white,wallet?'#354F91':'#EBEEF8'));
+      cut(ctx,left+3,inset+5,w-left-3,h-inset*2,9,paperPalette.darkStock);
+      cut(ctx,left,inset,w-left-4,h-inset*2,6,paperPalette.line);
+      cut(ctx,left+1,inset+1,w-left-7,h-inset*2-4,5,wallet?paperPalette.cover:paperPalette.paper);
       break;}
     case 'map-print':
       cut(ctx,2,4,w-2,h-4,15,'#8E98BA');
@@ -348,15 +345,11 @@ export function drawUiPaper(ctx,box){
       }
       const primary=has('primary')||has('zc-primary')||has('purple')||has('zx-buy');
       const coral=has('danger');
-      const colors=key==='button-muted'?['#C5D3E6','#C5D3E6','#8399B9']:coral?['#E08188','#C95968','#A14559']:primary?[paperPalette.blueStart,paperPalette.blueEnd,'#435BAC']:[white,'#EFEFF9','#4F89D3'];
-      // One thin perimeter and one shallow folded lower edge. The front face
-      // remains square; no bevelled side panels or bright cyan substitute.
-      cut(ctx,0,3,w,h-3,5,colors[2]);
-      cut(ctx,0,0,w,h-3,5,primary||coral?'#D7E5F5':'#5989D6');
-      const face=ctx.createLinearGradient(0,0,0,h);face.addColorStop(0,colors[0]);face.addColorStop(1,colors[1]);
-      cut(ctx,.8,.8,w-1.6,h-5,4.4,face);
-      ctx.fillStyle=primary||coral?'#B0CCEB':'#D9E3F6';ctx.fillRect(6,h-5,w-12,1);
-      poly(ctx,[[.8,h-8],[5,h-4],[w-5,h-4],[w-.8,h-8],[w-5,h-2],[5,h-2]],primary||coral?colors[2]:'#90BAE3');
+      const choiceAction=!!el.closest?.('.zx-blessing-dialog,.zx-scene-offers');
+      const face=el.disabled||key==='button-muted'?paperPalette.disabled:coral?paperPalette.danger:
+        primary?paperPalette.yellow:choiceAction?paperPalette.darkStock:paperPalette.inset;
+      cut(ctx,0,3,w,h-3,5,paperPalette.darkStock);
+      cut(ctx,0,0,w,h-3,5,face);
       break;
     }
     case 'header':{
@@ -373,8 +366,8 @@ export function drawUiPaper(ctx,box){
       mountedPaper(ctx,w,h,true);
       break;
     case 'card':
-      cut(ctx,0,2,w,h-2,5,has('on')||has('selected')?'#397ACE':'#B2BDD8');
-      cut(ctx,1,1,w-2,h-5,4,gradient(ctx,w,h,white,'#EBEDF9'));
+      cut(ctx,0,2,w,h-2,5,has('on')||has('selected')?paperPalette.yellow:paperPalette.line);
+      cut(ctx,1,1,w-2,h-5,4,paperPalette.card);
       break;
     case 'look-photo':
       postcard(ctx,w,h-1,37);
@@ -395,15 +388,15 @@ export function drawUiPaper(ctx,box){
       // Compact bookmarks have the same folded face and full-size touch area.
       const inset=has('zc-filter')&&el.parentElement?.parentElement?.classList.contains('zc-library-paper')?5:0;
       const active=has('active')||has('on'),corner=1;
-      cut(ctx,0,4+inset,w,h-6-2*inset,corner,active?'#A75768':'#A6B9DD');
-      cut(ctx,0,1+inset,w,h-6-2*inset,corner,gradient(ctx,w,h,active?paperPalette.tabStart:'#E0E7F5',active?paperPalette.tabEnd:'#CFD9EF'));
+      cut(ctx,0,4+inset,w,h-6-2*inset,corner,paperPalette.darkStock);
+      cut(ctx,0,1+inset,w,h-6-2*inset,corner,active?paperPalette.yellow:paperPalette.inset);
       break;}
     case 'upgrade-reroll':
       poly(ctx,[[5,1],[w,1],[w-5,h-1],[0,h-1]],el.disabled?'#524D54':paperPalette.darkStock);
       break;
     case 'level-offer': {
       const [face]=upgradeStocks[el.dataset.quality]||upgradeStocks.special;
-      ctx.fillStyle='#29262C';ctx.fillRect(0,0,w,h);ctx.fillStyle=face;ctx.fillRect(2,2,w-4,h-4);break;
+      ctx.fillStyle=paperPalette.darkStock;ctx.fillRect(0,0,w,h);ctx.fillStyle=face;ctx.fillRect(2,2,w-4,h-4);break;
     }
     case 'level-art': {
       const [face,band]=upgradeStocks[el.dataset.quality]||upgradeStocks.special;
@@ -413,19 +406,16 @@ export function drawUiPaper(ctx,box){
     case 'level-title':
       poly(ctx,[[0,0],[w,0],[w,h*.48],[w-8,h*.69],[w-2,h*.69],[w-14,h],[0,h]],'#2B262E');break;
      case 'upgrade-card': {
-      cut(ctx,0,3,w,h-3,4,'#322C36');cut(ctx,0,0,w,h-4,4,'#F3EEE4');
+      cut(ctx,0,3,w,h-3,4,paperPalette.darkStock);cut(ctx,0,0,w,h-4,4,top);
       poly(ctx,[[0,4],[4,0],[9,0],[7,h-4],[0,h-4]],accent);
       poly(ctx,[[w-15,0],[w-4,0],[w,4],[w,14]],bottom);
       ctx.fillStyle=edge;ctx.fillRect(9,h-5,w-16,1);break;
     }
     case 'rarity': {
-      const rarity=el.dataset.quality;
-      const ribbon=rarity==='legendary'?'#B25C3E':rarity==='common'?'#6C778D':badge;
-      const fold=rarity==='legendary'?'#8E4535':rarity==='common'?'#525B6F':edge;
       ctx.beginPath();
       ctx.moveTo(0,7);ctx.lineTo(6,2);ctx.lineTo(w-1,0);
       ctx.lineTo(w-1,h-6);ctx.lineTo(w-6,h-1);ctx.lineTo(2,h-1);
-      ctx.closePath();ctx.fillStyle=gradient(ctx,w,h,ribbon,fold);ctx.fill();
+      ctx.closePath();ctx.fillStyle=badge;ctx.fill();
       ctx.beginPath();ctx.moveTo(w-6,h-1);ctx.lineTo(w-6,h-6);ctx.lineTo(w-1,h-6);
       ctx.closePath();ctx.fillStyle='#27264836';ctx.fill();
       break;
@@ -460,15 +450,15 @@ export function drawUiPaper(ctx,box){
       cut(ctx,0,0,w,h-2,4,'#E8EDF6');
       break;
     case 'arcade': {
-      cut(ctx,2,5,w-2,h-5,12,'#384967');
-      cut(ctx,0,0,w-3,h-5,12,gradient(ctx,w,h,'#BFD0E4','#8FAAC8'));
-      cut(ctx,4,3,w-11,48,8,'#4A6689');
-      cut(ctx,6,4,w-15,42,7,gradient(ctx,w,48,'#55769E','#425A80'));
+      cut(ctx,2,5,w-2,h-5,12,paperPalette.darkStock);
+      cut(ctx,0,0,w-3,h-5,12,paperPalette.paper);
+      cut(ctx,4,3,w-11,48,8,paperPalette.darkStock);
+      cut(ctx,6,4,w-15,42,7,paperPalette.cover);
       for(const x of [11,w-17]){
-        ctx.fillStyle='#CAD9E8';ctx.fillRect(x,23,4,4);
-        ctx.fillStyle='#8198B7';ctx.fillRect(x,24,3,1);
+        ctx.fillStyle=paperPalette.yellow;ctx.fillRect(x,23,4,4);
+        ctx.fillStyle=paperPalette.muted;ctx.fillRect(x,24,3,1);
       }
-      cut(ctx,9,h-66,w-21,57,6,'#7892AE');
+      cut(ctx,9,h-66,w-21,57,6,paperPalette.inset);
       break;
     }
     case 'portrait-strap':

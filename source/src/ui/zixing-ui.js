@@ -1209,7 +1209,7 @@ export function createZixingUI(app,api) {
     show(active);
     const tools=el('div','zx-row zx-pause-actions',[
       button([menuSymbol('settings',18),el('span','','设置')],()=>settings(()=>pause(run,active)),'zx-plain zx-pause-action',{'data-action':'pause-settings'}),
-      button([icon('book',18,'#485E82'),el('span','','玩法说明')],help,'zx-plain zx-pause-action',{'data-action':'help'}),
+      button([icon('book',18,'#27232F'),el('span','','玩法说明')],help,'zx-plain zx-pause-action',{'data-action':'help'}),
     ]);
     if(run.coop)tools.append(button('暂离房间',()=>{
       saveProgress(run);run.coop.room.end('已暂离',false);app.coopRoom=null;app.toMenu();
@@ -1413,7 +1413,7 @@ export function createZixingUI(app,api) {
     const actions=[...wrap.querySelectorAll('.actions > button')];
     actions.forEach(node=>{node.className='zx-button zx-reroll';node.querySelectorAll('kbd').forEach(key=>key.remove());standardButton(node,node.textContent.trim());});
     const back=()=>{hud.hideModal();stats(run,()=>hud[method](...args));};
-    const statsButton=button(method==='showTrade'?'查看属性':[icon('stats',16,'#65577b'),el('span','','查看属性')],back,'zx-choice-stats',{'data-action':'upgrade-stats'});
+    const statsButton=button(method==='showTrade'?'查看属性':[icon('stats',16,'#EEC659'),el('span','','查看属性')],back,'zx-choice-stats',{'data-action':'upgrade-stats'});
     document.querySelectorAll('.run-hint').forEach(node=>node.remove());
     wrap.className='zx zx-modal-wrap';
     if(method==='showBlessing'){

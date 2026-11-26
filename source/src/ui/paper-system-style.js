@@ -1,6 +1,6 @@
 // One source of truth for system controls. Gameplay sprites and canvases are untouched.
 export const paperSystemStyle=`
-.zx{--ink:var(--paper-ink);--muted:#71788E;--paper:var(--paper-paper);--purple:#567AC0;--line:#CBD4E6;color:var(--paper-ink)}
+.zx{--ink:var(--paper-ink);--muted:var(--paper-muted);--paper:var(--paper-paper);--purple:var(--paper-cover);--line:var(--paper-line);color:var(--paper-ink)}
 .screen.zx,.screen.zx-collection{background:var(--paper-navy);color:var(--paper-ink);padding:0 10px!important;z-index:80}
 .screen.zx>.zx-header{background:transparent;border:0;padding:14px 12px 12px;color:var(--paper-paper);min-height:78px}
 
@@ -11,21 +11,21 @@ export const paperSystemStyle=`
 .paper-footer-row{display:flex;flex-direction:row;align-items:center;gap:10px;width:100%}
 .paper-footer-row>.zx-button{flex:1;min-width:0}
 .paper-footer-row>.zx-button.primary,.zx-collection .zc-actions>.zc-primary{height:53px;align-self:center}
-.zx .zx-button,.zx-collection .zc-btn,html.zixing .zx-review-button{border:0;border-radius:0;box-shadow:none;background:linear-gradient(180deg,var(--paper-paper),#DFE6F5);color:var(--paper-ink);font-size:17px;font-weight:700;line-height:24px;min-height:48px;padding:10px 12px}
-.zx .zx-button.primary,.zx .zx-button.purple,.zx-collection .zc-primary,html.zixing .zx-review-button.primary{background:linear-gradient(180deg,#6193D8,#496EB4);color:var(--paper-paper);font-size:17px;line-height:24px}
-.zx .zx-button.danger,html.zixing .zx-review-button.danger{background:linear-gradient(180deg,var(--paper-tabStart),#BD535C);color:var(--paper-paper)}
+.zx .zx-button,.zx-collection .zc-btn,html.zixing .zx-review-button{border:0;border-radius:0;box-shadow:none;background:var(--paper-inset);color:var(--paper-ink);font-size:17px;font-weight:700;line-height:24px;min-height:48px;padding:10px 12px}
+.zx .zx-button.primary,.zx .zx-button.purple,.zx-collection .zc-primary,html.zixing .zx-review-button.primary{background:var(--paper-yellow);color:var(--paper-ink);font-size:17px;line-height:24px}
+.zx .zx-button.danger,html.zixing .zx-review-button.danger{background:var(--paper-danger);color:var(--paper-warmWhite)}
 .coop-actions,.paper-back,.paper-back-art,.paper-dismiss-dock,.paper-dismiss-button,.paper-dismiss-art{--paper-nav-width:72px;--paper-nav-height:53px}
 .zx .paper-action.paper-back,.zx-collection .zc-actions>.zc-back.paper-back,html.zixing .zx-review-dialog .paper-back{display:flex;align-items:center;justify-content:center;width:var(--paper-nav-width);min-width:var(--paper-nav-width);max-width:var(--paper-nav-width);flex:none;height:var(--paper-nav-height);padding:0!important;border:0!important;background:transparent!important;box-shadow:none}
 .paper-back>.paper-back-art,.zx-collection.zc-library .zc-back>.paper-back-art,html.zixing .zx-review-dialog .paper-back>.paper-back-art{display:block;flex:none;width:var(--paper-nav-width);height:var(--paper-nav-height);object-fit:contain}
 .zx button:disabled,html.zixing .zx-review-button:disabled{opacity:.52}
 .zx .zx-tabs,.zx .zx-subtabs,.zx .zc-filters{background:transparent;border:0;border-radius:0;padding:0;gap:1px;min-height:40px}
-.zx .zx-tab,.zx .zx-subtab,.zx .zc-filter{background:#D6DFEF;border:0;border-radius:0;box-shadow:none;min-height:40px;padding:7px 3px;color:var(--paper-ink);font-size:15px;line-height:22px;font-weight:700}
-.zx .zx-tab.on,.zx .zx-subtab.on,.zx .zc-filter.active{background:var(--paper-tabStart);color:var(--paper-paper);font-size:15px;font-weight:700;border:0;box-shadow:none}
-.zx .zx-card,.zx .zc-panel,.zx .zx-difficulty,.zx .zx-choice,.zx .zc-look,.zx .zx-review-companion,.zx .zx-review-empty,.zx .zx-review-reward{background:#EAEDF7;color:var(--paper-ink);border:0;border-radius:0;box-shadow:none}
-.zx .zx-difficulty.on,.zx .zx-choice.on,.zx .zc-look.selected{background:#E2EAF8;border:2px solid #5B85CC}
+.zx .zx-tab,.zx .zx-subtab,.zx .zc-filter{background:var(--paper-inset);border:0;border-radius:0;box-shadow:none;min-height:40px;padding:7px 3px;color:var(--paper-ink);font-size:15px;line-height:22px;font-weight:700}
+.zx .zx-tab.on,.zx .zx-subtab.on,.zx .zc-filter.active{background:var(--paper-yellow);color:var(--paper-ink);font-size:15px;font-weight:700;border:0;box-shadow:none}
+.zx .zx-card,.zx .zc-panel,.zx .zx-difficulty,.zx .zx-choice,.zx .zc-look,.zx .zx-review-companion,.zx .zx-review-empty,.zx .zx-review-reward{background:var(--paper-card);color:var(--paper-ink);border:0;border-radius:0;box-shadow:none}
+.zx .zx-difficulty.on,.zx .zx-choice.on,.zx .zc-look.selected{background:var(--paper-card);border:2px solid var(--paper-yellow)}
 .zx .zx-modal,html.zixing .zx-modal.zx-review-dialog{background:var(--paper-paper);color:var(--paper-ink);border:0;border-radius:0;box-shadow:none}
 .zx-modal h2,html.zixing .zx-review-dialog h1{font-size:22px;line-height:30px;color:var(--paper-ink)}
-.zx .zx-note,.zx .zc-note,.zx .zx-review-note,.zx .zx-review-copy,.zx-collection small{color:#71788E}
+.zx .zx-note,.zx .zc-note,.zx .zx-review-note,.zx .zx-review-copy,.zx-collection small{color:var(--paper-muted)}
 .zx .zx-wallet{background:#567AC0;border:0;border-radius:0;box-shadow:none;color:var(--paper-paper)}
 .zx .zx-buy{width:72px;min-width:72px;min-height:48px;height:48px;padding:4px;font-size:17px;line-height:22px;background:#E0E9F7;color:var(--paper-ink)!important;border:0;border-radius:0;box-shadow:none}
 .zx .zx-buy small{font-size:11px;line-height:15px}.zx .zx-buy.poor{background:#DEE0E9}
@@ -74,12 +74,12 @@ html.zixing .zx-review-dialog .card{border-radius:0;box-shadow:none}
 .zx .zx-review-tag{background:#E0E8F7;color:#465E86;border-radius:2px}
 .zx .zx-review-check{border-color:#849ECB;border-radius:2px}.zx .zx-review-check.on{background:#567AC0;color:var(--paper-paper)}
 .zx .paper-action,html.zixing .zx-review-dialog .paper-action{font-size:20px!important;font-weight:700!important;line-height:26px!important;min-height:48px!important;border-radius:0;box-shadow:none}
-.zx .paper-action.primary,.zx .paper-action.zc-primary,.zx .paper-action.purple,html.zixing .zx-review-dialog .paper-action.primary{background:linear-gradient(180deg,var(--paper-blueStart),var(--paper-blueEnd))}
-.zx .paper-action.primary,.zx .paper-action.purple,.zx .paper-action.danger,.zx .paper-action.zc-primary{color:var(--paper-paper)!important}
+.zx .paper-action.primary,.zx .paper-action.zc-primary,.zx .paper-action.purple,html.zixing .zx-review-dialog .paper-action.primary{background:var(--paper-yellow);color:var(--paper-ink)!important}
+.zx .paper-action.danger{color:var(--paper-warmWhite)!important}
 .zx .paper-action.paper-back{color:var(--paper-ink)!important}
 .zx .zx-options{background:#E3E9F4;border-radius:2px;gap:3px}.zx .zx-option{border-radius:1px;color:var(--paper-ink);min-height:36px;font-size:12px}.zx .zx-option.on{background:#567AC0;color:var(--paper-paper)}
 .zx .zx-banner,.zx .zx-item-note{background:#E5EBF8;border:0;border-radius:0;color:#465E86}
-.zx .zx-stat-grid strong{color:#567AC0}.zx .zx-item-copy h3{color:var(--paper-ink)}.zx .zx-item-description,.zx .zx-item-note{color:#71788E}
+.zx .zx-stat-grid strong{color:var(--paper-ink)}.zx .zx-item-copy h3{color:var(--paper-ink)}.zx .zx-item-description,.zx .zx-item-note{color:var(--paper-muted)}
 .zx .zx-loading-title{color:var(--paper-ink)}
 .screen.zx.zx-collection>.zx-body{overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
 .screen.zx.zx-collection.zc-library>.zx-body{overflow:visible;overflow-y:visible;overflow-x:visible}
@@ -183,7 +183,7 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .paper-stage-slip{position:relative;display:flex;flex-direction:row;align-items:center;align-self:center;flex:none;width:94%;height:99px;margin-bottom:5px;padding:0 16px 0 0;gap:8px}
 .paper-stage-slip>.paper-stage-photo{width:89px;height:99px;flex:none;object-fit:contain}
 .zx .paper-stage-photo{position:relative;display:block;flex:none;padding:0}
-.zx .paper-stage-photo>img,.zx .paper-stage-photo>.paper-photo-glyph{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
+.zx .paper-stage-photo>img,.zx .paper-stage-photo>.paper-photo-glyph,.zx .paper-stage-photo>.paper-portrait-print{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
 .zc-progress-photo>.paper-stage-photo{width:100%;height:100%}
 .paper-stage-slip>.zx-col{min-width:0;flex:1;align-items:flex-start;text-align:left;gap:0}
 .paper-stage-slip b{font-size:23px;line-height:30px;white-space:nowrap}

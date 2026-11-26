@@ -104,7 +104,8 @@ export function upgradePrint(tone){
 
 // A specimen mount and a tear-off blessing ticket share the upgrade rarity inks.
 export function rewardPaper(kind,quality){
-  const [edge,top,bottom,accent,ink]=qualityPaper[quality]||qualityPaper.special;
+  const [edge,top,bottom,,ink]=qualityPaper[quality]||qualityPaper.special;
+  const accent=paperPalette.yellow;
   const item=kind==='item',w=336,h=item?290:84;
   const {node,ctx}=canvas(w,h,'zx-reward-print');
   if(item){
@@ -125,10 +126,10 @@ export function rewardPaper(kind,quality){
     const stub=247;
     const ticket=(dy,color)=>polygon(ctx,[[0,8+dy],[7,dy],[stub-4,dy],[stub,5+dy],[stub+4,dy],[w-7,dy],[w,7+dy],[w,70+dy],[w-7,77+dy],[stub+4,77+dy],[stub,72+dy],[stub-4,77+dy],[7,77+dy],[0,70+dy]],color);
     ticket(5,edge);ticket(1,top);
-    polygon(ctx,[[0,9],[7,1],[59,1],[50,78],[7,78],[0,71]],bottom);
+    polygon(ctx,[[0,9],[7,1],[59,1],[50,78],[7,78],[0,71]],accent);
     polygon(ctx,[[0,9],[7,1],[12,1],[7,77],[0,71]],accent);
-    polygon(ctx,[[stub+4,1],[w-7,1],[w,8],[w,71],[w-7,78],[stub+4,78],[stub,73],[stub,6]],bottom);
-    ctx.fillStyle=accent;for(let y=10;y<70;y+=8)ctx.fillRect(stub,y,1.5,4);
+    polygon(ctx,[[stub+4,1],[w-7,1],[w,8],[w,71],[w-7,78],[stub+4,78],[stub,73],[stub,6]],accent);
+    ctx.fillStyle=paperPalette.muted;for(let y=10;y<70;y+=8)ctx.fillRect(stub,y,1.5,4);
     polygon(ctx,[[17,78],[48,78],[47,81],[15,81]],ink);
   }
   return node;
@@ -242,11 +243,11 @@ function drawEvolutionStamp(ctx,progress){
   const size=.80+.06*(1-fall);
   ctx.save();ctx.translate(50,51-3*(1-fall));ctx.rotate(-.12-.06*(1-fall));
   ctx.scale(size*(1+.04*press),size*(1-.08*press));ctx.globalAlpha*=.6+.4*fall;
-  polygon(ctx,[[-49,-48],[-43,-52],[44,-51],[49,-46],[48,43],[43,49],[-46,48]],'#fff2d7');
+  polygon(ctx,[[-49,-48],[-43,-52],[44,-51],[49,-46],[48,43],[43,49],[-46,48]],paperPalette.yellow);
   ctx.lineJoin='round';ctx.lineWidth=3;
-  polygon(ctx,[[-42,-43],[39,-44],[42,-40],[41,39],[-40,41],[-43,38]],null,'#943b29');
+  polygon(ctx,[[-42,-43],[39,-44],[42,-40],[41,39],[-40,41],[-43,38]],null,paperPalette.darkStock);
   ctx.lineWidth=.85;ctx.strokeRect(-39,-40,77,77);
-  ctx.fillStyle='#9c3323';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle=paperPalette.darkStock;ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.font='bold 32px "Ziling Swei",sans-serif';ctx.fillText('进阶',0,-18);ctx.fillText('完成',0,16);
   ctx.restore();
 }
@@ -254,13 +255,11 @@ function drawEvolutionStamp(ctx,progress){
 export function evolutionResult(from,to,look){
   const {node:face,ctx}=canvas(320,66,'');
   const edge=[[1,2],[289,2],[301,9],[301,45],[286,60],[0,60]];
-  ctx.save();ctx.translate(1,4);polygon(ctx,edge,'#557aa7');ctx.restore();
-  const paper=ctx.createLinearGradient(0,0,300,61);
-  paper.addColorStop(0,'#dce9f6');paper.addColorStop(.6,'#f6f7f8');paper.addColorStop(1,'#e6edf6');
-  polygon(ctx,edge,paper);polygon(ctx,[[0,2],[15,2],[9,60],[0,60]],'#537cad');
-  polygon(ctx,[[307,49],[320,48],[299,65]],'#6489b8');
+  ctx.save();ctx.translate(1,4);polygon(ctx,edge,paperPalette.darkStock);ctx.restore();
+  polygon(ctx,edge,paperPalette.card);polygon(ctx,[[0,2],[15,2],[9,60],[0,60]],paperPalette.yellow);
+  polygon(ctx,[[307,49],[320,48],[299,65]],paperPalette.yellow);
   ctx.drawImage(appearanceGlyphCanvas(to.word,to.tone,look),12,6,48,48);
-  ctx.textBaseline='middle';ctx.fillStyle='#233a59';ctx.font='bold 21px "Ziling Swei",sans-serif';
+  ctx.textBaseline='middle';ctx.fillStyle=paperPalette.ink;ctx.font='bold 21px "Ziling Swei",sans-serif';
   const route=from.word+' → '+to.word;
   ctx.fillText(route,65,21);
   const {node,ctx:print}=canvas(320,66,'zx-evolution-result');
@@ -273,8 +272,8 @@ export function evolutionResult(from,to,look){
     ctx.font='16px "Ziling Swei",sans-serif';const detailWidth=ctx.measureText(detail).width;
     ctx.font='bold 20px "Ziling Swei",sans-serif';const valueWidth=ctx.measureText(String(after)).width;
     ctx.save();ctx.translate(65,0);ctx.scale(Math.min(1,218/(detailWidth+valueWidth)),1);
-    ctx.font='16px "Ziling Swei",sans-serif';ctx.fillStyle='#374f70';ctx.fillText(detail,0,46);
-    ctx.font='bold 20px "Ziling Swei",sans-serif';ctx.fillStyle='#3d6395';ctx.fillText(String(after),detailWidth,45);ctx.restore();
+    ctx.font='16px "Ziling Swei",sans-serif';ctx.fillStyle=paperPalette.muted;ctx.fillText(detail,0,46);
+    ctx.font='bold 20px "Ziling Swei",sans-serif';ctx.fillStyle=paperPalette.ink;ctx.fillText(String(after),detailWidth,45);ctx.restore();
     node.setAttribute('aria-label','进阶完成，'+route+'，最大生命 '+before+' → '+after);
   }
   function paint(progress){
@@ -303,15 +302,15 @@ export function arrivalPennant(){
 export function settlementTicket(){
   const {node,ctx}=canvas(338,150,'zx-receipt-paper');
   const outline=(y,fill)=>polygon(ctx,[[6,1+y],[66,1+y],[70,5+y],[74,1+y],[330,1+y],[337,8+y],[337,138+y],[330,144+y],[74,144+y],[70,140+y],[66,144+y],[6,144+y],[0,138+y],[0,8+y]],fill);
-  outline(4,'#728AA8');outline(0,'#F0F0F7');
-  polygon(ctx,[[6,1],[65,1],[70,6],[70,139],[65,144],[6,144],[0,138],[0,8]],'#D9E4F2');
-  ctx.fillStyle='#A3B5CA';for(let y=11;y<136;y+=9)ctx.fillRect(69,y,1.2,4);
-  polygon(ctx,[[19,45],[47,40],[54,86],[25,90]],'#829EBF');
-  polygon(ctx,[[15,42],[42,39],[50,45],[55,81],[21,87]],'#FBF8FC');
-  polygon(ctx,[[42,39],[42,47],[50,45]],'#BCD1E3');
-  ctx.strokeStyle='#8CA5BE';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(22,54);ctx.lineTo(40,51);ctx.moveTo(23,60);ctx.lineTo(37,58);ctx.stroke();
-  polygon(ctx,[[30,70],[52,67],[57,71],[58,79],[54,83],[32,86],[28,82],[27,74]],'#AB6070');
-  polygon(ctx,[[35,76],[39,78],[48,71],[50,73],[40,82],[33,78]],'#F4EEF4');
+  outline(4,paperPalette.darkStock);outline(0,paperPalette.card);
+  polygon(ctx,[[6,1],[65,1],[70,6],[70,139],[65,144],[6,144],[0,138],[0,8]],paperPalette.yellow);
+  ctx.fillStyle=paperPalette.muted;for(let y=11;y<136;y+=9)ctx.fillRect(69,y,1.2,4);
+  polygon(ctx,[[19,45],[47,40],[54,86],[25,90]],paperPalette.muted);
+  polygon(ctx,[[15,42],[42,39],[50,45],[55,81],[21,87]],paperPalette.warmWhite);
+  polygon(ctx,[[42,39],[42,47],[50,45]],paperPalette.inset);
+  ctx.strokeStyle=paperPalette.muted;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(22,54);ctx.lineTo(40,51);ctx.moveTo(23,60);ctx.lineTo(37,58);ctx.stroke();
+  polygon(ctx,[[30,70],[52,67],[57,71],[58,79],[54,83],[32,86],[28,82],[27,74]],paperPalette.darkStock);
+  polygon(ctx,[[35,76],[39,78],[48,71],[50,73],[40,82],[33,78]],paperPalette.warmWhite);
   return node;
 }
 
@@ -413,7 +412,12 @@ export function stagePortrait(character,appearance=null,large=false,stock='flat'
   const portrait=document.createElement('span');
   portrait.className='paper-stage-photo paper-portrait';portrait.dataset.paperSurface=stock;
   if(stock==='flat'){
-    const print=document.createElement('img');print.src='assets/ui-paper/stage-portrait.webp';print.alt='';
+    const {node:print,ctx}=canvas(94,106,'paper-portrait-print');
+    ctx.translate(47,53);ctx.rotate(-.145);
+    ctx.fillStyle=paperPalette.line;ctx.fillRect(-38,-44,78,94);
+    ctx.fillStyle=paperPalette.warmWhite;ctx.fillRect(-39,-47,78,94);
+    ctx.fillStyle=paperPalette.paper;ctx.fillRect(-34,-42,68,73);
+    ctx.save();ctx.translate(-34,-42);paintPhotoWaves(ctx,68,73,paperPalette.yellow,paperPalette.inset);ctx.restore();
     portrait.append(print);
   }
   const scale=large?2:1;

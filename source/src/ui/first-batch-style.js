@@ -325,17 +325,17 @@ html.zixing .zx .zx-shop-shelves .zx-review-footer>button{width:0;min-width:0;he
 .zx .zx-combat-shell .zx-review-shop{background:transparent}
 .zx .zx-combat-shell .zx-review-shop>.help{color:#F3F1FA}
 .zx .zx-paper-upgrade-head.long-title>h1,.zx .zx-paper-upgrade-head.long-title>h2{font-size:20px;line-height:29px}
-.zx.zx-modal-wrap.zx-arcade-overlay{background:rgba(22,31,52,.72);padding:16px 12px}
-.zx-arcade{position:relative;width:100%;max-width:334px;display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:0 18px 16px;background:#AFC4DC;border-radius:9px}
+.zx.zx-modal-wrap.zx-arcade-overlay{background:rgba(33,29,41,.79);padding:16px 12px}
+.zx-arcade{position:relative;width:100%;max-width:334px;display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:0 18px 16px;background:var(--paper-paper);border-radius:9px}
 .zx-arcade-header{display:flex;flex-direction:row;align-items:center;justify-content:space-between;height:48px;padding:0 7px}
-.zx-arcade-header>h2{margin:0;font-size:21px;line-height:28px;font-weight:800;color:#F3F1FA}
-.zx-arcade-header>span{display:flex;align-items:center;gap:4px;color:#F3F1FA;font-size:15px}
-.zx-arcade-window{display:flex;flex-direction:row;align-items:stretch;gap:4px;background:#3D506D;border-bottom:4px solid #7591B0;padding:5px}
-.zx-arcade-reel{flex:1;min-width:0;height:94px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:#ECEDF5;border-top:4px solid #BCCCE0;border-bottom:4px solid #A9BDD5}
-.zx-arcade-reel>b{font-size:34px;line-height:43px;color:#32476A}
-.zx-arcade-notch{width:21px;height:3px;background:#D0DAE9}
+.zx-arcade-header>h2{margin:0;font-size:21px;line-height:28px;font-weight:800;color:var(--paper-warmWhite)}
+.zx-arcade-header>span{display:flex;align-items:center;gap:4px;color:var(--paper-yellow);font-size:15px}
+.zx-arcade-window{display:flex;flex-direction:row;align-items:stretch;gap:4px;background:var(--paper-darkStock);border-bottom:4px solid var(--paper-line);padding:5px}
+.zx-arcade-reel{flex:1;min-width:0;height:94px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:var(--paper-card);border-top:4px solid var(--paper-inset);border-bottom:4px solid var(--paper-line)}
+.zx-arcade-reel>b{font-size:34px;line-height:43px;color:var(--paper-ink)}
+.zx-arcade-notch{width:21px;height:3px;background:var(--paper-yellow)}
 .zx-arcade-tray{display:flex;flex-direction:column;align-items:center;gap:4px;padding:2px 4px 8px}
-.zx-arcade-tray>b{color:#283C5E;font-size:18px}.zx-arcade-caption{margin:0;color:#354966;font-size:14px;line-height:20px;text-align:center}
+.zx-arcade-tray>b{color:var(--paper-ink);font-size:18px}.zx-arcade-caption{margin:0;color:var(--paper-muted);font-size:14px;line-height:20px;text-align:center}
 .zx-arcade-controls{display:flex;gap:8px;align-items:center;flex-direction:row;padding:2px 0 0}
 .zx-arcade-controls>.primary{flex:1;min-width:0}
 .zx.zx-modal-wrap.zx-atlas-overlay{padding:12px 6px 76px;background:rgba(36,30,41,.78)}
