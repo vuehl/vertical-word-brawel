@@ -405,7 +405,7 @@ export async function setup(host) {
     invalidateUI:()=>uiFrames.invalidate(false,true),
     playJourneyOpening(options={}){
       journeyOpening?.dispose();
-      journeyOpening=createJourneyOpening(wx,{...options,now:()=>perf.now(),onDispose:()=>{
+      journeyOpening=createJourneyOpening(wx,{...options,pathFor:url=>host.files.pathFor(url),now:()=>perf.now(),onDispose:()=>{
         draw?.releaseSlot(30);uiFrames.invalidate(true,true);
       }});
       return journeyOpening;

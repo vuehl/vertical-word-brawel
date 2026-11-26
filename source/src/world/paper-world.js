@@ -26,6 +26,7 @@ export function disposePaperWorld(terrain){
       if(value.isTexture)value.image=null;
     }
     terrain.deskOwned.length=0;
+    terrain.deskExteriorSheets.length=0;
     terrain.deskTextures.clear();
     terrain.deskDeviceGeometries?.clear();
     terrain.deskAtlas.art=null;

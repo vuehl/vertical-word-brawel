@@ -3,7 +3,8 @@ import {createOpeningFrames} from './journey-opening-frames.mjs';
 // paused while the app is hidden and avoids retaining a sequence of RGBA frames.
 export const openingFilm={frames:169,fps:24,fadeMs:800};
 
-export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=>{},paused=false,createSource=()=>createOpeningFrames(wx)}={}) {
+export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=>{},paused=false,pathFor=url=>url,
+  createSource=()=>createOpeningFrames(wx,{pathFor})}={}) {
   let decoder=null,frame=null,count=0,clock=null,credit=1000/openingFilm.fps;
   let stalled=0,ended=false,done=false,disposed=false,revealing=false,fade=0,failure=null;
   let finish,uncover;

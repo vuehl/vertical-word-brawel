@@ -46,6 +46,11 @@ export function bootAssets(root) {
   for(const name of ['ultimate-cast.webp','nameplate-blade.webp','ultimate-cast-ink.bin']){
     assets['assets/vfx/'+name]=fs.readFileSync(path.join(root,'platform',name));
   }
+  // Keep the opening pages inside the archive too: DevTools can play loose
+  // WebP files locally even when the QR-preview upload leaves them out.
+  const opening=path.join(root,'resources/public/assets/opening');
+  const {files}=JSON.parse(fs.readFileSync(path.join(opening,'frames.json'),'utf8'));
+  for(const name of files)assets['assets/opening/'+name]=fs.readFileSync(path.join(opening,name));
   const directory=path.join(root,'resources/public/assets/ui-paper');
   for(const name of fs.readdirSync(directory)){
     if(/\.(png|webp)$/.test(name))assets['assets/ui-paper/'+name]=fs.readFileSync(path.join(directory,name));
@@ -61,7 +66,8 @@ export function addBootAssets(out, assets) {
   const files = Object.entries(assets).map(([key,data])=>({key,data,name:hash(data)+path.extname(key)}));
   const archive = path.join(out,'packs/text/assets.br');
   const packed = fs.readFileSync(archive);
-  const removed=Object.keys(info.files).filter(key=>key.startsWith('assets/ui-paper/')&&!Object.hasOwn(assets,key));
+  const removed=Object.keys(info.files).filter(key=>
+    (key.startsWith('assets/ui-paper/')||key.startsWith('assets/opening/'))&&!Object.hasOwn(assets,key));
   if (!removed.length && hash(packed)===info.packs.text && files.every(({key,name})=>info.files[key]==='text/'+name)) return;
   const entries = Object.create(null);
   unpackStream(brotliDecompressSync(packed), (name,bytes)=>{entries[name]=bytes;});

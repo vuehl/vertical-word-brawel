@@ -134,7 +134,13 @@ globalThis.wx={
   createCanvas:canvas,createOffscreenCanvas:nativeCanvas,
   createVideoDecoder(){throw Error('Opening must work without the native video decoder');},
   createImage(){const img=new Image();Object.defineProperty(img,'src',{get(){return imageSrc.get.call(img);},set(path){
-    if(window.failOpeningPageOnce&&/^play\/opening\//.test(path)){
+    // Match the QR preview: loose WebP files are absent from its package.
+    // Only installed user-data files and inline images may use WebP here.
+    if(/\.webp$/.test(path)&&!data.has(path)){
+      queueMicrotask(()=>img.dispatchEvent(new Event('error')));return;
+    }
+    const openingPath=window.__host?.files.pathFor('assets/opening/p00.webp');
+    if(window.failOpeningPageOnce&&path===openingPath){
       window.failOpeningPageOnce=false;queueMicrotask(()=>img.dispatchEvent(new Event('error')));return;
     }
     const record={path:path.startsWith('data:image/')?path.slice(0,path.indexOf(',')):path,width:0,height:0};

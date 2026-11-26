@@ -1,0 +1,46 @@
+{
+  "bounds": [
+    -757,
+    -1152,
+    5899,
+    5056
+  ],
+  "gutter": 2,
+  "parts": [
+    [
+      "exterior/north-west.webp",
+      -757,
+      -1152,
+      2571,
+      4
+    ],
+    [
+      "exterior/north-east.webp",
+      2571,
+      -1152,
+      5899,
+      4
+    ],
+    [
+      "exterior/west.webp",
+      -757,
+      4,
+      4,
+      3800
+    ],
+    [
+      "exterior/east.webp",
+      5138,
+      4,
+      5899,
+      3800
+    ],
+    [
+      "exterior/south.webp",
+      -757,
+      3800,
+      5899,
+      5056
+    ]
+  ]
+}

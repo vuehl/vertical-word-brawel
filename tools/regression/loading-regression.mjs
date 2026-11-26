@@ -1,5 +1,7 @@
 import {FOREST_ROUTE} from '../../source/src/data/lite-rules.js';
 import assert from 'node:assert/strict';
+import {deskBattleLayers} from '../../source/src/world/desk-stage-layout.js';
+import exterior from '../../resources/public/config/desk-exterior.json' with {type:'json'};
 import fs from 'node:fs';
 import path from 'node:path';
 import {verifyMapRefresh} from './entry-regression.mjs';
@@ -319,8 +321,9 @@ export async function reviewLoading({page,tap,resize,dir,sleep}) {
       const metric=s.loadingMetrics.at(-1);
       if(s.desk2d){
         const layout=JSON.parse(fs.readFileSync(new URL('../../resources/public/config/desk2d-layout.json',import.meta.url),'utf8'));
-        const layers=s.stage===4?layout.layers.filter(layer=>['shelf','desk'].includes(layer.name)):layout.layers;
-        assert.equal(s.deskLayers,layers.reduce((count,layer)=>count+layer.parts.length,0),'Every desk artwork layer is ready at entry');
+        const layers=deskBattleLayers(s.stage,layout);
+        const exteriorTiles=s.stage===4?0:exterior.parts.length;
+        assert.equal(s.deskLayers,layers.reduce((count,layer)=>count+layer.parts.length,exteriorTiles),'Every desk artwork layer is ready at entry');
         assert.ok(metric.terrain.steps>=s.deskLayers&&s.colliders>0);
       }else assert.ok(metric.terrain.yields>0);
       if(s.stage<4)assert.ok(metric.interactions.yields>0);

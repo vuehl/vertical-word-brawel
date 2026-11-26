@@ -551,7 +551,7 @@ function sealFace(source){
   tile.getContext('2d').drawImage(source,0,0);
   sealFaces.set(source,tile);return tile;
 }
-// Reuse the desaturated attribute icon while the ultimate charges.
+// Reuse the desaturated attribute icon during the cast and while it charges.
 const mutedSeals=new WeakMap();
 function mutedSeal(source){
   if(mutedSeals.has(source))return mutedSeals.get(source);
@@ -571,7 +571,7 @@ export function drawUltimateSeal(canvas,source,progress,state,palette,diamondFra
   canvas.readyFace=image;
   canvas.readyFaceSize=84;
   if(!image)return;
-  ctx.drawImage(state==='charging'?mutedSeal(image):image,0,0,84,84);
+  ctx.drawImage(state==='ready'?image:mutedSeal(image),0,0,84,84);
   if(state==='ready'&&palette){
     drawReadyDiamonds(ctx,palette,diamondFrame);
     ctx.fillStyle=palette.label;ctx.fillRect(22,58,40,15);

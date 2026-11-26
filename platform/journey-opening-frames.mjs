@@ -1,20 +1,28 @@
 // Decode the supplied film as ordinary image pages, without VideoDecoder.
 // Only the current and next six-frame pages are retained in native memory.
-export function createOpeningFrames(wx){
+export function createOpeningFrames(wx,{pathFor=url=>url}={}){
   const width=390,height=844,frames=169,perPage=6,columns=3;
   const canvas=wx.createCanvas();canvas.width=width;canvas.height=height;
   const ctx=canvas.getContext('2d'),pages=new Map();
   let index=0,removed=false,error=null,ended=()=>{};
   function load(page){
     if(removed||page>=Math.ceil(frames/perPage)||pages.has(page))return;
+    const key='assets/opening/p'+String(page).padStart(2,'0')+'.webp';
+    const path=pathFor(key);
+    if(!path)throw Error('找不到开场动画图片 '+key);
     const image=wx.createImage(),entry={image,ready:false,timer:null};pages.set(page,entry);
-    const fail=()=>{
+    const fail=event=>{
       clearTimeout(entry.timer);
-      if(!removed)error=Error('开场动画图片读取失败，请重试');
+      if(!removed){
+        console.warn('[字由搏击] 开场动画图片读取失败',key,path,event?.errMsg||event?.message||'image load failed');
+        error=Error('开场动画图片读取失败，请重试');
+      }
     };
     image.onload=()=>{clearTimeout(entry.timer);if(!removed)entry.ready=true;};
     image.onerror=fail;entry.timer=setTimeout(fail,12000);
-    image.src='play/opening/p'+String(page).padStart(2,'0')+'.webp';
+    // Preview uploads omit loose WebP files. Resolve the copy installed from
+    // the versioned text archive, just like the other startup artwork.
+    image.src=path;
   }
   return {
     on(name,fn){if(name==='ended')ended=fn;},

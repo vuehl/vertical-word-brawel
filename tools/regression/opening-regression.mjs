@@ -11,12 +11,13 @@ export async function verifyOpening({page,dir}){
     await page.evaluate(()=>app.screen.querySelector('[data-action="retry-entry"]').click());
   }
   // No tap is sent at any point in this cold-launch scenario.
-  await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed&&app.entryOpening?.frameCount>0,{timeout:60000});
-  assert.ok(await page.evaluate(()=>bootLabels.includes('100%')));
-  assert.equal(await page.evaluate(()=>app.screen.dataset.page),'entry');
-  await page.evaluate(()=>{
+  // Install the audit and hide in the same browser task that observes the first
+  // frame. Separate CDP calls can arrive after the whole film under GPU load.
+  await page.waitForFunction(()=>{
+    if(!GameGlobal.pokebonk.bootDiagnostics.completed||!(app.entryOpening?.frameCount>0))return false;
     const env=inspected.env,draw=env.drawUI;
-    window.openingAudit={fadeFrames:0,times:[],images:{},framesBeforeHide:app.entryOpening.frameCount};
+    window.openingAudit={fadeFrames:0,times:[],images:{},framesBeforeHide:app.entryOpening.frameCount,
+      entryScreen:app.screen?.dataset.page};
     env.drawUI=(...args)=>{
       const result=draw(...args),film=app.entryOpening;
       if(film?.revealing){openingAudit.fadeFrames++;openingAudit.times.push(app.run.time);}
@@ -25,7 +26,10 @@ export async function verifyOpening({page,dir}){
       return result;
     };
     fixtureHide();
-  });
+    return true;
+  },{timeout:60000});
+  assert.ok(await page.evaluate(()=>bootLabels.includes('100%')));
+  assert.equal(await page.evaluate(()=>openingAudit.entryScreen),'entry');
   await new Promise(resolve=>setTimeout(resolve,300));
   assert.ok(await page.evaluate(()=>app.entryOpening.frameCount===openingAudit.framesBeforeHide));
   await page.evaluate(()=>{fixtureShow();releaseOptionalDownloads();});

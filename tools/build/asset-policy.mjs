@@ -1,3 +1,5 @@
+import deskLayout from '../../resources/public/config/desk2d-layout.json' with {type:'json'};
+import {deskLayers} from '../../source/src/world/desk-stage-layout.js';
 import {paperPropNames} from '../../source/src/world/paper-prop-names.js';
 import {isActiveItem} from '../../source/src/data/active-content.js';
 import {heldItems, shop, vitamins} from '../../source/src/data/catalogs.js';
@@ -7,7 +9,10 @@ import {isPlayableHeroForm} from '../../source/src/data/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=103;
+export const assetPolicyVersion=104;
+const bareDesk=new Set(deskLayers(4,deskLayout.layers));
+const bakedDeskSources=new Set(deskLayout.layers.filter(l=>!bareDesk.has(l)).flatMap(l=>
+  l.parts.map(([file])=>'assets/env/desk2d/'+file)));
 // Full RGBA wind cells use lossless encoding rather than a shared 256-colour palette.
 export const windClarityAtlases=new Set(['wind-replacements','wind-moves','wind-skills','wind-vortex','air-slash-reference'].map(name=>'assets/vfx/'+name+'.png'));
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
@@ -39,6 +44,7 @@ export function itemIconSelectionChanged(files) {
 // Exclusions are based on the enabled forest-only rules and procedural world,
 // not merely on absence from a short playthrough.
 export function excludedAssetReason(key){
+  if(bakedDeskSources.has(key))return '已合入桌面战斗贴图或独立淡出图层';
   if(key==='assets/vfx/air-slash-wave.webp')return '空气斩轮廓重建源，运行时使用参考动画图集';
   if(bundledAtlasMetadata.has(key))return '图集坐标已编入玩法脚本';
   if(key==='assets/models/devices/传送门.glb')return '召唤装置使用手绘时钟贴图';

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {brotliDecompressSync} from 'node:zlib';
+import decodeBrotli from 'brotli/decompress.js';
 import {packStream} from '../build/pack-resources.mjs';
 import {resourceEntries} from '../build/resource-stream.mjs';
 import codec from '../../platform/resource-codec.js';
@@ -71,6 +72,7 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
   }
   const info={packs:{world:'1111111111111111',art:'2222222222222222',text:'3333333333333333'},rawSizes:{world:4,art:4,text:4},
     files:Object.fromEntries(Object.keys(recipes).map(file=>['assets/models/'+file,'world/'+file])),sprites:{}};
+  const runtime={decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text'}[new Uint8Array(raw)[0]]],decodeBrotli};
   const context={module:{exports:{}},console,Uint8Array,Date,clearTimeout,
     setTimeout:(fn,ms)=>{if(ms===0)yields++;return setTimeout(fn,ms===30000&&stalledWrite?10:ms);},
     wx:{env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>manager,loadSubpackage(options){
@@ -79,11 +81,11 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
       queueMicrotask(options.success);
     }},
     require(name){if(name==='./assets')return info;if(name==='./resource-codec')return codec;
-      if(name==='./resource-runtime')return {decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text'}[new Uint8Array(raw)[0]]]};
+      if(name==='./resource-runtime')return {...runtime,resourceEntries:(...args)=>runtime.resourceEntries(...args),decodeBrotli:(...args)=>runtime.decodeBrotli(...args)};
       throw Error(name);}
   };
   vm.runInNewContext(fs.readFileSync(new URL('../../platform/files.js',import.meta.url),'utf8'),context);
-  return {api:context.module.exports,data,dirs,downloads,info,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
+  return {api:context.module.exports,data,dirs,downloads,info,manager,runtime,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
     get io(){return {asyncReads,syncReads,asyncWrites};},failNext(file,message='simulated disk error'){failFile=file;writeError=message;}};
 }
 
@@ -220,6 +222,69 @@ test('older native file APIs can still install and materialize a model',async()=
   const fixture=installer({nativeAsync:false});await fixture.api.prepareForest();
   const file=await fixture.api.resolvePath('assets/models/model-0.glb');
   assert.equal(fixture.io.syncReads,2);assert.ok(fixture.data.has(file));assert.ok(fixture.yields>0);
+});
+
+function realTextInstaller(){
+  const f=installer(),contents=Buffer.from('开场资源 '.repeat(80));
+  const packed=packStream({'test.txt':contents},'text');
+  const raw=brotliDecompressSync(packed.bytes);
+  f.data.set('packs/text/assets.br',packed.bytes);
+  f.info.rawSizes.text=packed.rawSize;
+  f.runtime.resourceEntries=resourceEntries;
+  const installed='/userdata/pokebonk-assets/text-'+f.info.packs.text+'/';
+  return {...f,contents,packed,raw,installed};
+}
+
+test('native decompression accepts direct buffers, wrapped buffers and exact binary views',async t=>{
+  for(const mode of ['async-direct','async-wrapped','async-view','sync-wrapped','sync-view'])await t.test(mode,async()=>{
+    const f=realTextInstaller();
+    const padded=new Uint8Array(f.raw.length+16);padded.set(f.raw,7);
+    const value=mode.endsWith('view')?new DataView(padded.buffer,7,f.raw.length):f.raw.buffer.slice(f.raw.byteOffset,f.raw.byteOffset+f.raw.byteLength);
+    if(mode.startsWith('async')){
+      f.manager.readCompressedFile=({success})=>success(mode==='async-direct'?value:{data:value});
+      f.manager.readCompressedFileSync=()=>{throw Error('unnecessary sync decode');};
+    }else{
+      delete f.manager.readCompressedFile;
+      f.manager.readCompressedFileSync=()=>mode==='sync-wrapped'?{data:value}:value;
+    }
+    f.runtime.decodeBrotli=()=>{throw Error('unnecessary JS decode');};
+    await f.api.init();
+    assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+  });
+});
+
+test('fallback reads compressed or already-expanded files without decoding a payload twice',async t=>{
+  for(const expanded of [false,true])for(const wrapped of [false,true])await t.test(JSON.stringify({expanded,wrapped}),async()=>{
+    const f=realTextInstaller(),bytes=expanded?f.raw:f.packed.bytes;
+    // Both native methods can exist yet return an unusable result.
+    f.manager.readCompressedFile=({success})=>success({data:new ArrayBuffer(0)});
+    f.manager.readCompressedFileSync=()=>new ArrayBuffer(1);
+    const padded=new Uint8Array(bytes.length+9);padded.set(bytes,4);
+    f.manager.readFile=({success})=>{
+      const view=new DataView(padded.buffer,4,bytes.length);
+      success(wrapped?{data:view}:view);
+    };
+    let decodes=0;
+    f.runtime.decodeBrotli=(...args)=>{decodes++;return decodeBrotli(...args);};
+    await f.api.init();
+    assert.equal(decodes,expanded?0:1);
+    assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+  });
+});
+
+test('an older mounted archive fails length validation without committing its cache, then retries',async()=>{
+  const f=realTextInstaller(),expected=f.info.rawSizes.text;
+  const old=packStream({'test.txt':Buffer.from('old')},'text');
+  f.data.set('packs/text/assets.br',old.bytes);
+  f.manager.readCompressedFile=({success})=>success({data:brotliDecompressSync(old.bytes)});
+  f.manager.readCompressedFileSync=()=>brotliDecompressSync(old.bytes);
+  await assert.rejects(f.api.init(),error=>error.message.includes('预期 '+expected)&&error.message.includes('js='+old.rawSize));
+  assert.ok(!f.data.has(f.installed+'.ready'));
+  assert.ok(!f.data.has(f.installed+'test.txt'));
+  f.data.set('packs/text/assets.br',f.packed.bytes);
+  await f.api.init();
+  assert.ok(f.data.has(f.installed+'.ready'));
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
 });
 
 test('previously installed models work without recipes or another download',async()=>{

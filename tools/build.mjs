@@ -17,6 +17,8 @@ const projectRoot=gameProject(root,development);
 const developer=development?await import('./developer/build-support.mjs'):null;
 const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
+// Generate pages before either the full or incremental startup archive reads them.
+await buildOpeningAtlas(root);
 const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
 if(installedAssets?.policyVersion!==assetPolicyVersion||itemIconSelectionChanged(installedAssets.files)||
@@ -104,11 +106,14 @@ function writeScript(destination,code){
   }finally{fs.rmSync(pending,{force:true});}
 }
 for(const [name,code] of result.files)writeScript(path.join(playDir,name),code);
-// The source movie stays in resources; phones play its native image pages.
+// The source movie stays in resources; the image pages ship in the text archive.
 fs.rmSync(path.join(playDir,'journey-opening.mp4'),{force:true});
-const opening=await buildOpeningAtlas(root),openingDir=path.join(playDir,'opening');
-fs.mkdirSync(openingDir,{recursive:true});
-for(const name of opening.files)fs.copyFileSync(path.join(opening.dir,name),path.join(openingDir,name));
+const openingDir=path.resolve(playDir,'opening');
+if(!openingDir.startsWith(path.resolve(out)+path.sep))throw Error('Invalid generated opening directory');
+if(fs.existsSync(openingDir)){
+  for(const name of fs.readdirSync(openingDir))if(/^p\d+\.webp$/.test(name))fs.unlinkSync(path.join(openingDir,name));
+  if(!fs.readdirSync(openingDir).length)fs.rmdirSync(openingDir);
+}
 for(const name of fs.readdirSync(playDir)){
   if(name.endsWith('.js')&&!result.files.has(name))fs.unlinkSync(path.join(playDir,name));
 }

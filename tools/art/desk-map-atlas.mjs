@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import {deskPrintLayers} from './desk-scenery.mjs';
 import {deskTilt} from '../../source/src/world/desk-framing.js';
 import {deskLayers,deskAtlasFile} from '../../source/src/world/desk-stage-layout.js';
 
@@ -13,9 +14,9 @@ export async function writeDeskMapAtlas(pub){
 }
 
 async function printDesk(pub,width,height,layers,file){
-  const tiles=layers.flatMap(layer=>layer.parts.map(([file,left,top])=>({
-    input:path.join(pub,'assets/env/desk2d',file),left,top,
-  })));
+  const furnished=layers.some(layer=>layer.name==='toy0');
+  const tiles=deskPrintLayers(pub,layers,furnished).flatMap(({parts})=>
+    parts.map(({input,left,top})=>({input,left,top})));
   const {data:scene,info}=await sharp({create:{width,height,channels:4,background:'#e7dfcd'}})
     .composite(tiles).raw().toBuffer({resolveWithObject:true});
   const density=640/Math.max(width,height/deskTilt);

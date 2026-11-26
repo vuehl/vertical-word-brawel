@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {buildHashes} from './build/preview-files.mjs';
+import {buildHashes,verifyAssetPackages} from './build/preview-files.mjs';
 import {verifyDeveloperPreview,writeDeveloperPreviewPage} from './developer/preview-support.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
@@ -24,6 +24,7 @@ function runCLI(args){
 }
 
 execFileSync(process.execPath,[path.join(import.meta.dirname,'build.mjs'),...(development?['--dev']:[])],{cwd:root,stdio:'inherit',windowsHide:true});
+verifyAssetPackages(projectRoot);
 fs.mkdirSync(output,{recursive:true});
 const hashes=buildHashes(projectRoot);
 const developerBuild=development?verifyDeveloperPreview(projectRoot):null;

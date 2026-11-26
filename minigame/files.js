@@ -28,30 +28,50 @@ function fileCall(method,options) {
   });
 }
 async function readFile(filePath,encoding) {
-  if(typeof fs().readFile==='function')return (await fileCall('readFile',Object.assign({filePath},encoding?{encoding}:{}))).data;
+  if(typeof fs().readFile==='function'){
+    const result=await fileCall('readFile',Object.assign({filePath},encoding?{encoding}:{}));
+    return result&&result.data!==undefined?result.data:result;
+  }
   return fs().readFileSync(filePath,encoding);
 }
 async function writeFile(filePath,data,encoding) {
   if(typeof fs().writeFile==='function')await fileCall('writeFile',Object.assign({filePath,data},encoding?{encoding}:{}));
   else fs().writeFileSync(filePath,data,encoding);
 }
+function binaryBytes(value) {
+  // Native bridges may return a result object or a view into a larger buffer.
+  if(value&&value.data!==undefined)value=value.data;
+  if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);
+  if(Object.prototype.toString.call(value)==='[object ArrayBuffer]')return new Uint8Array(value);
+  throw Error('资源接口未返回二进制数据');
+}
 async function readBrotli(archive,expected) {
-  const manager=fs();let raw;
+  const manager=fs(),attempts=[];let raw;
+  function accept(value,method){
+    raw=binaryBytes(value);attempts.push(method+'='+raw.byteLength);
+    return raw.byteLength===expected;
+  }
   if(typeof manager.readCompressedFile==='function'){
-    try {raw=(await fileCall('readCompressedFile',{filePath:archive,compressionAlgorithm:'br'})).data;}
+    try {if(accept(await fileCall('readCompressedFile',{filePath:archive,compressionAlgorithm:'br'}),'async'))return raw;}
     catch(error){console.warn('[字由搏击] 异步解压失败',archive,error);}
   }
-  if((!raw||raw.byteLength!==expected)&&typeof manager.readCompressedFileSync==='function'){
+  if(typeof manager.readCompressedFileSync==='function'){
     await yieldTask();
-    try {raw=manager.readCompressedFileSync({filePath:archive,compressionAlgorithm:'br'});}
+    try {if(accept(manager.readCompressedFileSync({filePath:archive,compressionAlgorithm:'br'}),'sync'))return raw;}
     catch(error){console.warn('[字由搏击] 原生解压失败，使用备用解码器',archive,error);}
   }
-  if(!raw||raw.byteLength!==expected){
-    const bytes=new Uint8Array(await readFile(archive));await yieldTask();
-    raw=decodeBrotli(bytes,expected);
+  const bytes=binaryBytes(await readFile(archive));
+  // A package reader can expose the already-expanded .br contents. Do not
+  // decode that payload twice; the resource manifest is still checked below.
+  if(accept(bytes,'read'))return raw;
+  await yieldTask();
+  try {
+    if(accept(decodeBrotli(bytes,expected),'js'))return raw;
+  } catch(error){
+    console.warn('[字由搏击] 备用解码失败',archive,error);
+    attempts.push('js:error');
   }
-  if(!raw||raw.byteLength!==expected)throw Error('解压后长度不符 '+archive);
-  return raw;
+  throw Error('解压后长度不符 '+archive+'（预期 '+expected+'；'+attempts.join(', ')+'）');
 }
 function packageAvailable(name) {
   return name === 'play' ? !!(GameGlobal.pokebonkPlayEntry && GameGlobal.pokebonkPlayEntry.api)

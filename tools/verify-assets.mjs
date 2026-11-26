@@ -1,3 +1,5 @@
+import {deskBattleLayers} from '../source/src/world/desk-stage-layout.js';
+import {bakeDeskScenery} from './art/desk-scenery.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
@@ -82,6 +84,14 @@ for(const name of ['ultimate-cast.webp','nameplate-blade.webp','ultimate-cast-in
   const key='assets/vfx/'+name;
   assert.match(index.files[key],/^text\//,'Cast resources must be installed before the first battle');
   assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(root,'platform',name))),key);
+}
+const opening=JSON.parse(fs.readFileSync(path.join(pub,'assets/opening/frames.json'),'utf8'));
+assert.equal(opening.frames,169);assert.equal(opening.files.length,Math.ceil(opening.frames/opening.perPage));
+for(const name of opening.files){
+  const key='assets/opening/'+name;
+  assert.match(index.files[key],/^text\//,'Opening pages must survive QR preview packaging');
+  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),key);
+  assert.equal(fs.existsSync(path.join(root,'minigame/play/opening',name)),false,'Do not rely on loose WebP pages');
 }
 // This WebP encodes palette indices as pixels. Any transcoding corrupts both themes.
 const chantAsset='assets/vfx/dragon-chant.webp';
@@ -255,11 +265,18 @@ assert.deepEqual(models,['assets/models/ball.glb']);
 for(const key of models)assert.equal(digest(bytes(key)),digest(fs.readFileSync(fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key))),key);
 const deskDevices=JSON.parse(fs.readFileSync(path.join(pub,'config/desk2d-devices.json'),'utf8'));
 const deskLayout=JSON.parse(fs.readFileSync(path.join(pub,'config/desk2d-layout.json'),'utf8'));
-const deskTiles=deskLayout.layers.flatMap(layer=>layer.parts.map(([name])=>'assets/env/desk2d/'+name));
-assert.deepEqual(Object.keys(index.files).filter(key=>/^assets\/env\/desk2d\/[^/]+-\d+\.webp$/.test(key)).sort(),
+const exterior=JSON.parse(fs.readFileSync(path.join(pub,'config/desk-exterior.json'),'utf8'));
+const deskFiles=stage=>deskBattleLayers(stage,deskLayout).flatMap(layer=>layer.parts.map(([name])=>'assets/env/desk2d/'+name));
+const deskTiles=[...deskFiles(4),...deskFiles(1),...exterior.parts.map(([name])=>'assets/env/desk2d/'+name)];
+assert.deepEqual(Object.keys(index.files).filter(key=>/^assets\/env\/desk2d\/(?:[^/]+-\d+\.webp|(?:furnished|exterior)\/.*)$/.test(key)).sort(),
   deskTiles.sort(),'Packed map tiles must match the current layout');
-for(const key of deskTiles)
+for(const key of [...deskFiles(4),...exterior.parts.map(([file])=>'assets/env/desk2d/'+file)])
   assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),'Stale packed map tile '+key);
+await bakeDeskScenery(pub,(file,data)=>assert.equal(digest(bytes('assets/env/desk2d/'+file)),digest(data),'Stale baked tile '+file));
+for(const {name,parts} of deskLayout.layers.filter(layer=>['cup','zhi'].includes(layer.name))){
+  for(const [file] of parts)assert.equal(digest(bytes('assets/env/desk2d/furnished/'+file)),
+    digest(fs.readFileSync(path.join(pub,'assets/env/desk2d',file))),name+' must keep its original sprite');
+}
 const paperDirectory='assets/ui-paper/';
 const paperImages=fs.readdirSync(path.join(pub,paperDirectory)).filter(name=>/\.(png|webp)$/.test(name));
 assert.ok(paperImages.includes('journey-desk.webp'),'Missing menu backdrop');
@@ -302,6 +319,7 @@ for(const kind of Object.keys(facilityNames)){
   }
 }
 for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.startsWith('assets/env/'))) {
+  if(deskTiles.includes(key))continue; // Checked against the bare or baked artwork above.
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }

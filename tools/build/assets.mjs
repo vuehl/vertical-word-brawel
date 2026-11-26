@@ -6,7 +6,9 @@ import {brotliCompressSync,constants} from 'node:zlib';
 import {execFileSync} from 'node:child_process';
 import sharp from 'sharp';
 import {writeDeskMapAtlas} from '../art/desk-map-atlas.mjs';
+import {bakeDeskScenery} from '../art/desk-scenery.mjs';
 import {bootAssets} from './boot-assets.mjs';
+import {buildOpeningAtlas} from '../art/build-journey-opening.mjs';
 import {packModels,packStream} from './pack-resources.mjs';
 import {isAtlasIcon,packIconAtlases} from './icon-atlases.mjs';
 import {writeHeroActions} from '../art/hero-actions.mjs';
@@ -62,6 +64,11 @@ function sourceFor(key) {
 const buckets = {pmd:'art', icons:'art', portraits:'art', items:'art', front:'art',
   ui:'world', env:'world', models:'world', glyphs:'art', vfx:'art', sfx:'text', music:'sound'};
 const selected = new Set();
+await bakeDeskScenery(pub,(file,bytes)=>{
+  const key='assets/env/desk2d/'+file;
+  add('world',key,bytes);
+  selected.add(key);
+});
 const icons=[];
 const excluded = new Map();
 for (const folder of ['assets', 'overrides/assets']) {
@@ -137,6 +144,7 @@ execFileSync(python,[...(python === 'py'?['-3.13']:[]),path.join(import.meta.dir
 for (const weight of ['regular','bold']) add('text','fonts/'+weight+'.ttf',fs.readFileSync(path.join(temp,weight+'.ttf')));
 add('text','fonts/OFL.txt',fs.readFileSync(path.join(pub,'fonts/swei/SIL_Open_Font_License_1.1.txt')));
 for (const name of ['LICENSE','THIRD-PARTY-NOTICES.md']) add('text',name,fs.readFileSync(path.join(source,name)),'.txt');
+await buildOpeningAtlas(root);
 for (const [key,bytes] of Object.entries(bootAssets(root))) add('text',key,bytes);
 const meta = {}, rawSizes = {};
 // Remove obsolete generated music packages as well as their index entries.
