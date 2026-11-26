@@ -7,7 +7,7 @@ import {isPlayableHeroForm} from '../../source/src/data/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=96;
+export const assetPolicyVersion=98;
 // Full RGBA wind cells use lossless encoding rather than a shared 256-colour palette.
 export const windClarityAtlases=new Set(['wind-replacements','wind-moves','wind-skills','wind-vortex'].map(name=>'assets/vfx/'+name+'.png'));
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);

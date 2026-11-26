@@ -11,7 +11,7 @@ import {
 } from "./battle-review-ui.js";
 import {gourdIcon} from "../combat/capture-gourd.js";
 import {facilityNames} from "../data/active-content.js";
-import {SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, remainingZoneSeconds} from "../data/lite-rules.js";
+import {SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, remainingZoneSeconds, enemyDifficultyText} from "../data/lite-rules.js";
 import {enemySpeciesWord} from "../data/character-rules.js";
 import {runPlan, planIncludes} from "../combat/battle-plan.js";
 import {bossDistanceText, buildingMapName, drawCompassDial} from "./paper-hud-art.js";
@@ -778,9 +778,7 @@ var JI = class {
             ? X(
                 `div`,
                 { class: `si-tier`, "data-t": String(e.tier) },
-                e.tier === 1
-                  ? c(`Difícil: más Pokémon, más rápidos y más élites; los jefes avisan menos`)
-                  : c(`Pesadilla: hordas mayores, élites que estallan al caer y jefes sin piedad`),
+                `${e.tier === 1 ? "困难" : "噩梦"} · ${enemyDifficultyText(e.tier)}`,
               )
             : null,
         );

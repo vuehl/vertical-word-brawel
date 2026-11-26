@@ -115,6 +115,8 @@ var oc = (e, t) =>
         vec2 t = texelSize * 1.35;
         float m = max(max(vz(uv + vec2(t.x, 0.)), vz(uv - vec2(t.x, 0.))), max(vz(uv + vec2(0., t.y)), vz(uv - vec2(0., t.y))));
         float edge = smoothstep(.22 + c * .003, .40 + c * .004, m - c) * step(c, 300.);
+        // Combat text and skill pixels attenuate the depth outline underneath.
+        edge *= clamp(inputColor.a, 0., 1.);
         if (uHasDeviceMask && texture2D(uDeviceMask, uv).r > .5) edge = 0.;
         if (uHasFireMask) edge *= 1. - smoothstep(.08,.85,texture2D(uFireMask,uv).r);
         vec3 col = mix(inputColor.rgb, uColor, edge * uStrength);
@@ -122,7 +124,7 @@ var oc = (e, t) =>
         // fight) overflow to Inf and an Inf/NaN pixel spreads through the bloom's blur as black or white blocks, or the
         // whole screen (reports 6003, 6024, 6030, 6053, 6054). Clean it here, before the bloom sees it.
         col = any(isnan(col)) || any(isinf(col)) ? vec3(0.) : clamp(col, 0., 48.);
-        outputColor = vec4(col, inputColor.a);
+        outputColor = vec4(col, 1.);
       }`,
         {
           attributes: yi.DEPTH,
@@ -144,7 +146,7 @@ var oc = (e, t) =>
         `AtmosTint`,
         `
       uniform vec3 uTint;
-      void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor){ outputColor = vec4(inputColor.rgb * uTint, inputColor.a); }`,
+      void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor){ outputColor = vec4(inputColor.rgb * uTint, 1.); }`,
         { uniforms: new Map([[`uTint`, new hi(new Ei(1, 1, 1))]]) },
       );
     }

@@ -61,6 +61,10 @@ var RS = [
 ];
 var BS = (e) => e.kind === `chest` && e.data?.gift ? `freechest` : e.kind,
   VS = { altar: 200, challenge: 240, ditto: 60, magnet: 150, berry: 60 };
+const pickupIdleSeconds = 120;
+const pickupCooldownSeconds = 60;
+const isDie = kind => kind === 'chest' || kind === 'freechest';
+
 var GS = class e {
     run;
     list = [];
@@ -142,8 +146,14 @@ var GS = class e {
     }
     disposed = !1;
     static CHEST_BASE = 18;
-    static CHESTS_PER_KIND = 1;
-    recentChestSites = [];
+    recentPickupSites = [];
+    get rotatingPickups() {
+      const run = this.run;
+      return run.terrain.desk2d && !run.endless && !run.tower && (run.stage === 1 || run.stage === 2);
+    }
+    get dicePerKind() {
+      return this.run.stage === 1 && this.rotatingPickups ? 2 : 1;
+    }
     chestCost() {
       let t = 1 - Math.min(0.4, 0.08 * (this.run.player.items.get(`big-nugget`) ?? 0)),
         n = this.run.endless?.curse.chest ?? 1;
@@ -250,10 +260,10 @@ var GS = class e {
           x=spot.x;z=spot.z;
         }
       }
-      if (kind === 'chest' || kind === 'freechest') {
+      if (isDie(kind)) {
         const category = BS({kind, data: options.data});
         const slots = this.list.filter(f => BS(f) === category);
-        if (slots.length >= GS.CHESTS_PER_KIND) {
+        if (slots.length >= this.dicePerKind) {
           // An event drop relocates a live machine. A cooling slot stays on its timer.
           const live = slots.filter(f => !f.used);
           if (!live.length) return null;
@@ -264,6 +274,7 @@ var GS = class e {
       }
       const y = this.run.terrain.height(x, z);
       const facility = {kind, x, y, z, r: 2.6, used: false, cost: 0, ...options};
+      if (this.rotatingPickups && (isDie(kind) || kind === 'berry')) facility.rotateAt = this.run.time + pickupIdleSeconds;
       const group = facility.group = new Cr();
       group.position.set(x, y, z);
       if (kind === 'altar') {
@@ -327,12 +338,16 @@ var GS = class e {
       const kinds = [];
       for (const [kind, amount] of [
         ['altar', 1], ['bill', 1], ['nest', 1], ['ditto', endless ? 2 : 1],
-        ['magnet', 1], ['freechest', GS.CHESTS_PER_KIND],
-        ['berry', 2], ['chest', GS.CHESTS_PER_KIND],
+        ['magnet', 1], ['freechest', this.dicePerKind],
+        ['berry', 2 * this.dicePerKind], ['chest', this.dicePerKind],
       ]) {
         for (let i = 0; i < amount; i++) kinds.push(kind);
       }
       rng.shuffle(kinds);
+      // Reserve the limited sites outside the entry view for the four dice.
+      if (this.dicePerKind > 1) {
+        kinds.sort((a,b) => Number(isDie(b)) - Number(isDie(a)));
+      }
       if (!endless) kinds.unshift('boss');
 
       // Sample the desk's actual depth with the same six-unit edge clearance
@@ -355,9 +370,9 @@ var GS = class e {
       rng.shuffle(sites);
       // Reuse the shuffled, walkable sites for later refills. Initial placement
       // splices out occupied sites; live facilities are checked again on refill.
-      this.chestSites = sites;
+      this.pickupSites = sites.slice();
       for (const kind of kinds) {
-        const accepts = (x,z) => !terrain.desk2d || !['chest','freechest'].includes(kind) || this.chestOutsideEntryView(x,z);
+        const accepts = (x,z) => !terrain.desk2d || !isDie(kind) || this.chestOutsideEntryView(x,z);
         const minDistance = kind === 'boss' ? limit * .55 : 14;
         const needsLargeSite = kind === 'boss' || kind === 'altar';
         const radius = needsLargeSite ? 6.5 : 4.5;
@@ -395,12 +410,12 @@ var GS = class e {
       const frame=deskPlayFrame(this.run.r?.camera?.aspect??390/844,t.deskBounds.x,t.deskBounds.z);
       return Math.abs(x-t.spawn.x)>frame.w+8 || Math.abs(z-t.spawn.z)*deskTilt>frame.h+8;
     }
-    availableMapSite(radius, accepts = () => true) {
+    availableMapSite(radius, accepts = () => true, crowded = false) {
       const terrain = this.run.terrain;
       return terrain.facilitySites?.find(({x,z,surface}) =>
-        Math.hypot(x-terrain.spawn.x,z-terrain.spawn.z) >= 14 &&
+        accepts(x,z) && Math.hypot(x-terrain.spawn.x,z-terrain.spawn.z) >= 14 &&
         terrain.inBounds(x,z,6) && Math.hypot(x,z) <= terrain.arenaR-6 && terrain.isFlatOpen(x,z) &&
-        this.fitsOnDesk(x,z,radius,surface) && this.hasBuildingSpace(x,z,radius) && accepts(x,z));
+        this.hasBuildingSpace(x,z,radius,crowded) && this.fitsOnDesk(x,z,radius,surface));
     }
     fitsOnDesk(x, z, radius, surface) {
       const terrain = this.run.terrain;
@@ -417,9 +432,9 @@ var GS = class e {
       }
       return true;
     }
-    hasBuildingSpace(x, z, radius) {
+    hasBuildingSpace(x, z, radius, crowded = false) {
       return this.list.every(f => (f.used && !f.group.visible) ||
-        Math.hypot(x - f.x, z - f.z) >= Math.max(16, f.r + radius + 7));
+        Math.hypot(x - f.x, z - f.z) >= Math.max(crowded ? 10 : 16, f.r + radius + (crowded ? 4 : 7)));
     }
     spawnChest(e, t, n, r = !1, i = e, a = t) {
       let o = e,
@@ -461,7 +476,7 @@ var GS = class e {
         }
       }
       if (f(o,s)) {
-        const free = this.chestSites?.find(p=>!f(p.x,p.z));
+        const free = this.pickupSites?.find(p=>!f(p.x,p.z));
         if (!free) return null;
         o=free.x; s=free.z;
       }
@@ -752,7 +767,8 @@ var GS = class e {
                 t.state!=='play'||t.player.dead||t.coop?.lifting||t.capture.throwing||t.capture.canThrow()||
                 !e.berryPickup||!this.hasVisual(e))break;
             e.used=true;e.absorbing=true;
-            (e.data??={}).regenAt=t.time+VS.berry;
+            if (e.rotateAt !== undefined) e.respawnAt = t.time + pickupCooldownSeconds;
+            else (e.data ??= {}).regenAt = t.time + VS.berry;
             e.berryPickup.begin(t.player);
             e.model.userData.setVisualState?.('used');
             t.player.heal(t.player.maxHp*.5);
@@ -899,10 +915,8 @@ var GS = class e {
     openChest(e, t, n = !1, r) {
       let i = this.run;
       if (e.used) return;
-      if (!i.sanctuary && (e.kind === 'chest' || e.kind === 'freechest')) {
-        e.respawnAt = i.time + 30;
-        this.recentChestSites.push({x:e.x,z:e.z});
-        if(this.recentChestSites.length>24)this.recentChestSites.shift();
+      if (!i.sanctuary && isDie(e.kind)) {
+        e.respawnAt = i.time + (e.rotateAt !== undefined ? pickupCooldownSeconds : 30);
       }
       if (
         ((e.used = !0),
@@ -941,45 +955,66 @@ var GS = class e {
       if(e.contactTest)i.rollChestItem(t,r,a);
       else i.later(0.35, () => i.rollChestItem(t, r, a));
     }
-    respawnChest(chest) {
-      const {terrain, player, time} = this.run;
-      const canRefill = (x,z) => Math.hypot(x-chest.x,z-chest.z) >= 32 &&
-        Math.hypot(x-player.pos.x,z-player.pos.z) >= 32 &&
-        !this.recentChestSites.some(site=>Math.hypot(x-site.x,z-site.z)<24) &&
-        !this.run.sprites.visible(x,terrain.height(x,z)+2,z,8) && !terrain.isReserved(x,z,3);
-      const designated = this.availableMapSite(4.5,canRefill);
-      if (designated) {
-        this.remove(chest);
-        this.add(BS(chest),designated.x,designated.z);
+    relocatePickup(pickup) {
+      const {terrain, sprites, player, time} = this.run;
+      const sites = this.pickupSites ?? [];
+      // Prefer a distant site. On a crowded desk a second pass uses the
+      // physical footprints plus clearance, still entirely outside the view.
+      const crowded = pickup.rotateAt !== undefined && pickup.refillChecked >= sites.length;
+      const fits = (x,z) => Math.hypot(x-pickup.x,z-pickup.z) >= (crowded ? 12 : 32) &&
+        (crowded || Math.hypot(x-player.pos.x,z-player.pos.z) >= 32) &&
+        (crowded || !this.recentPickupSites.some(site=>Math.hypot(x-site.x,z-site.z)<24)) &&
+        !sprites.visible(x,terrain.height(x,z)+2,z,8) && !terrain.isReserved(x,z,3);
+      let site = this.availableMapSite(4.5,fits,crowded);
+      if (!site && sites.length) {
+        pickup.refillCursor ??= F.int(0,sites.length-1);
+        pickup.refillChecked ??= 0;
+        // Bound collision queries when several pickups expire together.
+        const limit = sites.length * (crowded ? 2 : 1);
+        for (let i=0; i<24 && pickup.refillChecked<limit; i++) {
+          const candidate = sites[pickup.refillCursor++ % sites.length];
+          pickup.refillChecked++;
+          const {x,z} = candidate;
+          if (fits(x,z) && this.hasBuildingSpace(x,z,pickup.r,crowded) && this.fitsOnDesk(x,z,4.5)) {
+            site = candidate;
+            break;
+          }
+        }
+      }
+      if (!site) {
+        const passes = pickup.rotateAt === undefined ? 1 : 2;
+        if (!sites.length || pickup.refillChecked >= passes * sites.length) {
+          delete pickup.refillChecked;
+          delete pickup.refillCursor;
+          pickup.retrySiteAt = time + 1;
+        }
         return;
       }
-      const sites = this.chestSites ?? [];
-      if(!sites.length){chest.respawnAt=time+1;return;}
-      chest.refillCursor ??= F.int(0,sites.length-1);
-      chest.refillChecked ??= 0;
-      // Bound collision queries even if the nearby map is completely occupied.
-      for (let i = 0; i < 24 && chest.refillChecked < sites.length; i++) {
-        const {x,z} = sites[chest.refillCursor++ % sites.length];
-        chest.refillChecked++;
-        if (!canRefill(x,z) ||
-            terrain.isReserved(x,z,3) || !this.fitsOnDesk(x,z,4.5) ||
-            !this.hasBuildingSpace(x,z,2.6)) continue;
-        this.run.ui.removeWorldLabel(chest);
-        if(this.nearest===chest)this.updateDwell(null,0,0);
-        chest.kind=BS(chest);chest.data=undefined;
-        chest.x=x;chest.y=terrain.height(x,z);chest.z=z;
-        chest.used=false;delete chest.respawnAt;delete chest.refillCursor;delete chest.refillChecked;
-        Object.assign(chest.reservation,{x,z});
-        chest.group.position.set(x,chest.y,z);
-        chest.group.scale.setScalar(1);chest.group.visible=true;
-        if(chest.group.userData.lid)chest.group.userData.lid.rotation.x=0;
-        this.restoreDeviceColour(chest);
-        if(!chest.model)chest.modelReady=this.loadDevice(chest);
-        return;
+      this.run.ui.removeWorldLabel(pickup);
+      this.recentPickupSites.push({x:pickup.x,z:pickup.z});
+      if (this.recentPickupSites.length > 24) this.recentPickupSites.shift();
+      if (this.nearest === pickup) this.updateDwell(null,0,0);
+      if (pickup.used) {
+        pickup.kind = BS(pickup);
+        pickup.data = undefined;
+        pickup.berryPickup?.reset();
+        pickup.model?.userData.setVisualState?.('idle');
+        pickup.group.scale.setScalar(1);
+        pickup.group.visible = true;
+        if (pickup.group.userData.lid) pickup.group.userData.lid.rotation.x = 0;
+        this.restoreDeviceColour(pickup);
       }
-      if(chest.refillChecked>=sites.length){
-        delete chest.refillCursor;delete chest.refillChecked;chest.respawnAt=time+1;
-      }
+      pickup.x = site.x;
+      pickup.z = site.z;
+      pickup.y = terrain.height(site.x,site.z);
+      pickup.group.position.set(pickup.x,pickup.y,pickup.z);
+      Object.assign(pickup.reservation,{x:pickup.x,z:pickup.z});
+      pickup.used = false;
+      delete pickup.respawnAt;
+      delete pickup.refillCursor;
+      delete pickup.refillChecked;
+      delete pickup.retrySiteAt;
+      if (pickup.rotateAt !== undefined) pickup.rotateAt = time + pickupIdleSeconds;
     }
     update(e, dwellSeconds = e) {
       let t = this.run,
@@ -988,9 +1023,12 @@ var GS = class e {
         i = 1e9;
       let refillChecked = false;
       for (let a of this.list) {
-        if (a.respawnAt !== undefined && t.time >= a.respawnAt && t.state === 'play') {
-          if(!refillChecked){this.respawnChest(a);refillChecked=true;}
-          continue;
+        const dueAt = a.used ? a.respawnAt : a.rotateAt;
+        if (dueAt !== undefined && t.time >= dueAt && !refillChecked && !a.absorbing &&
+            t.state === 'play' && t.time >= (a.retrySiteAt ?? 0) &&
+            (a.used || !t.sprites.visible(a.x,a.y+2,a.z,8))) {
+          this.relocatePickup(a);
+          refillChecked = true;
         }
         const ready = this.hasVisual(a);
         if(a.kind==='berry'){
@@ -1001,8 +1039,8 @@ var GS = class e {
               t.ui.toast(c(`Recuperas PS con unas Bayas Aranja`),null,facilityIconFile('berry'));
               t.audio.heal();
             }
-          }else if(a.used)this.regen(a);
-          else if(ready)this.interact(a);
+          }else if(!a.used && ready)this.interact(a);
+          else if(a.used && a.respawnAt === undefined)this.regen(a);
           continue;
         }
         if (a.beacon) a.beacon.visible = ready;

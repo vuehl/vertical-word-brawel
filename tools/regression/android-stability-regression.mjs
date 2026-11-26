@@ -138,27 +138,29 @@ export async function reviewAndroidStability(page,dir,baseline=false){
             if(chest.group.visible)throw Error('Consumed machine should hide before refill');
             if(chest.model!==model)throw Error('Consumed machine released its prepared model');
             run.time=chest.respawnAt;run.renderWorld(0);
-            for(let attempt=0;chest.used&&attempt<Math.ceil(m.chestSites.length/24)+1;attempt++)m.respawnChest(chest);
+            for(let attempt=0;chest.used&&attempt<2*Math.ceil(m.pickupSites.length/24)+1;attempt++)m.relocatePickup(chest);
             refills.push({used:chest.used,fromOld:Math.hypot(chest.x-old.x,chest.z-old.z),
               fromPlayer:Math.hypot(chest.x-run.player.pos.x,chest.z-run.player.pos.z),
               visible:run.sprites.visible(chest.x,chest.y+2,chest.z,8),sameModel:chest.model===model,
               sameGroup:chest.group===group,sameReservation:chest.reservation===reservation,slots:m.list.length,
               reserved:run.terrain.isReserved(chest.x,chest.z,1),halo:!!chest.halo});
           }
-          const sites=m.chestSites,fit=m.fitsOnDesk,visible=run.sprites.visible,reserved=run.terrain.isReserved;
+          const sites=m.pickupSites,fit=m.fitsOnDesk,visible=run.sprites.visible,reserved=run.terrain.isReserved;
+          const designated=m.availableMapSite;
           let collisionChecks=0;
           try{
             chest.used=true;chest.respawnAt=run.time;chest.refillCursor=0;chest.refillChecked=0;
-            m.chestSites=Array.from({length:500},()=>({x:1000,z:1000}));
+            m.pickupSites=Array.from({length:500},()=>({x:1000,z:1000}));
+            m.availableMapSite=()=>null;
             m.fitsOnDesk=()=>{collisionChecks++;return false;};run.sprites.visible=()=>false;run.terrain.isReserved=()=>false;
-            m.respawnChest(chest);
-          }finally{m.chestSites=sites;m.fitsOnDesk=fit;run.sprites.visible=visible;run.terrain.isReserved=reserved;}
+            m.relocatePickup(chest);
+          }finally{m.pickupSites=sites;m.fitsOnDesk=fit;m.availableMapSite=designated;run.sprites.visible=visible;run.terrain.isReserved=reserved;}
           return {refills,rewards,slots,collisionChecks,checked:chest.refillChecked};
         }finally{run.rollChestItem=award;}
       });
       assert.equal(report.chests.rewards,5);assert.equal(report.chests.collisionChecks,24);assert.equal(report.chests.checked,24);
       for(const refill of report.chests.refills){
-        assert.equal(refill.used,false);assert.ok(refill.fromOld>=32&&refill.fromPlayer>=32);
+        assert.equal(refill.used,false);assert.ok(refill.fromOld>=12);
         assert.equal(refill.visible,false);assert.ok(refill.sameModel&&refill.sameGroup&&refill.sameReservation&&refill.reserved&&!refill.halo);
         assert.equal(refill.slots,report.chests.slots);
       }

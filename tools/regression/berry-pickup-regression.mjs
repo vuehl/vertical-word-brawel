@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {writeFile} from 'node:fs/promises';
+import {verifyPickupTimers} from './pickup-timers.mjs';
 
 export async function verifyBerryPickup(page,dir){
   const result=await page.evaluate(async preview=>{
     app.halted=true;
     const r=app.run,f=r.interactables,p=r.player,host=r.r,cam=host.camera;
     const oldPos=p.pos.clone(),oldHp=p.hp,oldTime=r.time;
-    const site=r.terrain.spawn,berry=f.add('berry',site.x,site.z);
+    const berries=f.list.filter(item=>item.kind==='berry');
+    const berry=berries[0],site={x:berry.x,z:berry.z};
     await berry.modelReady;r.state='play';
     const model=berry.model;model.updateWorldMatrix(true,true);
     const wrapper=await f.deviceArt.deskTextures.get('device-berry/device-berry_basic.png');
@@ -61,19 +63,25 @@ export async function verifyBerryPickup(page,dir){
       });
       const iconFile=icon.src.split('?')[0].split('/ui/devices/')[1];
       const iconVisible=icon.naturalWidth>0&&!icon.hidden&&notice.textContent.includes('QQ糖');
-      const cooldown=berry.data.regenAt-oldTime;
-      r.time=berry.data.regenAt-.01;f.update(0,0);const hidden=!model.visible;
-      r.time=berry.data.regenAt;f.update(0,0);
+      const cooldown=berry.respawnAt-oldTime;
+      r.renderWorld(0);
+      r.time=berry.respawnAt-.01;f.update(0,0);const hidden=!model.visible;
+      r.time=berry.respawnAt;
+      for(let i=0;i<100 && berry.used;i++)f.update(0,0);
       const restored=!berry.used&&f.hasVisual(berry)&&model.position.equals(basePos)&&model.scale.equals(baseScale);
-      return {stage:r.stage,iconFile,iconVisible,outside,started,kick1,kick2,early,mid,arrival,absorbed,cooldown,hidden,restored,frames};
-    }finally{f.remove(berry);p.pos.copy(oldPos);p.hp=oldHp;r.time=oldTime;}
+      const moved=Math.hypot(berry.x-site.x,berry.z-site.z)>=12&&!r.sprites.visible(berry.x,berry.y+2,berry.z,8);
+      const counts=['berry','freechest','chest'].map(kind=>f.list.filter(item=>item.kind===kind).length);
+      return {stage:r.stage,counts,iconFile,iconVisible,outside,started,kick1,kick2,early,mid,arrival,absorbed,cooldown,hidden,restored,moved,frames};
+    }finally{p.pos.copy(oldPos);p.hp=oldHp;r.time=oldTime;}
   },process.argv.includes('--berry-preview'));
   const {frames,...s}=result;
   console.log('QQ candy pickup',s);
   assert.equal(s.iconFile,'berry.png');
   assert.ok(s.iconVisible);
-  assert.ok(s.outside&&s.started&&s.absorbed&&s.hidden&&s.restored);
+  assert.deepEqual(s.counts,s.stage===1?[4,2,2]:[2,1,1]);
+  assert.ok(s.outside&&s.started&&s.absorbed&&s.hidden&&s.restored&&s.moved);
   assert.ok(s.kick1>0&&s.kick2>s.kick1&&s.mid>2*s.early&&s.arrival<.0001);
   assert.equal(s.cooldown,60);
   for(const [i,frame] of frames.entries())await writeFile(path.join(dir,'berry-pickup-'+s.stage+'-'+i+'.png'),Buffer.from(frame,'base64'));
+  console.log('Pickup timers',await verifyPickupTimers(page));
 }

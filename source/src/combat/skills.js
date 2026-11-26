@@ -2406,8 +2406,7 @@ var e_ = class {
               i && i.onDeath(e, t.remote ?? i.mySlot),
               t.remote ??
                 (n.player.ability === `carnivore` && r.root[e] > 0 && n.player.heal(n.player.maxHp * 0.02),
-                Bg(n.player.ability)?.onKill?.(n, e, t),
-                a & R.Elite && n.tier >= 2 && this.eliteBurst(e)),
+                Bg(n.player.ability)?.onKill?.(n, e, t)),
               this.credit(e, t, !0));
       }
     }
@@ -2452,35 +2451,6 @@ var e_ = class {
         Math.random() < 0.5 &&
         s.vfx.number(c.x[e], c.y[e] + c.hgt[e] + 0.3, c.z[e], t, 10148095, false, e+"/"+c.gen[e]),
         c.hp[e] <= 0 && this.killEnemy(e, { remote: o }));
-    }
-    bursts = [];
-    eliteBurst(e) {
-      let t = this.run,
-        n = t.enemies,
-        r = t.player.pos;
-      if (
-        ((this.bursts = this.bursts.filter((e) => e > t.time)),
-        this.bursts.length >= 6 || Math.hypot(n.x[e] - r.x, n.z[e] - r.z) > 22)
-      )
-        return;
-      let i = n.x[e],
-        a = n.z[e],
-        o = t.terrain.height(i, a),
-        s = n.typesOf(e)[0],
-        c = Ni[s] ?? 16777215,
-        l = n.dmg[e] * 1.2,
-        u = n.species[e];
-      (this.bursts.push(t.time + 0.9),
-        t.vfx.telegraph(i, o, a, 3, c, 0.9),
-        t.later(0.9, () => {
-          (t.vfx.burst(i, o + 0.5, a, c, 14, 7, am(s), 0.6, 0.45),
-            t.vfx.ring(i, o, a, 3, c, 0.35),
-            t.audio.boom(0.35));
-          let e = t.player.pos;
-          (e.x - i) ** 2 + (e.z - a) ** 2 < 9 &&
-            e.y - o < 2 &&
-            t.player.hurt(l * t.diff.enemyDamage, s, -1, i, a, !1, 0.15, { kind: `burst`, species: u });
-        }));
     }
     credit(e, t, n) {
       let r = this.run,

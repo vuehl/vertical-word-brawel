@@ -1,5 +1,4 @@
 import {VFX_SCALE} from '../effects/visual-scale.js';
-import {Dn as T} from "../data/config.js";
 import {typeColors as Ni, typeNames as Pi, gameData as k} from "../data/game-database.js";
 import {random as F, I, Fl, ql} from "../effects/battle-particles.js";
 import {R, Tf, Ef, rf, lf} from "./enemy-population.js";
@@ -347,7 +346,7 @@ var Yp = 3e3,
             const lightShot = t.terrain.zxPaper && !(l & (1024 | 2048)) &&
               (source?.kind === 'common' || source?.kind === 'swarm' || source?.kind === 'stampede' || source?.kind === 'elite');
             (r.hurt(
-              this.dmg[c] * t.diff.enemyDamage,
+              this.dmg[c],
               this.types[c],
               -1,
               r.pos.x - n * 3,
@@ -355,7 +354,7 @@ var Yp = 3e3,
               !1,
               l & 1024 ? 0.15 : l & 2048 ? Tf(t) : 0,
               source ?? -1,
-              l & 1024 ? { floor: 0.02 * (T.strike[t.tier] ?? 1) } : {},
+              l & 1024 ? { floor: 0.02 } : {},
             ) && !lightShot && r.shove(n, i, 3.5),
               t.vfx.burst(this.x[c], this.y[c], this.z[c], this.color[c], 8, 4),
               this.remove(c));

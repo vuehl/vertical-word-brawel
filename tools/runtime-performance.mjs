@@ -92,7 +92,7 @@ try{
   }
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
-  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects'].includes(arg));
+  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects','--difficulty'].includes(arg));
   const repeatableMap=!!iphone||deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--crowded-steering','--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
@@ -214,6 +214,9 @@ try{
   }else if(process.argv.includes('--boss-performance')){
     const {reviewBossPerformance}=await import('./regression/boss-performance-regression.mjs');
     await reviewBossPerformance(page,dir,process.argv.includes('--baseline'),process.argv.includes('--boss-programs'));assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--difficulty')){
+    const {reviewDifficulty}=await import('./regression/difficulty-regression.mjs');
+    await reviewDifficulty(page);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--battle-pacing')){
     const {reviewBattlePacing}=await import('./regression/battle-pacing-regression.mjs');
     await reviewBattlePacing(page);assert.deepEqual(errors,[]);

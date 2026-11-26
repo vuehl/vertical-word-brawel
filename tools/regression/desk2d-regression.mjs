@@ -69,7 +69,12 @@ export async function verifyDesk(page,dir){
        sitesClear:r.terrain.facilitySites.every(s=>r.interactables.fitsOnDesk(s.x,s.z,6.5,s.surface))};
    });
    assert.equal(area.stage,2);assert.ok(area.sameScenery&&area.spawnFree&&area.sitesClear);
-   assert.deepEqual(area.first.map(f=>f.kind).sort(),area.second.map(f=>f.kind).sort());
+   for(const [layout,dice] of [[area.first,2],[area.second,1]]){
+     for(const [kind,count] of [['berry',dice*2],['chest',dice],['freechest',dice]])
+       assert.equal(layout.filter(f=>f.kind===kind).length,count);
+   }
+   const otherKinds=layout=>layout.map(f=>f.kind).filter(k=>!['berry','chest','freechest'].includes(k)).sort();
+   assert.deepEqual(otherKinds(area.first),otherKinds(area.second));
    for(const kind of ['boss','bill']){
      const first=area.first.find(f=>f.kind===kind),second=area.second.find(f=>f.kind===kind);
      assert.ok(first&&second);assert.notDeepEqual(first,second);
@@ -143,7 +148,7 @@ export async function verifyDesk(page,dir){
  const seedChecks=await page.evaluate(()=>{
    const run=app.run,live=run.interactables,t=run.terrain;
    const terrain=Object.create(t),probe=Object.create(live);
-   probe.run={terrain,player:run.player};probe.add=(kind,x,z,options)=>{
+   probe.run={terrain,player:run.player,stage:run.stage,r:run.r};probe.add=(kind,x,z,options)=>{
      const r=kind==='altar'?[6,5.5,5,4.5][options.data.tier]:({boss:4,bill:3.4,nest:2.8}[kind]??2.6);
      const f={kind,x,z,r};probe.list.push(f);return f;
    };
@@ -152,12 +157,13 @@ export async function verifyDesk(page,dir){
      terrain.seed=seed;probe.list=[];probe.populate();
      const inExtension=f=>(f.z/t.deskBounds.z+1)*window.deskArtSize.height/2>2892;
      if(probe.list.some(inExtension))seedsUsingExtension++;
-     if(!probe.chestSites.some(inExtension))throw Error('No refill sites in the new desk area for seed '+seed);
+     if(!probe.pickupSites.some(inExtension))throw Error('No refill sites in the new desk area for seed '+seed);
      for(const s of terrain.facilitySites){
        const match=probe.list.filter(f=>f.x===s.x&&f.z===s.z);
        if(match.length>1||match[0]?.kind==='boss')throw Error('指定点分配失败 '+seed+' / '+s.surface);
      }
-     if(probe.list.filter(f=>f.kind==='chest'||f.kind==='freechest').length!==2)throw Error('Expected exactly two gacha machines');
+     for(const [kind,count] of [['chest',2],['freechest',2],['berry',4]])
+       if(probe.list.filter(f=>f.kind===kind).length!==count)throw Error('Wrong opening count for '+kind);
      for(const f of probe.list){
        if(['chest','freechest'].includes(f.kind)&&!probe.chestOutsideEntryView(f.x,f.z))throw Error('Initial gacha is in view '+seed);
        if(!terrain.canReachDeskPoint(f.x,f.z))throw Error('Unreachable facility '+seed);
@@ -343,7 +349,7 @@ export async function verifyDesk(page,dir){
      const repeat=compare(early,read(1.2+earlyTime)),hold=compare(rest,read(1.1));
      f.interact(berry);
      const cooldown=compare(read(earlyTime),read(lateTime));
-     berry.data.regenAt=r.time;f.regen(berry);
+     berry.model.userData.setVisualState('idle');
      return {low,high,repeat,hold,cooldown,refreshed:compare(rest,read(lateTime)),glError:gl.getError()};
    }finally{
      renderer.setRenderTarget(target);renderer.autoClear=auto;clock.value=before;f.remove(berry);

@@ -22,7 +22,7 @@ import {prepareHudImage,waitForLoadingPaint} from '../performance/loading-work.j
 import {selectGraphicsQuality} from '../performance/performance-profile.js';
 import {ExperienceRing} from '../combat/experience-ring.js';
 import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus,windRushMultiplier,windRushDragonBonus} from '../data/starter-characters.js';
-import {SINGLE_STAGE,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,QUIT_REWARD_MIN_SECONDS,remainingZoneSeconds,formatGameTime as time} from '../data/lite-rules.js';
+import {SINGLE_STAGE,enemyDifficultyText,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,QUIT_REWARD_MIN_SECONDS,remainingZoneSeconds,formatGameTime as time} from '../data/lite-rules.js';
 import {sceneAction} from '../combat/scene-action.js';
 import {facilityNames} from '../data/active-content.js';
 import {COOP_ROOM_SIZE} from '../network/multiplayer-config.js';
@@ -40,8 +40,8 @@ const destinations=[
 const difficulties=[
   {name:'普通（单关）',tier:0,mode:SINGLE_STAGE,note:['击败首区镇守后','进门通关']},
   {name:'普通',tier:0,mode:'standard',note:['完成全部区域','挑战圣地镇守']},
-  {name:'困难',tier:1,mode:'standard',note:['敌人更强，首领更具挑战'],locked:'完整通关普通后解锁'},
-  {name:'噩梦',tier:2,mode:'standard',note:['更高强度的进阶挑战'],locked:'通关困难后解锁'},
+  {name:'困难',tier:1,mode:'standard',note:[enemyDifficultyText(1)],locked:'完整通关普通后解锁'},
+  {name:'噩梦',tier:2,mode:'standard',note:[enemyDifficultyText(2)],locked:'通关困难后解锁'},
 ];
 const difficultyName=run=>run.mode===SINGLE_STAGE?difficulties[0].name:difficulties[1+run.tier].name;
 const number=n=>Math.round(Number(n)||0).toLocaleString('en-US');

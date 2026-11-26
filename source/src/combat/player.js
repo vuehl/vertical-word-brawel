@@ -1536,11 +1536,12 @@ var mv = 30,
         this.ability === `magic-guard` && n < 0 && (f *= 0.7),
         this.ability === `multiscale` && this.hp >= this.maxHp - 0.5 && (f *= 0.5));
       let p = Bg(this.ability);
-      // Contact and boss effects carry an enemy index. Projectiles and death bursts
+      // Contact and boss effects carry an enemy index. Projectiles
       // keep a source snapshot because the enemy slot can be reused before impact.
       const source = typeof s === 'number' && s >= 0 ? Ef(u, s) : s;
       const enemyHit = source?.species > 0 && source.kind !== 'event';
-      const enemyDamageScale = ENEMY_DAMAGE_SCALE *
+      // Apply the tier after mitigation and per-hit limits, before shields absorb the hit.
+      const enemyDamageScale = ENEMY_DAMAGE_SCALE * u.diff.enemyDamage *
         (u.biome.id === 'forest' && u.stage === 2 && !u.endless && !u.tower ? 1.5 : 1);
       const openingDragon = u.stage === 1 && !u.endless && !u.tower &&
         source?.species === finalBossSpecies && (source.kind === 'boss' || source.kind === 'legendary');

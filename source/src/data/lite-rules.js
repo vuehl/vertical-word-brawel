@@ -24,8 +24,18 @@ export function zoneDuration(mode = 'standard') {
 // Multi-zone waves keep their five-minute ramp independently of the guardian deadline.
 export const wavePace = (mode = 'standard') => WAVE_SECONDS /
   (mode === 'standard' || mode === 'classic' ? 300 : zoneDuration(mode));
+const enemyStatsByTier = [
+  {enemyDamage: 1, enemyHp: 1},
+  {enemyDamage: 2, enemyHp: 1.5},
+  {enemyDamage: 3, enemyHp: 2},
+];
+export const enemyDifficulty = tier => enemyStatsByTier[tier] ?? enemyStatsByTier[0];
+export function enemyDifficultyText(tier) {
+  const {enemyDamage, enemyHp} = enemyDifficulty(tier);
+  return `怪物伤害 ×${enemyDamage}，血量 ×${enemyHp}`;
+}
 export function isSoloNormalOpening(run) {
-  return run.stage === 1 && run.tier === 0 && !run.coop &&
+  return run.stage === 1 && !run.coop &&
     (run.mode === SINGLE_STAGE || run.mode === 'standard');
 }
 // Times are elapsed game seconds. Leave one final recovery interval before the guardian.

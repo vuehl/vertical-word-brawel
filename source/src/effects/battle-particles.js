@@ -9,6 +9,7 @@ import {EnemyTelegraphs} from "../combat/enemy-telegraphs.js";
 import {UpgradeEffects} from "./upgrade-effects.js";
 import {ParticleBudget, CriticalImpactBudget, accumulateDamage, flushDamage, applyCrowdEffects} from "../performance/effect-budget.js";
 import {StylizedSkillFX} from "./stylized-skill-vfx.js";
+import {maskSceneInk} from "./scene-ink.js";
 
 var al = {
     gb: 1,
@@ -1606,7 +1607,7 @@ var Gl = class {
         (this.mesh.renderOrder = 50),
         e.add(this.mesh));
     }
-    spawn(e, t, n, r, i, a = 0.5, impact = false, damage = 0) {
+    spawn(e, t, n, r, i, a = 0.5, impact = false, damage = 0, displayScale = 1) {
       if(this.view&&!this.view.visible(e,t,n,6))return;
       let item;
       if (this.items.length >= this.limit) {
@@ -1618,7 +1619,7 @@ var Gl = class {
       const hurt=impact===HERO_HURT_LABEL;
       item.x=hurt?e:e+F.range(-.4,.4);item.y=t;item.z=hurt?n:n+F.range(-.4,.4);
       item.impact=Number(impact);item.vy=hurt?0:impact?5.2:3.2;item.text=r;
-      item.life=item.max=impact===MEGA_CRITICAL_LABEL?1.04:impact===CRITICAL_LABEL?.92:hurt?.80:impact?.72:.85;item.size=a;
+      item.life=item.max=impact===MEGA_CRITICAL_LABEL?1.04:impact===CRITICAL_LABEL?.92:hurt?.80:impact?.72:.85;item.size=a*displayScale;
       const logDamage=Math.log1p(Math.max(0,damage));
       item.color.r=impact ? logDamage/(logDamage+3.2) : o.r;item.color.g=o.g;item.color.b=o.b;
       item.glyphs.length=r.length;
@@ -1739,6 +1740,7 @@ var Gl = class {
     }
     constructor(scene, t, atlas, run) {
       const combat = this.combatLayer = new Cr();
+      combat.addEventListener('childadded',({child})=>maskSceneInk(child.material));
       scene.add(combat);
       ((this.atlas = atlas),
         (this.add = new zl(combat, this.atlas, 3000, !0, !1, t)),
@@ -1917,7 +1919,7 @@ var Gl = class {
       const style=a===2?MEGA_CRITICAL_LABEL:a?CRITICAL_LABEL:i===16751162?EFFECTIVE_LABEL:
         i===11053240?RESISTED_LABEL:i===0xffffff?NORMAL_HIT_LABEL:0;
       const size=style===MEGA_CRITICAL_LABEL?.97:style===CRITICAL_LABEL?.87:style===RESISTED_LABEL?.69:style?.76:.52;
-      this.text.spawn(e,t,n,(style?'-':'')+Wl(r),i,size,style,r);
+      this.text.spawn(e,t,n,(style?'-':'')+Wl(r),i,size,style,r,.5);
     }
     playerDamage(x,y,z,loss) {
       if(this.enabledText && loss>0)this.text.spawn(x,y,z,'-'+Wl(loss),0xff4948,.79,HERO_HURT_LABEL,loss);

@@ -2,7 +2,6 @@ import {chineseText as c} from "../data/chinese-text.js";
 import {I, random as F} from "../effects/battle-particles.js";
 import {gameData as k} from "../data/game-database.js";
 import {CrowdGrid} from "../performance/crowd-grid.js";
-import {Dn as T} from "../data/config.js";
 import {roomMonster} from "../world/room-monsters.js";
 import {enemyWord, enemySpeciesWord, remainingStrokes} from "../data/character-rules.js";
 import {glyphWordForSpecies} from "../actors/paper-glyph-art.js";
@@ -327,7 +326,7 @@ var bf = CrowdGrid,
   })({}),
   Cf = 12290,
   wf = 62598,
-  Tf = (e) => (e.stage === 1 && !e.endless ? (T.alphaCap1[e.tier] ?? 0.25) : 0.25);
+  Tf = (e) => (e.stage === 1 && !e.endless ? 0.15 : 0.25);
 function Ef(e, t) {
   let n = e.enemies;
   if (t < 0 || t >= n.n) return { kind: `other`, species: 0 };
@@ -1016,7 +1015,7 @@ var Df = 0.4,
         if (!(y & 16512) && D < me && Math.abs(this.y[i] - s) < this.hgt[i] + 0.8 && x) {
           let e = y & 2 ? Tf(t) : pe ? 0.25 : 0;
           n.hurt(
-            this.dmg[i] * (this.charm[i] > 0 ? 0.6 : 1) * t.diff.enemyDamage,
+            this.dmg[i] * (this.charm[i] > 0 ? 0.6 : 1),
             this.typesOf(i)[0],
             i,
             NaN,
@@ -1024,7 +1023,7 @@ var Df = 0.4,
             !1,
             e,
             i,
-            y & 4 ? { floor: 0.05 * (T.strike[t.tier] ?? 1) } : {ordinaryContact: !(y & (SPECIAL_ACTORS | R.Elite))},
+            y & 4 ? { floor: 0.05 } : {ordinaryContact: !(y & (SPECIAL_ACTORS | R.Elite))},
           ) && this.pushOnContact(i);
         }
       }
@@ -1123,7 +1122,7 @@ var Df = 0.4,
         let t = s & (Cf|R.Boss),
           n = s & 2 ? Tf(a) : t ? 0.25 : 0;
         o.hurt(
-          this.dmg[e] * (this.charm[e] > 0 ? 0.6 : 1) * a.diff.enemyDamage,
+          this.dmg[e] * (this.charm[e] > 0 ? 0.6 : 1),
           this.typesOf(e)[0],
           e,
           NaN,
@@ -1131,7 +1130,7 @@ var Df = 0.4,
           !1,
           n,
           e,
-          s & R.Boss ? {floor:.05*(T.strike[a.tier]??1)} : {ordinaryContact: !(s & (SPECIAL_ACTORS | R.Elite))},
+          s & R.Boss ? {floor:0.05} : {ordinaryContact: !(s & (SPECIAL_ACTORS | R.Elite))},
         ) && this.pushOnContact(e);
       }
     }

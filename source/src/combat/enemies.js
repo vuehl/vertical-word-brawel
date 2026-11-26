@@ -1,12 +1,11 @@
 import {VFX_SCALE} from '../effects/visual-scale.js';
-import {FOREST_COMBAT_ZONES, zoneDuration, wavePace, isSoloNormalOpening, normalOpeningWaves} from "../data/lite-rules.js";
+import {FOREST_COMBAT_ZONES, zoneDuration, wavePace, isSoloNormalOpening, normalOpeningWaves, enemyDifficulty} from "../data/lite-rules.js";
 import {enemySpeciesWord} from "../data/character-rules.js";
 import {runOrdinaryLimit, countOrdinary, naturalCreditRate, SPAWN_RATE_SCALE} from "../performance/spawn-budget.js";
 import {chineseText as c} from "../data/chinese-text.js";
 import {
   An as p,
   Bn as _,
-  Dn as T,
   Gn as ce,
   In as he,
   Ln as we,
@@ -94,9 +93,6 @@ var kv = 12,
           e.stage === 1
             ? n.push({ t: t.range(170, 300), kind: `event` })
             : n.push({ t: t.range(130, 230), kind: `event` }, { t: t.range(340, 460), kind: `event` }));
-        let i = T.early[e.tier] ?? 0;
-        if (i) for (let e of n) e.kind !== `card` && e.kind !== `event` && (e.t = Math.max(60, e.t - i));
-        if (e.tier >= 2) n.push({ t: 510, kind: `totem` });
         for (const event of n) event.t /= this.pace;
       }
       if (this.pace > 1 && e.stage <= FOREST_COMBAT_ZONES) {
@@ -222,7 +218,7 @@ var kv = 12,
       let n = Math.max(e, this.effTime() / 60),
         r = this.run.stage,
         i = un[r - 1] ?? un[3];
-      return (1 + n * 0.13) * i * (r >= 2 ? (T.late[this.run.tier] ?? 1) : 1) * this.swarmMult(2);
+      return (1 + n * 0.13) * i * this.swarmMult(2);
     }
     spawnPoint(t = 24, n = 36) {
       let r = this.run.player.pos,
@@ -275,9 +271,7 @@ var kv = 12,
         s =
           !i &&
           this.rng.chance(
-            (o +
-              (T.elite[this.run.tier] ?? 0) +
-              (this.run.player.stats.difficulty - 1) * 0.05) *
+            (o + (this.run.player.stats.difficulty - 1) * 0.05) *
               this.run.player.stats.eliteSpawn,
           )
             ? R.Elite
@@ -298,7 +292,7 @@ var kv = 12,
       }
       let i = this.effTime();
       this.caps(
-        Math.round((14 + i * 0.65 + (i / 60) ** 2 * 4.5) * (1 + (n.stage - 1) * 0.6) * (T.cap[n.tier] ?? 1)),
+        Math.round((14 + i * 0.65 + (i / 60) ** 2 * 4.5) * (1 + (n.stage - 1) * 0.6)),
       );
       let a = n.player.stats,
         o =
@@ -391,7 +385,7 @@ var kv = 12,
             let e = this.rng.pick(this.cards),
               n = t.player.pos,
               r = Math.round(
-                (t.stage === 1 && t.stageTime * this.pace < 300 ? 40 : 46 + t.stage * 12) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE * sizeScale,
+                (t.stage === 1 && t.stageTime * this.pace < 300 ? 40 : 46 + t.stage * 12) * SPAWN_RATE_SCALE * sizeScale,
               );
             // Let the opening horde arrive even when natural spawns fill their budget.
             const waveSlots = sizeScale > 1 ? r : 0;
@@ -426,7 +420,7 @@ var kv = 12,
               s = -o,
               l = a,
               u = Math.round(
-                (t.stage === 1 && t.stageTime * this.pace < 300 ? 30 : 34 + t.stage * 8) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE * sizeScale,
+                (t.stage === 1 && t.stageTime * this.pace < 300 ? 30 : 34 + t.stage * 8) * SPAWN_RATE_SCALE * sizeScale,
               );
             const waveSlots = sizeScale > 1 ? u : 0;
             for (let e = 0; e < u; e++) {
@@ -476,7 +470,7 @@ var kv = 12,
           }
           case `elitewave`:
             if (this.normalOpening && (t.minibosses.has('totem') || t.minibosses.has('summoner'))) break;
-            for (let e = 0; e < Math.round((4 + t.stage * 2) * (T.events[t.tier] ?? 1) * SPAWN_RATE_SCALE); e++)
+            for (let e = 0; e < Math.round((4 + t.stage * 2) * SPAWN_RATE_SCALE); e++)
               this.spawnCard(this.rng.pick(this.cards), R.Elite);
             t.ui.toast(c(`Una oleada de Pokémon élite se acerca`), null);
         }
@@ -1055,7 +1049,7 @@ var mb = /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/,
       )
         return !1;
       o.sprites.get(e);
-      let u = s.spawn(e, i, a, 1, 1, R.Capture | R.Shiny);
+      let u = s.spawn(e, i, a, enemyDifficulty(o.tier).enemyHp, 1, R.Capture | R.Shiny);
       return u < 0
         ? !1
         : ((s.hp[u] = s.maxHp[u] * 0.01),

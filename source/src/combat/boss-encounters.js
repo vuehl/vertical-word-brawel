@@ -2,23 +2,23 @@ import {VFX_SCALE} from '../effects/visual-scale.js';
 import {formCopy, moveCopy} from '../data/form-copy.js';
 import {ENEMY_DANGER_COLOR} from './enemy-telegraphs.js';
 import {finalBossSpecies} from '../data/character-rules.js';
-import {FOREST_COMBAT_ZONES, SINGLE_STAGE} from '../data/lite-rules.js';
+import {FOREST_COMBAT_ZONES, SINGLE_STAGE, enemyDifficulty} from '../data/lite-rules.js';
 import {ENEMY_HEALTH_SCALE} from '../performance/spawn-budget.js';
 import {PaperWeather} from '../effects/paper-weather.js';
 import {WeatherSpeech} from '../ui/weather-speech.js';
 import {chineseText as c} from '../data/chinese-text.js';
-import {Dn as T, Rr as Je} from '../data/config.js';
+import {Rr as Je} from '../data/config.js';
 import {E as yr, I as Cr, K as Tr, ct as Kr, w as Ei} from '../vendor/three-DmSYIDKK.js';
 
 const ZONE_BOSS_HEALTH_MULTIPLIER = 5;
-const NORMAL_MULTI_GUARDIAN_HP = [45_000, 100_000];
+const MULTI_GUARDIAN_HP = [45_000, 100_000];
 
 export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv, Ol}) {
   var Kv = [0.66, 0.33],
     qv = 0.08,
-    Jv = (e) => T.wound[e.tier] ?? 4,
+    woundSeconds = 4,
     Yv = 0.5,
-    Xv = (e, t) => ({ floor: t >= 0.3 ? t : t * (T.strike[e.tier] ?? 1), evade: Yv }),
+    bossHit = floor => ({ floor, evade: Yv }),
     Zv = [1, 1.12, 1.3],
     Qv = class {
       run;
@@ -174,7 +174,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           i = t >= 0.3,
           a = t < 0 ? 0 : Math.max(t, qv);
         r.hurt(
-          this.E.dmg[this.i] * e * this.run.diff.enemyDamage,
+          this.E.dmg[this.i] * e,
           n,
           -1,
           NaN,
@@ -182,10 +182,10 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           !1,
           i ? 0.6 : 0.34,
           this.i,
-          a ? Xv(this.run, a) : {},
+          a ? bossHit(a) : {},
         ) &&
           t >= 0 &&
-          r.wound(Jv(this.run));
+          r.wound(woundSeconds);
       }
       groundY(e, t) {
         return this.run.terrain.height(e, t);
@@ -7324,7 +7324,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
     },
     Ty = 2.5;
   function Ey(e, t) {
-    return e.combat.meter.budget(t * (1 + 0.15 * e.tier) * e.player.stats.difficulty) * ENEMY_HEALTH_SCALE;
+    return e.combat.meter.budget(t * e.player.stats.difficulty) * ENEMY_HEALTH_SCALE * enemyDifficulty(e.tier).enemyHp;
   }
   var Dy = { guardian: [25, 30, 35], totem: [10, 12, 14], summoner: [6, 7, 8], endlessGuardian: 25 };
   function Oy(e, t, n, maxScale = 4) {
@@ -7417,8 +7417,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         this.fightSecs = (i.secs ?? (r ? wy.legendary : wy.guardian[Math.min(2, a.stage - 1)])) * o;
         const zoneBoss = a.stage >= 1 && a.stage <= FOREST_COMBAT_ZONES &&
           (a.mode === SINGLE_STAGE || a.mode === 'standard' || a.mode === 'classic');
-        const fixedGuardianHp = zoneBoss && timedGuardian && a.mode !== SINGLE_STAGE && a.tier === 0
-          ? NORMAL_MULTI_GUARDIAN_HP[a.stage - 1] : undefined;
+        const fixedGuardianHp = zoneBoss && timedGuardian && a.mode !== SINGLE_STAGE
+          ? MULTI_GUARDIAN_HP[a.stage - 1] : undefined;
         if (fixedGuardianHp === undefined) {
           const damageBudget = Ey(a, this.fightSecs);
           Oy(a, l, timedGuardian ? damageBudget * 0.6 : damageBudget, timedGuardian ? 2 : 4);
@@ -7427,7 +7427,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           const enemies = a.enemies;
           const baseHealth = fixedGuardianHp === undefined
             ? enemies.maxHp[l] * (zoneBoss ? ZONE_BOSS_HEALTH_MULTIPLIER : 1)
-            : fixedGuardianHp * (a.coop?.hpMul ?? 1);
+            : fixedGuardianHp * a.diff.enemyHp;
           const health = baseHealth * (a.coop?.bossHpMul ?? 1);
           enemies.hp[l] = enemies.maxHp[l] = Math.min(1e30 * ENEMY_HEALTH_SCALE, health);
         }
@@ -7489,7 +7489,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           i = r.player,
           a = r.enemies;
         return i.hurt(
-          a.dmg[e] * t * r.diff.enemyDamage,
+          a.dmg[e] * t,
           a.typesOf(e)[0],
           -1,
           a.x[e],
@@ -7497,9 +7497,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           !1,
           0.34,
           e,
-          Xv(r, n),
+          bossHit(n),
         )
-          ? (i.wound(Jv(r)), !0)
+          ? (i.wound(woundSeconds), !0)
           : !1;
       }
       shot(e, t, n, r, i = {}) {
@@ -7630,7 +7630,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           this.kit.update(t);
           return;
         }
-        !this.enraged && i.hp[e] < i.maxHp[e] * (T.fury[r.tier] ?? 0.5) && this.enrage(e);
+        !this.enraged && i.hp[e] < i.maxHp[e] * 0.5 && this.enrage(e);
         let o = Ni[i.typesOf(e)[0]];
         if (this.chargeT > 0) {
           if (
@@ -7659,7 +7659,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         }
         if (((this.callT -= t), this.callT <= 0)) {
           this.callT = this.enraged ? 16 : 22;
-          let t = (T.escorts[r.tier] ?? 0) + this.roars;
+          let t = this.roars;
           this.escorts.length < 4 + r.stage * 2 + t * 2 &&
             this.callEscorts(e, 2 + r.stage + t, (r.stage >= 2 ? 2 : 1) + t);
         }
@@ -7710,7 +7710,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         const r=this.run,i=r.enemies,o=Ni[i.typesOf(e)[0]];
         if(d==='escorts'){
           if(r.coop?.monsters && !r.coop.bossAuthority)return this.t;
-          const extra=(T.escorts[r.tier]??0)+this.roars;
+          const extra=this.roars;
           if(this.escorts.length<4+r.stage*2+extra*2)this.callEscorts(e,2+r.stage+extra,(r.stage>=2?2:1)+extra);
           return this.t;
         }
@@ -7755,9 +7755,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       say(e) {
         ((this.moveName = moveCopy(this.run.enemies.species[this.bossIndex], e)), (this.moveT = 2.2));
       }
-      get tk() {
-        return T.tele[this.run.tier] ?? 1;
-      }
+      tk = 1;
       enrage(e) {
         let t = this.run,
           n = t.enemies,
@@ -9084,7 +9082,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           if(mini.minions.length<limit)this.call(mini,Math.min(3+r.stage,limit-mini.minions.length),summoner?1:1.25,summoner?0:+(r.stage>=2));
           return;
         }
-        mini.enraged=e.hp[id]<e.maxHp[id]*(T.fury[r.tier]??.5);
+        mini.enraged=e.hp[id]<e.maxHp[id]*0.5;
         this.say(mini,kind===4?mini.specName:mini.physName);
         if(kind===3)this.leap(mini,{x,z});
         if(kind===4)this.ring(mini,mini.kind==='summoner'?.6:.7);
@@ -9107,7 +9105,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           i = n.player,
           a = e.i;
         !e.enraged &&
-          r.hp[a] < r.maxHp[a] * (T.fury[n.tier] ?? 0.5) &&
+          r.hp[a] < r.maxHp[a] * 0.5 &&
           ((e.enraged = !0),
           (r.speed[a] *= 1.2),
           n.vfx.ring(r.x[a], r.y[a], r.z[a], 7, 16734858, 0.6),
@@ -9153,7 +9151,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           a = r.enemies,
           o = e.i;
         return i.hurt(
-          a.dmg[o] * t * r.diff.enemyDamage,
+          a.dmg[o] * t,
           a.typesOf(o)[0],
           -1,
           a.x[o],
@@ -9161,9 +9159,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           !1,
           0.34,
           o,
-          Xv(r, n),
+          bossHit(n),
         )
-          ? (i.wound(Jv(r)), !0)
+          ? (i.wound(woundSeconds), !0)
           : !1;
       }
       slams(e,target) {
@@ -9773,7 +9771,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           (this.flash = 1),
           Math.hypot(a.pos.x - e, a.pos.z - n) < r &&
             a.pos.y - t < 2.5 &&
-            a.hurt(16 * i.director.dmgMult() * i.diff.enemyDamage, `electric`, -1, NaN, NaN, !1, 0, {
+            a.hurt(16 * i.director.dmgMult(), `electric`, -1, NaN, NaN, !1, 0, {
               kind: `event`,
               species: 0,
             }));

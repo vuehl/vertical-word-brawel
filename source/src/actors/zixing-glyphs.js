@@ -5,6 +5,7 @@ import {createHeroPoseTexture,loadedHeroRig,prepareHeroStrokes} from './hero-pos
 import {heroActionCatalog} from './hero-action-catalog.js';
 import {heroActionFrame} from './hero-actions.js';
 import {applyShelfMaterial} from '../world/desk-shelf.js';
+import {maskSceneInk} from '../effects/scene-ink.js';
 import {actorMetrics} from './actor-metrics.js';
 const paintJobs=[];
 // Slightly lighter versions of the supplied hero colors, in texture linear space.
@@ -137,6 +138,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       const recolor=batch.id!==batch.sid?'c.rgb=c.brg;':'if(vFx.z>8.9 || (vFx.z>4.9 && vFx.z<6.5))c.rgb=c.gbr;';
       m.fragmentShader=`uniform sampler2D zxGlyph; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;${recolor}c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}`;
       m.transparent=true;m.depthWrite=false;
+      maskSceneInk(m);
     }
     applyShelfMaterial(m,shelfUniforms);
     m.needsUpdate=true;batches.add(batch,t.uuid+(heroEntry?.ghost?'-ghost-'+heroEntry.ghost:ally?'-ally':batch.zxOriginalGlyph?(batch.id===batch.sid?'-original':'-classic'):''),heroEntry?.ghost?96:heroEntry?1:ally?8:1024);return batch;

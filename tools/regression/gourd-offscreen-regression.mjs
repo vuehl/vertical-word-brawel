@@ -13,12 +13,12 @@ export async function reviewGourdOffscreen(page,dir){
     for(const chest of chests){
       const before=[chest.x,chest.z];chest.used=true;chest.group.visible=false;chest.respawnAt=r.time;
       r.sprites.visible=()=>true;
-      f.respawnChest(chest);
+      f.relocatePickup(chest);
       if(chest.x!==before[0]||chest.z!==before[1]||!chest.used)throw Error('Visible refill');
       r.sprites.visible=originalVisible;
-      for(let i=0;i<500&&chest.used&&f.list.includes(chest);i++)f.respawnChest(chest);
+      for(let i=0;i<500&&chest.used&&f.list.includes(chest);i++)f.relocatePickup(chest);
       const live=f.list.includes(chest)?chest:f.list.find(c=>c.kind===chest.kind&&!c.used);
-      if(!live||live.used)throw Error('No offscreen refill '+JSON.stringify({sites:f.chestSites.length,counts:[s=>Math.hypot(s.x-chest.x,s.z-chest.z)>=32,s=>Math.hypot(s.x-r.player.pos.x,s.z-r.player.pos.z)>=32,s=>!t.isReserved(s.x,s.z,3),s=>f.fitsOnDesk(s.x,s.z,4.5),s=>f.hasBuildingSpace(s.x,s.z,2.6)].map(test=>f.chestSites.filter(test).length),visible:f.chestSites.filter(s=>r.sprites.visible(s.x,2,s.z,8)).length}));
+      if(!live||live.used)throw Error('No offscreen refill '+JSON.stringify({sites:f.pickupSites.length,counts:[s=>Math.hypot(s.x-chest.x,s.z-chest.z)>=32,s=>Math.hypot(s.x-r.player.pos.x,s.z-r.player.pos.z)>=32,s=>!t.isReserved(s.x,s.z,3),s=>f.fitsOnDesk(s.x,s.z,4.5),s=>f.hasBuildingSpace(s.x,s.z,2.6)].map(test=>f.pickupSites.filter(test).length),visible:f.pickupSites.filter(s=>r.sprites.visible(s.x,2,s.z,8)).length}));
       if(r.sprites.visible(live.x,t.height(live.x,live.z)+2,live.z,8))throw Error('Refill in view');
       report.push({kind:live.kind,distance:Math.hypot(live.x-before[0],live.z-before[1])});
     }

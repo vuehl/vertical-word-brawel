@@ -3,7 +3,7 @@ import {MapSpawnError} from "../world/map-rules.js";
 import {ALTAR_RING_EMISSIVE} from "../effects/altar-ring-vfx.js";
 import {bossSummonUnlockSeconds, springShoesKey} from "../data/active-content.js";
 import {roomMonster} from "../world/room-monsters.js";
-import {LITE_SPECIES, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration} from "../data/lite-rules.js";
+import {LITE_SPECIES, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, enemyDifficulty} from "../data/lite-rules.js";
 import {finalBossSpecies} from "../data/character-rules.js";
 import {dragonChantSeconds, prepareDragonChant, startDragonChant} from "../effects/dragon-chant.js";
 import {beginDragonSummon, clearDragonSummon, warmDragonSummon} from "../effects/dragon-summon-hd/sequence.js";
@@ -29,7 +29,7 @@ import {UpgradeTiming} from "./upgrade-timing.js";
 import {updatePaperVisibility} from "../world/paper-visibility.js";
 import {chineseText as c} from "../data/chinese-text.js";
 import {updateDeskPropFade} from "../world/desk-prop-fade.js";
-import {Dn as T, Gt as le, Hr as fe, Rr as Je, Vr as lt, cn as Pt, jr as sn, lr as hn, pn as kn} from "../data/config.js";
+import {Gt as le, Hr as fe, Rr as Je, Vr as lt, cn as Pt, jr as sn, lr as hn, pn as kn} from "../data/config.js";
 import {ht as ti, w as Ei} from "../vendor/three-DmSYIDKK.js";
 import {gameData as k} from "../data/game-database.js";
 import {uo} from "../ui/controls.js";
@@ -235,8 +235,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
         (this.meta = i),
         (this.mode = [`endless`, `tower`, SINGLE_STAGE].includes(a.mode) ? a.mode : `standard`),
         (this.biome = lt(this.mode === `tower` ? `graveyard` : a.biome)),
-        (this.tier = this.mode === `standard` ? a.tier : 0),
-        (a = { ...a, tier: this.tier }),
+        (this.tier = this.mode === `standard` ? (a.tier ?? 0) : 0),
         (this.seed = a.seed ?? kl(Date.now().toString()) ^ (Math.random() * 1e9)),
         (this.startSpecies = a.species),
         (this.shinySkin = i.shinySkin(a.species)),
@@ -244,22 +243,13 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
         (this.skinLook = i.skinFor(a.species)),
         (this.skinMember = le(a.species, (e) => i.family(e))?.id ?? a.species),
         (this.skinGl = Yl(this.skinMember, this.skinLook)));
-      let o = a.tier;
-      ((this.diff = {
-        enemyHp: T.hp[o] ?? 1,
-        enemyDamage: T.dmg[o] ?? 1,
-        enemySpeed: T.speed[o] ?? 1,
-        enemyAmount: T.amount[o] ?? 1,
-        xp: ENEMY_XP_SCALE,
-        xpMult: 1 + o * 0.15,
-        stardust: 1 + o * 0.75,
-      }),
-        a.coop &&
-          this.mode === `standard` &&
-          ((this.stage = a.coop.world?.stage ?? 1),
-          (this.coop = new fE(this, a.coop)),
-          (this.diff.enemyHp *= this.coop.hpMul),
-          (this.diff.enemyAmount *= this.coop.spawnMul)));
+      Object.assign(this.diff, enemyDifficulty(this.tier));
+      if (a.coop && this.mode === `standard`) {
+        this.stage = a.coop.world?.stage ?? 1;
+        this.coop = new fE(this, a.coop);
+        this.diff.enemyHp *= this.coop.hpMul;
+        this.diff.enemyAmount *= this.coop.spawnMul;
+      }
       let s = i.profile.settings;
       this.performance=performanceProfile(s,window.nativeDevice);
       ((this.hints = new yw(i)),

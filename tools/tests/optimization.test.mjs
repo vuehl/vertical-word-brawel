@@ -83,7 +83,11 @@ test('normal solo first zones space strong encounters and ease the multi-zone re
   const first={stage:1,tier:0,mode:'standard',stageTime:240};
   assert.equal(isSoloNormalOpening(first),true);
   assert.equal(runOrdinaryLimit(first),135);
-  for(const change of [{tier:1},{tier:2},{stage:2},{coop:{size:1,budgetRank:0}}]){
+  for(const tier of [1,2]){
+    assert.equal(isSoloNormalOpening({...first,tier}),true);
+    assert.equal(runOrdinaryLimit({...first,tier}),runOrdinaryLimit(first));
+  }
+  for(const change of [{stage:2},{coop:{size:1,budgetRank:0}}]){
     const other={...first,...change};
     assert.equal(isSoloNormalOpening(other),false);
     assert.equal(runOrdinaryLimit(other),160);
