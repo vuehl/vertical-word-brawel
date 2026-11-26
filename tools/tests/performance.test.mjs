@@ -86,6 +86,24 @@ test('frame pacing retains 60 callbacks per second under alternating 5 ms delays
   assert.equal(drawn,300);
 });
 
+test('120 Hz native callbacks with variable delivery delays keep the 30/60 FPS draw cadence',()=>{
+  for(const cap of [30,60]){
+    const gap=1000/cap,pacer=new FramePacer(()=>{});
+    let lastDraw,draws=0;
+    for(let i=0;i<240;i++){
+      const now=i*1000/120+(i%4===1?2.7:i%8===3?3.4:0);
+      if(!pacer.ready(now,gap))continue;
+      draws++;
+      if(i>12)assert.ok(Math.abs(now-lastDraw-gap)<.01);
+      lastDraw=now;
+    }
+    assert.equal(draws,2*cap);
+    // The runtime can subsequently honor the native FPS request.
+    for(let i=0;i<20;i++)pacer.ready(2000+i*gap,gap);
+    for(let i=20;i<100;i++)assert.ok(pacer.ready(2000+i*gap-(i%2?gap*.25:0),gap));
+  }
+});
+
 test('frame pacing respects 30/60 caps, recovers from stalls and never accumulates forced draws',()=>{
   for(const cap of [30,60])for(const hz of [60,90,120,144]){
     const pacer=new FramePacer();let drawn=0;

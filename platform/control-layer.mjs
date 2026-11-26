@@ -118,41 +118,61 @@ const offset=transform=>{
   return values?[Number(values[1]),Number(values[2])]:[0,0];
 };
 const translation=el=>offset(el?.style.transform);
-// The floating joystick has its own small texture. Its transforms never require a
-// screen-wide layout, canvas repaint or texture upload.
+// Keep the base and thumb in separate textures. An ordinary drag only moves
+// their viewports. At the safe-area edge, cache the visible part of each tile.
+function stickPart(makeCanvas,slot){
+  const tile={slot,canvas:null};
+  let context,lastScale,lastWidth,lastHeight;
+  const clip={};
+  return {
+    tile,
+    draw(layout,box,view,scale,dirty){
+      const pad=4,width=Math.ceil((box.w+pad*2)*scale),height=Math.ceil((box.h+pad*2)*scale);
+      const left=box.x-pad,top=box.y-pad;
+      const x=Math.max(0,box.clip.x-left),y=Math.max(0,box.clip.y-top);
+      const r=Math.min(width/scale,box.clip.r-left),b=Math.min(height/scale,box.clip.b-top);
+      tile.changed=dirty||scale!==lastScale||box.w!==lastWidth||box.h!==lastHeight||
+        x!==clip.x||y!==clip.y||r!==clip.r||b!==clip.b;
+      if(tile.changed){
+        if(!tile.canvas){tile.canvas=makeCanvas();context=tile.canvas.getContext('2d');}
+        if(tile.canvas.width!==width)tile.canvas.width=width;
+        if(tile.canvas.height!==height)tile.canvas.height=height;
+        Object.assign(clip,{x,y,r,b});
+        paint({...layout,context},[{...box,x:pad,y:pad,clip,opacity:1}],
+          {width:width/scale,height:height/scale,x:0,y:0},scale);
+        lastScale=scale;lastWidth=box.w;lastHeight=box.h;
+      }
+      tile.x=(left+view.x)*scale;tile.y=(top+view.y)*scale;
+      tile.width=width;tile.height=height;
+    },
+  };
+}
+
 export function createControlLayer(makeCanvas){
-  let canvas,context,base,knob,lastKey='',dirty=true;
-  const layer={
+  const basePart=stickPart(makeCanvas,0),knobPart=stickPart(makeCanvas,31);
+  const layers=[basePart.tile,knobPart.tile],hidden=[];
+  let base,knob,dirty=true;
+  return {
     owns(el){return !!el?.closest?.('[data-ui-layer="stick"]');},
-    invalidate(){dirty=true;},
     capture(boxes){
-      base=boxes.find(b=>b.el.dataset?.uiLayer==='stick'&&b.w>0);
+      const next=boxes.find(b=>b.el.dataset?.uiLayer==='stick'&&b.w>0);
+      dirty ||= next!==base;
+      base=next;
       knob=base&&boxes.find(b=>b.el===base.el.firstElementChild);
-      dirty=true;
     },
     draw(layout,view,scale,enabled){
-      if(!enabled||!base||!knob||!base.el.isConnected||!base.el.classList.contains('on'))return null;
+      if(!enabled||!knob||!base.el.isConnected||!base.el.classList.contains('on'))return hidden;
       base.x=(parseFloat(base.el.style.left)||0)-base.w/2;
       base.y=(parseFloat(base.el.style.top)||0)-base.h/2;
-      const pad=4,x=Math.floor((base.x+view.x-pad)*scale),y=Math.floor((base.y+view.y-pad)*scale);
-      const width=Math.ceil((base.w+pad*2)*scale),height=Math.ceil((base.h+pad*2)*scale);
-      const [dx,dy]=translation(knob.el),active=base.el.classList.contains('on');
-      const key=[width,height,dx,dy,active,base.opacity].join('/');
-      const changed=dirty||key!==lastKey;
-      if(!canvas){canvas=makeCanvas();context=canvas.getContext('2d');}
+      const [dx,dy]=translation(knob.el);
       knob.x=base.x+(base.w-knob.w)/2+dx;
       knob.y=base.y+(base.h-knob.h)/2+dy;
-      if(changed){
-        if(canvas.width!==width)canvas.width=width;if(canvas.height!==height)canvas.height=height;
-        const root={...base,opacity:1};
-        // Keep cached geometry aligned with the current touch origin. The
-        // control is visual only; the gesture surface owns pointer events.
-        paint({...layout,context},[root,{...knob,opacity:1}],{width:width/scale,height:height/scale,x:view.x-x/scale,y:view.y-y/scale},scale);
-        dirty=false;lastKey=key;
-      }
-      return {canvas,x,y,width,height,changed};
+      basePart.draw(layout,base,view,scale,dirty);
+      knobPart.draw(layout,knob,view,scale,dirty);
+      dirty=false;
+      return layers;
     },
-    get canvas(){return canvas;},
+    get canvas(){return basePart.tile.canvas;},
+    get knobCanvas(){return knobPart.tile.canvas;},
   };
-  return layer;
 }

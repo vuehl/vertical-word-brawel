@@ -11,8 +11,9 @@ export async function profileRuntime(page,dir){
       const run=app.run,p=run.player;
       app.meta.profile.settings.quality=quality;app.applySettings();app.r.setDynRes(1);
       run.director.update=run.director.startFinalSwarm=()=>{};run.queueLevelUp=()=>{};run.pendingLevels=0;
-      run.events.update=run.minibosses.update=()=>{};
-      run.time=run.stageTime=600;run.nextCp=1e9;
+      // A timed capture can still spawn an actor from the "done" state.
+      run.capture.update=run.events.update=run.minibosses.update=()=>{};
+      run.time=run.stageTime=300;run.nextCp=1e9;
       run.capture.state='done';run.enemies.clear();p.hp=p.maxHp=1e9;
       for(let i=0;i<count;i++){
         const angle=i*2.39996,distance=4+(i%60)*.24;

@@ -1218,6 +1218,7 @@ var qu = `
     group = new Cr();
     colGrid = new Map();
     colliderNeighborhoods = new Map();
+    deskColliderCells = new Map();
     spawn = new ti();
     noise;
     noise2;
@@ -2451,6 +2452,7 @@ var qu = `
     addCollider(e) {
       this.colliders.push(e);
       this.colliderNeighborhoods.clear();
+      this.deskColliderCells.clear();
       if(e.paperBox){
         const rx=Math.abs(e.cos)*e.halfX+Math.abs(e.sin)*e.halfZ,rz=Math.abs(e.sin)*e.halfX+Math.abs(e.cos)*e.halfZ;
         for(let x=Math.floor((e.x-rx)/8);x<=Math.floor((e.x+rx)/8);x++)for(let z=Math.floor((e.z-rz)/8);z<=Math.floor((e.z+rz)/8);z++){
@@ -2479,6 +2481,21 @@ var qu = `
       this.colliderNeighborhoods.set(key,list);
       return list;
     }
+    // Desk props are built from many narrow silhouette strips. Cache the strips
+    // that a body of radius <= 2 could touch anywhere within this 2-unit cell.
+    // The circumscribed circle covers the corners and rotated shelf barriers.
+    collisionCandidates(x,z,radius) {
+      if(!this.desk2d || radius>2)return this.nearbyColliders(x,z);
+      const col=Math.floor(x/2),row=Math.floor(z/2),key=(col+1000)*4096+row+1000;
+      let candidates=this.deskColliderCells.get(key);
+      if(!candidates){
+        const cx=col*2+1,cz=row*2+1;
+        candidates=this.nearbyColliders(x,z).filter(prop=>
+          !prop.paperBox || hitsPaperBox(prop,cx,cz,2+Math.SQRT2+.0001));
+        this.deskColliderCells.set(key,candidates);
+      }
+      return candidates;
+    }
     lineClear(e, t, n, r, i, a) {
       let o = Math.ceil(Math.hypot(r - e, a - n));
       for (let s = 1; s < o; s++) {
@@ -2489,7 +2506,7 @@ var qu = `
     }
     propTop(x,z,radius,ceiling=Infinity) {
       let top=-Infinity;
-      for(const prop of this.nearbyColliders(x,z)){
+      for(const prop of this.collisionCandidates(x,z,radius)){
         if(prop.off || prop.standY==null || prop.standY<=top || prop.standY>ceiling)continue;
         const overlaps=prop.paperBox ? hitsPaperBox(prop,x,z,radius)
           : (x-prop.x)**2+(z-prop.z)**2<(prop.r+radius)**2;
@@ -2498,7 +2515,7 @@ var qu = `
       return top;
     }
     hitProp(e, t, n, r, playerPassage=false) {
-      for(const prop of this.nearbyColliders(e,n)){
+      for(const prop of this.collisionCandidates(e,n,r)){
         if(prop.off || (playerPassage && prop.playerPassable) || (prop.standY!=null ? t>=prop.standY-.0001 : t>prop.h))continue;
         if(prop.paperBox){if(hitsPaperBox(prop,e,n,r))return true;continue;}
         const dx=e-prop.x,dz=n-prop.z,reach=prop.r+r;
@@ -2534,6 +2551,9 @@ var qu = `
     }
     resolve(e, t, n, r, i, playerPassage=false) {
       ((i.x = e), (i.z = t));
+      // A push out of one prop can enter another cell. Keep the original
+      // ordered solver for overlaps; open-floor movement needs no solver.
+      if(this.desk2d && n<=2 && !this.hitProp(e,r,t,n,playerPassage))return i;
       for(const prop of this.nearbyColliders(e,t)){
         if(prop.off || (playerPassage && prop.playerPassable) || (prop.standY!=null ? r>=prop.standY-.0001 : r>prop.h))continue;
         if(prop.paperBox){resolvePaperBox(prop,i,n);continue;}

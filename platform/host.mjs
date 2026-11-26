@@ -154,7 +154,8 @@ export async function setup(host) {
         continue;
       }
       if(record.type==='attributes'&&controls.owns(element)&&['style','class'].includes(record.attributeName)){
-        controls.invalidate();continue;
+        // The stick layer reads visibility and translation at draw time.
+        continue;
       }
       if(usingBattleHUD()){
         if(record.type==='attributes'&&element?.classList?.contains('zx-skill-cooldown')&&['data-frame','data-progress'].includes(record.attributeName)){
@@ -477,7 +478,7 @@ export async function setup(host) {
       }
       modalTransition.prepare(layout,view,scale);
       const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
-      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),speech.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...normalSoloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
+      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,...controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),speech.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...normalSoloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
       if(playing&&state==='play')layers.push(...readyBlink(run,view,scale));
       draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
       run?.dragonHd?.drawFlash(renderer);

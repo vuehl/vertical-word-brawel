@@ -75,11 +75,11 @@ try{
       const original=proto[name];proto[name]=function(...args){
         const canvas=args.at(-1);
         if(platform==='ios'&&canvas&&canvas===window.inspected?.health?.canvas)throw Error('Health must use the iOS pixel-buffer upload');
-        if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas===window.inspected?.controls?.canvas){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas||window.inspected?.hudLayers?.some(layer=>layer.canvas===canvas))){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
+        if(canvas===window.inspected?.uiCanvas){window.auditUIUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.controls?.canvas||canvas===window.inspected?.controls?.knobCanvas)){window.auditControlUploads++;window.auditUploadBytes+=canvas.width*canvas.height*4;}else if(canvas&&(canvas===window.inspected?.minimap?.canvas||canvas===window.inspected?.health?.canvas||canvas===window.inspected?.portrait?.canvas||window.inspected?.hudLayers?.some(layer=>layer.canvas===canvas))){window.auditUploadBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.health?.canvas)window.auditHealthBytes+=canvas.width*canvas.height*4;if(canvas===window.inspected?.portrait?.canvas)window.auditPortraitBytes+=canvas.width*canvas.height*4;}
         return original.apply(this,args);
       };
     }
-  },process.argv.includes('--android-performance')?'android':iphone||process.argv.some(arg=>['--ios-budget','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
+  },process.argv.includes('--android-performance')?'android':iphone||process.argv.some(arg=>['--ios-budget','--crowded-steering','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
@@ -93,7 +93,7 @@ try{
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
   const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects'].includes(arg));
-  const repeatableMap=!!iphone||deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
+  const repeatableMap=!!iphone||deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--crowded-steering','--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
     app.applySettings();
@@ -127,6 +127,9 @@ try{
   await new Promise(resolve=>setTimeout(resolve,2000));
   if(iphone){
     await reviewIOSLateGame(page,dir,iphone);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--crowded-steering')){
+    const {reviewCrowdedSteering}=await import('./regression/crowded-steering.mjs');
+    await reviewCrowdedSteering(page,dir,process.argv.includes('--baseline'));assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--region-atlas')){
     const {reviewRegionAtlas}=await import('./regression/region-atlas-regression.mjs');
     await reviewRegionAtlas(page,dir);assert.deepEqual(errors,[]);
@@ -366,8 +369,8 @@ try{
   assert.deepEqual(report.stationaryCulling.cachedCounts,report.stationaryCulling.initialCounts);
   report.touch=await page.evaluate(async()=>{
     const run=app.run,r=app.r,input=run.input,stick=run.ui.touch.stick;
-    const box=stick.getBoundingClientRect(),screen=inspected.doc.getElementById('game').getBoundingClientRect();
-    const x=box.x+box.width/2-screen.x,y=box.y+box.height/2-screen.y;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=inspected.env.innerWidth*.5-screen.x,y=inspected.env.innerHeight*.65-screen.y;
     // Warm first-interaction audio/settings before measuring the joystick.
     window.tap(x,y,'down',77);window.tap(x,y,'up',77);
     await new Promise(resolve=>setTimeout(resolve,120));
@@ -378,11 +381,13 @@ try{
     before=auditUIUploads;const tiles=auditControlUploads,bytes=auditUploadBytes,directions=[];
     for(let i=0;i<10;i++){
       window.tap(x+12+i*2,y-8,'move',77);inspected.env.drawUI(r.renderer);
+      run.ui.touch.driveStick(input,1/30,performance.now());
       directions.push([input.stickX,input.stickY]);
     }
     const result={moves:10,idleUploads,fullUploads:auditUIUploads-before,controlUploads:auditControlUploads-tiles,uploadedBytes:auditUploadBytes-bytes,directions,
       tileSize:[inspected.controls.canvas.width,inspected.controls.canvas.height],screenSize:[inspected.uiCanvas.width,inspected.uiCanvas.height]};
     window.tap(x+30,y-8,'up',77);inspected.env.drawUI(r.renderer);
+    run.ui.touch.driveStick(input,1/30,performance.now());
     result.released=input.stickX===0&&input.stickY===0;
     result.hiddenOnRelease=!stick.classList.contains('on');
     // The floating stick is no longer drawn on release. Check its displayed
@@ -564,7 +569,7 @@ try{
   fs.writeFileSync(path.join(dir,'runtime-performance.json'),JSON.stringify(report,null,2));
   assert.deepEqual(errors,[]);
   assert.equal(report.touch.idleUploads,0);assert.equal(report.touch.fullUploads,0);
-  assert.equal(report.touch.controlUploads,10);assert.ok(report.touch.uploadedBytes<10*5266560*.1);
+  assert.equal(report.touch.controlUploads,0);assert.ok(report.touch.uploadedBytes<10*5266560*.1);
   assert.ok(report.touch.released&&report.touch.hiddenOnRelease&&report.touch.centerError<1);
   assert.ok(report.touch.directions.every(([x,y])=>x>0&&y>0));
   assert.ok(report.visibility.visibleFarDistance>18);assert.deepEqual(report.visibility.counts.map(c=>c.draws),[2,2,2]);

@@ -4,6 +4,10 @@ export class FramePacer {
   next=0;
   gap=0;
   nativeCadence=false;
+  lastCallback=-Infinity;
+  sampleStart=0;
+  callbacks=0;
+  fastCallbacks=false;
   constructor(setFrameRate){this.setFrameRate=setFrameRate;}
   reset(){this.next=0;this.gap=0;this.nativeCadence=false;}
   ready(now,gap,force=false){
@@ -15,10 +19,19 @@ export class FramePacer {
         try{this.setFrameRate(fps);this.nativeCadence=true;}catch{}
       }
     }
-    // WeChat already paces the callback. Accept its normal jitter, but keep
-    // the deadline so a host that ignores 30 FPS cannot render at 60.
-    const tolerance=this.nativeCadence?gap*.4:Math.min(2,gap*.12);
-    if(this.gap!==gap||!this.next||now<this.next-gap-tolerance){
+    // A successful native rate request can still deliver display-rate callbacks.
+    // Measure raw callbacks, including skipped ones. On a 120 Hz stream the
+    // wider native tolerance can alternate early and on-time draws at 60 FPS.
+    const restart=this.gap!==gap||now<this.lastCallback;
+    this.lastCallback=now;
+    if(restart){
+      this.sampleStart=now;this.callbacks=0;this.fastCallbacks=false;
+    }else if(this.nativeCadence && ++this.callbacks===4){
+      this.fastCallbacks=now-this.sampleStart<gap*4*.8;
+      this.sampleStart=now;this.callbacks=0;
+    }
+    const tolerance=this.nativeCadence&&!this.fastCallbacks?gap*.4:Math.min(2,gap*.12);
+    if(restart||!this.next){
       this.gap=gap;this.next=now+gap;return true;
     }
     if(now<this.next-tolerance){
