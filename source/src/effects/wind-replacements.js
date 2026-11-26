@@ -3,6 +3,9 @@ import {windFrameAt} from './wind-frame-time.js';
 import {WindAtlasBatch} from './wind-vortex.js';
 
 const {clips}=atlas;
+// A 144 px cell spans 9.3 world units in the reference gameplay framing,
+// including the scale applied by WindAtlasBatch.
+const featherCellSize=6.2;
 
 export class WindReplacements extends WindAtlasBatch {
   constructor(owner){
@@ -37,9 +40,10 @@ export class WindReplacements extends WindAtlasBatch {
     const floor=pool.run.terrain.surface(x[id],z[id]);
     if(frame>=0)this.push(x[id],floor+.08,z[id],size*2.6,clips.gust.first+frame,this.opacity,14/atlas.tile);
   }
-  feather(pool,id,size){
-    const frame=windFrameAt(clips.flight,pool.maxLife[id]-pool.life[id],true);
-    if(frame>=0)this.push(pool.x[id],pool.y[id],pool.z[id],size*3.4,clips.flight.first+frame,this.opacity,.5,pool.vx[id],pool.vz[id]);
+  feather(pool,id){
+    const pose=windFrameAt(clips.flight,pool.maxLife[id]-pool.life[id]);
+    const frame=pose<0?clips.flight.count-1:pose;
+    this.push(pool.x[id],pool.y[id],pool.z[id],featherCellSize,clips.flight.first+frame,this.opacity,.5-14/atlas.tile,pool.vx[id],pool.vz[id]);
   }
   reset(){this.events.length=0;this.clear();}
 }
@@ -49,7 +53,7 @@ export function installWindReplacements(registry){
   registry['wind-gust']={...registry.gust,sourceKey:'gust',trail(){},hit(){},boom(){},
     draw:(pool,id,size)=>art(pool.run).gust(pool,id,size)};
   registry['wind-feather-dance']={...registry['feather-dance'],sourceKey:'feather-dance',trail(){},
-    cast:(run,x,y,z)=>art(run).play('launch',x,y,z,4.25),
-    draw:(pool,id,size)=>art(pool.run).feather(pool,id,size),
-    hit:(run,x,y,z)=>art(run).play('hit',x,run.terrain.surface(x,z)+.28,z,4.1),hitCover:true};
+    cast:(run,x,y,z)=>art(run).play('launch',x,y-.2,z,featherCellSize),
+    draw:(pool,id)=>art(pool.run).feather(pool,id),
+    hit:(run,x,y,z)=>art(run).play('hit',x,run.terrain.surface(x,z)+.28,z,featherCellSize),hitCover:true};
 }

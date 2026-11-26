@@ -8383,10 +8383,9 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           this.spout && this.tickSpout(e),
           this.bliz && this.tickBlizzard(e),
           this.tickFlight(e));
-        const speech = this.speech;
-        if (speech && (!this.busy || t.time >= speech.expires ||
-            (speech.speaker >= 0 && (!t.enemies.isAlive(speech.speaker) || t.enemies.gen[speech.speaker] !== speech.generation)))) {
-          this.clearSpeech();
+        if (this.speech) {
+          if (this.busy) this.speech.update();
+          else this.clearSpeech();
         }
       }
       startSpout() {
@@ -8659,6 +8658,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           k: 0,
           frost: 0,
           frostPop: 0,
+          windX: 0, windZ: 0, driftX: 0, driftZ: 0,
           sheltered: !1,
           said: !1,
         }),
@@ -8686,7 +8686,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
       sheltered(e, t, n, r, i) {
         let a = this.run.terrain;
         if (!a.lineClear(e, t + 0.9, n, e - r * 5, t + 0.9, n - i * 5)) return !0;
-        for (let o of a.colliders) {
+        for (let o of a.nearbyColliders(e, n)) {
           if (o.off || o.h < t + 1) continue;
           let a = o.x - e,
             s = o.z - n;
@@ -8723,7 +8723,8 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             d > 0.5 &&
             t.ui.popup(i.x, i.y + 2.4, i.z, c(`¡A cubierto del viento!`), `#7aff8a`, 0.8),
           (n.sheltered = f),
-          !f && r.grounded && ((r.kx += l * rb * d * e), (r.kz += u * rb * d * e)),
+          (n.windX = f ? 0 : l * rb * d),
+          (n.windZ = f ? 0 : u * rb * d),
           (n.frost =
             !f && d > 0.5 && r.speedNow < 1.6 && r.pstat.frozen <= 0
               ? Math.min(1, n.frost + e * (r.types.includes(`fire`) ? 0.08 : 0.16))
@@ -8753,8 +8754,13 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
                 ((a.hazSlow[t] = Math.min(a.hazSlow[t], 1 - 0.25 * d)),
                 (a.kx[t] += l * rb * 0.5 * d * e),
                 (a.kz[t] += u * rb * 0.5 * d * e)));
-        let p = o.zxPaper ? i : t.r.camera.position;
-        for (let n = Math.floor(e * (o.zxPaper ? 115 : 280) * d + Math.random()); n > 0; n--) {
+        // PaperWeather already draws two layers of snowfall and gusts over the tabletop.
+        if (!o.zxPaper) this.snowParticles(e, l, u, d);
+        n.t <= 0 && ((this.bliz = null), t.pushLook(), t.ui.toast(c(`La ventisca amaina`), null, undefined, 'blizzard'));
+      }
+      snowParticles(e, l, u, d) {
+        const t = this.run, o = t.terrain, i = t.player.pos, p = t.r.camera.position;
+        for (let n = Math.floor(e * 280 * d + Math.random()); n > 0; n--) {
           let e = p.x + F.range(-20, 20) - l * 12,
             n = p.z + F.range(-20, 20) - u * 12;
           t.vfx.norm.spawn({
@@ -8789,7 +8795,6 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             shape: I.Soft,
           });
         }
-        n.t <= 0 && ((this.bliz = null), t.pushLook(), t.ui.toast(c(`La ventisca amaina`), null, undefined, 'blizzard'));
       }
       atmos() {
         let e = this.bliz;

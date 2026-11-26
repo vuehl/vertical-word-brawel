@@ -51,7 +51,8 @@ export async function recordWindReference(page,sourceDir,destination){
       setupWind();const r=app.run,p=r.player,e=r.enemies;
       r.hints.on=false;
       p.setSpecies(species);p.buffs.clear();p.recompute();
-      let {x,z}=windRecordingOrigin;
+      // The feather reference was filmed beside the badge in the open north-west lane.
+      let {x,z}=id===332?windLane:windRecordingOrigin;
       if(species===59){
         const terrain=r.terrain;
         let longest=0;
@@ -69,7 +70,7 @@ export async function recordWindReference(page,sourceDir,destination){
       await r.sprites.prepareHeroForm(species);
       if(id===332||id===17||id===403){
         e.clear();
-        const target=e.spawn(147,x+1.85,z-7.35,1,1,0);
+        const target=e.spawn(147,x+(id===332?.65:1.85),z-(id===332?7.05:7.35),1,1,0);
         e.hp[target]=e.maxHp[target]=1e7;
         e.y[target]=r.terrain.surface(e.x[target],e.z[target]);
         p.stats.critChance=p.stats.megaCrit=0;
@@ -84,7 +85,7 @@ export async function recordWindReference(page,sourceDir,destination){
       r.updateCamera(1);vfxDraw();
     },{id,species});
     let fired=false,previous=0,refFrame=0;
-    const castTime=frameStart[(name.includes('融合')||species!==16)?4:5];
+    const castTime=frameStart[id===332?13:(name.includes('融合')||species!==16)?4:5];
     // Every original exposure is retained, including 20/30/60/70 ms frames and
     // the entire ending. No nominal-FPS sampling or truncated previews.
     const exposures=frameStart;
@@ -126,7 +127,7 @@ export async function recordWindReference(page,sourceDir,destination){
       while(refFrame+1<delays.length&&frameStart[refFrame+1]<=ms)refFrame++;
       if(!captureFrame)continue;
       const source=await sharp(file,{page:refFrame}).extract({left:0,top,width,height}).png().toBuffer();
-      const live=await page.screenshot({clip:{x:0,y:52,width,height}});
+      const live=await page.screenshot({clip:{x:0,y:id===332?top:52,width,height}});
       const stem=String(refFrame).padStart(3,'0');
       const sourceFile=path.basename(name)+'/source-'+stem+'.png',liveFile=path.basename(name)+'/game-'+stem+'.png';
       fs.writeFileSync(path.join(destination,sourceFile),source);

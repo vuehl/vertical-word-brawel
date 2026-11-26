@@ -54,22 +54,82 @@ await clip('gust',gust,range(6,25),page=>{
 });
 
 const feather=await recording('羽毛舞.gif');
-const cyan=({r,g,b,br,bg,bb})=>{
-  const diff=Math.abs(r-br)+Math.abs(g-bg)+Math.abs(b-bb);
-  return diff>11&&g-r>8&&b-r>3&&g-b> -17&&g-b<70?Math.min(255,diff*1.7):0;
-};
-await clip('launch',feather,range(6,9),()=>({left:123,top:450}),o=>{
-  const radius=Math.hypot(o.x-72,(o.y-75)*1.15);
-  if(radius<30||radius>56||o.y<41)return 0;
-  return cyan(o);
+// Register each exposure to the caster, the projectile, or the contact point.
+// All coordinates below are in pixels of the 390 x 844 reference recording.
+const plate=await feather.read(12);
+async function featherClip(key,first,last,sample){
+  const pages=range(first,last), times=[0];
+  clips[key]={first:layers.length,count:pages.length,times,source:feather.source,sha256:feather.sha256,pages};
+  for(const page of pages){
+    const rgb=await feather.read(page), pixels=Buffer.alloc(tile*tile*4);
+    for(let y=0;y<tile;y++)for(let x=0;x<tile;x++){
+      const ink=sample(page,x-tile/2,y-tile/2,rgb);
+      if(ink)pixels.set(ink,(y*tile+x)*4);
+    }
+    const index=layers.length;
+    layers.push({input:pixels,raw:true,left:index%columns*tile,top:Math.floor(index/columns)*tile});
+    times.push(times.at(-1)+feather.delay[page]);
+  }
+}
+
+function liftInk(frame,x,y,overActor=false){
+  const k=(y*feather.width+x)*3;
+  const rgb=frame.subarray(k,k+3),bg=plate.subarray(k,k+3);
+  const [r,g,b]=rgb;
+  // The moving glyph has no clean plate. Only its overlapping feather colours
+  // are recoverable. On the static desk the colour difference preserves fades.
+  if(overActor){
+    if(g-r<14||b-r<12||b-g>35||g-b>30||g<95)return;
+    return [r,g,b,Math.min(255,Math.round((g-r)*4.5))];
+  }
+  const diff=Math.max(...rgb.map((v,i)=>Math.abs(v-bg[i])));
+  if(diff<7)return;
+  const chroma=(b-r)-(bg[2]-bg[0]);
+  if(chroma<4&&!(g>=r&&b>=r&&diff>15))return;
+  const targetChroma=50;
+  const alpha=Math.min(1, Math.max(diff/160,chroma/Math.max(35,targetChroma-bg[2]+bg[0])));
+  return unmixWindInk([r,g,b],bg,alpha*255);
+}
+
+await featherClip('launch',13,19,(page,dx,dy,frame)=>{
+  const radius=Math.hypot(dx,dy/.84);
+  if(radius<23||radius>38)return;
+  // The health bar covers the bottom arc, and the three departing tips cross
+  // the top. Sample an unobstructed arc at the same elliptical radius there.
+  if(dy>=18||(dy<0&&dx>=-8&&dx<=15)){
+    const angle=Math.atan2(dy/.84,dx)+(dy>=18?Math.PI*.65:-Math.PI*.35);
+    dx=Math.round(radius*Math.cos(angle));dy=Math.round(radius*.84*Math.sin(angle));
+  }
+  return liftInk(frame,195+dx,420+dy);
 });
-await clip('flight',feather,range(10,12),page=>({left:123,top:[374,357,337][page-10]}),o=>{
-  if(Math.abs(o.x-72)>8||Math.abs(o.y-72)>36)return 0;
-  return cyan(o);
+
+const tipX=[197,197,198,198,199,199,199,200,200,201,201,201,202,202,203,203,203,203,204,204];
+const tipY=[391,388,384,381,378,373,370,366,364,360,354,350,349,345,342,335,333,329,326,323];
+await featherClip('flight',13,32,(page,dx,dy,frame)=>{
+  const row=dy+15;
+  if(row<0||row>31||Math.abs(dx)>3)return;
+  const index=page-13;
+  // Unshear the middle feather to face up. The billboard then uses its live
+  // velocity, including when a surviving shot acquires a different enemy.
+  const x=tipX[index]+dx-Math.round(row*.11), y=tipY[index]+row;
+  if(page<20&&y>=392){
+    const k=(y*feather.width+x)*3,[r,g,b]=frame.subarray(k,k+3);
+    if(g-r<18||b-r<12||g-b< -35||g-b>30||Math.abs(dx)>Math.max(0,3-row*.09))return;
+    return [r,g,b,255];
+  }
+  if(Math.abs(dx)>Math.min(3,1+row,Math.max(.55,(32-row)*.17)))return;
+  const k=(y*feather.width+x)*3,[r,g,b]=frame.subarray(k,k+3);
+  if((r>190&&g>=r&&b>r+4)||(g-r>42&&b-r>35))return [r,g,b,255];
+  return liftInk(frame,x,y);
 });
-await clip('hit',feather,range(13,29),()=>({left:123,top:305}),o=>{
-  if(o.y<41||o.y>112||Math.hypot((o.x-72)/55,(o.y-73)/43)>1)return 0;
-  return cyan(o);
+
+await featherClip('hit',33,72,(page,dx,dy,frame)=>{
+  const x=203+dx,y=350+dy;
+  if(x<146||x>246||y<314||y>378)return;
+  // The damage popup crosses the top edge for seven exposures.
+  if(page>=39&&page<=45&&y<[322,322,323,323,320,318,316][page-39])return;
+  const overActor=x>=178&&x<=223&&y<328+Math.max(0,page-38)*.82;
+  return liftInk(frame,x,y,overActor);
 });
 
 const rows=Math.ceil(layers.length/columns);

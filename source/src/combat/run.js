@@ -2273,10 +2273,12 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
       if(this.state==='capturing'){this.orbitals.begin();this.orbitalsGlow.begin();this.capBall?.update(e);}
       if(i && r>0){
         this.realDt=tickSeconds || e;
-        this.simulate(r,dwellSeconds/ticks,lastStepMs - (ticks - 1) * tickSeconds * 1000);
+        // 补跑旧步时按该步时刻取样，当前步可以使用本帧已送达的转向。
+        const firstStepMs=lastStepMs - (ticks - 1) * tickSeconds * 1000;
+        this.simulate(r,dwellSeconds/ticks,firstStepMs,ticks===1 ? performance.now() : firstStepMs);
         if(ticks===2 && this.state==='play' && !this.buildingStage && !this.pendingLevels && this.hitstopT<=0){
           this.input.endFrame();
-          this.simulate(r,dwellSeconds/2,lastStepMs);
+          this.simulate(r,dwellSeconds/2,lastStepMs,performance.now());
           r*=2;
         }
         this.realDt=e;
@@ -2326,7 +2328,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
     governHorde() {
       updateCrowdBudget(this,performance.now(),document.hidden);
     }
-    simulate(e, dwellSeconds = e, stepMs = performance.now()) {
+    simulate(e, dwellSeconds = e, stepMs = performance.now(), sampleMs = stepMs) {
       if (this.stageTime >= bossSummonUnlockSeconds(this) - 60 && !this.bossSpawned &&
           !this.dragonHdAssets && this.stageBossSpecies === finalBossSpecies) warmDragonSummon(this);
       let t = this.input,
@@ -2334,7 +2336,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
         r = !!this.coop && n.dead;
       // 触摸摇杆：每个逻辑 tick 取样一次（用真实 tick 时长，慢动作不拖慢手感）。
       this.inputTick = (this.inputTick || 0) + 1;
-      this.ui.touch?.driveStick(t, this.realDt || e, stepMs);
+      this.ui.touch?.driveStick(t, this.realDt || e, stepMs, sampleMs);
       (Fl.leave(),
         (this.time += e),
         (this.stageTime += e),

@@ -2558,8 +2558,7 @@ var mv = 30,
         E = r.isLava ? -99 : r.waterAt(this.pos.x, this.pos.z),
         ee = r.frozen && T < E,
         D = !ee && T < E - 0.55;
-      // 触摸摇杆仍在驱动（按住，或松手后滤波还在衰减）时按模拟量走：
-      // 速度跟随摇杆幅度，松手靠幅度衰减平滑减速，而不是硬停或满速滑一段。
+      // 摇杆幅度决定目标速度，方向由本步采样决定。
       const stickDriven = !!t.ui.touch?.stickDriving;
       if (stickDriven && y > 0) w *= Math.min(1, y);
       if (
@@ -2657,9 +2656,14 @@ var mv = 30,
           ((t.x *= r), (t.z *= r));
         }
       } else if (stickDriven && !this.diving) {
-        const rate = y > 0 ? gameStick.accel : gameStick.decel;
-        this.vel.x = S ? 0 : steerVelocity(this.vel.x, _ * w, rate, e, gameStick.stopEpsilon);
-        this.vel.z = S ? 0 : steerVelocity(this.vel.z, v * w, rate, e, gameStick.stopEpsilon);
+        if (y > 0) {
+          const speed = steerVelocity(Math.hypot(this.vel.x, this.vel.z), w, gameStick.accel, e, gameStick.stopEpsilon);
+          this.vel.x = _ * speed;
+          this.vel.z = v * speed;
+        } else {
+          this.vel.x = S ? 0 : steerVelocity(this.vel.x, 0, gameStick.decel, e, gameStick.stopEpsilon);
+          this.vel.z = S ? 0 : steerVelocity(this.vel.z, 0, gameStick.decel, e, gameStick.stopEpsilon);
+        }
       } else if (this.grounded) {
         let t = _ * w,
           n = v * w,
@@ -2758,6 +2762,19 @@ var mv = 30,
       ((this.kx *= se), (this.kz *= se));
       let ce = walkX + this.kx * e,
         le = walkZ + this.kz * e;
+      const blizzard = t.mapEvents?.bliz;
+      if (blizzard) {
+        // Keep weather drift on the event. A turn can cancel it independently of combat knockback.
+        if (stickDriven && y > 0) {
+          blizzard.driftX = blizzard.driftZ = 0;
+        } else {
+          const windDt = this.grounded ? e : 0;
+          blizzard.driftX = (blizzard.driftX + blizzard.windX * windDt) * se;
+          blizzard.driftZ = (blizzard.driftZ + blizzard.windZ * windDt) * se;
+          ce += blizzard.driftX * e;
+          le += blizzard.driftZ * e;
+        }
+      }
       // 在碰撞查询之前钳位，补跑的第二步只能用本显示帧剩余的移动距离。
       if (stickDriven) {
         const distance = Math.hypot(ce, le);

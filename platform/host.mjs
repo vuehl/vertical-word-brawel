@@ -70,9 +70,10 @@ export async function setup(host) {
   const device=readRuntimeInfo(wx,typeof GameGlobal==='object'?GameGlobal:{});
   readDevicePerformance(wx,device).then(()=>win.dispatchEvent(new D.Event('deviceperformancechange')));
   const health=createCanvasLayer(makeCanvas,'health',{slot:2,movable:true,uploadPixels:device.platform==='ios'});
+  const speech=createCanvasLayer(makeCanvas,'weather-speech',{slot:13,movable:true,uploadPixels:device.platform==='ios'});
   const peerTiles=['peer-health-0','peer-health-1','peer-tag-0','peer-tag-1'].map((id,i)=>
     createCanvasLayer(makeCanvas,id,{slot:14+i,movable:true,uploadPixels:device.platform==='ios'}));
-  const healthLayer=element=>health.owns(element)?health:
+  const movableLayer=element=>health.owns(element)?health:speech.owns(element)?speech:
     element?.dataset?.uiLayer?.startsWith('peer-')?peerTiles.find(t=>t.owns(element)):null;
   const portrait=createCanvasLayer(makeCanvas,'portrait',{slot:5,foreground:'portrait-level'});
   const soloLayers=['counters','ultimate','skills','items','markers','notices','diagnostics'].map((id,index)=>createHUDLayer(makeCanvas,id,index+6));
@@ -90,11 +91,11 @@ export async function setup(host) {
   const coopLayers=[teamLayer,...soloLayers];
   const activeHudLayers=()=>win.__pb?.run?.coop?coopLayers:soloLayers;
   const fixedLayers=new Map(coopLayers.map(layer=>[layer.id,layer]));
-  const soloTiles=new Map([...soloLayers,minimap,health,portrait].map(layer=>[layer.id,layer]));
+  const soloTiles=new Map([...soloLayers,minimap,health,speech,portrait].map(layer=>[layer.id,layer]));
   soloTiles.set('portrait-level',portrait);soloTiles.set('stick',controls);
   const coopTiles=new Map(soloTiles);
   for(const layer of [teamLayer,...peerTiles])coopTiles.set(layer.id,layer);
-  const allTiles=[controls,minimap,health,portrait,...coopLayers,...peerTiles];
+  const allTiles=[controls,minimap,health,speech,portrait,...coopLayers,...peerTiles];
   const emptyBoxes=[];
   const layerId=el=>el?.closest?.('[data-ui-layer]')?.getAttribute('data-ui-layer');
   function fixedLayerFor(element){
@@ -147,7 +148,7 @@ export async function setup(host) {
       if(usingBattleHUD()&&record.type!=='attributes'&&element?.closest?.('[data-ui-layer="portrait-level"]')){
         portrait.invalidateForeground();continue;
       }
-      const movable=record.type==='attributes'&&healthLayer(element);
+      const movable=record.type==='attributes'&&movableLayer(element);
       if(movable&&['style','data-frame','data-progress','aria-valuenow','aria-valuemax','aria-label'].includes(record.attributeName)){
         if(record.attributeName==='data-frame')movable.invalidate();
         continue;
@@ -476,7 +477,7 @@ export async function setup(host) {
       }
       modalTransition.prepare(layout,view,scale);
       const cue=modalTransition.cue(!opaque&&upgradeCue(run)?run:null,view,scale,now);
-      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...normalSoloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
+      const layers=[playing&&run.coop?teamLayer.draw(layout,view,scale,true):null,controls.draw(layout,view,scale,playing),minimap.draw(layout,view,scale,playing),health.draw(layout,view,scale,playing),speech.draw(layout,view,scale,playing),...(playing&&run.coop?peerTiles.map(tile=>tile.draw(layout,view,scale,true)):[]),portrait.draw(layout,view,scale,playing),...normalSoloLayers.map(tile=>tile.draw(layout,view,scale,playing)),cue,...modalTransition.layers(scale)];
       if(playing&&state==='play')layers.push(...readyBlink(run,view,scale));
       draw(renderer,changed,opaque,layers,opaque?null:frozenFrame||frozenUpgradeKey(),opaque?null:run);
       run?.dragonHd?.drawFlash(renderer);

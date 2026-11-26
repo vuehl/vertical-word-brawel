@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {createHash} from 'node:crypto';
 import {windFrameAt} from '../../source/src/effects/wind-frame-time.js';
 
 test('unequal GIF exposures use their own boundaries, including final disappearance',()=>{
@@ -36,4 +37,17 @@ test('authored wind atlases fit texture limits and keep every exposure of the re
   }
   assert.ok(new Set(vortex.times.slice(1).map((time,i)=>time-vortex.times[i])).size>1);
   assert.equal(skill.clips.wingHit.times.at(-1),1050);
+});
+
+test('Feather Dance plays the launch, flight and impact exposures from the current recording',()=>{
+  const folder=new URL('../../resources/',import.meta.url);
+  const recording=fs.readFileSync(new URL('art/wind-supplement/羽毛舞.gif',folder));
+  const {clips}=JSON.parse(fs.readFileSync(new URL('public/assets/vfx/wind-replacements.json',folder)));
+  const digest=createHash('sha256').update(recording).digest('hex');
+  for(const [key,first,last] of [['launch',13,19],['flight',13,32],['hit',33,72]]){
+    const clip=clips[key];
+    assert.equal(clip.sha256,digest);
+    assert.deepEqual(clip.pages,Array.from({length:last-first+1},(_,i)=>first+i));
+    assert.deepEqual(clip.times,Array.from({length:clip.count+1},(_,i)=>i*20));
+  }
 });

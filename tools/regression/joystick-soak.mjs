@@ -9,6 +9,8 @@ export async function verifyCombatSteering(page,dir){
     const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
     // Start just south of the tissue box, on the same approach as the edge test.
     p.pos.set(-31,0,r.terrain.deskBounds.z-3);p.vel.set(0,0,0);p.grounded=true;
+    // Start past the two timed starter upgrades so their modals cannot end this hold.
+    p.level=3;
     p.hp=p.maxHp=1e6;p.xpNext=1e9;p.stats.evasion=0;r.camTarget.copy(p.pos);
     r.director.update=()=>{};r.events.update=()=>{};
     const frames=[],start=performance.now(),update=r.update,simulate=r.simulate,drawUI=env.drawUI;

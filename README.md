@@ -60,14 +60,14 @@
 
 | 参数 | 实战默认值 | 调节效果 |
 | --- | --- | --- |
-| `filterWeights` · `smoothAlpha` | 最近三步权重 0.90、0.08、0.02，时间常数 0.010 秒 | 增大最新一步的权重或缩短时间常数，转向更快 |
+| `filterWeights` · `smoothAlpha` | 最新一步权重 1，时间常数 0 秒 | 转向跟随当前触点，起步和刹车由速度响应控制 |
 | `deadZone` · `deadZoneRelease` | 启动 0.15，回落 0.09 | 提高启动阈值可以忽略更大幅度的轻触 |
 | `maxSpeed` | 7.3 世界单位/秒 | 基础满杆速度，角色、装备和地形另有倍率 |
 | `accel` · `decel` | 58/s、40/s | 分别增大可加快起步和刹停 |
 | `maxStepDistance` · `maxFrameDistance` | 1.2、1.6 世界单位 | 分别限制单步和一个显示帧内摇杆驱动的水平移动 |
 | `sendIntervalMs` · `interpBufferMs` | 50 ms、90 ms | 分别控制输入批次的发送间隔和队友基础播放延迟。抖动较大时会增加播放缓冲 |
 
-触摸采样在 `stick-input.js`，三步滤波在 `stick-filter.js`，速度响应在 `stick-physics.js`，渲染插值在 `stick-render.js`。战斗按 30 Hz 更新，碰撞使用玩家物理坐标，角色和镜头共用插值位置。
+触摸采样在 `stick-input.js`，死区与可选滤波在 `stick-filter.js`，速度响应在 `stick-physics.js`。战斗按 30 Hz 更新。30 帧档显示当前物理位置，更高帧率下角色和镜头共用 `stick-render.js` 的插值位置。
 
 联机通过 `stick-frames.js` 的 `record()` 记录固定步输入，到发送时返回一批快照。`exportSnapshot()` 可主动取出并清空待发帧。每帧包含 `tick`、本局相对时间 `ms`、滤波后的 `x/y` 和按住标记 `held`。原有战斗物理快照用于校正碰撞、击退和换区位置。运行 `npm test` 检查输入与同步模块，`npm run test:joystick` 检查构建后的触摸和移动。
 

@@ -476,7 +476,8 @@ export class App {
     const ticks=combat?this.combatClock.ticks(this.run,e,physicsMs):1;
     const alpha = combat ? this.combatClock.alpha : null;
     const lastStepMs = performance.now() - (alpha || 0) * physicsMs;
-    if (this.run) this.run.renderAlpha = alpha;
+    // 30 帧档直接显示本步落点。更高帧率在相邻物理步间插值。
+    if (this.run) this.run.renderAlpha = combat && gap >= physicsMs ? 1 : alpha;
     if(!combat)this.combatClock.run=null;
     const elapsed = this.last === null ? 0 : Math.max(0, (e - this.last) / 1e3);
     const logicDt = Math.min(0.1, elapsed);

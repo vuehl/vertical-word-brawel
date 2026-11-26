@@ -110,6 +110,64 @@ export async function verifyJoystick(page,dir){
     assert.ok(Math.abs(s.turn[0])<.01 && s.turn[1]>0,JSON.stringify(s));
     assert.ok(Math.hypot(...s.center)<.001 && s.stop===0 && s.release[1]<0,JSON.stringify(s));
   }
+  const turns=await page.evaluate(()=>{
+    const r=app.run,p=r.player,screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=inspected.env.innerWidth*.5-screen.x,y=inspected.env.innerHeight*.64-screen.y;
+    const samples=[],maps=r.mapEvents;
+    function probe(phase,dt,path){
+      p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.kx=p.kz=p.crowdX=p.crowdZ=0;
+      p.grounded=true;r.realDt=dt;
+      window.tap(x,y,'down',11);
+      const direction=path==='vertical'?[0,1]:[1,0];
+      window.tap(x+60*direction[0],y+60*direction[1],'move',11);
+      const step=()=>{window.stickStep(dt);maps.update(dt);};
+      for(let i=0;i<10;i++)step();
+      const stride=p.speedNow*dt;
+      let minStride=Infinity,maxAngle=0;
+      for(let i=0;i<12;i++){
+        const sign=i%4<2?-1:1,angle=Math.sin(i*Math.PI/4)*Math.PI/3;
+        const dx=path==='S'?Math.sin(angle):sign*direction[0];
+        const dz=path==='S'?-Math.cos(angle):sign*direction[1];
+        window.tap(x+60*dx,y+60*dz,'move',11);
+        const px=p.pos.x,pz=p.pos.z;
+        step();
+        const vx=p.pos.x-px,vz=p.pos.z-pz,forward=vx*dx+vz*dz;
+        minStride=Math.min(minStride,forward/stride);
+        maxAngle=Math.max(maxAngle,Math.abs(Math.atan2(vz*dx-vx*dz,forward))*180/Math.PI);
+      }
+      window.tap(x,y,'up',11);
+      samples.push({phase,fps:Math.round(1/dt),path,minStride,maxAngle});
+    }
+    for(const phase of ['clear','blizzard','after']){
+      if(phase==='blizzard'){
+        if(!maps.start('blizzard'))throw Error('Missing blizzard');
+        const storm=maps.bliz,p0=r.terrain.spawn;
+        for(let i=0;i<8;i++){
+          storm.a=i*Math.PI/4;
+          if(!maps.sheltered(p0.x,p0.y,p0.z,Math.cos(storm.a),Math.sin(storm.a)))break;
+        }
+        storm.turn=60;storm.k=1;
+        r.enemies.clear();
+      }
+      if(phase==='after'){
+        p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.grounded=true;
+        const before=p.pos.clone();
+        for(let i=0;i<15;i++){window.stickStep(1/30);maps.update(1/30);}
+        if(before.distanceTo(p.pos)<.1||Math.hypot(maps.bliz.driftX,maps.bliz.driftZ)<.5)
+          throw Error('Idle player did not feel exposed wind');
+        maps.bliz.t=.001;maps.update(1/30);
+        const {x,z}=p.pos;
+        window.stickStep(1/30);
+        if(maps.bliz||Math.hypot(p.pos.x-x,p.pos.z-z)>.001)throw Error('Wind drift survived the blizzard');
+      }
+      for(const dt of [1/30,1/60])for(const path of ['horizontal','vertical','S'])probe(phase,dt,path);
+    }
+    return samples;
+  });
+  console.log('Rapid steering',JSON.stringify(turns));
+  for(const sample of turns){
+    assert.ok(sample.minStride>.95&&sample.maxAngle<2,JSON.stringify(sample));
+  }
   const southEdge=await page.evaluate(()=>{
     const r=app.run,p=r.player,env=inspected.env,c=r.r.camera;
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
@@ -326,9 +384,14 @@ export async function verifyJoystick(page,dir){
     const screen=inspected.doc.getElementById('game').getBoundingClientRect();
     const x=env.innerWidth*.5-screen.x,y=env.innerHeight*.64-screen.y;
     const stick={identifier:11,clientX:x,clientY:y},second={identifier:12,clientX:x+65,clientY:y};
-    inspected.touches('down',{touches:[stick,second],changedTouches:[stick,second]});
+    const stamp=performance.now();
+    inspected.touches('down',{timeStamp:stamp,touches:[stick,second],changedTouches:[stick,second]});
     stick.clientX+=45;
-    inspected.touches('move',{touches:[stick,second],changedTouches:[stick]});
+    inspected.touches('move',{timeStamp:stamp+2,touches:[stick,second],changedTouches:[stick]});
+    const knob=t.knob.style.transform;
+    const stale={...stick,clientX:x-45};
+    inspected.touches('move',{timeStamp:stamp+1,touches:[stale,second],changedTouches:[stale]});
+    if(t.knob.style.transform!==knob)throw Error('A late move pulled the knob back to the old heading');
     inspected.touches('up',{touches:[stick]});window.settleStick();
     if(t.stickId!==11||r.input.stickX<.99)throw Error('Ending the second contact released the stick');
     inspected.touches('cancel',{touches:[],changedTouches:[]});
@@ -402,21 +465,24 @@ export async function verifyJoystick(page,dir){
     }
     const count=r.enemies.count,gap=1000/30,now=performance.now(),loop=app.loop;
     const samples=[],dt=[],simulate=r.simulate,frameGap=app.frameGap;
-    let interpolation;
+    let interpolation,draw30;
     r.simulate=function(seconds,...args){dt.push(seconds);return simulate.call(this,seconds,...args);};
     app.loop=()=>{};app.pacer.reset();app.combatClock.run=null;app.last=now-gap;app.halted=false;
     try{
       // Use one monotonic test clock for event arrivals, RAF and the simulator.
       let at=now;
-      app.frameGap=()=>1000/60;
+      app.frameGap=()=>gap;
       performance.now=()=>at;
       window.tap(x,y,'down',11);window.tap(x+60,y,'move',11);
-      const sequence=['hold','hold','reverse','hold','hold','hold','release',...Array(15).fill('rest')];
+      const sequence=['hold','reverse','right','reverse','hold','hold','release',...Array(15).fill('rest')];
       for(const [i,action] of sequence.entries()){
         at=now+i*gap+(i>=2?250:0);
         if(action==='reverse')window.tap(x-60,y,'move',11);
+        if(action==='right')window.tap(x+60,y,'move',11);
         if(action==='release')window.tap(x-60,y,'up',11);
+        if(i===4)app.frameGap=()=>1000/60;
         const start=p.pos.x;loop(at);samples.push(p.pos.x-start);
+        if(i===1)draw30={actual:p.pos.x,visible:r.visiblePlayerPosition().x,camera:r.camTarget.x};
         if(i===4){
           // 60 Hz 下的中间显示帧只插值，物理位置和输入帧号均保持稳定。
           const before=p.pos.x,tick=r.inputTick;
@@ -426,15 +492,18 @@ export async function verifyJoystick(page,dir){
         }
       }
     }finally{delete performance.now;app.frameGap=frameGap;app.halted=true;app.loop=loop;r.simulate=simulate;}
-    return {count,gap,samples,dt,interpolation};
+    return {count,gap,samples,dt,interpolation,draw30};
   });
   assert.equal(stall.count,200);
+  assert.deepEqual(stall.samples.slice(0,4).map(Math.sign),[1,-1,1,-1],'Fresh input must drive the current tick, including after a stall');
+  assert.equal(stall.draw30.visible,stall.draw30.actual);
+  assert.equal(stall.draw30.camera,stall.draw30.visible);
   const view=stall.interpolation;
   assert.ok(view.sameTick && view.before===view.after && Math.abs(view.prev-view.after)>.0001,JSON.stringify(view));
   assert.ok(Math.abs(view.draw-(view.prev+view.after)/2)<.0001 && view.draw===view.camera,JSON.stringify(view));
   assert.equal(stall.dt.length,22,JSON.stringify(stall));
   assert.ok(stall.dt.every(dt=>Math.abs(dt-stall.gap/1000)<1e-6),JSON.stringify(stall));
-  assert.ok(stall.samples[1]>0 && stall.samples[5]<0 && stall.samples[6]<0 && stall.samples.at(-1)===0 && stall.samples.every(dx=>Math.abs(dx)<=1.6),JSON.stringify(stall));
+  assert.ok(stall.samples[5]<0 && stall.samples[6]<0 && stall.samples.at(-1)===0 && stall.samples.every(dx=>Math.abs(dx)<=1.6),JSON.stringify(stall));
   await page.evaluate(async()=>{
     const r=app.run;
     r.enemies.clear();r.godMode=false;
@@ -490,6 +559,6 @@ export async function verifyJoystick(page,dir){
     assert.ok(sample.hits>0&&sample.loadedSteps>4,JSON.stringify(sample));
     assert.ok(sample.maxDrift<1e-6&&sample.maxSideways<1e-6&&sample.minForward>0,JSON.stringify(sample));
   }
-  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,southEdge,circles,closeCrowd,walls,controls:report,interruptions,cast,stall},null,2));
+  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,turns,southEdge,circles,closeCrowd,walls,controls:report,interruptions,cast,stall},null,2));
   console.log('Joystick contact damage during clockwise/counterclockwise turns, short and full drags, reversals, multitouch and release passed:',report.length,'screen/scale combinations');
 }

@@ -1,13 +1,12 @@
 import {glyphBillboardSize} from '../actors/hero-actions.js';
 import {glyphWordForSpecies} from '../actors/paper-glyph-art.js';
 
-// Each weather event owns one line. Only glyphs submitted by the renderer
+// Each weather event owns one bubble. Only glyphs submitted by the renderer
 // participate, so a culled, loading or dying monster cannot speak.
 export class WeatherSpeech {
   speaker = -1;
   generation = -1;
   nextSearch;
-  expires = Infinity;
   bubble = null;
   tip = -1;
 
@@ -17,13 +16,29 @@ export class WeatherSpeech {
     this.nextSearch = run.time + .6;
   }
 
+  update() {
+    const {enemies, time} = this.run;
+    if (this.speaker < 0 || (enemies.isAlive(this.speaker) && enemies.gen[this.speaker] === this.generation)) return;
+    this.speaker = this.generation = -1;
+    if (this.bubble) this.bubble.hidden = true;
+    this.nextSearch = time + 5;
+  }
+
   beginFrame() {
     const {time, state} = this.run;
     this.candidate = -1;
     this.count = 0;
     if (state !== 'play' || time < this.nextSearch) return false;
-    if (this.speaker < 0) this.nextSearch = time + .35;
-    return time < this.expires;
+    if (this.speaker < 0) {
+      const maps = this.run.mapEvents;
+      const remaining = (this.kind === 'blizzard' ? maps.bliz : maps.spout)?.t ?? 0;
+      if (remaining < 4) {
+        this.nextSearch = Infinity;
+        return false;
+      }
+      this.nextSearch = time + .35;
+    }
+    return true;
   }
 
   observe(id, x, y, z, batch) {
@@ -55,13 +70,12 @@ export class WeatherSpeech {
   endFrame() {
     const {enemies, time, ui, player} = this.run;
     if (this.candidate < 0) {
-      if (this.bubble) this.bubble.style.display = 'none';
+      if (this.bubble && !this.bubble.hidden) this.bubble.hidden = true;
       return;
     }
     if (this.speaker < 0) {
       this.speaker = this.candidate;
       this.generation = enemies.gen[this.speaker];
-      this.expires = time + 4;
       this.nextSearch = time;
     }
     if (!this.bubble || (this.kind === 'blizzard' && this.form !== player.speciesId)) {
@@ -73,19 +87,20 @@ export class WeatherSpeech {
       this.height = 19 + 18 * this.lines.length;
       const canvas = this.bubble ??= document.createElement('canvas');
       canvas.className = 'weather-speech';
+      canvas.dataset.uiLayer = 'weather-speech';
       canvas.setAttribute('aria-label', this.lines.join(''));
       canvas.width = this.width*2;
       canvas.height = this.height*2;
-      canvas.style.cssText = 'position:absolute;pointer-events:none;width:'+this.width+'px;height:'+this.height+'px';
-      if (!canvas.parentNode) (ui.popupRoot || ui.hudEl).append(canvas);
+      canvas.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;width:'+this.width+'px;height:'+this.height+'px';
+      if (!canvas.parentNode) ui.hudEl.append(canvas);
       this.tip = -1;
     }
     const left = Math.max(4, Math.min(innerWidth-this.width-4, Math.round(this.x-this.width/2)));
     const tip = this.x-left;
     if (tip !== this.tip) this.paint(tip);
-    this.bubble.style.left = left+'px';
-    this.bubble.style.top = this.y-this.height+'px';
-    this.bubble.style.display = '';
+    const position = 'translate('+left+'px, '+(this.y-this.height)+'px)';
+    if (this.bubble.style.transform !== position) this.bubble.style.transform = position;
+    if (this.bubble.hidden) this.bubble.hidden = false;
   }
 
   paint(tip) {
@@ -104,7 +119,7 @@ export class WeatherSpeech {
     ctx.fillStyle = '#233746'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     this.lines.forEach((line,i) => ctx.fillText(line,w/2,16+i*18));
     this.tip = tip;
-    this.bubble.dataset.frame = String(tip);
+    this.bubble.dataset.frame = this.form+'/'+tip;
   }
 
   dispose() { this.bubble?.remove(); }

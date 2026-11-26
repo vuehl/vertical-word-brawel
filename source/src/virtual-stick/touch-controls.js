@@ -21,7 +21,7 @@ var ME = class {
     el;
     ult;
     run = null;
-    // 触摸摇杆输入链路：触摸事件只入队 → 每个逻辑 tick 取样 → 3 帧低通 + 死区 → 写 input.stickX/Y。
+    // 触摸事件入队，每个逻辑 tick 取样并应用死区。
     stickCfg = gameStick;
     stickSampler = new StickSampler(this.stickCfg);
     stickFilter = new StickFilter(this.stickCfg);
@@ -209,8 +209,9 @@ var ME = class {
         // Follow each deliberate swipe, so turning never requires returning to
         // an invisible joystick origin. Keep the heading while the finger rests.
         if(distance < 4)return;
-        this.sx=e.clientX;this.sy=e.clientY;
-        this.stickSampler.pushVector(e.pointerId,dx/distance,-dy/distance,touchTime(e));
+        if(this.stickSampler.pushVector(e.pointerId,dx/distance,-dy/distance,touchTime(e))){
+          this.sx=e.clientX;this.sy=e.clientY;
+        }
         return;
       }
       if (e.pointerId === this.stickId) {
@@ -249,7 +250,7 @@ var ME = class {
         const length = Math.hypot(n, r) || 1;
         const dx = n / length, dy = r / length;
         const strength = Math.min(1, i / radius);
-        this.stickSampler.pushVector(e.pointerId, strength * dx, -strength * dy, touchTime(e));
+        if (!this.stickSampler.pushVector(e.pointerId, strength * dx, -strength * dy, touchTime(e))) return;
         const knobTravel = Math.min(i, radius);
         this.knob.style.transform = `translate(${dx * knobTravel}px, ${dy * knobTravel}px)`;
         return;
@@ -318,11 +319,11 @@ var ME = class {
       this.run && ((this.run.input.stickX = 0), (this.run.input.stickY = 0));
     }
     // 每个逻辑 tick 调一次（Run.simulate 开头），dt = 本 tick 时长（秒）。
-    // 取“此刻之前”的最新采样 → 3 帧低通 + 死区 → 写入 input.stickX/Y。
+    // 读取截至 sampleMs 的最新采样，联机快照仍使用固定步时刻 stepMs。
     // 摇杆没参与时什么都不写，手柄/键盘的输入不会被覆盖。
-    driveStick(input, dt, stepMs) {
+    driveStick(input, dt, stepMs, sampleMs = stepMs) {
       if (!this.stickEngaged) return;
-      const raw = this.stickSampler.consume(stepMs);
+      const raw = this.stickSampler.consume(sampleMs);
       const out = this.stickFilter.update(raw, dt);
       input.stickX = out.x;
       input.stickY = out.y;

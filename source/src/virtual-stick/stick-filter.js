@@ -35,6 +35,7 @@ export class StickFilter {
     }
     const x = held ? sample.x : 0;
     const y = held ? sample.y : 0;
+    if (cfg.filterTaps === 1 && cfg.smoothAlpha === 0) return this.applyDeadZone(x, y);
 
     if (!held) {
       // 松手：清空历史，避免残留的旧方向被“平均”回一个非零向量。
@@ -77,9 +78,13 @@ export class StickFilter {
     const k = 1 - Math.exp(-dt / tau);
     this.smoothX += (ax - this.smoothX) * k;
     this.smoothY += (ay - this.smoothY) * k;
+    return this.applyDeadZone(this.smoothX, this.smoothY);
+  }
 
+  applyDeadZone(x, y) {
+    const cfg = this.cfg;
     const out = this._out;
-    const mag = Math.hypot(this.smoothX, this.smoothY);
+    const mag = Math.hypot(x, y);
     const enter = cfg.deadZone;
     const exit = Math.min(enter, cfg.deadZoneRelease);
 
@@ -102,8 +107,8 @@ export class StickFilter {
     // 离开死区后把幅度重映射到 0..1，保持线性手感，避免“刚出死区就窜”。
     const scaled = Math.min(1, (mag - exit) / Math.max(EPS, 1 - exit));
     const inv = scaled / mag;
-    out.x = this.smoothX * inv;
-    out.y = this.smoothY * inv;
+    out.x = x * inv;
+    out.y = y * inv;
     out.mag = scaled;
     return out;
   }

@@ -124,6 +124,13 @@ export async function reviewWindSkills(page,dir){
       for(let frame=0;frame<hz*2.6;frame++){
         vfxAdvance(1,1/hz);p.moves[0].timer=999;
         stats.shots=Math.max(stats.shots,pool.used);
+        if(pool.used===3){
+          const xs=[];
+          for(let i=0;i<pool.n;i++)if(pool.alive[i])xs.push(pool.x[i]);
+          const width=Math.max(...xs)-Math.min(...xs);
+          stats.openingWidth??=width;
+          stats.lastWidth=width;
+        }
         const art=r.vfx.crafted.windReplacements;
         for(let i=0;i<art.mesh.count;i++){
           const pose=art.pose.getX(i);
@@ -137,6 +144,7 @@ export async function reviewWindSkills(page,dir){
       return stats;
     },{hz,clips:replacements.clips});
     assert.ok(flight.shots===3&&flight.launch&&flight.flight&&flight.hit&&flight.maxDamage>0,JSON.stringify({hz,...flight}));
+    assert.ok(flight.openingWidth>.8&&flight.openingWidth<1.1&&flight.lastWidth<flight.openingWidth,JSON.stringify(flight));
     assert.equal(flight.remaining,0);
     (report.featherDance??=[]).push({hz,...flight});
   }

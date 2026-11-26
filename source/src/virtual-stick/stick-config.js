@@ -62,8 +62,8 @@ export function createStickConfig(overrides = {}) {
 // 实战共用一套参数。怪群逻辑固定 30 Hz；画面仍按设备设置绘制。
 export const gameStick = createStickConfig({
   fixedStep: 1 / 30,
-  filterWeights: [0.90, 0.08, 0.02],
-  smoothAlpha: 0.010,
+  filterWeights: [1],      // 战斗直接采用本步的最新方向，速度在玩家物理中平滑
+  smoothAlpha: 0,
   maxSpeed: 7.3,           // 基础跑速，角色、装备和地形再乘各自的倍率
   accel: 58,
   decel: 40,

@@ -3691,7 +3691,7 @@ function formMove(id, species) {
   const effectKey = windMoveEffect(def.key,species);
   if(effectKey==='wind-air-slash')return {...def,name,effectKey,arch:'strike',area:6,dur:.42,speed:0,count:1,desc:'横斩出一道与字形同色的弧形风波，向远处飞行，沿途每个敌人只受击一次。'};
   if(effectKey==='wind-gust')return {...def,name,effectKey,dur:1.2,speed:10,desc:'向前吹出一道旋风，牵引并伤害沿途的敌人。'};
-  if(effectKey==='wind-feather-dance')return {...def,name:'羽毛舞',effectKey,count:3,spread:.28,desc:'射出三枚青色羽毛追击敌人，命中时迸开碎羽。'};
+  if(effectKey==='wind-feather-dance')return {...def,name:'羽毛舞',effectKey,count:3,spread:.055,desc:'射出三枚青色羽毛追击敌人，命中时迸开碎羽。'};
   if(effectKey)return {...def,name,effectKey};
   return name === def.name ? def : {...def, name};
 }
@@ -4258,7 +4258,10 @@ function Q_(e, t, n, r) {
         return;
       }
       let i = o.arch === `homing` && o.effectKey !== 'wind-feather-dance' ? 0.9 : (o.spread ?? 0.18);
+      // Feather Dance leaves the caster side by side and converges through normal homing.
+      const spacing = o.effectKey === 'wind-feather-dance' ? .44 : 0;
       for (let s = 0; s < f; s++) {
+        const across = (s - (f - 1) / 2) * spacing;
         let c = (s - (f - 1) / 2) * i,
           l = Math.cos(c),
           h = Math.sin(c),
@@ -4271,9 +4274,9 @@ function Q_(e, t, n, r) {
                   ? em.Boomerang | em.Spin
                   : 0;
         e.projectiles.fire({
-          x: v,
+          x: v - across * r.z,
           y,
-          z: b,
+          z: b + across * r.x,
           dx: r.x * l - r.z * h,
           dz: r.x * h + r.z * l,
           dy: r.y,
