@@ -1,14 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import {artImages} from './art-source.mjs';
 
 // Keep the supplied artwork in source control; the phone loads one small atlas.
 const root=path.resolve(import.meta.dirname,'../..');
 const dir=path.join(root,'resources/art/glyphs');
-const files=fs.readdirSync(dir).filter(f=>f.endsWith('.png')).sort();
+const files=artImages(dir);
 const size=96,columns=16,words={},enemies={},heroes={},layers=[];
 for(const [index,file] of files.entries()){
-  const parts=file.replace('.png','').split('_');
+  const parts=file.replace(/\.(png|webp)$/,'').split('_');
   const word=parts.at(-1);
   const input=sharp(path.join(dir,file));
   const {data,info}=await input.ensureAlpha().raw().toBuffer({resolveWithObject:true});

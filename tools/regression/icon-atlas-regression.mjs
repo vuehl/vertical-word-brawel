@@ -16,7 +16,7 @@ export async function checkIcons(page){
       skillSizes:images.map(img=>[img.naturalWidth,img.naturalHeight]),
       tiles:[],
     };
-    for(const key of ['assets/ui/types/water.png','assets/items/old-rod.png','assets/items/adamant-orb.png']){
+    for(const key of ['assets/ui/types/water.png','assets/items/old-rod.png','assets/items/poke-ball.png']){
       const img=await load(key),canvas=doc.createElement('canvas');
       canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
       canvas.getContext('2d').drawImage(img,0,0);

@@ -300,7 +300,7 @@ export async function reviewZixing({page,tap,resize,dir,sleep,menusOnly=false,pe
     await page.waitForFunction(()=>app.run.state==='play');
     assert.deepEqual(await page.evaluate(()=>qaOfferSelections),[{index:-1,action:'reroll'},{index:1,action:'choose'}],'Only the player-selected second offer may be applied');
     const evolution=await page.evaluate(()=>{const target=app.run.nextEvo.to;app.run.startEvolution();return target;});
-    await snapshot('09-evolution');await tap('.zx-modal button','确认进阶');
+    await snapshot('09-evolution');
     await page.waitForFunction(id=>app.run.player.speciesId===id&&app.run.state==='play',{timeout:60000},evolution);
     const spins=await page.evaluate(()=>{app.run.gold=300;const p=app.run.player.pos;app.run.openSlots({x:p.x,y:p.y,z:p.z});return app.run.slotSpins;});
     await snapshot('10-slots');await tap('.zx-modal button','投入');await snapshot('11-slots-result');

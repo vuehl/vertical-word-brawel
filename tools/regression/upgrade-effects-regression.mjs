@@ -60,7 +60,7 @@ export async function reviewUpgradeEffects(page,dir){
       r.updateCamera(0);
       const wide=camera.projectionMatrix.elements[5];
       r.startEvolution();
-      [...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
+      if(from!==4&&from!==5)r.ui.modalEl.querySelector('[data-action="confirm-wind-evolution"]').click();
       r.updateCamera(0);
       const entrance=[camera.projectionMatrix.elements[5]];
       const {reveal,duration}=r.vfx.upgrade.events[0],steps=Math.ceil(reveal*.5*30);
@@ -222,7 +222,7 @@ export async function reviewUpgradeEffects(page,dir){
       return seen;
     };
     const before=submitted();
-    r.startEvolution();[...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
+    r.startEvolution();
     const bannerCleared=r.ult.castBanner===null,during=[];
     for(let i=0;i<Math.round(duration*10)-1;i++){
       r.update(.1);
@@ -251,7 +251,7 @@ export async function reviewUpgradeEffects(page,dir){
       const r=app.run,p=r.player;r.state='play';r.anims.length=0;r.vfx.clear();r.ui.showEvolution();
       r.ui.toastsEl.replaceChildren();p.setSpecies(4);p.renderScale=1;p.evolutionLift=0;p.flash=0;
       p.moves.forEach(m=>{if(m)m.timer=999;});r.nextEvo={to:5,level:p.level};
-      r.startEvolution();[...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
+      r.startEvolution();
     });
     const frames=[],delays=[];
     // GIFs use centiseconds. Round the cumulative clock to prevent drift.

@@ -1,6 +1,7 @@
 import {VFX_SCALE} from './visual-scale.js';
 import {w as Ei, B as gr, H as Sr, ct as Kr, et as Yr, j as ii, b as Wr, ot as pi, I as Cr} from "../vendor/three-DmSYIDKK.js";
 import {createStylizedEffectAtlas, EFFECT_CELL} from "./stylized-effect-atlas.js";
+import {battleParticleImages} from "../data/item-icons.js";
 import {h as Zt, Lt as Ee, Mt as Ae} from "../data/config.js";
 import {Tc, qc, Qc} from "../actors/sprite-assets.js";
 import {altarRingFragment} from "./altar-ring-vfx.js";
@@ -626,20 +627,7 @@ async function Nl() {
   return texture;
 }
 function Pl(e, t, n) {
-  for (let [r, i] of [
-    [56, `items/oran-berry`],
-    [57, `items/magnet`],
-    [58, `items/repel`],
-    [59, `items/rare-candy`],
-    [60, `items/nugget`],
-    [61, `items/big-nugget`],
-    [62, `icons/100`],
-    [133, `items/tm-fighting`],
-    [134, `items/tm-psychic`],
-    [135, `items/tm-steel`],
-    [136, `items/tm-electric`],
-    [137, `items/tm-normal`],
-  ])
+  for (let [r, i] of battleParticleImages)
     Tc(Zt(`${i}.png`), (i) => {
       let a = i.naturalWidth,
         o = i.naturalHeight,

@@ -10,7 +10,7 @@ data = [Path(sys.argv[3])] if len(sys.argv) > 3 else [
     *[file for file in source.joinpath("../resources/public/data").rglob("*.json")
       if file.parent.name != "i18n" or file.name == "zh.json"],
     *source.joinpath("../resources/public/assets").glob("zh-*.js")]
-for file in [*source.joinpath("src").rglob("*.js"), *data]:
+for file in ([*data] if len(sys.argv) > 3 else [*source.joinpath("src").rglob("*.js"), *data]):
     if "vendor" in file.parts:
         continue
     strings.update(file.read_text(encoding="utf-8"))

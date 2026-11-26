@@ -24,10 +24,10 @@ function makeOverlay(renderer,filmPlacement) {
   gl.deleteShader(vert);gl.deleteShader(frag);
   if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));
   const vao=gl.createVertexArray(),uv=gl.getUniformLocation(program,'uvRect');
-  let page=null,tex=null;
+  let page=null,tex=null,textureWidth=0,textureHeight=0;
   function releasePage(){
     if(tex)gl.deleteTexture(tex);
-    tex=page=null;
+    tex=page=null;textureWidth=textureHeight=0;
   }
   return {
     draw(frame,img,anchor,zoom,dynamic=false){
@@ -44,7 +44,15 @@ function makeOverlay(renderer,filmPlacement) {
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,true);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);page=img;
+          // The 512px soul canvas changes every frame, but its storage does not.
+          // Reuse the allocation instead of recreating a GPU image each time.
+          if(textureWidth===img.width&&textureHeight===img.height)
+            gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,img);
+          else {
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+            textureWidth=img.width;textureHeight=img.height;
+          }
+          page=img;
         }
         gl.viewport(rect.left,H-rect.top-rect.height,rect.width,rect.height);
         gl.uniform4f(uv,x/img.width,y/img.height,w/img.width,h/img.height);

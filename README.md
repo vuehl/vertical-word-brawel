@@ -37,6 +37,10 @@
 
 完整的常规、粗体中文字库以无损 WOFF 存放在 `resources/public/fonts/swei/`。构建会从中提取游戏用字，生成供微信加载的两份 TTF 子集。
 
+资源压缩由构建脚本自动完成：字灵、笔画和普通 PNG 比较无损 WebP 的实际大小，只采用更小的结果。福袋动画保留原尺寸、帧数和透明度，仅在逐帧颜色误差通过核验且至少缩小 5% 时采用轻度压缩；不满足条件的图保留原版。道具图合并为不超过 2048 像素的图集。字体子集收集源码字符串、模板文字、中文对象键和运行数据，不收录仅出现在注释里的文字。
+
+新增原稿仍可使用 PNG。`npm run compress:originals` 会核验每个可见像素及全部透明度，将更小的原稿转换为 WebP 后删除对应 PNG；它只处理 `resources/art/`，不会删除重建动画所需的 GIF 和描述文件。转换后运行 `npm run build:assets`。压缩缓存位于不参与打包的 `.cache/`，逐图清单在 `验收/资源压缩/`，正式资源清单在 `验收/资源打包清单.json`。运行 `npm run test:asset-compression`、`npm run verify:assets` 与 `npm run analyze:package` 可检查画质约束、资源引用及实际包体。
+
 旧版的 152 张宝可梦角色精灵图已清理。它们曾用于测量角色的脚底、顶部和宽度，已核对的数值保存在 [actor-metrics.js](source/src/actors/actor-metrics.js)。现有玩法、研究进度和旧存档继续使用角色编号与家族关系，相关数据保存在 `resources/public/data/pokemon.json` 等表中。
 
 ## 代码按什么分

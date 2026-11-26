@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import {artImage} from './art-source.mjs';
 import {altarLayers} from '../../source/src/world/desk-altar-art.js';
 import {berryLayers} from '../../source/src/world/desk-berry-art.js';
 import {billLayers} from '../../source/src/effects/bill-layers.js';
@@ -23,9 +24,9 @@ async function writeDeviceIcon(source,kind,base,layers=[]){
 
 async function prepareBill(source){
   const originals=path.join(source,'../resources/art/device-bill'),out=path.join(source,'../resources/public/assets/env/desk2d');
-  const art=name=>path.join(originals,path.basename(billLayers[name]));
+  const art=name=>artImage(path.join(originals,path.basename(billLayers[name])));
   await fs.mkdir(path.join(out,'device-bill'),{recursive:true});
-  for(const name of ['base','pupil'])await fs.copyFile(art(name),path.join(out,billLayers[name]));
+  for(const name of ['base','pupil'])await writePng(path.join(out,billLayers[name]),sharp(art(name)));
   const {width,height}=await sharp(art('base')).metadata();
   const pupil=await sharp(art('pupil')).metadata();
   const frame={width,height,pupil:[pupil.width,pupil.height]};
@@ -61,7 +62,7 @@ async function prepareBill(source){
 // Remove the painted 300 from the master before adding the live display. Only
 // fill the ink and its antialiased border, interpolating the adjacent blue glass.
 async function prepareClock(root){
-  const {data,info}=await sharp(path.join(root,'../resources/art/device-boss.png')).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+  const {data,info}=await sharp(artImage(path.join(root,'../resources/art/device-boss.png'))).ensureAlpha().raw().toBuffer({resolveWithObject:true});
   const {width,height}=info,mask=new Uint8Array(width*height),inside=[];
   const det=44.04*77.5+31.15*27.3;
   // Leave the underline, bezel, reflected highlights and alpha intact.

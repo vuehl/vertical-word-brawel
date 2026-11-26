@@ -1629,22 +1629,29 @@ export function createZixingUI(app,api) {
       for(const id of ids){
         if(nodes.length)nodes.push(el('span','zx-evo-arrow','→'));
         const actor=character(id);
-        nodes.push(el('span','zx-evo-form',glyph(actor,drawRouteGlyph),{'aria-label':actor.word}));
+        const portrait=glyph(actor,drawRouteGlyph);
+        portrait.dataset.paperSurface='flat';
+        nodes.push(el('span','zx-evo-form',portrait,{'aria-label':actor.word}));
       }
       return el('div','zx-evo-line',nodes);
     }
     const routeHeading=route=>route.role.split(' · ')[1];
+    function windEvolutionDialog(title,subtitle,body,actions=[]){
+      const wrap=overlay(title,subtitle,body,actions,hud,'zx-evo-dialog');
+      wrap.classList.add('zx-wind-scrim');
+      wrap.querySelector('.zx-evo-dialog').dataset.paperSurface='journal-cover';
+    }
     hud.showBranch=(r,ids,choose)=>{
       let chosen=false;
-      overlay('风起两路','为本局选择一条进阶路线',windRoutes.filter(route=>ids.includes(route.middle)).map(route=>{
+      windEvolutionDialog('风起两路','为本局选择一条进阶路线',windRoutes.filter(route=>ids.includes(route.middle)).map(route=>{
         const trait=routeHeading(route);
         const speedRoute=hasWindSpeedPassive(route.middle);
         const benefit=speedRoute?`移速 ×${windRushMultiplier(route.middle)} → ×${windRushMultiplier(route.final)}`:trait+' ×10';
-        return button([el('div','zx-evo-choice-head',[el('b','',trait+'路线'),routePrint([16,route.middle,route.final])]),
+        return button([el('div','zx-evo-choice-head',[el('b','',trait+'路线',{'data-paper-surface':'journal-button'}),routePrint([16,route.middle,route.final])]),
           el('div','zx-evo-benefit',[el('b','',benefit),el('small','',speedRoute?`持续 5 秒 · 撞龘额外 ×${windRushDragonBonus[route.middle]} → ×${windRushDragonBonus[route.final]}`:'持续 5 秒')]),
           el('small','zx-evo-note','首次进阶  ·  '+character(route.middle).word+'  ·  '+character(route.middle).ult),
-        ],()=>{if(chosen)return;chosen=true;choose(route.middle);},'zx-branch-choice',{'data-branch-id':route.middle,'data-paper-surface':'info-slip'});
-      }),[],hud,'zx-evo-dialog');
+        ],()=>{if(chosen)return;chosen=true;choose(route.middle);},'zx-branch-choice',{'data-branch-id':route.middle,'data-paper-surface':'move-paper'});
+      }));
     };
     function intro(title,subtitle) {
       if(profile()?.settings.showBanners===false)return;
@@ -1662,14 +1669,17 @@ export function createZixingUI(app,api) {
     };
     const evolve=run.startEvolution.bind(run);
     run.startEvolution=()=>{
+      const route=windRoutes.find(route=>route.middle===run.nextEvo.to||route.final===run.nextEvo.to);
+      if(!route)return evolve();
       run.state='modal';
       run.sprites.prepareHeroForm(run.nextEvo.to,run.r.renderer);
-      const route=windRoutes.find(route=>[route.middle,route.final].includes(run.nextEvo.to));
-      overlay('字意更进一步',route?routeHeading(route)+'路线':'文字进阶',[
+      const details=card(statRow('基础成长','提升伤害与生命'),statRow('进阶次数',String(run.player.evoStage+1)));
+      details.dataset.paperSurface='move-paper';
+      windEvolutionDialog('字意更进一步',routeHeading(route)+'路线',[
         routePrint([run.player.speciesId,run.nextEvo.to]),
         el('b','zx-evo-confirm-name',character(run.player.speciesId).word+' → '+character(run.nextEvo.to).word),
-        small('保留当前招式与已有强化。'),card(statRow('基础成长','提升伤害与生命'),statRow('进阶次数',String(run.player.evoStage+1))),
-      ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary')],hud,'zx-evo-dialog');
+        small('保留当前招式与已有强化。'),details,
+      ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary',{'data-action':'confirm-wind-evolution','data-paper-surface':'journal-button'})]);
       evolutionCard(run.player.speciesId,run.nextEvo.to);
     };
     hud.compact=true;

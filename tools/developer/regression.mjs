@@ -173,15 +173,11 @@ export async function reviewDeveloper(page,dir){
   if(process.argv.includes('--evolution-only'))return reviewDeveloperEvolution(page,dir);
   if(process.argv.includes('--upgrade-only'))return reviewUpgradeWave(page);
   await page.evaluate(()=>{
-    // Performance scenarios below use the fire hero; explicitly confirm its
-    // real evolution before measuring the continuing combat workload.
+    // Finish the fire hero's automatic evolution before measuring combat.
     window.finishDeveloperFireEvolution=()=>{
       const r=app.run;r.update(0);
-      if(r.state!=='modal')return;
-      if(inspected.doc.querySelector('[data-branch-id]'))throw Error('Performance fixture requires an explicit branch choice');
-      const button=[...inspected.doc.querySelectorAll('.zx-modal button')].find(n=>n.textContent.includes('确认进阶'));
-      if(!button)throw Error('Unexpected modal during workload setup');button.click();
-      for(let i=0;i<300;i++)r.update(1/60);
+      if(r.state==='modal')throw Error('Unexpected modal during workload setup');
+      for(let i=0;i<300&&r.state==='evolving';i++)r.update(1/60);
     };
   });
   for(const [width,height] of [[320,568],[390,844],[430,932]]){

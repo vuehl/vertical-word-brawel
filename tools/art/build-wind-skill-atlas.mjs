@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import {artImage} from './art-source.mjs';
 import {createHash} from 'node:crypto';
 import {sampleWindInk,unmixWindInk,clarifyWindFrame,windClarity,writeWindAtlas} from './wind-art-clarity.mjs';
 
@@ -81,7 +82,7 @@ await clip('attackLoops','大招/刮倒一片',range(4,14),15,.10,()=>({cx:166,c
 });
 // The reference films obscure the upper part of the moving double funnel with
 // the HUD. Use its existing complete isolated spin cycle for both fusions.
-const typhoon=path.resolve(import.meta.dirname,'../../resources/art/wind-vfx/typhoon.png');
+const typhoon=artImage(path.resolve(import.meta.dirname,'../../resources/art/wind-vfx/typhoon.png'));
 clips.typhoon={first:frames.length,count:8,fps:20,pivot:.08,source:'typhoon.png'};
 for(let i=0;i<8;i++){
   const pixels=await sharp(typhoon).extract({left:i*256,top:0,width:256,height:256}).resize(tile,tile).ensureAlpha().raw().toBuffer();

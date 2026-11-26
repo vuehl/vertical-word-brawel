@@ -6,7 +6,6 @@ import {Da, uo} from "../ui/controls.js";
 import {createElement as X, Z, Q, $} from "../ui/game-elements.js";
 
 var TE = 46,
-  DE = 1.15,
   OE = 400,
   kE = 300,
   AE = 3;
@@ -215,10 +214,6 @@ var ME = class {
         return;
       }
       if (e.pointerId === this.stickId) {
-        if(this.centeredStick){
-          const bounds=this.stick.getBoundingClientRect();
-          this.sx=bounds.left+bounds.width/2;this.sy=bounds.top+bounds.height/2;
-        }
         let n = e.clientX - this.sx,
           r = e.clientY - this.sy,
           i = Math.hypot(n, r);
@@ -226,18 +221,9 @@ var ME = class {
         const radius=this.dragRadius ??= this.centeredStick||this.floatingStick
           ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
           : TE*this.k;
-        // 浮动摇杆拉满量程后原点跟随手指，S 弯和来回切换时反向立即生效。
-        const reach=this.floatingStick?radius:TE*this.k*DE;
-        if (i > reach && !this.fixed && !this.centeredStick) {
-          let e = (i - reach) / i;
-          ((this.sx += n * e),
-            (this.sy += r * e),
-            (n -= n * e),
-            (r -= r * e),
-            (i = reach),
-            (this.stick.style.left = this.sx + `px`),
-            (this.stick.style.top = this.sy + `px`));
-        }
+        // 一次按住期间原点保持不变，拉出圆盘只钳位圆钮和力度。
+        // 若底座追随手指，长拉后稍微回缩就会被误判成反向；迟到的
+        // 旧 move 也不能在采样器拒绝它之前改动原点或绘制位置。
         if (this.floatingStick) {
           // Filter a few pixels of cross-axis jitter. Keep the band narrow
           // on long drags so the heading follows the thumb around a circle.

@@ -41,6 +41,73 @@ export async function verifyJoystick(page,dir){
     const {verifyCombatSteering}=await import('./joystick-soak.mjs');
     return verifyCombatSteering(page,dir);
   }
+  const heldDown=await page.evaluate(()=>{
+    const r=app.run,p=r.player,t=r.ui.touch,env=inspected.env;
+    const screen=inspected.doc.getElementById('game').getBoundingClientRect();
+    const x=env.innerWidth*.25-screen.x,y=env.innerHeight*.62-screen.y;
+    const finger={identifier:11,clientX:x,clientY:y};
+    const second={identifier:12,clientX:x+160,clientY:y-80};
+    const saved={evasion:p.stats.evasion,hp:p.hp,shield:p.shield,overheal:p.overheal};
+    const samples=[],initialHits=r.stats.hits;
+    let stamp=performance.now(),contactHits,shotHits;
+    const send=(kind,changed,all,time=++stamp)=>inspected.touches(kind,{timeStamp:time,touches:all,changedTouches:changed});
+    const sample=(label,frames=1)=>{
+      const start=p.pos.clone();
+      for(let i=0;i<frames;i++){
+        window.stickStep(1/30);r.updateCamera(1/30);r.input.endFrame();
+        t.update(r,'');env.drawUI(app.r.renderer);
+      }
+      const base=inspected.layout.box(t.stick),knob=inspected.layout.box(t.knob);
+      samples.push({label,owner:t.stickId,input:[r.input.stickX,r.input.stickY],
+        origin:[t.sx,t.sy],center:[base.x+base.w/2,base.y+base.h/2],
+        knob:[knob.x+knob.w/2-(base.x+base.w/2),knob.y+knob.h/2-(base.y+base.h/2)],
+        movement:[p.pos.x-start.x,p.pos.z-start.z]});
+    };
+    try{
+      p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.grounded=true;
+      p.kx=p.kz=p.crowdX=p.crowdZ=p.iframes=p.shield=p.overheal=p.stats.evasion=0;
+      p.hp=p.maxHp;r.realDt=1/30;
+      send('down',[finger],[finger]);
+      finger.clientY=y+120;send('move',[finger],[finger]);sample('long-down');
+      const id=r.enemies.spawn(19,p.pos.x,p.pos.z,1,1);
+      if(id<0)throw Error('Could not seed downward-hold contact');
+      r.enemies.x[id]=p.pos.x;r.enemies.z[id]=p.pos.z+.3;
+      r.enemies.update(1/30);contactHits=r.stats.hits-initialHits;
+      sample('contact-without-new-touch',12);
+      p.iframes=0;
+      const beforeShot=r.stats.hits;
+      r.projectiles.fire({x:p.pos.x,y:p.pos.y+.8,z:p.pos.z+.45,dx:0,dz:-1,
+        speed:11,life:.4,radius:.45,dmg:2,type:'normal',flags:1,from:id});
+      r.projectiles.update(1/30);shotHits=r.stats.hits-beforeShot;
+      sample('projectile-without-new-touch',12);
+      // A thumb can slip back after a hit while still being well below touchdown.
+      for(const dy of [90,40]){
+        finger.clientY=y+dy;send('move',[finger],[finger]);sample('retract-to-'+dy);
+      }
+      const stale={...finger,clientY:y-120};
+      send('move',[stale],[stale],stamp-1);sample('late-upward-event');
+      send('move',[finger],[finger]);sample('current-down-after-late-event');
+      send('down',[second],[finger,second]);
+      second.clientY-=80;send('move',[second],[finger,second]);sample('second-finger');
+      send('up',[second],[finger]);sample('second-finger-release');
+      return {origin:[x+screen.x,y+screen.y],contactHits,shotHits,samples};
+    }finally{
+      send('cancel',[finger,second],[]);t.releaseStick(true);
+      r.enemies.clear();r.projectiles.clear();
+      p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.kx=p.kz=p.crowdX=p.crowdZ=0;
+      p.stats.evasion=saved.evasion;p.hp=saved.hp;p.shield=saved.shield;p.overheal=saved.overheal;
+    }
+  });
+  await fs.writeFile(path.join(dir,'joystick-held-down.json'),JSON.stringify(heldDown,null,2));
+  assert.ok(heldDown.contactHits>0&&heldDown.shotHits>0,'The held-down probe must include real contact and projectile damage');
+  for(const s of heldDown.samples){
+    assert.equal(s.owner,11,'Damage or a second finger stole the joystick');
+    assert.deepEqual(s.origin,heldDown.origin,'The base moved during a held drag: '+s.label);
+    assert.ok(Math.hypot(s.center[0]-s.origin[0],s.center[1]-s.origin[1])<.01,'Painted base moved: '+s.label);
+    assert.ok(Math.abs(s.input[0])<.01&&s.input[1]<-.99,'Held-down input reversed: '+JSON.stringify(s));
+    assert.ok(Math.abs(s.knob[0])<.01&&s.knob[1]>0,'Held-down knob reversed: '+JSON.stringify(s));
+    assert.ok(Math.abs(s.movement[0])<.001&&s.movement[1]>0,'Held-down player reversed: '+JSON.stringify(s));
+  }
   const stapler=await page.evaluate(()=>{
     const r=app.run,p=r.player,f=r.interactables,bill=f.list.find(item=>item.kind==='bill');
     const before=p.pos.clone(),grounded=p.grounded,speed=p.speedNow,dt=1/30;
@@ -301,6 +368,14 @@ export async function verifyJoystick(page,dir){
         const vertical=[];
         for(const dy of [-1,1]){
           p.pos.copy(r.terrain.spawn);p.vel.set(0,0,0);p.kx=p.kz=p.crowdX=p.crowdZ=0;
+          // Speed probes need a clear lane; wall stopping is checked separately.
+          const lane=[0,12,-12,24,-24].find(offset=>{
+            const x=r.terrain.spawn.x+offset,z=r.terrain.spawn.z;
+            return Array.from({length:21},(_,i)=>z+dy*i*.5).every(z=>
+              r.terrain.inBounds(x,z,p.radius)&&!r.terrain.hitProp(x,p.pos.y,z,p.radius));
+          });
+          if(lane===undefined)throw Error('No clear lane for the short-drag speed probe');
+          p.pos.x+=lane;
           p.grounded=true;r.autoRun=false;
           const start=p.pos.clone(),headings=[],knobs=[],speeds=[];
           window.tap(x,y,'down',11);
@@ -559,6 +634,6 @@ export async function verifyJoystick(page,dir){
     assert.ok(sample.hits>0&&sample.loadedSteps>4,JSON.stringify(sample));
     assert.ok(sample.maxDrift<1e-6&&sample.maxSideways<1e-6&&sample.minForward>0,JSON.stringify(sample));
   }
-  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({response,turns,southEdge,circles,closeCrowd,walls,controls:report,interruptions,cast,stall},null,2));
+  await fs.writeFile(path.join(dir,'joystick-regression.json'),JSON.stringify({heldDown,response,turns,southEdge,circles,closeCrowd,walls,controls:report,interruptions,cast,stall},null,2));
   console.log('Joystick contact damage during clockwise/counterclockwise turns, short and full drags, reversals, multitouch and release passed:',report.length,'screen/scale combinations');
 }

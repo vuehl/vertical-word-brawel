@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import {artImage} from './art-source.mjs';
 import rigs from '../../resources/public/config/hero-rigs.json' with {type:'json'};
 import {isPlayableHeroForm,starterSpecies,starterWords} from '../../source/src/data/starter-characters.js';
 import {blueWindPixels} from './wind-glyph-colors.mjs';
@@ -90,7 +91,7 @@ function withInk(fill,radius,ink=[39,35,47],cell=size){
 export async function makeEntryIdle(source){
   const stem=path.join(source,'../resources/art/hero-actions/4',starterWords[4]+'_待机行走死亡_优化');
   const data=JSON.parse(fs.readFileSync(stem+'.json','utf8'));
-  const atlas=await sharp(stem+'.png').ensureAlpha().raw().toBuffer({resolveWithObject:true});
+  const atlas=await sharp(artImage(stem+'.png')).ensureAlpha().raw().toBuffer({resolveWithObject:true});
   const frames=actions.flatMap(action=>data.animations[action].frames.map(f=>pose(f,data.sprites[f.sprite])));
   const framing=layout(rigs[4],frames),cell=256,columns=5;
   framing.factor*=cell/size;
@@ -110,7 +111,7 @@ export async function writeHeroActions(source){
   for(const id of fs.readdirSync(art).filter(isPlayableHeroForm)){
     const stem=path.join(art,id,starterWords[id]+'_待机行走死亡_优化');
     const data=JSON.parse(fs.readFileSync(stem+'.json','utf8'));
-    const atlas=await sharp(stem+'.png').ensureAlpha().raw().toBuffer({resolveWithObject:true});
+    const atlas=await sharp(artImage(stem+'.png')).ensureAlpha().raw().toBuffer({resolveWithObject:true});
     if(rigs[id].sheet==='wind')blueWindPixels(atlas.data,atlas.info.width,
       [{left:0,top:0,width:atlas.info.width,height:atlas.info.height}]);
     if(data.name!==rigs[id].word||data.size.w!==atlas.info.width||data.size.h!==atlas.info.height)

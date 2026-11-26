@@ -580,14 +580,24 @@ html.zixing .run-hint .rh-ic img{width:22px;height:22px;object-fit:contain}
 .zx .zx-shop-status:empty{display:none}
 .zx .zx-evo-choice-head,.zx .zx-evo-benefit,.zx .zx-evo-line{display:flex;flex-direction:row;align-items:center;gap:8px}
 .zx .zx-evo-choice-head,.zx .zx-evo-benefit{width:100%;justify-content:space-between}
-.zx .zx-evo-choice-head>b{font-size:17px;color:#293B56}
-.zx .zx-evo-benefit{padding-top:4px;border-top:1px solid #CAD6E4}
-.zx .zx-evo-benefit>b{color:#3D6389;font-size:18px}
-.zx .zx-evo-benefit>small,.zx .zx-evo-note{color:#485973;font-size:13px;line-height:18px;white-space:normal}
-.zx .zx-evo-line{justify-content:center;gap:5px}.zx .zx-evo-form{display:flex;width:36px;height:36px;align-items:center;justify-content:center;background:#DAE5F1}
+.zx.zx-modal-wrap.zx-wind-scrim{background:rgba(33,29,41,.79)}
+.zx .zx-combat-shell>.zx-evo-dialog{background:#38343D;border:0;box-shadow:none;border-radius:0;gap:8px;padding:8px}
+.zx .zx-evo-choice-head>b{font-size:17px;color:#27232F;background:#EEC659;padding:3px 9px;clip-path:polygon(3px 0,100% 0,calc(100% - 3px) 100%,0 100%)}
+.zx .zx-evo-benefit{flex-direction:column;align-items:flex-start;gap:1px;padding-top:4px;border-top:1px solid #C9BEAB}
+.zx .zx-evo-benefit>b{color:#3B332F;font-size:18px}
+.zx .zx-evo-benefit>small,.zx .zx-evo-note{color:#62584E;font-size:13px;line-height:18px;white-space:normal}
+.zx .zx-evo-line{justify-content:center;gap:5px}.zx .zx-evo-form{display:flex;width:36px;height:36px;align-items:center;justify-content:center;background:#E4D9C6}
 .zx .zx-evo-form>canvas,.zx .zx-evo-form>.zx-glyph{width:31px;height:31px}
-.zx .zx-evo-arrow{color:#7087A4;font-size:14px}.zx .zx-evo-confirm-name{text-align:center;font-size:18px;color:#293B56}
+.zx .zx-evo-form>.zx-glyph{background:transparent;border:0;box-shadow:none}
+.zx .zx-evo-arrow{color:#806B48;font-size:14px}.zx .zx-evo-dialog>.zx-evo-line>.zx-evo-arrow{color:#EEC659}
+.zx .zx-evo-dialog>.zx-evo-confirm-name,.zx .zx-evo-dialog>small{color:#FFF8E9;text-align:center}
+.zx .zx-evo-confirm-name{font-size:18px}
+.zx .zx-evo-dialog>.zx-branch-choice,.zx .zx-evo-dialog>.zx-card{background:#F1EBDF;border:0;box-shadow:none;border-radius:4px}
 .zx .zx-evo-dialog>.zx-branch-choice{height:auto;min-height:104px;gap:4px;padding:9px 15px;white-space:normal;align-items:stretch}
+.zx .zx-evo-dialog>.zx-card .zx-stat-row{border-color:#C9BEAB;color:#393137}
+.zx .zx-evo-dialog>button[data-action="confirm-wind-evolution"]{background:#EEC659;color:#27232F!important;border:0;border-radius:0;box-shadow:none;clip-path:polygon(3px 0,100% 0,calc(100% - 3px) 100%,0 100%)}
+@media(max-width:350px){.zx .zx-evo-choice-head{flex-wrap:wrap;gap:4px}.zx .zx-evo-dialog>.zx-branch-choice{padding:8px 10px}}
+@media(max-height:660px){.zx-wind-scrim .zx-paper-upgrade-head{height:54px;min-height:54px}}
 .zx .zx-build-entry{min-height:37px;padding:4px 1px;gap:6px}
 .zx .zx-build-name{font-size:15px;line-height:20px}.zx .zx-build-quantity,.zx .zx-build-index>b{font-size:14px;line-height:19px}
 .zx .zx-build-stamp{width:25px;height:25px}.zx .zx-build-stamp>img{width:22px;height:22px}

@@ -10,8 +10,8 @@ import {restoreSprite} from './build/sprite-png.mjs';
 import {unpackStream} from './build/resource-stream.mjs';
 import {actorMetrics} from '../source/src/actors/actor-metrics.js';
 import {heroActionCatalog} from '../source/src/actors/hero-action-catalog.js';
-import {assetPolicyVersion,compressedFireAtlases,windClarityAtlases,excludedAssetReason,musicTracks} from './build/asset-policy.mjs';
-import {biomes,events,heldItems,laboratory,roster,shop,vitamins} from '../source/src/data/catalogs.js';
+import {assetPolicyVersion,compressedFireAtlases,windClarityAtlases,excludedAssetReason,musicTracks,requiredItemIcons} from './build/asset-policy.mjs';
+import {biomes,events,roster,vitamins} from '../source/src/data/catalogs.js';
 import {facilityNames,facilityIconFile,illustratedFacilityFiles,isContactFacility,isActiveItem} from '../source/src/data/active-content.js';
 import {resolveItemIcon} from '../source/src/data/item-icons.js';
 import {glyphSpeciesFromImage} from '../source/src/data/zixing-identity.js';
@@ -20,6 +20,7 @@ import {unpackMeshBytes} from '../source/src/effects/dragon-summon-hd/mesh-bytes
 import {dragonDirectory} from './build/dragon-summon-pack.mjs';
 import {isAtlasIcon} from './build/icon-atlases.mjs';
 import {portalScreenAtlas} from '../source/src/effects/portal-screen-atlas.js';
+import {frameColourError,acceptableCaptureError} from './build/capture-compression.mjs';
 const root=path.resolve(import.meta.dirname,'..'), pub=path.join(root,'resources/public');
 const packs={};
 const digest=b=>createHash('sha256').update(b).digest('hex');
@@ -47,6 +48,17 @@ for(const [group,expected] of Object.entries(index.packs)){
 }
 function bytes(key){const [group,file]=index.files[key].split('/');return packs[group][file];}
 const iconErrors={tiles:0,maxVisibleChannelError:0};
+const captureFrames=JSON.parse(fs.readFileSync(path.join(pub,'assets/vfx/capture-bag/frames.bin'),'utf8'));
+const captureErrors=[];
+for(const key of Object.keys(index.files).filter(key=>/^assets\/vfx\/capture-bag\/p\d+\.webp$/.test(key))){
+  const [a,b]=await Promise.all([fs.readFileSync(path.join(pub,key)),bytes(key)].map(data=>sharp(data).ensureAlpha().raw().toBuffer({resolveWithObject:true})));
+  assert.deepEqual(a.info,b.info,key);
+  const page=Number(path.basename(key,'.webp').slice(1)),rects=captureFrames.filter(frame=>frame[0]===page).map(frame=>frame.slice(1,5));
+  assert.ok(rects.length,key);
+  const error=frameColourError(a.data,b.data,a.info.width,rects);
+  assert.ok(acceptableCaptureError(error),'Capture colour/alpha changed beyond the visual budget: '+key);
+  captureErrors.push({key,...error});
+}
 for(const [key,ref] of Object.entries(index.files)){
   if(!isAtlasIcon(key))continue;
   const [group,entry]=ref.split('/'),[page,tile]=entry.split('#');
@@ -130,15 +142,11 @@ for(const ext of ['png','json'])assert.ok(!index.files['assets/env/common/atlas.
 const itemCatalog=JSON.parse(fs.readFileSync(path.join(pub,'data/items.json'),'utf8'));
 const itemIconKey=id=>'assets/'+resolveItemIcon(itemCatalog[id]?.icon||'items/'+id+'.png');
 const supplyIconIds=[...Object.keys(itemCatalog).filter(isActiveItem),...vitamins.map(v=>v.icon)];
-const requiredItemIds=new Set([
-  ...supplyIconIds,
-  ...heldItems.map(item=>item.key),...shop.map(item=>item.key),
-  // The portrait lab draws glyphs. Its legacy "tm" slot uses Q's poke-ball fallback.
-  ...laboratory.map(item=>item.icon==='tm'?'poke-ball':item.icon),
-]);
-for(const id of requiredItemIds){
-  const key=itemIconKey(id);
-  assert.ok(index.files[key]&&bytes(key)?.length,'Missing gameplay or shared icon: '+id);
+const sourceItemIcons = fs.readdirSync(path.join(pub,'assets/items')).filter(name=>name.endsWith('.png'));
+assert.deepEqual(sourceItemIcons.map(name=>'assets/items/'+name).sort(),[...requiredItemIcons].sort(),
+  'Item image directory must match the current inventory, HUD and particle textures');
+for(const key of requiredItemIcons){
+  assert.ok(index.files[key]&&bytes(key)?.length,'Missing gameplay or shared icon: '+key);
 }
 assert.equal(new Set(supplyIconIds.map(id=>index.files[itemIconKey(id)])).size,supplyIconIds.length,
   'Each active item and vitamin must use its own artwork, including the two four-leaf clovers');
@@ -297,7 +305,7 @@ for(const key of Object.keys(index.files).filter(k=>k.startsWith('data/')||k.sta
   const source=fs.existsSync(path.join(pub,'overrides',key))?path.join(pub,'overrides',key):path.join(pub,key);
   if(!key.endsWith('.png'))assert.equal(digest(bytes(key)),digest(runtimeData(key,fs.readFileSync(source))),key);
 }
-const report={mappedResources:Object.keys(index.files).length,RGBA:count,iconErrors,fireColorError,originalModels:models.length,
+const report={mappedResources:Object.keys(index.files).length,RGBA:count,iconErrors,fireColorError,captureErrors,originalModels:models.length,
   deviceModels:0,illustratedDevices:Object.keys(facilityNames).length,
   assetPolicyVersion: index.policyVersion,musicTracks:musicTracks.length,musicPackages:[],
   removedSceneAssetsVerified:removedSceneAssets.length,

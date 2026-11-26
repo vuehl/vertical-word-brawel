@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import {artImage} from './art-source.mjs';
 
 const root=path.resolve(import.meta.dirname,'../../source');
 const forms=[
@@ -23,7 +24,7 @@ const sheetWidth=1024,padding=2;
 let sx=padding,sy=padding,rowHeight=0;
 for(const [id,word,groupNames] of forms){
   const file='hero_'+id+'_'+word;
-  const whole=await sharp(path.join(root,'../resources/art/glyphs',file+'.png')).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+  const whole=await sharp(artImage(path.join(root,'../resources/art/glyphs',file+'.png'))).ensureAlpha().raw().toBuffer({resolveWithObject:true});
   const frame=bounds(whole.data,whole.info.width,whole.info.height,24);
   const rig=rigs[id]={word,frame,groups:[]};
   for(const [g,name] of groupNames.entries()){

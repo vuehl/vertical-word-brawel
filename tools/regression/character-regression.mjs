@@ -32,8 +32,9 @@ export async function reviewCharacters(page,dir) {
         await page.evaluate(branch=>{const r=app.run;const buttons=[...r.ui.modalEl.querySelectorAll('button')];buttons.find(n=>n.textContent.includes(branch===17?'讽':'飒')).click();},branch);
       }else await page.evaluate(()=>{const r=app.run;r.player.level=r.nextEvo.level;r.tryEvolve();});
       const first=await page.evaluate(()=>{
-        const r=app.run;const preview=r.ui.modalEl.textContent;
-        [...r.ui.modalEl.querySelectorAll('button')].find(n=>n.textContent.includes('确认进阶')).click();
+        const r=app.run,preview=r.ui.modalEl?.textContent;
+        if(r.startSpecies===16)r.ui.modalEl.querySelector('[data-action="confirm-wind-evolution"]').click();
+        else if(r.state!=='evolving'||r.ui.modalEl)throw Error('Fire should evolve directly at the first threshold');
         for(let i=0;i<210;i++)r.update(1/30);
         return {preview,species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
@@ -41,7 +42,8 @@ export async function reviewCharacters(page,dir) {
       assert.equal(first.ultimate,({5:'一点火苗',17:'刮倒一片',58:'跑得没影'})[branch]);
       const second=await page.evaluate(()=>{
         const r=app.run;r.state='play';r.player.level=r.nextEvo.level;r.tryEvolve();
-        [...r.ui.modalEl.querySelectorAll('button')].find(n=>n.textContent.includes('确认进阶')).click();
+        if(r.startSpecies===16)r.ui.modalEl.querySelector('[data-action="confirm-wind-evolution"]').click();
+        else if(r.state!=='evolving'||r.ui.modalEl)throw Error('Fire should evolve directly at the second threshold');
         for(let i=0;i<210;i++)r.update(1/30);
         return {species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });

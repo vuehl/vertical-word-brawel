@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {performanceProfile,selectGraphicsQuality,targetFrameRate} from '../../source/src/performance/performance-profile.js';
-import {paperBox,hitsPaperBox,resolvePaperBox} from '../../source/src/world/paper-collision.js';
+import {paperBox,hitsPaperBox,resolvePaperBox,moveDeskPlayer} from '../../source/src/world/paper-collision.js';
 import {updatePaperVisibility} from '../../source/src/world/paper-visibility.js';
 import {separateCrowd} from '../../source/src/performance/crowd-separation.js';
 import {FramePacer,CombatClock} from '../../source/src/performance/frame-pacing.js';
@@ -239,6 +239,34 @@ test('rotated stationery blocks its footprint, permits rounded corner clearance 
     }
   }
 });
+test('holding a direction into stationery never creates sideways or reverse movement',()=>{
+  for(const angle of [-.7,.4])for(const radius of [.45,1])for(const step of [.1,.35,1.2]){
+    const box=paperBox(0,0,4,6,3,angle);
+    const terrain={
+      hitProp:(x,y,z,r)=>hitsPaperBox(box,x,z,r),
+      resolve(x,z,r,y,out){out.x=x;out.z=z;return resolvePaperBox(box,out,r);},
+    };
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      let x=-dx*8+(dz ? .3 : 0),z=-dz*8+(dx ? .3 : 0);
+      const out={},start={x,z};
+      for(let i=0;i<200;i++){
+        moveDeskPlayer(terrain,x,z,x+dx*step,z+dz*step,radius,0,out);
+        const forward=(out.x-x)*dx+(out.z-z)*dz;
+        assert.ok(forward>=0&&forward<=step+1e-9,'A wall can only shorten the step');
+        assert.ok(Math.abs((out.x-x)*dz-(out.z-z)*dx)<1e-9,'A wall cannot steer the player');
+        assert.ok(!terrain.hitProp(out.x,0,out.z,radius),'The player must stay outside the prop');
+        x=out.x;z=out.z;
+      }
+      assert.ok((x-start.x)*dx+(z-start.z)*dz>1,'The player must approach the wall');
+      assert.ok(x*dx+z*dz<0,'The player must stop on the near side');
+      moveDeskPlayer(terrain,x,z,x-dx*step,z-dz*step,radius,0,out);
+      assert.ok((out.x-x)*dx+(out.z-z)*dz<0,'Reversing must leave the wall immediately');
+    }
+    const embedded=moveDeskPlayer(terrain,0,0,0,0,radius,0,{});
+    assert.ok(!terrain.hitProp(embedded.x,0,embedded.z,radius),'An embedded spawn must still escape');
+  }
+});
+
 test('camera culling restores immutable instance transforms and leaves unchanged GPU buffers alone',()=>{
   const matrices=new Float32Array(48);for(let i=0;i<3;i++){matrices[i*16]=matrices[i*16+5]=matrices[i*16+10]=matrices[i*16+15]=1;matrices[i*16+12]=i*50;}
   let uploads=0;

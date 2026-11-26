@@ -36,7 +36,8 @@ export async function reviewDeveloperEvolution(page,dir){
     assert.equal(await page.evaluate(()=>app.run.startSpecies),id);
   };
   const finish=async()=>{
-    await tap('.zx-modal button','确认进阶');
+    if(await page.evaluate(()=>app.run.startSpecies===16))await tap('[data-action="confirm-wind-evolution"]');
+    else assert.equal((await state()).state,'evolving');
     await page.evaluate(()=>{for(let i=0;i<600;i++)app.run.update(1/60);});
     await draw();return state();
   };

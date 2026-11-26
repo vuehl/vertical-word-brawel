@@ -2555,7 +2555,7 @@ var mv = 30,
           (this.ability === `slush-rush` && t.weather === `hail`)
             ? 1.3
             : 1,
-        w = yv * i.moveSpeed * C * (window.nativeDevice?.platform === `ios` ? 1.35 : 1) * (1 + Math.min(0.3, this.speedBoostT * 0.01)),
+        w = yv * i.moveSpeed * C * 1.35 * (1 + Math.min(0.3, this.speedBoostT * 0.01)),
         T = r.height(this.pos.x, this.pos.z),
         E = r.isLava ? -99 : r.waterAt(this.pos.x, this.pos.z),
         ee = r.frozen && T < E,

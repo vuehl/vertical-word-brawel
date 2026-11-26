@@ -15,7 +15,7 @@ export async function packIconAtlases(icons, addPage, index) {
     groups.get(groupKey).images.push({...icon,width,height});
   }
   for (const {pack,cell,images} of groups.values()) {
-    const columns = Math.min(Math.ceil(Math.sqrt(images.length)), Math.max(1,Math.floor(1024/cell)));
+    const columns = Math.min(Math.ceil(Math.sqrt(images.length)), Math.max(1,Math.floor((pack==='art'?2048:1024)/cell)));
     const capacity = columns*columns;
     for (let start=0; start<images.length; start+=capacity) {
       const tiles=images.slice(start,start+capacity), pageWidth=Math.min(columns,tiles.length)*cell;
@@ -40,8 +40,7 @@ export async function packIconAtlases(icons, addPage, index) {
         frames.push([x+1,y+1,width,height]);
       }
       const raw={width:pageWidth,height:pageHeight,channels:4};
-      const bytes=pack==='world'?await encodeLosslessAtlas(rgba,raw):
-        await sharp(rgba,{raw}).webp({lossless:true,effort:6}).toBuffer();
+      const bytes=await encodeLosslessAtlas(rgba,raw);
       const ref=addPage(pack,bytes,'.webp');
       pages[ref.split('/')[1]]=frames;
       tiles.forEach(({key},tile)=>{index[key]=ref+'#'+tile;});

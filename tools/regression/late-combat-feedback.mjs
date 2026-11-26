@@ -53,7 +53,6 @@ export async function reviewLateFeedback(page) {
       try{return reveal(...args);}finally{doc.createElement=create;}
     };
     r.startEvolution();
-    [...r.ui.modalEl.querySelectorAll('button')].find(b=>b.textContent.includes('确认进阶')).click();
     for(let i=0;i<220&&r.state==='evolving';i++){
       hits=0;r.update(1/30);peakHits=Math.max(hits,peakHits);
       if(r.state==='evolving'&&r.ui.root.querySelector('.zx-evolution-result'))earlyCard=true;

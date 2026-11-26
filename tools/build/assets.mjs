@@ -16,6 +16,9 @@ import {assetPolicyVersion,compressedFireAtlases,windClarityAtlases,musicTracks,
 import {runtimeData,runtimeSpecies} from './runtime-data.mjs';
 import {gameProject} from './project-target.mjs';
 import {dragonDirectory,packDragonSummon} from './dragon-summon-pack.mjs';
+import {optimizeLosslessImage} from './image-optimizer.mjs';
+import {sourceFontText} from './font-text.mjs';
+import {compressCapturePage} from './capture-compression.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const source = path.join(root, 'source');
@@ -29,6 +32,9 @@ const filters = {world:{},dragon_summon:{}};
 const index = {};
 const generatedSprites={};
 const fontText=[];
+const imageSavings=[];
+const captureCompression=[];
+const captureFrames=JSON.parse(fs.readFileSync(path.join(pub,'assets/vfx/capture-bag/frames.bin'),'utf8'));
 await writeWindGlyphColors(source);
 await writeHeroActions(source);
 await updateDeskDeviceArt(source);
@@ -84,12 +90,27 @@ for (const folder of ['assets', 'overrides/assets']) {
       }
       if (isAtlasIcon(key)) { icons.push({pack:targetPack,key,input}); continue; }
       const original = fs.readFileSync(input);
+      if(/^assets\/vfx\/capture-bag\/p\d+\.webp$/.test(key)){
+        const page=Number(path.basename(key,'.webp').slice(1));
+        const rects=captureFrames.filter(frame=>frame[0]===page).map(frame=>frame.slice(1,5));
+        if(!rects.length)throw Error('Unreferenced capture atlas: '+key);
+        const {bytes,error,changed}=await compressCapturePage(original,rects);
+        add(targetPack,key,bytes);
+        captureCompression.push({key,sourceBytes:original.length,packedImageBytes:bytes.length,changed,error});
+        continue;
+      }
       if (name.endsWith('.png') && original.length > 3000) {
         const options=key==='assets/vfx/portal-screen.png'
           ? {quality:87,alphaQuality:100,smartSubsample:true,effort:6}
           : {lossless:true,effort:category==='glyphs'||compressedFireAtlases.has(key)||windClarityAtlases.has(key)?6:4};
-        const webp = await sharp(original).webp(options).toBuffer();
-        if (webp.length < original.length) { add(targetPack, key, webp, '.webp'); continue; }
+        const standard = await sharp(original).webp(options).toBuffer();
+        const optimized = key==='assets/vfx/portal-screen.png' ? {bytes:standard,extension:'.webp'}
+          : await optimizeLosslessImage(original, '.png');
+        const webp = standard.length < optimized.bytes.length ? standard : optimized.bytes;
+        if (webp.length < original.length) {
+          imageSavings.push({key,sourceBytes:original.length,packedImageBytes:webp.length});
+          add(targetPack, key, webp, '.webp'); continue;
+        }
       }
       add(targetPack,key,original);
     }
@@ -110,6 +131,7 @@ const developer=development?await import('../developer/build-support.mjs'):null;
 if(developer){
   fontText.push(fs.readFileSync(path.join(import.meta.dirname,'../developer','panel.mjs'),'utf8'));
 }
+fontText.push(sourceFontText(path.join(source,'src')),sourceFontText(path.join(root,'platform')));
 const fontInput=path.join(temp,'font-input.txt');fs.writeFileSync(fontInput,fontText.join('\n'));
 execFileSync(python,[...(python === 'py'?['-3.13']:[]),path.join(import.meta.dirname,'../art/fonts.py'),source,temp,fontInput],{stdio:'inherit'});
 for (const weight of ['regular','bold']) add('text','fonts/'+weight+'.ttf',fs.readFileSync(path.join(temp,weight+'.ttf')));
@@ -142,6 +164,8 @@ fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify({
 const reportDir=projectRoot===root?path.join(root,'验收'):projectRoot;fs.mkdirSync(reportDir,{recursive:true});
 fs.writeFileSync(path.join(reportDir,'资源打包清单.json'),JSON.stringify({
   policyVersion:assetPolicyVersion,mappedResources:Object.keys(index).length,runtimeSpecies:runtimeSpecies.length,musicTracks,
+  imageSavings,
+  captureCompression,
   packs:Object.fromEntries(Object.keys(meta).map(name=>[name,{files:Object.keys(packs[name]).length,rawBytes:rawSizes[name],packedBytes:fs.statSync(path.join(out,'packs',name,'assets.br')).size}])),
   excluded:[...excluded].sort(([a],[b])=>a.localeCompare(b)).map(([key,reason])=>({key,reason})),
 },null,2)+'\n');
