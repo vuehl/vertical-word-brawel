@@ -347,6 +347,7 @@ async function verifyStartup(){
     else if(process.argv.includes('--research-stats'))await (await import('./regression/research-stats.mjs')).verifyResearchStats({page,tap,dir});
     else if(process.argv.includes('--battle-plan'))await (await import('./regression/battle-plan-regression.mjs')).reviewBattlePlan({page,tap,dir});
     else if(process.argv.includes('--boot-only'))console.log('Boot artwork and first-frame handoff passed');
+    else if(process.argv.includes('--loading-art'))await (await import('./regression/loading-art-regression.mjs')).reviewLoadingArtwork({page,resize,dir});
     else if(process.argv.includes('--icon-atlas'))await (await import('./regression/icon-atlas-regression.mjs')).checkIcons(page);
     else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});

@@ -73,8 +73,10 @@ export function createReadyBlink(makeCanvas){
     const currentPalette=ult.readyPalette;
     if(owner!==run||palette!==currentPalette){
       palette=currentPalette;owner=run;
-      body=createLayer(makeCanvas,27,palette.ramp,createReadyEmbers());
-      button=createLayer(makeCanvas,28,palette.ramp);
+      // Combat and scenic menus are exclusive; reuse their slots without touching
+      // the boss health (27), cast (29/30), or joystick (0/31) textures.
+      body=createLayer(makeCanvas,25,palette.ramp,createReadyEmbers());
+      button=createLayer(makeCanvas,26,palette.ramp);
     }
     let stage='charge',progress=Math.min(blinkDuration,Math.max(0,run.time-ult.readyBlinkAt)),opacity=1;
     if(ult.ready&&ult.readyFlashAt!=null){

@@ -1,5 +1,5 @@
 import {paintPaperWaves as blueWaves,paintPhotoWaves,paperPalette} from '../source/src/ui/paper-shapes.js';
-import {qualityPaper,upgradeStocks} from '../source/src/ui/choice-presentation.js';
+import {qualityPaper,upgradeStocks,choiceGlows} from '../source/src/ui/choice-presentation.js';
 const white=paperPalette.paper;
 
 function gradient(ctx,w,h,top,bottom){
@@ -27,6 +27,17 @@ function folded(ctx,w,h,{edge,top,bottom,corner=8,rim=2}){
 }
 
 function poly(ctx,p,color){ctx.beginPath();ctx.moveTo(...p[0]);for(const a of p.slice(1))ctx.lineTo(...a);ctx.closePath();ctx.fillStyle=color;ctx.fill();}
+function choiceGlow(ctx,w,h,quality,unavailable=false){
+  const [rim,glow]=unavailable?['#AFA9B5','#77717E']:choiceGlows[quality]||choiceGlows.special;
+  ctx.save();
+  // Layered strokes keep the soft edge consistent at every Canvas pixel ratio.
+  ctx.strokeStyle='#160F2040';ctx.lineWidth=6;ctx.strokeRect(0,3,w,h);
+  for(const [width,alpha] of [[18,'06'],[14,'0A'],[10,'12'],[6,'26'],[3,'70']]){
+    ctx.strokeStyle=glow+alpha;ctx.lineWidth=width;ctx.strokeRect(0,0,w,h);
+  }
+  ctx.strokeStyle=rim;ctx.lineWidth=1.25;ctx.strokeRect(-.6,-.6,w+1.2,h+1.2);
+  ctx.restore();
+}
 function mountedPaper(ctx,w,h,footer=false){
   const c=footer?13:11;
   cut(ctx,0,2,w,h-2,c,'#5D77AF');
@@ -79,6 +90,8 @@ export function drawUiPaper(ctx,box){
   const [edge,top,bottom,accent,badge]=qualityPaper[el.dataset.quality]||qualityPaper.special;
   ctx.save();
   ctx.translate(x,y);
+  if(has('zx-glowing-choice'))choiceGlow(ctx,w,h,el.dataset.quality,
+    el.disabled||el.dataset.unavailable==='true'||el.getAttribute('aria-disabled')==='true'||has('unavailable'));
   switch(key){
     case 'journal-cover':
       ctx.fillStyle='#38343D';ctx.fillRect(0,0,w,h);
@@ -87,23 +100,20 @@ export function drawUiPaper(ctx,box){
     case 'journal-button':
       poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],el.disabled?'#B6B0AB':paperPalette.yellow);break;
     case 'atlas-sheet':
-      poly(ctx,[[0,4],[w*.3,0],[w*.66,4],[w-3,1],[w,h-7],[w*.7,h-3],[w*.35,h-6],[3,h]],'#E9E2D1');break;
+      poly(ctx,[[0,0],[w-3,0],[w,h],[3,h]],'#E9E2D1');break;
     case 'atlas-heading':
       ctx.fillStyle='#A89D88';for(let i=5;i<w-5;i+=5)ctx.fillRect(i,h-1,3,1);break;
     case 'atlas-zone':
       poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],'#302A31');break;
     case 'album-filter':
       if(el.getAttribute('aria-pressed')==='true'){
-        poly(ctx,[[4,0],[w,0],[w-4,5],[w-1,4],[w-10,h],[0,h]],paperPalette.yellow);
+        poly(ctx,[[4,0],[w,0],[w-10,h],[0,h]],paperPalette.yellow);
       }
       break;
     case 'bound-index': {
-      const gap=8,edge=w-2;
-      ctx.beginPath();ctx.moveTo(1,2);ctx.lineTo(edge-18,0);ctx.lineTo(edge-14,4);ctx.lineTo(edge-12,1);ctx.lineTo(edge,2);
-      for(let y=55;y<h-16;y+=86){
-        ctx.lineTo(edge,y);ctx.lineTo(edge-gap,y);ctx.arc(edge-gap-2,y,2.5,0,Math.PI*2,true);ctx.lineTo(edge,y+1);
-      }
-      ctx.lineTo(edge,h-4);ctx.lineTo(w-18,h-4);ctx.lineTo(w-20,h-1);ctx.lineTo(0,h);ctx.closePath();
+      const edge=w-2;
+      ctx.beginPath();ctx.moveTo(1,0);ctx.lineTo(edge,0);
+      ctx.lineTo(edge,h);ctx.lineTo(0,h);ctx.closePath();
       ctx.fillStyle=(has('route-binding')||has('selection-binding'))?'#FBF5E8':'#F1EBDF';ctx.fill();
       ctx.strokeStyle='#79746F';ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(8,6);ctx.lineTo(19,4);ctx.moveTo(w-36,4);ctx.lineTo(w-24,5);ctx.stroke();
       break;
@@ -225,13 +235,9 @@ export function drawUiPaper(ctx,box){
       cut(ctx,0,0,w,h-3,7,'#F3F1FA');
       break;
     case 'plan-sheet': {
-      // Ruled notebook margin and the torn bottom edge of the reference sheet.
+      // Keep the notebook margin on a sheet with a continuous straight edge.
       ctx.fillStyle='#938B80';ctx.fillRect(0,3,w,h-3);
-      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(w,0);ctx.lineTo(w,h-6);
-      for(let x=w;x>0;x-=10){
-        ctx.lineTo(Math.max(0,x-5),h-2);ctx.lineTo(Math.max(0,x-10),h-6);
-      }
-      ctx.closePath();ctx.fillStyle='#F1EBDF';ctx.fill();
+      ctx.fillStyle='#F1EBDF';ctx.fillRect(0,0,w,h-3);
       ctx.fillStyle='#D8B651';ctx.fillRect(11,10,1,h-23);
       ctx.fillStyle='#A7B9D1';
       for(let y=29;y<h-12;y+=76){ctx.beginPath();ctx.arc(6,y,1.7,0,Math.PI*2);ctx.fill();}
@@ -248,10 +254,6 @@ export function drawUiPaper(ctx,box){
     }
     case 'move-stamp': {
       ctx.fillStyle='#DED5C6';ctx.fillRect(0,0,w,h);
-      ctx.fillStyle='#F1EBDF';
-      const hole=(x,y,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();};
-      for(let y=4;y<h;y+=8){hole(0,y,1.6);hole(w,y,1.6);}
-      for(let x=4;x<w;x+=7){hole(x,0,1.2);hole(x,h,1.2);}
       break;
     }
     case 'heading-strip':
@@ -319,7 +321,7 @@ export function drawUiPaper(ctx,box){
     case 'button-muted':
     case 'button': {
       if(['journey','collection-next','enter'].includes(el.dataset.action)&&!el.disabled){
-        const face=[[w*.095,h*.17],[w-8,0],[w-18,h*.20],[w-4,h*.15],[w-15,h*.36],[w-2,h*.3],[w-19,h*.61],[w-9,h*.56],[w-25,h*.85],[2,h-4],[16,h*.70],[4,h*.73],[18,h*.44],[9,h*.47],[21,h*.25]];
+        const face=[[w*.095,h*.17],[w-8,0],[w-25,h*.85],[2,h-4]];
         ctx.save();ctx.translate(0,4);poly(ctx,face,paperPalette.darkStock);ctx.restore();poly(ctx,face,paperPalette.yellow);
         break;
       }
@@ -388,9 +390,9 @@ export function drawUiPaper(ctx,box){
       ctx.globalAlpha*=.36;poly(ctx,[[w*.65,0],[w,0],[w*.37,h],[0,h]],face);break;
     }
     case 'altar-value':
-      poly(ctx,[[9,0],[w,0],[w,h],[0,h],[6,h*.63],[2,h*.63]],'#2B262E');break;
+      poly(ctx,[[9,0],[w,0],[w,h],[0,h]],'#2B262E');break;
     case 'level-title':
-      poly(ctx,[[0,0],[w,0],[w,h*.48],[w-8,h*.69],[w-2,h*.69],[w-14,h],[0,h]],'#2B262E');break;
+      poly(ctx,[[0,0],[w,0],[w-14,h],[0,h]],'#2B262E');break;
      case 'upgrade-card': {
       cut(ctx,0,3,w,h-3,4,'#322C36');cut(ctx,0,0,w,h-4,4,'#F3EEE4');
       poly(ctx,[[0,4],[4,0],[9,0],[7,h-4],[0,h-4]],accent);

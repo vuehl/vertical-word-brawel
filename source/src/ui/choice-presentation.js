@@ -23,6 +23,32 @@ export const upgradeStocks={
   legendary:['#FFDC84','#ECA746','#895018'],
   special:['#F3C7AA','#D99C7F','#805145'],
 };
+// A bright keyline and a softer rarity-coloured glow separate choices from the scene.
+export const choiceGlows={
+  common:['#FFF1D4','#D7BD80'],
+  uncommon:['#DFFFCE','#6FDC8B'],
+  rare:['#D7F4FF','#62B8FF'],
+  epic:['#F6DEFF','#C18CFF'],
+  legendary:['#FFF5C2','#FFC75A'],
+  special:['#FFE8D0','#EEA477'],
+};
+export const choiceCardSelector=[
+  '.zx-quality-card','.zx-loot-display','.zx-shop-offer','.zx-forget-row',
+  '.zx-review-recipe','.zx-fusion-record','.zx-review-companion','.zx-party-pick','.zx-branch-choice',
+].join(',');
+// Apply after each dialog is assembled, including single choices and rebuilt lists.
+export function frameChoiceCards(root){
+  const cards=[...root.querySelectorAll(choiceCardSelector)];
+  if(root.matches(choiceCardSelector))cards.unshift(root);
+  for(const card of cards){
+    card.classList.add('zx-glowing-choice');
+    const parent=card.parentElement;
+    if(!parent)continue;
+    parent.dataset.choiceFrames='true';
+    parent.classList.add(parent.classList.contains('zx-modal')?'zx-choice-frame-panel':'zx-choice-frames');
+  }
+  return root;
+}
 export function choiceQuality(rarity,label){
  const q=Number.isInteger(rarity)&&rarity>=0&&rarity<qualityPalette.length?qualityPalette[rarity]:{key:'special',label:'特殊',fill:'#f4ebe0',border:'#bba68f',ink:'#6b5841'};
  return {...q,label:label||q.label};

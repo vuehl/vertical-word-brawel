@@ -1,11 +1,14 @@
 import {waveHalfWidth, waveDepth, waveNose} from './air-slash-shape.js';
 import {createWindTexture} from './wind-vortex.js';
 import {et as PlaneGeometry,H as InstancedMesh,B as InstanceAttribute,ct as ShaderMaterial,j as DynamicDraw} from '../vendor/three-DmSYIDKK.js';
-import {starterForSpecies, windGlyphFill} from '../data/starter-characters.js';
+import {starterForSpecies} from '../data/starter-characters.js';
 import {installWindSkillArt,quickHaloSeconds} from './wind-skill-art.js';
 import {installWindReplacements} from './wind-replacements.js';
+import slashAtlas from '../../../resources/public/assets/vfx/air-slash-reference.json' with {type:'json'};
+import {windFrameAt} from './wind-frame-time.js';
 
 const moveKeys=new Set(['quick-attack','air-slash','wing-attack','tackle']);
+const slashSeconds=slashAtlas.times.at(-1)/1000;
 export function windMoveEffect(key,species) {
   if(starterForSpecies(species).id!==16)return;
   if(key==='wind-ring-wave')return 'wind-gust';
@@ -29,33 +32,28 @@ function dash(run,x,y,z,dx,dz,length) {
   }
 }
 
-// Use the same sRGB fill and channel permutations as the hero cutout.
-const [red,green,blue]=windGlyphFill.map(c=>((c/255+.055)/1.055)**2.4);
-const originalInk=[red,green,blue], classicInk=[blue,red,green], shinyInk=[green,blue,red];
-
 export class WindMoveArt {
   constructor(owner) {
     this.owner=owner;
     this.waves=[];
     const capacity=12;
     const geometry=new PlaneGeometry(1,1);
-    this.texture=createWindTexture(this,'assets/vfx/air-slash-wave.webp');
+    this.texture=createWindTexture(this,'assets/vfx/air-slash-reference.png');
     this.origin=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
     this.pose=new InstanceAttribute(new Float32Array(capacity*4),4).setUsage(DynamicDraw);
-    this.tint=new InstanceAttribute(new Float32Array(capacity*3),3).setUsage(DynamicDraw);
+    this.frames=new InstanceAttribute(new Float32Array(capacity*2),2).setUsage(DynamicDraw);
     geometry.setAttribute('slashOrigin',this.origin);
     geometry.setAttribute('slashMotion',this.pose);
-    geometry.setAttribute('glyphInk',this.tint);
+    geometry.setAttribute('slashFrame',this.frames);
     const material=new ShaderMaterial({
       uniforms:{map:{value:this.texture}},
       transparent:true,depthWrite:false,side:2,toneMapped:false,
       vertexShader:`
         attribute vec4 slashOrigin;
         attribute vec4 slashMotion;
-        attribute vec3 glyphInk;
+        attribute vec2 slashFrame;
         varying vec2 waveUv;
-        varying vec3 ink;
-        varying float progress;
+        varying float look;
         varying float opacity;
         void main(){
           vec2 forward=slashMotion.yz;
@@ -64,28 +62,22 @@ export class WindMoveArt {
           world.xz+=slashOrigin.w*(forward*(uv.x-${waveNose})*${waveDepth}
                     +across*(2.*uv.y-1.)*${waveHalfWidth});
           gl_Position=projectionMatrix*viewMatrix*vec4(world,1.);
-          waveUv=uv;
-          ink=glyphInk;
-          progress=slashMotion.x;
+          vec2 grid=vec2(${slashAtlas.columns}.,${slashAtlas.rows}.);
+          vec2 cell=vec2(mod(slashFrame.x,grid.x),grid.y-1.-floor(slashFrame.x/grid.x));
+          waveUv=(cell+(uv*${slashAtlas.tile-1}.+.5)/${slashAtlas.tile}.)/grid;
+          look=slashFrame.y;
           opacity=slashMotion.w;
         }`,
       fragmentShader:`
         uniform sampler2D map;
         varying vec2 waveUv;
-        varying vec3 ink;
-        varying float progress;
+        varying float look;
         varying float opacity;
         void main(){
-          vec2 sampleUv=waveUv;
-          float wake=1.-waveUv.x;
-          sampleUv.x+=.029*wake*sin(waveUv.y*49.-progress*19.);
-          vec4 brush=texture2D(map,sampleUv);
-          float highlight=smoothstep(.26,.94,brush.r);
-          float release=smoothstep(.78,1.,progress);
-          float lift=1.-smoothstep(.08,1.,release*(1.+.8*wake));
-          float alpha=brush.a*(.68+.27*highlight)*lift*opacity;
+          vec4 brush=texture2D(map,waveUv);
+          float alpha=brush.a*opacity;
           if(alpha<.012)discard;
-          vec3 color=mix(ink*(.80+.32*brush.g),mix(ink,vec3(1.),.78),highlight);
+          vec3 color=look>1.5?brush.gbr:look>.5?brush.brg:brush.rgb;
           gl_FragColor=vec4(color,alpha);
           #include <colorspace_fragment>
         }`
@@ -108,15 +100,18 @@ export class WindMoveArt {
       const wave=this.waves[i];
       if(wave.done){this.waves.splice(i,1);continue;}
       if(!this.owner.allowed()||!this.loaded)continue;
-      const ink=wave.look==='classic'?classicInk:wave.look==='shiny'?shinyInk:originalInk;
+      const frame=windFrameAt(slashAtlas,wave.front*slashSeconds);
+      if(frame<0)continue;
       this.origin.setXYZW(count,wave.x,wave.y,wave.z,wave.radius);
       this.pose.setXYZW(count,wave.front,wave.dx,wave.dz,vfx.opacity*vfx.ownOpacity*(vfx.calm?.8:1));
-      this.tint.setXYZ(count,...ink);
+      this.frames.setXY(count,frame,wave.look==='classic'?1:wave.look==='shiny'?2:0);
       count++;
     }
     this.mesh.count=count;
     this.mesh.visible=count>0;
-    if(count)this.origin.needsUpdate=this.pose.needsUpdate=this.tint.needsUpdate=true;
+    if(count)for(const attribute of [this.origin,this.pose,this.frames]){
+      attribute.clearUpdateRanges();attribute.addUpdateRange(0,count*attribute.itemSize);attribute.needsUpdate=true;
+    }
   }
   reset(){this.waves.length=0;this.mesh.count=0;this.mesh.visible=false;}
   dispose(){this.disposed=true;this.texture.dispose();this.reset();this.mesh.parent?.remove(this.mesh);this.mesh.geometry.dispose();this.mesh.material.dispose();this.mesh.dispose();}

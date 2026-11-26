@@ -19,4 +19,6 @@ export const battleParticleImages = [
   [135, 'items/tm-steel'],
   [136, 'items/tm-electric'],
   [137, 'items/tm-normal'],
+  // Keep the carried marble's original colours and painted drop shadow.
+  [138, 'ui/devices/marble'],
 ];

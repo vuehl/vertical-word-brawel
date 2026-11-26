@@ -27,6 +27,10 @@ export function warmDragonSummon(run){
 // Upgrade only the currently selected glyph tile. The other actors sharing
 // its instanced material retain their atlas UVs and original shader.
 function useOriginalGlyph(batch,assets){
+  // The boss now has smooth high-resolution art for all 48 health states.
+  // Keep that texture across the reveal and damage instead of swapping only
+  // the full-health tile to a differently outlined cinematic image.
+  if(batch.zxBossGlyph)return;
   const mat=(batch.zxGroup||batch).material, tile=batch.zxGlyphRect;
   const prefix='uniform sampler2D zxGlyph;';
   if(!tile||!mat.fragmentShader.includes(prefix)||!mat.uniforms.zxGlyph)return;
@@ -78,6 +82,14 @@ class DragonSummon {
     await compile(this.white,null,this.flashScene);
     if(this.assets.disposed)return;
     const batch=this.run.sprites.get(finalBossSpecies,false,this.assets.meta.boss.glyph);
+    if(batch.zxBossGlyph){
+      const texture=batch.material.uniforms.zxGlyph.value;
+      await texture.userData.ready;
+      if(this.assets.disposed)return;
+      renderer.initTexture(texture);
+      await compile((batch.zxGroup||batch).mesh,composer.inputBuffer,scene);
+      return;
+    }
     const restore=useOriginalGlyph(batch,this.assets);
     if(restore){
       // compileAsync submits synchronously. Restore the shared atlas material

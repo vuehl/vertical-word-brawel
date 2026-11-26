@@ -1,4 +1,16 @@
 // Shared choice surfaces: rarity colours never encode positive/negative effects.
+import {choiceGlows} from './choice-presentation.js';
+// Loaded after individual dialog styles so every choice keeps its frame.
+export const choiceFrameStyle=`
+html.zixing .zx .zx-modal .zx-choice-frames{padding:10px;gap:14px}
+.zx .zx-modal.zx-choice-frame-panel{gap:18px}
+html.zixing .zx .zx-modal .zx-glowing-choice{outline:1.25px solid #FFE8D0;outline-offset:1px;box-shadow:0 4px 9px #160F20B3,0 0 12px #EEA47790,0 0 3px #EEA477D9}
+${Object.entries(choiceGlows).map(([quality,[rim,glow]])=>`
+html.zixing .zx .zx-modal .zx-glowing-choice[data-quality="${quality}"]{outline-color:${rim};box-shadow:0 4px 9px #160F20B3,0 0 12px ${glow}90,0 0 3px ${glow}D9}
+`).join('')}
+html.zixing .zx .zx-modal .zx-glowing-choice:disabled,html.zixing .zx .zx-modal .zx-glowing-choice[data-unavailable="true"],html.zixing .zx .zx-modal .zx-glowing-choice[aria-disabled="true"],html.zixing .zx .zx-modal .zx-glowing-choice.unavailable{outline-color:#AFA9B5;box-shadow:0 3px 6px #160F2070,0 0 6px #77717E55}
+@media(max-height:660px){html.zixing .zx .zx-modal .zx-choice-frames{gap:10px}}
+`;
 export const choicePresentationStyle = `
 .zx-modal.zx-choice-dialog{max-width:420px;padding:18px;gap:10px;overflow:hidden;overflow-x:hidden;overflow-y:hidden}
 .zx-choice-dialog>h2{font-size:22px;line-height:28px;margin:0}

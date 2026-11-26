@@ -2,7 +2,7 @@ import {journeyScene} from './journey-scene.js';
 import {paintLoadingSlip} from './menu-scene.js';
 import {headerCutout,titleRibbon,hudPaperIcon,paperIcon,rewardPaper,arrivalPennant,evolutionResult,settlementTicket,battleDialogHeading,battleDialogFrame,stagePortrait,choiceMark} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,profileSwitch,dockDialogClose,mountMenuDialog,openPaperPrompt,paperDecisionPanel,paperDecisionActions,paperDialogTitle,standardButton,fitPaperActionLabels,standardFooter,freePaperActions} from './paper-system.js';
-import {upgradeStocks,choiceQuality,choiceModel,effectScope} from './choice-presentation.js';
+import {upgradeStocks,choiceQuality,choiceModel,effectScope,frameChoiceCards} from './choice-presentation.js';
 import {createCollectionUI} from './collection-ui.js';
 import {canDeploy,collectionRewards} from './collection-rules.js';
 import {installReviewBattle,itemOffer,qualityBadge,planBadge} from './battle-review-ui.js';
@@ -765,13 +765,13 @@ export function createZixingUI(app,api) {
     const synced=mapRead;
     synced.then(()=>{if(enter.isConnected)refresh();});
   }
-  function journeyLoadingScreen(config){
+  function loadingScreen(name,coop=false){
     const ticket=el('canvas','zx-entry-ticket',[],{width:780,height:152,'data-static':'true',
-      role:'progressbar','aria-label':'桌上世界加载进度','aria-valuemin':0,'aria-valuemax':100});
-    const node=screen('entry','','',[ticket]);
+      role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100});
+    const node=screen(name,'','',[ticket]);
     node.classList.add('zx-loading-screen','journey-entry');
     node.querySelector('.zx-body').dataset.paperSurface='flat';
-    scene.mount(node,character(config.species),app.meta.skinFor(config.species));
+    scene.mount(node);
     const captions={
       '同步关卡进度':'正在同步关卡进度','保存出发设置':'正在保存出发设置','准备对局':'正在布置桌上世界',
       '绘制桌面与纸张':'正在绘制桌面','准备角色与场景物件':'正在布置桌上世界','摆放场景物件':'正在摆放桌面物件',
@@ -779,9 +779,10 @@ export function createZixingUI(app,api) {
       '准备进入场景':'正在绘制首帧','准备完成':'桌上世界已就绪',
     };
     let shown=-1,caption='';
-    function update({progress=0,phase}){
-      const next=Math.max(shown,Math.min(100,Math.floor(progress*100)));
-      const label=captions[phase]||'正在准备场景资源';
+    function update({progress=0,phase,teamReady=false,teamStatus=''}){
+      if(coop)progress=teamReady?1:Math.min(.9,progress);
+      const next=Math.max(shown,Math.min(100,Math.max(0,Math.floor(progress*100))));
+      const label=teamStatus||captions[phase]||'正在布置场景';
       if(next===shown&&label===caption)return shown;
       shown=next;caption=label;
       const ctx=ticket.getContext('2d');
@@ -792,40 +793,12 @@ export function createZixingUI(app,api) {
     }
     update({});return {node,update};
   }
-  function loadingScreen(name,coop=false) {
-    const status=small('');status.hidden=true;
-    const value=el('b','zx-loading-percent','0%');
-    const ring=el('canvas','zx-loading-ring',[],{width:400,height:400,'data-static':'true','aria-hidden':true});
-    const progress=el('div','zx-loading-progress',[ring,value],{role:'progressbar','aria-label':'场景加载进度','aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':0});
-    const node=screen(name,'','',[el('div','zx-loading-content',[
-      el('h1','zx-loading-title','正在布置场景'),progress,status,
-    ])]);
-    node.classList.add('zx-loading-screen');
-    node.querySelector('.zx-body').dataset.paperSurface='flat';
-    let shown=-1;
-    const update=({progress:fraction=0,teamReady=false,teamStatus='',phase=''})=>{
-      if(coop)fraction=teamReady?1:Math.min(.9,fraction);
-      const message=teamStatus||(phase==='保存出发设置'?'正在同步出发设置':'');
-      if(status.textContent!==message){status.textContent=message;status.hidden=!message;}
-      const next=Math.max(shown,Math.min(100,Math.max(0,Math.floor(fraction*100))));
-      if(next===shown)return shown;
-      shown=next;value.textContent=shown+'%';progress.setAttribute('aria-valuenow',shown);
-      const ctx=ring.getContext('2d'),start=-Math.PI/2;
-      ctx.setTransform(2,0,0,2,0,0);ctx.clearRect(0,0,200,200);
-      ctx.lineWidth=9;ctx.lineCap='round';ctx.strokeStyle='#D7DEED';
-      ctx.beginPath();ctx.arc(100,100,86,0,Math.PI*2);ctx.stroke();
-      if(shown>0){ctx.strokeStyle='#557DB8';ctx.beginPath();ctx.arc(100,100,86,start,start+Math.PI*2*shown/100);ctx.stroke();}
-      return shown;
-    };
-    update({progress:0});return {node,update};
-  }
   async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null) {
     if(activeEntry||app.starting)return false;
     const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&!hasJourneyProgress(profile());
     let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
-    const scenic=!config.coop&&(firstJourney||['map','entry-error'].includes(app.screen?.dataset.page));
-    const view=scenic?journeyLoadingScreen(config):loadingScreen('entry',!!config.coop),{node}=view;
+    const view=loadingScreen('entry',!!config.coop),{node}=view;
     activeEntry=node;
     const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
     const update=({phase:title,detail:message='',progress=0,teamReady,teamStatus})=>{
@@ -941,6 +914,7 @@ export function createZixingUI(app,api) {
     if(!framed&&!kind.includes('zx-first-batch-upgrade'))paperDialogTitle(titleNode);
     const heading=framed?[]:[subtitle?small(subtitle):null,titleNode];
     const content=el('section','zx zx-modal '+kind,[...heading,...body,...actions]);
+    frameChoiceCards(content);
     let wrap;
     if(hud){wrap=hud.modal(framed?battleDialogFrame(content,titleNode,subtitle):content);wrap.className='zx zx-modal-wrap';}
     else {document.querySelector('.zx-dialog')?.remove();wrap=el('div','zx zx-modal-wrap zx-dialog',content);mountMenuDialog(app.ui,wrap,app.screen);}
@@ -1324,6 +1298,7 @@ export function createZixingUI(app,api) {
   }
   function choiceList(className,cards){
     const list=el('div',className,cards);
+    frameChoiceCards(list);
     if(cards.length<2)return list;
     list.dataset.equalCards='true';
     // Measure the mounted cards so both renderers share the same choice height.
@@ -1357,7 +1332,7 @@ export function createZixingUI(app,api) {
     }
     return list;
   }
-  function levelUp(run,offers,chooseOffer,art) {
+  function levelUp(run,offers,chooseOffer) {
     let choosing=false;
     const choose=(offer,action)=>{
       if(choosing)return;choosing=true;
@@ -1379,8 +1354,8 @@ export function createZixingUI(app,api) {
         ]);
         return text(label,i?'zx-choice-description zx-offer-note':'zx-choice-description');
       });
-      const src=desc.type?api.moveIcon({type:desc.type}):offer.vit?api.vitaminIcon(offer.vit):null;
-      const rail=el('div','zx-upgrade-art',[src?loadoutIcon(src,desc.title):art[index],
+      const src=offer.vit?api.vitaminIcon(offer.vit):desc.type?api.moveIcon({type:desc.type}):null;
+      const rail=el('div','zx-upgrade-art',[src?loadoutIcon(src,desc.title):glyph('升'),
         el('span','zx-level-stamp',quality.label),
       ],{'data-paper-surface':'level-art','data-quality':quality.key});
       const head=el('div','zx-level-head'+(buff?' buff':''),[
@@ -1408,7 +1383,8 @@ export function createZixingUI(app,api) {
     const help=[...wrap.children].filter(node=>node.classList.contains('help')).map(node=>text(node.textContent,'zx-note zx-choice-help'));
     cards.forEach((node,index)=>{
       const body=node.querySelector('.bd'),heading=body.querySelector('h3'),tag=node.querySelector('.rar,.kind');
-      const art=node.querySelector('.top img,.top canvas')||glyph(symbol);
+      const art=method==='showPact'&&run.endless?glyph(characterForSpecies(run.player.speciesId)):
+        node.querySelector('.top img,.top canvas')||glyph(symbol);
       const meta=choiceModel(method,args,index,tag?.textContent||'');
       if(method==='showTrade'&&args[1]?.kind==='fossil')meta.kind='';
       const notes=[];
@@ -1439,7 +1415,8 @@ export function createZixingUI(app,api) {
         const stat=leading?leading[2]:trailing?trailing[1]:label;
         const value=leading?leading[1]:trailing?.[2];
         const statIcon={damage:'target',attackSpeed:'streak',maxHp:'blessing',moveSpeed:'dash',critChance:'aim',area:'globe',xpGain:'stardust',regen:'blessing',armor:'silver',luck:'shiny-charm',duration:'vela',statusChance:'idea'};
-        const mark=loadoutIcon(api.interfaceIcon(statIcon[args[2]?.[index]?.mods?.[0]?.stat]||'blessing'),stat);
+        const mark=args[5]==='boss'?glyph(characterForSpecies(run.player.speciesId)):
+          loadoutIcon(api.interfaceIcon(statIcon[args[2]?.[index]?.mods?.[0]?.stat]||'blessing'),stat);
         const badge=qualityBadge(meta.quality);
         node.dataset.paperSurface='level-offer';
         node.replaceChildren(el('div','zx-blessing-row',[
@@ -1604,9 +1581,7 @@ export function createZixingUI(app,api) {
     api.glyphs(run);run.input.fixedCamera=true;run.input.mouseDX=run.input.mouseDY=run.input.wheel=0;
     const hint=run.hints.show.bind(run.hints);
     run.hints.show=(key,site)=>{if(run.state==='play'&&!run.stageCleared&&!app.screen&&!hud.hasModal())hint(key,site,run);};
-    // Offers reuse these four glyph canvases throughout the run. Paint them on the loading screen.
-    const upgradeArt=[glyph(current()),glyph('升'),glyph('升'),glyph('升')];
-    hud.showPause=pause;hud.showLevelUp=(r,offers,choose)=>levelUp(r,offers,choose,upgradeArt);
+    hud.showPause=pause;hud.showLevelUp=levelUp;
     hud.showSummary=summary;hud.showSlots=slots;
     const hideBattleModal=hud.hideModal.bind(hud);
     hud.hideModal=(...args)=>{

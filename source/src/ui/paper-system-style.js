@@ -843,7 +843,8 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 }
 
 
-.screen.zx.journey-entry>.zx-body{justify-content:flex-end;align-items:center;padding:0 0 3vh;background:transparent}
+.screen.zx.journey-entry{padding:0!important}
+.screen.zx.journey-entry>.zx-body{justify-content:flex-end;align-items:center;padding:0;background:transparent}
 .screen.zx.journey-entry canvas.zx-entry-ticket{display:block;flex:none;width:100%;max-width:430px;height:84px;object-fit:contain}
 @media(max-height:680px){.journey-air{height:13vh;min-height:50px}}
 
@@ -1030,7 +1031,7 @@ html.zixing .zx-toast-layer .toasts>.toast,html.zixing .run-hint.zx-hint,.zx .zx
 .zx-level-up .zx-upgrade-art>.zx-loadout-icon,.zx-level-up .zx-upgrade-art>.zx-glyph{width:55px;height:55px;max-width:94%;object-fit:contain}
 .zx-level-up .zx-level-stamp{position:absolute;left:4px;bottom:4px;align-self:flex-start;padding:0 5px;background:#3C343C;color:#FFF6E7;font-size:11px;line-height:15px;font-weight:700}
 .zx-level-up .zx-upgrade-copy{padding:0;gap:0}
-.zx-level-up .zx-level-head{display:flex;flex-direction:column;align-items:flex-start;align-self:stretch;gap:0;flex:none;padding:3px 14px 4px 8px;background:#2B262E;clip-path:polygon(0 0,100% 0,100% 48%,97% 69%,99% 69%,94% 100%,0 100%)}
+.zx-level-up .zx-level-head{display:flex;flex-direction:column;align-items:flex-start;align-self:stretch;gap:0;flex:none;padding:3px 14px 4px 8px;background:#2B262E;clip-path:polygon(0 0,100% 0,94% 100%,0 100%)}
 .zx-level-up .zx-level-head.buff{align-self:flex-start;min-width:73%;max-width:100%;clip-path:polygon(0 0,100% 0,100% 73%,94% 100%,0 100%)}
 .zx-level-up .zx-level-kind{font-size:11px;line-height:14px;font-weight:700;color:#E2D4BA}
 .zx-level-up .zx-offer .zx-level-head>.zx-choice-title{flex:none;color:#FFF6E6;font-size:19px;line-height:23px}
@@ -1052,7 +1053,7 @@ html.zixing .zx-toast-layer .toasts>.toast,html.zixing .run-hint.zx-hint,.zx .zx
 .zx .zx-blessing-dialog .zx-choice-list>button.zx-blessing-option{padding:2px;min-height:0}
 .zx .zx-blessing-row{padding:0;align-items:stretch;min-height:72px}
 .zx .zx-blessing-seal{width:22%;align-self:stretch}
-.zx .zx-blessing-seal>img{width:48px;height:48px}
+.zx .zx-blessing-seal>.zx-glyph{width:52px;height:52px;max-width:94%}
 .zx .zx-blessing-label>b{color:#302A32;font-size:19px;line-height:24px}
 .zx .zx-blessing-amount{display:flex;flex-direction:row;align-items:center;justify-content:center;min-width:68px;padding-left:8px}
 .zx .zx-blessing-amount>b{color:#FFF0C8;font-size:24px}

@@ -2902,6 +2902,7 @@ var JI = class {
       );
     }
     showPact(e, t, n) {
+      const recipient = e.player.speciesId;
       let r = e.endless,
         i = e.tower,
         a = !1,
@@ -2928,7 +2929,7 @@ var JI = class {
                       ? c(`Hasta {max}`, { max: e.max })
                       : c(`Único`),
               ),
-              Q(e.icon),
+              r ? rw(recipient) : Q(e.icon),
             ),
             X(
               `div`,

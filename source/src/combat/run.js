@@ -598,8 +598,8 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
       if (this.rerolls === 0 && Math.random() < .5) this.rerolls = 1;
     }
     pendingBlessings = [];
-    queueBlessing(e, t = 0) {
-      this.pendingBlessings.push({ title: e, min: t });
+    queueBlessing(e, t = 0, rewardSource = null) {
+      this.pendingBlessings.push({ title: e, min: t, rewardSource });
     }
     auraRing(e, t, n, r, i) {
       this.vfx.staticRing(e, t, n, r, i, 0.6);
@@ -2138,9 +2138,9 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
     openForget() {
       ((this.state = `modal`), this.ui.showForget(this, () => this.resume()));
     }
-    offerBlessing(e, t = 0, n = 3, r = 1, i = 1) {
+    offerBlessing(e, t = 0, n = 3, r = 1, i = 1, rewardSource = null) {
       if (this.state !== `play`) {
-        this.whenFree(() => this.offerBlessing(e, t, n, r, i));
+        this.whenFree(() => this.offerBlessing(e, t, n, r, i, rewardSource));
         return;
       }
       this.state = `modal`;
@@ -2160,6 +2160,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
                 : this.resume());
           },
           n > 1 ? c(`Elige {n} bendiciones para esta partida`, { n }) : void 0,
+          rewardSource,
         );
       a(Qb(this, t, n, i), r);
     }
@@ -2294,7 +2295,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
         !this.ult.castPending
       ) {
         let e = this.pendingBlessings.shift();
-        this.offerBlessing(e.title, e.min);
+        this.offerBlessing(e.title, e.min, 3, 1, 1, e.rewardSource);
       }
     }
     stepPlayer(player, dt) {

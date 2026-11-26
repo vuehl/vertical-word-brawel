@@ -8,6 +8,7 @@ import {heroActionFrame} from './hero-actions.js';
 import {applyShelfMaterial} from '../world/desk-shelf.js';
 import {maskSceneInk} from '../effects/scene-ink.js';
 import {actorMetrics} from './actor-metrics.js';
+import {bossGlyphArt,bossGlyphFragment} from './boss-glyph-art.js';
 const paintJobs=[];
 // Slightly lighter versions of the supplied hero colors, in texture linear space.
 const allyColors={
@@ -71,6 +72,15 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   }
   const monsterTexture=new Texture();
   monsterTexture.colorSpace=colorSpace;
+  const bossTexture=new Texture();
+  bossTexture.colorSpace=colorSpace;
+  let bossReady;
+  function prepareBossTexture(){
+    return bossReady??=loadGlyphImage(bossGlyphArt.file).then(image=>{
+      if(disposed)return;
+      bossTexture.image=image;bossTexture.needsUpdate=true;
+    }).catch(error=>{bossReady=null;throw error;});
+  }
   const monsterReady=loadGlyphImage('monster-strokes.png').then(image=>{
     if(disposed)return;
     monsterTexture.image=image;
@@ -87,7 +97,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       const rects=hero.rig.groups.flatMap(group=>group.strokes.map(s=>[s.sx,s.sy,s.w,s.h,s.x-hero.rig.frame.left-hero.rig.frame.width/2,s.y-hero.rig.frame.top-hero.rig.frame.height/2]));
       strokes=captureStrokeCanvases(hero.image,rects,false,(80/96)/Math.max(hero.rig.frame.width,hero.rig.frame.height));
     }else{
-      const entry=textures.get(word),image=monsterTexture.image;
+      const entry=textures.get(word),image=entry?.texture.image;
       if(!entry?.frames || !image)return null;
       const rects=entry.frames.map(([u,v,ur,vt])=>[Math.round(u*image.width),Math.round((1-vt)*image.height),
         Math.round((ur-u)*image.width),Math.round((vt-v)*image.height)]);
@@ -105,6 +115,13 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     }
     textures.set(word,{texture:monsterTexture,frames,rect:frames[strokes-1],ready:monsterReady});
   }
+  const bossFrames=Array.from({length:glyphCatalog.enemies[bossGlyphArt.word].strokes},(_,i)=>{
+    const {columns,rows}=bossGlyphArt,x=i%columns,y=Math.floor(i/columns);
+    return new Float32Array([x/columns,1-(y+1)/rows,(x+1)/columns,1-y/rows]);
+  });
+  const bossEntry={texture:bossTexture,frames:bossFrames,rect:bossFrames.at(-1),
+    get ready(){return bossTexture.userData.ready=prepareBossTexture();}};
+  textures.set(bossGlyphArt.word,bossEntry);
   function texture(word) {
     if(textures.has(word))return textures.get(word);
     // 25 padded cutouts per 1024px page: all visible species on a page share
@@ -132,10 +149,11 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
     m.uniforms.map.value.dispose();m.uniforms.map.value=t;
     m.uniforms.zxGlyph={value:t};m.uniforms.uLean.value=entry.animation?1:.65;
     m.uniforms.uTexel.value.set(1/(entry.frames?columns*size:1024),1/(entry.frames?rows*size:1024));
-    batch.ready=!!heroEntry || (!!entry.frames && !!monsterTexture.image);
+    batch.ready=!!heroEntry || (!!entry.frames && !!entry.texture.image);
     if(!heroEntry)entry.ready.then(()=>{if(!disposed)batch.ready=true;},error=>{if(!disposed)batch.loadError=error;});
     m.fragmentShader=m.fragmentShader.replace('uniform sampler2D map;','uniform sampler2D map; uniform sampler2D zxGlyph;').replaceAll('texture2D(map,','texture2D(zxGlyph,');
     batch.zxOriginalGlyph=isOriginalHeroGlyph(word);
+    batch.zxBossGlyph=word===bossGlyphArt.word;
     batch.zxAlly=ally;
     if(heroEntry?.ghost){
       // Sample the casting form's own complete glyph; each trail style supplies
@@ -153,6 +171,11 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
       m.uniforms.zxAllyColor=allyColor;
       m.fragmentShader='uniform sampler2D zxGlyph; uniform vec3 zxAllyColor; varying vec2 vUv; varying vec4 vFx; void main(){vec4 c=texture2D(zxGlyph,vUv);if(c.a<.01)discard;float fill=smoothstep(.035,.08,max(c.r,max(c.g,c.b)));c.rgb=mix(c.rgb,zxAllyColor,fill);c.rgb=mix(c.rgb,vec3(1.),clamp(vFx.x,0.,1.));gl_FragColor=c;}';
       m.transparent=true;m.depthWrite=false;
+    }else if(batch.zxBossGlyph){
+      m.fragmentShader=bossGlyphFragment;
+      m.transparent=true;m.depthWrite=false;
+      m.uniforms.uTexel.value.set(1/(bossGlyphArt.columns*bossGlyphArt.size),1/(bossGlyphArt.rows*bossGlyphArt.size));
+      maskSceneInk(m);
     }else if(batch.zxOriginalGlyph){
       // Match the appearance swatches on both static and animated cutouts.
       const recolor=batch.id!==batch.sid?'c.rgb=c.brg;':'if(vFx.z>8.9 || (vFx.z>4.9 && vFx.z<6.5))c.rgb=c.gbr;';
@@ -248,7 +271,7 @@ export function installGlyphs(run,{Texture,colorSpace,species}) {
   for(const batch of run.sprites.batches.values())skin(batch);
   run.sprites.clear=()=>{
     disposed=true;unusedWarmGlyphs.clear();clear();batches.clear();
-    playerEntry?.texture.dispose();playerEntry=null;captureEntry?.texture.dispose();captureEntry=null;captureStrokes.clear();monsterTexture.dispose();
+    playerEntry?.texture.dispose();playerEntry=null;captureEntry?.texture.dispose();captureEntry=null;captureStrokes.clear();monsterTexture.dispose();bossTexture.dispose();
     for(const {texture} of animations.values())texture.dispose();
     animations.clear();
     for(const page of pages)page.texture.dispose();

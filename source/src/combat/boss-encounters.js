@@ -9384,7 +9384,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
               species: t.player.speciesId,
             }));
           for (let e = 0; e < 10; e++) t.pickups.spawn(`coin`, i, a, o, Math.ceil((3 + t.stage * 3) * s.gold));
-          t.queueBlessing(c(`Aura del Dominante`), 1);
+          t.queueBlessing(c(`Aura del Dominante`), 1, 'boss');
         } else {
           t.stats.summoners++;
           let e = 0;
@@ -9396,7 +9396,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             c(`¡Invocador derrotado!`),
             e ? c(`Sus {n} esbirros se desmayan con él`, { n: e }) : c(`Se acabaron los refuerzos`),
             `#3ac85a`,
-            { species: r.species },
+            { species: t.player.speciesId },
           );
           for (let e = 0; e < 8; e++) t.pickups.spawn(`coin`, i, a, o, Math.ceil((3 + t.stage * 3) * s.gold));
         }

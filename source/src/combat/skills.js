@@ -14,6 +14,7 @@ import {Zg, $g, Qg} from "../data/move-attributes.js";
 import {moveCopy} from "../data/form-copy.js";
 import {windMoveEffect} from "../effects/wind-move-art.js";
 import {castWindAirSlash} from "./wind-air-slash.js";
+import {windTornadoSpeed} from "./wind-tornado.js";
 import {STAMPEDE_FLAME} from "../effects/stylized-effect-atlas.js";
 import {_h, Dh, Ah, H, U, W, yh, q, jh, Y} from "./ultimate-moves.js";
 import {ls, M, ks} from "./move-sounds.js";
@@ -1881,6 +1882,7 @@ var e_ = class {
         const visualMove=n.slot!=null?r.player.moves[n.slot]?.def.key:null;
         const authoredEmber=visualMove==='ember';
         const authoredFeather=n.slot!=null&&r.player.moves[n.slot]?.def.effectKey==='wind-feather-dance';
+        const windTornado=n.windTornado||r.player.moves[n.slot]?.def.effectKey==='wind-gust';
         const authoredBreath=['flamethrower','dragon-breath'].includes(visualMove);
         const authoredFamily=r.vfx.crafted.fireFamily.supports(visualMove)||n.slot===8&&[4,5,6].includes(r.player.speciesId);
         const criticalFx=(u||m)&&r.vfx.criticalImpact(t,a,o);
@@ -1888,6 +1890,7 @@ var e_ = class {
           // The reference spray already contains its contact flames.
           if(visualMove==='dragon-breath')r.vfx.crafted.fireJet.impact(t,a,o,true,!!(u||m),true);
         }
+        else if(windTornado)r.vfx.crafted.windImpact(t,a,o,!!(u||m));
         else if(authoredFamily)r.vfx.crafted.fireFamily.impact(visualMove||'ultimate',t,a,o);
         else if(!authoredEmber&&!authoredFeather)r.vfx.crafted.impact(n.type,t,a,o,m?1.7:u?1.3:.8,!!(u||m),true,continuousFire);
         (this.fxFrame(),
@@ -3661,7 +3664,7 @@ function formMove(id, species) {
   const name = moveCopy(species, def.name, def.key);
   const effectKey = windMoveEffect(def.key,species);
   if(effectKey==='wind-air-slash')return {...def,name,effectKey,arch:'strike',area:6,dur:.42,speed:0,count:1,desc:'横斩出一道与字形同色的弧形风波，向远处飞行，沿途每个敌人只受击一次。'};
-  if(effectKey==='wind-gust')return {...def,name,effectKey,dur:1.2,speed:10,desc:'向前吹出一道旋风，牵引并伤害沿途的敌人。'};
+  if(effectKey==='wind-gust')return {...def,name,effectKey,dur:1.2/windTornadoSpeed,speed:10*windTornadoSpeed,desc:'向前吹出一道旋风，牵引并伤害沿途的敌人。'};
   if(effectKey==='wind-feather-dance')return {...def,name:'羽毛舞',effectKey,count:3,spread:.055,desc:'射出三枚青色羽毛追击敌人，命中时迸开碎羽。'};
   if(effectKey)return {...def,name,effectKey};
   return name === def.name ? def : {...def, name};
@@ -4632,7 +4635,7 @@ function Q_(e, t, n, r) {
           shape: C.shape ?? I.Swirl,
           color: C.color,
           slot: t,
-          knock: 0.2,
+          knock: windPassThrough ? 1.2 : 0.2,
           fx: S,
         });
       }

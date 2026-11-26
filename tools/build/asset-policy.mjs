@@ -7,15 +7,15 @@ import {isPlayableHeroForm} from '../../source/src/data/starter-characters.js';
 
 // Increment when archive selection or package assignment changes. A normal
 // build then regenerates stale assets rather than combining new code/old packs.
-export const assetPolicyVersion=102;
+export const assetPolicyVersion=103;
 // Full RGBA wind cells use lossless encoding rather than a shared 256-colour palette.
-export const windClarityAtlases=new Set(['wind-replacements','wind-moves','wind-skills','wind-vortex'].map(name=>'assets/vfx/'+name+'.png'));
+export const windClarityAtlases=new Set(['wind-replacements','wind-moves','wind-skills','wind-vortex','air-slash-reference'].map(name=>'assets/vfx/'+name+'.png'));
 export const compressedFireAtlases=new Set(['assets/vfx/fire-spin.png','assets/vfx/fire-breath.png','assets/vfx/fireball.png']);
 export const musicTracks=Object.freeze([]);
 const procedural=new Set(paperPropNames);
 // Imported by the effect modules and compiled into the gameplay scripts.
 const bundledAtlasMetadata=new Set(['fireball','fire-breath','fire-family','fire-mushroom','fire-spin','fire-storm-rings',
-  'fire-breath-reference','fire-stampede','wind-replacements','wind-moves','wind-skills','wind-vortex','evolution-screen'].map(name=>'assets/vfx/'+name+'.json'));
+  'fire-breath-reference','fire-stampede','wind-replacements','wind-moves','wind-skills','wind-vortex','air-slash-reference','evolution-screen'].map(name=>'assets/vfx/'+name+'.json'));
 
 // The portrait laboratory renders glyphs. Its legacy catalog icon fields
 // and the full upstream item database do not describe the playable inventory.
@@ -39,6 +39,7 @@ export function itemIconSelectionChanged(files) {
 // Exclusions are based on the enabled forest-only rules and procedural world,
 // not merely on absence from a short playthrough.
 export function excludedAssetReason(key){
+  if(key==='assets/vfx/air-slash-wave.webp')return '空气斩轮廓重建源，运行时使用参考动画图集';
   if(bundledAtlasMetadata.has(key))return '图集坐标已编入玩法脚本';
   if(key==='assets/models/devices/传送门.glb')return '召唤装置使用手绘时钟贴图';
   if(/^assets\/vfx\/heat-wave\.(?:png|json)$/.test(key))return '热风玩家技能已移除';

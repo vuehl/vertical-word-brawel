@@ -1,4 +1,5 @@
 import {drawUiPaper} from './ui-paper.mjs';
+import {paintLoadingBackdrop} from '../source/src/ui/menu-scene.js';
 const colorTokens=/#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})\b|rgba?\([^)]*\)|hsla?\([^)]*\)|\b(?:white|black|transparent|red|blue|green|yellow|orange|gray|purple)\b/gi;
 import {rangeBounds} from './range.mjs';
 function colors(v=''){return v.match(colorTokens)||[];}
@@ -50,6 +51,14 @@ export function paint(layout,boxes,view,scale) {
     }
     // Extend just the desk artwork into platform insets; UI controls stay in the safe rectangle.
     if(el.dataset?.journeyBackdrop==='true'&&el._surface){
+      if(el.dataset.shot==='entry'){
+        // Loading art covers the physical screen, including the notch/capsule
+        // and home-indicator insets. The progress stays in the safe rectangle.
+        const poster=el._loadingPoster;
+        ctx.save();ctx.globalAlpha=alpha;ctx.translate(-view.x,-view.y);
+        paintLoadingBackdrop(ctx,view.width,view.height,poster?._surface||poster);
+        ctx.restore();continue;
+      }
       const image=el._surface,iw=image.width,ih=image.height;
       if(iw&&ih){
         const margin=Number(el.dataset.sceneMargin)||0;

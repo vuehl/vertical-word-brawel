@@ -168,7 +168,7 @@ export class StylizedSkillFX{
     this.fireSpin=new HandDrawnFireSpin(this,scene);this.spinEmitters=[];
     this.fireball=new HandDrawnFireball(this,scene);
     this.fireFamily=new HandDrawnFireFamily(this,scene);
-    this.windEmitters=[];
+    this.windEmitters=[];this.lastWindImpact=-1;
   }
   attach(run){
     this.run=run;
@@ -262,6 +262,14 @@ export class StylizedSkillFX{
   particle(type,p,normal=false){
     const pool=normal?this.vfx.norm:this.vfx.add;
     pool.spawn({color:effectColors[type]||effectColors.normal,endColor:effectColors[type]||effectColors.normal,shape:type==='fire'&&this.emitted%3?2:effectShapes[type]||2,glow:.12,endSize:0,drag:1.2,gravity:0,...p});this.emitted++;
+  }
+  windImpact(x,y,z,critical=false){
+    const before=this.impacts;
+    this.impact('flying',x,y,z,critical?1.7:1.25,critical);
+    if(this.impacts===before||critical||this.clock-this.lastWindImpact<.18)return;
+    this.lastWindImpact=this.clock;
+    this.run.shake(.065,x,z);
+    this.run.hitstop(this.vfx.calm?.008:.014);
   }
   impact(type,x,y,z,strength=1,critical=false,own=true,continuous=false){
     if(!this.allowed(own))return;

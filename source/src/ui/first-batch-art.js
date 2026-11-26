@@ -71,8 +71,7 @@ function wavePrint(ctx,x,y,w,h,tone,photoIndex){
 export function photoPaper(index,tone,selected,angle=photoTilt(index),caption=true){
   const {node,ctx}=canvas(68,76,'zc-photo-paper');
   if(!caption){
-    const notch=index%3;
-    polygon(ctx,[[1,1],[67,1],[66,69],[60,70],[54,69+notch],[46,72],[37,70],[28,72-notch],[20,70],[11,73],[1,72]],selected?paperPalette.yellow:
+    polygon(ctx,[[1,1],[67,1],[66,72],[1,72]],selected?paperPalette.yellow:
       tone==='locked'||tone==='unknown'?'#57535E':'#FFFAEF');
     return node;
   }
@@ -90,13 +89,8 @@ export function photoPaper(index,tone,selected,angle=photoTilt(index),caption=tr
 export function upgradePrint(tone){
   const {node,ctx}=canvas(84,84,'zx-upgrade-print');
   const [face,,ink]=upgradeStocks[tone]||upgradeStocks.special;
-  // A die-cut seal printed on the detachable stub.
-  const seal=[];
-  for(let i=0;i<64;i++){
-    const theta=i*Math.PI/32,r=i%4===0?36:i%4===2?38:37.8;
-    seal.push([42+r*Math.cos(theta),42+r*Math.sin(theta)]);
-  }
-  polygon(ctx,seal,face);
+  // A smooth round seal printed on the detachable stub.
+  ctx.beginPath();ctx.arc(42,42,38,0,2*Math.PI);ctx.fillStyle=face;ctx.fill();
   ctx.strokeStyle=ink;ctx.lineWidth=1;ctx.globalAlpha=.53;
   ctx.beginPath();ctx.arc(42,42,31,0,2*Math.PI);ctx.stroke();
   return node;
@@ -123,11 +117,11 @@ export function rewardPaper(kind,quality){
     polygon(ctx,[[14,h-6],[w-17,h-6],[w-20,h-3],[18,h-3]],accent);
   }else{
     const stub=247;
-    const ticket=(dy,color)=>polygon(ctx,[[0,8+dy],[7,dy],[stub-4,dy],[stub,5+dy],[stub+4,dy],[w-7,dy],[w,7+dy],[w,70+dy],[w-7,77+dy],[stub+4,77+dy],[stub,72+dy],[stub-4,77+dy],[7,77+dy],[0,70+dy]],color);
+    const ticket=(dy,color)=>polygon(ctx,[[0,8+dy],[7,dy],[w-7,dy],[w,7+dy],[w,70+dy],[w-7,77+dy],[7,77+dy],[0,70+dy]],color);
     ticket(5,edge);ticket(1,top);
     polygon(ctx,[[0,9],[7,1],[59,1],[50,78],[7,78],[0,71]],bottom);
     polygon(ctx,[[0,9],[7,1],[12,1],[7,77],[0,71]],accent);
-    polygon(ctx,[[stub+4,1],[w-7,1],[w,8],[w,71],[w-7,78],[stub+4,78],[stub,73],[stub,6]],bottom);
+    polygon(ctx,[[stub,1],[w-7,1],[w,8],[w,71],[w-7,78],[stub,78]],bottom);
     ctx.fillStyle=accent;for(let y=10;y<70;y+=8)ctx.fillRect(stub,y,1.5,4);
     polygon(ctx,[[17,78],[48,78],[47,81],[15,81]],ink);
   }
@@ -180,12 +174,12 @@ export function dialogHeadingPrint(width){
   const {node,ctx}=canvas(width,46,'paper-floating-title-print');
   const right=width-18;
   ctx.translate(2,5);
-  polygon(ctx,[[1,11],[right-7,9],[right-10,22],[right-4,31],[12,38],[1,30]],'#2D4262');
-  polygon(ctx,[[right-27,12],[width-4,9],[width-14,21],[width-5,31],[right-25,35]],'#AB6071');
-  polygon(ctx,[[right-27,11],[width-3,8],[width-15,20],[width-6,28],[right-25,31]],'#D58C97');
+  polygon(ctx,[[1,11],[right-4,9],[right-4,31],[12,38],[1,30]],'#2D4262');
+  polygon(ctx,[[right-27,12],[width-4,9],[width-5,31],[right-25,35]],'#AB6071');
+  polygon(ctx,[[right-27,11],[width-3,8],[width-6,28],[right-25,31]],'#D58C97');
   polygon(ctx,[[3,23],[18,23],[17,38],[3,32]],'#8098B4');
-  polygon(ctx,[[2,6],[17,2],[right-4,2],[right+2,8],[right-4,19],[right,27],[15,34],[2,30]],'#9FB3C9');
-  polygon(ctx,[[1,5],[17,1],[right-4,1],[right+2,6],[right-6,16],[right-1,24],[15,30],[1,27]],'#F0F1F7');
+  polygon(ctx,[[2,6],[17,2],[right-4,2],[right+2,8],[right,27],[15,34],[2,30]],'#9FB3C9');
+  polygon(ctx,[[1,5],[17,1],[right-4,1],[right+2,6],[right-1,24],[15,30],[1,27]],'#F0F1F7');
   polygon(ctx,[[3,6],[18,2],[15,29],[3,26]],'#D3DFED');
   ctx.save();ctx.translate(20,0);ctx.rotate(-.18);ctx.lineCap='round';ctx.lineJoin='round';
   ctx.beginPath();ctx.moveTo(1,2);ctx.lineTo(1,17);ctx.quadraticCurveTo(1,23,6,23);
@@ -229,8 +223,8 @@ export function battleDialogFrame(content,title,subtitle=''){
 export function upgradeRibbons(width=202){
   const {node,ctx}=canvas(width,42,'zx-upgrade-ribbons');
   node.style.width=width+'px';
-  polygon(ctx,[[8,9],[width-10,4],[width-17,16],[width-9,17],[width-22,33],[5,37],[13,25],[6,24]],'#EEC659');
-  polygon(ctx,[[6,5],[width-5,2],[width-15,14],[width-8,14],[width-20,29],[2,32],[10,19],[3,20]],'#322C37');
+  polygon(ctx,[[8,9],[width-10,4],[width-22,33],[5,37]],'#EEC659');
+  polygon(ctx,[[6,5],[width-5,2],[width-20,29],[2,32]],'#322C37');
   polygon(ctx,[[13,9],[27,8],[22,12],[11,13]],'#EEC659');
   return node;
 }
@@ -291,7 +285,7 @@ export function evolutionResult(from,to,look){
 
 export function arrivalPennant(){
   const {node,ctx}=canvas(248,52,'zx-arrival-face');
-  polygon(ctx,[[4,7],[245,3],[236,15],[242,14],[229,44],[4,50],[9,41],[1,42]],'#29252E');
+  polygon(ctx,[[4,7],[245,3],[229,44],[1,50]],'#29252E');
   polygon(ctx,[[2,9],[46,6],[39,43],[0,47]],'#F3CA58');
   polygon(ctx,[[9,26],[36,13],[28,35],[21,29],[16,35],[17,28]],'#302B34');
   polygon(ctx,[[10,26],[36,13],[20,26]],'#FFF4D6');
@@ -301,7 +295,7 @@ export function arrivalPennant(){
 
 export function settlementTicket(){
   const {node,ctx}=canvas(338,150,'zx-receipt-paper');
-  const outline=(y,fill)=>polygon(ctx,[[6,1+y],[66,1+y],[70,5+y],[74,1+y],[330,1+y],[337,8+y],[337,138+y],[330,144+y],[74,144+y],[70,140+y],[66,144+y],[6,144+y],[0,138+y],[0,8+y]],fill);
+  const outline=(y,fill)=>polygon(ctx,[[6,1+y],[330,1+y],[337,8+y],[337,138+y],[330,144+y],[6,144+y],[0,138+y],[0,8+y]],fill);
   outline(4,'#728AA8');outline(0,'#F0F0F7');
   polygon(ctx,[[6,1],[65,1],[70,6],[70,139],[65,144],[6,144],[0,138],[0,8]],'#D9E4F2');
   ctx.fillStyle='#A3B5CA';for(let y=11;y<136;y+=9)ctx.fillRect(69,y,1.2,4);
@@ -454,7 +448,7 @@ export function choiceMark(state){
 export function titleRibbon(){
   const {node,ctx}=canvas(210,40,'zc-title-ribbon');
   polygon(ctx,[[0,5],[208,2],[196,32],[0,39]],paperPalette.yellow);
-  polygon(ctx,[[0,2],[209,0],[200,12],[205,11],[195,32],[0,37]],paperPalette.darkStock);
+  polygon(ctx,[[0,2],[209,0],[195,32],[0,37]],paperPalette.darkStock);
   return node;
 }
 export function hudPaperIcon(name,size=22){

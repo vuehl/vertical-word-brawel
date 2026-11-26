@@ -281,8 +281,8 @@ export async function reviewCoop(browser, gamePort) {
     await click(host,'开始冒险');
     console.log('Starting two clients');
     await host.waitForFunction(()=>
-      app.screen?.querySelector('.zx-loading-percent')?.textContent==='90%' &&
-      app.screen.textContent.includes('等待小伙伴加载完成'),{timeout:90000});
+      app.screen?.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')==='90' &&
+      app.screen.querySelector('[role="progressbar"]').getAttribute('aria-valuetext').includes('等待小伙伴加载完成'),{timeout:90000});
     // Keep both software rasterizers from stalling the relay heartbeat
     // when the shared start signal releases the first combat frame.
     await Promise.all(clients.map(page=>page.evaluate(()=>{

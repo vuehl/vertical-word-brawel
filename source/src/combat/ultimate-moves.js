@@ -8,6 +8,7 @@ import {specialNames} from "../data/form-copy.js";
 import {starterUltimate} from "../data/starter-characters.js";
 import {fireRingGrowth} from "../effects/fire-footprint.js";
 import {SPECIAL_ACTORS} from "../performance/spawn-budget.js";
+import {windTornadoSpeed,windTornadoRate,windTornadoPosition,sweptWindTargets} from "./wind-tornado.js";
 
 const windOrbitDuration = 2.5;
 
@@ -5587,38 +5588,29 @@ function Lh(e, t, n, r, i, a, o, s = {}, artRadius = o, openingVortex = false) {
     u = e.z,
     d = new Map(),
     f = 0;
-  const heading = openingVortex ? Math.atan2(n, t) : 0;
-  W(c, i, (p, m) => {
-    const h = p / i;
-    let v, y;
-    if (openingVortex) {
-      // Cover more of the turn near the center, where the arc is shorter.
-      const turnProgress = h * (1 + 0.6 * (1 - h));
-      const angle = heading + H * turnProgress;
-      const radius = 1 + r * h;
-      v = l + Math.cos(angle) * radius;
-      y = u + Math.sin(angle) * radius;
-    } else {
-      const forward = r * (1 - (1 - h) * (1 - h)) * 0.95 + 1;
-      const sideways = Math.sin(p * 5) * 1.2;
-      v = l + t * forward - n * sideways;
-      y = u + n * forward + t * sideways;
-    }
-    const b = c.terrain.arenaR - 1.5,
-      x = Math.hypot(v, y);
-    x > b && ((v *= b / x), (y *= b / x));
+  const rate=windTornadoRate(c.player.speciesId),wind=rate>1,targets=[];
+  let previous=windTornadoPosition(l,u,t,n,r,0,i,c.terrain.arenaR,openingVortex);
+  W(c, i/rate, (p, m) => {
+    const position=windTornadoPosition(l,u,t,n,r,p*rate,i,c.terrain.arenaR,openingVortex);
+    const {x:v,z:y,progress:h}=position;
     let S = U(c, v, y);
     if (openingVortex) c.vfx.crafted.openingVortex(d,v,S+.12,y,artRadius*1.05,artRadius*3.4,h);
     else if([16,17,18,58,59].includes(c.player.speciesId)) c.vfx.crafted.windSkillArt().track(d,'typhoon',v,S+.12,y,artRadius*4.6);
     else c.vfx.crafted.tornado(d,v,S+.12,y,artRadius*1.05,artRadius*3.4,'flying');
-    kh(c, v, y, (5 * e.R * o) / 2, 30 * m);
+    kh(c, v, y, (5 * e.R * o) / 2, 30 * m * rate);
     f -= m;
-    if (openingVortex || f <= 0) {
+    if (wind || openingVortex || f <= 0) {
       f = 0.16;
-      for (let t of c.enemies.within(v, y, (2.2 * e.R * o) / 2))
-        p - (d.get(t) ?? -9) < 0.3 ||
-          (d.set(t, p), Dh(e, t, a, { knock: 0.4, silent: Math.random() < 0.5, ...s }));
+      const radius=(2.2*e.R*o)/2;
+      const contacts=wind?sweptWindTargets(c.enemies,previous.x,previous.z,v,y,radius,targets):c.enemies.within(v,y,radius);
+      for(const target of contacts){
+        const key=target*4096+(c.enemies.gen[target]&4095);
+        if(p-(d.get(key)??-9)<.3/rate)continue;
+        d.set(key,p);
+        Dh(e,target,a,{knock:wind?1.2:.4,silent:wind?false:Math.random()<.5,...s,windTornado:wind});
+      }
     }
+    previous=position;
   });
 }
 var Rh = class {
@@ -6482,7 +6474,7 @@ var J = {
       ],
       type: `flying`,
       cls: `special`,
-      dur: [windOrbitDuration, 2.2, 3.2],
+      dur: [windOrbitDuration/windTornadoSpeed, 2.2, 3.2],
       tint: 12114160,
       preload: [18],
       cast(e) {

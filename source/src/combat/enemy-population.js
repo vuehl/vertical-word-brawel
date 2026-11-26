@@ -244,18 +244,8 @@ function vf(e, t) {
           ? Math.sin(e.time * 30) * 0.25
           : 0));
   let u = 0.95 + 0.08 * Math.sin(e.time * 3);
-  (e.orbitals.push(n.x, n.y, n.z, u * 1.15, 16777215, I.PixEgg, n.wob, 0.04),
-    e.orbitalsGlow.push(
-      n.x,
-      n.y,
-      n.z,
-      u * 1.7,
-      a >= 0.8 ? 16773242 : 16774358,
-      I.Soft,
-      0,
-      0.15,
-      0.1 + 0.2 * a,
-    ),
+  // The atlas carries the marble and its painted shadow; no surrounding white halo.
+  (e.orbitals.push(n.x, n.y, n.z, u * 1.15, 16777215, I.PixEgg, n.wob, 0),
     a > 0.6 &&
       Math.random() < t * 8 * a &&
       e.vfx.add.spawn({

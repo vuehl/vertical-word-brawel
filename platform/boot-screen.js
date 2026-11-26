@@ -1,5 +1,5 @@
 'use strict';
-const {paintLoadingBackdrop,paintLoadingSlip}=require('../source/src/ui/menu-scene.js');
+const {paintLoadingBackdrop,paintLoadingSlip,loadingBackdropColor}=require('../source/src/ui/menu-scene.js');
 
 // Decode the approved title poster directly from the main package.
 module.exports = async function presentBootFrame(gl) {
@@ -32,7 +32,7 @@ module.exports = async function presentBootFrame(gl) {
   function paint(value,w,h,full){
     if(full){canvas.width=w;canvas.height=h;}
     const s=Math.min(w/390,h/550),W=w/s,H=h/s,left=(W-390)/2,track=H*.93-8;
-    const strip=h/(w/390)>=600,footer='#252229';
+    const strip=h/(w/390)>=600;
     if(full){
       const ctx=canvas.getContext('2d');
       ctx.setTransform(s,0,0,s,0,0);
@@ -44,7 +44,7 @@ module.exports = async function presentBootFrame(gl) {
       const height=Math.ceil((track+32)*s)-y;
       if(patch.width!==w||patch.height!==height){patch.width=w;patch.height=height;}
       ctx=patch.getContext('2d');ctx.setTransform(1,0,0,1,0,0);
-      ctx.fillStyle=footer;ctx.fillRect(0,0,w,height);
+      ctx.fillStyle=loadingBackdropColor;ctx.fillRect(0,0,w,height);
     }
     ctx.setTransform(s,0,0,s,left*s,-y);ctx.save();ctx.translate(0,track);
     paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源');

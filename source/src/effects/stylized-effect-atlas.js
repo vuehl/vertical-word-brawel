@@ -80,7 +80,8 @@ export async function createStylizedEffectAtlas(){
   function* tiles(){
     let previousShape,previousColor;
     for(let i=0;i<144;i++){
-      if(i===STAMPEDE_FLAME){previousShape=undefined;yield;continue;}
+      // The carried marble is loaded from its illustration, without a pale orb underneath.
+      if(i===STAMPEDE_FLAME||i===138){previousShape=undefined;yield;continue;}
       const coin=i>=52&&i<=55;
       const shape=i>=140?i:i===33||i===38?139:aliases[i]??(i<33?i:29);
       const color=tinted[i]||'#ffffff';

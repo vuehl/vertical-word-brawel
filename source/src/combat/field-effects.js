@@ -12,6 +12,7 @@ import {createCaptureGourd} from "./capture-gourd.js";
 import {Lo} from "../ui/controls.js";
 import {Xc} from "../actors/sprite-assets.js";
 import {Zg} from "../data/move-attributes.js";
+import {sweptWindTargets,windTornadoSpeed} from "./wind-tornado.js";
 
 var Yp = 3e3,
   Xp = 0.35,
@@ -287,6 +288,8 @@ var Yp = 3e3,
         }
         (l & 8 && (this.vy[c] -= 22 * e),
           l & 128 && ((this.vx[c] *= Math.exp(-e * 6)), (this.vz[c] *= Math.exp(-e * 6)), (this.vy[c] = 0)));
+        const windGust=!!(l & em.Pull)&&!!(l & em.PassThroughEnemies);
+        const fromX=this.x[c],fromZ=this.z[c];
         let u = t.terrain.surface(this.x[c], this.z[c]);
         ((this.x[c] += this.vx[c] * e),
           (this.y[c] += this.vy[c] * e),
@@ -371,11 +374,12 @@ var Yp = 3e3,
             let r = this.x[c] - n.x[t],
               i = this.z[c] - n.z[t],
               a = Math.hypot(r, i) || 1,
-              o = n.flags[t] & 4 ? 0.5 : 9;
+              o = (n.flags[t] & 4 ? 0.5 : 9) * (windGust ? windTornadoSpeed : 1);
             ((n.kx[t] += (r / a) * o * e * 6), (n.kz[t] += (i / a) * o * e * 6));
           }
         let p = this.rad[c],
-          m = n.within(this.x[c], this.z[c], p, this.tmpHit),
+          m = windGust ? sweptWindTargets(n,fromX,fromZ,this.x[c],this.z[c],p,this.tmpHit)
+            : n.within(this.x[c], this.z[c], p, this.tmpHit),
           h = 0;
         for (let e of m) {
           if (

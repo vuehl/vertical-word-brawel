@@ -48,6 +48,9 @@ export async function reviewStylizedVFX(page,dir){
   if(process.argv.includes('--wind-skills')){
     const {reviewWindSkills}=await import('./wind-skills-regression.mjs');return reviewWindSkills(page,dir);
   }
+  if(process.argv.includes('--air-slash-reference')){
+    const {reviewAirSlashReference}=await import('./air-slash-reference.mjs');return reviewAirSlashReference(page,dir);
+  }
   if(process.argv.includes('--skill-availability')){
     const {reviewSkillAvailability}=await import('./skill-availability-regression.mjs');return reviewSkillAvailability(page,dir);
   }

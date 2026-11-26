@@ -10,6 +10,7 @@ import {em} from "./field-effects.js";
 import {j, M, ds, fs, Cs} from "./move-sounds.js";
 import {Kp} from "../effects/move-particles.js";
 import {H, U, W, Dh, q, kh, Lh, castWindRing} from "./ultimate-moves.js";
+import {windTornadoRate,windTornadoPosition} from "./wind-tornado.js";
 import {runPlan, planIncludes} from "./battle-plan.js";
 
 var Lb = 5.2; // Half the previous player-level requirement for learnset moves.
@@ -633,17 +634,14 @@ var lS = [{
         s = 14 * e.R,
         c = 0.22 / (1 + mx(e, 0.5, 2));
       Lh(e, i, a, s, o, 0.4, 2.1, { status: `knock`, statusChance: 0.1 });
-      let l = 0.1,
+      const rate=windTornadoRate(t.player.speciesId);
+      let l = 0.1/rate,
         u = 0;
-      W(t, o, (d, f) => {
+      W(t, o/rate, (d, f) => {
         if (((l -= f), l > 0)) return;
-        l = c;
-        let p = d / o,
-          m = s * (1 - (1 - p) * (1 - p)) * 0.95 + 1,
-          h = Math.sin(d * 5) * 1.2,
-          g = n + i * m - a * h,
-          _ = r + a * m + i * h,
-          v = U(t, g, _) + 1.4,
+        l = c/rate;
+        const {x:g,z:_}=windTornadoPosition(n,r,i,a,s,d*rate,o,t.terrain.arenaR);
+        let v = U(t, g, _) + 1.4,
           y = (u++ * 2.4) % H;
         (hx(
           e,

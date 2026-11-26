@@ -1,7 +1,7 @@
 import {heroActionFrame} from '../actors/hero-actions.js';
 import {heroActionCatalog} from '../actors/hero-action-catalog.js';
 import {drawAppearanceGlyph,tintGlyph} from './collection-art.js';
-import {paintLoadingBackdrop} from './menu-scene.js';
+import {paintLoadingBackdrop,loadingBackdropColor} from './menu-scene.js';
 
 // Each shot anchors the portrait ring to the same point on the desk.
 const shots={home:0,choose:1,map:1};
@@ -183,8 +183,8 @@ export function journeyScene(){
     const ctx=node.getContext('2d');
     ctx.setTransform(d,0,0,d,margin*d,margin*d);
     if(node.dataset.shot==='entry'){
-      ctx.fillStyle='#F9BF25';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
-      ctx.fillStyle='#252229';ctx.fillRect(-margin,h*.65,w+2*margin,h*.35+margin);
+      node._loadingPoster=poster;
+      ctx.fillStyle=loadingBackdropColor;ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
       paintLoadingBackdrop(ctx,w,h,poster);
       window.invalidateUI?.();return;
     }
@@ -237,7 +237,8 @@ export function journeyScene(){
     }
   }
   function mount(page,c,look){
-    const sameScene=node.parentNode===page,changed=page.dataset.page!==node.dataset.shot;
+    const shot=page.classList.contains('zx-loading-screen')?'entry':page.dataset.page;
+    const sameScene=node.parentNode===page,changed=shot!==node.dataset.shot;
     ++presentation;blending=false;
     page._journeyFade=null;
     page.classList.add('journey-prep');page.dataset.paperSurface='flat';
@@ -252,13 +253,13 @@ export function journeyScene(){
       }
       actorLayer=null;identity=key;
     }
-    node.dataset.word=word;node.dataset.look=look||'normal';node.dataset.shot=page.dataset.page;
-    if(showsIdlePortrait(page.dataset.page)&&c&&!reduced())prepareIdle(c.id,look);
-    if(page.dataset.page==='map'||page.dataset.page==='entry')preparePoster();
-    if(page.dataset.page==='entry'){++motion;moving=false;}
-    else moveTo(page.dataset.page,!sameScene);
+    node.dataset.word=word;node.dataset.look=look||'normal';node.dataset.shot=shot;
+    if(showsIdlePortrait(shot)&&c&&!reduced())prepareIdle(c.id,look);
+    if(shot==='map'||shot==='entry')preparePoster();
+    if(shot==='entry'){++motion;moving=false;}
+    else moveTo(shot,!sameScene);
     paint();
-    if(sameScene&&changed&&page.dataset.page!=='entry')fade(page,0,1,235);
+    if(sameScene&&changed&&shot!=='entry')fade(page,0,1,235);
   }
   window.addEventListener('resize',paint);
   return {prepare,mount,travel};

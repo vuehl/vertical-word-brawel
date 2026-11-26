@@ -30,6 +30,7 @@ var menu_scene_exports = {};
 __export(menu_scene_exports, {
   gameTitle: () => gameTitle,
   gradient: () => gradient,
+  loadingBackdropColor: () => loadingBackdropColor,
   paintLoadingBackdrop: () => paintLoadingBackdrop,
   paintLoadingSlip: () => paintLoadingSlip,
   paintMenuScene: () => paintMenuScene,
@@ -201,15 +202,14 @@ function paintMenuScene(c, width, height, hero, drawWord, selectedWord) {
   c.restore();
 }
 function paintLoadingBackdrop(ctx, W, H, poster) {
-  ctx.fillStyle = "#252229";
+  ctx.fillStyle = loadingBackdropColor;
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#F9BF25";
-  ctx.fillRect(0, 0, W, H * 0.65);
-  polygon(ctx, [[0, H * 0.34], [W, H * 0.17], [W, H * 0.52], [0, H * 0.68]], "#322A35");
   if (poster) {
-    const scale = Math.min(W / 390, H / 660);
-    const width = 390 * scale, height = 844 * scale;
-    ctx.drawImage(poster, (W - width) / 2, (H - height) * 0.46, width, height);
+    const scale = Math.max(W / poster.width, H / poster.height);
+    const width = poster.width * scale, height = poster.height * scale;
+    ctx.drawImage(poster, (W - width) / 2, (H - height) / 2, width, height);
+    const footerTop = Math.min(H * 0.85, H - 110 * Math.min(W / 390, H / 550));
+    polygon(ctx, [[0, footerTop], [W, footerTop - H * 0.08], [W, H], [0, H]], loadingBackdropColor);
   } else {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -223,7 +223,7 @@ function paintLoadingSlip(ctx, value, label) {
   ctx.textAlign = "left";
   ctx.fillStyle = "#F9ECCE";
   ctx.font = "bold 14px sans-serif";
-  ctx.fillText(label, 32, -12);
+  ctx.fillText(label, 32, -12, 246);
   ctx.textAlign = "right";
   ctx.font = "italic bold 29px sans-serif";
   ctx.fillStyle = "#FFD04A";
@@ -238,17 +238,18 @@ function paintLoadingSlip(ctx, value, label) {
   }
   ctx.restore();
 }
-var paper, ink, gameTitle;
+var paper, ink, gameTitle, loadingBackdropColor;
 var init_menu_scene = __esm({
   "source/src/ui/menu-scene.js"() {
     paper = "#F4F3F8";
     ink = "#2B2A49";
     gameTitle = "\u5B57\u7531\u640F\u51FB";
+    loadingBackdropColor = "#26222A";
   }
 });
 
 // platform/boot-screen.js
-var { paintLoadingBackdrop: paintLoadingBackdrop2, paintLoadingSlip: paintLoadingSlip2 } = (init_menu_scene(), __toCommonJS(menu_scene_exports));
+var { paintLoadingBackdrop: paintLoadingBackdrop2, paintLoadingSlip: paintLoadingSlip2, loadingBackdropColor: loadingBackdropColor2 } = (init_menu_scene(), __toCommonJS(menu_scene_exports));
 module.exports = async function presentBootFrame(gl) {
   let program = gl.createProgram(), texture = gl.createTexture(), vao = gl.createVertexArray();
   let canvas = wx.createCanvas(), patch = wx.createCanvas(), last = "", textureWidth = 0, textureHeight = 0;
@@ -304,7 +305,7 @@ module.exports = async function presentBootFrame(gl) {
       canvas.height = h;
     }
     const s = Math.min(w / 390, h / 550), W = w / s, H = h / s, left = (W - 390) / 2, track = H * 0.93 - 8;
-    const strip = h / (w / 390) >= 600, footer = "#252229";
+    const strip = h / (w / 390) >= 600;
     if (full) {
       const ctx2 = canvas.getContext("2d");
       ctx2.setTransform(s, 0, 0, s, 0, 0);
@@ -320,7 +321,7 @@ module.exports = async function presentBootFrame(gl) {
       }
       ctx = patch.getContext("2d");
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = footer;
+      ctx.fillStyle = loadingBackdropColor2;
       ctx.fillRect(0, 0, w, height);
     }
     ctx.setTransform(s, 0, 0, s, left * s, -y);

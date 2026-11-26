@@ -62,14 +62,18 @@ export function paintMenuScene(c,width,height,hero,drawWord,selectedWord){
 }
 
 // Artwork is exported without progress so the bar always follows resource loading.
+export const loadingBackdropColor='#26222A';
 export function paintLoadingBackdrop(ctx,W,H,poster){
-  ctx.fillStyle='#252229';ctx.fillRect(0,0,W,H);
-  ctx.fillStyle='#F9BF25';ctx.fillRect(0,0,W,H*.65);
-  polygon(ctx,[[0,H*.34],[W,H*.17],[W,H*.52],[0,H*.68]],'#322A35');
+  ctx.fillStyle=loadingBackdropColor;ctx.fillRect(0,0,W,H);
   if(poster){
-    const scale=Math.min(W/390,H/660);
-    const width=390*scale,height=844*scale;
-    ctx.drawImage(poster,(W-width)/2,(H-height)*.46,width,height);
+    // Cover the viewport without stretching the illustration or leaving gutters.
+    const scale=Math.max(W/poster.width,H/poster.height);
+    const width=poster.width*scale,height=poster.height*scale;
+    ctx.drawImage(poster,(W-width)/2,(H-height)/2,width,height);
+    // A short viewport crops the poster's original footer. Keep a clear area
+    // behind the live progress, matching the artwork's diagonal edge.
+    const footerTop=Math.min(H*.85,H-110*Math.min(W/390,H/550));
+    polygon(ctx,[[0,footerTop],[W,footerTop-H*.08],[W,H],[0,H]],loadingBackdropColor);
   }else{
     ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold '+Math.min(W*.16,H*.12)+'px sans-serif';
     ctx.fillStyle='#FFD04A';ctx.fillText('字由搏击',W/2,H*.46);
@@ -77,7 +81,7 @@ export function paintLoadingBackdrop(ctx,W,H,poster){
 }
 export function paintLoadingSlip(ctx,value,label){
   ctx.textBaseline='alphabetic';ctx.textAlign='left';ctx.fillStyle='#F9ECCE';ctx.font='bold 14px sans-serif';
-  ctx.fillText(label,32,-12);
+  ctx.fillText(label,32,-12,246);
   ctx.textAlign='right';ctx.font='italic bold 29px sans-serif';ctx.fillStyle='#FFD04A';
   ctx.fillText(value+'%',358,-12);
   ctx.save();ctx.transform(1,0,-.25,1,0,0);

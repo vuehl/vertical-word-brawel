@@ -84,7 +84,7 @@ html.zixing .zx .zx-recipe-top .zx-fusion-name>h2{font-size:17px;line-height:22p
 .zx .zx-scene-offers .zx-scene-caption .zx-note{color:#FFF3DD}
 html.zixing .zx .zx-scene-offers .zx-deal-card{display:flex;flex-direction:row;align-items:stretch;gap:0;padding:2px;min-height:82px;border:0;border-radius:0;box-shadow:none}
 .zx .zx-deal-art{display:flex;position:relative;flex-direction:column;justify-content:center;align-items:center;align-self:stretch;flex:none;width:23%;min-height:72px;padding:2px 3px 17px}
-.zx .zx-deal-art>img,.zx .zx-deal-art>canvas{width:48px;height:48px;object-fit:contain;flex:none}
+.zx .zx-deal-art>img,.zx .zx-deal-art>canvas,.zx .zx-deal-art>.zx-glyph{width:48px;height:48px;object-fit:contain;flex:none}
 .zx .zx-deal-art>.zx-quality-badge{position:absolute;left:3px;bottom:2px;color:#FFF8E9;min-height:16px;line-height:16px;font-size:11px}
 .zx .zx-deal-copy{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px;padding-bottom:5px}
 .zx .zx-deal-title{align-self:flex-start;max-width:100%;min-width:68%;padding:4px 15px 5px 7px;background:#2B262E}

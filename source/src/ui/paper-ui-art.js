@@ -40,9 +40,9 @@ export function drawCoopMap(canvas){
   for(const y of [-81,0,81]){
     c.beginPath();c.arc(-124,y,3.5,0,Math.PI*2);c.fillStyle='#b5b9a4';c.fill();
   }
-  // Translucent washi tape, torn at both ends.
+  // Translucent washi tape with clean ends.
   c.save();c.translate(-37,-127);c.rotate(-.13);
-  shape([[-33,-8],[33,-8],[30,-3],[33,1],[30,7],[-32,7],[-29,2],[-33,-2]],'#e9c975d9');
+  shape([[-33,-8],[33,-8],[30,7],[-32,7]],'#e9c975d9');
   c.restore();
   hills(-68,-86,.74);hills(59,70,.9);hills(-54,96,.53);
 

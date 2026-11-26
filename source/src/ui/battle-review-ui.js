@@ -7,6 +7,7 @@ import {summonerBarColors} from './battle-review-style.js';
 import {planIncludes,runPlan} from '../combat/battle-plan.js';
 import {battleDialogFrame,hudPaperIcon} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,dockDialogClose,standardButton} from './paper-system.js';
+import {frameChoiceCards} from './choice-presentation.js';
 const el=(tag,cls='',children=[],attrs={})=>{
   const n=document.createElement(tag);n.className=cls;
   for(const [k,v] of Object.entries(attrs)){
@@ -57,7 +58,8 @@ export function shopOffer({key,name,picture,quality,planned,effects,owned,status
     el('div','zx-shop-picture',[picture,qualityBadge(quality)]),
     el('div','zx-shop-description',[heading,...effects.map(line=>el('p','zx-shop-effect',line.replace(/₽/g,'金币'))),
       el('div','zx-shop-deal',[el('div','zx-shop-inventory',[el('small','zx-shop-owned',owned),status]),action])]),
-  ],{'data-paper-surface':'shop-offer','data-quality':quality.key,'data-rarity':quality.label,'data-item-choice':key});
+  ],{'data-paper-surface':'shop-offer','data-quality':quality.key,'data-rarity':quality.label,'data-item-choice':key,
+    'data-unavailable':String(!!action.disabled)});
 }
 
 export function shopShelves(panel,previousView){
@@ -127,6 +129,7 @@ export function fullParty({hud,party,incoming,choose,role}){
   const panel=el('section','zx zx-modal zx-party-roster',[
     candidate,instruction,el('div','zx-review-content',rows),button(el('span','zx-trade-label','放弃招募'),()=>pick(-1),'secondary',{'data-party-slot':'-1','data-paper-surface':'trade-action'}),
   ],{role:'dialog','aria-label':'同行位已满','data-paper-surface':'flat'});
+  frameChoiceCards(panel);
   const wrap=hud.modal(battleDialogFrame(panel,el('h2','','同行位已满')));
   wrap.className='zx zx-modal-wrap zx-loot-scrim';return wrap;
 }
@@ -225,6 +228,7 @@ export function styleReviewDialog(pane,...classes){
     dockDialogClose(pane,close);
     if(footer&&!footer.querySelector('button'))footer.remove();
   }
+  frameChoiceCards(content);
   return content;
 }
 const heading=(title,sub)=>el('div','zx-review-heading',[el('h1','',title),sub?note(sub):null]);

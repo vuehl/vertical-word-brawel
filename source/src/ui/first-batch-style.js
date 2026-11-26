@@ -327,7 +327,7 @@ html.zixing .zx .zx-shop-shelves .zx-review-footer>button{width:0;min-width:0;he
 .zx-arcade-controls{display:flex;gap:8px;align-items:center;flex-direction:row;padding:2px 0 0}
 .zx-arcade-controls>.primary{flex:1;min-width:0}
 .zx.zx-modal-wrap.zx-atlas-overlay{padding:12px 6px 76px;background:rgba(36,30,41,.78)}
-.zx.zx-atlas{max-width:486px;min-height:0;padding:16px 7px 20px;gap:0;display:flex;flex-direction:column;align-items:stretch;background:#E9E2D1;border:0;color:#302A31;clip-path:polygon(0 1%,30% 0,66% 1%,99% .2%,100% 98%,70% 99%,35% 98.2%,1% 100%)}
+.zx.zx-atlas{max-width:486px;min-height:0;padding:16px 7px 20px;gap:0;display:flex;flex-direction:column;align-items:stretch;background:#E9E2D1;border:0;color:#302A31;clip-path:polygon(0 0,99% 0,100% 100%,1% 100%)}
 .zx-atlas-key{min-height:52px;flex:none;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:0 9px 8px;border-bottom:1px dashed #A89D88}
 .zx-atlas-titles{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .zx-atlas-titles>small{font-size:11px;line-height:14px;font-weight:700;color:#716653}

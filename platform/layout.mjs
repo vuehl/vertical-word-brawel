@@ -223,7 +223,9 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
       const end=record(child,x,y-offset+shift,clip,w,h,m,opacity);
       bottom=Math.max(bottom,end+offset);
     }
-    el._scrollMax=scrolls(s)?Math.max(0,bottom-y-h):0;
+    // Keep the last choice's outer glow inside the scroller after reaching its end.
+    const choiceBleed=el.dataset?.choiceFrames==='true'&&bottom>y+h?node.getComputedPadding(Y.EDGE_BOTTOM):0;
+    el._scrollMax=scrolls(s)?Math.max(0,bottom+choiceBleed-y-h):0;
     el._scroll=clamp(offset,0,el._scrollMax);
     if(el._scroll!==offset)clampedScroll=true;
     return clip===parentClip?bottom:y+h;

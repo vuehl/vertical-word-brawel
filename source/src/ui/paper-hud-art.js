@@ -556,6 +556,8 @@ export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame){
     arc(37.1,3.4,active?'#EEC659':'#CFC4B4',start,start+turn*progress);
   }
   const image=appearanceGlyphCanvas(word,tone,look),size=ready?53+2.6*wave:51;
+  canvas.readyFace=image;
+  canvas.readyFaceSize=size;
   if(ready){
     for(const [x,y,r] of [[16,32,2.7],[67,46,2.2]]){
       const reach=r*(.72+.42*wave);

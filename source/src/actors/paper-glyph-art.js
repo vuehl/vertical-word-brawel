@@ -1,6 +1,7 @@
 import {formCopy} from '../data/form-copy.js';
 import {glyphCatalog} from './glyph-catalog.js';
 import {heroWords,enemyWords} from '../data/character-rules.js';
+import {bossGlyphArt} from './boss-glyph-art.js';
 import heroRigs from '../../../resources/public/config/hero-rigs.json' with {type:'json'};
 
 const colors={fire:['#ff963e','#ed3438'],water:['#b9f2e7','#50bebd'],wood:['#c5e797','#72b778'],earth:['#e9b480','#b57649'],metal:['#ffe99a','#d5ac57'],ink:['#a5aac7','#6b719c'],dark:['#53695e','#1c302e']};
@@ -76,7 +77,7 @@ export function glyphCanvas(word,tone=glyphTone(word),{battle=false}={}){
   const m=mask.getContext('2d'),record=glyphCatalog.words[word];
   if(record&&atlas?.complete){const {size,columns}=glyphCatalog;m.drawImage(atlas,record.index%columns*size,Math.floor(record.index/columns)*size,size,size,0,0,192,192);}
   else {m.font='bold 144px "Ziling Swei", sans-serif';m.textAlign='center';m.textBaseline='middle';m.fillText(word,96,100);}
-  if(battle)drawBattleOutline(ctx,mask,record&&atlas?.complete?bakedInkFraction(word):0);
+  if(battle&&word!==bossGlyphArt.word)drawBattleOutline(ctx,mask,record&&atlas?.complete?bakedInkFraction(word):0);
   // Draw the supplied hero colors over the battle border.
   if(isOriginalHeroGlyph(word)||glyphCatalog.enemies[word]){
     ctx.drawImage(mask,0,0);
