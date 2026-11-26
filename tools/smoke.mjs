@@ -100,7 +100,6 @@ await page.evaluateOnNewDocument(()=>{
     const loc=lookup.call(this,program,name);
     if(name==='percent' && loc)locations.set(program,loc);
     if(name==='overScene' && locations.has(program))bootLocations.add(locations.get(program));
-    if(name==='sweep' && locations.has(program))window.bootSweep=loc;
     return loc;
   };
   gl.uniform1i=function(loc,value){
@@ -146,27 +145,24 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
-  const sx=Math.min(width/390,height/550),left=Math.round((width-390*sx)/2+61*sx),right=Math.round((width-390*sx)/2+329*sx);
-  // The bottom edge retains the measured fill colour underneath the moving band.
-  const y=Math.floor(height*.79+6*sx);
+  const sx=Math.min(width/390,height/550),left=Math.round((width-390*sx)/2+31*sx),right=Math.round((width-390*sx)/2+357*sx);
+  const y=Math.floor(height*.93-5*sx);
   let filled=0;
   for(let x=left;x<right;x++){
     const at=(y*width+x)*channels;
-    if(Math.abs(data[at]-80)<8&&Math.abs(data[at+1]-118)<8&&Math.abs(data[at+2]-174)<8)filled++;
+    if(Math.abs(data[at]-255)<8&&Math.abs(data[at+1]-197)<8&&Math.abs(data[at+2]-45)<8)filled++;
   }
-  assert.ok(Math.abs(filled-268*sx*percent/100)<=2,'Paper slip progress bar at '+percent+'%');
+  assert.ok(Math.abs(filled-326*sx*percent/100)<=2,'Paper slip progress bar at '+percent+'%');
   if(percent>=85){
-    for(const [word,from,to,r,g,b] of [['风',.18,.49,135,187,255],['炎',.51,.82,255,89,51]]){
-      let ink=0;
-      for(let y=Math.floor(height*.35);y<height*.68;y++)for(let x=Math.floor(width*from);x<width*to;x++){
-        const i=(y*width+x)*channels;
-        if(Math.abs(data[i]-r)<3&&Math.abs(data[i+1]-g)<3&&Math.abs(data[i+2]-b)<3)ink++;
-      }
-      assert.ok(ink>100*sx*sx,'The startup illustration must show '+word);
+    // The approved logo has a warm face and white keyline across the dark diagonal.
+    let highlights=0;
+    for(let y=Math.floor(height*.37);y<height*.58;y++)for(let x=Math.floor(width*.1);x<width*.9;x++){
+      const i=(y*width+x)*channels;
+      if(data[i]>235&&data[i+1]>235&&data[i+2]>235)highlights++;
     }
+    assert.ok(highlights>150*sx*sx,'The title wordmark is visible');
   }
-  const expectedLabel=process.argv.includes('--baseline')?percent+'%':percent.toFixed(1)+'%';
-  assert.ok(await page.evaluate(label=>window.bootLabels.includes(label),expectedLabel),'Readable percentage was painted');
+  assert.ok(await page.evaluate(p=>window.bootLabels.includes(p+'%'),percent),'Readable percentage was painted');
   const {channels:rgb}=await sharp(image).removeAlpha().stats();
   assert.ok(rgb.some(channel=>channel.max-channel.min>100),'Stationery illustration is visible');
 }
@@ -185,35 +181,8 @@ async function verifyStartup(){
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
   await page.evaluate(()=>window.reportTextProgress(50));
   await page.waitForFunction(p=>bootPercentages[bootPercentages.length-1]>=p,{},halfText);
-  if(!baseline)await page.waitForFunction(()=>bootLabels[bootLabels.length-1]==='48.3%');
+  if(!baseline)await page.waitForFunction(()=>bootLabels[bootLabels.length-1]==='48%');
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])),'00-loading.png');
-  async function verifyMotion(){
-    if(baseline||!process.argv.includes('--boot-only'))return;
-    const {gaps,samples,labels}=await page.evaluate(async()=>{
-      const firstLabel=bootLabels.length-1;
-      const gl=WebGL2RenderingContext.prototype,original=gl.uniform1f;
-      let lastValue,lastChange=performance.now(),samples=0;
-      const gaps=[];
-      gl.uniform1f=function(loc,value){
-        if(loc===window.bootSweep && value!==lastValue){
-          const now=performance.now();gaps.push(now-lastChange);
-          lastChange=now;lastValue=value;samples++;
-        }
-        return original.call(this,loc,value);
-      };
-      try {await new Promise(resolve=>setTimeout(resolve,3100));}
-      finally {gl.uniform1f=original;}
-      gaps.push(performance.now()-lastChange);
-      return {gaps,samples,labels:bootLabels.slice(firstLabel)};
-    });
-    const longest=Math.round(Math.max(...gaps));
-    assert.ok(samples>3&&longest<1000,'Moving bar must update within every second, longest gap '+longest+'ms');
-    assert.ok(labels.every(label=>/^\d+\.\d%$/.test(label)),'Boot percentages must have one decimal place');
-    const values=labels.map(parseFloat);
-    assert.ok(values.every(n=>n===values[0]&&n<100),'Only the sweep should animate while real work is paused: '+labels);
-    console.log('Stalled boot progress animation:',samples,'updates, longest gap',longest,'ms');
-  }
-  await verifyMotion();
   const checkGlyphGate=process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline');
   if(checkGlyphGate)await page.evaluate(()=>{
     const files=GameGlobal.pokebonk.files,resolve=files.resolvePath.bind(files);
@@ -272,7 +241,6 @@ async function verifyStartup(){
     await page.waitForFunction(floor=>window.homeStatusRequested && window.bootPercentages.at(-1)>=floor ||window.problem,{timeout:60000},baseline?97:95);
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels.at(-1))),'00-background.png');
-    await verifyMotion();
     await page.evaluate(()=>{window.beforeHomeLabel=bootLabels.length;window.releaseHomeStatus();});
   }
   await page.waitForFunction(()=>window.app?.screen?.querySelector('button')||window.problem,{timeout:90000});
@@ -281,7 +249,7 @@ async function verifyStartup(){
   await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
   if(!baseline){
     await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed&&requestedPackages.includes('world'));
-    assert.ok(await page.evaluate(()=>window.fullBarBeforeHome && bootLabels.includes('100.0%')),
+    assert.ok(await page.evaluate(()=>window.fullBarBeforeHome && bootLabels.includes('100%')),
       'The completed bar must survive a display frame before the home handoff');
     if(retryInstall)assert.ok(await page.evaluate(()=>bootLabels.slice(beforeHomeLabel).some(label=>{
       const value=parseFloat(label);return value>parseFloat(bootLabels[beforeHomeLabel-1]) && value<100;

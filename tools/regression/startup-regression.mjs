@@ -89,6 +89,10 @@ async function checkFirstJourneyFrame(page) {
   assert.equal(frame.resized,0,'Changing world resolution must not reset the visible canvas during the zoom');
   assert.equal(frame.before[3],255,'The outgoing journey frame is visible');
   assert.deepEqual(frame.after,frame.before,'Applying the first profile must preserve the displayed journey frame');
+  for(const action of ['collection-next','enter']){
+    await page.waitForFunction(name=>app.screen?.querySelector('[data-action="'+name+'"]'),{},action);
+    await page.evaluate(name=>app.screen.querySelector('[data-action="'+name+'"]').click(),action);
+  }
   await page.waitForFunction(()=>app.run?.state==='play'&&app.meta.profile?.firstJourneyPlayed,{timeout:90000});
   await page.setViewport(viewport);
   await page.evaluate(()=>{window.dispatchEvent(new Event('resize'));app.toMenu();});
@@ -142,7 +146,7 @@ export async function reviewStartupLatency({page,dir,baseline=false}) {
     assert.ok(before.home&&before.complete,'Home must be usable while cloud progress is still pending');
     assert.equal(before.profile,false,'Do not fabricate a profile before cloud progress arrives');
     await page.evaluate(()=>inspected.doc.querySelector('[data-action="journey"]').click());
-    await page.waitForFunction(()=>app.screen?.dataset.page==='request');
+    await page.waitForFunction(()=>app.screen?.dataset.page==='choose'&&app.screen.textContent.includes('正在读取存档'));
     assert.ok(await page.evaluate(()=>app.screen.textContent.includes('正在读取存档')&&!app.screen.querySelector('.zc-character')));
     await page.evaluate(()=>app.screen.querySelector('.zx-footer button').click());
   }

@@ -14,7 +14,7 @@ export function createCollectionUI(app,api,kit){
   const {el,button,icon,screen,home,confirm,scene}=kit;
   const p=()=>app.meta.profile;
   let selected=null,filter='all',scrollTop=0,scroller=null,view='library',viewId=null,look=null,detailTab=0;
-  let profileFace='stats';
+  let profileFace='route';
   const char=id=>collectionCharacter(id,api);
   const note=t=>el('small','zc-note',t);
   const row=(...nodes)=>el('div','zc-row',nodes);
@@ -30,7 +30,7 @@ export function createCollectionUI(app,api,kit){
     if(angle){cv.dataset.paperTilt=angle;cv.style.transform='rotate('+angle+'deg)';}
     cv.dataset.glyphReady='true';return cv;
   };
-  const portrait=(id,appearance=null)=>stagePortrait(char(id),appearance);
+  const portrait=(id,appearance=null)=>stagePortrait(char(id),appearance,false,'move-stamp');
   const activeLook=id=>app.meta.skinFor(id);
   function read(id){if(!owned(id)||starterSpecies.includes(id))return;p().collection??={};p().collection.read??=[];if(!p().collection.read.includes(id)){p().collection.read.push(id);app.meta.save();}}
   function mount(name,title,subtitle,body,actions){
@@ -53,46 +53,43 @@ export function createCollectionUI(app,api,kit){
       const available=collectionRoster.filter(c=>owned(c.id)&&(!first()||starterSpecies.includes(c.id)));
       const last=Number(p().collection?.lastSelected??p().lastSpecies);
       selected=(available.find(c=>c.id===last)??available[0])?.id??null;
-      resetList();filter='all';profileFace='stats';
+      resetList();filter='all';profileFace='route';
     }
     view='library';render();
   }
-  const albumArt=(asset,cls='zc-control-face')=>el('img',cls,[],{
-    src:'assets/ui-paper/album-'+asset+'.webp',alt:'','aria-hidden':true,
-  });
   function albumTab(label,active,onClick,attrs){
-    return paperTab(el,button,label,active,onClick,attrs);
+    const tab=paperTab(el,button,label,active,onClick,attrs);
+    if(attrs['data-filter'])tab.dataset.paperSurface='album-filter';
+    return tab;
   }
   function profileSlip(){
     const actor=collectionRoster.find(entry=>entry.id===selected);
     const section=el('section','journey-info',[],{'aria-label':'字灵资料'});
-    const turn=el('button','journey-face-toggle',[],{type:'button','data-action':'flip-profile','data-paper-surface':'flat'});
+    const switches=el('div','journey-face-tabs',[],{'aria-label':'资料视图'});
     const details=el('button','journey-stats-details',[],{type:'button','data-action':'stat-details','data-paper-surface':'flat','aria-label':'查看全部开局属性'});
     details.addEventListener('click',()=>detail(selected,2));
-    function showFace(){
-      const art=profilePrint(selected,actor,api,profileFace);
-      const other=profileFace==='stats'?'进阶路线':'开局属性';
-      details.hidden=profileFace!=='stats'||selected==null;
-      turn.setAttribute('aria-label','切换至'+other);
-      section.dataset.face=profileFace;
-      // Keep focus, the live scene and the roster scroll position on a flip.
-      if(section.firstElementChild)section.firstElementChild.replaceWith(art);
-      else section.append(art,details,turn);
+    function showFace(face){
+      profileFace=face;section.dataset.face=face;
+      const next=profilePrint(selected,actor,api,face);
+      const art=section.querySelector('.journey-profile-print');
+      if(art)art.replaceWith(next);else section.append(next,switches,details);
+      details.hidden=face!=='stats'||selected==null;
+      for(const tab of switches.children)tab.setAttribute('aria-pressed',String(tab.dataset.face===face));
     }
-    turn.addEventListener('click',()=>{
-      profileFace=profileFace==='stats'?'route':'stats';showFace();
-    });
-    showFace();
+    for(const [face,label] of [['route',actor?.singleStageEvoLevels?'进阶路线 · 单关/多关':'进阶路线'],['stats','基础属性']]){
+      switches.append(choice(label,()=>showFace(face),'zx-plain journey-face-option',{'data-face':face,'data-action':'profile-'+face,'data-paper-surface':'profile-switch'}));
+    }
+    showFace(profileFace);
     return section;
   }
   function characterCommands(){
-    const action=(label,key,fn,disabled=false)=>choice([albumArt(key),el('span','zc-control-label',label)],fn,'zc-dossier-action',{
+    const action=(label,key,fn,disabled=false)=>choice([icon(key,18,'#352F36'),el('span','command-name',label)],fn,'zc-dossier-action',{
       'data-action':'collection-'+key,'data-paper-surface':'flat',disabled:selected===null||disabled,'aria-label':label,
     });
     return el('div','zc-dossier-controls journey-commands',[
       action('招式','moves',()=>moves(selected)),
       action('计划','plan',()=>plan(selected)),
-      action(['shiny','classic'].some(look=>appearanceOwned(p(),selected,look))?'换色':'外观','looks',()=>appearances(selected)),
+      action('外观','looks',()=>appearances(selected)),
     ],{'aria-label':'所选字灵的功能'});
   }
 
@@ -106,10 +103,15 @@ export function createCollectionUI(app,api,kit){
   function card(id,intro,index=0,active=selected,onPick=selectFromAlbum){
     const c=char(id),s=state(id),unknown=s==='unknown',isSelected=id===active,isNew=owned(id)&&!starterSpecies.includes(id)&&!(p().collection?.read??[]).includes(id);
     const tag=owned(id)?api.typeName(api.speciesType(id)):s==='ready'?'待抓字':unknown?'未知':'未解锁';
+    const image=unknown?null:glyph(id,c.previewOnly?null:activeLook(id));
+    if(image&&!owned(id)){
+      const ctx=image.getContext('2d');ctx.save();ctx.globalCompositeOperation='source-in';
+      ctx.fillStyle='#D6D0C9';ctx.fillRect(0,0,image.width,image.height);ctx.restore();
+    }
     return choice([
       photoPaper(index,unknown?'unknown':owned(id)?api.speciesType(id):'locked',isSelected,photoTilt(index),intro),
-      isSelected?el('span','zc-card-check',icon('saved',12,'#F3F1FA')):null,
-      el('span','zc-tag',!intro&&!owned(id)?[icon('lock',11,'#211F54'),el('span','',tag)]:tag),unknown?el('span','zc-mystery','?'):glyph(id,c.previewOnly?null:activeLook(id),false,photoTilt(index)*2),
+      isSelected?el('span','zc-card-check',icon('saved',16,'#27232F')):null,
+      el('span','zc-tag',!intro&&!owned(id)?icon('lock',12,'#E5DFDA'):tag),unknown?el('span','zc-mystery','?'):image,
       intro?el('b','zc-card-name',c.word):null,isNew?el('span','zc-new','新收录'):p().collection?.track===id?el('span','zc-new','已追踪'):null,
     ],()=>onPick(id),'zc-character '+(intro?'intro ':'')+(isSelected?'selected ':'')+(!owned(id)?'locked':''),{
       'data-paper-surface':'flat','data-species':id,'data-state':s,'aria-pressed':isSelected,'aria-label':(unknown?'尚未发现的字灵':c.word)+' · '+tag,
@@ -136,11 +138,20 @@ export function createCollectionUI(app,api,kit){
     rememberList();
     const album=rosterPicker(selected,filter,id=>{filter=id;resetList();render();},selectFromAlbum);
     album.append(characterCommands());
-    const content=[el('div','journey-air',[],{'aria-hidden':'true'}),profileSlip(),album];
+    const content=[el('div','journey-air',[],{'aria-hidden':'true'}),el('div','selection-binding',[profileSlip(),album],{'data-paper-surface':'bound-index'})];
+    let committing=false;
+    const start=async()=>{
+      if(committing||selected===null||!owned(selected))return;
+      committing=true;
+      const page=app.screen;
+      page.style.pointerEvents='none';
+      try{await confirm(selected);}
+      finally{committing=false;if(app.screen===page)page.style.pointerEvents='';}
+    };
     const disabled=selected===null||!owned(selected);
     const actions=[
       choice('返回',()=>scene.travel('home',home),'zc-back',{'data-action':'collection-back'}),
-      choice('选择关卡',()=>confirm(selected),'zc-primary',{'data-action':'collection-next',disabled}),
+      choice('选择关卡',start,'zc-primary',{'data-action':'collection-next',disabled}),
     ];
     const node=mount('choose','选择字灵','',content,actions);
     freePaperActions(node);
@@ -148,8 +159,9 @@ export function createCollectionUI(app,api,kit){
     {
       node.classList.add('zc-library');
       const count=collectionRoster.filter(c=>owned(c.id)).length;
-      node.querySelector('.zx-header').append(el('div','zc-catalog-total',
-        [icon('book',16,'#DEE8F4'),el('span','','收录'),el('b','',count+' / '+collectionRoster.length)],
+      const flag=node.querySelector('.paper-title-label');
+      flag.style.width=(parseInt(flag.style.width)+76)+'px';
+      flag.append(el('div','zc-catalog-total',[el('span','','收录'),el('b','',count+' / '+collectionRoster.length)],
         {'aria-label':'字灵收录 '+count+' / '+collectionRoster.length}));
       scroller=node.querySelector('.zc-library-scroll');
       if(scrollTop)scroller.scrollTop=scrollTop;
@@ -185,10 +197,10 @@ export function createCollectionUI(app,api,kit){
         },{'data-move-group':key})));
       }
       drawTabs();
-      return [head,nav,el('div','zc-move-paper',results)];
+      return [head,nav,el('div','zc-move-paper',results,{'data-paper-surface':'bound-index'})];
     }
     const ultimateInfo=api.collectionUltimate(id),base=ultimateInfo.forms[0];
-    const viewFace=el('span','zc-ult-view-face','查看',{'data-paper-surface':'button'});
+    const viewFace=el('span','zc-ult-view-face','查看',{'data-paper-surface':'journal-button'});
     const viewUltimate=button(viewFace,()=>{
       openUltimateDialog(el,ultimateInfo,viewUltimate,api.typeName,formId=>glyph(formId,activeLook(id)));
     },'zx-plain zc-ult-view',{'data-paper-surface':'flat','data-action':'view-ultimate','aria-haspopup':'dialog','aria-label':'查看'+base.name+'详情'});
@@ -239,7 +251,7 @@ export function createCollectionUI(app,api,kit){
     const current=has&&look===equipped,status=current?'使用中':has?'已获得':'未获得';
     const total=options.filter(value=>appearanceOwned(p(),id,value)).length;
     const hero=el('div','zc-look-hero',[
-      el('div','zc-photo-mount',[albumPhotoMount(),stagePortrait(c,look,true)]),
+      el('div','zc-photo-mount',[albumPhotoMount(),stagePortrait(c,look,true,'move-stamp')]),
       el('div','zc-look-caption',[el('span','',c.word+'的外观'),el('b','',name),el('small','zc-look-status',status)]),
     ]);
     const tiles=options.map(value=>{
@@ -250,13 +262,14 @@ export function createCollectionUI(app,api,kit){
         'aria-pressed':selected,'aria-label':appearanceName(value)+' · '+(used?'使用中':available?'已获得':'未获得'),
         onclick:()=>{if(!selected)appearances(id,back,value);}});
     });
-    const hint=has?'所选配色会用于接下来的对局。':
+    const hint=has?'切换外观仅改变字形配色，招式与出战资格相同。':
       look?'抓获'+name+'的'+c.word+'，即可解锁此外观。':'抓获普通或异色的'+c.word+'，即可解锁普通外观。';
     const sheet=el('div','zc-look-sheet',el('div','zc-look-scroll',[hero,
       el('div','zc-look-index',[el('b','','外观选择'),el('span','','已获得  '+total+' / '+options.length)]),
       el('div','zc-look-tiles',tiles),
       el('div','zc-look-note',[el('div','zc-look-note-title',[has?null:icon('lock',16,'#465D78'),el('b','',has?'外观效果':'获取方式')]),el('p','',hint)]),
     ]),{'data-paper-surface':'album-page'});
+    sheet.dataset.paperSurface='bound-index';
     const actions=footer(async()=>{
       if(!base){unlock(id,()=>appearances(id,back,look));return;}
       if(!appearanceOwned(p(),id,look))return;
@@ -264,7 +277,7 @@ export function createCollectionUI(app,api,kit){
       try{await app.meta.saveNow(true);}catch(error){app.meta.setSkin(id,equipped);throw error;}
       back();
     },!base?'查看解锁方式':current?'使用中':has?'使用'+name:'尚未解锁',base&&(!has||current),back);
-    if(actions[1].disabled)actions[1].dataset.paperSurface='button-muted';
+    if(actions[1].disabled)actions[1].dataset.paperSurface='journal-button';
     const node=mount('collection-looks','字灵外观','',[sheet],actions);
     node.querySelector('.zx-body').dataset.paperSurface='flat';
     freePaperActions(node);

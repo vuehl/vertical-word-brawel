@@ -1,4 +1,4 @@
-import {paintSettingsSymbol} from './paper-shapes.js';
+import {paintSettingsSymbol,paperPalette} from './paper-shapes.js';
 
 import {paintWordmark,polygon,gradient} from './menu-scene.js';
 
@@ -6,8 +6,8 @@ const paper='#F4F3F8',ink='#2B2A49';
 // Independent lettering can sit on the same desk as the live character cutout.
 export function homeWordmark(){
   const cv=document.createElement('canvas');
-  cv.width=640;cv.height=200;cv.className='zx-home-wordmark';cv.dataset.static='true';
-  cv.setAttribute('aria-hidden','true');paintWordmark(cv.getContext('2d'),cv.width/2,cv.height/2);
+  cv.width=452;cv.height=240;cv.className='zx-home-wordmark';cv.dataset.static='true';
+  cv.setAttribute('aria-hidden','true');paintWordmark(cv.getContext('2d'),226,119);
   return cv;
 }
 
@@ -34,9 +34,9 @@ export function itineraryStamp(regions,single){
 }
 
 
-export function menuSymbol(name,size=32){
+export function menuSymbol(name,size=32,onDark=false){
   const cv=document.createElement('canvas');cv.width=cv.height=size*2;cv.className='paper-menu-symbol';cv.style.width=cv.style.height=size+'px';cv.dataset.static='true';
-  cv.setAttribute('aria-hidden','true');const c=cv.getContext('2d');c.scale(size/32*2,size/32*2);c.fillStyle=ink;c.strokeStyle=ink;c.lineWidth=2;c.lineJoin='round';
+  cv.setAttribute('aria-hidden','true');const c=cv.getContext('2d');c.scale(size/32*2,size/32*2);c.fillStyle=onDark?paperPalette.warmWhite:ink;c.strokeStyle=c.fillStyle;c.lineWidth=2;c.lineJoin='round';
   const circle=(x,y,r)=>{c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill();};
   if(name==='settings'){
     paintSettingsSymbol(c,0,0,32);
@@ -51,18 +51,18 @@ export function menuSymbol(name,size=32){
       c.closePath();c.fill();c.stroke();
     };
     c.lineWidth=1.8;
-    portrait(22,7,'#A8CBE8');
-    portrait(10,11,'#5C91CC');
+    portrait(22,7,onDark?'#B8AC98':'#A8CBE8');
+    portrait(10,11,onDark?paperPalette.warmWhite:'#5C91CC');
   }else if(name==='lab'){
     c.beginPath();c.moveTo(11,3);c.lineTo(21,3);c.moveTo(13,3);c.lineTo(13,12);c.lineTo(5,26);c.quadraticCurveTo(4,29,8,29);c.lineTo(25,29);c.quadraticCurveTo(28,29,26,26);c.lineTo(19,12);c.lineTo(19,3);c.stroke();
-    c.beginPath();c.moveTo(9,24.5);c.lineTo(12,19);c.quadraticCurveTo(14,17,16,19);c.quadraticCurveTo(18,21,20,18.5);c.lineTo(23.5,25);c.lineTo(9,25);c.closePath();c.fillStyle=gradient(c,9,19,23,25,'#337ACC','#6BB3DA');c.fill();
+    c.beginPath();c.moveTo(9,24.5);c.lineTo(12,19);c.quadraticCurveTo(14,17,16,19);c.quadraticCurveTo(18,21,20,18.5);c.lineTo(23.5,25);c.lineTo(9,25);c.closePath();c.fillStyle=onDark?paperPalette.warmWhite:gradient(c,9,19,23,25,'#337ACC','#6BB3DA');c.fill();
   }else if(name==='star'||name==='stardust'){
     const wallet=name==='stardust';
     const p=Array.from({length:10},(_,i)=>{const a=-Math.PI/2+i*Math.PI/5,r=i%2?7:14;return[16+Math.cos(a)*r,16+Math.sin(a)*r];});
-    polygon(c,p,wallet?'#8CB1D8':'#689ED9');
-    if(wallet){c.lineWidth=1.45;c.strokeStyle='#E0EBF6';}
+    polygon(c,p,wallet?paperPalette.yellow:'#A77B24');
+    if(wallet){c.lineWidth=1.45;c.strokeStyle=paperPalette.warmWhite;}
     c.stroke();
-    polygon(c,wallet?[[16,3.2],[16,16],[4.8,19.2],[9.9,12.2]]:[[16,2],[16,16],[3,20],[9,12]],wallet?'#C6DFEE':'#B0D7EB');
+    polygon(c,wallet?[[16,3.2],[16,16],[4.8,19.2],[9.9,12.2]]:[[16,2],[16,16],[3,20],[9,12]],wallet?'#FFEAB1':'#FBE29A');
   }else if(name==='move'){
     c.beginPath();c.ellipse(16,25,12,5,0,0,Math.PI*2);c.fillStyle='#B2C6E4';c.fill();c.stroke();c.beginPath();c.moveTo(16,24);c.lineTo(16,13);c.stroke();c.fillStyle='#C8D3ED';circle(16,10,7);c.stroke();
   }else if(name==='collect'){
@@ -86,8 +86,6 @@ export function homeEntryFace(){
   const cv=document.createElement('canvas');cv.width=324;cv.height=108;
   cv.className='paper-entry-face';cv.dataset.static='true';cv.setAttribute('aria-hidden','true');
   const c=cv.getContext('2d');c.scale(2,2);
-  const face=(y,bottom,fill,inset=0)=>polygon(c,[[6,y],[156,y],[161-inset,y+5],[161-inset,bottom-5],[156,bottom],[6,bottom],[1+inset,bottom-5],[1+inset,y+5]],fill);
-  face(3.3,53.3,'#CACFE1');face(1,50.8,'#337ACC');face(.5,48.4,'#5B84D0');
-  face(1.1,47.8,gradient(c,0,0,162,48,'#F1F1F8','#EFEEF6'),.6);
+  polygon(c,[[7,3],[161,0],[155,51],[0,53]],paperPalette.darkStock);
   return cv;
 }

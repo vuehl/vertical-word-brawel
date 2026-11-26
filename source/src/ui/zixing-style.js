@@ -1,3 +1,4 @@
+import {battleSheetStyle} from './battle-sheet-style.js';
 import {firstBatchStyle} from './first-batch-style.js';
 import {paperPaletteStyle} from './paper-shapes.js';
 import {paperSystemStyle} from './paper-system-style.js';
@@ -280,7 +281,7 @@ html.zixing .zx-hud-pause{position:absolute;right:2px;top:109px;width:40px;min-h
 .zx-compass .cp-ic{left:-16px;top:-16px;width:32px;height:32px;transform:none;animation:none;filter:none}
 .zx-compass .mapbadge{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;background:transparent;box-shadow:none}
 .zx-compass .mapbadge img,.zx-compass .mapbadge canvas{width:28px;height:28px;margin:0}
-.zx-combat-overlay .compass .cp-d{border:1px solid #52627a;border-radius:5px;background:#273448;color:#fff;font-size:11px;line-height:1.25;font-weight:700;padding:2px 6px;box-shadow:none}
+.zx-combat-overlay .compass .cp-d{border:1px solid #e1cfad;border-radius:5px;background:#4d4a45;color:#fff7e5;font-size:11px;line-height:1.25;font-weight:700;padding:2px 6px;box-shadow:none}
 .zx-compass .cp-d{top:31px}
 .zx-skill-slot{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:42px;height:42px;background:#e8ede530;border:1px solid #fffdf580;border-radius:50%;overflow:visible}
 .zx-skill-slot.filled{background:#f8f4e9f2;border-color:#fffdf5}
@@ -372,4 +373,4 @@ html.zixing .tc.zx-touch .zx-ult-progress{position:absolute;left:0;top:0;width:1
 .zx-saved-actions>.zx-button{width:100%;min-height:48px;font-size:16px;line-height:24px}
 @media(max-width:350px){.zx-modal.zx-saved-run{padding:18px;gap:14px}.zx-saved-heading>h2{font-size:20px;line-height:27px}.zx-saved-metrics{padding:12px 4px;gap:5px}}
 @media(max-height:600px){.zx-modal.zx-saved-run{padding-top:16px;padding-bottom:16px;gap:12px}.zx-saved-heading{gap:8px}.zx-saved-seal{width:40px;height:40px}.zx-saved-run>.zx-saved-body{gap:10px}}
-` + battleReviewStyle + collectionStyle + choicePresentationStyle + firstBatchStyle + paperSystemStyle + paperPaletteStyle;
+` + battleReviewStyle + collectionStyle + choicePresentationStyle + firstBatchStyle + paperSystemStyle + paperPaletteStyle + battleSheetStyle;

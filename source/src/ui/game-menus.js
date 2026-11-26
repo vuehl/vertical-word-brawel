@@ -139,6 +139,7 @@ function ZX(app) {
     ultDescription: id => Xh(id, k.get(id).types[0]).descs[0] || '积蓄能量，释放专属大招。',
     baseStats: (id, lab, growth=0) => nv(k.get(id), growth, lab),
     typeName: type => Pi[type] || type,
+    speciesInfo: id => k.get(id),
     speciesType: id => k.get(id).types[0],
     offer: (run, offer) => Wb(run, offer),
     moveName: move => move.name,

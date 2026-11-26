@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import rigs from '../../resources/public/config/hero-rigs.json' with {type:'json'};
-import {isPlayableHeroForm,starterWords} from '../../source/src/data/starter-characters.js';
+import {isPlayableHeroForm,starterSpecies,starterWords} from '../../source/src/data/starter-characters.js';
 import {blueWindPixels} from './wind-glyph-colors.mjs';
 
 const size=160, columns=8;
@@ -131,6 +131,16 @@ export async function writeHeroActions(source){
       for(let row=0;row<size;row++)tile.copy(pixels,((top+row)*width+left)*4,row*size*4,(row+1)*size*4);
     }
     await sharp(pixels,{raw:{width,height,channels:4}}).png().toFile(path.join(output,id+'.png'));
+    if(starterSpecies.includes(Number(id))){
+      // Keep the home portrait's fine outline while reusing the registered battle poses.
+      const cell=256,menuFrame={...framing,factor:framing.factor*cell/size};
+      const tiles=frames.slice(0,clips.idle.count).map((frame,index)=>({
+        input:withInk(rasterize(frame,menuFrame,atlas,cell),4,undefined,cell),
+        raw:{width:cell,height:cell,channels:4},left:index%columns*cell,top:Math.floor(index/columns)*cell,
+      }));
+      await sharp({create:{width:columns*cell,height:Math.ceil(tiles.length/columns)*cell,channels:4,background:'#0000'}})
+        .composite(tiles).webp({lossless:true}).toFile(path.join(output,'../../ui-paper','home-idle-'+id+'.webp'));
+    }
     catalog[id]={columns,rows,scale:framing.scale,clips};
   }
   fs.writeFileSync(path.join(source,'src/actors/hero-action-catalog.js'),

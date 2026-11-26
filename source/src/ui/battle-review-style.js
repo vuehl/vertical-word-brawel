@@ -119,7 +119,7 @@ html.zixing .zx-combat-feed .zx-review-boss:not(.shield):not(.immune) .bb-bar>i{
 html.zixing .zx-combat-feed .zx-review-boss{gap:8px;padding:5px 9px 7px 8px;border:0;border-radius:3px;background:#3E4D69;align-items:center}
 html.zixing .zx-combat-feed .zx-review-boss .bb-pt{width:34px;height:36px;display:flex;align-items:center;justify-content:center;background:#E7CCD7;border:0;padding:3px}
 html.zixing .zx-combat-feed .zx-review-boss .bb-pt>img,html.zixing .zx-combat-feed .zx-review-boss .bb-pt>canvas{width:26px;height:26px;object-fit:contain}
-html.zixing .zx-combat-feed .zx-review-boss .bb-body{min-height:0;gap:0;align-self:flex-start}
+html.zixing .zx-combat-feed .zx-review-boss .bb-body{min-height:0;gap:0}
 html.zixing .zx-combat-feed .zx-review-boss .bb-name{font-size:15px;line-height:19px;color:#F3F1FA}
 html.zixing .zx-combat-feed .zx-review-boss .bb-tag{color:#D2DDEC;font-size:11px;line-height:16px}
 html.zixing .zx-combat-feed .zx-review-boss .bb-rage{color:#FFE4E8;background:#9E576B;padding:0 4px;line-height:16px;margin:0}
@@ -143,7 +143,7 @@ html.zixing .zx-combat-feed .mini .bb-sub.move{color:var(--boss-accent)}
 .zx-guide-pin>.cp-ic{left:-17px;top:-17px;width:34px;height:34px;transform:none!important;animation:none;filter:none}
 .zx-guide-pin .mapbadge{display:flex;align-items:center;justify-content:center;width:34px;height:34px;overflow:visible;border:0;border-radius:7px;background:#E9EEF7;box-shadow:none}
 .zx-guide-pin .mapbadge>canvas,.zx-guide-pin .mapbadge>img{height:23px;width:23px;object-fit:contain}
-.zx-guide-pin>.cp-d{top:19px;min-width:38px;padding:1px 5px 3px;font-size:11px;line-height:15px;border:0;border-radius:2px;box-shadow:none;white-space:nowrap}
+.zx-guide-pin>.cp-d{top:19px;min-width:38px;padding:1px 5px 3px;font-size:11px;line-height:15px;color:#374C6C;background:#E8EDF6;border:0;border-radius:2px;box-shadow:none;white-space:nowrap}
 .zx-combat-feed .coop-team{position:relative;left:0!important;top:0!important;width:100%;flex-direction:row;align-items:flex-start;gap:6px;scale:1}
 .zx-combat-feed .coop-mate{flex:1;min-width:0;max-width:50%;height:auto;min-height:43px;padding:2px 4px 4px;gap:4px;background:#E8ECF5;border-bottom:2px solid #90A5C5;border-radius:3px}
 .zx-combat-feed .coop-med{width:32px;height:32px;box-shadow:none}

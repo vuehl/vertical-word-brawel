@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {createRequire} from 'node:module';
-import {createHash} from 'node:crypto';
 import puppeteer from 'puppeteer-core';
 import sharp from 'sharp';
 
@@ -11,20 +10,12 @@ const root=path.resolve(import.meta.dirname,'../..'),require=createRequire(impor
 const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-boot-loading');
 fs.mkdirSync(dir,{recursive:true});
 const source=fs.readFileSync(path.join(root,'minigame/boot-screen.js'),'utf8');
-const artFile=path.join(root,'minigame/boot-hero-art.js'),art=require(artFile);
-const report={art:[],scriptBytes:fs.statSync(artFile).size,samples:[]};
-assert.deepEqual([...art.words].sort(),['炎','风'].sort());
-const output=Buffer.from(art.src.split(',')[1],'base64'),m=await sharp(output).metadata();
-assert.equal(m.width,256*art.words.length);assert.equal(m.height,256);assert.equal(m.hasAlpha,true);
-report.atlasBytes=output.length;
-for(const [id,word] of [[4,'炎'],[16,'风']]){
-  const file=path.join(root,'resources/art/glyphs',`hero_${id}_${word}.png`),original=fs.readFileSync(file);
-  const tile=sharp(output).extract({left:art.words.indexOf(word)*256,top:0,width:256,height:256});
-  const expected=await sharp(original).resize(256,256,{fit:'inside',withoutEnlargement:true}).ensureAlpha().raw().toBuffer();
-  assert.deepEqual(await tile.ensureAlpha().raw().toBuffer(),expected,'Keep the original resized RGBA in every tile');
-  report.art.push({word,sourceBytes:original.length,width:256,height:256,
-    originalSHA256:createHash('sha256').update(original).digest('hex')});
-}
+const artFile=path.join(root,'minigame/boot-poster.js'),art=require(artFile);
+const output=Buffer.from(art.src.split(',')[1],'base64');
+assert.deepEqual(output,fs.readFileSync(path.join(root,'resources/public/assets/ui-paper/loading-poster.webp')));
+const m=await sharp(output).metadata();
+assert.ok(m.width>=390&&Math.abs(m.width/m.height-390/844)<.002,'Portrait title poster');
+const report={posterBytes:output.length,scriptBytes:fs.statSync(artFile).size,samples:[]};
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,
   args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-accelerated-2d-canvas','--no-sandbox']});
 try{
@@ -45,20 +36,20 @@ try{
       const w=screen.width,h=screen.height;
       const pixels=()=>{const bytes=new Uint8Array(w*h*4);gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,bytes);return bytes;};
       const difference=(a,b)=>a.reduce((n,v,i)=>n+(v!==b[i]?1:0),0);
-      async function make(holdAtlas=false){
+      async function make(holdPoster=false){
         const canvases=[],pending=[],loads=[];
         const wx={createCanvas(){const c=document.createElement('canvas');canvases.push(c);return c;},createImage(){
           const image=new Image();
           loads.push(new Promise((resolve,reject)=>{image.addEventListener('load',()=>setTimeout(resolve,0),{once:true});image.addEventListener('error',reject,{once:true});}));
-          if(holdAtlas){const set=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
+          if(holdPoster){const set=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
             Object.defineProperty(image,'src',{set(value){pending.push(()=>set.call(image,value));}});}
           return image;
         }};
         const factory=new Function('wx','require','const module={exports:{}};'+source+';return module.exports;')(wx,()=>art);
         const splash=await factory(gl);
-        if(loads.length!==1)throw Error('Expected a single splash atlas image');
+        if(loads.length!==1)throw Error('Expected a single loading poster image');
         async function loaded(){await Promise.all(loads);}
-        if(!holdAtlas)await loaded();
+        if(!holdPoster)await loaded();
         return {splash,canvases,release:async()=>{pending.forEach(fn=>fn());await loaded();}};
       }
       const current=await make(),snapshots=new Map(),values=new Set([0,1,49,67,85,94,95,100]);
@@ -66,12 +57,6 @@ try{
       for(let value=1;value<=100;value++){current.splash.draw(value);if(values.has(value))snapshots.set(value,pixels());}
       const uploads=[...bootUploads],count=uploads.length;
       current.splash.draw(100);const unchangedUploads=bootUploads.length-count;
-      const motion=[];
-      for(const value of [0,42,99,100]){
-        current.splash.draw(value,false,.25);const a=pixels(),before=bootUploads.length;
-        current.splash.draw(value,false,.75);
-        motion.push({value,changed:difference(a,pixels()),uploads:bootUploads.length-before});
-      }
       // Returning from 100 to zero catches old text/progress left behind too.
       current.splash.draw(0);snapshots.set(0,pixels());current.splash.dispose();current.splash.dispose();
       let changedChannels=0;const differences=[];
@@ -93,17 +78,13 @@ try{
       screen.width=w;reference.splash.draw(95);
       window.lastBoot=reference.splash;
       const releasedCanvases=current.canvases.every(c=>c.width===1&&c.height===1);
-      return {width,height,motion,changedChannels,differences,lateChangedChannels,lateDifference,lateFull,resizedFull,releasedCanvases,unchangedUploads,
+      return {width,height,changedChannels,differences,lateChangedChannels,lateDifference,lateFull,resizedFull,releasedCanvases,unchangedUploads,
         progressUpdates:count,uploadedBytes:uploads.reduce((n,u)=>n+u.width*u.height*4,0),fullUploadBytes:100*w*h*4,
         maxUploadHeight:Math.max(...uploads.map(u=>u.height))};
     },{source,art,width,height});
     assert.equal(sample.changedChannels,0,'Incremental output must match a fresh full paint: '+JSON.stringify(sample.differences));
-    assert.equal(sample.lateChangedChannels,0,'Late hero images must appear without stale background: '+JSON.stringify(sample.lateDifference));
+    assert.equal(sample.lateChangedChannels,0,'Late poster images must appear without stale background: '+JSON.stringify(sample.lateDifference));
     assert.equal(sample.unchangedUploads,0);assert.equal(sample.progressUpdates,100);
-    for(const {value,changed,uploads} of sample.motion){
-      assert.equal(uploads,0,'Animating a fixed percentage must reuse the texture');
-      assert.ok(value===100?changed===0:changed>100,'Visible motion through 99%, then a steady completed bar');
-    }
     assert.ok(sample.lateFull&&sample.resizedFull&&sample.releasedCanvases);
     if(height/(width/390)>=600)assert.ok(sample.uploadedBytes<sample.fullUploadBytes*.2,'Phone progress should upload under 20% of a full frame');
     await page.screenshot({path:path.join(dir,`boot-${width}x${height}.png`)});

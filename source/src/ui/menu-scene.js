@@ -61,25 +61,27 @@ export function paintMenuScene(c,width,height,hero,drawWord,selectedWord){
   c.restore();c.restore();
 }
 
-// Shared loading artwork in the splash screen's 390-unit coordinate system.
-export function paintLoadingBackdrop(ctx,W,H,drawWord,selectedWord){
-  const top=Math.min(18,H*.0185),height=Math.min(520,H*.79-68-top),width=height*.75;
-  ctx.fillStyle=gradient(ctx,0,top,0,top+height,'#292943','#21253F');ctx.fillRect(0,0,W,H);
-  ctx.save();ctx.translate((W-width)/2,top);
-  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(width,0);ctx.lineTo(width,height-17);
-  ctx.lineTo(width*.22,height);ctx.lineTo(0,height-8);ctx.closePath();ctx.clip();
-  paintMenuScene(ctx,width,height,true,drawWord,selectedWord);
+// Artwork is exported without progress so the bar always follows resource loading.
+export function paintLoadingBackdrop(ctx,W,H,poster){
+  ctx.fillStyle='#252229';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#F9BF25';ctx.fillRect(0,0,W,H*.65);
+  polygon(ctx,[[0,H*.34],[W,H*.17],[W,H*.52],[0,H*.68]],'#322A35');
+  if(poster){
+    const scale=Math.min(W/390,H/660);
+    const width=390*scale,height=844*scale;
+    ctx.drawImage(poster,(W-width)/2,(H-height)*.46,width,height);
+  }else{
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold '+Math.min(W*.16,H*.12)+'px sans-serif';
+    ctx.fillStyle='#FFD04A';ctx.fillText('字由搏击',W/2,H*.46);
+  }
+}
+export function paintLoadingSlip(ctx,value,label){
+  ctx.textBaseline='alphabetic';ctx.textAlign='left';ctx.fillStyle='#F9ECCE';ctx.font='bold 14px sans-serif';
+  ctx.fillText(label,32,-12);
+  ctx.textAlign='right';ctx.font='italic bold 29px sans-serif';ctx.fillStyle='#FFD04A';
+  ctx.fillText(value+'%',358,-12);
+  ctx.save();ctx.transform(1,0,-.25,1,0,0);
+  ctx.fillStyle='#514953';ctx.fillRect(32,0,326,8);
+  if(value){ctx.fillStyle='#FFC52D';ctx.fillRect(32,0,326*value/100,8);}
   ctx.restore();
 }
-
-export function paintLoadingSlip(ctx,value,label){
-  polygon(ctx,[[34,-39],[345,-39],[355,-29],[355,16],[347,24],[41,24],[34,18]],'#607EA9');
-  polygon(ctx,[[34,-43],[345,-43],[353,-35],[353,12],[346,19],[39,19],[32,12],[32,-41]],'#EEF0F7');
-  polygon(ctx,[[48,-48],[65,-48],[65,-31],[56,-35],[48,-31]],'#C77683');
-  ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillStyle='#293651';ctx.font='bold 15px sans-serif';
-  ctx.fillText(label,61,-18);
-  ctx.textAlign='right';ctx.font='bold 19px sans-serif';ctx.fillStyle='#385A8A';ctx.fillText(value.toFixed(1)+'%',329,-18);
-  ctx.fillStyle='#D1DBEA';ctx.fillRect(61,0,268,7);
-  if(value){ctx.fillStyle='#5076AE';ctx.fillRect(61,0,268*value/100,7);}
-}
-

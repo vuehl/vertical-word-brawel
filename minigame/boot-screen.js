@@ -200,42 +200,43 @@ function paintMenuScene(c, width, height, hero, drawWord, selectedWord) {
   c.restore();
   c.restore();
 }
-function paintLoadingBackdrop(ctx, W, H, drawWord, selectedWord) {
-  const top = Math.min(18, H * 0.0185), height = Math.min(520, H * 0.79 - 68 - top), width = height * 0.75;
-  ctx.fillStyle = gradient(ctx, 0, top, 0, top + height, "#292943", "#21253F");
+function paintLoadingBackdrop(ctx, W, H, poster) {
+  ctx.fillStyle = "#252229";
   ctx.fillRect(0, 0, W, H);
-  ctx.save();
-  ctx.translate((W - width) / 2, top);
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(width, 0);
-  ctx.lineTo(width, height - 17);
-  ctx.lineTo(width * 0.22, height);
-  ctx.lineTo(0, height - 8);
-  ctx.closePath();
-  ctx.clip();
-  paintMenuScene(ctx, width, height, true, drawWord, selectedWord);
-  ctx.restore();
+  ctx.fillStyle = "#F9BF25";
+  ctx.fillRect(0, 0, W, H * 0.65);
+  polygon(ctx, [[0, H * 0.34], [W, H * 0.17], [W, H * 0.52], [0, H * 0.68]], "#322A35");
+  if (poster) {
+    const scale = Math.min(W / 390, H / 660);
+    const width = 390 * scale, height = 844 * scale;
+    ctx.drawImage(poster, (W - width) / 2, (H - height) * 0.46, width, height);
+  } else {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold " + Math.min(W * 0.16, H * 0.12) + "px sans-serif";
+    ctx.fillStyle = "#FFD04A";
+    ctx.fillText("\u5B57\u7531\u640F\u51FB", W / 2, H * 0.46);
+  }
 }
 function paintLoadingSlip(ctx, value, label) {
-  polygon(ctx, [[34, -39], [345, -39], [355, -29], [355, 16], [347, 24], [41, 24], [34, 18]], "#607EA9");
-  polygon(ctx, [[34, -43], [345, -43], [353, -35], [353, 12], [346, 19], [39, 19], [32, 12], [32, -41]], "#EEF0F7");
-  polygon(ctx, [[48, -48], [65, -48], [65, -31], [56, -35], [48, -31]], "#C77683");
-  ctx.textBaseline = "middle";
+  ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  ctx.fillStyle = "#293651";
-  ctx.font = "bold 15px sans-serif";
-  ctx.fillText(label, 61, -18);
+  ctx.fillStyle = "#F9ECCE";
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillText(label, 32, -12);
   ctx.textAlign = "right";
-  ctx.font = "bold 19px sans-serif";
-  ctx.fillStyle = "#385A8A";
-  ctx.fillText(value.toFixed(1) + "%", 329, -18);
-  ctx.fillStyle = "#D1DBEA";
-  ctx.fillRect(61, 0, 268, 7);
+  ctx.font = "italic bold 29px sans-serif";
+  ctx.fillStyle = "#FFD04A";
+  ctx.fillText(value + "%", 358, -12);
+  ctx.save();
+  ctx.transform(1, 0, -0.25, 1, 0, 0);
+  ctx.fillStyle = "#514953";
+  ctx.fillRect(32, 0, 326, 8);
   if (value) {
-    ctx.fillStyle = "#5076AE";
-    ctx.fillRect(61, 0, 268 * value / 100, 7);
+    ctx.fillStyle = "#FFC52D";
+    ctx.fillRect(32, 0, 326 * value / 100, 8);
   }
+  ctx.restore();
 }
 var paper, ink, gameTitle;
 var init_menu_scene = __esm({
@@ -251,7 +252,7 @@ var { paintLoadingBackdrop: paintLoadingBackdrop2, paintLoadingSlip: paintLoadin
 module.exports = async function presentBootFrame(gl) {
   let program = gl.createProgram(), texture = gl.createTexture(), vao = gl.createVertexArray();
   let canvas = wx.createCanvas(), patch = wx.createCanvas(), last = "", textureWidth = 0, textureHeight = 0;
-  const { words, src } = require("./boot-hero-art"), image = wx.createImage();
+  const { src } = require("./boot-poster"), image = wx.createImage();
   let ready = false;
   image.onload = () => {
     if (canvas) {
@@ -263,11 +264,11 @@ module.exports = async function presentBootFrame(gl) {
     image.onerror = null;
     if (!canvas) return;
     try {
-      const file = wx.env.USER_DATA_PATH + "/zixing-boot-heroes.webp";
+      const file = wx.env.USER_DATA_PATH + "/zixing-boot-poster.webp";
       wx.getFileSystemManager().writeFileSync(file, src.slice(src.indexOf(",") + 1), "base64");
       image.src = file;
     } catch (error) {
-      console.warn("[\u5B57\u7531\u640F\u51FB] \u542F\u52A8\u5B57\u7075\u56FE\u7247\u8BFB\u53D6\u5931\u8D25", error);
+      console.warn("[\u5B57\u7531\u640F\u51FB] \u52A0\u8F7D\u9875\u5E95\u56FE\u8BFB\u53D6\u5931\u8D25", error);
     }
   }
   image.onerror = loadLocal;
@@ -275,10 +276,6 @@ module.exports = async function presentBootFrame(gl) {
     image.src = src;
   } catch (e) {
     loadLocal();
-  }
-  function drawHero(ctx, word, x, y, size) {
-    const index = words.indexOf(word), tile = image.height;
-    if (ready && index >= 0) ctx.drawImage(image, index * tile, 0, tile, tile, x, y, size, size);
   }
   function attach(type, source) {
     const shader = gl.createShader(type);
@@ -301,17 +298,17 @@ module.exports = async function presentBootFrame(gl) {
       patch = null;
     }
   }
-  function paint(value, w, h, full, label) {
+  function paint(value, w, h, full) {
     if (full) {
       canvas.width = w;
       canvas.height = h;
     }
-    const s = Math.min(w / 390, h / 550), W = w / s, H = h / s, left = (W - 390) / 2, track = H * 0.79;
-    const strip = h / (w / 390) >= 600, navy = "#21253F";
+    const s = Math.min(w / 390, h / 550), W = w / s, H = h / s, left = (W - 390) / 2, track = H * 0.93 - 8;
+    const strip = h / (w / 390) >= 600, footer = "#252229";
     if (full) {
       const ctx2 = canvas.getContext("2d");
       ctx2.setTransform(s, 0, 0, s, 0, 0);
-      paintLoadingBackdrop2(ctx2, W, H, drawHero);
+      paintLoadingBackdrop2(ctx2, W, H, ready ? image : null);
     }
     let y = 0, ctx = canvas.getContext("2d");
     if (strip) {
@@ -323,22 +320,21 @@ module.exports = async function presentBootFrame(gl) {
       }
       ctx = patch.getContext("2d");
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = navy;
+      ctx.fillStyle = footer;
       ctx.fillRect(0, 0, w, height);
     }
     ctx.setTransform(s, 0, 0, s, left * s, -y);
     ctx.save();
     ctx.translate(0, track);
-    paintLoadingSlip2(ctx, value, label);
+    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 95 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 85 ? "\u6B63\u5728\u6574\u7406\u8D44\u6E90" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90");
     ctx.restore();
     return strip ? y : null;
   }
   try {
-    let draw = function(value, overlay = false, sweepPhase = 0, phase) {
+    let draw = function(value, overlay = false) {
       if (!program) return;
-      value = Math.max(0, Math.min(100, value));
-      const label = value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : phase || (value >= 90 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90");
-      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value + "/" + label;
+      value = Math.max(0, Math.min(100, Math.floor(value)));
+      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.SCISSOR_TEST);
       gl.disable(gl.DEPTH_TEST);
@@ -353,7 +349,7 @@ module.exports = async function presentBootFrame(gl) {
       gl.bindTexture(gl.TEXTURE_2D, texture);
       if (key !== last) {
         const full = !last || textureWidth !== w || textureHeight !== h || h / (w / 390) < 600;
-        const stripY = paint(value, w, h, full, label);
+        const stripY = paint(value, w, h, full);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         if (textureWidth !== w || textureHeight !== h) {
@@ -368,11 +364,8 @@ module.exports = async function presentBootFrame(gl) {
         if (stripY !== null) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, stripY, gl.RGBA, gl.UNSIGNED_BYTE, patch);
         last = key;
       }
-      gl.uniform1i(percent, Math.floor(value));
+      gl.uniform1i(percent, value);
       gl.uniform1i(overScene, overlay ? 1 : 0);
-      const scale = Math.min(w / 390, h / 550);
-      gl.uniform4f(trackRect, 0.5 + (61 - 195) * scale / w, 0.79, 268 * scale / w, 5 * scale / h);
-      gl.uniform1f(sweep, sweepPhase);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.bindVertexArray(null);
       gl.useProgram(null);
@@ -384,23 +377,11 @@ module.exports = async function presentBootFrame(gl) {
     attach(gl.FRAGMENT_SHADER, `#version 300 es
       precision highp float;
       uniform sampler2D artwork;uniform int percent;uniform bool overScene;
-      uniform vec4 trackRect;uniform float sweep;
       in vec2 uv;out vec4 color;
-      void main(){
-        if(percent<0&&overScene)discard;
-        color=texture(artwork,uv);
-        vec2 p=(uv-trackRect.xy)/trackRect.zw;
-        if(percent<100 && p.x>=0. && p.x<=1. && p.y>=0. && p.y<=1.){
-          float distanceToBand=abs(p.x-(sweep*1.32-.16));
-          float band=1.-smoothstep(.035,.16,distanceToBand);
-          vec3 tint=p.x<float(percent)*.01?vec3(.73,.88,1.):vec3(.53,.68,.86);
-          color.rgb=mix(color.rgb,tint,band*.9);
-        }
-      }`);
+      void main(){if(percent<0&&overScene)discard;color=texture(artwork,uv);}`);
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(program) || "\u542F\u52A8\u753B\u9762\u7740\u8272\u5668\u672A\u5C31\u7EEA");
     const percent = gl.getUniformLocation(program, "percent"), overScene = gl.getUniformLocation(program, "overScene");
-    const trackRect = gl.getUniformLocation(program, "trackRect"), sweep = gl.getUniformLocation(program, "sweep");
     draw(0);
     await new Promise((resolve) => {
       if (typeof requestAnimationFrame !== "function") {

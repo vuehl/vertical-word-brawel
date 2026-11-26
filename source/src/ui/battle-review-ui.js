@@ -1,10 +1,10 @@
-import {weatherStyle,weatherFill,drawWeatherMark,weatherMark} from './weather-presentation.js';
-import {castTitleLayout,castTitleLeft,castTitlePose,flameOpeningBand,titleCenter,titleFont,titleLine,titleWidth} from '../effects/ultimate-cast-layout.js';
+import {drawWeatherTime} from './paper-hud-art.js';
+import {weatherStyle,weatherFill,drawWeatherMark} from './weather-presentation.js';
 import {glyphPreview} from '../actors/zixing-glyphs.js';
 import {summonerBarColors} from './battle-review-style.js';
 import {planIncludes,runPlan} from '../combat/battle-plan.js';
 import {battleDialogFrame,hudPaperIcon} from './first-batch-art.js';
-import {albumTab,setAlbumTabActive,dockDialogClose,paperDecisionActions,standardButton} from './paper-system.js';
+import {albumTab,setAlbumTabActive,dockDialogClose,standardButton} from './paper-system.js';
 const el=(tag,cls='',children=[],attrs={})=>{
   const n=document.createElement(tag);n.className=cls;
   for(const [k,v] of Object.entries(attrs)){
@@ -49,16 +49,12 @@ export function itemOffer(node,{key,name,picture,quality,effects,held,planned}){
 }
 
 export function shopOffer({key,name,picture,quality,planned,effects,owned,status,action}){
-  const heading=el('div','zx-shop-head',[
-    el('div','zx-shop-labels',[el('b','zx-shop-name',name),planned?planBadge():null]),
-    qualityBadge(quality),
-  ]);
+  action.dataset.paperSurface='trade-action';
+  const heading=el('div','zx-shop-head',[el('b','zx-shop-name',name),planned?planBadge():null],{'data-paper-surface':'short-ink'});
   return el('article','zx-shop-offer',[
-    el('div','zx-shop-product',[
-      el('div','zx-shop-picture',picture),
-      el('div','zx-shop-description',[heading,...effects.map(line=>el('p','zx-shop-effect',line.replace(/₽/g,'金币')))]),
-    ]),
-    el('div','zx-shop-deal',[el('div','zx-shop-inventory',[el('small','zx-shop-owned',owned),status]),action]),
+    el('div','zx-shop-picture',[picture,qualityBadge(quality)]),
+    el('div','zx-shop-description',[heading,...effects.map(line=>el('p','zx-shop-effect',line.replace(/₽/g,'金币'))),
+      el('div','zx-shop-deal',[el('div','zx-shop-inventory',[el('small','zx-shop-owned',owned),status]),action])]),
   ],{'data-paper-surface':'shop-offer','data-quality':quality.key,'data-rarity':quality.label,'data-item-choice':key});
 }
 
@@ -89,12 +85,17 @@ export function shopShelves(panel,previousView){
     wallet.replaceChildren(shopAmount(amount));wallet.className='zx-shop-balance';
     wallet.setAttribute('aria-label','余额 '+amount);
   }
-  const ledger=el('div','zx-shop-ledger',[tabs,wallet],{'data-paper-surface':'shop-ledger'});
+  if(wallet)header.append(wallet);
+  const ledger=el('div','zx-shop-ledger',[tabs],{'data-paper-surface':'shop-ledger'});
   header.classList.add('single-line');
   panel.classList.add('zx-shop-shelves');panel.insertBefore(ledger,body);
   const team=panel.querySelector('.pk-btn'),leave=panel.querySelector('.shop-exit');
   team.replaceChildren('查看队伍');team.dataset.action='inspect-team';team.classList.add('secondary');
   panel.querySelector('.zx-review-footer').replaceChildren(team,leave);
+  for(const action of [team,leave]){
+    action.dataset.paperSurface='trade-action';action.replaceChildren(el('span','zx-trade-label',action.textContent));
+  }
+  refresh.dataset.paperSurface='flat';
   open(previousView==='sell'?'sell':'buy');
 }
 export function fullParty({hud,party,incoming,choose,role}){
@@ -229,11 +230,17 @@ export function selectionSession(commit){
 export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,details,warning,tags}){
   const session=selectionSession(done);
   const ready=o=>!!o?.ready;
-  const resultMark=recipe=>el('div','zx-fusion-mark',[
-    typeIcon(recipe.type,27),recipe.type2&&recipe.type2!==recipe.type?typeIcon(recipe.type2,20):null,
-  ],{'aria-hidden':'true','data-paper-surface':'fusion-mark'});
-  const identity=(o,showCaption=false)=>el('div','zx-fusion-identity',[resultMark(o.r),
-    el('div','zx-fusion-name',[planIncludes(runPlan(run),'fusions','m'+o.r.id)?planBadge():showCaption?el('small','','融合结果'):null,el('h2','',o.r.name)])]);
+  const resultMark=o=>{
+    const dual=o.r.type2&&o.r.type2!==o.r.type;
+    return el('div','zx-fusion-rail'+(ready(o)?'':' unavailable'),[
+      typeIcon(o.r.type,dual?32:48),dual?typeIcon(o.r.type2,28):null,
+    ],{'aria-hidden':'true','data-paper-surface':'fusion-rail'});
+  };
+  const identity=(o,showCaption=false)=>el('div','zx-fusion-name',[
+    planIncludes(runPlan(run),'fusions','m'+o.r.id)?planBadge():showCaption?el('small','','融合结果'):null,
+    el('h2','',o.r.name),
+  ]);
+  const plus=()=>el('span','zx-fusion-plus',[],{'aria-hidden':'true','data-paper-surface':'fusion-plus'});
   const shortLevel=n=>el('span','zx-fusion-short',String(n));
   const ingredients=o=>el('div','zx-fusion-pair',o.names.flatMap((name,i)=>{
     const move=run.player.moves[i?o.b:o.a]||run.player.moves.find(m=>m && m.def.id===o.ingredients[i]);
@@ -243,9 +250,18 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
           ?['Lv.',shortLevel(move.level),' / '+requiredLevel]
           :move?'Lv.'+move.level+' / '+requiredLevel:'未学习')]),
     ]);
-    return i?[el('span','zx-fusion-plus','＋'),part]:[part];
+    if(i===0){
+      // Size the leading material to its label so the connector stays with the recipe.
+      const compact=window.innerWidth<=350;
+      part.style.flex='none';
+      part.style.width=(Math.max(39,Array.from(name).length*12)+(compact?0:24))+'px';
+    }
+    return i?[plus(),part]:[part];
   }));
   const slip=(children,classes='',attrs={})=>el('article','zx-fusion-slip '+classes,children,{'data-paper-surface':'fusion-slip',...attrs});
+  const card=(o,head,body,classes,attrs={})=>slip([resultMark(o),
+    el('div','zx-recipe-copy',[el('div','zx-recipe-top',head,{'data-paper-surface':'short-ink'}),...body]),
+  ],classes+(ready(o)?'':' unavailable'),attrs);
   const metrics=recipe=>{
     const nums=details(recipe);
     if(!nums?.classList?.contains('mp-nums'))return nums;
@@ -268,31 +284,24 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
   let listScroll=0;
   const preview=index=>{
     const o=offers[index],a=run.player.moves[o.a]?.def,b=run.player.moves[o.b]?.def;
-    const confirm=button('确认融合',()=>{session.select(index);session.submit(ready(o));},'primary',{'data-action':'confirm-fusion',disabled:!ready(o)});
-    const record=slip([identity(o,true),ingredients(o),
+    const record=card(o,[identity(o,true)],[ingredients(o),
       el('div','zx-fusion-effect',[tags(o.r),el('p','zx-review-description',o.r.desc),warning(o.r,a,b)]),
       el('div','zx-fusion-figures',[el('h3','','关键数值'),metrics(o.r)]),
       el('p','zx-fusion-footnote',ready(o)?'占用靠前的招式槽，释放另一个槽位。':condition(o)),
     ],'zx-fusion-record');
     const pane=hud.modal(heading('融合预览'),el('div','zx-review-content',[record]),
-      paperDecisionActions(el,button('取消',list,'secondary',{'data-action':'fusion-back'}),confirm));
+      el('div','zx-review-footer',[button('返回',list,'secondary',{'data-action':'fusion-back'})]));
     styleReviewDialog(pane,'zx-fusion-preview');
   };
   const list=()=>{
     const content=el('div','zx-review-content zx-review-fusion-list');
     for(const [index,o] of offers.entries()){
-      const selected=session.selected===index;
-      const select=()=>{
-        if(!ready(o))return;
-        listScroll=content.scrollTop;session.select(index);list();
-      };
-      const surface=el('div','zx-review-recipe-select',[identity(o),ingredients(o)],
-        {role:'radio',tabindex:ready(o)?0:-1,'aria-label':o.r.name,'aria-checked':selected,'aria-disabled':!ready(o),
-          onclick:select,onkeydown:event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select();}}});
-      const open=button('查看',()=>{listScroll=content.scrollTop;if(ready(o))session.select(index);preview(index);},
-        'secondary',{'data-action':'view-fusion','aria-label':'查看'+o.r.name});
-      const stateClass=ready(o)?(selected?' selected':''):' unavailable';
-      content.append(slip([surface,open],'zx-review-recipe'+stateClass,{'data-offer':index}));
+      const open=button('查看',()=>{listScroll=content.scrollTop;preview(index);},'zx-plain',{'data-action':'view-fusion','data-paper-surface':'flat','aria-label':'查看'+o.r.name});
+      const fuse=button(el('span','zx-trade-label','融合'),()=>{if(!ready(o))return;session.select(index);session.submit();},'primary zx-fuse-action',{'data-action':'confirm-fusion','data-paper-surface':'trade-action','aria-label':'融合'+o.r.name,disabled:!ready(o)});
+      const figure=Array.from(details(o.r)?.children??[]).find(cell=>cell.firstElementChild?.textContent==='伤害');
+      const damage=figure?el('div','zx-recipe-damage',[el('small','','伤害'),el('b','',Array.from(figure.childNodes).slice(1).map(n=>n.textContent).join(''))]):null;
+      content.append(card(o,[identity(o),open],[damage,el('div','zx-recipe-bottom',[ingredients(o),fuse])],
+        'zx-review-recipe',{'data-offer':index}));
     }
     if(!offers.length){
       content.append(slip([el('b','','暂无融合配方'),note('学习两项可组合的招式后，再来使用订书机。')],'zx-fusion-empty'));
@@ -400,7 +409,12 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   mark.width=mark.height=32;
   event.className='zx-world-status';
   event.setAttribute('role','timer');event.dataset.uiLayer='weather';event.append(mark);
-  lane.append(event,feed);stack.append(lane);
+  const fill=el('i','zx-weather-fill',[],{'aria-hidden':'true'});
+  const weatherTime=el('canvas','zx-weather-time',[],{'aria-hidden':'true','data-static':'true'});
+  weatherTime.width=114;weatherTime.height=58;
+  event.append(fill,weatherTime);
+  stack.querySelector('.zx-status-row').append(event);
+  lane.append(feed);stack.append(lane);
   feed.append(hud.els.boss,hud.minisEl,teamRow,feedback);
   let paintedTone='';
   function syncEvent(){
@@ -410,14 +424,25 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     const kind=event.dataset.kind,colors=weatherStyle(kind);
     if(mark.dataset.frame!==kind){
       drawWeatherMark(mark,kind);
+      event.classList.toggle('weather-clock',Boolean(colors));
+      event.setAttribute('role','timer');
+      event.setAttribute('aria-label',event.children[0].textContent);
       event.children[0].style.color=colors?.[0]||'#F3F1FA';
-      event.style.width=(65+Math.max(2,event.children[0].textContent.length)*14)+'px';
+      event.style.width=colors?'94px':Math.min(window.innerWidth<=350?102:127,80+event.children[0].textContent.length*14)+'px';
     }
+    const label=event.children[1].textContent;
+    if(colors&&weatherTime.dataset.frame!==label){
+      drawWeatherTime(weatherTime,label);weatherTime.dataset.frame=label;
+    }
+    const world=run.events;
+    const source=world?.def&&world.left>0?{left:world.left,total:world.def.dur}:kind==='blizzard'&&run.mapEvents?.bliz?{left:run.mapEvents.bliz.t,total:run.mapEvents.bliz.duration}:kind==='spout'&&run.mapEvents?.spout?{left:run.mapEvents.spout.t,total:run.mapEvents.spout.duration}:{left:run.weatherT,total:run.weatherDuration};
+    const width=Math.round(100*Math.max(0,Math.min(1,source.left/(source.total||source.left||1))))+'%';
+    if(fill.style.width!==width)fill.style.width=width;
     const calm=run.meta.profile.settings.reduceFlashes;
     const step=colors&&!calm?Math.round(6-6*Math.cos(performance.now()*2*Math.PI/2600)):5;
     const tone=kind+'/'+step;
     if(tone!==paintedTone){
-      event.style.backgroundColor=colors?weatherFill(kind,step):'rgba(25,30,39,.72)';
+      fill.style.backgroundColor=colors?weatherFill(kind,step):'#58525D';
       paintedTone=tone;
     }
   }
@@ -442,8 +467,8 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
       flag?.remove();flag=null;shown=item;
       if(item){
         flag=el('canvas','zx-review-capture-flag',[],{width:280,height:72,role:'status','aria-live':'polite','aria-label':item.word+' · '+(item.ok?'抓字成功':'抓字失败')});flag.width=280;flag.height=72;flag.dataset.static='true';flag.dataset.result=item.ok?'success':'failed';
-        const c=flag.getContext('2d');c.beginPath();c.moveTo(0,0);c.lineTo(280,0);c.lineTo(280,72);c.lineTo(0,72);c.lineTo(18,36);c.closePath();c.fillStyle=item.ok?'#E2ECFC':'#F5E4EB';c.fill();c.fillStyle=item.ok?'#2879F0':'#EB4D62';c.fillRect(274,0,6,72);
-        c.font='bold 32px "Ziling Swei",sans-serif';c.fillStyle=item.ok?'#244F9B':'#932F46';c.textBaseline='middle';c.textAlign='center';c.fillText(item.word,47,36);c.font='bold 27px "Ziling Swei",sans-serif';c.fillText(item.ok?'抓字成功':'抓字失败',174,36);
+        const c=flag.getContext('2d');c.beginPath();c.moveTo(0,0);c.lineTo(280,0);c.lineTo(280,72);c.lineTo(0,72);c.lineTo(18,36);c.closePath();c.fillStyle='#2B262E';c.fill();c.fillStyle=item.ok?'#EFC554':'#F38B76';c.fillRect(274,0,6,72);
+        c.font='bold 32px "Ziling Swei",sans-serif';c.fillStyle=item.ok?'#F3CF70':'#FFA389';c.textBaseline='middle';c.textAlign='center';c.fillText(item.word,47,36);c.font='bold 27px "Ziling Swei",sans-serif';c.fillText(item.ok?'抓字成功':'抓字失败',174,36);
         feedback.append(flag);
       }
       flash();
@@ -454,21 +479,16 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   let bulletin=null,bulletinTimer=0;
   const clearBulletin=()=>{clearTimeout(bulletinTimer);bulletin?.remove();bulletin=null;};
   hud.banner=(title,subtitle,color,subject,weatherKind)=>{
+    if(weatherKind && weatherStyle(weatherKind))return;
     const rare=subject?.shiny||subject?.classic;
     if(!hud.bigBanners&&!rare){hud.toast(subtitle?title+' · '+subtitle:title,null,undefined,weatherKind);return;}
     clearBulletin();
-    const theme=weatherStyle(weatherKind);
-    const portrait=theme?weatherMark(weatherKind,true):subject?glyphPreview(subject.species,.75,'pix',subject.glyph||wordFor(subject.species)):null;
+    const portrait=subject?glyphPreview(subject.species,.75,'pix',subject.glyph||wordFor(subject.species)):null;
     const type=subject?.classic?'经典异色':subject?.shiny?'异色':'';
     bulletin=el('div','zx-scene-bulletin',[portrait,el('div','zx-bulletin-copy',[
       el('div','zx-bulletin-title',[el('b','',title),type?el('small','',type):null]),
       subtitle?el('span','',subtitle):null,
     ])],{role:'status','aria-live':'polite','data-paper-surface':'scene-bulletin'});
-    if(theme){
-      bulletin.dataset.weather=weatherKind;bulletin.style.backgroundColor=theme[3];
-      bulletin.style.setProperty('--notice-edge',theme[2]);bulletin.style.setProperty('--notice-ink',theme[1]);
-      bulletin.style.setProperty('--notice-face',theme[3]);bulletin.querySelector('b').style.color=theme[1];
-    }
     feed.append(bulletin);bulletinTimer=setTimeout(clearBulletin,rare?5200:3200);
   };
   let tracking=null,announcement=null;
@@ -481,10 +501,14 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     if(!plate)return;
     const portrait=plate.querySelector('.cap-pt').firstElementChild,balls=plate.querySelector('.cap-pips');
     balls.className='zx-catch-pips';
-    const caption=[friend?'招募伙伴':'抓字中',shiny?'异色':'',master&&!friend?'大师球':''].filter(Boolean).join(' · ');
-    tracking=el('div','zx-catch-track',[el('span','zx-call-portrait',portrait),el('div','zx-call-copy',[
-      el('small','',caption),el('b','',captureWord),
-    ]),balls],{role:'status','aria-label':caption+' · '+captureWord,'data-paper-surface':'capture-track'});
+    const caption=friend?'招募伙伴':'抓字中';
+    const trait=[shiny?'异色':'',master&&!friend?'大师球':''].filter(Boolean).join(' · ');
+    const title=el('div','zx-catch-title',[el('b','',caption),trait?el('small','',trait):null]);
+    for(const pip of balls.children)pip.dataset.paperSurface='capture-step';
+    tracking=el('div','zx-catch-track',[el('span','zx-call-portrait',portrait),
+      el('div','zx-call-copy',[title,balls]),
+    ],{role:'status','aria-live':'polite','aria-label':[captureWord,caption,trait].filter(Boolean).join(' · '),'data-paper-surface':'capture-track'});
+    for(const bar of film.querySelectorAll('.lb'))bar.remove();
     film.classList.add('zx','zx-capture-focus');film.dataset.uiRegion='capture-stage';
     plate.replaceWith(tracking);hud.root.append(film);
   };
@@ -493,55 +517,27 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     if(!tracking){oldShake(step);return;}
     const balls=tracking.querySelectorAll('.zx-catch-pips i');
     balls.forEach((ball,i)=>ball.classList.toggle('on',i<step));
-    tracking.setAttribute('aria-label',tracking.textContent+' · '+step+'/'+balls.length);
+    tracking.setAttribute('aria-label',captureWord+' · '+tracking.querySelector('.zx-catch-title').textContent+' · '+step+'/'+balls.length);
   };
-  hud.captureEnd=()=>{clearTrack();oldEnd();};
-  let announceFrame=0;
-  function positionAnnouncement(){
-    if(!announcement)return;
-    const screen=run.r.canvas.getBoundingClientRect(),root=hud.root.getBoundingClientRect();
-    const center=flameOpeningBand({x:0,y:0,width:screen.width,height:screen.height});
-    announcement.band=center;
-    const zoom=center.zoom,h=announcement.titleLayout.height;
-    Object.assign(announcement.style,{width:titleWidth*zoom+'px',height:h*zoom+'px',
-      fontSize:titleFont*zoom+'px',lineHeight:titleLine*zoom+'px',
-      left:screen.left-root.left+castTitleLeft(center)+'px',top:screen.top-root.top+center.y-h*zoom/2+'px'});
-  }
-  const clearAnnouncement=()=>{
-    cancelAnimationFrame(announceFrame);window.removeEventListener('resize',positionAnnouncement);
-    announcement?.remove();announcement=null;
-  };
-  hud.ultCutIn=(species,name,tint)=>{
+  hud.captureEnd=()=>{const film=hud.capEl;oldEnd();clearTrack();film?.remove();};
+  let announceTimer=0;
+  const clearAnnouncement=()=>{clearTimeout(announceTimer);announcement?.remove();announcement=null;};
+  hud.ultCutIn=(species,name)=>{
     clearAnnouncement();
-    if(run.ult.castBanner){
-      run.ult.castBanner.name=name;
-      return;
-    }
-    const title=castTitleLayout(name);
-    const plate=el('b','zx-ultimate-call',title.rows.map(row=>el('span','',row)),{role:'status','aria-label':name});
-    announcement=el('div','zx zx-cast-nameplate',[plate],{'data-ui-layer':'ultimate-cutin'});
-    announcement.titleLayout=title;
-    const rgb=run.ult.castBanner?.color;
-    plate.style.color=Number.isFinite(rgb)?'#'+rgb.toString(16).padStart(6,'0'):tint||'#81ceef';
-    hud.root.append(announcement);positionAnnouncement();
-    window.addEventListener('resize',positionAnnouncement);
-    const start=run.ult.castBanner?.start??performance.now();
-    function drawName(){
-      const age=performance.now()-start;
-      if(age>=2000){clearAnnouncement();return;}
-      const pose=castTitlePose(announcement.band,Math.floor(age*.03)/.03,2000),zoom=announcement.band.zoom;
-      announcement.style.clipPath='inset(0 0 0 '+(titleWidth-pose.reveal)*zoom+'px)';
-      plate.style.transform='translateX('+((titleCenter-titleWidth/2+pose.offset)*zoom)+'px)';
-      plate.style.opacity=String(pose.alpha);
-      announceFrame=requestAnimationFrame(drawName);
-    }
-    drawName();
+    announcement=el('div','zx-ultimate-call',[
+      el('span','zx-call-portrait',glyphPreview(species,1)),
+      el('div','zx-call-copy',[el('small','','大招'),el('b','',name)]),
+    ],{role:'status','aria-label':'大招 · '+name,'data-paper-surface':'ultimate-call','data-ui-layer':'ultimate-cutin'});
+    announcement.style.width=Math.min(288,Math.max(198,Array.from(name).length*18+77))+'px';
+    feed.append(announcement);
+    announceTimer=setTimeout(clearAnnouncement,1300);
   };
   hud.captureResult=ok=>{
     if(ok)lastSuccess=session;
     if(tracking){
       const result=ok?'抓字成功':'抓字失败';
-      tracking.querySelector('.zx-call-copy small').textContent=result;
+      tracking.classList.add(ok?'caught':'escaped');
+      tracking.querySelector('.zx-catch-title b').textContent=result;
       tracking.setAttribute('aria-label',captureWord+' · '+result);
       return;
     }
@@ -597,5 +593,5 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
       if(top!==y)marker.style.top=Math.ceil(top)+'px';
     }
   }
-  return {queue,lane,syncEvent,placeTeam,placeMarkers,clearAnnouncement};
+  return {queue,lane,syncEvent,placeTeam,placeMarkers};
 }

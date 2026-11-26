@@ -1,6 +1,6 @@
 import {paintPhotoWaves,paintSettingsSymbol,paperPalette} from './paper-shapes.js';
 import {appearanceGlyphCanvas,drawAppearanceGlyph} from './collection-art.js';
-import {qualityPaper} from './choice-presentation.js';
+import {qualityPaper,upgradeStocks} from './choice-presentation.js';
 const {paper,ink}=paperPalette;
 
 function canvas(width,height,className,pixelRatio=2){
@@ -70,6 +70,12 @@ function wavePrint(ctx,x,y,w,h,tone,photoIndex){
 
 export function photoPaper(index,tone,selected,angle=photoTilt(index),caption=true){
   const {node,ctx}=canvas(68,76,'zc-photo-paper');
+  if(!caption){
+    const notch=index%3;
+    polygon(ctx,[[1,1],[67,1],[66,69],[60,70],[54,69+notch],[46,72],[37,70],[28,72-notch],[20,70],[11,73],[1,72]],selected?paperPalette.yellow:
+      tone==='locked'||tone==='unknown'?'#57535E':'#FFFAEF');
+    return node;
+  }
   ctx.translate(34,38);
   ctx.rotate(angle*Math.PI/180);
   ctx.fillStyle='#4D597338';ctx.fillRect(-30,-33,61,68);
@@ -82,9 +88,17 @@ export function photoPaper(index,tone,selected,angle=photoTilt(index),caption=tr
 }
 
 export function upgradePrint(tone){
-  const {node,ctx}=canvas(68,76,'zx-upgrade-print');
-  ctx.fillStyle=paper;ctx.fillRect(0,0,68,76);
-  wavePrint(ctx,4,4,60,68,tone);
+  const {node,ctx}=canvas(84,84,'zx-upgrade-print');
+  const [face,,ink]=upgradeStocks[tone]||upgradeStocks.special;
+  // A die-cut seal printed on the detachable stub.
+  const seal=[];
+  for(let i=0;i<64;i++){
+    const theta=i*Math.PI/32,r=i%4===0?36:i%4===2?38:37.8;
+    seal.push([42+r*Math.cos(theta),42+r*Math.sin(theta)]);
+  }
+  polygon(ctx,seal,face);
+  ctx.strokeStyle=ink;ctx.lineWidth=1;ctx.globalAlpha=.53;
+  ctx.beginPath();ctx.arc(42,42,31,0,2*Math.PI);ctx.stroke();
   return node;
 }
 
@@ -196,7 +210,7 @@ export function pausePagePrint(){
 export function battleDialogHeading(title,subtitle=''){
   const header=document.createElement('header');
   header.className='zx-paper-upgrade-head'+(subtitle?'':' single-line');
-  title.dataset.paperText='outlined';
+
   const length=Array.from(title.textContent.trim()).length;
   const available=Math.max(120,(globalThis.window?.innerWidth||390)-64);
   const span=Math.min(available,Math.max(202,length*(length>9?20:28)+80));
@@ -215,10 +229,9 @@ export function battleDialogFrame(content,title,subtitle=''){
 export function upgradeRibbons(width=202){
   const {node,ctx}=canvas(width,42,'zx-upgrade-ribbons');
   node.style.width=width+'px';
-  for(const [inset,y,h,fill] of [[20,13,9,'#566580'],[20,11,7,'#EEEFF7'],[31,21,6,'#C5D8EF'],[51,29,4,'#8BA2C7']]){
-    ctx.fillStyle=fill;ctx.beginPath();ctx.roundRect(inset,y,width-inset*2,h,h/2);ctx.fill();
-  }
-  for(const x of [12,width-12])polygon(ctx,[[x-9,16],[x-2,14],[x,11],[x+2,14],[x+9,16],[x+2,18],[x,21],[x-2,18]],'#F4F3F8');
+  polygon(ctx,[[8,9],[width-10,4],[width-17,16],[width-9,17],[width-22,33],[5,37],[13,25],[6,24]],'#EEC659');
+  polygon(ctx,[[6,5],[width-5,2],[width-15,14],[width-8,14],[width-20,29],[2,32],[10,19],[3,20]],'#322C37');
+  polygon(ctx,[[13,9],[27,8],[22,12],[11,13]],'#EEC659');
   return node;
 }
 
@@ -279,15 +292,11 @@ export function evolutionResult(from,to,look){
 
 export function arrivalPennant(){
   const {node,ctx}=canvas(248,52,'zx-arrival-face');
-  polygon(ctx,[[9,4],[246,4],[234,23],[244,45],[25,49],[8,42]],'#809ABF');
-  polygon(ctx,[[13,1],[243,1],[231,23],[240,42],[23,45],[9,39]],'#344B70');
-  polygon(ctx,[[13,1],[243,1],[237,8],[14,8]],'#415B80');
-  polygon(ctx,[[4,5],[53,3],[47,41],[6,45],[1,38]],'#DFE7F2');
-  polygon(ctx,[[6,45],[47,41],[44,47],[11,50]],'#91A7C2');
-  polygon(ctx,[[10,24],[42,10],[33,33],[25,27],[19,35],[19,27]],'#6889AE');
-  polygon(ctx,[[10,24],[42,10],[21,25]],'#F3F1FA');
-  polygon(ctx,[[21,25],[42,10],[25,28],[19,35]],'#A6BEDA');
-  polygon(ctx,[[197,2],[207,2],[202,7],[192,7]],'#CF8590');
+  polygon(ctx,[[4,7],[245,3],[236,15],[242,14],[229,44],[4,50],[9,41],[1,42]],'#29252E');
+  polygon(ctx,[[2,9],[46,6],[39,43],[0,47]],'#F3CA58');
+  polygon(ctx,[[9,26],[36,13],[28,35],[21,29],[16,35],[17,28]],'#302B34');
+  polygon(ctx,[[10,26],[36,13],[20,26]],'#FFF4D6');
+  polygon(ctx,[[51,45],[226,39],[223,43],[51,48]],'#EFC554');
   return node;
 }
 
@@ -316,30 +325,21 @@ export function disclosureArrow(open){
 export function paperIcon(name){
   if(name==='dismiss'){
     const {node,ctx}=canvas(72,53,'paper-dismiss-art');
-    const edge=[[8,1],[63,1],[71,9],[71,41],[64,48],[8,48],[1,41],[1,8]];
-    ctx.save();ctx.translate(0,3);polygon(ctx,edge,'#617591');ctx.restore();
-    polygon(ctx,edge,'#E8EAF5','#9CAFC7');
-    polygon(ctx,[[12,5],[25,5],[21,9],[8,9]],'#C7D6E8');
-    ctx.translate(12,1);
-    polygon(ctx,[[16,13],[24,21],[32,13],[35,16],[27,24],[35,32],[32,35],[24,27],[16,35],[13,32],[21,24],[13,16]],'#364862');
+    polygon(ctx,[[7,3],[71,3],[64,49],[0,49]],paperPalette.darkStock);
+    ctx.strokeStyle=paperPalette.warmWhite;ctx.lineWidth=5;ctx.lineCap='butt';
+    ctx.beginPath();ctx.moveTo(27,17);ctx.lineTo(45,35);ctx.moveTo(45,17);ctx.lineTo(27,35);ctx.stroke();
     return node;
   }
   if(name==='back'){
     const {node,ctx}=canvas(72,53,'zx-paper-icon paper-back-art');
-    const outline=(top,bottom,fill)=>polygon(ctx,[[5,top],[67,top],[71,top+4],[71,bottom-5],[66,bottom],[6,bottom],[1,bottom-5],[1,top+4]],fill);
-    outline(3,52,'#A4A4BD');
-    outline(2,50.5,'#C1C7EA');
-    const face=ctx.createLinearGradient(0,0,72,47);
-    face.addColorStop(0,'#EAEAF7');face.addColorStop(1,'#E3E5F4');
-    outline(.5,47,face);
-    polygon(ctx,[[23,24.5],[47,11.5],[43.5,24.5],[47,37.5]],'#21203B');
+    polygon(ctx,[[7,3],[71,3],[64,49],[0,49]],paperPalette.darkStock);
+    polygon(ctx,[[23,26],[46,14],[41,26],[45,36]],paperPalette.warmWhite);
     return node;
   }
   if(name==='settings'){
     const {node,ctx}=canvas(44,44,'zx-paper-icon');
-    polygon(ctx,[[10,2],[34,2],[43.5,11],[43.5,34],[34,43.5],[10,43.5],[.5,34],[.5,11]],'#4F88CB');
-    polygon(ctx,[[10,.5],[34,.5],[43.5,10],[43.5,32],[34,41],[10,41],[.5,32],[.5,10]],paper,'#7F90B3');
-    paintSettingsSymbol(ctx,9.5,8,25);
+    ctx.fillStyle=paperPalette.darkStock;ctx.beginPath();ctx.arc(22,22,21,0,2*Math.PI);ctx.fill();
+    paintSettingsSymbol(ctx,10,10,24,paperPalette.warmWhite);
     return node;
   }
   const {node,ctx}=canvas(32,28,'zx-paper-icon');
@@ -393,26 +393,29 @@ export function paperIcon(name){
 
 export function albumPhotoMount(){
   const {node,ctx}=canvas(200,235,'zc-photo-mount-art');
-  polygon(ctx,[[2,0],[194,0],[200,9],[200,235],[6,235],[0,227]],'#D8E4F1');
-  ctx.fillStyle='#BBCDE0';ctx.fillRect(5,225,183,1);
-  polygon(ctx,[[0,25],[25,0],[12,0],[0,12]],'#7795B7');
-  polygon(ctx,[[175,235],[200,210],[200,223],[188,235]],'#7795B7');
+  polygon(ctx,[[2,0],[194,0],[200,9],[200,235],[6,235],[0,227]],'#DDD4C4');
+  ctx.fillStyle='#AFA499';ctx.fillRect(5,225,183,1);
+  polygon(ctx,[[0,25],[25,0],[12,0],[0,12]],'#B39D75');
+  polygon(ctx,[[175,235],[200,210],[200,223],[188,235]],'#B39D75');
   return node;
 }
 
 export function albumPreviewCorners(){
   const {node,ctx}=canvas(103,112,'zc-preview-corners');
-  ctx.strokeStyle='#427AB8';ctx.lineWidth=2;
+  ctx.strokeStyle='#97651D';ctx.lineWidth=2;
   for(const [x,y,dx,dy] of [[1,1,1,1],[102,1,-1,1],[1,111,1,-1],[102,111,-1,-1]]){
     ctx.beginPath();ctx.moveTo(x+dx*13,y);ctx.lineTo(x,y);ctx.lineTo(x,y+dy*13);ctx.stroke();
   }
   return node;
 }
 
-export function stagePortrait(character,appearance=null,large=false){
+export function stagePortrait(character,appearance=null,large=false,stock='flat'){
   const portrait=document.createElement('span');
-  portrait.className='paper-stage-photo paper-portrait';portrait.dataset.paperSurface='flat';
-  const print=document.createElement('img');print.src='assets/ui-paper/stage-portrait.webp';print.alt='';
+  portrait.className='paper-stage-photo paper-portrait';portrait.dataset.paperSurface=stock;
+  if(stock==='flat'){
+    const print=document.createElement('img');print.src='assets/ui-paper/stage-portrait.webp';print.alt='';
+    portrait.append(print);
+  }
   const scale=large?2:1;
   const {node,ctx}=canvas(94*scale,106*scale,'paper-photo-glyph');
   ctx.scale(scale,scale);
@@ -420,7 +423,7 @@ export function stagePortrait(character,appearance=null,large=false){
   const glyph=large?drawAppearanceGlyph(document.createElement('canvas'),character.word,character.tone,appearance,true)
     :appearanceGlyphCanvas(character.word,character.tone,appearance);
   ctx.drawImage(glyph,-34,-34,68,68);
-  portrait.append(print,node);portrait.setAttribute('aria-label',character.word);
+  portrait.append(node);portrait.setAttribute('aria-label',character.word);
   return portrait;
 }
 
@@ -447,10 +450,8 @@ export function choiceMark(state){
 
 export function titleRibbon(){
   const {node,ctx}=canvas(210,40,'zc-title-ribbon');
-  polygon(ctx,[[0,5],[209,5],[192,22],[209,39],[0,39]],'#863A4B');
-  const red=ctx.createLinearGradient(0,0,210,40);
-  red.addColorStop(0,paperPalette.titleStart);red.addColorStop(1,paperPalette.titleEnd);
-  polygon(ctx,[[0,1],[209,1],[192,20],[209,37],[0,37]],red);
+  polygon(ctx,[[0,5],[208,2],[196,32],[0,39]],paperPalette.yellow);
+  polygon(ctx,[[0,2],[209,0],[200,12],[205,11],[195,32],[0,37]],paperPalette.darkStock);
   return node;
 }
 export function hudPaperIcon(name,size=22){

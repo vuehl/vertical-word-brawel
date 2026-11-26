@@ -26,9 +26,18 @@ export function paint(layout,boxes,view,scale) {
   // Scenic menus animate only their composited opacity. Cached layout boxes
   // and their hit geometry can stay valid while the camera moves at frame rate.
   const scenic=fullPage?.el,fade=!scenic?._journeyCamera&&scenic?._journeyFade;
+  let angles;
   ctx.translate(view.x,view.y);
   for(const b of boxes) {
     const {x,y,w,h,s,el,tag,clip}=b;
+    // Rotate the printed face and its label around one pivot. Input keeps the full layout box.
+    let print;
+    const degrees=el.dataset?.printAngle;
+    if(degrees&&!angles)angles=new Map();
+    if(angles){
+      print=degrees?{cx:x+w/2,cy:y+h/2,angle:Number(degrees)*Math.PI/180}:angles.get(el.parentNode);
+      if(print)angles.set(el,print);
+    }
     let alpha=b.opacity;
     if(fade&&(b===fullPage||scenic.contains(el))){
       alpha*=fade.scene;
@@ -76,6 +85,9 @@ export function paint(layout,boxes,view,scale) {
       ?Math.min(parseFloat(s.vars['--paper-tail'])||0,Math.max(0,view.height-view.y-view.h-8)):0;
     ctx.save();ctx.beginPath();ctx.rect(clip.x,clip.y,clip.r-clip.x,clip.b+tail-clip.y);ctx.clip();
     ctx.globalAlpha=alpha;
+    if(print){
+      ctx.translate(print.cx,print.cy);ctx.rotate(print.angle);ctx.translate(-print.cx,-print.cy);
+    }
     // Body sits behind the WebGL canvas in the desktop stacking order.
     if(tag!=='body'&&tag!=='#text'&&!drawUiPaper(ctx,tail?{...b,h:h+tail}:b)){
       const bg=fullBackdrop?null:background(ctx,s,b),border=s.border||'',line=parseFloat(border)||0;
@@ -112,8 +124,9 @@ export function paint(layout,boxes,view,scale) {
       const lines=b.singleLine?[text]:layout.wrap(text,w,s),lh=h/Math.max(1,lines.length);
       const side=s['text-align'];ctx.textAlign=side==='center'?'center':side==='right'?'right':'left';
       const tx=side==='center'?x+w/2:side==='right'?x+w:x;
-      const outlined=el.parentNode?.dataset?.paperText==='outlined';
-      if(outlined){ctx.strokeStyle='#F3F1FA';ctx.lineJoin='round';ctx.lineWidth=3;}
+      const labelStyle=el.parentNode?.dataset?.paperText;
+      const outlined=labelStyle==='outlined'||labelStyle==='ticket';
+      if(outlined){ctx.strokeStyle=labelStyle==='ticket'?'#E8B73E':'#F3F1FA';ctx.lineJoin='round';ctx.lineWidth=labelStyle==='ticket'?2.5:3;}
       lines.forEach((line,i)=>{
         const ty=y+(i+.5)*lh;
         if(outlined)ctx.strokeText(line,tx,ty,w);
@@ -145,13 +158,13 @@ export function paint(layout,boxes,view,scale) {
       if(el.type==='range'){
         const {min,max}=rangeBounds(el),f=max>min?(+el.value-min)/(max-min):0;
         const zixing=el.classList.contains('zx-range'),progress=w*Math.max(0,Math.min(1,f));
-        ctx.fillStyle=zixing?'#CDD9F1':'#bcb6c9';ctx.fillRect(x,y+h/2-3,w,6);
-        ctx.fillStyle='#3a8cff';ctx.fillRect(x,y+h/2-3,progress,6);
+        ctx.fillStyle=zixing?'#BEB3A0':'#bcb6c9';ctx.fillRect(x,y+h/2-3,w,6);
+        ctx.fillStyle=zixing?'#EEC659':'#3a8cff';ctx.fillRect(x,y+h/2-3,progress,6);
         ctx.beginPath();
         if(zixing){const tx=x+Math.max(8,Math.min(w-8,progress)),ty=y+h/2;ctx.moveTo(tx-7,ty-8);ctx.lineTo(tx+8,ty-8);ctx.lineTo(tx+8,ty+4);ctx.lineTo(tx+4,ty+8);ctx.lineTo(tx-8,ty+8);ctx.lineTo(tx-8,ty-4);ctx.closePath();}
         else ctx.arc(x+progress,y+h/2,6,0,2*Math.PI);
-        ctx.fillStyle=zixing?'#F3F1FA':'#3a8cff';ctx.fill();
-        if(zixing){ctx.strokeStyle='#326FE4';ctx.lineWidth=2;ctx.stroke();}
+        ctx.fillStyle=zixing?'#FFF8E9':'#3a8cff';ctx.fill();
+        if(zixing){ctx.strokeStyle='#403930';ctx.lineWidth=2;ctx.stroke();}
       }else if(el.type==='checkbox'){ctx.fillText(el.checked?'☑':'☐',x,y+h*.75);}
       else ctx.fillText(el.value||el.placeholder||'',x+3,y+h*.7);
     }

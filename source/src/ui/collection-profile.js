@@ -45,30 +45,21 @@ function routes(id,actor,api){
   });
 }
 // Both faces share the same paper edge and the raised tab in its upper right.
-function indexPaper(c,face,modeLevels){
-  shape(c,[[1,12],[5,8],[252,8],[259,1],[352,1],[359,7],[359,78],[355,82],[1,82]],'#9AAFC4');
-  shape(c,[[1,10],[5,6],[252,6],[259,0],[352,0],[359,6],[359,77],[355,79],[1,79]],'#EDF1F6');
-  shape(c,[[247,6],[252,6],[259,0],[352,0],[359,6],[359,27],[249,27],[243,22]],'#D8E4EF');
-  shape(c,[[352,0],[359,6],[352,6]],'#A4B9CE');
-  c.fillStyle='#BCCDDC';c.fillRect(12,32,336,1);
-  c.fillStyle='#B86F7D';c.fillRect(13,13,3,12);
-  text(c,face==='stats'?'开局属性 ›':modeLevels?'进阶路线（单关 / 多关）':'进阶路线',22,19.5,14,'#2D435D','bold');
-  c.strokeStyle='#506A85';c.lineWidth=1.5;c.lineJoin='round';c.lineCap='round';
-  c.beginPath();c.moveTo(260,10);c.lineTo(273,10);c.lineTo(269.5,7);
-  c.moveTo(273,16);c.lineTo(260,16);c.lineTo(263.5,19);c.stroke();
-  text(c,face==='stats'?'进阶路线':'开局属性',310,14,12,'#385671','bold','center');
+function indexPaper(c){
+  c.fillStyle='#F1EBDF';c.fillRect(0,0,360,82);
+  c.fillStyle='#BFB6A5';for(let x=4;x<358;x+=5)c.fillRect(x,79,2,1);
 }
 function drawAttributes(c,stats,base){
   const labels=[];
   attributes.forEach(([label,name,format],i)=>{
     const col=i%3,x=13+col*114,y=i<3?46:66;
     const current=stats?format(stats):'—';
-    text(c,label,x,y,12,'#475D75');
+    text(c,label,x,y,12,'#62594D');
     const changed=base&&current!==format(base);
-    text(c,current,x+102,y,12,changed?'#356D58':'#2D435D','bold','right');
+    text(c,current,x+102,y,12,changed?'#356D58':'#302A31','bold','right');
     labels.push(name+' '+current);
   });
-  for(const x of [119,233]){c.fillStyle='#D1DBE4';c.fillRect(x,41,1,31);}
+  for(const x of [119,233]){c.fillStyle='#CDC1AC';c.fillRect(x,41,1,31);}
   return labels.join('，');
 }
 function drawRoute(c,id,rows){
@@ -76,11 +67,9 @@ function drawRoute(c,id,rows){
     const word=wordFor(species);c.drawImage(glyphCanvas(word,glyphTone(word)),x-size/2,y-size/2,size,size);
   };
   const link=(level,x,y,width)=>{
-    const label=level==null?'':'Lv.'+level;
-    text(c,label,x,y,11,'#586C82','bold');
-    const start=x+(label?Math.ceil(c.measureText(label).width)+5:0),end=x+width;
-    c.fillStyle='#91A7BC';c.fillRect(start,y-.5,end-start-4,1);
-    shape(c,[[end-5,y-3],[end,y],[end-5,y+3]],'#8198AE');
+    if(level!=null)text(c,'Lv.'+level,x,y,11,'#62594D','bold');
+    const cx=level==null?x+width/2:x+width-14;
+    shape(c,[[cx-12,y-2],[cx+2,y-3],[cx,y-7],[cx+13,y],[cx,y+7],[cx+2,y+2],[cx-14,y+3]],'#57535E');
   };
   if(!rows.length){
     if(id!=null)stamp(id,34,56,30);
@@ -96,7 +85,7 @@ function drawRoute(c,id,rows){
     c.stroke();
     rows.forEach((r,i)=>{
       const x=centers[i];stamp(r.mid,x-12,62,25);
-      if(r.level!=null)text(c,'Lv.'+r.level,x+4,62,11,'#586C82','bold');
+      if(r.level!=null)text(c,'Lv.'+r.level,x+4,62,11,'#62594D','bold');
     });
     return;
   }
@@ -115,12 +104,13 @@ function drawRoute(c,id,rows){
 }
 export function profilePrint(id,actor,api,face){
   const {art,ctx}=paper(360,82,'journey-profile-print');
-  indexPaper(ctx,face,actor?.singleStageEvoLevels);
+  indexPaper(ctx);
   let label;
   if(face==='stats'){
     const stats=id==null?null:api.startingStats(id);
     const base=id==null?null:api.startingStats(id,false);
     label='开局属性，'+drawAttributes(ctx,stats,base);
+    if(stats)text(ctx,'›',354,56,13,'#776B5A','bold','center');
   }else{
     const rows=routes(id,actor,api);
     if(actor?.singleStageEvoLevels)for(const row of rows){

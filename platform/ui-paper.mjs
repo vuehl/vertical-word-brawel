@@ -1,5 +1,5 @@
 import {paintPaperWaves as blueWaves,paintPhotoWaves,paperPalette} from '../source/src/ui/paper-shapes.js';
-import {qualityPaper} from '../source/src/ui/choice-presentation.js';
+import {qualityPaper,upgradeStocks} from '../source/src/ui/choice-presentation.js';
 const white=paperPalette.paper;
 
 function gradient(ctx,w,h,top,bottom){
@@ -76,18 +76,65 @@ export function drawUiPaper(ctx,box){
   }
   // HUD cell faces use the same CSS paint on web and native, including empty and overflow slots.
   if(!key||key==='hud-cell')return false;
+  if(['button','button-muted','card','info-slip','filter'].includes(key)&&el.closest?.('.collection-journal,.lab-overlay,.paper-prompt-overlay')){
+    if(key==='button'||key==='button-muted')key='menu-action';
+    else if(key==='filter')key='profile-switch';
+    else key='destination-cover';
+  }
   const [edge,top,bottom,accent,badge]=qualityPaper[el.dataset.quality]||qualityPaper.special;
   ctx.save();
   ctx.translate(x,y);
   switch(key){
+    case 'journal-cover':
+      ctx.fillStyle='#38343D';ctx.fillRect(0,0,w,h);
+      poly(ctx,[[w*.73,0],[w,0],[w,h*.18],[w*.81,h*.13]],'#423D46');
+      break;
+    case 'menu-action':{
+      const primary=has('primary')||has('zc-primary');
+      poly(ctx,[[4,0],[w,0],[w-4,h],[0,h]],el.disabled?'#B6B0AB':primary?paperPalette.yellow:'#E5DDCF');
+      break;
+    }
+    case 'journal-button':
+      poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],el.disabled?'#B6B0AB':paperPalette.yellow);break;
+    case 'atlas-sheet':
+      poly(ctx,[[0,4],[w*.3,0],[w*.66,4],[w-3,1],[w,h-7],[w*.7,h-3],[w*.35,h-6],[3,h]],'#E9E2D1');break;
+    case 'atlas-heading':
+      ctx.fillStyle='#A89D88';for(let i=5;i<w-5;i+=5)ctx.fillRect(i,h-1,3,1);break;
+    case 'atlas-zone':
+      poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],'#302A31');break;
+    case 'album-filter':
+      if(el.getAttribute('aria-pressed')==='true'){
+        poly(ctx,[[4,0],[w,0],[w-4,5],[w-1,4],[w-10,h],[0,h]],paperPalette.yellow);
+      }
+      break;
+    case 'bound-index': {
+      const gap=8,edge=w-2;
+      ctx.beginPath();ctx.moveTo(1,2);ctx.lineTo(edge-18,0);ctx.lineTo(edge-14,4);ctx.lineTo(edge-12,1);ctx.lineTo(edge,2);
+      for(let y=55;y<h-16;y+=86){
+        ctx.lineTo(edge,y);ctx.lineTo(edge-gap,y);ctx.arc(edge-gap-2,y,2.5,0,Math.PI*2,true);ctx.lineTo(edge,y+1);
+      }
+      ctx.lineTo(edge,h-4);ctx.lineTo(w-18,h-4);ctx.lineTo(w-20,h-1);ctx.lineTo(0,h);ctx.closePath();
+      ctx.fillStyle=(has('route-binding')||has('selection-binding'))?'#FBF5E8':'#F1EBDF';ctx.fill();
+      ctx.strokeStyle='#79746F';ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(8,6);ctx.lineTo(19,4);ctx.moveTo(w-36,4);ctx.lineTo(w-24,5);ctx.stroke();
+      break;
+    }
+    case 'profile-switch':{
+      const on=el.getAttribute('aria-pressed')==='true'||has('active');
+      ctx.fillStyle=on?paperPalette.yellow:'#57535E';ctx.fillRect(1,1,w-2,h-2);
+      if(on){ctx.strokeStyle=paperPalette.darkStock;ctx.strokeRect(4,4,w-8,h-8);}
+      break;
+    }
     case 'flat':break;
     case 'destination-ribbon':
-      poly(ctx,[[0,3],[w-1,3],[w-8,h/2+1],[w-2,h],[0,h]],'#6A5368');
-      poly(ctx,[[0,0],[w,0],[w-8,h/2],[w-2,h-3],[0,h-3]],'#A05C6D');break;
-    case 'destination-cover':
-      cut(ctx,4,5,w-4,h-5,9,'#6787A9');cut(ctx,0,0,w-3,h-6,7,'#EDF0F7');
-      poly(ctx,[[w-43,h-6],[w-21,h-6],[w-9,h-17],[w-25,h-17]],'#B0C5DA');
+      poly(ctx,[[0,0],[w,0],[w-8,h],[0,h]],paperPalette.darkStock);break;
+    case 'difficulty-segment': {
+      const on=el.getAttribute('aria-pressed')==='true';
+      if(on)cut(ctx,1,2,w-2,h-4,2,'#EFC554');
+      else{ctx.fillStyle='#C4B9AB';ctx.fillRect(0,h*.30,1,h*.40);}
       break;
+    }
+    case 'destination-cover':
+      cut(ctx,0,0,w,h,5,'#EEE8DC');break;
     case 'route-station':
     case 'route-mode': {
       const station=key==='route-station',selected=el.getAttribute('aria-pressed')==='true',k=station?4:5;
@@ -98,48 +145,36 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'unlock-record': {
-      cut(ctx,1,4,w-1,h-4,8,'#7189A9');
-      cut(ctx,0,0,w,h-4,8,'#F3F1FA');
+      cut(ctx,1,4,w-1,h-4,8,'#93897C');
+      cut(ctx,0,0,w,h-4,8,'#F1EBDF');
       // The short folded index is printed into the paper, above the challenge.
-      poly(ctx,[[0,16],[92,16],[85,30],[92,44],[0,44]],'#D6E2F1');
-      poly(ctx,[[0,44],[8,44],[8,48]],'#94AAC5');
+      poly(ctx,[[0,16],[92,16],[85,30],[92,44],[0,44]],'#EEC659');
+      poly(ctx,[[0,44],[8,44],[8,48]],'#A38C54');
       for(let i=0;i<3;i++){
         const x=w-47+i*9;
-        poly(ctx,[[x,15],[x+5,15],[x+1,21],[x-4,21]],i===1?'#B67B85':'#A7BBD1');
+        poly(ctx,[[x,15],[x+5,15],[x+1,21],[x-4,21]],i===1?'#AC823B':'#C3B9A7');
       }
       break;
     }
     case 'station-index-row':
-      ctx.fillStyle='#CFD9E5';ctx.fillRect(9,h-1,w-18,1);
+      ctx.fillStyle='#E7E1D7';ctx.fillRect(0,1,w,h-3);
       break;
     case 'journey-stations':
-      cut(ctx,0,2,w,h-2,5,'#A4B6CA');
-      cut(ctx,0,0,w,h-3,5,'#EEF1F6');
-      poly(ctx,[[0,5],[5,0],[89,0],[81,20],[0,20]],'#D4DFEC');
-      ctx.fillStyle='#859EBB';ctx.fillRect(8,6,3,9);
+      ctx.fillStyle='#847B76';for(let x=83;x<w-4;x+=4)ctx.fillRect(x,10,1.5,1.5);
       break;
-    case 'shop-ledger': {
-      // Cloth spine, paper fore-edge and the dark balance stub of a pocket ledger.
-      cut(ctx,0,3,w,h-3,5,'#536681');
-      cut(ctx,0,0,w,h-4,5,'#384D68');
-      poly(ctx,[[13,2],[w-82,2],[w-91,h-7],[13,h-7]],'#DAE3EC');
-      ctx.fillStyle='#99AEC3';ctx.fillRect(11,3,2,h-10);
-      for(const y of [12,h-16]){
-        cut(ctx,4,y,12,3,1,'#B3C2CF');
-      }
-      break;
+    case 'trade-action': {
+      const primary=has('primary')||has('armed');
+      const fill=el.disabled?'#C9C2C6':primary?'#F1C654':'#2B262E';
+      const inset=has('zx-shop-action')||has('zx-fuse-action')?6:2;
+      poly(ctx,[[5,inset],[w,inset],[w-5,h-inset],[0,h-inset]],fill);break;
     }
-    case 'shop-index-tab': {
-      const selected=el.getAttribute('aria-pressed')==='true';
-      if(selected){
-        poly(ctx,[[0,5],[5,0],[w-4,0],[w,4],[w,h-2],[0,h-2]],'#A46978');
-        poly(ctx,[[0,5],[5,0],[w-4,0],[w,4],[w,h-6],[0,h-6]],'#F0DFE1');
-        poly(ctx,[[w-13,0],[w-4,0],[w,4],[w,9]],'#D0A0AA');
-      }else{
-        ctx.fillStyle='#ACBBCB';ctx.fillRect(w-1,8,1,h-17);
-      }
+    case 'short-ink':
+      poly(ctx,[[0,0],[w,0],[w,h-10],[w-10,h],[0,h]],'#2B262E');break;
+    case 'shop-ledger':
+      ctx.fillStyle='#2B262E';ctx.fillRect(0,0,w,h);break;
+    case 'shop-index-tab':
+      if(el.getAttribute('aria-pressed')==='true')poly(ctx,[[5,3],[w-2,3],[w-6,h-3],[1,h-3]],'#F1C654');
       break;
-    }
     case 'arrival-heading': {
       const wash=ctx.createLinearGradient(0,0,w,0);
       wash.addColorStop(0,'rgba(51,76,101,0)');
@@ -170,22 +205,27 @@ export function drawUiPaper(ctx,box){
       poly(ctx,[[0,8],[8,0],[86,0],[76,h-4],[8,h-4],[0,h-12]],'#B3C8DF');
       poly(ctx,[[w-38,0],[w-26,0],[w-33,7],[w-45,7]],'#869FBB');
       break;}
-    case 'shop-offer':
-      cut(ctx,0,3,w,h-3,6,edge);cut(ctx,0,0,w,h-4,6,top);
-      poly(ctx,[[0,6],[5,1],[5,h-5],[0,h-10]],accent);break;
+    case 'shop-offer': {
+      const [stock,print]=upgradeStocks[el.dataset.quality]||upgradeStocks.common;
+      ctx.fillStyle='#2B262E';ctx.fillRect(0,0,w,h);ctx.fillStyle=stock;ctx.fillRect(2,2,w-4,h-4);
+      ctx.fillStyle=print;ctx.fillRect(2,2,Math.round(w*.23),h-4);break;
+    }
     case 'item-offer':
-      cut(ctx,0,3,w,h-3,5,edge);cut(ctx,0,0,w,h-4,5,top);
+      cut(ctx,0,3,w,h-3,4,'#483F48');cut(ctx,0,0,w,h-4,4,top);
       poly(ctx,[[0,5],[5,0],[70,0],[60,h-4],[5,h-4],[0,h-9]],bottom);
       poly(ctx,[[0,5],[5,0],[10,0],[7,h-4],[5,h-4],[0,h-9]],accent);break;
     case 'scene-bulletin': {
-      const vars=box.s.vars;
-      cut(ctx,0,3,w,h-3,6,vars?.['--notice-edge']||'#8298B5');
-      cut(ctx,0,0,w,h-3,6,vars?.['--notice-face']||'#E9EEF7');
-      poly(ctx,[[0,6],[6,0],[13,0],[8,h-3],[5,h-3],[0,h-8]],vars?.['--notice-ink']||'#7193BC');break;
+      poly(ctx,[[4,1],[w-1,0],[w-8,h-3],[0,h]],'#302A33');
+      poly(ctx,[[4,1],[9,1],[5,h],[0,h]],'#EFC554');break;
     }
-    case 'capture-track':
-      cut(ctx,0,2,w,h-2,6,'#5C769B');cut(ctx,0,0,w,h-3,6,'#E5EBF4');
-      poly(ctx,[[0,6],[6,0],[52,0],[43,h-3],[5,h-3],[0,h-10]],'#C5D8EA');break;
+    case 'capture-track': {
+      const accent=has('escaped')?'#ED927E':'#EFC554';
+      poly(ctx,[[5,0],[w,0],[w,h-11],[w-11,h],[0,h],[0,5]],'#2B262E');
+      poly(ctx,[[5,2],[74,2],[63,h-4],[2,h-4],[2,6]],'#F0E8D5');
+      poly(ctx,[[2,h-8],[63,h-8],[62,h-3],[2,h-3]],accent);break;
+    }
+    case 'capture-step':
+      poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],has('on')?'#EFC554':'#49434D');break;
     case 'ultimate-call': {
       const shape=[[0,6],[8,0],[w-12,0],[w,h*.5],[w-16,h-5],[7,h-3],[0,h-11]];
       ctx.save();ctx.translate(0,3);poly(ctx,shape,'#7894BE');ctx.restore();poly(ctx,shape,'#344967');
@@ -194,56 +234,51 @@ export function drawUiPaper(ctx,box){
       poly(ctx,[[w-10,8],[w-1,h*.5],[w-15,h-6],[w-23,h-6],[w-9,h*.5],[w-15,11]],'#526D90');
       const x=w-24,y=h*.5;poly(ctx,[[x-5,y],[x-1,y-1],[x,y-6],[x+2,y-1],[x+6,y],[x+1,y+2],[x,y+6],[x-1,y+2]],'#BBD0E8');break;
     }
-    case 'fusion-slip': {
-      const unavailable=has('unavailable');
-      const spine=unavailable?'#9CA1AA':has('selected')?'#537CB6':'#91A8C4';
-      cut(ctx,0,3,w,h-3,8,unavailable?'#8A8F99':'#596C89');
-      cut(ctx,0,0,w,h-4,8,unavailable?'#D8DADF':'#EAEFF6');
-      poly(ctx,[[0,8],[8,0],[12,0],[12,h-5],[7,h-5],[0,h-12]],spine);
-      for(const y of [22,32]){
-        ctx.fillStyle='#53667D';ctx.fillRect(4,y+1,14,3);
-        ctx.fillStyle='#BCCDDD';ctx.fillRect(4,y,14,2);
-      }
-      poly(ctx,[[w-15,h-4],[w-2,h-17],[w-2,h-11],[w-9,h-4]],unavailable?'#B3B6BD':'#B0C2D7');break;
+    case 'fusion-slip':
+      ctx.fillStyle='#2B262E';ctx.fillRect(0,0,w,h);ctx.fillStyle=has('unavailable')?'#DAD6D8':'#FAE8AD';ctx.fillRect(2,2,w-4,h-4);break;
+    case 'fusion-plus':
+      poly(ctx,[[5,1],[8,1],[7,4],[11,4],[10,7],[7,7],[6,11],[3,11],[4,7],[1,7],[2,4],[5,4]],'#63564C');break;
+    case 'fusion-rail': {
+      ctx.fillStyle=has('unavailable')?'#B8B3BA':'#EAC255';ctx.fillRect(0,0,w,h);
+      poly(ctx,[[0,h*.68],[w,h*.32],[w,h*.48],[0,h*.84]],has('unavailable')?'#C5C0C6':'#F3D177');break;
     }
-    case 'fusion-mark':
-      cut(ctx,1,4,w-2,h-4,5,'#8298B6');cut(ctx,0,0,w-2,h-4,5,'#D0DFEE');
-      poly(ctx,[[0,h-12],[w*.47,h-16],[w-8,h-6],[w-12,h-4],[5,h-4]],'#ABC3DE');break;
     case 'scene-action':
-      cut(ctx,0,2,w,h-2,6,'#546D91');cut(ctx,0,0,w,h-3,6,'#A8BBD1');cut(ctx,1,1,w-2,h-5,5,'#ECEDF6');
-      poly(ctx,[[3,9],[10,2],[19,2],[12,9]],has('zx-act-poor')?'#C98692':'#A5BDD9');
+      ctx.translate(w/2,h/2);ctx.rotate(-Math.PI/60);ctx.translate(-w/2,-h/2);
+      // Support the fingerprint cut-outs on a dark ink backing, even over bright terrain.
+      poly(ctx,[[4,5],[w-7,3],[w-1,7],[w-3,h-3],[5,h-1],[1,h-6]],'#29242D');
+      poly(ctx,[[5,5],[w-6,4],[w-5,h-8],[4,h-7]],'#635137');
       break;
     case 'album-page':
     case 'move-paper':
-      cut(ctx,0,2,w,h-2,7,'#819CBB');
-      cut(ctx,0,0,w,h-3,7,'#F3F1FA');
+      cut(ctx,0,2,w,h-2,7,'#93897C');
+      cut(ctx,0,0,w,h-3,7,'#F1EBDF');
       break;
     case 'plan-sheet': {
       // Ruled notebook margin and the torn bottom edge of the reference sheet.
-      ctx.fillStyle='#92A9C4';ctx.fillRect(0,3,w,h-3);
+      ctx.fillStyle='#938B80';ctx.fillRect(0,3,w,h-3);
       ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(w,0);ctx.lineTo(w,h-6);
       for(let x=w;x>0;x-=10){
         ctx.lineTo(Math.max(0,x-5),h-2);ctx.lineTo(Math.max(0,x-10),h-6);
       }
-      ctx.closePath();ctx.fillStyle=white;ctx.fill();
-      ctx.fillStyle='#DDC4CD';ctx.fillRect(11,10,1,h-23);
+      ctx.closePath();ctx.fillStyle='#F1EBDF';ctx.fill();
+      ctx.fillStyle='#D8B651';ctx.fillRect(11,10,1,h-23);
       ctx.fillStyle='#A7B9D1';
       for(let y=29;y<h-12;y+=76){ctx.beginPath();ctx.arc(6,y,1.7,0,Math.PI*2);ctx.fill();}
       break;
     }
     case 'lab-balance':
-      cut(ctx,0,3,w,h-3,6,'#2F415D');cut(ctx,0,0,w,h-3,6,'#49678C');
-      poly(ctx,[[0,6],[6,0],[75,0],[59,h-3],[6,h-3],[0,h-9]],'#3C567B');
+      cut(ctx,0,3,w,h-3,6,'#27232F');cut(ctx,0,0,w,h-3,6,'#514B52');
+      poly(ctx,[[0,6],[6,0],[75,0],[59,h-3],[6,h-3],[0,h-9]],'#332D35');
       break;
     case 'lab-price': {
       const poor=el.dataset.poor==='true',height=Math.min(h-3,34),top=Math.floor((h-height)/2);
-      cut(ctx,0,top+2,w,height,4,poor?'#B3BFD0':'#334F73');
-      cut(ctx,0,top,w,height,4,poor?'#E1E6EF':'#426DA3');
+      cut(ctx,0,top+2,w,height,4,poor?'#ADA395':'#66543A');
+      cut(ctx,0,top,w,height,4,poor?'#DFD6C6':'#EEC659');
       break;
     }
     case 'move-stamp': {
-      ctx.fillStyle='#D5E3EF';ctx.fillRect(0,0,w,h);
-      ctx.fillStyle='#F3F1FA';
+      ctx.fillStyle='#DED5C6';ctx.fillRect(0,0,w,h);
+      ctx.fillStyle='#F1EBDF';
       const hole=(x,y,r)=>{ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();};
       for(let y=4;y<h;y+=8){hole(0,y,1.6);hole(w,y,1.6);}
       for(let x=4;x<w;x+=7){hole(x,0,1.2);hole(x,h,1.2);}
@@ -313,6 +348,11 @@ export function drawUiPaper(ctx,box){
       break;
     case 'button-muted':
     case 'button': {
+      if(['journey','collection-next','enter'].includes(el.dataset.action)&&!el.disabled){
+        const face=[[w*.095,h*.17],[w-8,0],[w-18,h*.20],[w-4,h*.15],[w-15,h*.36],[w-2,h*.3],[w-19,h*.61],[w-9,h*.56],[w-25,h*.85],[2,h-4],[16,h*.70],[4,h*.73],[18,h*.44],[9,h*.47],[21,h*.25]];
+        ctx.save();ctx.translate(0,4);poly(ctx,face,paperPalette.darkStock);ctx.restore();poly(ctx,face,paperPalette.yellow);
+        break;
+      }
       const primary=has('primary')||has('zc-primary')||has('purple')||has('zx-buy');
       const coral=has('danger');
       const colors=key==='button-muted'?['#C5D3E6','#C5D3E6','#8399B9']:coral?['#E08188','#C95968','#A14559']:primary?[paperPalette.blueStart,paperPalette.blueEnd,'#435BAC']:[white,'#EFEFF9','#4F89D3'];
@@ -365,12 +405,26 @@ export function drawUiPaper(ctx,box){
       cut(ctx,0,4+inset,w,h-6-2*inset,corner,active?'#A75768':'#A6B9DD');
       cut(ctx,0,1+inset,w,h-6-2*inset,corner,gradient(ctx,w,h,active?paperPalette.tabStart:'#E0E7F5',active?paperPalette.tabEnd:'#CFD9EF'));
       break;}
-    case 'upgrade-card':
-      cut(ctx,0,3,w,h-2,0,'#181E3290');
-      cut(ctx,0,0,w,h-3,0,gradient(ctx,w,h,accent,edge));
-      cut(ctx,4,4,w-8,h-10,0,gradient(ctx,w,h,top,bottom));
-      poly(ctx,[[4,h-8],[w-4,h-8],[w-7,h-5],[4,h-5]],accent);
+    case 'upgrade-reroll':
+      poly(ctx,[[5,1],[w,1],[w-5,h-1],[0,h-1]],el.disabled?'#524D54':paperPalette.darkStock);
       break;
+    case 'level-offer': {
+      const [face]=upgradeStocks[el.dataset.quality]||upgradeStocks.special;
+      ctx.fillStyle='#29262C';ctx.fillRect(0,0,w,h);ctx.fillStyle=face;ctx.fillRect(2,2,w-4,h-4);break;
+    }
+    case 'level-art': {
+      const [face,band]=upgradeStocks[el.dataset.quality]||upgradeStocks.special;
+      ctx.fillStyle=band;ctx.fillRect(0,0,w,h);
+      ctx.globalAlpha*=.36;poly(ctx,[[w*.65,0],[w,0],[w*.37,h],[0,h]],face);break;
+    }
+    case 'level-title':
+      poly(ctx,[[0,0],[w,0],[w,h*.48],[w-8,h*.69],[w-2,h*.69],[w-14,h],[0,h]],'#2B262E');break;
+     case 'upgrade-card': {
+      cut(ctx,0,3,w,h-3,4,'#322C36');cut(ctx,0,0,w,h-4,4,'#F3EEE4');
+      poly(ctx,[[0,4],[4,0],[9,0],[7,h-4],[0,h-4]],accent);
+      poly(ctx,[[w-15,0],[w-4,0],[w,4],[w,14]],bottom);
+      ctx.fillStyle=edge;ctx.fillRect(9,h-5,w-16,1);break;
+    }
     case 'rarity': {
       const rarity=el.dataset.quality;
       const ribbon=rarity==='legendary'?'#B25C3E':rarity==='common'?'#6C778D':badge;
@@ -392,7 +446,7 @@ export function drawUiPaper(ctx,box){
     }
     case 'boss-strip':
       cut(ctx,0,2,w,h-2,7,'#354157');
-      cut(ctx,0,0,w,h-3,7,gradient(ctx,w,h,'#465674','#35435E'));
+      cut(ctx,0,0,w,h-3,4,'rgba(40,35,45,.94)');
       poly(ctx,[[0,7],[7,0],[15,0],[6,9],[6,h-12],[0,h-6]],box.s.vars?.['--boss-accent']||'#C28190');
       break;
     case 'boss-seal':
@@ -409,8 +463,8 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'guide-distance':
-      cut(ctx,0,1,w,h-1,4,'#52627a');
-      cut(ctx,0,0,w,h-2,4,box.s.background);
+      cut(ctx,0,1,w,h-1,4,'#A3B6CD');
+      cut(ctx,0,0,w,h-2,4,'#E8EDF6');
       break;
     case 'arcade': {
       cut(ctx,2,5,w-2,h-5,12,'#384967');

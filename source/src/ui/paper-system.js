@@ -79,7 +79,7 @@ export function openPaperPrompt({el,button,parent,screen,trigger,title,hint,body
 export function albumTab(el,button,label,active,onClick,attrs={}){
   const art=el('img','zc-control-face',[],{alt:'','aria-hidden':true});
   const tab=button([art,el('span','zc-control-label',label)],onClick,'zc-btn zc-filter',
-    {'data-paper-surface':'flat',...attrs});
+    {'data-paper-surface':attrs['data-move-group']||attrs['data-plan-tab']||attrs['data-stat-tab']!==undefined?'profile-switch':'flat',...attrs});
   setAlbumTabActive(tab,active);
   return tab;
 }

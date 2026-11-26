@@ -1,10 +1,12 @@
-import {drawAppearanceGlyph} from './collection-art.js';
+import {heroActionFrame} from '../actors/hero-actions.js';
+import {heroActionCatalog} from '../actors/hero-action-catalog.js';
+import {drawAppearanceGlyph,tintGlyph} from './collection-art.js';
 import {paintLoadingBackdrop} from './menu-scene.js';
 
 // Each shot looks at the same point on the desk (the player's feet).
-const selectionShot={scale:1.96,origin:244,height:.195,actor:.40};
+const selectionShot={scale:2.10,origin:174,height:.216,actor:.345};
 const shots={
-  home:{scale:1.25,origin:195,height:.48,actor:.40},
+  home:{scale:2.26,origin:172,height:.477,actor:.365},
   choose:selectionShot,
   map:selectionShot,
 };
@@ -36,35 +38,104 @@ export function journeyScene(){
   const node=document.createElement('canvas'),actor=document.createElement('canvas');
   node.className='journey-scene';node.dataset.static='true';node.setAttribute('aria-hidden','true');
   node.dataset.journeyBackdrop='true';
-  let desk=null,loadingDesk=null,pose=shots.home,target='',identity='',word='',motion=0,presentation=0,leaving=false;
+  let desk=null,deskReady=null,pose=shots.home,target='',identity='',word='',motion=0,presentation=0,leaving=false;
+  let poster=null,posterLoad=null;
   let moving=false,blending=false,actorLayer=null;
-  function prepare(){
-    if(desk||loadingDesk)return;
-    loadingDesk=new Image();
-    loadingDesk.onload=()=>{desk=loadingDesk;loadingDesk=null;paint();};
-    loadingDesk.onerror=()=>{loadingDesk=null;};
-    loadingDesk.src='assets/ui-paper/journey-desk.webp';
+  let idle=null,idleSheet=null,webFrame=0;
+  function prepareIdle(id,look){
+    const catalog=heroActionCatalog[id];
+    if(!catalog)return;
+    if(idle?.id===id&&idle.look===look)return;
+    const state=idle={id,look,playback:{},frame:-1,columns:catalog.columns};
+    idleSheet=null;
+    const image=new Image();
+    image.onload=()=>{
+      if(idle!==state)return;
+      if(look==='shiny'||look==='classic'){
+        const tinted=document.createElement('canvas');
+        tinted.width=image.width;tinted.height=image.height;
+        tinted.getContext('2d').drawImage(image,0,0);
+        idleSheet=tintGlyph(tinted,look);
+      }else idleSheet=image;
+      paint();
+    };
+    image.onerror=()=>{if(idle===state)idle=null;};
+    image.src='assets/ui-paper/home-idle-'+id+'.webp';
   }
-  function drawActor(ctx,cx,cy,size){
-    ctx.save();ctx.translate(cx,cy+size*.36);ctx.scale(1,.24);
-    ctx.beginPath();ctx.arc(0,0,size*.265,0,Math.PI*2);ctx.fillStyle='rgba(45,49,66,.21)';ctx.fill();ctx.restore();
-    ctx.drawImage(actor,cx-size/2,cy-size/2,size,size);
+  function prepare(){
+    if(!deskReady)deskReady=new Promise(resolve=>{
+      const image=new Image();
+      image.onload=()=>{desk=image;paint();resolve();};
+      image.onerror=()=>{deskReady=null;resolve();};
+      image.src='assets/ui-paper/journey-desk.webp';
+    });
+    return deskReady;
+  }
+  function preparePoster(){
+    if(poster||posterLoad)return;
+    const image=new Image();posterLoad=image;
+    image.onload=()=>{poster=image;posterLoad=null;paint();};
+    image.onerror=()=>{posterLoad=null;};
+    image.src='assets/ui-paper/loading-poster.webp';
+  }
+  function drawActor(ctx,cx,cy,size,frame){
+    ctx.save();ctx.translate(cx,cy+size*.31);ctx.scale(1,.90);
+    ctx.beginPath();ctx.arc(0,0,size*.36,0,Math.PI*2);ctx.lineWidth=size*.065;
+    ctx.strokeStyle='rgba(216,246,228,.86)';ctx.stroke();ctx.restore();
+    if(frame){
+      const cell=idleSheet.width/idle.columns,tile=frame.index,span=size*frame.renderScale;
+      ctx.save();ctx.translate(cx,cy);ctx.rotate(.22);
+      ctx.drawImage(idleSheet,tile%idle.columns*cell,Math.floor(tile/idle.columns)*cell,cell,cell,
+        -span/2,size*.44-span,span,span);
+      ctx.restore();
+      return;
+    }
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(.22);
+    ctx.drawImage(actor,-size/2,-size/2,size,size);ctx.restore();
+  }
+  function idleLayer(now){
+    const frame=heroActionFrame(idle.playback,idle.id,'idle',now);
+    if(idle.frame!==frame.index){
+      if(!idle.layer){
+        idle.layer=document.createElement('canvas');
+        idle.layer.width=idle.layer.height=Math.ceil(actor.width*1.4);
+      }
+      const tile=idle.layer,ctx=tile.getContext('2d');
+      ctx.clearRect(0,0,tile.width,tile.height);
+      drawActor(ctx,tile.width/2,tile.height/2,actor.width,frame);
+      idle.frame=frame.index;
+    }
+    return idle.layer;
   }
   function paint(){
     if(!node.isConnected)return;
     const w=Math.max(1,window.innerWidth),h=Math.max(1,window.innerHeight);
-    const d=Math.min(2,window.devicePixelRatio||1),margin=96;
+    const d=Math.min(2,window.devicePixelRatio||1),margin=window.nativeUI?96:0;
     const scale=Math.max(w/390,(h+margin)/844)*pose.scale,cx=w*.5,cy=h*pose.height;
-    const x=cx-scale*pose.origin,y=cy-scale*461,size=Math.min(w*pose.actor,h*.21);
+    const x=cx-scale*pose.origin,y=cy-scale*370,size=Math.min(w*pose.actor,h*.21);
     const page=node.parentNode;
-    if((moving||blending)&&desk&&node.dataset.shot!=='entry'){
+    page._journeyIdle=null;
+    const showIdle=idleSheet&&node.dataset.shot==='home'&&!moving&&!blending&&!reduced();
+    if(window.nativeUI&&showIdle&&desk){
+      page._journeyCamera=null;
+      const camera={desk,x,y,width:390*scale,height:844*scale,cx,cy,size:size*1.4};
+      let last;
+      page._journeyIdle=now=>{
+        const actor=idleLayer(now);
+        if(!last||last.frame!==idle.frame)last={...camera,actor,frame:idle.frame};
+        return last;
+      };
+      window.invalidateUI?.();
+      return;
+    }
+    if(window.nativeUI&&(moving||blending)&&desk&&node.dataset.shot!=='entry'){
       if(word&&!actorLayer){
         actorLayer=document.createElement('canvas');
-        actorLayer.width=actorLayer.height=actor.width;
-        drawActor(actorLayer.getContext('2d'),actor.width/2,actor.width/2,actor.width);
+        actorLayer.width=actorLayer.height=Math.ceil(actor.width*1.4);
+        drawActor(actorLayer.getContext('2d'),actorLayer.width/2,actorLayer.height/2,actor.width);
       }
       // The native compositor can move these two textures without repainting the album.
-      page._journeyCamera={desk,x,y,width:390*scale,height:844*scale,actor:word&&actorLayer,cx,cy,size};
+      page._journeyCamera={desk,x,y,width:390*scale,height:844*scale,actor:word&&actorLayer,cx,cy,size:size*1.4};
       return;
     }
     page._journeyCamera=null;
@@ -74,17 +145,18 @@ export function journeyScene(){
     const ctx=node.getContext('2d');
     ctx.setTransform(d,0,0,d,margin*d,margin*d);
     if(node.dataset.shot==='entry'){
-      const scale=Math.min(w/390,h/550);
-      // Continue the poster into the native safe-area gutters.
-      ctx.fillStyle='#292943';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
-      ctx.fillStyle='#21253F';ctx.fillRect(-margin,h,w+2*margin,margin);
-      ctx.save();ctx.scale(scale,scale);
-      paintLoadingBackdrop(ctx,w/scale,h/scale,(c,_word,x,y,size)=>c.drawImage(actor,x,y,size,size),word);ctx.restore();
+      ctx.fillStyle='#F9BF25';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
+      ctx.fillStyle='#252229';ctx.fillRect(-margin,h*.65,w+2*margin,h*.35+margin);
+      paintLoadingBackdrop(ctx,w,h,poster);
       window.invalidateUI?.();return;
     }
     ctx.fillStyle='#E5E6D8';ctx.fillRect(-margin,-margin,w+2*margin,h+2*margin);
     if(desk?.width&&desk.complete!==false)ctx.drawImage(desk,x,y,390*scale,844*scale);
-    if(word)drawActor(ctx,cx,cy,size);
+    if(showIdle){
+      const layer=idleLayer(performance.now());
+      ctx.drawImage(layer,cx-size*.7,cy-size*.7,size*1.4,size*1.4);
+      if(!window.nativeUI&&!webFrame)webFrame=window.requestAnimationFrame(()=>{webFrame=0;paint();});
+    }else if(word)drawActor(ctx,cx,cy,size);
     window.invalidateUI?.();
   }
   function moveTo(name,instant=false){
@@ -94,11 +166,13 @@ export function journeyScene(){
     return animate(520,t=>{moving=t<1;pose=between(from,to,ease(t));paint();},()=>ticket===motion&&node.isConnected);
   }
   function fade(page,from,to,ms){
-    const ticket=++presentation;
+    const ticket=++presentation,controls=Array.from(page.children).filter(el=>el!==node);
     return animate(ms,t=>{
       const value=from+(to-from)*ease(t);
-      page._journeyFade=value===1?null:{scene:1,controls:value};
-      if(blending!==(t<1)){blending=t<1;paint();}
+      if(window.nativeUI){
+        page._journeyFade=value===1?null:{scene:1,controls:value};
+        if(blending!==(t<1)){blending=t<1;paint();}
+      }else for(const el of controls)el.style.opacity=t===1&&to===1?'':String(value);
       if(!page._journeyCamera)window.invalidateUI?.();
     },()=>ticket===presentation&&node.parentNode===page&&page.isConnected);
   }
@@ -132,11 +206,13 @@ export function journeyScene(){
     const key=(c?.word||'')+'/'+(look||'');
     if(identity!==key){word=c?.word||'';if(word)drawAppearanceGlyph(actor,word,c.tone,look,true);actorLayer=null;identity=key;}
     node.dataset.word=word;node.dataset.look=look||'normal';node.dataset.shot=page.dataset.page;
+    if(page.dataset.page==='home'&&c&&!reduced())prepareIdle(c.id,look);
+    if(page.dataset.page==='map'||page.dataset.page==='entry')preparePoster();
     if(page.dataset.page==='entry'){++motion;moving=false;}
     else moveTo(page.dataset.page,!sameScene);
     paint();
     if(sameScene&&changed&&page.dataset.page!=='entry')fade(page,0,1,235);
   }
   window.addEventListener('resize',paint);
-  return {mount,travel};
+  return {prepare,mount,travel};
 }

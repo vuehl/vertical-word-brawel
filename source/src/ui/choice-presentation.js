@@ -14,6 +14,15 @@ export const qualityPaper={
   legendary:['#D67D5B','#F7F2DF','#F1E3C7','#D1A348','#C0623E'],
   special:['#8A87A7','#F0EFF6','#E3E2EF','#B3ACCC','#776D92'],
 };
+// Large upgrade surfaces carry the rarity even when the badge is covered.
+export const upgradeStocks={
+  common:['#E8E0D3','#B7AA99','#544C49'],
+  uncommon:['#BCE4AD','#74BF80','#32664B'],
+  rare:['#AAD1FA','#649FD9','#2F5587'],
+  epic:['#D6B8EE','#A77ACC','#623D88'],
+  legendary:['#FFDC84','#ECA746','#895018'],
+  special:['#F3C7AA','#D99C7F','#805145'],
+};
 export function choiceQuality(rarity,label){
  const q=Number.isInteger(rarity)&&rarity>=0&&rarity<qualityPalette.length?qualityPalette[rarity]:{key:'special',label:'特殊',fill:'#f4ebe0',border:'#bba68f',ink:'#6b5841'};
  return {...q,label:label||q.label};

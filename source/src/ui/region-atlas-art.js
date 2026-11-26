@@ -57,9 +57,9 @@ export function regionAtlas(terrain){
   const pixels=ctx.getImageData(0,0,art.width,art.height),p=pixels.data;
   for(let i=0;i<p.length;i+=4){
     const r=p[i],g=p[i+1],b=p[i+2],light=(r*.24+g*.59+b*.17)/255;
-    p[i]=129+light*106+r*.045;
-    p[i+1]=151+light*82+g*.045;
-    p[i+2]=166+light*62+b*.045;
+    p[i]=156+light*76+r*.04;
+    p[i+1]=152+light*73+g*.04;
+    p[i+2]=139+light*72+b*.04;
   }
   ctx.putImageData(pixels,0,0);
   // Feather the scene into the margin at its real bounds, before caching it.
@@ -81,17 +81,4 @@ export function regionAtlas(terrain){
   const sheet={art,x,z};
   sheets.set(terrain,sheet);
   return sheet;
-}
-
-
-export function atlasSymbol(){
-  const art=document.createElement('canvas');art.width=art.height=66;art.className='zx-atlas-symbol';art.dataset.static='true';art.setAttribute('aria-hidden','true');
-  const c=art.getContext('2d');c.scale(2,2);
-  function face(points,fill){c.beginPath();c.moveTo(...points[0]);for(const p of points.slice(1))c.lineTo(...p);c.closePath();c.fillStyle=fill;c.fill();}
-  face([[1,10],[11,6],[11,26],[1,30]],'#C1D7E7');
-  face([[11,6],[21,10],[21,30],[11,26]],'#839DBA');
-  face([[21,10],[31,6],[31,26],[21,30]],'#DCE8F1');
-  c.beginPath();c.moveTo(4,22);c.lineTo(11,16);c.lineTo(16,20);c.lineTo(26,14);c.lineWidth=1.3;c.strokeStyle='#587493';c.stroke();
-  face([[19,7],[23,2],[28,6],[25,11],[22,14]],'#E89BA0');
-  c.beginPath();c.arc(23.8,6.9,1.6,0,2*Math.PI);c.fillStyle='#FFF4ED';c.fill();return art;
 }

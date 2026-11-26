@@ -5,7 +5,7 @@ export function drawAppearanceGlyph(canvas,word,tone,look,large=false){
   drawMenuGlyph(canvas,word,tone,large);
   return tintGlyph(canvas,look);
 }
-function tintGlyph(canvas,look){
+export function tintGlyph(canvas,look){
   if(!look)return canvas;
   const ctx=canvas.getContext('2d'),image=ctx.getImageData(0,0,canvas.width,canvas.height),d=image.data;
   for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];

@@ -33,9 +33,9 @@ async function printDesk(pub,width,height,layers,file){
     for(let x=0;x<w;x++){
       const i=(y*w+x)*4,r=pixels[i],g=pixels[i+1],b=pixels[i+2];
       const light=(.24*r+.59*g+.17*b)/255;
-      pixels[i]=Math.round(129+light*106+r*.045);
-      pixels[i+1]=Math.round(151+light*82+g*.045);
-      pixels[i+2]=Math.round(166+light*62+b*.045);
+      pixels[i]=Math.round(156+light*76+r*.04);
+      pixels[i+1]=Math.round(152+light*73+g*.04);
+      pixels[i+2]=Math.round(139+light*72+b*.04);
       pixels[i+3]=Math.round(255*vertical*edgeAlpha(Math.min(x+.5,w-x-.5),shortSide*.075));
     }
   }

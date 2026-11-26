@@ -117,7 +117,7 @@ async function start() {
       lastStep = lastPaint;
     }
     try {
-      splash.draw(displayed, !!renderer, ((lastPaint - began) % 1800) / 1800, phase);
+      splash.draw(displayed, !!renderer);
       if (displayed === 100 && fullSince === null) fullSince = Date.now();
     } catch (error) {
       console.warn('[宝可梦启动] 无法更新加载进度', error);

@@ -5,7 +5,7 @@ import esbuild from 'esbuild';
 import {buildPlay} from './build/play-chunks.mjs';
 import {bindPortalZoneClock} from '../source/tools/portal-zone-clock.mjs';
 import {parse} from '../source/tools/vendor/acorn.mjs';
-import {addBootAssets,bootAssets,writeBootHeroArt} from './build/boot-assets.mjs';
+import {addBootAssets,bootAssets,writeBootPoster} from './build/boot-assets.mjs';
 import {lowerUnicodeRegexes} from './build/device-syntax.mjs';
 import {assetPolicyVersion,itemIconSelectionChanged} from './build/asset-policy.mjs';
 import {gameProject} from './build/project-target.mjs';
@@ -111,9 +111,10 @@ for(const file of ['host.js','original.js'])fs.rmSync(path.join(out,file),{force
 fs.copyFileSync(path.join(platform,'files.js'),path.join(out,'files.js'));
 fs.rmSync(path.join(out,'entry-data.js'),{force:true});
 const bootScript=await esbuild.build({entryPoints:[path.join(platform,'boot-screen.js')],bundle:true,format:'cjs',target:'es2017',
-  external:['./boot-hero-art'],write:false});
+  external:['./boot-poster'],write:false});
 writeScript(path.join(out,'boot-screen.js'),bootScript.outputFiles[0].text);
-await writeBootHeroArt(root,out);
+writeBootPoster(root,out);
+fs.rmSync(path.join(out,'boot-hero-art.js'),{force:true});
 fs.copyFileSync(path.join(platform,'resource-codec.js'),path.join(out,'resource-codec.js'));
 addBootAssets(out,bootAssets(root));
 for(const name of ['game.js','game.json'])fs.copyFileSync(path.join(root,name),path.join(out,name));

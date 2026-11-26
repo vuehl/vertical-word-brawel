@@ -175,16 +175,16 @@ function drawFacilityGuide(ctx,target){
   // player's existing reserved space, so it cannot cover a facility name.
   ctx.save();ctx.translate(60,58);ctx.rotate(target.angle);
   ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(-4,-4);ctx.lineTo(-1.5,0);ctx.lineTo(-4,4);ctx.closePath();
-  ctx.lineJoin='round';ctx.lineWidth=1.2;ctx.strokeStyle='#fff9e9';ctx.stroke();
-  ctx.fillStyle='#f3b540';ctx.fill();ctx.restore();
+  ctx.lineJoin='round';ctx.lineWidth=1;ctx.strokeStyle='#FBE8AC';ctx.stroke();
+  ctx.fillStyle='#3B3034';ctx.fill();ctx.restore();
 }
 
 // Only neighbouring places of the same type share an icon. Keep every real
 // location as a dot, and anchor each group at its nearest member, not a new point.
-export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0,square=false){
+export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0,square=false,halfHeight=47){
   const box=group=>{
     const w=Math.max(size,group.labelWidth||0),h=size+(labelSize?labelSize+1.5:0);
-    const limit=(square?47:Math.sqrt(47**2-(w/2)**2))-h/2;
+    const limit=(square?halfHeight:Math.sqrt(47**2-(w/2)**2))-h/2;
     let y=Math.max(58-limit,Math.min(58+limit,group.y));
     const fitX=()=>{
       const half=(square?47:Math.sqrt(Math.max(0,47**2-(Math.abs(y-58)+h/2)**2)))-w/2;
@@ -216,9 +216,8 @@ export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0,
       const choices=[];
       // Keep different building names apart as well as their icons. The dot
       // and leader line retain the true location when a label needs to move.
-      for(let y=12;y+h<=104;y+=2)for(let x=14;x+w<=106;x+=2){
+      for(let y=square?58-halfHeight:12;y+h<=(square?58+halfHeight:104);y+=2)for(let x=14;x+w<=106;x+=2){
         if(!square&&[[x,y],[x+w,y],[x,y+h],[x+w,y+h]].some(([a,b])=>Math.hypot(a-60,b-58)>47))continue;
-        if(square&&x<20&&y<19)continue; // Leave the north arrow clear.
         if(x<player.x+7&&x+w>player.x-7&&y<player.y+8&&y+h>player.y-8)continue;
         const score=(x+w/2-group.x)**2+(y+size/2-group.y)**2;
         choices.push({box:{x,y,w,h},parts:parts({x,y,w,h}),score});
@@ -243,12 +242,12 @@ export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0,
   }
   return groups;
 }
-function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0,square=false){
+function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0,square=false,halfHeight=47){
   if(labelSize){
     ctx.font='bold '+labelSize+'px "Ziling Swei", sans-serif';
     markers=markers.map(marker=>({...marker,labelWidth:ctx.measureText(facilityNames[marker.kind]).width+2}));
   }
-  const groups=layoutBuildingIcons(markers,size,player,labelSize,square);
+  const groups=layoutBuildingIcons(markers,size,player,labelSize,square,halfHeight);
   for(const marker of markers){
     ctx.beginPath();ctx.arc(marker.x,marker.y,1,0,Math.PI*2);ctx.fillStyle='#517589';ctx.fill();
   }
@@ -279,39 +278,26 @@ function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0,square=fa
       const name=facilityNames[group.kind],cx=group.box.x+boxWidth/2,cy=y+size+1.5+labelSize/2;
       ctx.font='bold '+labelSize+'px "Ziling Swei", sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.lineJoin='round';ctx.lineWidth=1.6;ctx.strokeStyle='#fffdf7';ctx.strokeText(name,cx,cy);
-      ctx.fillStyle='#385365';ctx.fillText(name,cx,cy);
+      if(square){
+        ctx.fillStyle='#FFF5DF';ctx.fillRect(group.box.x,cy-labelSize*.6,boxWidth,labelSize*1.2);
+      }
+      ctx.fillStyle=square?'#393039':'#385365';ctx.fillText(name,cx,cy);
     }
   }
   return groups;
 }
 
-// Square detail view crops the old dial's margins; picking uses the same viewBox.
-export const atlasView={left:9.5,top:7.5,size:101};
-function atlasEdge(ctx){
-  ctx.beginPath();
-  ctx.moveTo(11,10.8);ctx.lineTo(41,9.2);ctx.quadraticCurveTo(43,9.1,45,9.2);
-  ctx.lineTo(73,10.7);ctx.quadraticCurveTo(75,10.8,77,10.7);
-  ctx.lineTo(109,9.1);ctx.lineTo(109,105.2);
-  ctx.lineTo(77,106.8);ctx.quadraticCurveTo(75,106.9,73,106.8);
-  ctx.lineTo(45,105.3);ctx.quadraticCurveTo(43,105.2,41,105.3);
-  ctx.lineTo(11,106.9);ctx.closePath();
-}
+// Labels and symbols use the same north-up projection in both views.
+const atlasSize=101;
 function finishAtlasPaper(ctx){
   for(const x of [43,75]){
     const crease=ctx.createLinearGradient(x-2,0,x+2.8,0);
-    crease.addColorStop(0,'rgba(255,255,255,0)');
-    crease.addColorStop(.48,'rgba(255,255,255,.18)');
-    crease.addColorStop(.52,'rgba(68,92,113,.08)');
-    crease.addColorStop(1,'rgba(68,92,113,0)');
-    ctx.fillStyle=crease;ctx.fillRect(x-2,9,4.8,98);
+    crease.addColorStop(0,'rgba(103,87,55,0)');
+    crease.addColorStop(.48,'rgba(103,87,55,.08)');
+    crease.addColorStop(.52,'rgba(255,247,218,.12)');
+    crease.addColorStop(1,'rgba(255,247,218,0)');
+    ctx.fillStyle=crease;ctx.fillRect(x-2,7,4.8,102);
   }
-  // Taper only the paper and map ink. All location symbols are painted next.
-  const rim=ctx.createLinearGradient(0,9,0,107);
-  for(const [stop,alpha] of [[0,.02],[.015,.30],[.035,.77],[.055,1],[.945,1],[.965,.77],[.985,.30],[1,.02]]){
-    rim.addColorStop(stop,'rgba(255,255,255,'+alpha+')');
-  }
-  ctx.globalCompositeOperation='destination-in';
-  ctx.fillStyle=rim;ctx.fillRect(0,0,120,120);
 }
 
 // Both map sizes use a north-up projection. In co-op the open map follows peer snapshots.
@@ -331,42 +317,44 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
     if(outline){ctx.lineWidth=1.1;ctx.strokeStyle=outline;ctx.stroke();}
   };
   ctx.setTransform(canvas.width/120,0,0,canvas.height/120,0,0);ctx.clearRect(0,0,120,120);
+  const mapHeight=atlasSize*canvas.height/canvas.width;
   if(square){
-    const unit=canvas.width/atlasView.size;
-    ctx.setTransform(unit,0,0,unit,-unit*atlasView.left,-unit*atlasView.top);
-    atlasEdge(ctx);ctx.fillStyle='#E4EAEC';ctx.fill();
+    const unit=canvas.width/atlasSize;
+    ctx.setTransform(unit,0,0,unit,-unit*(60-atlasSize/2),-unit*(58-mapHeight/2));
   }else{
-  if(shadow)dot(60,62,56,hanging?'#445D84':'#527ab2',null);
-  dot(60,58,56,hanging?'#7594BC':'#fffdf7',null);dot(60,58,52,hanging?'#F3F1FA':'#c3daeb',null);dot(60,58,49,'#eff5f4',null);
-  if(hanging){
-    ctx.fillStyle='#536E94';ctx.fillRect(52,0,16,12);
-    ctx.fillStyle='#86A4CA';ctx.fillRect(53,0,13,9);
-    dot(60,5,2.4,'#E8EEFA',null);
+    if(hanging){
+      ctx.translate(60,60);ctx.scale(1.14,1.14);ctx.translate(-60,-58);
+      dot(60,58,51.5,'#322A36',null);
+      for(const angle of [-2.4,.68]){
+        ctx.beginPath();ctx.arc(60,58,50.4,angle,angle+.48);ctx.lineWidth=2.2;ctx.strokeStyle='#EEC659';ctx.stroke();
+      }
+      dot(60,58,49,'#E9E2D1',null);
+    }else{
+      if(shadow)dot(60,62,56,'#527ab2',null);
+      dot(60,58,56,'#fffdf7',null);dot(60,58,52,'#c3daeb',null);dot(60,58,49,'#eff5f4',null);
+    }
   }
-  }
-  ctx.save();ctx.beginPath();if(square)atlasEdge(ctx);else ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
+  ctx.save();ctx.beginPath();if(square)ctx.rect(60-atlasSize/2,58-mapHeight/2,atlasSize,mapHeight);else ctx.arc(60,58,49,0,Math.PI*2);ctx.clip();
   // Scale map contents around the player within the fixed circular frame.
   ctx.translate(60,58);ctx.scale(1/viewRatio,1/viewRatio);ctx.translate(-60,-58);
   const left=60-radius,right=60+radius,top=58-radius,bottom=58+radius;
   if(atlas?.art){
     const [x,y]=point(-atlas.x,-atlas.z),w=2*atlas.x*scale,h=2*atlas.z*scale;
     ctx.drawImage(atlas.art,x,y,w,h);
-  }
-  if(square&&atlas){
     // The map and its ruled margin use one world-space grid.
     const step=Math.max(atlas.x,atlas.z)*scale/4;
-    ctx.strokeStyle='rgba(84,105,127,.10)';ctx.lineWidth=.16*viewRatio;ctx.beginPath();
-    const [originX,originY]=point(0,0);
-    for(let col=originX+Math.ceil((left-originX)/step)*step;col<=right;col+=step){
+    ctx.strokeStyle='rgba(115,101,77,.10)';ctx.lineWidth=.16*viewRatio;ctx.beginPath();
+    const [ox,oy]=point(0,0);
+    for(let col=ox+Math.ceil((left-ox)/step)*step;col<=right;col+=step){
       ctx.moveTo(col,top);ctx.lineTo(col,bottom);
     }
-    for(let row=originY+Math.ceil((top-originY)/step)*step;row<=bottom;row+=step){
+    for(let row=oy+Math.ceil((top-oy)/step)*step;row<=bottom;row+=step){
       ctx.moveTo(left,row);ctx.lineTo(right,row);
     }
     ctx.stroke();
     ctx.save();ctx.translate(60,58);ctx.scale(viewRatio,viewRatio);ctx.translate(-60,-58);
-    finishAtlasPaper(ctx);ctx.restore();
-  }else if(!atlas?.art){
+    if(square)finishAtlasPaper(ctx);ctx.restore();
+  }else{
     const half=run.terrain.world/2,[bx,by]=point(-half,-half);
     ctx.strokeStyle='#c3cec6';ctx.lineWidth=1;ctx.strokeRect(bx,by,half*2*scale,half*2*scale);
     for(const prop of run.terrain.zxProps||[]){
@@ -440,7 +428,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
     const compact=canvas.width<480;
     const size=shadow?14:Math.min(16,Math.max(8,(compact?3840:4320)/canvas.width));
     const labelSize=shadow?9:(compact?2400:2640)/canvas.width;
-    groups=drawBuildingIcons(ctx,buildings,size,iconFor,playerOnDial,labelSize,square);ctx.restore();
+    groups=drawBuildingIcons(ctx,buildings,size,iconFor,playerOnDial,labelSize,square,mapHeight/2-3.5);ctx.restore();
   }
   for(const peer of run.coop?.visiblePeers()||[]){
     const dx=(peer.x-center.x)*scale,dz=(peer.z-center.z)*scale;
@@ -456,21 +444,19 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
   ctx.save();ctx.translate(px,py);
   if(square)ctx.scale(.64*viewRatio,.64*viewRatio);
   ctx.translate(-60,-58);
-  dot(60,58,8.3,'#688dc633',null);dot(60,58,5.7,'#647fbb');
+  dot(60,58,8.3,'#fff5dfb0',null);dot(60,58,5.7,'#F4CA59','#373039');
   if(guidance&&guidance.distance>.5)drawFacilityGuide(ctx,guidance);
   else{
-    ctx.beginPath();ctx.moveTo(60,53.5);ctx.lineTo(63,60.7);ctx.lineTo(60,59);ctx.lineTo(57,60.7);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();
+    ctx.beginPath();ctx.moveTo(60,53.5);ctx.lineTo(63,60.7);ctx.lineTo(60,59);ctx.lineTo(57,60.7);ctx.closePath();ctx.fillStyle='#332B32';ctx.fill();
   }
   ctx.restore();
   ctx.restore();
   if(distances.length)drawBossDistances(ctx,distances,shadow?8:4.5,groups.map(group=>group.box),playerOnDial);
   if(square){
-    ctx.fillStyle='#526D8D';ctx.beginPath();ctx.moveTo(14.5,13.4);ctx.lineTo(16,17.5);ctx.lineTo(14.5,16.7);ctx.lineTo(13,17.5);ctx.closePath();ctx.fill();
-    ctx.font='bold 2.8px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('N',16.7,15.8);
     return {count:buildings.length,groups,guidance};
   }
   // A quiet compass notch lives on the rim, outside the clipped map contents.
-  ctx.beginPath();ctx.moveTo(60,3);ctx.lineTo(62.5,8);ctx.lineTo(57.5,8);ctx.closePath();ctx.fillStyle='#527ab2';ctx.fill();
+  ctx.beginPath();ctx.moveTo(60,hanging?7:3);ctx.lineTo(62.5,hanging?12:8);ctx.lineTo(57.5,hanging?12:8);ctx.closePath();ctx.fillStyle=hanging?'#57472C':'#527ab2';ctx.fill();
   return {count:buildings.filter(marker=>!facilityKind||marker.kind===facilityKind).length,groups,guidance};
 }
 // Geometry is in logical pixels. One silhouette sits under both rows and the portrait.
@@ -489,15 +475,18 @@ export function drawBattleStatus(canvas,{word,tone,look,level,progress,gold,kill
     g.fillStyle=color;g.fillText(s,x,y);
   };
   const shade=g.createLinearGradient(0,0,w,52);
-  shade.addColorStop(0,'rgba(17,23,32,.83)');shade.addColorStop(1,'rgba(19,25,34,.67)');
+  shade.addColorStop(0,'rgba(32,28,37,.90)');shade.addColorStop(1,'rgba(32,28,37,.83)');
   shape([[24,1],[w,1],[w-9,50],[24,50]],shade);
   g.fillStyle='rgba(216,231,240,.26)';g.fillRect(54,25,w-65,1);
   const ink='#F3F1FA',left=56,percent=Math.floor(progress*100+.00001)+'%';
-  text('Lv.'+level,left,13,15,ink);
-  const trackX=left+Math.ceil(g.measureText('Lv.'+level).width)+7,trackEnd=w-42;
+  g.font='bold 15px sans-serif';
+  const levelWidth=Math.ceil(g.measureText('Lv.'+level).width)+7;
+  shape([[left-2,3],[left+levelWidth,3],[left+levelWidth-3,23],[left-2,23]],'#EEC659');
+  text('Lv.'+level,left,13,15,'#28242D');
+  const trackX=left+levelWidth+4,trackEnd=w-42;
   if(trackEnd>trackX){
     g.fillStyle='rgba(221,234,243,.27)';g.fillRect(trackX,12,trackEnd-trackX,4);
-    g.fillStyle='#AED1E7';g.fillRect(trackX,12,(trackEnd-trackX)*progress,4);
+    g.fillStyle='#EEC659';g.fillRect(trackX,12,(trackEnd-trackX)*progress,4);
   }
   text(percent,w-9,13,12,'#E0EBF3','right');
   g.font='bold 13px sans-serif';
@@ -513,10 +502,10 @@ export function drawBattleStatus(canvas,{word,tone,look,level,progress,gold,kill
     g.fillStyle='#DEB189';g.fillRect(-3.4,1.7,6.8,1.8);g.fillRect(-.9,3,1.8,4);g.restore();
   }
   text(kills,split+23,38,13,ink);
-  face(.5,2,49,'#42556B');face(.5,.5,48.5,'#A0B7CD');face(1.7,1.7,46,'#F3F1FA');face(4,4,41.5,'#D8E6F1');
-  shape([[4,36],[17,32],[29,35],[45.5,29],[45.5,40.5],[40.5,45.5],[4,45.5]],'#C1D4E4');
-  shape([[4,43],[23,39],[45.5,34],[45.5,40.5],[40.5,45.5],[4,45.5]],'#98B5CC');
-  shape([[.5,5],[5,.5],[14,.5],[8,6]],'#C47E8A');
+  face(.5,2,49,'#463C42');face(.5,.5,48.5,'#F3E9D0');
+  shape([[2,43],[46,36],[46,46],[2,48]],'#EEC659');
+  shape([[40,1],[48,1],[48,9]],'#B9A98F');
+  g.strokeStyle='#BAAD98';g.lineWidth=.7;g.setLineDash([3,2]);g.strokeRect(4,4,40,40);g.setLineDash([]);
   g.drawImage(appearanceGlyphCanvas(word,tone,look),3.5,2.5,42,44);
   canvas.dataset.word=word;canvas.dataset.look=look||'normal';
 }
@@ -530,8 +519,8 @@ export function drawStageCaption(canvas,stage,detail){
   g.font=detailFont;const inline=titleWidth+6+g.measureText(detail).width<=178;
   const lines=[[stage,0,inline?13:7,titleFont],[detail,inline?titleWidth+6:0,inline?13:20,detailFont]];
   for(const [text,x,y,font] of lines){
-    g.font=font;g.lineWidth=2;g.strokeStyle='rgba(243,241,250,.84)';g.strokeText(text,x+1,y);
-    g.fillStyle='#29394B';g.fillText(text,x+1,y);
+    g.font=font;g.lineWidth=2;g.strokeStyle='#322A36';g.strokeText(text,x+1,y);
+    g.fillStyle='#FFF8E7';g.fillText(text,x+1,y);
   }
 }
 
@@ -548,7 +537,7 @@ function mutedSeal(source){
   }
   ctx.putImageData(pixels,0,0);mutedSeals.set(source,tile);return tile;
 }
-export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame,arcFrame,palette){
+export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame){
   const ctx=canvas.getContext('2d'),ready=state==='ready',active=state==='active';
   const wave=(1-Math.cos(frame*Math.PI/9))/2,turn=Math.PI*2,start=-Math.PI/2;
   ctx.setTransform(canvas.width/84,0,0,canvas.height/84,0,0);ctx.clearRect(0,0,84,84);
@@ -557,32 +546,46 @@ export function drawUltimateSeal(canvas,word,tone,look,progress,state,frame,arcF
     ctx.beginPath();ctx.arc(42,42,radius,from,to);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();
   };
   ctx.lineCap='round';
-  disk(40,ready?'#293859':active?'#4C536F':'#606E86');
-  disk(37.6,ready?palette.rim:'#D4DAE5');
-  disk(34.7,ready?'#314971':active?'#D7DEEB':'#E1E4EB');
+  disk(40,'#2D2731');disk(37.6,ready?'#EEC659':'#716671');disk(34.7,ready?'#FFF0CC':'#39323C');
   if(ready){
     // A moving glint and breathing cutout are confined to the button's hit area.
-    const a=start+turn*arcFrame/18;
-    arc(37.7,8.2,palette.outerGlow,a,a+.55);
-    arc(37.7,6.2,palette.innerGlow,a,a+.55);
-    arc(37.7,3.4,palette.glint,a,a+.55);
-    arc(37.7,1.5,palette.core,a,a+.55);
-    arc(40.8,1.4,'rgba('+palette.rimChannels+','+(.28+.6*wave)+')',0,turn);
+    const a=start+turn*frame/18;
+    arc(37.7,3.4,'#FFF3CC',a,a+.55);
+    arc(40.8,1.4,'rgba(255,216,139,'+(.28+.6*wave)+')',0,turn);
   }else if(progress>0){
-    arc(37.1,3.4,active?'#B28394':'#668FC3',start,start+turn*progress);
+    arc(37.1,3.4,active?'#EEC659':'#CFC4B4',start,start+turn*progress);
   }
   const image=appearanceGlyphCanvas(word,tone,look),size=ready?53+2.6*wave:51;
-  canvas.readyFace=image;
-  canvas.readyFaceSize=size;
   if(ready){
     for(const [x,y,r] of [[16,32,2.7],[67,46,2.2]]){
       const reach=r*(.72+.42*wave);
       ctx.beginPath();ctx.moveTo(x,y-reach*1.6);ctx.lineTo(x+reach*.54,y);
-      ctx.lineTo(x,y+reach*1.6);ctx.lineTo(x-reach*.54,y);ctx.closePath();ctx.fillStyle=palette.spark;ctx.fill();
+      ctx.lineTo(x,y+reach*1.6);ctx.lineTo(x-reach*.54,y);ctx.closePath();ctx.fillStyle='#F8DBA0';ctx.fill();
     }
   }
   ctx.drawImage(state==='charging'?mutedSeal(image):image,42-size/2,34.5-size/2,size,size);
-  ctx.fillStyle=ready?palette.label:active?'#58667B':'#52647C';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle=ready?'#EEC659':'#302934';ctx.fillRect(22,58,40,15);
+  ctx.fillStyle=ready?'#27232F':'#FFF1D8';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.font='bold 12px "Ziling Swei", sans-serif';
-  ctx.fillText(ready?'释放':active?'释放中':Math.floor(progress*100)+'%',42,62);
+  ctx.fillText(ready?'释放':active?'释放中':Math.floor(progress*100)+'%',42,66);
+}
+
+// Both counters draw on a 2x canvas with one font and optical baseline.
+function drawClockLabel(g,label,x,pulse=1,urgent=false){
+  g.save();g.translate(x,15);g.scale(pulse,pulse);
+  g.font='bold '+(label.length>5?16:19)+'px sans-serif';
+  g.textBaseline='middle';g.textAlign='center';g.fillStyle=urgent?'#FF7872':'#FFF8E9';
+  g.fillText(label,0,0);g.restore();
+}
+export function drawWeatherTime(canvas,label){
+  const g=canvas.getContext('2d');g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,57,29);
+  drawClockLabel(g,label,28.5);
+}
+export function drawHudClock(canvas,label,urgent,phase){
+  const g=canvas.getContext('2d');g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,92,29);
+  g.fillStyle='rgba(32,28,37,.92)';g.beginPath();g.moveTo(3,0);g.lineTo(92,0);g.lineTo(89,29);g.lineTo(0,29);g.lineTo(0,3);g.closePath();g.fill();
+  g.fillStyle='#EEC659';g.beginPath();g.moveTo(3,0);g.lineTo(27,0);g.lineTo(23,29);g.lineTo(0,29);g.lineTo(0,3);g.closePath();g.fill();
+  g.strokeStyle='#302934';g.lineWidth=1.8;g.beginPath();g.arc(12,16,7,0,2*Math.PI);g.moveTo(12,16);g.lineTo(15,11);g.moveTo(12,9);g.lineTo(12,5);g.moveTo(9,5);g.lineTo(15,5);g.stroke();
+  const pulse=1+.12*Math.max(0,1-Math.abs(phase-3)/3);
+  drawClockLabel(g,label,57,pulse,urgent);
 }

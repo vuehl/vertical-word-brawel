@@ -3,6 +3,7 @@
 // Sampled from the right-hand library reference. CSS and the native painter
 // share these inks; the palette applies to system paper, not to game sprites.
 export const paperPalette=Object.freeze({
+  darkStock:'#27232F', warmWhite:'#FFF8E9', yellow:'#EEC659',
   navy:'#292943', ink:'#292742', paper:'#F3F1FA',
   titleStart:'#D1646D', titleEnd:'#DA7A81', tabStart:'#DC7472', tabEnd:'#D87070',
   blueStart:'#376FC8', blueEnd:'#326AC5',

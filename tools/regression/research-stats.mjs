@@ -22,6 +22,7 @@ export async function verifyResearchStats({page,tap,dir}){
     if(saved.statusCode!==200)throw Error('Fixture wallet was not saved');
   });
   await tap('[data-action="journey"]');
+  await tap('[data-action="profile-stats"]');
   const before=await card();
   await tap('[data-action="collection-back"]');
   await tap('[data-action="lab"]');
@@ -30,6 +31,7 @@ export async function verifyResearchStats({page,tap,dir}){
   await page.waitForFunction(()=>app.meta.lab('dmg')===1);
   await tap('.zx-footer .paper-back');
   await tap('[data-action="journey"]');
+  await tap('[data-action="profile-stats"]');
   const after=await card();
   for(const name of ['物理伤害倍率','特殊伤害倍率']){
     assert.ok(parseFloat(after[name])>parseFloat(before[name]),name);
@@ -49,8 +51,8 @@ export async function verifyResearchStats({page,tap,dir}){
   await tap('[data-species="16"]');
   const wind=await card();
   assert.notDeepEqual(wind,fire);
-  await tap('[data-action="flip-profile"]');
-  await tap('[data-action="flip-profile"]');
+  await tap('[data-action="profile-route"]');
+  await tap('[data-action="profile-stats"]');
   assert.deepEqual(await card(),wind);
   await tap('[data-action="stat-details"]');
   const details=await page.evaluate(()=>Object.fromEntries([...app.screen.querySelectorAll('.zc-stat')]

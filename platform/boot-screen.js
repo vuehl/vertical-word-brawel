@@ -1,28 +1,24 @@
 'use strict';
 const {paintLoadingBackdrop,paintLoadingSlip}=require('../source/src/ui/menu-scene.js');
 
-// The first frame can draw both heroes from one main-package texture.
+// Decode the approved title poster directly from the main package.
 module.exports = async function presentBootFrame(gl) {
   let program=gl.createProgram(),texture=gl.createTexture(),vao=gl.createVertexArray();
   let canvas=wx.createCanvas(),patch=wx.createCanvas(),last='',textureWidth=0,textureHeight=0;
-  const {words,src}=require('./boot-hero-art'),image=wx.createImage();
+  const {src}=require('./boot-poster'),image=wx.createImage();
   let ready=false;
   image.onload=()=>{if(canvas){ready=true;last='';}};
   function loadLocal(){
     image.onerror=null;
     if(!canvas)return;
     try{
-      const file=wx.env.USER_DATA_PATH+'/zixing-boot-heroes.webp';
+      const file=wx.env.USER_DATA_PATH+'/zixing-boot-poster.webp';
       wx.getFileSystemManager().writeFileSync(file,src.slice(src.indexOf(',')+1),'base64');
       image.src=file;
-    }catch(error){console.warn('[字由搏击] 启动字灵图片读取失败',error);}
+    }catch(error){console.warn('[字由搏击] 加载页底图读取失败',error);}
   }
   image.onerror=loadLocal;
   try{image.src=src;}catch{loadLocal();}
-  function drawHero(ctx,word,x,y,size){
-    const index=words.indexOf(word),tile=image.height;
-    if(ready&&index>=0)ctx.drawImage(image,index*tile,0,tile,tile,x,y,size,size);
-  }
   function attach(type,source){
     const shader=gl.createShader(type);
     gl.shaderSource(shader,source);gl.compileShader(shader);gl.attachShader(program,shader);gl.deleteShader(shader);
@@ -33,14 +29,14 @@ module.exports = async function presentBootFrame(gl) {
     if(canvas){canvas.width=canvas.height=1;canvas=null;}
     if(patch){patch.width=patch.height=1;patch=null;}
   }
-  function paint(value,w,h,full,label){
+  function paint(value,w,h,full){
     if(full){canvas.width=w;canvas.height=h;}
-    const s=Math.min(w/390,h/550),W=w/s,H=h/s,left=(W-390)/2,track=H*.79;
-    const strip=h/(w/390)>=600,navy='#21253F';
+    const s=Math.min(w/390,h/550),W=w/s,H=h/s,left=(W-390)/2,track=H*.93-8;
+    const strip=h/(w/390)>=600,footer='#252229';
     if(full){
       const ctx=canvas.getContext('2d');
       ctx.setTransform(s,0,0,s,0,0);
-      paintLoadingBackdrop(ctx,W,H,drawHero);
+      paintLoadingBackdrop(ctx,W,H,ready?image:null);
     }
     let y=0,ctx=canvas.getContext('2d');
     if(strip){
@@ -48,10 +44,10 @@ module.exports = async function presentBootFrame(gl) {
       const height=Math.ceil((track+32)*s)-y;
       if(patch.width!==w||patch.height!==height){patch.width=w;patch.height=height;}
       ctx=patch.getContext('2d');ctx.setTransform(1,0,0,1,0,0);
-      ctx.fillStyle=navy;ctx.fillRect(0,0,w,height);
+      ctx.fillStyle=footer;ctx.fillRect(0,0,w,height);
     }
     ctx.setTransform(s,0,0,s,left*s,-y);ctx.save();ctx.translate(0,track);
-    paintLoadingSlip(ctx,value,label);
+    paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源');
     ctx.restore();
     return strip?y:null;
   }
@@ -62,39 +58,26 @@ module.exports = async function presentBootFrame(gl) {
     attach(gl.FRAGMENT_SHADER,`#version 300 es
       precision highp float;
       uniform sampler2D artwork;uniform int percent;uniform bool overScene;
-      uniform vec4 trackRect;uniform float sweep;
       in vec2 uv;out vec4 color;
-      void main(){
-        if(percent<0&&overScene)discard;
-        color=texture(artwork,uv);
-        vec2 p=(uv-trackRect.xy)/trackRect.zw;
-        if(percent<100 && p.x>=0. && p.x<=1. && p.y>=0. && p.y<=1.){
-          float distanceToBand=abs(p.x-(sweep*1.32-.16));
-          float band=1.-smoothstep(.035,.16,distanceToBand);
-          vec3 tint=p.x<float(percent)*.01?vec3(.73,.88,1.):vec3(.53,.68,.86);
-          color.rgb=mix(color.rgb,tint,band*.9);
-        }
-      }`);
+      void main(){if(percent<0&&overScene)discard;color=texture(artwork,uv);}`);
     gl.linkProgram(program);
     if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program)||'启动画面着色器未就绪');
     const percent=gl.getUniformLocation(program,'percent'),overScene=gl.getUniformLocation(program,'overScene');
-    const trackRect=gl.getUniformLocation(program,'trackRect'),sweep=gl.getUniformLocation(program,'sweep');
-    function draw(value,overlay=false,sweepPhase=0,phase){
+    function draw(value,overlay=false){
       if(!program)return;
-      value=Math.max(0,Math.min(100,value));
-      const label=value===100?'准备就绪':phase||(value>=90?'正在打开首页':'正在准备游戏资源');
-      const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight,key=w+'x'+h+'@'+value+'/'+label;
+      value=Math.max(0,Math.min(100,Math.floor(value)));
+      const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight,key=w+'x'+h+'@'+value;
       gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.disable(gl.SCISSOR_TEST);gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.STENCIL_TEST);gl.disable(gl.CULL_FACE);gl.disable(gl.BLEND);gl.colorMask(true,true,true,true);
       gl.viewport(0,0,w,h);gl.useProgram(program);gl.bindVertexArray(vao);
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
       // Repeated first-frame checks reuse the same texture without repainting.
       if(key!==last){
-        // Hero arrivals invalidate last too, so they always refresh the full
+        // Late poster loads invalidate last too, so they always refresh the full
         // illustration. Ordinary progress updates repaint/upload only a strip.
         // Compact viewports can overlap the caption/art: use a full paint there.
         const full=!last||textureWidth!==w||textureHeight!==h||h/(w/390)<600;
-        const stripY=paint(value,w,h,full,label);
+        const stripY=paint(value,w,h,full);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
         if(textureWidth!==w||textureHeight!==h){
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
@@ -104,10 +87,7 @@ module.exports = async function presentBootFrame(gl) {
         if(stripY!==null)gl.texSubImage2D(gl.TEXTURE_2D,0,0,stripY,gl.RGBA,gl.UNSIGNED_BYTE,patch);
         last=key;
       }
-      gl.uniform1i(percent,Math.floor(value));gl.uniform1i(overScene,overlay?1:0);
-      const scale=Math.min(w/390,h/550);
-      gl.uniform4f(trackRect, .5+(61-195)*scale/w, .79, 268*scale/w, 5*scale/h);
-      gl.uniform1f(sweep,sweepPhase);
+      gl.uniform1i(percent,value);gl.uniform1i(overScene,overlay?1:0);
       gl.drawArrays(gl.TRIANGLES,0,3);gl.bindVertexArray(null);gl.useProgram(null);gl.flush();
     }
     draw(0);

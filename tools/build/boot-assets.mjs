@@ -4,22 +4,16 @@ import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {brotliDecompressSync} from 'node:zlib';
 import postcss from 'postcss';
-import sharp from 'sharp';
 import {packStream} from './pack-resources.mjs';
 import {unpackStream} from './resource-stream.mjs';
-import {starterSpecies,starterWords} from '../../source/src/data/starter-characters.js';
 import {zixingStyle} from '../../source/src/ui/zixing-style.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex').slice(0,16);
 
-export async function writeBootHeroArt(root,out){
-  const words=starterSpecies.map(id=>starterWords[id]);
-  const tiles=await Promise.all(starterSpecies.map(id=>
-    sharp(path.join(root,'resources/art/glyphs',`hero_${id}_${starterWords[id]}.png`))
-      .resize(256,256,{fit:'contain',withoutEnlargement:true,background:'#0000'}).png().toBuffer()));
-  const atlas=await sharp(tiles,{join:{across:tiles.length}}).webp({lossless:true,effort:6}).toBuffer();
-  const file=path.join(out,'boot-hero-art.js');
-  const code='module.exports = '+JSON.stringify({words,src:'data:image/webp;base64,'+atlas.toString('base64')})+';\n';
+export function writeBootPoster(root,out){
+  const poster=fs.readFileSync(path.join(root,'resources/public/assets/ui-paper/loading-poster.webp'));
+  const file=path.join(out,'boot-poster.js');
+  const code='module.exports = '+JSON.stringify({src:'data:image/webp;base64,'+poster.toString('base64')})+';\n';
   if(fs.existsSync(file)&&fs.readFileSync(file,'utf8')===code)return;
   const pending=file+'.'+process.pid+'.tmp';
   try{

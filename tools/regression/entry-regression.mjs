@@ -45,20 +45,27 @@ export async function verifyEntry({page,tap,dir}){
   await screen('home');
   await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed);
   await page.waitForFunction(()=>app.screen.querySelector('.journey-scene')?.dataset.word==='炎'&&
-    nativeImageLoads.some(img=>img.width===560&&img.height===1212));
+    nativeImageLoads.some(img=>img.width===780&&img.height===1688));
   assert.ok(await page.evaluate(()=>!app.run && !nativeImageLoads.some(img=>img.src?.includes('/env/forest'))),'The home artwork must be independent of the battle map');
   const homeActions=()=>page.evaluate(()=>[...app.screen.querySelectorAll('button')].map(b=>b.dataset.action));
-  assert.deepEqual(await homeActions(),['settings','journey','help']);
+  assert.deepEqual(await homeActions(),['settings','journey','multiplayer','lab','help']);
+  await page.waitForFunction(()=>app.screen._journeyIdle?.(inspected.env.performance.now()).frame>0);
   await capture('00-first-home');
   await page.evaluate(()=>{
     const env=inspected.env,prepare=env.prepareForest;
     env.prepareForest=()=>{env.prepareForest=prepare;throw Error('测试首次资源加载失败');};
   });
-  await journey();await screen('entry-error');
+  const startFirst=async()=>{
+    await journey();await screen('choose');await tap('[data-action="collection-next"]');await screen('map');
+    await tap('[data-action="enter"]');
+  };
+  await startFirst();await screen('entry-error');
   assert.ok(!await page.evaluate(()=>app.meta.profile.firstJourneyPlayed));
-  await tap('.paper-back');await screen('home');
-  assert.deepEqual(await homeActions(),['settings','journey','help']);
-  await journey();
+  await tap('.paper-back');await screen('map');
+  await tap('[data-action="route-back"]');await screen('choose');
+  await tap('[data-action="collection-back"]');await screen('home');
+  assert.deepEqual(await homeActions(),['settings','journey','multiplayer','lab','help']);
+  await startFirst();
   await page.waitForFunction(()=>app.run?.state==='play'&&!app.screen,{timeout:90000});
   assert.deepEqual(await page.evaluate(()=>{
     const {species,biome,tier,mode}=app.lastCfg;return [species,biome,tier,mode,app.run.stage,!!app.run.coop];
@@ -68,7 +75,7 @@ export async function verifyEntry({page,tap,dir}){
   await tap('[data-action="report-home"]');await screen('home');
   await capture('01-home');
   assert.deepEqual(await homeActions(),['settings','journey','multiplayer','lab','help']);
-  assert.ok(await page.evaluate(()=>app.screen.querySelector('.zx-home-wordmark').offsetHeight>=70));
+  assert.ok(await page.evaluate(()=>app.screen.querySelector('[data-action="journey"]').dataset.printAngle==='-3'));
   // Some input adapters give window x/y at press and an empty touch list at release.
   await page.evaluate(()=>{
     const v=inspected.env.entryViewport(),box=app.screen.querySelector('[data-action="journey"]').getBoundingClientRect();
@@ -110,9 +117,9 @@ export async function verifyEntry({page,tap,dir}){
   });
   await page.waitForFunction(()=>window.journeyFrames);
   const frames=await page.evaluate(()=>journeyFrames.filter(f=>f.page==='home'));
-  assert.ok(frames.length>=4&&frames.every((f,i)=>!i||f.width>=frames[i-1].width));
-  assert.ok(frames.at(-1).width>frames[0].width*1.4&&frames.at(-1).cy<frames[0].cy*.6);
-  assert.ok(frames.some((f,i)=>i&&f.width>frames[i-1].width&&f.uploads===frames[i-1].uploads),
+  assert.ok(frames.length>=4&&frames.every((f,i)=>!i||f.width<=frames[i-1].width));
+  assert.ok(frames.at(-1).width<frames[0].width&&frames.at(-1).cy<frames[0].cy*.6);
+  assert.ok(frames.some((f,i)=>i&&f.width<frames[i-1].width&&f.uploads===frames[i-1].uploads),
     'The camera should advance using cached textures');
   console.log('Journey zoom:',frames.length,'frames,',frames.at(-1).uploads,'UI uploads, longest interval',
     Math.round(Math.max(...frames.slice(1).map((f,i)=>f.ms-frames[i].ms))),'ms');
@@ -148,7 +155,7 @@ export async function verifyEntry({page,tap,dir}){
   assert.equal(await selected(),'single-stage');
   assert.ok(await page.evaluate(()=>app.screen.querySelector('[data-tier="1"]').disabled));
   await tap('.zx-album-mode[data-mode="standard"][data-tier="0"]');assert.equal(await selected(),'standard');
-  assert.deepEqual(await page.evaluate(()=>[...app.screen.querySelectorAll('[data-tier="0"]')].map(b=>inspected.layout.box(b).s.background.toLowerCase())),['#dde5ef','#47698f']);
+  assert.deepEqual(await page.evaluate(()=>[...app.screen.querySelectorAll('[data-tier="0"]')].map(b=>[b.dataset.paperSurface,b.getAttribute('aria-pressed')])),[['difficulty-segment','false'],['difficulty-segment','true']]);
   await capture('02-standard');
   await backHome();
   for(const [action,name] of [['multiplayer','coop'],['lab','lab'],['settings','settings']]){
@@ -178,16 +185,16 @@ export async function verifyEntry({page,tap,dir}){
           const box=inspected.layout.box(ticket);
           if(!box||box.w<240||box.h<44)throw Error('Loading slip is missing or too small');
           // Sample the visible fill and remaining track on the slip.
-          const pixels=ticket.getContext('2d').getImageData(122,106,536,1).data;
+          const pixels=ticket.getContext('2d').getImageData(62,106,652,1).data;
           let filled=0;
-          for(let i=0;i<pixels.length;i+=4)if(pixels[i]===80&&pixels[i+1]===118)filled++;
-          if(Math.abs(filled-536*value/100)>1)throw Error('Loading bar disagrees with the percentage');
+          for(let i=0;i<pixels.length;i+=4)if(pixels[i]===255&&pixels[i+1]===197)filled++;
+          if(Math.abs(filled-652*value/100)>2)throw Error('Loading bar at '+value+'% filled '+filled+' of 652 pixels');
           audit.image=GameGlobal.pokebonk.canvas.toDataURL();
         }
         if(value===100){
           const canvas=inspected.uiCanvas;
           const pixel=canvas.getContext('2d').getImageData(2,2,1,1).data;
-          if(pixel[3]!==255||pixel[0]>80)throw Error('Completed loading poster lost its opaque dark background');
+          if(pixel[3]!==255||pixel[0]<180)throw Error('Completed loading poster lost its opaque yellow background');
         }
         if(app.run?.time>0)throw Error('Combat started during the menu transition');
       }else if(audit.progress.includes(100)){
@@ -222,24 +229,31 @@ export async function verifyEntry({page,tap,dir}){
   await page.waitForFunction(()=>{
     const root=app.run.ui.root,combo=root.querySelector('.zx-combo>b');
     const cells=[...root.querySelectorAll('.vitamin-rail .zx-mini-slot,.zx-hud-supplies .zx-mini-slot')];
-    if(combo?.textContent!=='×7'||!combo.offsetWidth||cells.length!==3)return false;
+    if(combo?.textContent!=='×7'||combo.offsetWidth!==176||cells.length!==2)return false;
+    if(root.querySelector('.zx-combo>small').offsetWidth||root.querySelector('.zx-combo>i').offsetHeight)return false;
     const boxes=cells.map(c=>c.getBoundingClientRect());
-    return boxes.every(b=>b.width===25&&b.height===25)&&boxes[1].x>=boxes[0].right&&boxes[2].y>boxes[1].y;
+    return boxes.every(b=>b.width===24&&b.height===24)&&boxes[1].x>=boxes[0].right;
   });
   await capture('04-entry-play');
-  await page.evaluate(()=>{app.run.streakT=.9;});
-  await page.waitForFunction(()=>{
-    const streak=app.run.ui.els.streak;
-    const number=inspected.layout.box(streak.children[1].firstChild);
-    const remaining=Number(streak.children[2].getAttribute('aria-valuenow'));
-    return number?.opacity>0&&number.opacity<.7&&remaining>0&&remaining<=1;
+  // Sample the two short-lived HUD states in one task so a slow screenshot or
+  // software renderer cannot let the timer expire between assertions.
+  const comboStates=await page.evaluate(()=>{
+    const run=app.run,hud=run.ui,streak=hud.els.streak;
+    function sample(){
+      hud.streakHud(run.streak,run.streakT,run.realTime);
+      inspected.env.drawUI(app.r.renderer);
+      return {count:streak.children[1].textContent,opacity:inspected.layout.box(streak.children[1].firstChild)?.opacity,
+        remaining:Number(streak.children[2].getAttribute('aria-valuenow'))};
+    }
+    run.streak=7;run.streakT=.9;
+    const fading=sample();
+    run.onKill();
+    const renewed=sample();
+    run.streakT=1/60;
+    return {fading,renewed};
   });
-  await page.evaluate(()=>app.run.onKill());
-  await page.waitForFunction(()=>{
-    const streak=app.run.ui.els.streak;
-    return streak.children[1].textContent==='×8'&&Number(streak.children[2].getAttribute('aria-valuenow'))>2.4;
-  });
-  await page.evaluate(()=>{app.run.streakT=1/60;});
+  assert.ok(comboStates.fading.opacity>0&&comboStates.fading.opacity<.7&&comboStates.fading.remaining>0&&comboStates.fading.remaining<=1,JSON.stringify(comboStates));
+  assert.ok(comboStates.renewed.count==='×8'&&comboStates.renewed.remaining>2.4,JSON.stringify(comboStates));
   await page.waitForFunction(()=>!app.run.ui.els.streak.offsetWidth);
   const rainbow=await page.evaluate(()=>{
     const hud=app.run.ui;
@@ -280,18 +294,10 @@ export async function verifyEntry({page,tap,dir}){
   await page.evaluate(()=>{
     for(const id of ['rare-candy','fire-stone','ice-stone','leaf-stone','tm-case','stick','bicycle','full-heal'])app.run.player.items.set(id,1);
   });
-  await page.waitForFunction(()=>{
-    const root=app.run.ui.root,more=root.querySelector('[data-action="inventory-more"]');
-    if(more?.textContent!=='+2')return false;
-    const skills=root.querySelector('.zx-skill-slots').getBoundingClientRect();
-    const cells=[...root.querySelectorAll('.zx-hud-supplies .zx-mini-slot')].map(c=>c.getBoundingClientRect());
-    return cells.length===8&&cells.every((b,i)=>b.top>=skills.bottom&&b.top===cells[0].top&&(!i||b.left>=cells[i-1].right));
-  });
-  await tap('[data-action="inventory-more"]');
-  await page.waitForFunction(()=>app.run.ui.modalEl?.querySelectorAll('[data-pause-section="supplies"] .zx-pause-build-row').length===11);
+  await tap('.zx-hud-pause');await tap('[data-pause-tab="build"]');
+  await page.waitForFunction(()=>app.run.ui.modalEl?.querySelectorAll('[data-pause-section="supplies"] .zx-pause-build-row').length===9);
   await tap('[data-action="pause-resume"]');
-  await tap('.zx-minimap');await capture('04-region-map');await tap('.zx-atlas-filter-toggle');await tap('[data-map-filter="chest"]');
-  assert.equal(await page.evaluate(()=>app.run.ui.root.querySelector('.zx-battle-map-art').dataset.filter),'chest');
+  await tap('.zx-minimap');await capture('04-region-map');assert.equal(await page.evaluate(()=>app.run.ui.root.querySelector('.zx-atlas-key h2').textContent),'同事的办公桌');
   await tap('[data-action="close-battle-map"]');
   await page.evaluate(()=>{
     const hud=app.run.ui;
