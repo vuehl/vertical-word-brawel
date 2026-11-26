@@ -36,8 +36,8 @@ export function moveDeskPlayer(terrain,x,z,endX,endZ,radius,feet,out){
     if(out.x!==nextX||out.z!==nextZ){
       // Allow the usual separation if a spawn or teleport already overlapped a prop.
       if(!terrain.hitProp(x,feet,z,radius,true)){
-        out.x=clamp(out.x,Math.min(x,nextX),Math.max(x,nextX));
-        out.z=clamp(out.z,Math.min(z,nextZ),Math.max(z,nextZ));
+        const sx=out.x-x,sz=out.z-z,sl=Math.hypot(sx,sz),max=Math.hypot(dx,dz);
+        if(sl>max){out.x=x+sx*max/sl;out.z=z+sz*max/sl;}
       }
       if(terrain.hitProp(out.x,feet,out.z,radius,true)){
         if(dx&&!terrain.hitProp(nextX,feet,z,radius,true)){out.x=nextX;out.z=z;}

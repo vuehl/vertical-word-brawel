@@ -65,7 +65,7 @@ export const gameStick = createStickConfig({
   filterWeights: [1],      // 战斗直接采用本步的最新方向，速度在玩家物理中平滑
   smoothAlpha: 0,
   maxSpeed: 7.3,           // 基础跑速，角色、装备和地形再乘各自的倍率
-  accel: 58,
-  decel: 40,
+  accel: 90,
+  decel: 60,
   maxStepDistance: 1.2,
 });

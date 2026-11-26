@@ -226,8 +226,9 @@ var ME = class {
         const radius=this.dragRadius ??= this.centeredStick||this.floatingStick
           ? Math.max(8,(this.stick.getBoundingClientRect().width-this.knob.getBoundingClientRect().width)/2-8)
           : TE*this.k;
-        const reach=TE*this.k*DE;
-        if (i > reach && !this.floatingStick && !this.fixed && !this.centeredStick) {
+        // 浮动摇杆拉满量程后原点跟随手指，S 弯和来回切换时反向立即生效。
+        const reach=this.floatingStick?radius:TE*this.k*DE;
+        if (i > reach && !this.fixed && !this.centeredStick) {
           let e = (i - reach) / i;
           ((this.sx += n * e),
             (this.sy += r * e),
