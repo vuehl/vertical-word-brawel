@@ -90,14 +90,7 @@ for(const name of ['ultimate-cast.webp','nameplate-blade.webp','ultimate-cast-in
   assert.match(index.files[key],/^text\//,'Cast resources must be installed before the first battle');
   assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(root,'platform',name))),key);
 }
-const opening=JSON.parse(fs.readFileSync(path.join(pub,'assets/opening/frames.json'),'utf8'));
-assert.equal(opening.frames,169);assert.equal(opening.files.length,Math.ceil(opening.frames/opening.perPage));
-for(const name of opening.files){
-  const key='assets/opening/'+name;
-  assert.match(index.files[key],/^text\//,'Opening pages must survive QR preview packaging');
-  assert.equal(digest(bytes(key)),digest(fs.readFileSync(path.join(pub,key))),key);
-  assert.equal(fs.existsSync(path.join(root,'minigame/play/opening',name)),false,'Do not rely on loose WebP pages');
-}
+assert.ok(!Object.keys(index.files).some(key=>key.startsWith('assets/opening/')),'Landscape build excludes the opening movie and its pages');
 // This WebP encodes palette indices as pixels. Any transcoding corrupts both themes.
 const chantAsset='assets/vfx/dragon-chant.webp';
 const evoKey='assets/vfx/evolution-screen.webp';

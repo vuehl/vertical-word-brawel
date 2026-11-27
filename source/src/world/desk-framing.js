@@ -28,13 +28,16 @@ export function deskFrame(aspect,halfWidth,halfDepth,focusX,focusZ,progress=1,be
   return {x,z,w,h,distance:42*h/normal};
 }
 
-// Preserve the gameplay zoom from the 1170 x 2532 play reference.
-export function deskPlayFrame(aspect,halfWidth,halfDepth){
+export const deskCombatViewScale = 0.65;
+
+// Fit the 1170 x 2532 reference first, so the combat zoom is consistent
+// even on wide screens where the artwork limits the original frame.
+export function deskPlayFrame(aspect,halfWidth,halfDepth,viewScale=1){
   const referenceAspect=1170/2532;
   const halfHeight=1260/deskPixelsPerUnit*Math.max(1,referenceAspect/aspect);
   // Leave a two-pixel margin when fitting the view size to the artwork.
   const inset=2/deskPixelsPerUnit;
   const limitX=halfWidth-inset,limitZ=halfDepth-inset/deskTilt;
-  const h=Math.min(halfHeight,limitX/aspect,limitZ*deskTilt),w=h*aspect;
+  const h=Math.min(halfHeight,limitX/aspect,limitZ*deskTilt)*viewScale,w=h*aspect;
   return {w,h,distance:84*h/normalHeight};
 }

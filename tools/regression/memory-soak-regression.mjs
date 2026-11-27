@@ -5,11 +5,6 @@ import path from 'node:path';
 export async function reviewMemorySoak(page,dir){
   const report=await page.evaluate(async()=>{
     const run=app.run,renderer=app.r.renderer,env=inspected.env;
-    const openingPaths=new Set(Array.from({length:29},(_,i)=>__host.files.pathFor('assets/opening/p'+String(i).padStart(2,'0')+'.webp')));
-    const openingLoads=nativeImageLoads.filter(image=>openingPaths.has(image.path));
-    const openingIDs=new Set(openingLoads.map(image=>image.id));
-    const opening={pages:openingLoads.length,images:openingIDs.size,
-      retained:nativeImageStates.filter(image=>openingIDs.has(image.id)&&image.path).length};
     app.halted=true;run.godMode=true;run.player.hp=run.player.maxHp=1e9;
     run.queueLevelUp=()=>{};run.nextEvo=null;
     // Keep player-driven modal encounters out of the continuous battle sample.
@@ -30,9 +25,9 @@ export async function reviewMemorySoak(page,dir){
     fixtureMemoryWarning({level:15});fixtureMemoryWarning({level:15});
     app.r.render(0);env.drawUI(renderer);
     return {environment:'WeChat build in Chrome SwiftShader with iOS API fixtures; 180 seconds of simulated combat, not physical iPhone memory.',
-      opening,samples,gcFromWarnings:(window.fixtureGCs||0)-before,glError:renderer.getContext().getError()};
+      openingRequests:[...window.openingRequests],samples,gcFromWarnings:(window.fixtureGCs||0)-before,glError:renderer.getContext().getError()};
   });
-  assert.deepEqual(report.opening,{pages:29,images:2,retained:0});
+  assert.deepEqual(report.openingRequests,[]);
   assert.ok(report.samples.at(-1).seconds>=179);
   assert.ok(report.samples.every(sample=>sample.state==='play'&&sample.gcs>=1));
   const steady=report.samples.slice(2);

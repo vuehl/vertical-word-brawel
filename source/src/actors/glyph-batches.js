@@ -1,15 +1,15 @@
 const attributes=[['aPos','iPos'],['aSize','iSize'],['aUV','iUV'],['aFx','iFx'],['aTint','iTint'],['aLook','iLook']];
+const modelAttributes=[...attributes,['aPose','iPose']];
 
-// Species retain their metrics. Actors write straight into the atlas buffer;
-// no per-species crowd-sized arrays or second copy at the end of a frame.
+// Actors with the same mesh and material write directly into a shared instance buffer.
 export function createGlyphBatches(sprites){
   const groups=new Map();sprites.glyphGroups=groups;
   let frameTime=0;
   function allocate(group,capacity){
     const source=group.source;
     if(group.mesh){group.mesh.parent?.remove(group.mesh);group.mesh.dispose();group.geometry.dispose();}
-    group.geometry=source.mesh.geometry.clone();
-    for(const [field,name] of attributes){
+    group.geometry=(source.zxModel?.geometry??source.mesh.geometry).clone();
+    for(const [field,name] of group.attributes){
       const original=source[field];
       const array=new Float32Array(capacity*original.itemSize);
       if(group[field])array.set(group[field].array.subarray(0,group.count*original.itemSize));
@@ -21,11 +21,12 @@ export function createGlyphBatches(sprites){
     group.mesh.name='glyph-batch-'+group.word;group.capacity=capacity;sprites.scene.add(group.mesh);
   }
   return {
-    add(source,word,initialCapacity=1024){
+    add(source,word,initialCapacity=1024,modelMaterial){
       let group=groups.get(word);
       if(!group){
-        const material=source.material.clone();material.uniforms={...source.material.uniforms};
-        group={word,source,material,members:new Set(),count:0};
+        const material=modelMaterial?modelMaterial():source.material.clone();
+        if(!modelMaterial)material.uniforms={...source.material.uniforms};
+        group={word,source,material,attributes:modelMaterial?modelAttributes:attributes,members:new Set(),count:0};
         group.reserve=()=>{if(group.count===group.capacity)allocate(group,group.capacity*2);return group.count++;};
         groups.set(word,group);allocate(group,initialCapacity);
       }
@@ -51,7 +52,7 @@ export function createGlyphBatches(sprites){
       for(const group of groups.values()){
         const total=group.count;group.mesh.count=total;group.mesh.visible=total>0;
         if(!total)continue;
-        for(const [field] of attributes){const a=group[field];a.clearUpdateRanges();a.addUpdateRange(0,total*a.itemSize);a.needsUpdate=true;}
+        for(const [field] of group.attributes){const a=group[field];a.clearUpdateRanges();a.addUpdateRange(0,total*a.itemSize);a.needsUpdate=true;}
       }
     },
     clear(){for(const g of groups.values()){g.mesh.parent?.remove(g.mesh);g.mesh.dispose();g.geometry.dispose();g.material.dispose();}groups.clear();},

@@ -27,7 +27,7 @@ const dir=process.env.POKEBONK_QA||path.join(os.tmpdir(),'pokebonk-native-check'
 const fixture=(await build({bundle:true,entryPoints:[path.join(import.meta.dirname,'build/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
 // On the phone the main CommonJS loader cannot see modules inside a subpackage.
 const config=JSON.parse(fs.readFileSync(path.join(game,'game.json'),'utf8'));
-assert.equal(config.deviceOrientation,'portrait');
+assert.equal(config.deviceOrientation,'landscape');
 const subpackages=config.subpackages || [];
 const modules=[], packageData={main:[]};
 const packageEntries={};
@@ -71,7 +71,8 @@ page.on('console',async m=>{if(m.type()==='error'||m.type()==='warn'){const msg=
   console.log(m.type(),msg.slice(0,600));if(m.type()==='error')for(const arg of m.args())try{const stack=await arg.evaluate(a=>a?.stack);if(stack)console.log(stack.slice(0,1400));}catch{}
   if(m.type()==='error'&&!msg.includes('404 (Not Found)'))errors.push(msg);}}});
 page.on('pageerror',e=>{console.error(e.stack);errors.push(e.message);});
-await page.setViewport(process.argv.includes('--entry-flow')?{width:382,height:826,deviceScaleFactor:1}:{width:390,height:844,deviceScaleFactor:1});
+await page.setViewport(process.argv.some(arg=>['--cold-start','--opening-flow'].includes(arg))?{width:844,height:390,deviceScaleFactor:1}:
+  process.argv.includes('--entry-flow')?{width:382,height:826,deviceScaleFactor:1}:{width:390,height:844,deviceScaleFactor:1});
 // The phone runtime may omit internationalization and browser/Node Base64 globals.
 await page.evaluateOnNewDocument(()=>{
   for(const name of ['Intl','atob','btoa','Buffer'])delete window[name];
@@ -146,7 +147,7 @@ if(process.argv.includes('--legacy-runtime'))await page.evaluateOnNewDocument(()
   window.TextDecoder=window.TextEncoder=undefined;
 });
 const coldStart=process.argv.includes('--cold-start');
-if(!process.argv.includes('--opening-flow')&&!coldStart)await page.evaluateOnNewDocument(()=>{window.fixtureReturning=true;window.fixtureSkipOpening=true;});
+if(!process.argv.includes('--opening-flow')&&!coldStart)await page.evaluateOnNewDocument(()=>{window.fixtureReturning=true;window.fixtureStartAtHome=true;});
 if(coldStart){
   const packageBytes=Object.fromEntries(subpackages.map(pkg=>[pkg.name,fs.readdirSync(path.join(game,pkg.root),{recursive:true})
     .map(file=>fs.statSync(path.join(game,pkg.root,file))).reduce((sum,stat)=>sum+(stat.isFile()?stat.size:0),0)]));
@@ -159,7 +160,6 @@ if(coldStart){
   },packageBytes);
 }
 if(process.argv.includes('--opening-retry'))await page.evaluateOnNewDocument(()=>{window.failOpeningResources=true;});
-if(process.argv.includes('--opening-image-retry'))await page.evaluateOnNewDocument(()=>{window.testOpeningImageFailure=true;window.failOpeningPageOnce=true;});
 if(process.argv.includes('--opening-flow'))await page.evaluateOnNewDocument(()=>{window.fixturePlatform='android';});
 if(process.argv.includes('--resource-read-recovery'))await page.evaluateOnNewDocument(()=>{
   window.fixtureResourceReadRecovery=true;
@@ -172,8 +172,9 @@ async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
   const after=await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1]));
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
-  const sx=Math.min(width/390,height/550),left=Math.round((width-390*sx)/2+31*sx),right=Math.round((width-390*sx)/2+357*sx);
-  const y=Math.floor(height*.93-5*sx);
+  const sx=Math.min(width/390,height/550),origin=width>height?width*.745-195*sx:(width-390*sx)/2;
+  const left=Math.round(origin+31*sx),right=Math.round(origin+357*sx);
+  const y=Math.floor(width>height?height*.66+3*sx:height*.93-5*sx);
   let filled=0;
   for(let x=left;x<right;x++){
     const at=(y*width+x)*channels;
@@ -286,7 +287,7 @@ async function verifyStartup(){
     await page.waitForFunction(floor=>window.homeStatusRequested && window.bootPercentages.at(-1)>=floor ||window.problem,{timeout:60000},baseline?97:56);
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels.at(-1))),'00-background.png');
-    if(process.argv.includes('--opening-flow')&&!process.argv.includes('--opening-retry')&&!process.argv.includes('--opening-image-retry')){
+    if(process.argv.includes('--opening-flow')&&!process.argv.includes('--opening-retry')){
       await page.evaluate(()=>{
         const call=wx.cloud.callContainer;
         const gate=new Promise(resolve=>{window.releaseOpeningProfile=resolve;});
@@ -656,12 +657,13 @@ async function verifyStartup(){
 }
 try{
   if(coldStart){
-    await page.waitForFunction(()=>GameGlobal.pokebonk?.bootDiagnostics.completed||window.problem,{timeout:90000});
+    await page.waitForFunction(()=>GameGlobal.pokebonk?.bootDiagnostics.completed&&app.run?.state==='play'&&!app.starting||window.problem,{timeout:90000});
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     const result=await page.evaluate(()=>({boot:GameGlobal.pokebonk.bootDiagnostics,
       packs:GameGlobal.pokebonk.files.diagnostics.packs,timings:packageTimings,
-      packageBytes:coldPackageBytes,screen:app.screen?.dataset.page,time:app.run?.time}));
-    assert.equal(result.screen,'entry');assert.equal(result.time,0);
+      packageBytes:coldPackageBytes,mode:app.run.mode,species:app.run.player.speciesId,
+      filmPages:openingRequests.length}));
+    assert.equal(result.mode,'single-stage');assert.equal(result.species,4);assert.equal(result.filmPages,0);
     for(const name of ['text','world','art'])assert.equal(result.packs[name].cached,false,'Must use a fresh resource cache');
     if(!process.argv.includes('--baseline')){
       const timings=Object.fromEntries(result.timings.map(event=>[event.name,event]));
@@ -671,7 +673,6 @@ try{
     }
     await page.waitForFunction(()=>app.run?.state==='play'&&!app.screen&&!app.entryOpening,{timeout:90000});
     assert.deepEqual(await page.evaluate(()=>[...missingAssets]),[]);
-    assert.equal(await page.evaluate(()=>openingDecoders.at(-1).frames),169);
     if(!process.argv.includes('--baseline')){
       const wind=await page.evaluate(async()=>{
         await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});

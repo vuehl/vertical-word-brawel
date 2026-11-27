@@ -12,7 +12,7 @@ import {RelayRoom} from '../network/multiplayer.js';
 import {askCoopCode} from '../network/coop-join-dialog.js';
 import {createPeerHud} from '../network/coop-peer-hud.js';
 import {drawMenuGlyph,drawRouteGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from '../actors/paper-glyph-art.js';
-import {homeEntryFace,menuSymbol,itineraryStamp} from './menu-paper-art.js';
+import {homeEntryFace,homeWordmark,menuSymbol,itineraryStamp} from './menu-paper-art.js';
 import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,drawBattleStatus,drawStageCaption,drawUltimateSeal,drawHudClock} from './paper-hud-art.js';
 import {readyDiamondFrame} from '../effects/ultimate-ready-diamonds.js';
 import {regionAtlas} from './region-atlas-art.js';
@@ -242,28 +242,17 @@ export function createZixingUI(app,api) {
     p?.totalStardust>0||p?.biomes?.forest>0);
   async function prepareBoot(account){
     if(bootJourneyStarted){await ready(account);return home();}
-    // Every fresh game process gets the opening, including existing saves.
-    // Returning to menus or resuming from the background keeps this session.
     bootJourneyStarted=true;
-    // Prepare the scene and decode the first movie frame under the original
-    // startup poster. Its single bar owns all work until playback can begin.
-    const opening=window.playJourneyOpening?.({paused:true});
     const config={species:defaultStarter,biome:'forest',tier:0,boosts:[],mode:SINGLE_STAGE};
-    if(!opening){
-      await ready(account);
-      window.onBootReady=()=>{void start(config,null,null,true);};
-      return;
-    }
+    // The first simulation tick follows the fully painted loading bar.
+    app.bootReveal=new Promise(resolve=>{window.onBootReady=resolve;});
     let sceneReady;
     const prepared=new Promise(resolve=>{sceneReady=resolve;});
-    const entering=start(config,null,opening,true,({progress,phase})=>{
+    const entering=start(config,null,{boot:true,onBootProgress:({progress,phase})=>{
       window.bootStage?.(phase||'正在准备场景',60+39*progress);
       if(progress===1)sceneReady();
-    },()=>ready(account));
-    window.onBootReady=()=>opening.resume();
-    // Entry waits for the film to finish; boot only waits for the prepared
-    // scene and first frame. Failed entry must also uncover its retry page.
-    await Promise.race([Promise.all([prepared,opening.ready]),entering]);
+    },prepareProfile:()=>ready(account)}).finally(()=>{app.bootReveal=null;});
+    await Promise.race([prepared,entering]);
   }
   let battleRecovery=null;
   function recoverBattle(session,reason){
@@ -444,7 +433,7 @@ export function createZixingUI(app,api) {
     root.querySelector('.zx-body').remove();
     root.append(
       el('div','zx-home-top',row(button(paperIcon('settings'),()=>openProfilePage('设置',settings),'zx-gear',{'aria-label':'设置','data-action':'settings','data-paper-surface':'flat'}))),
-      el('div','zx-home-visual',[],{'aria-hidden':'true'}),
+      el('div','zx-home-visual',[homeWordmark()],{'aria-hidden':'true'}),
       el('footer','zx-home-dock',[
         startButton,el('div','zx-home-secondary',[coopButton,labButton]),el('div','zx-home-foot',helpButton),
       ],{'data-paper-surface':'flat'}),
@@ -626,8 +615,8 @@ export function createZixingUI(app,api) {
       const second=action('',async()=>room?room.start():join());
       first.dataset.action='coop-first';second.dataset.action='coop-second';
       first.dataset.paperSurface='trade-action';second.dataset.paperSurface='trade-action';
-      const body=[ticket,section('队伍席位',count),el('div','coop-seats',seats.map(s=>s.tile)),
-        section('我的字灵'),roster,el('div','coop-status',[note,reconnect])];
+      const body=[el('div','coop-team-column',[ticket,section('队伍席位',count),el('div','coop-seats',seats.map(s=>s.tile))]),
+        el('div','coop-pick-column',[section('我的字灵'),roster,el('div','coop-status',[note,reconnect])])];
       const node=screen('coop',coopTitle,'和队友一起探索桌上世界',body,[action('返回',back),first,second]);
       node.querySelector('.zx-footer').classList.add('coop-actions');
       node.querySelector('.zx-body').dataset.paperSurface='flat';freePaperActions(node);
@@ -827,15 +816,13 @@ export function createZixingUI(app,api) {
     }
     update({});return {node,update};
   }
-  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null,preparedOpening=null,forceOpening=false,onBootProgress=null,prepareProfile=null) {
+  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null,{boot=false,onBootProgress,prepareProfile}={}) {
     if(activeEntry||app.starting)return false;
-    const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&(forceOpening||!hasJourneyProgress(profile()));
+    const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&(boot||!hasJourneyProgress(profile()));
     let cancelled=false,lastPhase='',lastDetailAt=0;
     const began=performance.now(),phases=[],packs=new Map(),percentages=[0];
     const view=loadingScreen('entry',!!config.coop,onBootProgress),{node}=view;
     activeEntry=node;
-    const opening=firstJourney?(preparedOpening||window.playJourneyOpening?.()):null;
-    app.entryOpening=opening;
     const diagnostics=ui.entryDiagnostics={phases,percentages,status:'loading'};
     const update=({phase:title,detail:message='',progress=0,teamReady,teamStatus})=>{
       if(cancelled)return;
@@ -907,13 +894,11 @@ export function createZixingUI(app,api) {
         const errorPage=screen('entry-error','暂时未能进入','',[
           el('div','zx-entry-slip',[menuSymbol('disconnected',48),el('div','zc-copy',[
             el('b','',destination),small(lastPhase||'准备场景')]),text(diagnostics.error,'zx-entry-message')],{'data-paper-surface':'album-page'}),
-        ],[button('返回选择',map),button('重新进入',()=>start(config,mapProgress,null,forceOpening,null,prepareProfile),'primary',{'data-action':'retry-entry'})]);
+        ],[button('返回选择',map),button('重新进入',()=>start(config,mapProgress,{boot,prepareProfile}),'primary',{'data-action':'retry-entry'})]);
         errorPage.querySelector('.zx-body').dataset.paperSurface='flat';
       }
       return false;
     }finally{
-      opening?.dispose();
-      if(app.entryOpening===opening)app.entryOpening=null;
       diagnostics.totalMs=Math.round(performance.now()-began);
       if(cancelled)diagnostics.status='cancelled';
       if(activeEntry===node)activeEntry=null;

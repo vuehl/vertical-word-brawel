@@ -1168,7 +1168,7 @@ var Df = 0.4,
         let u = this.flags[r],
           d = t.get((u & 131072 ? Qc : 0) + this.species[r], false, this.glyphWords[r]),
           f = this.dying[r] > 0,
-          p = d.zxGlyph ? 0 : t.dirRow(this.fx[r], this.fz[r]),
+          p = t.dirRow(this.fx[r], this.fz[r]),
           m = `walk`,
           h = this.anim[r],
           g = !1;
@@ -1311,11 +1311,12 @@ var Df = 0.4,
             pos:buffer.aPos.array.slice(drawIndex*3,drawIndex*3+3),
             size:buffer.aSize.array.slice(drawIndex*2,drawIndex*2+2),
             squash:buffer.aFx.array[drawIndex*4+3],
+            model:d.zxModel,pose:buffer.aPose?.array.slice(drawIndex*4,drawIndex*4+4),
             lean:d.material.uniforms.uLean.value
           };
           if(ball.breakAt && ball.t*24>=96 && ball.t*24<110){
             const attributes={};
-            for(const key of ['aPos','aSize','aUV','aFx','aTint','aLook']){
+            for(const [key] of buffer.attributes){
               const attribute=buffer[key],offset=drawIndex*attribute.itemSize;
               attributes[key]=attribute.array.slice(offset,offset+attribute.itemSize);
             }

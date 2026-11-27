@@ -3011,6 +3011,9 @@ var mv = 30,
         let t = e.lastAim;
         ((o = t.x), (s = t.z));
       }
+      if(!evolving && t.zxModel && this.attackT>0){
+        n='attack';r=1-this.attackT/.3;i=true;
+      }
       if (!evolving && this.ultPoseT > 0) {
         ((n = `attack`), (r = 1 - this.ultPoseT / 0.6), (i = !0));
         let t = e.lastAim;

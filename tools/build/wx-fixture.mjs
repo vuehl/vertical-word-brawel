@@ -85,17 +85,6 @@ globalThis.GameGlobal={};
 Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(host){
   window.__host=host;host.inspect=s=>{
     window.inspected=s;
-    // Menu/workload fixtures begin after the opening; opening-flow tests use
-    // the real boot path, including when they seed an experienced profile.
-    if(window.fixtureSkipOpening)s.env.playJourneyOpening=()=>null;
-    else{
-      const play=s.env.playJourneyOpening;
-      s.env.playJourneyOpening=(...args)=>{
-        const film=play(...args);
-        (window.openingDecoders??=[]).push({get frames(){return film.frameCount;},get removed(){return !film.active;}});
-        return film;
-      };
-    }
     if(window.failOpeningResources){
       const prepare=s.env.prepareForest;
       s.env.prepareForest=(...args)=>{s.env.prepareForest=prepare;throw Error('测试首次资源加载失败');};
@@ -111,19 +100,22 @@ Object.defineProperty(GameGlobal,'pokebonk',{get(){return window.__host;},set(ho
     if(window.failFirstFrame)s.env.drawUI=()=>{throw Error('test: first game frame failed');};
   };host.onApp=app=>{
     window.app=app;
-    if(window.fixtureSkipOpening){
-      const boot=app.boot.bind(app);
-      app.boot=async()=>{await boot();inspected.env.onBootReady=undefined;app.zixing.home();};
+    if(window.fixtureStartAtHome){
+      let ui;
+      Object.defineProperty(app,'zixing',{configurable:true,get:()=>ui,set(value){
+        ui=value;ui.prepareBoot=async account=>{await ui.prepareProfile(account);ui.home();};
+      }});
     }
     if(window.fixtureReturning){
       const load=app.backend.loadProfile.bind(app.backend);
       app.backend.loadProfile=async(...args)=>({...await load(...args),firstJourneyPlayed:true});
     }
   };
-  const resolve=host.files.pathFor;window.missingAssets=new Set();
-  host.files.pathFor=url=>{const p=resolve(url);if(!p)window.missingAssets.add(String(url));return p;};
+  const resolve=host.files.pathFor;window.missingAssets=new Set();window.openingRequests=[];
+  const inspectPath=url=>{if(String(url).includes('assets/opening/'))window.openingRequests.push(String(url));};
+  host.files.pathFor=url=>{inspectPath(url);const p=resolve(url);if(!p)window.missingAssets.add(String(url));return p;};
   const resolveAsync=host.files.resolvePath;
-  host.files.resolvePath=async url=>{const p=await resolveAsync(url);if(!p)window.missingAssets.add(String(url));return p;};
+  host.files.resolvePath=async url=>{inspectPath(url);const p=await resolveAsync(url);if(!p)window.missingAssets.add(String(url));return p;};
 }});
 let fixtureSave;
 const fixtureReceipts=new Set();
@@ -178,10 +170,6 @@ globalThis.wx={
     // Only installed user-data files and inline images may use WebP here.
     if(/\.webp$/.test(path)&&!data.has(path)){
       queueMicrotask(()=>img.dispatchEvent(new Event('error')));return;
-    }
-    const openingPath=window.__host?.files.pathFor('assets/opening/p00.webp');
-    if(window.failOpeningPageOnce&&path===openingPath){
-      window.failOpeningPageOnce=false;queueMicrotask(()=>img.dispatchEvent(new Event('error')));return;
     }
     record={id:state.id,path:state.path,width:0,height:0};
     (window.nativeImageLoads??=[]).push(record);

@@ -13,7 +13,7 @@ import {createDeskNavigation,createSpawnPlacement} from './desk-navigation.js';
 import {deskBattleLayers,deskAtlasFile} from './desk-stage-layout.js';
 import {deskExteriorGeometry,deskExteriorParts} from './desk-exterior.js';
 
-import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame,deskPlayFrame} from './desk-framing.js';
+import {deskPitch as pitch,deskTilt as tilt,deskPixelsPerUnit as pixelsPerUnit,deskFrame,deskPlayFrame,deskCombatViewScale} from './desk-framing.js';
 const xAt=px=>(px-layout.width/2)/pixelsPerUnit;
 const zAt=py=>(py-layout.height/2)/(pixelsPerUnit*tilt);
 const halfWidth=xAt(layout.width),halfDepth=zAt(layout.height);
@@ -165,7 +165,7 @@ export function deskCamera(run,progress,bend=0,p=run.player.pos){
   const summon=progress===undefined && run.state==='cinematic' ? run.dragonHd?.center : null;
   const target=summon??p;
   const {x=target.x,z=target.z,w,h,distance}=progress===undefined
-    ?deskPlayFrame(c.aspect,halfWidth,halfDepth)
+    ?deskPlayFrame(c.aspect,halfWidth,halfDepth,summon ? 1 : deskCombatViewScale)
     :deskFrame(c.aspect,halfWidth,halfDepth,run.camTarget.x,run.camTarget.z,progress,bend);
   const y=progress===undefined?(summon?.y??p.y+.5):0;
   c.position.set(x,y+distance*tilt,z+distance*Math.cos(pitch));c.lookAt(x,y,z);

@@ -1,5 +1,5 @@
 {
-  "deviceOrientation": "portrait",
+  "deviceOrientation": "landscape",
   "iOSHighPerformance": true,
   "iOSHighPerformance+": true,
   "showStatusBar": false,
@@ -18,7 +18,7 @@
     },
     {
       "name": "text",
-      "root": "packs/text-8be21b9423c8ad6c"
+      "root": "packs/text-2c48cb46b4f3206d"
     },
     {
       "name": "wind",

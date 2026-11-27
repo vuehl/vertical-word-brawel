@@ -87,7 +87,7 @@ export function journeyScene(){
       paint();
     };
     image.onerror=()=>{if(idle===state)idle=null;};
-    image.src='assets/ui-paper/home-idle-'+id+'.webp';
+    image.src='assets/ui-paper/model-idle-'+id+'.webp';
   }
   function prepare(){
     if(!deskReady)deskReady=new Promise(resolve=>{
@@ -145,9 +145,11 @@ export function journeyScene(){
     // Center the portrait in the space between the header and the album (.journey-air).
     const compact=h<=680;
     const airHeight=compact?Math.max(66,h*.19):Math.min(w*.45,h*.274);
-    const cx=w*.5,cy=mix(h*.477,(compact?54:62)+airHeight/2,pose);
-    const size=Math.min(w*.345,h*.21,airHeight/1.3);
-    const scale=Math.max(w/390,(h+margin)/844)*mix(2.26,2.10,pose);
+    const wide=w>h;
+    const cx=wide?w*mix(.29,.175,pose):w*.5;
+    const cy=wide?h*mix(.64,.55,pose):mix(h*.477,(compact?54:62)+airHeight/2,pose);
+    const size=wide?Math.min(w*.18,h*.38,210):Math.min(w*.345,h*.21,airHeight/1.3);
+    const scale=wide?Math.max((w+2*margin)/390,(h+2*margin)/844)*1.52:Math.max(w/390,(h+margin)/844)*mix(2.26,2.10,pose);
     const x=cx-scale*mix(172,174,pose),y=cy-scale*370;
     const page=node.parentNode;
     page._journeyIdle=null;

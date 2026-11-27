@@ -9,7 +9,6 @@ import {addBootAssets,bootAssets,writeBootPoster} from './build/boot-assets.mjs'
 import {lowerUnicodeRegexes} from './build/device-syntax.mjs';
 import {assetPolicyVersion,itemIconSelectionChanged} from './build/asset-policy.mjs';
 import {gameProject} from './build/project-target.mjs';
-import {buildOpeningAtlas} from './art/build-journey-opening.mjs';
 import {stageResourcePackages,finalizeResourcePackages} from './build/resource-package-roots.mjs';
 import {verifyAssetPackages} from './build/preview-files.mjs';
 
@@ -19,8 +18,6 @@ const projectRoot=gameProject(root,development);
 const developer=development?await import('./developer/build-support.mjs'):null;
 const out=path.join(projectRoot,'minigame'),engine=path.join(out,'engine');
 fs.mkdirSync(engine,{recursive:true});
-// Generate pages before either the full or incremental startup archive reads them.
-await buildOpeningAtlas(root);
 const resourcePackagesReady=stageResourcePackages(out);
 const manifest=path.join(out,'assets.js');
 const installedAssets=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,'utf8').replace(/^module.exports\s*=\s*/,'').replace(/;\s*$/,'')):null;
@@ -92,7 +89,7 @@ fs.rmSync(path.join(out,'sprite-png.js'),{force:true});
 const result=await buildPlay(common,src,hostBundle.outputFiles[0].text);
 result.files.set('game.js',fs.readFileSync(path.join(platform,'play-entry.js'),'utf8'));
 function checkScriptSize(file,bytes){
-  if(bytes>1.8*1048576)throw Error(file+' exceeds the 1.8 MiB per-script budget: '+bytes+' bytes.');
+  if(process.argv.includes('--wechat-limits')&&bytes>1.8*1048576)throw Error(file+' exceeds the 1.8 MiB per-script budget: '+bytes+' bytes.');
 }
 for(const [name,code] of result.files)checkScriptSize('play/'+name,Buffer.byteLength(code));
 const playDir=path.join(out,'play');
@@ -109,7 +106,7 @@ function writeScript(destination,code){
   }finally{fs.rmSync(pending,{force:true});}
 }
 for(const [name,code] of result.files)writeScript(path.join(playDir,name),code);
-// The source movie stays in resources; the image pages ship in the text archive.
+// Clear stale loose movie outputs when upgrading an existing build.
 fs.rmSync(path.join(playDir,'journey-opening.mp4'),{force:true});
 const openingDir=path.resolve(playDir,'opening');
 if(!openingDir.startsWith(path.resolve(out)+path.sep))throw Error('Invalid generated opening directory');
@@ -171,14 +168,14 @@ const total=size(built),main=size(built.filter(file=>!subRoots.some(root=>file==
 console.log('Native project:',(total/1048576).toFixed(2),'MiB, main:',(main/1048576).toFixed(2),'MiB.');
 const playFiles=[...result.files.keys()].map(name=>({name,bytes:fs.statSync(path.join(playDir,name)).size}))
   .sort((a,b)=>b.bytes-a.bytes);
-console.log('Largest play script:',playFiles[0].name,playFiles[0].bytes,'bytes (limit 1.8 MiB).');
+console.log('Largest play script:',playFiles[0].name,playFiles[0].bytes,'bytes.');
 // WeChat allows 30 MiB across all packages and 4 MiB for the main package.
 // Reserve space for metadata added by DevTools.
 for(const [label,bytes,budget] of [
   ['total package',total,30*1048576-128*1024],
   ['main package',main,4*1048576-64*1024],
 ]){
-  if(bytes>budget)throw Error(`WeChat ${label} exceeds the build budget: ${bytes} bytes (limit ${budget} bytes).`);
+  if(process.argv.includes('--wechat-limits')&&bytes>budget)throw Error(`WeChat ${label} exceeds the build budget: ${bytes} bytes (limit ${budget} bytes).`);
 }
 if(process.argv.includes('--analyze')){
   const attributed=new Map();

@@ -605,6 +605,8 @@ test('a native atlas image with no callback times out and can be loaded on retry
   vm.runInNewContext(code+'\nthis.load=glyphAtlasReady;',context);
   await assert.rejects(context.load(),/读取超时/);
   assert.equal(images[0].onload,null);
-  const retried=context.load();images[1].onload();
-  assert.equal(await retried,images[1]);assert.equal(await context.load(),images[1]);
+  const retried=context.load();
+  assert.equal(images.length,4);
+  images[2].onload();images[3].onload();
+  assert.equal(await retried,images[2]);assert.equal(await context.load(),images[2]);
 });

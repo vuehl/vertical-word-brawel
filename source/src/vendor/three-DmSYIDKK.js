@@ -4438,3 +4438,4 @@ export const DeviceFxThree = {
   UnsignedByteType: l, UnsignedIntType: d, Vector2: V, Vector3: U, Vector4: tt, WebGLRenderTarget: rt,
 };
 export {Nl as PostprocessingPass, b as RedFormat};
+export {Or as Bone, Mr as Skeleton};

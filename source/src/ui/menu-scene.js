@@ -66,6 +66,16 @@ export const loadingBackdropColor='#26222A';
 export function paintLoadingBackdrop(ctx,W,H,poster){
   ctx.fillStyle=loadingBackdropColor;ctx.fillRect(0,0,W,H);
   if(poster){
+    if(W>H){
+      const artWidth=W*.54,scale=Math.max(artWidth/poster.width,H/poster.height);
+      const w=poster.width*scale,h=poster.height*scale;
+      ctx.save();ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(artWidth,0);
+      ctx.lineTo(artWidth-H*.16,H);ctx.lineTo(0,H);ctx.closePath();ctx.clip();
+      ctx.drawImage(poster,(artWidth-w)/2,(H-h)*.42,w,h);
+      ctx.restore();
+      polygon(ctx,[[artWidth,0],[artWidth+5,0],[artWidth-H*.16+5,H],[artWidth-H*.16,H]],'#C9A256');
+      return;
+    }
     // Cover the viewport without stretching the illustration or leaving gutters.
     const scale=Math.max(W/poster.width,H/poster.height);
     const width=poster.width*scale,height=poster.height*scale;

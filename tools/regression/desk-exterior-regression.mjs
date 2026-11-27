@@ -25,10 +25,10 @@ export async function verifyDeskExterior(page,dir){
     west:[[24,2200,[104,97,90]],[36,2200,[157,141,113]],[48,2200,[198,174,132]],[66,2200,[205,180,138]]],
   };
   const views=[
-    ['north',2571,600],['cat',4910,800],['rear',4520,750],['east',5070,2100],['south',2571,3740],
+    ['north',2571,600],['cat',4910,650],['rear',4520,750],['east',5070,2100],['south',2571,3740],
     ['west',70,2200],['southwest',70,3740],['southeast',5070,3740],['northwest',70,70],['curtain',20,1420],
     ['leftSeam',20,1400],['rightSeam',5050,1200],
-    ['cup',1000,900],['toy3',2815,690],['shelf',3500,800],['wide',5070,3740,2.2],['tall',2571,3740,.30],['centre',2571,1902],
+    ['cup',1000,600],['toy3',2815,690],['shelf',3500,800],['wide',5070,3740,2.2],['tall',2571,3740,.30],['centre',2571,1902],
   ];
   for(const [name,x,y,aspect] of views){
     const {leaks,changed,outsideWalkable,samples,glass,png}=await page.evaluate(({name,x,y,aspect,points})=>{

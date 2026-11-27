@@ -60,7 +60,7 @@ async function launchEngine(host, play, showProgress, finishProgress) {
         showProgress(undefined,renderer);
         return;
       }
-      // The prepared scene and opening frame stay covered until the full bar has been shown.
+      // Uncover the prepared scene after the full loading bar has been shown.
       finishing = true;
       if (!finishProgress(renderer)) return;
       const enter = env.onBootReady;
@@ -267,7 +267,7 @@ async function start() {
       ['文字资源', () => files.init(undefined, installProgress)]
     ]);
     if (!resourcesReady) return;
-    stage('正在打开首页');
+    stage('正在打开桌上世界');
     showProgress(50);
     await withTimeout(launchEngine(host,play,showProgress,finishProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
     host.bootDiagnostics.completed=true;

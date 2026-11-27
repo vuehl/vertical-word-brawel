@@ -6,7 +6,8 @@
 
 - src/data/lite-rules.js 管理可选角色、单地图与存档边界。
 - src/data/config.js：森林配置、角色技能和数值表。
-- src/ui/base.css、src/ui/portrait.css：Canvas 界面构建使用的基础样式与覆盖规则。
+- `src/ui/base.css`、`src/ui/portrait.css` 提供基础样式，`src/ui/landscape-style.js` 控制横屏布局。
+- `src/actors/glyph-geometry.js`、`glyph-skeleton.js`、`glyph-model.js` 负责笔画网格、骨骼姿态和战斗实例绘制。
 - `src/game.js` 管理微信启动、对局切换和每帧调度。
 - `src/combat/run.js` 负责对局，`player.js` 负责玩家，`skills.js`、`upgrade-offers.js`、`ultimate-moves.js` 分别管理技能、升级候选和大招。
 - `src/world/terrain.js`、`facilities.js` 管理地形和互动设施。`src/ui/zixing-ui.js` 负责微信首页和选角，`battle-hud.js` 负责战斗界面。

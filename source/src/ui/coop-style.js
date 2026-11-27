@@ -3,6 +3,8 @@ export const coopStyle=`
 .screen.zx.zx-coop>.zx-header{height:84px;min-height:84px;padding-bottom:8px}
 .screen.zx.zx-coop>.zx-header small{color:#DDD3C6}
 .screen.zx.zx-coop>.zx-body{display:flex;flex-direction:column;gap:0;padding:6px 6px 0;background:transparent;overflow:hidden;scrollbar-width:none}
+.coop-team-column,.coop-pick-column{display:flex;flex-direction:column;min-width:0;min-height:0}
+.coop-team-column{flex:none}.coop-pick-column{flex:1}
 .coop-ticket{display:flex;flex-direction:row;align-items:center;justify-content:space-between;flex:none;gap:10px;height:76px;padding:10px 12px 10px 15px;background:#F1EBDF}
 .coop-ticket>.zx-col{flex:1;min-width:0;gap:0}
 .coop-ticket small,.coop-count{font-size:12px;line-height:17px;color:#776B5F}

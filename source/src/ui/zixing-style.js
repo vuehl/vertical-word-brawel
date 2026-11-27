@@ -1,4 +1,5 @@
 import {battleSheetStyle} from './battle-sheet-style.js';
+import {landscapeStyle} from './landscape-style.js';
 import {firstBatchStyle} from './first-batch-style.js';
 import {paperPaletteStyle} from './paper-shapes.js';
 import {paperSystemStyle} from './paper-system-style.js';
@@ -373,4 +374,4 @@ html.zixing .tc.zx-touch .zx-ult-progress{position:absolute;left:0;top:0;width:1
 .zx-saved-actions>.zx-button{width:100%;min-height:48px;font-size:16px;line-height:24px}
 @media(max-width:350px){.zx-modal.zx-saved-run{padding:18px;gap:14px}.zx-saved-heading>h2{font-size:20px;line-height:27px}.zx-saved-metrics{padding:12px 4px;gap:5px}}
 @media(max-height:600px){.zx-modal.zx-saved-run{padding-top:16px;padding-bottom:16px;gap:12px}.zx-saved-heading{gap:8px}.zx-saved-seal{width:40px;height:40px}.zx-saved-run>.zx-saved-body{gap:10px}}
-` + battleReviewStyle + collectionStyle + choicePresentationStyle + firstBatchStyle + paperSystemStyle + paperPaletteStyle + battleSheetStyle + choiceFrameStyle;
+` + battleReviewStyle + collectionStyle + choicePresentationStyle + firstBatchStyle + paperSystemStyle + paperPaletteStyle + battleSheetStyle + choiceFrameStyle + landscapeStyle;

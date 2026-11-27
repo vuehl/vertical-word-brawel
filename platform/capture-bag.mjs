@@ -77,6 +77,9 @@ async function createFilm(files){
   const frames=JSON.parse(fs.readFileSync(manifest,'utf8'));
   const fps = 24;
   const designWidth = 540;
+  // The film was drawn for a tall canvas. On a wide screen the short side
+  // sets its size, while world anchors still project through the game camera.
+  const filmWidthRatio=aspect=>aspect>1?.60/aspect:1;
   // Distance behind the target and beyond its right edge in the unzoomed film.
   const bagSetback = 35 / designWidth;
   const bagSideOffset = 41 / designWidth;
@@ -94,7 +97,7 @@ async function createFilm(files){
   const entrySpan = frames[0][8] - (frames[0][5] + frames[0][3]);
   function filmPlacement(frame,width,height,anchor,zoom){
     const footX=(1+anchor.x)*width/2,footY=(1-anchor.y)*height/2;
-    const scale=width/designWidth*zoom/frame[7];
+    const scale=width*filmWidthRatio(width/height)/designWidth*zoom/frame[7];
     return {
       left:Math.round(footX+(frame[5]-frame[8])*scale),
       top:Math.round(footY+(frame[6]-frame[9])*scale),
@@ -129,11 +132,11 @@ async function createFilm(files){
       if(!foreground||foreground.source!==source){
         disposeForeground();
         const geometry=batch.mesh.geometry.clone(),material=source.clone();
-        material.uniforms={...source.uniforms};material.depthTest=false;material.depthWrite=false;
+        material.uniforms={...source.uniforms};material.depthTest=true;material.depthWrite=true;
         // The world pass writes an ink mask into alpha. This pass composites
         // straight onto the screen, so the glyph needs normal alpha blending.
         material.blending=1; // THREE.NormalBlending
-        const attrs=[['aPos','iPos'],['aSize','iSize'],['aUV','iUV'],['aFx','iFx'],['aTint','iTint'],['aLook','iLook']];
+        const attrs=batch.attributes;
         for(const [key,name] of attrs){const original=batch[key];geometry.setAttribute(name,new original.constructor(new Float32Array(original.itemSize),original.itemSize));}
         const mesh=new batch.mesh.constructor(geometry,material,1);mesh.count=1;mesh.frustumCulled=false;
         const scene=new run.sprites.scene.constructor();scene.add(mesh);
@@ -141,13 +144,26 @@ async function createFilm(files){
       }
       for(const [key,name] of foreground.attrs){const a=foreground.mesh.geometry.getAttribute(name);a.array.set(snapshot.attributes[key]);a.needsUpdate=true;}
       const autoClear=renderer.autoClear;
-      try{renderer.autoClear=false;renderer.render(foreground.scene,camera);}
+      // The bag has already been composited. Give the emerging solid its own
+      // depth pass so its outline and strokes occlude each other correctly.
+      try{renderer.autoClear=false;renderer.clearDepth();renderer.render(foreground.scene,camera);}
       finally{renderer.autoClear=autoClear;renderer.resetState();}
     }
     const quadOrigin=ground.clone(),quadRight=ground.clone(),quadUp=ground.clone(),quadPoint=ground.clone();
     function captureProjection(aspect){
       const quad=b.captureQuad;
       if(!quad)return [];
+      const units=designWidth/filmWidthRatio(aspect);
+      if(quad.model){
+        quadRight.setFromMatrixColumn(camera.matrixWorld,2).multiplyScalar(.25+quad.size[1]*.05);
+        const projected=(out,x,y,bone)=>quad.model.capturePoint(out,x,y,bone,quad).add(quadRight).project(camera);
+        projected(stream.from,0,.5);projected(quadPoint,1,.5);
+        stream.glyphWidth=Math.abs(quadPoint.x-stream.from.x)*units/(2*filmZoom);
+        return (b.spiritStrokes||[]).map(stroke=>{
+          projected(quadPoint,stroke.captureOffsetX,.5-stroke.captureOffsetY,stroke.captureFrameIndex);
+          return {x:(quadPoint.x-stream.from.x)*units/(2*filmZoom),y:-(quadPoint.y-stream.from.y)*units/(2*aspect*filmZoom)};
+        });
+      }
       const sizeX=quad.size[0]*(1+quad.squash*.35),sizeY=quad.size[1]*(1-quad.squash*.3);
       quadOrigin.set(...quad.pos);
       quadPoint.setFromMatrixColumn(camera.matrixWorld,2).multiplyScalar(.25+quad.size[1]*.05);
@@ -158,10 +174,10 @@ async function createFilm(files){
       quadUp.normalize().multiplyScalar(sizeY);
       stream.from.copy(quadOrigin).addScaledVector(quadUp,.5).project(camera);
       quadPoint.copy(quadOrigin).addScaledVector(quadUp,.5).add(quadRight).project(camera);
-      stream.glyphWidth=Math.abs(quadPoint.x-stream.from.x)*designWidth/(2*filmZoom);
+      stream.glyphWidth=Math.abs(quadPoint.x-stream.from.x)*units/(2*filmZoom);
       return (b.spiritStrokes||[]).map(stroke=>{
         quadPoint.copy(quadOrigin).addScaledVector(quadRight,stroke.captureOffsetX||0).addScaledVector(quadUp,.5-(stroke.captureOffsetY||0)).project(camera);
-        return {x:(quadPoint.x-stream.from.x)*designWidth/(2*filmZoom),y:-(quadPoint.y-stream.from.y)*designWidth/(2*aspect*filmZoom)};
+        return {x:(quadPoint.x-stream.from.x)*units/(2*filmZoom),y:-(quadPoint.y-stream.from.y)*units/(2*aspect*filmZoom)};
       });
     }
     const pose={position:ground.clone(),scale:1,stretch:0};
@@ -172,6 +188,7 @@ async function createFilm(files){
       b.spiritPose=null;stream.phase=0;
       if(frame<=76 || (escaping && frame>=110))return;
       const aspect=run.r.renderer.domElement.width/run.r.renderer.domElement.height;
+      const fit=filmWidthRatio(aspect),units=designWidth/fit;
       const phase=Math.min(1,(frame-76)/18);
       const jump=escaping?Math.min(1,(frame-96)/14):0;
       const pop=escaping?escapeMotion(jump):null;
@@ -184,9 +201,9 @@ async function createFilm(files){
       // Project the full glyph quad width before moving or shrinking any stroke.
       projected.setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar(halfHeight*2).add(stream.from).project(camera);
       stream.from.project(camera);
-      stream.glyphWidth=Math.abs(projected.x-stream.from.x)*designWidth/(2*filmZoom);
-      stream.toX=shotX+2*(bagOffsetX+3/designWidth*filmZoom);
-      stream.toY=shotY+2*aspect*filmZoom*(bagSetback+47/designWidth);
+      stream.glyphWidth=Math.abs(projected.x-stream.from.x)*units/(2*filmZoom);
+      stream.toX=shotX+2*(bagOffsetX+3/units*filmZoom);
+      stream.toY=shotY+2*aspect*filmZoom*(bagSetback*fit+47/units);
       stream.phase=escaping?0:phase;
       pose.position.copy(ground);
       if(escaping){
@@ -194,7 +211,7 @@ async function createFilm(files){
         quadPoint.copy(stream.from).unproject(camera).sub(ground);
         pose.position.copy(stream.from);
         pose.position.x=stream.toX+(stream.from.x-stream.toX)*pop.advance;
-        pose.position.y=stream.toY+(stream.from.y-stream.toY)*pop.advance+2*aspect*filmZoom*pop.lift/designWidth;
+        pose.position.y=stream.toY+(stream.from.y-stream.toY)*pop.advance+2*aspect*filmZoom*pop.lift/units;
         pose.position.unproject(camera).addScaledVector(quadPoint,-pop.scale);
         // The billboard's centre also moves with its launch/landing stretch.
         projected.setFromMatrixColumn(camera.matrixWorld,1).multiplyScalar(.65);projected.y+=.35;
@@ -248,14 +265,14 @@ async function createFilm(files){
         projected.setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar(radius).add(centerGround).project(camera);
         centerHalfWidth=Math.max(.045,Math.abs(projected.x)/2);
       }
-      startDistance=startHalfWidth+bagSideOffset;
-      closeDistance=(centerHalfWidth+bagSideOffset)*closestZoom;
+      const canvas=run.r.renderer.domElement,fit=filmWidthRatio(canvas.width/canvas.height);
+      startDistance=startHalfWidth+bagSideOffset*fit;
+      closeDistance=(centerHalfWidth+bagSideOffset*fit)*closestZoom;
       bagOffsetX=startDistance;
       // Fit only the destination. Clamping each axis during the push causes a dogleg.
       const left=-1+2*(.025+centerHalfWidth*closestZoom);
       const right=1-2*(.025+(centerHalfWidth+closeRightExtent)*closestZoom);
       closeX=Math.max(left,Math.min(right,0));
-      const canvas=run.r.renderer.domElement;
       const top=.95-2*(canvas.width/canvas.height)*closestZoom*closeTopExtent;
       closeY=Math.max(-.54,Math.min(top,0));
       shotX=clicked.x;
@@ -270,7 +287,8 @@ async function createFilm(files){
         showPips(0);
         if(track){
           run.ui.capEl.style.justifyContent='flex-end';
-          track.style.marginBottom='12%';
+          track.style.marginBottom=fit<1?'10px':'12%';
+          if(fit<1){track.style.alignSelf='flex-start';track.style.marginLeft='4%';}
           track.style.width='252px';
         }
         lastFrame=this.breakAt ? Math.min(escapeLastFrame,frames.length-1) : frames.length-1;
@@ -358,12 +376,13 @@ async function createFilm(files){
       if (heldImage) {
         if (!overlay) overlay=makeOverlay(renderer,filmPlacement);
         const gl=renderer.getContext(),aspect=gl.drawingBufferWidth/gl.drawingBufferHeight;
+        const fit=filmWidthRatio(aspect),units=designWidth/fit;
         const entry=Math.min(1,b.t/(12/fps));
         const approach=1-entry*entry*(3-2*entry);
         bagAnchor.x=shotX+2*bagOffsetX;
         // Keep the incoming roll above the glyph as it crosses from offscreen.
-        bagAnchor.y=shotY+2*aspect*filmZoom*(bagSetback+.23*approach);
-        const outsideAtStart=clicked.x+2*startDistance+1-2*entrySpan/designWidth;
+        bagAnchor.y=shotY+2*aspect*filmZoom*fit*(bagSetback+.23*approach);
+        const outsideAtStart=clicked.x+2*startDistance+1-2*entrySpan/units;
         bagAnchor.x-=Math.max(0,outsideAtStart+.01)*approach;
         overlay.draw(heldFrame,heldImage,bagAnchor,filmZoom);
         drawEscapeForeground(renderer);
@@ -371,8 +390,8 @@ async function createFilm(files){
           if(!effectOverlay)effectOverlay=makeOverlay(renderer,filmPlacement);
           const origins=captureProjection(aspect);
           const anchor={x:(stream.from.x+stream.toX)/2,y:(stream.from.y+stream.toY)/2};
-          const dx=(stream.toX-stream.from.x)*designWidth/(2*filmZoom);
-          const dy=-(stream.toY-stream.from.y)*designWidth/(2*aspect*filmZoom);
+          const dx=(stream.toX-stream.from.x)*units/(2*filmZoom);
+          const dy=-(stream.toY-stream.from.y)*units/(2*aspect*filmZoom);
           soulDrain??=createSmoothSoulDrain();
           const {canvas,extent}=soulDrain.draw(stream.phase,dx,dy,b.spiritStrokes,stream.glyphWidth,origins);
           effectOverlay.draw([0,0,0,canvas.width,canvas.height,-canvas.width/2,-canvas.height/2,

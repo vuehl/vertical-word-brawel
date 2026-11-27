@@ -598,6 +598,13 @@ var Zc = (e, t = !1) => (t ? 10 : 9) + Math.min(0.99, Xc(e)),
         fx[index*4]=s;fx[index*4+1]=c;fx[index*4+2]=l;fx[index*4+3]=u;
         tint[index*4]=d;tint[index*4+1]=f;tint[index*4+2]=p;tint[index*4+3]=m;
         look[index*2]=g&15;look[index*2+1]=g>>4;
+        if(this.zxModel){
+          const frame=this.modelFrame;
+          const row=this.zxModel.rig.poseRow(r,i,h,frame,this.modelPose);
+          const remaining=this.strokeCounts?.get(glyphRect)??this.modelVisible??this.zxModel.strokeCount;
+          const yaw=-.22+Math.sin(a*Math.PI/4)*.18;
+          buffer.aPose.setXYZW(index,row,remaining,yaw,1/(frame?.renderScale??1));
+        }
         return index;
       }
       this.count >= this.cap && this.grow();

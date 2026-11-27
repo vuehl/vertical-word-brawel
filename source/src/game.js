@@ -293,10 +293,10 @@ export class App {
       onLoadProgress?.({phase:'准备完成',detail:'即将进入桌上世界',progress:1}),
       await waitForLoadingPaint(this.r.renderer),
       await e.coop?.room.waitForBattleStart((title,teamReady)=>onLoadProgress?.({phase:title,teamStatus:title,teamReady,progress:1})),
-      await this.entryOpening?.finished.then(result=>{if(result?.error)throw result.error;}),
+      await this.bootReveal,
       // Remove the opaque page and submit the first playable frame in the same turn.
       this.setScreen(null),
-      await this.revealOpening(),
+      (this.last=null), (this.combatClock.run=null), this.input.endFrame(),
       (this.run.onLoadProgress=null),
       (this.run.state='play'),
       e.coop && (saveProgress(this.run),e.coop.room.request('playing',{party:e.coop.party}).catch(()=>{})),
@@ -314,16 +314,6 @@ export class App {
       t.offline && this.hud.toast(chineseText(`Sin conexión: esta partida no contará para tu progreso`), null),
       !0
     );
-  }
-  async revealOpening() {
-    const opening=this.entryOpening;
-    if(!opening)return;
-    const revealed=opening.reveal();
-    this.r.render(0);
-    window.drawUI?.(this.r.renderer);
-    await revealed;
-    // Neither decoding nor the dissolve may become accumulated combat time.
-    this.last=null;this.combatClock.run=null;this.input.endFrame();
   }
   askOffline() {
     return (
@@ -426,7 +416,6 @@ export class App {
       setTimeout(() => n.remove(), 4200));
   }
   toMenu() {
-    this.entryOpening?.dispose();this.entryOpening=null;
     (this.run?.dispose(),
       (this.run = null),
       this.hud?.destroy(),
@@ -498,10 +487,6 @@ export class App {
     if (this.run) this.run.drawDt = n;
     if (ticks) this.last = e;
     try {
-      if(this.entryOpening?.revealing&&!this.screen){
-        this.perf.active=false;this.last=null;this.combatClock.run=null;
-        this.r.render(0);window.drawUI?.(this.r.renderer);this.input.endFrame();return;
-      }
       // Opaque menus only upload changed UI; hidden scenery stays idle.
       // Leave the last portal frame on screen until the new world and its sprites are ready.
       if(this.run?.changingZone && this.run.state==='transition' && !this.screen){this.perf.active=false;return;}

@@ -1,6 +1,17 @@
-# 字由搏击 · 微信竖屏小游戏
+# 字由搏击 · 横屏收集游戏
 
-这是「字由搏击」的竖屏工程。修改字形和美术从 `resources/` 开始，修改玩法从 `source/src/` 开始。在微信开发者工具中导入项目根目录，工具会按 `project.config.json` 加载 `minigame/`。
+`lucy-horizontal-demo` 从本地桌面场景版本 `febd756` 派生。游戏在插画桌面上进行。拖动浮动摇杆移动，字灵自动出招，玩家选择升级、释放大招、与设施互动、捕捉伙伴。结算后可以在首页管理字灵、查看招式和计划、进入研究所或双人房间。导入项目根目录即可通过 `project.config.json` 运行构建好的 `minigame/`。
+
+## 分支玩法与工程基准
+
+| 范围 | 本分支规则 | 对应源码 |
+| --- | --- | --- |
+| 路线 | 单关击败守关敌人后进门结算。多关依次经过同事的办公桌、弹珠梦工厂、星灯书庭，圣地终战对手为龘。 | `source/src/data/lite-rules.js`、`source/src/world/paper-world.js`、`source/src/combat/run.js` |
+| 字灵与成长 | 炎沿焱、燚进阶。风可沿讽、疯或飒、飙进阶。单关进阶等级为 12、24，多关为 18、36。图鉴、捕捉与存档共用原有物种编号。 | `source/src/data/starter-characters.js`、`source/src/ui/collection-rules.js`、`source/local/progression.mjs` |
+| 战斗数值 | 常规战区时长 360 秒。三档难度的敌方伤害倍率依次为 1、2、3，生命倍率为 1、1.5、2。物理或特殊伤害倍率为总伤害倍率乘对应类别倍率。 | `source/src/data/lite-rules.js`、`source/src/combat/player.js`、`source/src/combat/stat-multipliers.js` |
+| 波次与大招 | 波次表以 600 秒为基准。单关按 `600/360`、标准多关按 `600/300` 换算波次时间。大招充能率为特性倍率 × 道具倍率 × `(1 + 0.04 × 大招研究等级)`。 | `source/src/data/lite-rules.js`、`source/src/combat/stat-multipliers.js` |
+| 血量与美术 | 三阶怪物共 27 种字形。存活敌人的可见笔数为 `ceil(当前生命 / 最大生命 × 总笔数)`，上限为原笔数。福袋沿同一顺序吸走剩余笔画。 | `source/src/data/character-rules.js`、`source/src/combat/enemy-population.js`、`resources/art/monsters/` |
+| 场景与界面 | Three.js 绘制战场，桌面按原台面尺寸和正交投影取景。纸张菜单与 HUD 共用样式，经平台层布局、绘制和触摸命中。输入物理按 30 Hz 更新。 | `source/src/world/desk-framing.js`、`source/src/virtual-stick/`、`source/src/ui/`、`platform/` |
 
 ## 项目目录
 
@@ -27,13 +38,18 @@
 | [resources/public/data/](resources/public/data/) · [resources/public/text/](resources/public/text/) | 游戏读取的角色、招式、道具等数据表，以及中文界面文案。 |
 | [resources/public/fonts/](resources/public/fonts/) · `resources/public/overrides/` | 中文字体与许可、按同路径优先加载的替换素材。`public/` 顶层保留游戏版本和素材署名。 |
 
-启动页和进场加载页共用 `resources/public/assets/ui-paper/loading-poster.webp`。构建时把海报写入微信主包，首次启动即可显示。`resources/art/fire-stampede/` 的三段 GIF 用于重建烈焰狂奔图集和校验动画来源。修改技能原稿后运行 `node tools/art/build-fire-stampede.mjs`，再运行 `npm run build:assets` 更新微信包。
+启动页和进场加载页沿用原海报 `resources/public/assets/ui-paper/loading-poster.webp`。横屏将插画放在左侧，右侧显示进度。冷启动沿用本分支的默认入口，准备存档、场景、字灵和战斗特效后，显示满进度条，以炎进入普通单关。原开场视频和分帧留在制作目录，横屏构建排除了这段影片。风系技能图集在后台预载，选风或双人出发时会等待图集安装。
 
-每次重新启动小游戏时，新老玩家都会在进度条到 100% 后自动播放开场动画，无需点击首页按钮。原片 `resources/public/assets/opening/journey.mp4` 为 780×1688、24 帧/秒、169 帧的无声视频。构建时保留全部帧，生成单帧为 390×844 的 WebP 图片页，通过文字资源包安装到本地；播放使用原生图片和 WebGL，不依赖手机视频解码器。运行时用两个原生 Image 对象轮流加载当前页和下一页，每页只上传一次纹理，同页内由 GPU 切换取样区域，不再逐帧重画和上传中间画布。下一页解码完成后才复用上一页的图片对象；慢加载时保持当前帧，不累计欠帧后加速播放。0.8 秒末帧叠化结束后，清空图片来源和回调、删除显存纹理，再延后到当前调用结束触发内存清理。图片读取失败时提供重试，不会静默跳过动画。
+## 横屏界面与字形模型
 
-启动时只显示一条进度条，前 50% 对应基础资源，50–60% 对应引擎，60–99% 对应存档、场景、字灵、战斗特效和动画首帧准备。场景与字灵资源在玩法、文字包下载时就开始并行安装，引擎与存档准备也可同时推进；正式进入时复用同一安装任务，全部完成后才保存出发设置和准备对局。动画在进度到 100% 后播放，战斗在末帧叠化结束后开始计时。同一次运行中，单关结束、返回首页或切回前台都不会重播，普通关卡、多关和双人入口保持原流程，原有存档保留。`npm run test:opening` 检查全部 169 帧的 GPU 输出、慢解码保持画面、存档与资源并行准备、自动开场、后台暂停、末帧衔接、失败重试、老存档重新启动和后续导航。
+首页左侧显示游戏字标和当前字灵，右侧为开始旅程、双人前行、研究所和玩法说明。选字页并列展示模型、资料与图鉴，关卡页在同一画面呈现目的地、难度与出发按钮。战斗左上显示状态，右上为暂停和小地图，右下为大招和交互按钮。浮动摇杆沿用原触点起杆与松手逻辑。横屏布局在 `source/src/ui/landscape-style.js`。战斗镜头以 54° 俯角跟随角色，跟随距离、正交视野的宽和高均为原取景的 65%，由 `source/src/world/desk-framing.js` 中的 `deskCombatViewScale` 调整。
 
-首次默认炎开局只等待基础资源，四张风系技能图集放在独立的 `wind` 分包，开场播放时在后台准备。选择风角色或进入双人模式时，会先等待风分包安装，再开始贴图解码，慢网下可重试；已安装版本直接使用本地缓存。旧 `wind-moves.png` 已无运行时引用，不再打包。`npm run test:cold-start` 使用空缓存和固定的每包下载延迟比较完整启动流程，并检查开场全部帧与随后切换风角色；模拟网络不代表真机速度。启动日志 `[字由搏击启动耗时]` 包含每个资源包的下载、解压、写入耗时，可用于手机复测。
+- 36 种模型来自原始分层字稿，共 452 个可单独控制的笔画。范围包括 8 个可玩形态、27 种敌字（含 48 笔的龘）和既有的隐藏字形摹。模型读取 `resources/public/config/glyph-solids.json`，按笔画生成封闭网格、倒角、侧面与反向外壳描边。颜色取自原稿。摹的制作用笔画图来自上游与本分支相同的骨架版本。
+- 每个笔画绑定一根 Three.js 骨骼，角色保留原部件分组与转轴。8 个可玩形态按原动作图集重定向出 451 个待机、行走和倒地姿态，时序来自 `hero-action-catalog.js`。攻击、受击及技能专用姿态由原战斗状态时间驱动。相同字形的实例共用网格和骨骼矩阵表。界面头像与首页待机图由同一批模型渲染生成。
+- 常规构建直接使用仓库内的模型数据和预览资源。改动笔画原稿或角色动作后，在根目录依次执行 `python tools/art/glyph-models.py`、`node tools/art/render-glyph-portraits.mjs`、`node tools/build.mjs`。模型生成需要 Pillow、NumPy、SciPy 和 scikit-image。
+- 在微信开发者工具导入项目根目录即可运行现成的横屏包。桌面浏览器回归运行 `npm run test:landscape`，使用本机 Chrome 和 WebGL2，截图与数据写入 `验收/横屏演示/`。运行 `npm run test:cold-start` 可复查空缓存开局与切换风系。开发构建默认记录包体大小，显式传入 `node tools/build.mjs --wechat-limits` 可检查原有发布预算。
+
+## 场景与演出资源
 
 空气斩使用 `resources/art/air-slash-reference/空气斩.gif` 的新参考录像。第 7–27 帧按每帧 20 毫秒播放，包含出手前的空帧和最后一帧拖尾，总长 0.42 秒。运行 `node tools/art/build-air-slash-reference.mjs` 从原片去除桌面底色、用相邻清晰帧补齐被字灵与命中光遮挡的部分，生成透明图集；再运行 `npm run build:assets`。游戏中接在风系「空气斩」（403）上，沿实际瞄准方向飞行，每个目标只命中一次。`npm run test:air-slash` 核验来源、帧序、不同方向与帧率、隐藏特效和清理，并输出原片与实机对照 GIF。
 

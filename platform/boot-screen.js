@@ -31,7 +31,8 @@ module.exports = async function presentBootFrame(gl) {
   }
   function paint(value,w,h,full,animationMs){
     if(full){canvas.width=w;canvas.height=h;}
-    const s=Math.min(w/390,h/550),W=w/s,H=h/s,left=(W-390)/2,track=H*.93-8;
+    const s=Math.min(w/390,h/550),W=w/s,H=h/s;
+    const left=W>H?W*.745-195:(W-390)/2,track=W>H?H*.66:H*.93-8;
     const strip=h/(w/390)>=600;
     if(full){
       const ctx=canvas.getContext('2d');
@@ -47,7 +48,7 @@ module.exports = async function presentBootFrame(gl) {
       ctx.fillStyle=loadingBackdropColor;ctx.fillRect(0,0,w,height);
     }
     ctx.setTransform(s,0,0,s,left*s,-y);ctx.save();ctx.translate(0,track);
-    paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源',animationMs);
+    paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=95?'正在进入桌上世界':value>=85?'正在整理资源':'正在准备游戏资源',animationMs);
     ctx.restore();
     return strip?y:null;
   }

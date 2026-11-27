@@ -5,7 +5,7 @@ import {bossGlyphArt} from './boss-glyph-art.js';
 import heroRigs from '../../../resources/public/config/hero-rigs.json' with {type:'json'};
 
 const colors={fire:['#ff963e','#ed3438'],water:['#b9f2e7','#50bebd'],wood:['#c5e797','#72b778'],earth:['#e9b480','#b57649'],metal:['#ffe99a','#d5ac57'],ink:['#a5aac7','#6b719c'],dark:['#53695e','#1c302e']};
-let atlas,ready;
+let atlas,modelAtlas,ready;
 const cache=new Map();
 export function releaseGlyphCanvasCache(){cache.clear();}
 // The atlas fits each authored cutout into the middle 80/96 of its tile.
@@ -25,7 +25,7 @@ export function drawBattleOutline(ctx,mask,bakedFraction=0,renderScale=1){
   ctx.globalCompositeOperation='source-over';
 }
 export function isOriginalHeroGlyph(word){return Object.values(heroWords).includes(word);}
-export function loadGlyphImage(filename){
+export function loadGlyphImage(filename,folder='assets/glyphs/'){
   return new Promise((resolve,reject)=>{
     const image=new Image();let done=false;
     const finish=error=>{
@@ -36,11 +36,12 @@ export function loadGlyphImage(filename){
     // error and clear the pending request so a retry can load the atlas.
     const timer=setTimeout(()=>finish(Error('字形图集读取超时')),12000);
     image.onload=()=>finish();image.onerror=()=>finish(Error('字形图集加载失败'));
-    image.src='assets/glyphs/'+filename;
+    image.src=folder+filename;
   });
 }
 export function glyphAtlasReady(){
-  ready??=loadGlyphImage('atlas.png').then(image=>(atlas=image),error=>{ready=null;throw error;});
+  ready??=Promise.all([loadGlyphImage('atlas.png'),loadGlyphImage('model-glyphs.webp','assets/ui-paper/')])
+    .then(images=>{[atlas,modelAtlas]=images;return atlas;},error=>{ready=null;throw error;});
   return ready;
 }
 export function glyphWordForSpecies(id){
@@ -56,16 +57,9 @@ export function glyphTone(word){
   return 'ink';
 }
 export function drawMenuGlyph(canvas,word,tone,large){
-  const preview=large&&atlas?.complete&&glyphCatalog.words[word]?.preview;
-  if(preview){
-    const {left,top,size}=preview;
-    canvas.width=canvas.height=size;
-    canvas.getContext('2d').drawImage(atlas,left,top,size,size,0,0,size,size);
-  }else{
-    const image=glyphCanvas(word,tone);
-    canvas.width=canvas.height=image.width;
-    canvas.getContext('2d').drawImage(image,0,0);
-  }
+  const image=glyphCanvas(word,tone);
+  canvas.width=canvas.height=large?256:image.width;
+  canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
 }
 export function drawRouteGlyph(canvas,word,tone){
   drawMenuGlyph(canvas,word,tone);
@@ -75,6 +69,11 @@ export function glyphCanvas(word,tone=glyphTone(word),{battle=false}={}){
   const canvas=document.createElement('canvas');canvas.width=canvas.height=192;
   const ctx=canvas.getContext('2d'),mask=document.createElement('canvas');mask.width=mask.height=192;
   const m=mask.getContext('2d'),record=glyphCatalog.words[word];
+  if(!battle && record && modelAtlas){
+    const cell=modelAtlas.width/8;
+    ctx.drawImage(modelAtlas,record.index%8*cell,Math.floor(record.index/8)*cell,cell,cell,0,0,192,192);
+    cache.set(key,canvas);return canvas;
+  }
   if(record&&atlas?.complete){const {size,columns}=glyphCatalog;m.drawImage(atlas,record.index%columns*size,Math.floor(record.index/columns)*size,size,size,0,0,192,192);}
   else {m.font='bold 144px "Ziling Swei", sans-serif';m.textAlign='center';m.textBaseline='middle';m.fillText(word,96,100);}
   if(battle&&word!==bossGlyphArt.word)drawBattleOutline(ctx,mask,record&&atlas?.complete?bakedInkFraction(word):0);

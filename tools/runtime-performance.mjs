@@ -29,7 +29,7 @@ import {gameProject} from './build/project-target.mjs';
 const root=path.resolve(import.meta.dirname,'..'),development=process.argv.includes('--dev');
 const game=process.env.POKEBONK_GAME||path.join(gameProject(root,development),'minigame');
 const fireReview=['--fire-family','--fire-family-media','--fire-fusions','--fire-completion','--fusion-cleanup'].some(arg=>process.argv.includes(arg));
-const dir=process.env.POKEBONK_QA||path.join(root,process.argv.includes('--summon-mode')?'验收/召唤门蓝红双版':process.argv.includes('--skill-availability')?'验收/技能移除与空气斩':fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
+const dir=process.env.POKEBONK_QA||path.join(root,process.argv.includes('--landscape')?'验收/横屏演示':process.argv.includes('--summon-mode')?'验收/召唤门蓝红双版':process.argv.includes('--skill-availability')?'验收/技能移除与空气斩':fireReview?'验收/炎技能回归':'验收/手机运行优化-20261109/性能');fs.mkdirSync(dir,{recursive:true});
 const {build}=await import(pathToFileURL(path.join(root,'tools/node_modules/esbuild/lib/main.js')));
 const {default:puppeteer}=await import(pathToFileURL(path.join(root,'tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js')));
 const fixture=(await build({bundle:true,entryPoints:[path.join(root,'tools/build/wx-fixture.mjs')],write:false,format:'iife'})).outputFiles[0].text;
@@ -66,7 +66,9 @@ try{
   page.on('console',m=>{if(m.type()==='error'&&/WebGLProgram|Shader Error|VALIDATE_STATUS/.test(m.text())){errors.push(m.text());if(process.argv.includes('--debug-shaders'))console.error(m.text().slice(0,1800));}});
   const iphone=process.argv.includes('--ios-late-game')?iphoneCases[process.env.POKEBONK_IPHONE||'13']:null;
   if(process.argv.includes('--ios-late-game')&&!iphone)throw Error('Unknown iPhone fixture');
-  await page.setViewport(iphone?.viewport||{width:390,height:844,deviceScaleFactor:3});
+  const landscape=process.argv.includes('--landscape');
+  const wide=landscape||process.argv.includes('--wide');
+  await page.setViewport(iphone?.viewport||(wide?{width:844,height:390,deviceScaleFactor:1.5}:{width:390,height:844,deviceScaleFactor:3}));
   if(iphone)await page.evaluateOnNewDocument(model=>{
     window.fixtureDeviceInfo={model};window.fixtureBenchmark=null;
   },iphone.model);
@@ -89,6 +91,10 @@ try{
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
   await page.waitForFunction(()=>window.app?.zixing&&(app.screen?.querySelector('button')||
     (app.run?.state==='play'&&!app.starting&&!app.entryOpening)),{timeout:90000});
+  if(landscape){
+    const {reviewLandscape}=await import('./regression/landscape-regression.mjs');
+    await reviewLandscape(page,dir);assert.deepEqual(errors,[]);
+  }else{
   // A fresh profile can now boot straight into its first journey.
   await page.evaluate(()=>{if(app.run&&!app.screen)app.toMenu();});
   console.log('Home ready; creating an isolated run for workload counts.');
@@ -639,5 +645,6 @@ try{
   assert.equal(report.health.damage.progress,.5);assert.equal(report.health.damage.fullUploads,0);assert.ok(report.health.damage.bytes>0&&report.health.damage.bytes<100000,'Health changes upload only the small health texture');
   assert.ok(report.frameSampling.fps>0&&report.frameSampling.fps<7,JSON.stringify(report.frameSampling));
   console.log(JSON.stringify({initial,samples:report.samples.map(({quality,calls,triangles,submitted,colliders,worldPixels})=>({quality,calls,triangles,submitted,colliders,worldPixels})),touch:report.touch,visibility:report.visibility,gameplay:report.gameplay,settings:report.settings},null,2));
+  }
   }
 }finally{await browser.close();await new Promise(r=>srv.close(r));}

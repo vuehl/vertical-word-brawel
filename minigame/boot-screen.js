@@ -205,6 +205,22 @@ function paintLoadingBackdrop(ctx, W, H, poster) {
   ctx.fillStyle = loadingBackdropColor;
   ctx.fillRect(0, 0, W, H);
   if (poster) {
+    if (W > H) {
+      const artWidth = W * 0.54, scale2 = Math.max(artWidth / poster.width, H / poster.height);
+      const w = poster.width * scale2, h = poster.height * scale2;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(artWidth, 0);
+      ctx.lineTo(artWidth - H * 0.16, H);
+      ctx.lineTo(0, H);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(poster, (artWidth - w) / 2, (H - h) * 0.42, w, h);
+      ctx.restore();
+      polygon(ctx, [[artWidth, 0], [artWidth + 5, 0], [artWidth - H * 0.16 + 5, H], [artWidth - H * 0.16, H]], "#C9A256");
+      return;
+    }
     const scale = Math.max(W / poster.width, H / poster.height);
     const width = poster.width * scale, height = poster.height * scale;
     ctx.drawImage(poster, (W - width) / 2, (H - height) / 2, width, height);
@@ -317,7 +333,8 @@ module.exports = async function presentBootFrame(gl) {
       canvas.width = w;
       canvas.height = h;
     }
-    const s = Math.min(w / 390, h / 550), W = w / s, H = h / s, left = (W - 390) / 2, track = H * 0.93 - 8;
+    const s = Math.min(w / 390, h / 550), W = w / s, H = h / s;
+    const left = W > H ? W * 0.745 - 195 : (W - 390) / 2, track = W > H ? H * 0.66 : H * 0.93 - 8;
     const strip = h / (w / 390) >= 600;
     if (full) {
       const ctx2 = canvas.getContext("2d");
@@ -340,7 +357,7 @@ module.exports = async function presentBootFrame(gl) {
     ctx.setTransform(s, 0, 0, s, left * s, -y);
     ctx.save();
     ctx.translate(0, track);
-    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 95 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 85 ? "\u6B63\u5728\u6574\u7406\u8D44\u6E90" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90", animationMs);
+    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 95 ? "\u6B63\u5728\u8FDB\u5165\u684C\u4E0A\u4E16\u754C" : value >= 85 ? "\u6B63\u5728\u6574\u7406\u8D44\u6E90" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90", animationMs);
     ctx.restore();
     return strip ? y : null;
   }
