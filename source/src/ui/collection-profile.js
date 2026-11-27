@@ -62,6 +62,36 @@ function drawAttributes(c,stats,base){
   for(const x of [119,233]){c.fillStyle='#CDC1AC';c.fillRect(x,41,1,31);}
   return labels.join('，');
 }
+function linkMark(c,cx,y){
+  shape(c,[[cx-12,y-2],[cx+2,y-3],[cx,y-7],[cx+13,y],[cx,y+7],[cx+2,y+2],[cx-14,y+3]],'#57535E');
+}
+export function branchRoutePreview(from,route,speed){
+  const {art,ctx}=paper(88,116,'zx-branch-preview');
+  const first=wordFor(route.middle),last=wordFor(route.final);
+  // The next form is the large impression, the final form sits at the end of the strip.
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(88,0);ctx.lineTo(78,116);ctx.lineTo(0,116);ctx.closePath();ctx.clip();
+  ctx.fillStyle='#33303C';ctx.fillRect(0,0,88,116);
+  ctx.fillStyle='#565765';
+  if(speed){
+    shape(ctx,[[-10,47],[67,9],[83,8],[19,46]],'#555866');
+    shape(ctx,[[-9,65],[69,27],[54,43],[-9,75]],'#737785');
+    shape(ctx,[[12,70],[85,36],[65,54],[7,79]],'#4B505F');
+  }else{
+    ctx.beginPath();ctx.moveTo(-5,53);ctx.bezierCurveTo(6,28,62,3,82,10);
+    ctx.bezierCurveTo(50,10,18,36,9,52);ctx.bezierCurveTo(2,64,20,67,44,61);
+    ctx.bezierCurveTo(9,80,-14,74,-5,53);ctx.fill();
+    ctx.fillStyle='#727582';ctx.beginPath();ctx.moveTo(29,71);ctx.bezierCurveTo(53,62,73,45,77,31);
+    ctx.bezierCurveTo(87,40,66,62,29,71);ctx.fill();
+  }
+  ctx.drawImage(glyphCanvas(first),9,6,66,66);
+  shape(ctx,[[0,86],[85,70],[85,116],[0,116]],'#27252F');
+  shape(ctx,[[0,85],[76,71],[66,75],[0,88]],'#DABC77');
+  text(ctx,'终阶',7,99,11,'#F5E8CA','bold');
+  shape(ctx,[[31,97],[37,97],[36,94],[42,99],[36,103],[37,100],[31,100]],'#E5C573');
+  ctx.drawImage(glyphCanvas(last),44,81,31,31);
+  art.setAttribute('role','img');art.setAttribute('aria-label',[wordFor(from),first,last].join(' → '));
+  return art;
+}
 function drawRoute(c,id,rows){
   const stamp=(species,x,y,size)=>{
     const word=wordFor(species);c.drawImage(glyphCanvas(word,glyphTone(word)),x-size/2,y-size/2,size,size);
@@ -69,7 +99,7 @@ function drawRoute(c,id,rows){
   const link=(level,x,y,width)=>{
     if(level!=null)text(c,'Lv.'+level,x,y,11,'#62594D','bold');
     const cx=level==null?x+width/2:x+width-14;
-    shape(c,[[cx-12,y-2],[cx+2,y-3],[cx,y-7],[cx+13,y],[cx,y+7],[cx+2,y+2],[cx-14,y+3]],'#57535E');
+    linkMark(c,cx,y);
   };
   if(!rows.length){
     if(id!=null)stamp(id,34,56,30);

@@ -26,24 +26,27 @@ export async function reviewCharacters(page,dir) {
     assert.equal(start.ultimate,({4:'一点火苗',16:'阵风'})[species]);
     if(branch){
       if(species===16){
-        const choices=await page.evaluate(()=>{const r=app.run;r.player.level=r.nextEvo.level;r.tryEvolve();return r.ui.modalEl.textContent;});
-        assert.ok(choices.includes('讽')&&choices.includes('飒'));
+        const choices=await page.evaluate(()=>{
+          const r=app.run;r.player.level=r.nextEvo.level;r.tryEvolve();
+          return [...r.ui.modalEl.querySelectorAll('.zx-route-picker [data-branch-id]')].map(button=>[
+            Number(button.dataset.branchId),button.querySelector('.zx-branch-preview').getAttribute('aria-label'),
+          ]);
+        });
+        assert.deepEqual(choices,[[17,'风 → 讽 → 疯'],[58,'风 → 飒 → 飙']]);
         await draw();await page.screenshot({path:path.join(dir,'wind-branches.png')});
-        await page.evaluate(branch=>{const r=app.run;const buttons=[...r.ui.modalEl.querySelectorAll('button')];buttons.find(n=>n.textContent.includes(branch===17?'讽':'飒')).click();},branch);
+        await page.evaluate(branch=>app.run.ui.modalEl.querySelector('[data-branch-id="'+branch+'"]').click(),branch);
       }else await page.evaluate(()=>{const r=app.run;r.player.level=r.nextEvo.level;r.tryEvolve();});
       const first=await page.evaluate(()=>{
-        const r=app.run,preview=r.ui.modalEl?.textContent;
-        if(r.startSpecies===16)r.ui.modalEl.querySelector('[data-action="confirm-wind-evolution"]').click();
-        else if(r.state!=='evolving'||r.ui.modalEl)throw Error('Fire should evolve directly at the first threshold');
+        const r=app.run;
+        if(r.state!=='evolving'||r.ui.modalEl)throw Error('Evolution should start directly at the first threshold');
         for(let i=0;i<210;i++)r.update(1/30);
-        return {preview,species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
+        return {species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
       assert.equal(first.species,branch);assert.equal(first.next.level,mode==='single-stage'?24:36);report.branches.push(first);
       assert.equal(first.ultimate,({5:'一点火苗',17:'刮倒一片',58:'跑得没影'})[branch]);
       const second=await page.evaluate(()=>{
         const r=app.run;r.state='play';r.player.level=r.nextEvo.level;r.tryEvolve();
-        if(r.startSpecies===16)r.ui.modalEl.querySelector('[data-action="confirm-wind-evolution"]').click();
-        else if(r.state!=='evolving'||r.ui.modalEl)throw Error('Fire should evolve directly at the second threshold');
+        if(r.state!=='evolving'||r.ui.modalEl)throw Error('Evolution should start directly at the second threshold');
         for(let i=0;i<210;i++)r.update(1/30);
         return {species:r.player.speciesId,word:r.sprites.get(r.player.speciesId).zxGlyph,next:r.nextEvo,ultimate:r.ult.name};
       });
@@ -66,11 +69,15 @@ export async function reviewCharacters(page,dir) {
       await page.evaluate(()=>{const r=app.run;r.ult.charge=1;r.ult.fire();for(let i=0;i<120;i++)r.update(1/30);});
     }
     const spawns=await page.evaluate(async()=>{
-      const r=app.run,p=r.player,en=r.enemies;en.clear();const flags=[0,1,2,4,4096,8192,128];
+      const r=app.run,p=r.player,en=r.enemies;en.clear();const flags=[0,1,2,4,4096,8192,128|2048];
+      // Capture actors must be the selected target with a shiny or classic appearance.
+      r.captureEncounter=null;
       const samples=[];
       for(let i=0;i<flags.length;i++){
-        const index=en.spawn(59,p.pos.x+(i%4-1.5)*3,p.pos.z-3-Math.floor(i/4)*4,100,1,flags[i]);
-        const word=en.glyphWords[index],batch=r.sprites.get(59,false,word);
+        const id=flags[i]&128?r.captureTarget:59;
+        const index=en.spawn(id,p.pos.x+(i%4-1.5)*3,p.pos.z-3-Math.floor(i/4)*4,100,1,flags[i]);
+        if(index<0)throw Error('Spawn rejected for actor flags '+flags[i]);
+        const word=en.glyphWords[index],batch=r.sprites.get(id,false,word);
         samples.push({flags:flags[i],word,batchWord:batch.zxGlyph});
       }
       const words=new Set();
@@ -85,10 +92,11 @@ export async function reviewCharacters(page,dir) {
     assert.deepEqual(new Set(spawns.pool),new Set([...enemyWords,...eliteWords]));assert.equal(spawns.playerWord,finalWord);
     for(const {flags,word,batchWord} of spawns.samples){
       assert.equal(word,batchWord);
-      assert.ok((flags&(2|4|4096|8192)?minibossWords:flags&1?eliteWords:enemyWords).includes(word));
+      if(flags&128)assert.equal(word,species===4?'风':'炎');
+      else assert.ok((flags&(2|4|4096|8192)?minibossWords:flags&1?eliteWords:enemyWords).includes(word));
     }
     report.spawns.push(spawns);await draw();
-    assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-hud-name').textContent),finalWord);
+    assert.equal(await page.evaluate(()=>inspected.doc.querySelector('.zx-profile-art').dataset.word),finalWord);
     await page.screenshot({path:path.join(dir,`battle-${species}-${branch}.png`)});
   }
   report.boss=await page.evaluate(async({finalBossSpecies,finalBossWord})=>{

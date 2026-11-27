@@ -424,55 +424,63 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
   ctx.beginPath();ctx.moveTo(60,hanging?7.5:3);ctx.lineTo(hanging?61.5:62.5,hanging?10.5:8);ctx.lineTo(hanging?58.5:57.5,hanging?10.5:8);ctx.closePath();ctx.fillStyle=hanging?'#EEC659':'#527ab2';ctx.fill();
   return {count:buildings.filter(marker=>!facilityKind||marker.kind===facilityKind).length,groups,guidance};
 }
-// Geometry is in logical pixels. One silhouette sits under both rows and the portrait.
+// Draw at the displayed aspect ratio. The portrait overhangs the shared ticket.
 export function drawBattleStatus(canvas,{word,tone,look,level,progress,gold,kills},coin){
-  const g=canvas.getContext('2d'),w=canvas.width/2,h=52;
-  g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,w,h);
+  const g=canvas.getContext('2d'),w=canvas.width/2;
+  const yellow='#EEC659',white='#FFF7E9',left=56,right=w-11;
+  g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,w,canvas.height/2);
   const shape=(pts,fill)=>{
     g.beginPath();g.moveTo(...pts[0]);for(const p of pts.slice(1))g.lineTo(...p);
     g.closePath();g.fillStyle=fill;g.fill();
   };
-  const text=(s,x,y,size,color,align='left')=>{
-    g.font='bold '+size+'px sans-serif';g.textBaseline='middle';g.textAlign=align;
-    g.fillStyle=color;g.fillText(s,x,y);
-  };
-  const shade=g.createLinearGradient(0,0,w,52);
-  shade.addColorStop(0,'rgba(32,28,37,.90)');shade.addColorStop(1,'rgba(32,28,37,.83)');
-  shape([[24,2],[w-3,2],[w,5],[w-4,23],[w-7,23],[w-5,26],[w-10,50],[24,50]],shade);
-  g.fillStyle='rgba(216,231,240,.26)';g.fillRect(54,25,w-65,1);
-  const ink='#F3F1FA',left=56,percent=Math.floor(progress*100+.00001)+'%';
-  g.font='italic bold 22px sans-serif';
-  const levelWidth=23+Math.ceil(g.measureText(level).width);
-  shape([[left-2,5],[left+levelWidth,5],[left+levelWidth-3,23],[left-2,23]],'#EEC659');
-  text('Lv.',left+1,16,9,'#28242D');
-  g.font='italic bold 22px sans-serif';g.fillText(level,left+20,14);
-  const trackX=left+levelWidth+4,trackEnd=w-42;
-  if(trackEnd>trackX){
-    g.fillStyle='rgba(221,234,243,.27)';g.fillRect(trackX,12,trackEnd-trackX,4);
-    g.fillStyle='#EEC659';g.fillRect(trackX,12,(trackEnd-trackX)*progress,4);
-  }
-  text(percent,w-9,13,12,'#E0EBF3','right');
-  g.font='bold 13px sans-serif';
-  const firstEnd=left+19+g.measureText(gold).width+7;
-  const lastStart=w-14-23-g.measureText(kills).width;
-  const split=Math.min(lastStart,Math.max(firstEnd,Math.round(left+(w-left-12)/2)));
-  g.drawImage(coin,left-1,29,17,17);text(gold,left+19,38,13,ink);
-  g.fillStyle='rgba(216,231,240,.22)';g.fillRect(split-3,31,1,13);
-  for(const angle of [-.76,.76]){
-    g.save();g.translate(split+11,37);g.rotate(angle);
-    shape([[-1.65,2],[-1.65,-5],[0,-8.5],[1.65,-5],[1.65,2]],'#DBE6F1');
-    g.fillStyle='#9EADC1';g.fillRect(.3,-5,1.1,7);
-    g.fillStyle='#DEB189';g.fillRect(-3.4,1.7,6.8,1.8);g.fillRect(-.9,3,1.8,4);g.restore();
-  }
-  text(kills,split+23,38,13,ink);
-  // Match the reference's clipped paper corners, lower shadow and gold strip.
-  const face=(x,y,size,fill)=>shape([[x+4,y],[x+size,y],[x+size,y+size-4],
-    [x+size-4,y+size],[x,y+size],[x,y+4]],fill);
-  face(.5,2,49,'#463C42');face(.5,.5,48.5,'#F3E9D0');
-  shape([[2,43],[46,36],[46,46],[2,48]],'#EEC659');
-  shape([[40,1],[48,1],[48,9]],'#B9A98F');
-  g.strokeStyle='#BAAD98';g.lineWidth=.7;g.setLineDash([3,2]);g.strokeRect(4,4,40,40);g.setLineDash([]);
-  g.drawImage(appearanceGlyphCanvas(word,tone,look),3.5,2.5,42,44);
+  shape([[7,4],[w-6,4],[w-1,6],[w-2.6,16],[w-4.8,17.8],[w-2.7,18.8],
+    [w-5.2,35.3],[w-3.7,37.1],[w-6,49.5],[7,50]],'rgba(32,28,37,.86)');
+
+  // Both sizes of type on the level label share one baseline. Reserve room for
+  // a short experience rail even at high levels or when it reads 100%.
+  const fraction=Math.max(0,Math.min(1,progress)),percent=Math.floor(fraction*100+.00001)+'%';
+  g.textBaseline='alphabetic';g.textAlign='left';g.font='bold 11px Arial, sans-serif';
+  const trackEnd=right-g.measureText(percent).width-5;
+  g.font='italic bold 9px Arial, sans-serif';
+  const numberX=left+4+g.measureText('Lv.').width+2;
+  const levelFont='italic 900 19px Arial, sans-serif';
+  g.font=levelFont;
+  const numberWidth=Math.min(g.measureText(level).width,trackEnd-14-5-7-numberX);
+  const labelEnd=numberX+numberWidth+7,trackStart=labelEnd+5;
+  shape([[left,7],[labelEnd,7],[labelEnd-3.5,27],[left,27]],yellow);
+  g.fillStyle='#241D25';g.font='italic bold 9px Arial, sans-serif';g.fillText('Lv.',left+4,22.8);
+  g.font=levelFont;g.fillText(level,numberX,22.8,numberWidth);
+  g.save();g.translate(trackStart,14.5);g.transform(1,0,-.176,1,0,0);
+  g.fillStyle='#71666F';g.fillRect(0,0,trackEnd-trackStart,5);
+  g.fillStyle=yellow;g.fillRect(0,0,(trackEnd-trackStart)*fraction,5);g.restore();
+  g.fillStyle=white;g.font='bold 11px Arial, sans-serif';g.textAlign='right';g.fillText(percent,right,20.5);
+
+  g.fillStyle='rgba(232,222,211,.30)';
+  for(let x=left;x<right;x+=2)g.fillRect(x,30.5,1,.8);
+  g.textAlign='left';g.font='bold 12px Arial, sans-serif';
+  const goldWidth=g.measureText(gold).width,killsWidth=g.measureText(kills).width;
+  const textSpace=right-left-49;
+  const firstWidth=Math.max(Math.min(goldWidth,textSpace/2),Math.min(textSpace-killsWidth,Math.max(textSpace/2,goldWidth)));
+  const goldX=left+19,divider=goldX+firstWidth+5,killsIconX=divider+7,killsX=killsIconX+18;
+  g.fillStyle='rgba(209,194,183,.23)';g.fillRect(divider,33,1,14);
+  if(coin)g.drawImage(coin,left,33,14,14);
+  g.save();g.translate(killsIconX,33);g.scale(14/24,14/24);
+  const steel='#E7E0D8';
+  shape([[3,2],[7,3],[19,15],[16,18],[4,6]],steel);
+  shape([[21,2],[20,7],[15,12],[12,9],[17,4]],steel);
+  shape([[5,13],[11,19],[9,21],[7,19],[4,22],[2,20],[5,17],[3,15]],steel);
+  shape([[18,13],[21,15],[19,17],[22,20],[20,22],[17,19],[15,21],[13,19]],steel);
+  g.restore();
+  g.fillStyle=white;g.fillText(gold,goldX,44.3,firstWidth);g.fillText(kills,killsX,44.3,right-killsX);
+
+  g.save();g.translate(25.5,26);g.rotate(-4*Math.PI/180);g.translate(-23.5,-24);
+  g.fillStyle='#42323B';g.fillRect(1,2,47,48);
+  g.fillStyle='#F3E9D0';g.fillRect(0,0,47,48);
+  shape([[0,44],[35,35],[47,38],[47,48],[0,48]],yellow);
+  g.strokeStyle='rgba(98,85,75,.53)';g.lineWidth=1;g.setLineDash([3,2]);g.strokeRect(4.5,4.5,38,39);g.setLineDash([]);
+  g.drawImage(appearanceGlyphCanvas(word,tone,look),4.5,5,38,38);
+  g.fillStyle='#342C36';g.fillRect(39,0,8,8);shape([[39,0],[47,8],[39,8]],'#ACA490');
+  g.restore();
   canvas.dataset.word=word;canvas.dataset.look=look||'normal';
 }
 

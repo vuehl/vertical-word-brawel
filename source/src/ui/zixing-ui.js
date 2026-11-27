@@ -1,9 +1,11 @@
+import {h as assetUrl} from '../data/config.js';
 import {journeyScene} from './journey-scene.js';
 import {paintLoadingSlip} from './menu-scene.js';
 import {headerCutout,titleRibbon,hudPaperIcon,paperIcon,rewardPaper,arrivalPennant,evolutionResult,settlementTicket,battleDialogHeading,battleDialogFrame,stagePortrait,choiceMark} from './first-batch-art.js';
 import {albumTab,setAlbumTabActive,profileSwitch,dockDialogClose,mountMenuDialog,openPaperPrompt,paperDecisionPanel,paperDecisionActions,paperDialogTitle,standardButton,fitPaperActionLabels,standardFooter,freePaperActions} from './paper-system.js';
 import {upgradeStocks,choiceQuality,choiceModel,effectScope,frameChoiceCards} from './choice-presentation.js';
 import {createCollectionUI} from './collection-ui.js';
+import {branchRoutePreview} from './collection-profile.js';
 import {canDeploy,collectionRewards} from './collection-rules.js';
 import {installReviewBattle,itemOffer,qualityBadge,planBadge} from './battle-review-ui.js';
 import {runPlan,planIncludes,plannedUpgrade} from '../combat/battle-plan.js';
@@ -11,7 +13,7 @@ import {savedSeat,rememberSeat,forgetSeat,savedProgress,saveProgress} from '../n
 import {RelayRoom} from '../network/multiplayer.js';
 import {askCoopCode} from '../network/coop-join-dialog.js';
 import {createPeerHud} from '../network/coop-peer-hud.js';
-import {drawMenuGlyph,drawRouteGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from '../actors/paper-glyph-art.js';
+import {drawMenuGlyph,glyphWordForSpecies,releaseGlyphCanvasCache} from '../actors/paper-glyph-art.js';
 import {homeEntryFace,menuSymbol,itineraryStamp} from './menu-paper-art.js';
 import {drawBattleMinimap,drawBattleHealth,drawBattleCooldown,mapWorldScale,drawBattleStatus,drawStageCaption,drawUltimateSeal,drawHudClock} from './paper-hud-art.js';
 import {readyDiamondFrame} from '../effects/ultimate-ready-diamonds.js';
@@ -22,7 +24,7 @@ import {ultimateResearchBonus} from '../combat/stat-multipliers.js';
 import {prepareHudImage,waitForLoadingPaint} from '../performance/loading-work.js';
 import {selectGraphicsQuality} from '../performance/performance-profile.js';
 import {ExperienceRing} from '../combat/experience-ring.js';
-import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus,windRushMultiplier,windRushDragonBonus} from '../data/starter-characters.js';
+import {characters,characterForSpecies,windRoutes,hasWindSpeedPassive,windSpeedDamageBonus,windRushMultiplier,windRushDragonBonus,speedDuration} from '../data/starter-characters.js';
 import {SINGLE_STAGE,enemyDifficultyText,defaultStarter,isLiteSpecies,playableStarter,FOREST_COMBAT_ZONES,QUIT_REWARD_MIN_SECONDS,remainingZoneSeconds,formatGameTime as time} from '../data/lite-rules.js';
 import {sceneAction} from '../combat/scene-action.js';
 import {COOP_ROOM_SIZE} from '../network/multiplayer-config.js';
@@ -1692,34 +1694,32 @@ export function createZixingUI(app,api) {
       const render=hud[method].bind(hud);
       hud[method]=(...args)=>{const result=render(...args);restyleChoice(run,method,args,symbol);return result;};
     }
-    function routePrint(ids){
-      const nodes=[];
-      for(const id of ids){
-        if(nodes.length)nodes.push(el('span','zx-evo-arrow','→'));
-        const actor=character(id);
-        const portrait=glyph(actor,drawRouteGlyph);
-        portrait.dataset.paperSurface='flat';
-        nodes.push(el('span','zx-evo-form',portrait,{'aria-label':actor.word}));
-      }
-      return el('div','zx-evo-line',nodes);
-    }
     const routeHeading=route=>route.role.split(' · ')[1];
-    function windEvolutionDialog(title,subtitle,body,actions=[]){
-      const wrap=overlay(title,subtitle,body,actions,hud,'zx-evo-dialog');
-      wrap.classList.add('zx-wind-scrim');
-      wrap.querySelector('.zx-evo-dialog').dataset.paperSurface='journal-cover';
-    }
     hud.showBranch=(r,ids,choose)=>{
       let chosen=false;
-      windEvolutionDialog('风起两路','为本局选择一条进阶路线',windRoutes.filter(route=>ids.includes(route.middle)).map(route=>{
-        const trait=routeHeading(route);
-        const speedRoute=hasWindSpeedPassive(route.middle);
-        const benefit=speedRoute?`移速 ×${windRushMultiplier(route.middle)} → ×${windRushMultiplier(route.final)}`:trait+' ×10';
-        return button([el('div','zx-evo-choice-head',[el('b','',trait+'路线',{'data-paper-surface':'journal-button'}),routePrint([16,route.middle,route.final])]),
-          el('div','zx-evo-benefit',[el('b','',benefit),el('small','',speedRoute?`持续 5 秒 · 撞龘额外 ×${windRushDragonBonus[route.middle]} → ×${windRushDragonBonus[route.final]}`:'持续 5 秒')]),
-          el('small','zx-evo-note','首次进阶  ·  '+character(route.middle).word+'  ·  '+character(route.middle).ult),
-        ],()=>{if(chosen)return;chosen=true;choose(route.middle);},'zx-branch-choice',{'data-branch-id':route.middle,'data-paper-surface':'move-paper'});
-      }));
+      const options=windRoutes.filter(route=>ids.includes(route.middle)).map(route=>{
+        const speed=hasWindSpeedPassive(route.middle),name=routeHeading(route)+'路线';
+        const metric=speed?'移速与撞击':'攻击速度';
+        const power=speed?'×'+windRushMultiplier(route.middle)+' → ×'+windRushMultiplier(route.final):'×10';
+        const bonus=speed?'×'+windRushDragonBonus[route.middle]+' → ×'+windRushDragonBonus[route.final]:'';
+        const detail=speed?'撞龘额外伤害':'两阶大招效果相同';
+        const ultimate=character(route.middle).ult,from=r.player.speciesId;
+        return button([
+          branchRoutePreview(from,route,speed),
+          el('div','zx-branch-copy',[
+            el('b','zx-branch-name',name),
+            el('small','zx-branch-ult','大招 · '+ultimate+' · '+speedDuration+' 秒'),
+            el('div','zx-branch-gain',[el('span','',metric),el('b','',power)]),
+            el('div','zx-branch-detail',[el('span','',detail),bonus?el('b','',bonus):null]),
+          ]),
+        ],()=>{if(chosen)return;chosen=true;choose(route.middle);},'zx-branch-choice',{
+          'data-branch-id':route.middle,'data-paper-surface':'record-paper',
+          'aria-label':name+'，'+[from,route.middle,route.final].map(id=>character(id).word).join(' → ')+'。大招'+ultimate+'，持续 '+speedDuration+' 秒，'+metric+power+'。'+detail+bonus,
+        });
+      });
+      const pane=overlay('风起两路','点选一条路线，立即进阶',[choiceList('zx-branch-list',options)],[],hud,'zx-route-picker');
+      pane.classList.add('zx-loot-scrim','zx-route-scrim');
+      pane.querySelector('.zx-route-picker').dataset.paperSurface='flat';
     };
     function intro(title,subtitle) {
       if(profile()?.settings.showBanners===false)return;
@@ -1735,27 +1735,13 @@ export function createZixingUI(app,api) {
       if(r.terrain.bossSite)intro(paperStages[r.stage-1],'桌上世界 · 圣地');
       else if(!r.sanctuary)intro(paperStages[r.stage-1],'桌上世界 · 第 '+r.stage+' 区');
     };
-    const evolve=run.startEvolution.bind(run);
-    run.startEvolution=()=>{
-      const route=windRoutes.find(route=>route.middle===run.nextEvo.to||route.final===run.nextEvo.to);
-      if(!route)return evolve();
-      run.state='modal';
-      run.sprites.prepareHeroForm(run.nextEvo.to,run.r.renderer);
-      const details=card(statRow('基础成长','提升伤害与生命'),statRow('进阶次数',String(run.player.evoStage+1)));
-      details.dataset.paperSurface='move-paper';
-      windEvolutionDialog('字意更进一步',routeHeading(route)+'路线',[
-        routePrint([run.player.speciesId,run.nextEvo.to]),
-        el('b','zx-evo-confirm-name',character(run.player.speciesId).word+' → '+character(run.nextEvo.to).word),
-        small('保留当前招式与已有强化。'),details,
-      ],[button('确认进阶  →',()=>{hud.hideModal();run.state='play';evolve();},'primary',{'data-action':'confirm-wind-evolution','data-paper-surface':'journal-button'})]);
-      evolutionCard(run.player.speciesId,run.nextEvo.to);
-    };
     hud.compact=true;
     const node=el('div','zx zx-hud');node.dataset.hud='true';
     const levelValue=el('b','zx-hud-level'),gold=el('b','zx-hud-gold'),score=el('b','zx-hud-score');
     const clock=el('b','zx-hud-clock'),inventory=el('div','zx-loadout');
     const skillSlots=el('div','zx-skill-slots',[],{'data-ui-layer':'skills','aria-label':'本局技能'});
-    const c=character(run.startSpecies),coin=hudPaperIcon('coin',18);
+    const c=character(run.startSpecies),coin=new Image();
+    coin.alt='金币';coin.src=assetUrl('ui/icons/coin.png');
     const stageCaption=el('canvas','zx-stage-caption',[],{width:368,height:52,role:'img','data-ui-region':'hud-top','data-static':'true'});
     const vitamins=el('div','zx-hud-vitamins vitamin-rail',[],{'aria-label':'本局BUFF','data-ui-layer':'items'});
     inventory.append(el('div','zx-loadout-top',[skillSlots,vitamins]));
@@ -1771,10 +1757,11 @@ export function createZixingUI(app,api) {
     const refreshPortrait=()=>{
       const progress=experience(),word=glyphWordForSpecies(run.player.speciesId??run.startSpecies);
       const level=compactCounter(xpRing.level),coins=compactCounter(Math.round(run.gold)),kills=compactCounter(run.stats.kills);
-      const key=[progress,level,coins,kills,word,run.skinLook].join('|');
+      const coinReady=coin.complete&&coin.naturalWidth>0;
+      const key=[progress,level,coins,kills,word,run.skinLook,coinReady].join('|');
       if(key===statusKey)return;
       statusKey=key;
-      drawBattleStatus(portrait,{word,tone:character(run.player.speciesId).tone,look:run.skinLook,level,progress,gold:coins,kills},coin);
+      drawBattleStatus(portrait,{word,tone:character(run.player.speciesId).tone,look:run.skinLook,level,progress,gold:coins,kills},coinReady?coin:null);
       portrait.dataset.progress=String(progress);portrait.dataset.frame=String(++portraitFrame);
       portrait.setAttribute('aria-valuenow',Math.floor(progress*100+1e-7));
       updateText(levelValue,'Lv.'+xpRing.level);
@@ -1974,8 +1961,8 @@ export function createZixingUI(app,api) {
     };
     hud.prepareEntryIcons=async()=>{
       await Promise.all([...Array.from(node.querySelectorAll('.zx-loadout-icon'),prepareHudImage),
-        prepareHudImage(ultimateIcon(run))]);
-      hud.ultHud(run);
+        prepareHudImage(ultimateIcon(run)),prepareHudImage(coin)]);
+      refreshPortrait();hud.ultHud(run);
     };
     const original=hud.hud.bind(hud);
     let last=-Infinity,lastState='',lastSupplies='',lastHealth='',healthFrame=0;

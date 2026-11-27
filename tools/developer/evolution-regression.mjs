@@ -36,8 +36,7 @@ export async function reviewDeveloperEvolution(page,dir){
     assert.equal(await page.evaluate(()=>app.run.startSpecies),id);
   };
   const finish=async()=>{
-    if(await page.evaluate(()=>app.run.startSpecies===16))await tap('[data-action="confirm-wind-evolution"]');
-    else assert.equal((await state()).state,'evolving');
+    assert.equal((await state()).state,'evolving');
     await page.evaluate(()=>{for(let i=0;i<600;i++)app.run.update(1/60);});
     await draw();return state();
   };
@@ -86,7 +85,7 @@ export async function reviewDeveloperEvolution(page,dir){
   for(const [choice,end] of [[17,18],[58,59]]){
     if(choice===58){await dev('evolve-next');assert.equal((await state()).level,18);assert.deepEqual((await state()).choices,[17,58]);}
     await tap('[data-branch-id="'+choice+'"]');
-    assert.equal((await state()).id,16,'Branch choice must still require evolution confirmation');
+    assert.deepEqual((await state()).choices,[],'Choosing a route dismisses the only prompt');
     const middle=await finish();assert.equal(middle.id,choice);assert.deepEqual(middle.next,{to:end,level:36});
     await dev('open');await preview(choice===17?'讽':'飒');
     await page.evaluate(()=>inspected.env.__zixingDeveloper.apply({mode:'timed',time:180,count:0,boss:'none'}));

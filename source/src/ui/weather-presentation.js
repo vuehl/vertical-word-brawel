@@ -25,7 +25,7 @@ export function weatherFill(kind,step){
 
 // Keep the icon and countdown above a receding weather-colored background.
 // One canvas gives the browser and native HUD the same slanted paper edge.
-export function drawWeatherCountdown(canvas,{kind,name,label,fraction,step,mark}){
+export function drawWeatherCountdown(canvas,{kind,label,fraction,step,mark}){
   const c=canvas.getContext('2d'),w=canvas.width/2,h=29;
   const progress=Math.max(0,Math.min(1,fraction)),edge=w*progress;
   const polygon=points=>{c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();};
@@ -37,9 +37,8 @@ export function drawWeatherCountdown(canvas,{kind,name,label,fraction,step,mark}
   if(progress>0&&progress<1){
     c.beginPath();c.moveTo(edge+1.5,0);c.lineTo(edge-2.5,h);c.strokeStyle=styles[kind][0];c.lineWidth=1;c.stroke();
   }
-  c.drawImage(mark,5,4,21,21);
-  c.textBaseline='middle';c.textAlign='left';c.font='bold 14px sans-serif';c.fillStyle=styles[kind][0];c.fillText(name,28,15);
-  c.textAlign='right';c.font='bold 20px sans-serif';c.fillStyle='#FFF8E9';c.fillText(label,w-5,15);
+  c.drawImage(mark,6,4,21,21);
+  c.textBaseline='middle';c.textAlign='right';c.font='bold 20px sans-serif';c.fillStyle='#FFF8E9';c.fillText(label,w-7,15);
   c.restore();
 }
 

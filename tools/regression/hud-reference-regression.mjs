@@ -21,7 +21,7 @@ export async function reviewHudReference(page,dir){
       weather(){
         const el=r.ui.els.event,canvas=el.querySelector('.zx-weather-time'),ctx=canvas.getContext('2d');
         // Sample above the lettering to verify that the colored background
-        // retreats left while the icon, name and numeric countdown stay visible.
+        // retreats left while the icon and numeric countdown stay visible.
         const background=[16,Math.floor(canvas.width/2),canvas.width-16].map(x=>Array.from(ctx.getImageData(x,4,1,1).data));
         return {visible:el.style.display!=='none',label:el.getAttribute('aria-label'),clock:canvas.dataset.frame,
           progressBars:el.querySelectorAll('.zx-weather-fill').length,background};
@@ -114,6 +114,10 @@ export async function reviewHudReference(page,dir){
           bar:h.rect(r.ui.els.bossBar),badge:h.rect(r.ui.els.bossPt),name:h.rect(r.ui.els.bossName)};
       },kind);
       assert.equal(sample.canvas.width,sample.event.width,'The weather artwork fills the whole label');
+      const available=sample.map.left-sample.clock.right-4-8;
+      assert.equal(sample.event.width,Math.min(116,available),'Weather fills its lane up to the preferred width');
+      assert.equal(sample.event.left-sample.clock.right,4);
+      assert.equal(sample.event.top,sample.clock.top);
       assert.equal(sample.canvas.height,29);
       for(const other of ['map','boss','clock'])assert.ok(!overlap(sample.event,sample[other]),JSON.stringify({width,kind,other,sample}));
       assert.ok(sample.event.left>=0&&sample.event.right<=width,JSON.stringify({width,kind,sample}));

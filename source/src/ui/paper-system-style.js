@@ -971,7 +971,7 @@ html.zixing .lab-overlay .paper-decision-actions>.primary{color:#302B33!importan
  .screen.zx.journey-prep .route-binding .zx-destination-hero>.zx-station-print{height:71px}
 }
 .zx.zx-square-hud .zx-status-row{gap:4px}
-.zx.zx-square-hud .zx-world-status.weather-clock{width:110px;height:29px;background:transparent}
+.zx.zx-square-hud .zx-world-status.weather-clock{height:29px;background:transparent}
 .zx.zx-square-hud .zx-world-status.weather-clock>b,.zx.zx-square-hud .zx-world-status.weather-clock>span,.zx.zx-square-hud .zx-world-status.weather-clock>.zx-event-mark,.zx.zx-square-hud .zx-world-status>.zx-weather-time{display:none}
 .zx.zx-square-hud .zx-world-status.weather-clock>.zx-weather-time{position:absolute;display:block;left:0;top:0;width:100%;height:29px;z-index:1}
 .zx.zx-square-hud .zx-status-row>.zx-world-status.stacked{position:absolute;left:0;top:33px}

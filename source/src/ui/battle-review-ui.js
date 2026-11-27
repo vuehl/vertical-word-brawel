@@ -258,12 +258,6 @@ export function showReviewFusion({hud,run,offers,done,requiredLevel,typeIcon,det
           ?['Lv.',shortLevel(move.level),' / '+requiredLevel]
           :move?'Lv.'+move.level+' / '+requiredLevel:'未学习')]),
     ]);
-    if(i===0){
-      // Size the leading material to its label so the connector stays with the recipe.
-      const compact=window.innerWidth<=350;
-      part.style.flex='none';
-      part.style.width=(Math.max(39,Array.from(name).length*12)+(compact?0:24))+'px';
-    }
     return i?[plus(),part]:[part];
   }));
   const slip=(children,classes='',attrs={})=>el('article','zx-fusion-slip '+classes,children,{'data-paper-surface':'fusion-slip',...attrs});
@@ -416,7 +410,7 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   event.className='zx-world-status';
   event.setAttribute('role','timer');event.dataset.uiLayer='weather';event.append(mark);
   const weatherTime=el('canvas','zx-weather-time',[],{'aria-hidden':'true','data-static':'true'});
-  weatherTime.width=220;weatherTime.height=58;
+  weatherTime.height=58;
   event.append(weatherTime);
   stack.querySelector('.zx-status-row').append(event);
   lane.append(feed);stack.append(lane);
@@ -434,14 +428,15 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     }
     const name=event.children[0].textContent,layoutKey=kind+'/'+name+'/'+window.innerWidth;
     if(event.dataset.layout!==layoutKey){
-      const width=colors?82+name.length*14:Math.min(window.innerWidth<=350?102:127,80+name.length*14);
       const available=window.innerWidth-(window.innerWidth<=350?20:24)-(window.innerWidth<=365?108:132)-8-92-4;
+      // Keep the countdown readable on exceptionally small screens, where it moves to the next row.
+      const width=colors?Math.max(82,Math.min(116,available)):Math.min(window.innerWidth<=350?102:127,80+name.length*14);
       const stacked=width>available;
       event.style.width=width+'px';event.classList.toggle('stacked',stacked);lane.classList.toggle('with-stacked-event',stacked);
       weatherTime.width=width*2;weatherTime.dataset.paint='';event.dataset.layout=layoutKey;
     }else lane.classList.toggle('with-stacked-event',event.classList.contains('stacked'));
     const label=event.children[1].textContent.replace(/\s+/g,'');
-    const description=event.children[0].textContent+' '+label;
+    const description=name+' '+label;
     if(event.getAttribute('aria-label')!==description)event.setAttribute('aria-label',description);
     const world=run.events,zone=run.mapEvents;
     const source=world?.def&&world.left>0?{left:world.left,total:world.def.dur}:
@@ -451,9 +446,9 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     const fraction=Math.max(0,Math.min(1,source.left/(source.total||source.left||1)));
     const calm=run.meta.profile.settings.reduceFlashes;
     const step=colors&&!calm?Math.round(6-6*Math.cos(performance.now()*2*Math.PI/2600)):5;
-    const paintKey=[kind,name,label,Math.round(fraction*weatherTime.width/2),step].join('/');
+    const paintKey=[kind,label,Math.round(fraction*weatherTime.width/2),step].join('/');
     if(colors&&weatherTime.dataset.paint!==paintKey){
-      drawWeatherCountdown(weatherTime,{kind,name,label,fraction,step,mark});
+      drawWeatherCountdown(weatherTime,{kind,label,fraction,step,mark});
       weatherTime.dataset.paint=paintKey;weatherTime.dataset.frame=label;
     }
   }

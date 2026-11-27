@@ -39,7 +39,7 @@ export async function reviewWindAnimation(page,dir){
         if(!r.tryEvolve())throw Error('Cannot evolve from '+p.speciesId);
         if(r.nextEvo.to===-1)r.ui.modalEl.querySelector('[data-branch-id="'+branch+'"]').click();
         const target=r.nextEvo.to;
-        if(starter===16)r.ui.modalEl.querySelector('[data-action="confirm-wind-evolution"]').click();
+        if(r.state!=='evolving'||r.ui.modalEl)throw Error('Expected evolution to begin without confirmation');
         for(let i=0;i<210&&r.state==='evolving';i++)r.update(1/30);
         if(p.speciesId!==target||r.state!=='play')throw Error('Evolution did not finish: '+target);
         if(!heroImageRequests.includes('assets/glyphs/hero-actions/'+target+'.png'))throw Error('Missing evolution atlas request: '+target);

@@ -60,7 +60,7 @@ export async function reviewUpgradeEffects(page,dir){
       r.updateCamera(0);
       const wide=camera.projectionMatrix.elements[5];
       r.startEvolution();
-      if(from!==4&&from!==5)r.ui.modalEl.querySelector('[data-action="confirm-wind-evolution"]').click();
+      if(r.state!=='evolving'||r.ui.modalEl)throw Error('Expected evolution to begin without confirmation');
       r.updateCamera(0);
       const entrance=[camera.projectionMatrix.elements[5]];
       const {reveal,duration}=r.vfx.upgrade.events[0],steps=Math.ceil(reveal*.5*30);

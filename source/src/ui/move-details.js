@@ -455,11 +455,11 @@ function QE(e, t) {
   return (
     r.push([c(`Recarga`), WE(n.cd) + ` s` + (e.fusion && n.cd <= 0.6 ? ` ` + c(`(mín.)`) : ``)]),
     n.reach >= 1
-      ? r.push([c(`Alcance`), WE(n.reach) + ` 厘米`])
+      ? r.push([c(`Alcance`), WE(n.reach)])
       : n.area >= 1 &&
         r.push([
           XE(e.arch) === c(`Radio`) ? c(`Radio`) : c(`Área`),
-          WE(n.area) + ` 厘米` + (a ? ` ` + c(`(máx.)`) : ``),
+          WE(n.area) + (a ? ` ` + c(`(máx.)`) : ``),
         ]),
     e.status && e.statusChance >= 0.12 && r.push([Qg[e.status] ?? e.status, GE(n.statusChance)]),
     r
@@ -570,14 +570,14 @@ function tD(e, t) {
     t.reach >= 1 &&
       n.push([
         e.arch === `dash` ? c(`Distancia`) : e.arch === `beam` ? c(`Longitud`) : c(`Alcance`),
-        WE(t.reach) + ` 厘米`,
+        WE(t.reach),
       ]),
     t.area >= 0.8 &&
       e.arch !== `dash` &&
       !(e.arch === `cone` && t.reach >= 1) &&
       n.push([
         XE(e.arch),
-        WE(t.area) + ` 厘米`,
+        WE(t.area),
         e.fusion && t.area >= e.area * 3.39
           ? c(`Una fusión no crece más de ×3,4 su radio base, tengas el Área que tengas.`)
           : void 0,
@@ -1031,8 +1031,8 @@ function gD(e, t, n, r) {
       s.push(
         hD(e.arch === `orbit` ? c(`Objetos orbitando`) : c(`Proyectiles`), String(a.count), String(o.count)),
       ),
-    l(a.reach, o.reach) && o.reach >= 1 && s.push(hD(c(`Alcance`), WE(a.reach) + ` 厘米`, WE(o.reach) + ` 厘米`)),
-    l(a.area, o.area) && e.area >= 0.8 && s.push(hD(XE(e.arch), WE(a.area) + ` 厘米`, WE(o.area) + ` 厘米`)),
+    l(a.reach, o.reach) && o.reach >= 1 && s.push(hD(c(`Alcance`), WE(a.reach), WE(o.reach))),
+    l(a.area, o.area) && e.area >= 0.8 && s.push(hD(XE(e.arch), WE(a.area), WE(o.area))),
     l(a.dur, o.dur) && e.dur > 0 && s.push(hD(c(`Duración`), WE(a.dur) + ` s`, WE(o.dur) + ` s`)),
     l(a.speed, o.speed) &&
       e.speed > 0 &&

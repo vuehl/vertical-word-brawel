@@ -29,7 +29,7 @@ export async function reviewEvolutionResume(page,dir){
       Object.defineProperty(performance,'now',{configurable:true,value:()=>now});
       try{
         r.doLevelUp();
-        r.ui.modalEl?.querySelector('[data-action="confirm-wind-evolution"]')?.click();
+        if(r.state!=='evolving'||r.ui.modalEl)throw Error('Expected evolution to begin without confirmation');
         for(let i=0;i<300&&r.state!=='over';i++){
           now+=1000/30;frame(now);
           resultSeen ||= !!r.ui.root.querySelector('.zx-evolution-result');
