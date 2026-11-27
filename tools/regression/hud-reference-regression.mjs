@@ -62,10 +62,12 @@ export async function reviewHudReference(page,dir){
     await new Promise(resolve=>setTimeout(resolve,80));
     const arrival=await page.evaluate(()=>{
       hudReview.frame();const el=inspected.doc.querySelector('.zx-review-arrival');
-      return {kind:el.dataset.kind,label:el.getAttribute('aria-label'),state:app.run.state,rect:hudReview.rect(el),layer:el.dataset.uiLayer};
+      return {kind:el.dataset.kind,label:el.getAttribute('aria-label'),state:app.run.state,rect:hudReview.rect(el),layer:el.dataset.uiLayer,
+        bars:app.run.ui.minis.filter(mini=>mini.el.style.display!=='none').map(mini=>({bar:hudReview.rect(mini.bar),badge:hudReview.rect(mini.pt),name:hudReview.rect(mini.name)}))};
     });
     assert.equal(arrival.kind,kind);assert.equal(arrival.state,'play');
     assert.match(arrival.label,kind==='totem'?/^霸主来袭/:/^召唤者来袭/);
+    for(const mini of arrival.bars){assert.ok(mini.bar.left>mini.badge.right);assert.equal(mini.bar.left,mini.name.left);}
     assert.equal(arrival.layer,'boss-arrival');report.arrivals.push(arrival);
     await page.screenshot({path:path.join(dir,kind==='totem'?'霸主出场.png':'召唤者出场.png')});
     await page.evaluate(()=>{hudReview.now+=1401;});
@@ -92,12 +94,16 @@ export async function reviewHudReference(page,dir){
         const doc=inspected.doc,event=r.ui.els.event;
         return {event:h.rect(event),canvas:h.rect(event.querySelector('.zx-weather-time')),map:h.rect(r.ui.minimap),
           boss:h.rect(r.ui.els.boss),clock:h.rect(doc.querySelector('.zx-map-clock')),profile:h.rect(doc.querySelector('.zx-profile-art')),
-          caption:h.rect(doc.querySelector('.zx-stage-caption')),weather:h.weather()};
+          caption:h.rect(doc.querySelector('.zx-stage-caption')),weather:h.weather(),
+          bar:h.rect(r.ui.els.bossBar),badge:h.rect(r.ui.els.bossPt),name:h.rect(r.ui.els.bossName)};
       },kind);
       assert.ok(sample.canvas.width>0&&sample.canvas.height>0);
       for(const other of ['map','boss','clock'])assert.ok(!overlap(sample.event,sample[other]),JSON.stringify({width,kind,other,sample}));
       assert.ok(sample.event.left>=0&&sample.event.right<=width,JSON.stringify({width,kind,sample}));
       assert.ok(sample.profile.top>=sample.caption.bottom&&sample.profile.top-sample.caption.bottom<=8);
+      assert.ok(sample.bar.left>sample.badge.right,'Health must stay beside the yellow portrait');
+      assert.equal(sample.bar.left,sample.name.left,'The health track starts under the boss name');
+      assert.ok(sample.bar.right<=sample.boss.right);
       report.sizes.push({width,height,kind,...sample});
       await page.screenshot({path:path.join(dir,`顶部-${width}-${kind}.png`),clip:{x:0,y:20,width,height:250}});
     }
@@ -110,10 +116,14 @@ export async function reviewHudReference(page,dir){
       const h=hudReview,r=h.r;h.clearWeather();r.events.start('storm');r.events.left=7.5;
       r.ui.bossLag=fraction;r.enemies.hp[r.boss.bossIndex]=r.enemies.maxHp[r.boss.bossIndex]*fraction;h.frame();
       const el=r.ui.els.bossBar;
-      return {fraction,label:el.lastElementChild.textContent,fill:el.children[1].style.transform,bar:h.rect(el),card:h.rect(r.ui.els.boss)};
+      return {fraction,label:el.lastElementChild.textContent,fill:el.children[1].style.transform,bar:h.rect(el),card:h.rect(r.ui.els.boss),
+        filled:h.rect(el.children[1]),badge:h.rect(r.ui.els.bossPt),name:h.rect(r.ui.els.bossName),body:h.rect(el.parentElement),percent:h.rect(el.lastElementChild)};
     },fraction);
     assert.equal(sample.label,(fraction*100).toFixed(1)+'%');assert.equal(sample.fill,`scaleX(${fraction})`);
-    assert.equal(sample.bar.left,sample.card.left);assert.ok(sample.bar.width>=sample.card.width-7,JSON.stringify(sample));
+    assert.ok(sample.bar.left>sample.badge.right,JSON.stringify(sample));
+    assert.equal(sample.bar.left,sample.name.left);
+    assert.ok(sample.bar.right<=sample.body.right&&sample.percent.bottom<=sample.bar.top,JSON.stringify(sample));
+    assert.ok(Math.abs(sample.filled.width-sample.bar.width*fraction)<1,JSON.stringify(sample));
     if(barTop!==undefined)assert.equal(sample.bar.top,barTop);barTop=sample.bar.top;
     report.boss.push(sample);
     if(fraction===.638)await page.screenshot({path:path.join(dir,'顶部细节效果.png'),clip:{x:0,y:20,width:390,height:225}});

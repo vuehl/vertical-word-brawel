@@ -398,12 +398,10 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   hud.els.boss.classList.add('zx-review-boss');hud.els.boss.dataset.uiLayer='boss';
   hud.els.bossBar.dataset.uiLayer='boss-health';
   hud.els.boss.dataset.paperSurface='boss-strip';hud.els.bossPt.dataset.paperSurface='boss-seal';
-  hud.els.boss.append(hud.els.bossBar);
   for(const mini of hud.minis){
     mini.el.classList.add('zx-review-boss');
     mini.el.dataset.paperSurface='boss-strip';
     mini.pt.dataset.paperSurface='boss-seal';
-    mini.el.append(mini.bar);
   }
   const directions=new Map();
   for(const marker of [hud.arrow,...hud.pins]){
