@@ -1354,7 +1354,7 @@ const comboFaces=[
 ];
 // Crisp dark keyline and a short hard shadow, shared by every tier.
 const comboOutline=[[2.2,6.8,'#17233a'],[0,4.4,'#17233a']];
-const comboCell=72,comboCanvasWidth=640;
+const comboCell=72*.85,comboCanvasWidth=640;
 const comboDigitRight=Array.from({length:10},(_,digit)=>{
   const xs=damageContours[digit].flatMap(ring=>ring.filter((_,index)=>index%2===0));
   return (Math.max(...xs)+5.5-32)/64;
@@ -1540,7 +1540,7 @@ class ComboRoller {
       faces=this.rainbowFaces;
       faces.clearRect(0,0,this.canvas.width,this.canvas.height);
     }
-    // All tiers and digit counts use the same large glyph cell.
+    // All tiers and digit counts use the same glyph cell, reduced by 15%.
     const lastCenter=2.85+.70*(length-1);
     const cell=comboCell;
     const units=comboWheelAt(this.wheels[0],time),whole=Math.floor(units);
