@@ -131,7 +131,10 @@ html.zixing .zx-combat-feed .zx-review-boss .bb-bar>b{top:-24px;right:4px;color:
 html.zixing .zx-combat-feed .zx-review-boss .bb-bar>i,html.zixing .zx-combat-feed .zx-review-boss .bb-bar>u{border-radius:0}
 html.zixing .zx-combat-feed .zx-review-boss:not(.shield):not(.immune) .bb-bar>i{background:linear-gradient(90deg,var(--boss-fill,#F58A64),var(--boss-accent,#F16C55))}
 html.zixing .zx-combat-feed .zx-review-boss .bb-bar>u{background:#F4CE83}
-html.zixing .zx-combat-feed .zx-review-boss .bb-foot{min-height:0;margin-top:12px}
+/* Keep boss cards to portrait, name and health, including while casting. */
+html.zixing .zx-combat-feed .zx-review-boss .bb-foot,
+html.zixing .zx-combat-feed .zx-review-boss .bb-tag,
+html.zixing .zx-combat-feed .zx-review-boss .bb-rage{display:none!important}
 html.zixing .zx-combat-feed .zx-review-boss .bb-sub{color:#E3DDEA}
 .zx-combat-feed .totem{--boss-fill:#DEA33D;--boss-accent:#F8D373;--boss-seal-face:#EEC659}
 .zx-combat-feed .summoner{--boss-fill:${summonerBarColors.fill};--boss-accent:${summonerBarColors.accent};--boss-seal-face:#9CD9FC}
