@@ -51,8 +51,15 @@ export async function verifyOpening({page,dir}){
   assert.ok(await page.evaluate(()=>app.entryOpening.frameCount===openingAudit.framesBeforeHide));
   await page.evaluate(()=>{fixtureShow();releaseOptionalDownloads();});
   await page.waitForFunction(()=>app.run?.state==='play'&&!app.screen&&!app.entryOpening,{timeout:90000});
-  const result=await page.evaluate(()=>({audit:openingAudit,decoders:openingDecoders,
-    saved:app.meta.profile.firstJourneyPlayed,config:app.lastCfg,time:app.run.time}));
+  const result=await page.evaluate(()=>{
+    const paths=new Set(Array.from({length:29},(_,i)=>__host.files.pathFor('assets/opening/p'+String(i).padStart(2,'0')+'.webp')));
+    const loads=nativeImageLoads.filter(image=>paths.has(image.path)),ids=new Set(loads.map(image=>image.id));
+    return {audit:openingAudit,decoders:openingDecoders,
+      openingMemory:{pages:loads.length,nativeImages:ids.size,retained:nativeImageStates.filter(image=>ids.has(image.id)&&image.path).length},
+      saved:app.meta.profile.firstJourneyPlayed,config:app.lastCfg,time:app.run.time};
+  });
+  assert.equal(result.openingMemory.retained,0,'Completed opening releases every native page source');
+  if(!retrying)assert.deepEqual(result.openingMemory,{pages:29,nativeImages:2,retained:0});
   assert.equal(result.decoders.at(-1).frames,169);
   assert.ok(result.decoders.every(d=>d.removed));assert.equal(result.saved,true);
   assert.equal(result.config.mode,'single-stage');assert.equal(result.config.species,4);

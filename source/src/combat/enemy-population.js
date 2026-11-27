@@ -13,7 +13,7 @@ import {actorMetrics} from "../actors/actor-metrics.js";
 import {moveEnemyPastProps, obstacleJumpSpeed} from "../world/paper-collision.js";
 import {Xc, Qc} from "../actors/sprite-assets.js";
 import {glyphCatalog} from "../actors/glyph-catalog.js";
-import {placeCarriedMarble} from "./carried-marble.js";
+import {placeCarriedMarble, updateCarriedMarble} from "./carried-marble.js";
 
 var nf = [`tm-swords`, `tm-agility`, `tm-iron`, `tm-thunder`, `tm-payday`],
   rf = {
@@ -230,7 +230,7 @@ function vf(e, t) {
   let n = e.egg;
   if (!n) return;
   const a = _f(e);
-  placeCarriedMarble(e);
+  updateCarriedMarble(e, t);
   (a > 0.6 &&
       Math.random() < t * 8 * a &&
       e.vfx.add.spawn({

@@ -6,6 +6,7 @@ import {glyphWordForSpecies} from '../actors/paper-glyph-art.js';
 export class WeatherSpeech {
   speaker = -1;
   generation = -1;
+  hasSpoken = false;
   nextSearch;
   bubble = null;
   tip = -1;
@@ -36,7 +37,7 @@ export class WeatherSpeech {
     this.count = 0;
     if (state !== 'play' || time < this.nextSearch) return false;
     if (this.speaker < 0) {
-      if (this.remaining < 15) {
+      if (this.hasSpoken && this.remaining < 15) {
         this.nextSearch = Infinity;
         return false;
       }
@@ -80,6 +81,7 @@ export class WeatherSpeech {
     if (this.speaker < 0) {
       this.speaker = this.candidate;
       this.generation = enemies.gen[this.speaker];
+      this.hasSpoken = true;
       this.nextSearch = time;
     }
     if (!this.bubble || (this.kind === 'blizzard' && this.form !== player.speciesId)) {

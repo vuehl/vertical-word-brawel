@@ -35,7 +35,11 @@ export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=
     resume(){paused=false;clock=null;credit=0;},
     dispose(){
       if(disposed)return;
-      disposed=true;complete();frame=null;uncover();onDispose();
+      disposed=true;complete();
+      // Shrink the native backing store, even if a completed promise still
+      // retains the film API. Keep the final frame intact until the fade ends.
+      if(frame?.getContext)frame.width=frame.height=1;
+      frame=null;uncover();onDispose();
     },
     layer(width,height){
       if(disposed)return null;

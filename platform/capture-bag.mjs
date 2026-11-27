@@ -1,6 +1,7 @@
 import {captureSoulTiming,removedCaptureStrokes} from '../source/src/actors/capture-soul-timing.js';
 import {escapeMotion} from './capture-escape-motion.mjs';
 import {createSmoothSoulDrain} from './capture-soul-drain.mjs';
+import {createCapturePages} from './capture-pages.mjs';
 
 function makeOverlay(renderer,filmPlacement) {
   const gl=renderer.getContext();
@@ -24,10 +25,10 @@ function makeOverlay(renderer,filmPlacement) {
   gl.deleteShader(vert);gl.deleteShader(frag);
   if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));
   const vao=gl.createVertexArray(),uv=gl.getUniformLocation(program,'uvRect');
-  let page=null,tex=null,textureWidth=0,textureHeight=0;
+  let page=null,pageIndex=null,tex=null,textureWidth=0,textureHeight=0;
   function releasePage(){
     if(tex)gl.deleteTexture(tex);
-    tex=page=null;textureWidth=textureHeight=0;
+    tex=page=pageIndex=null;textureWidth=textureHeight=0;
   }
   return {
     draw(frame,img,anchor,zoom,dynamic=false){
@@ -40,7 +41,7 @@ function makeOverlay(renderer,filmPlacement) {
         gl.enable(gl.BLEND);gl.blendEquation(gl.FUNC_ADD);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
         tex??=gl.createTexture();
         gl.useProgram(program);gl.bindVertexArray(vao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);
-        if(dynamic || img!==page){
+        if(dynamic || img!==page || frame[0]!==pageIndex){
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,true);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
@@ -52,7 +53,7 @@ function makeOverlay(renderer,filmPlacement) {
             gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
             textureWidth=img.width;textureHeight=img.height;
           }
-          page=img;
+          page=img;pageIndex=frame[0];
         }
         gl.viewport(rect.left,H-rect.top-rect.height,rect.width,rect.height);
         gl.uniform4f(uv,x/img.width,y/img.height,w/img.width,h/img.height);
@@ -105,49 +106,12 @@ async function createFilm(files){
   const escapeLastFrame = 95;
   const escapeEndFrame = 110;
 
-  function loader() {
-    const pages = new Map();
-    let pending = 0;
-    function fetch(id) {
-      if (pages.has(id)) return pages.get(id);
-      // A slow native decoder can outlive a skipped frame or a finished throw.
-      if (pending >= 2) return;
-      const record = {image:null, promise:null};
-      pages.set(id,record);
-      pending++;
-      record.promise = new Promise((resolve,reject) => {
-        const image = wx.createImage();
-        function finish(ok){
-          clearTimeout(timer);
-          image.onload=image.onerror=null;
-          if(ok){record.image=image;resolve();}
-          else reject(Error('福袋帧图读取失败 '+id));
-        }
-        const timer=setTimeout(()=>finish(false),12000);
-        image.onload=()=>finish(true);
-        image.onerror=()=>finish(false);
-        try{image.src=files.pathFor(mediaRoot+'p'+String(id).padStart(2,'0')+'.webp');}
-        catch{finish(false);}
-      }).catch(error=>{
-        if(pages.get(id)===record)pages.delete(id);
-        throw error;
-      }).finally(()=>{pending--;});
-      return record;
-    }
-    function prepare(id,lastPage) {
-      for (const key of pages.keys()) if(key!==0 && key!==id && key!==id+1) pages.delete(key);
-      for (let n=id;n<=Math.min(lastPage,id+1);n++) {
-        if(!pages.has(n))fetch(n)?.promise.catch(()=>{});
-      }
-      return pages.get(id)?.image;
-    }
-    function idle(){for(const key of pages.keys())if(key!==0)pages.delete(key);}
-    return {fetch,prepare,idle};
-  }
-
-  const media=loader();
+  const media=createCapturePages(wx,id=>files.pathFor(mediaRoot+'p'+String(id).padStart(2,'0')+'.webp'));
   await media.fetch(0).promise;
   return function attach(run,env){
+    // A previous run's detach clears the shared loader. Warm only the first
+    // page again so the first throw in this run can appear immediately.
+    media.fetch(0)?.promise.catch(()=>{});
     const b=run.capture.ball,oldStart=b.start,oldUpdate=b.update,oldCamera=run.updateCamera,oldRender=run.player.render;
     const camera=run.r.camera,base=camera.projectionMatrix.clone();
     const ground=run.player.pos.clone(),clicked=ground.clone(),projected=ground.clone();
@@ -298,6 +262,7 @@ async function createFilm(files){
       shotY=clicked.y;
       const result=oldStart.call(this,index,...args);
       if(this.active){
+        media.prepare(0,frames.at(-1)[0]);
         this.captureFilmActive=true;
         this.spiritPose=null;stream.phase=0;
         track=run.ui.capEl?.querySelector('.zx-catch-track') || run.ui.capEl?.querySelector('.cap-plate');
@@ -381,10 +346,11 @@ async function createFilm(files){
       b.spiritStrokes=b.captureQuad=b.escapeForeground=null;
       b.spiritStrokeCount=0;
       media.idle();
+      env.releaseTransientMemory?.();
     }
     function draw(renderer) {
       if (!active || !b.active) return false;
-      const frame=frames[frameIndex],page=media.prepare(frame[0],frames[lastFrame][0]);
+      const frame=frames[frameIndex],page=media.prepare(frame[0],frames[lastFrame][0],heldFrame?.[0]);
       if (page) {
         heldFrame=frame;
         heldImage=page;

@@ -9408,7 +9408,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         name: c(`Niebla espectral`),
         sub: c(`Una niebla helada lo cubre todo... y algo se mueve en ella`),
         color: `#9a7aff`,
-        dur: 45,
+        dur: 15,
         pool: [
           [92, 41, 96],
           [93, 42, 96],

@@ -26,7 +26,7 @@ export async function reviewNativePerformance(page,dir){
     const hasPowerSetting=!!doc.querySelector('[aria-label="iPhone 温控模式"]');
     const hasPowerControl='iosPowerMode' in env;
     env.drawUI(renderer,true);
-    const remove=gl.deleteTexture,create=gl.createTexture;let released=0,recreated=0;
+    const remove=gl.deleteTexture,create=gl.createTexture,gcBefore=fixtureGCs||0;let released=0,recreated=0;
     gl.deleteTexture=function(texture){released++;return remove(texture);};
     gl.createTexture=function(){recreated++;return create();};
     try{
@@ -34,12 +34,12 @@ export async function reviewNativePerformance(page,dir){
       app.setScreen(null);app.run.state='play';app.run.ui.hud(app.run);r.render(0);env.drawUI(renderer);
     }finally{gl.deleteTexture=remove;gl.createTexture=create;}
     return {platform:env.nativeDevice.platform,pluginLoads:fixturePluginLoads,hasPowerSetting,hasPowerControl,
-      requestedFrameRates,gc:fixtureGCs,released,recreated,glError:gl.getError()};
+      requestedFrameRates,gc:fixtureGCs,gcFromWarnings:(fixtureGCs||0)-gcBefore,released,recreated,glError:gl.getError()};
   });
   assert.equal(report.platform,'ios');assert.deepEqual(report.pluginLoads,[]);
   assert.equal(report.hasPowerSetting,false);assert.equal(report.hasPowerControl,false);
   assert.deepEqual(report.requestedFrameRates,[60,30,60]);
-  assert.equal(report.gc,1);assert.ok(report.released>0&&report.recreated>0);assert.equal(report.glError,0);
+  assert.ok(report.gc>=1);assert.ok(report.gcFromWarnings<=1);assert.ok(report.released>0&&report.recreated>0);assert.equal(report.glError,0);
   fs.writeFileSync(path.join(dir,'native-performance.json'),JSON.stringify(report,null,2));console.log(report);
 }
 

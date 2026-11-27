@@ -143,7 +143,18 @@ globalThis.wx={
   getRandomValues({length,success}){success({randomValues:crypto.getRandomValues(new Uint8Array(length)).buffer});},
   createCanvas:canvas,createOffscreenCanvas:nativeCanvas,
   createVideoDecoder(){throw Error('Opening must work without the native video decoder');},
-  createImage(){const img=new Image();Object.defineProperty(img,'src',{get(){return imageSrc.get.call(img);},set(path){
+  createImage(){
+    const img=new Image(),states=window.nativeImageStates??=[];
+    // Metadata only: the audit must not retain native Image objects itself.
+    const state={id:states.length,path:'',width:0,height:0};states.push(state);
+    let record=null;
+    img.addEventListener('load',()=>{
+      if(record){state.width=record.width=img.naturalWidth;state.height=record.height=img.naturalHeight;}
+    });
+    Object.defineProperty(img,'src',{get(){return imageSrc.get.call(img);},set(path){
+    state.path=path.startsWith('data:image/')?path.slice(0,path.indexOf(',')):path;
+    state.width=state.height=0;record=null;
+    if(!path){imageSrc.set.call(img,'');return;}
     // Match the QR preview: loose WebP files are absent from its package.
     // Only installed user-data files and inline images may use WebP here.
     if(/\.webp$/.test(path)&&!data.has(path)){
@@ -153,12 +164,11 @@ globalThis.wx={
     if(window.failOpeningPageOnce&&path===openingPath){
       window.failOpeningPageOnce=false;queueMicrotask(()=>img.dispatchEvent(new Event('error')));return;
     }
-    const record={path:path.startsWith('data:image/')?path.slice(0,path.indexOf(',')):path,width:0,height:0};
+    record={id:state.id,path:state.path,width:0,height:0};
     (window.nativeImageLoads??=[]).push(record);
     if(window.failEntryInline&&!window.__host&&path.startsWith('data:image/')){
       queueMicrotask(()=>img.dispatchEvent(new Event('error')));return;
     }
-    img.addEventListener('load',()=>{record.width=img.naturalWidth;record.height=img.naturalHeight;},{once:true});
     if(data.has(path)){const url=URL.createObjectURL(new Blob([bytes(path)]));img.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});imageSrc.set.call(img,url);}
     else imageSrc.set.call(img,path);
   }});return img;},

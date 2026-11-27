@@ -1,6 +1,7 @@
 import {cloudSocket} from './cloud-coop.mjs';
 import {createCaptureOverlay} from './capture-bag.mjs';
 import {createJourneyOpening} from './journey-opening.mjs';
+import {createMemoryCleanup} from './memory.mjs';
 import 'core-js/modules/es.array.at.js';
 import 'core-js/modules/es.array.flat.js';
 import 'core-js/modules/es.array.flat-map.js';
@@ -240,21 +241,16 @@ export async function setup(host) {
   function show(hide){
     journeyOpening?.pause();
     doc.hidden=hide;doc.visibilityState=hide?'hidden':'visible';doc.dispatchEvent(new D.Event('visibilitychange'));win.dispatchEvent(new D.Event(hide?'pagehide':'pageshow'));
-    if(hide){draw?.releaseFrozen();for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
+    if(hide){draw?.releaseFrozen();memory.request();for(const [id,p] of pointers)p.target.dispatchEvent(new InputEvent('pointercancel',{pointerId:id,pointerType:'touch'}));pointers.clear();captured.clear();}uiFrames.invalidate(true,true);
   }
   wx.onHide(()=>show(true));wx.onShow(()=>show(false));
   wx.onAudioInterruptionBegin?.(()=>win.dispatchEvent(new D.Event('audiointerruptionbegin')));
   wx.onAudioInterruptionEnd?.(()=>win.dispatchEvent(new D.Event('audiointerruptionend')));
-  let lastGC=-Infinity;
-  wx.onMemoryWarning?.(()=>{
+  const memory=createMemoryCleanup(wx,device,()=>{
     draw?.releaseUnused();
     win.dispatchEvent(new D.Event('memorywarning'));
-    const now=Date.now();
-    if(device.platform==='ios'&&now-lastGC>=5000){
-      lastGC=now;
-      try{wx.triggerGC?.();}catch{}
-    }
   });
+  wx.onMemoryWarning?.(()=>memory.warning());
   function keyboard(el){
     if(!wx.showKeyboard)return;
     wx.showKeyboard({defaultValue:el.value||'',maxLength:Number(el.maxLength)>0?Number(el.maxLength):140,multiple:el.localName==='textarea',confirmType:'done'});
@@ -403,10 +399,11 @@ export async function setup(host) {
       layout=createLayout(doc,view,uiCanvas,fonts,uiAssets);uiFrames.invalidate(true,true);
     },
     invalidateUI:()=>uiFrames.invalidate(false,true),
+    releaseTransientMemory:()=>memory.request(),
     playJourneyOpening(options={}){
       journeyOpening?.dispose();
       journeyOpening=createJourneyOpening(wx,{...options,pathFor:url=>host.files.pathFor(url),now:()=>perf.now(),onDispose:()=>{
-        draw?.releaseSlot(30);uiFrames.invalidate(true,true);
+        journeyOpening=null;draw?.releaseSlot(30);uiFrames.invalidate(true,true);memory.request();
       }});
       return journeyOpening;
     },

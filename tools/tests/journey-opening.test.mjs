@@ -78,3 +78,25 @@ test('boot waits for a decoded frame, and a cancelled preload releases the wait'
   const cancelled=fixture({stall:true});cancelled.film.dispose();await cancelled.film.ready;
   assert.equal(cancelled.film.active,false);
 });
+
+test('native output canvas survives the held frame and shrinks only after reveal or cancellation',async()=>{
+  for(const cancel of [false,true]){
+    let now=0,removed=0,disposed=0;
+    const canvas={width:390,height:844,getContext(){}};
+    const film=createJourneyOpening(null,{now:()=>now,onDispose:()=>disposed++,createSource:()=>({
+      on(){},start(){},remove(){removed++;},getFrameData:()=>({width:390,height:844,canvas}),
+    })});
+    film.layer(390,844);
+    if(cancel)film.dispose();
+    else{
+      for(let i=0;i<180;i++){now+=50;film.layer(390,844);}
+      await film.finished;
+      assert.deepEqual([canvas.width,canvas.height],[390,844]);
+      const revealed=film.reveal();
+      for(let i=0;i<10;i++){now+=100;film.layer(390,844);}
+      await revealed;
+    }
+    film.dispose();assert.equal(removed,1);assert.equal(disposed,1);
+    assert.deepEqual([canvas.width,canvas.height],[1,1]);assert.equal(film.layer(390,844),null);
+  }
+});

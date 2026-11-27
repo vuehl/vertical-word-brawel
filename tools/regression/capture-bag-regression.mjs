@@ -2,10 +2,22 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 
 export async function reviewCaptureBag(page,dir){
-  await page.waitForFunction(()=>window.nativeImageLoads.filter(image=>
-    image.path.includes('/capture_bag-') && image.width>0).length>=1);
+  // The workload harness halts the app after entering a fresh run. Allow the
+  // overlay to detach the old run and bind/prewarm this one, as normal frames do.
+  await page.waitForFunction(()=>{
+    inspected.env.drawUI(app.r.renderer);
+    return window.nativeImageStates.some(image=>image.path.includes('/capture_bag-')&&image.width>0);
+  }).catch(async error=>{
+    console.log('Capture preload state:',await page.evaluate(()=>({
+      images:nativeImageStates.filter(image=>image.path.includes('/capture_bag-')),
+      loads:nativeImageLoads.filter(image=>image.path.includes('/capture_bag-')),
+      pack:GameGlobal.pokebonk.files.diagnostics.packs.capture_bag,
+      active:app.run.capture.ball.active,disposed:app.run.capture.ball.disposed,
+    })));
+    throw error;
+  });
   const preloaded=await page.evaluate(()=>nativeImageLoads.filter(image=>image.path.includes('/capture_bag-')).map(image=>image.path));
-  assert.deepEqual(preloaded, [await page.evaluate(()=>GameGlobal.pokebonk.files.pathFor('assets/vfx/capture-bag/p00.webp'))]);
+  assert.deepEqual([...new Set(preloaded)], [await page.evaluate(()=>GameGlobal.pokebonk.files.pathFor('assets/vfx/capture-bag/p00.webp'))]);
   const trails=await page.evaluate(async()=>{
     const run=app.run;
     run.enemies.clear();
@@ -81,6 +93,7 @@ export async function reviewCaptureBag(page,dir){
     }
   }
   for(const breakAt of [1,2,3,0]){
+    const imageLoadStart=await page.evaluate(()=>nativeImageLoads.length);
     await page.evaluate(breakAt=>{
       const run=app.run,ball=run.capture.ball;
       window.bagOutcomes=[];
@@ -113,15 +126,15 @@ export async function reviewCaptureBag(page,dir){
             run.updateCamera(0);run.renderWorld(0);app.r.render(0);inspected.env.drawUI(app.r.renderer);
           };
           render();
-          for(let i=0;i<100 && !nativeImageLoads.some(image=>image.path===page && image.width);i++){
+          for(let i=0;i<100 && !nativeImageStates.some(image=>image.path===page && image.width);i++){
             await new Promise(resolve=>setTimeout(resolve,20));
           }
-          if(!nativeImageLoads.some(image=>image.path===page && image.width))throw Error('Missing atlas '+page);
+          if(!nativeImageStates.some(image=>image.path===page && image.width))throw Error('Missing atlas '+page);
           inspected.env.invalidateUI();render();
         }
         const track=run.ui.capEl.querySelector('.zx-catch-track');
-        return {active:true,pips:track.querySelectorAll('.zx-catch-pips .on').length,
-          caption:track.querySelector('.zx-catch-title b').textContent,visualScale:ball.spiritPose?.scale??1,
+        return {active:true,pips:Number(track.dataset.step),
+          caption:track.getAttribute('aria-label').split(' · ')[1],visualScale:ball.spiritPose?.scale??1,
           strokeCount:ball.spiritStrokes?.length||0,removed:ball.spiritPose?.removed||0,foreground:!!ball.escapeForeground,
           targetScale:run.enemies.scale[ball.index],initialScale:ball.scale0};
       },{frame,takePicture:pictures.includes(frame)});
@@ -145,6 +158,11 @@ export async function reviewCaptureBag(page,dir){
       else assert.match(state.caption,/抓字中/);
       if(pictures.includes(frame))await page.screenshot({path:path.join(dir,'福袋捕捉-'+(breakAt?'挣脱':'成功')+'-'+frame+'.png')});
     }
+    const retained=await page.evaluate(()=>nativeImageStates.filter(image=>image.path.includes('/capture_bag-')).length);
+    assert.equal(retained,0,'Each completed capture clears all native atlas sources, including in-flight decodes');
+    const allocated=await page.evaluate(start=>new Set(nativeImageLoads.slice(start)
+      .filter(image=>image.path.includes('/capture_bag-')).map(image=>image.id)).size,imageLoadStart);
+    assert.ok(allocated<=3,'Each capture reuses at most three native images');
   }
   console.log('Verified three escape stages, successful capture, escape through frame 95 and successful capture through frame 110, with escape return after the common sequence.');
 }

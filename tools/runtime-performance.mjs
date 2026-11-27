@@ -83,7 +83,7 @@ try{
         return original.apply(this,args);
       };
     }
-  },process.argv.includes('--android-performance')?'android':iphone||process.argv.some(arg=>['--ios-budget','--crowded-steering','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
+  },process.argv.includes('--android-performance')?'android':iphone||process.argv.some(arg=>['--ios-budget','--memory-soak','--crowded-steering','--battle-visual','--native-performance'].includes(arg))?'ios':'devtools');
   await page.goto('http://127.0.0.1:'+srv.address().port);
   await page.waitForFunction(()=>window.releaseTextDownload&&window.releaseOptionalDownloads);
   await page.evaluate(()=>{releaseTextDownload();releaseOptionalDownloads();});
@@ -309,6 +309,9 @@ try{
     await reviewWorkshop(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--phone-performance')){
     await reviewPhonePerformance(page,dir);assert.deepEqual(errors,[]);
+  }else if(process.argv.includes('--memory-soak')){
+    const {reviewMemorySoak}=await import('./regression/memory-soak-regression.mjs');
+    await reviewMemorySoak(page,dir);
   }else if(process.argv.includes('--ios-budget')){
     await reviewIOSBudget(page,dir);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--battle-visual')){

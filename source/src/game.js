@@ -309,6 +309,7 @@ export class App {
       this.run.ui.hud(this.run),
       this.r.render(0),
       window.drawUI?.(this.r.renderer),
+      window.releaseTransientMemory?.(),
       (this.run.fpsCap = this.fpsCap()),
       t.offline && this.hud.toast(chineseText(`Sin conexión: esta partida no contará para tu progreso`), null),
       !0
@@ -433,6 +434,7 @@ export class App {
       applyPaperLight({r:this.r}),
       gameAudio.playTrack(menuMusic()),
       gameInterface(this).home());
+    window.releaseTransientMemory?.();
   }
   perf = { sim: 0, draw: 0, fps: 0, frames: 0, started: 0, last: 0, run: null };
   failing = 0;
