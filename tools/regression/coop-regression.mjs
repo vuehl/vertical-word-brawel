@@ -193,9 +193,7 @@ export async function reviewCoop(browser, gamePort) {
         await click(page,'创建房间');
         await page.waitForFunction(()=>app.coopRoom?.code);
         code=await page.evaluate(()=>app.coopRoom.code);
-        assert.equal(await page.evaluate(()=>app.screen.querySelector('[data-action="coop-copy"]').textContent),'复制');
-        await click(page,'复制房间号');
-        assert.equal(await page.evaluate(()=>window.fixtureClipboard),code);
+        assert.equal(await page.evaluate(()=>app.screen.querySelector('[data-action="coop-copy"]')),null);
         assert.equal(await page.evaluate(()=>window.sharedCard),undefined);
         assert.deepEqual(await page.evaluate(()=>fixtureMenuCard()),defaultCard);
         cardQuery={roomCode:code}; // Previously sent invitations still open the room.
@@ -252,8 +250,7 @@ export async function reviewCoop(browser, gamePort) {
     });
     await click(host,'准备');
     await host.waitForFunction(()=>typeof releaseReady==='function');
-    assert.ok(await host.evaluate(()=>checkLobby() &&
-      app.screen.querySelector('[data-action="coop-copy"]').disabled===false));
+    assert.ok(await host.evaluate(()=>checkLobby()));
     await host.evaluate(()=>releaseReady());
     async function checkHostReady(ready){
       await Promise.all(clients.map(page=>page.waitForFunction(ready=>

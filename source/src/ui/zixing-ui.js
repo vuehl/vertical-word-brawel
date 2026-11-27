@@ -338,11 +338,12 @@ export function createZixingUI(app,api) {
       flag.style.width=(Math.ceil(textMetrics.measureText(title).width)+65)+'px';
       node.classList.add('paper-menu-page');
       const family=['choose','map','difficulty','collection-moves','collection-move-detail','collection-looks','collection-plan'].includes(name)?'sail':'wave';
-      const journal=['collection-moves','collection-looks','collection-plan','settings','lab','collection-unlock','collection-rewards','coop'].includes(name);
+      const journal=['collection-moves','collection-looks','collection-plan','settings','lab','collection-unlock','collection-rewards','coop','request','request-error'].includes(name);
       if(journal){node.classList.add('collection-journal');node.dataset.paperSurface='journal-cover';}
       node.append(el('header','zx-header '+color,[journal?null:headerCutout(family),flag,subtitle?el('small','',subtitle):null],{'data-paper-surface':'flat'}));
     }
     const content=el('div','zx-body',body);
+    if(name==='request'||name==='request-error')content.dataset.paperSurface='flat';
     if(content.firstElementChild?.matches('.paper-stage-slip,.zc-detail-hero,.zx-help-intro,.zx-wallet')){
       content.classList.add('paper-mounted-body');node.classList.add('paper-masthead-page');
     }
@@ -555,16 +556,8 @@ export function createZixingUI(app,api) {
     function mountLobby() {
       const roomNumber=el('b','coop-number'),count=el('small','coop-count');
       const note=el('p','coop-note',[],{'role':'status','aria-live':'polite'});
-      const copy=button('复制',async()=>{
-        if(!room)return;
-        try {
-          await window.copyRoomCode(room.code);
-        }catch{
-          app.notice('复制失败，请再试一次或手动输入房间号');
-        }
-      },'zx-plain coop-copy',{'data-action':'coop-copy','data-paper-surface':'journal-button','aria-label':'复制房间号'});
       const roomTag=el('small','coop-room-tag','待组队');
-      const ticket=el('div','coop-ticket',[col(el('small','','房间号'),roomNumber),roomTag,copy],{'data-paper-surface':'bound-index'});
+      const ticket=el('div','coop-ticket',[col(el('small','','房间号'),roomNumber),roomTag],{'data-paper-surface':'bound-index'});
       const section=(title,extra=null)=>el('div','coop-section',[el('b','',title),el('i','',[],{'aria-hidden':true}),extra]);
       function wordArt(c){
         const canvas=el('canvas','coop-word',[],{'data-static':true,'aria-hidden':true});
@@ -648,7 +641,6 @@ export function createZixingUI(app,api) {
         node.setAttribute('aria-busy',String(busy||starting));
         node.querySelector('.paper-back').setAttribute('aria-label',session?'离开房间，返回大厅':'返回首页');
         updateText(roomNumber,session?session.code.slice(0,3)+' '+session.code.slice(3):'尚未进入房间');
-        copy.hidden=!session;
         updateText(roomTag,!session?'待组队':allReady?'已就绪':online.length<2?'待队友':'待准备');
         updateText(count,session?members.length+' / '+COOP_ROOM_SIZE+' 人':'组队前');
         seats.forEach(({tag,art,name,state,tile},index)=>{

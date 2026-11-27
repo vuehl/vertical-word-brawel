@@ -10,7 +10,6 @@ export const coopStyle=`
 .zx-coop[data-room-state="lobby"] .coop-number{font-size:21px;line-height:30px}
 .coop-ticket>.coop-room-tag{flex:none;align-self:center;padding:4px 7px;background:#E4DCCB;font-size:12px;line-height:18px;color:#6B5940;text-align:center}
 .zx-coop[data-room-state="ready"] .coop-room-tag{background:#D9E1CE;color:#3E6046}
-.zx .coop-ticket>.coop-copy{display:flex;align-items:center;justify-content:center;flex:none;width:48px;height:44px;padding:0;border:0;background:#EEC659;color:#302A32;font-size:14px;font-weight:700}
 .coop-section{flex:none;display:flex;flex-direction:row;align-items:center;gap:10px;height:37px}
 .coop-section>b{color:#FFF8E9;font-size:16px;line-height:21px}
 .coop-section>i{height:1px;flex:1;min-width:4px;background:#625963}

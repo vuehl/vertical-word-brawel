@@ -25,6 +25,7 @@ export const firstBatchStyle=`
 .zx-collection.zc-library .zc-character{position:relative;height:100%;min-height:44px;border:0;border-radius:0;background:transparent;padding:0;overflow:hidden;color:var(--paper-ink)}
 .zc-photo-paper{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:fill;pointer-events:none}
 .zc-library .zc-tag{right:5px;top:5px;width:auto;height:14px;display:flex;align-items:center;gap:1px;font-size:11px;line-height:14px;padding:0 3px;border:0;border-radius:2px;background:var(--paper-paper);color:var(--paper-ink);font-weight:700}
+.zc-library .zc-character.locked .zc-tag{background:transparent}
 .zc-library .zc-tag>.zx-icon{flex:none;max-width:9px;max-height:9px}
 .zc-library .zc-character .zc-cutout{position:absolute;left:0;top:8px;height:47px;width:100%;flex:none;min-height:0}
 .zc-library .zc-character.locked .zc-cutout{opacity:.35}

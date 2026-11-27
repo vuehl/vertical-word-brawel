@@ -125,8 +125,7 @@ export async function reviewCoopStyle({page,tap,resize,dir,sleep}){
     await page.evaluate(()=>coopStyleFixture.releaseCreate());await state('waiting');
     assert.equal(await page.evaluate(()=>app.screen.querySelector('.coop-number').textContent),'123 456');
     await capture('coop-created-waiting');
-    await action('coop-copy');
-    assert.equal(await page.evaluate(()=>window.fixtureClipboard),'123456');
+    assert.equal(await page.evaluate(()=>app.screen.querySelector('[data-action="coop-copy"]')),null);
     await tap('.coop-roster [data-species="16"]');
     await page.waitForFunction(()=>app.coopRoom.mine.species===16);
     await page.evaluate(()=>coopStyleFixture.peer({ready:false}));await state('preparing');
@@ -159,9 +158,9 @@ export async function reviewCoopStyle({page,tap,resize,dir,sleep}){
     await page.waitForFunction(()=>app.screen.dataset.page==='home');
     fs.writeFileSync(path.join(dir,'coop-style-report.json'),JSON.stringify({passed:true,
       mode:'Compiled WeChat bundle / native Canvas UI / fixture room transport',
-      checks:['phone layout and native swiping','cancel without room request','create and copy code','change character',
+      checks:['phone layout and native swiping','cancel without room request','create and display code without copy button','change character',
         'both players ready','offline peer','leave confirmation','join error retry','guest start restriction'],screens:reports},null,2)+'\n');
-    console.log('Co-op journal verified: lobby, create, pick, ready, offline, copy, join retry, leave, native swiping and 3 phone sizes.');
+    console.log('Co-op journal verified: lobby, create, pick, ready, offline, room code, join retry, leave, native swiping and 3 phone sizes.');
   }finally{
     await page.evaluate(()=>{clearInterval(window.coopLayoutTimer);app.coopRoom?.end('Fixture finished',false);app.halted=false;});
   }

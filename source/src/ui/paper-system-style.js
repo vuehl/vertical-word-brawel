@@ -867,6 +867,8 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 
 
 .screen.zx.collection-journal{background:#38343D}
+.screen.zx.collection-journal.zx-request>.zx-body,.screen.zx.collection-journal.zx-request-error>.zx-body{background:transparent}
+.collection-journal .zx-request-status{color:#FFF8E9}
 .screen.zx.collection-journal .zc-filter .zc-control-face{display:none}
 .screen.zx.collection-journal .zc-filter{background:#57535E}
 .screen.zx.collection-journal .zc-filter.active{background:#EEC659}
