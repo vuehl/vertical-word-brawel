@@ -344,7 +344,7 @@ async function removeObsoletePacks() {
   // Only known, content-addressed resource folders inside this game's cache.
   // Removed music packages are obsolete too; player saves live elsewhere.
   for (const entry of fs().readdirSync(base)) {
-    const match=/^(art|world|text|dragon_summon|capture_bag|sound|music_(?:boss|ingame[1-4]))-([a-f0-9]{16})$/.exec(entry);
+    const match=/^(art|world|text|wind|dragon_summon|capture_bag|sound|music_(?:boss|ingame[1-4]))-([a-f0-9]{16})$/.exec(entry);
     if(match&&info.packs[match[1]]!==match[2]){
       const dir=base+'/'+entry;
       try {
@@ -379,7 +379,11 @@ async function preparePacks(names,onProgress,downloadProgress) {
   try {return await Promise.all(names.map(name=>ensurePack(name,downloadProgress)));}
   finally {if(onProgress)for(const name of names)listeners.get(name).delete(onProgress);}
 }
-function prepareForest(onProgress) {return preparePacks(['world','art'],onProgress);}
+function prepareForest(onProgress,{wind=false}={}) {
+  // Install a wind character's textures before native image loading starts;
+  // slow first downloads must not consume the image decoder's timeout.
+  return preparePacks(wind?['world','art','wind']:['world','art'],onProgress);
+}
 async function preloadForest() {
   // Keep idle downloads serial. Entering a game can join the current install
   // and start the other pack immediately through prepareForest.
@@ -387,10 +391,16 @@ async function preloadForest() {
   await ensurePack('world');
   await ensurePack('art');
 }
+async function preloadDeferred() {
+  // The default fire entry does not need these atlases. After boot, fill the
+  // same cache that a later wind selection or on-demand image request joins.
+  await yieldTask();
+  await ensurePack('wind');
+}
 async function readCompressedAsset(url,expected){
   const path=await resolvePath(url);
   if(!path)throw Error('找不到压缩资源 '+url);
   const raw=await readBrotli(path,expected);
   return raw instanceof Uint8Array?raw:new Uint8Array(raw);
 }
-module.exports = {init,pathFor,resolvePath,readCompressedAsset,loadIcon,loadPackage,prepareForest,preloadForest,cleanObsoletePacks,diagnostics};
+module.exports = {init,pathFor,resolvePath,readCompressedAsset,loadIcon,loadPackage,prepareForest,preloadForest,preloadDeferred,cleanObsoletePacks,diagnostics};

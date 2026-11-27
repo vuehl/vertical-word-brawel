@@ -18,6 +18,7 @@ function fixture(t){
   });
   const config={deviceOrientation:'portrait',subpackages:[{name:'play',root:'play'},{name:'text',root:'packs/text'},{name:'world',root:'packs/world'}]};
   fs.mkdirSync(path.join(out,'play'));
+  fs.writeFileSync(path.join(out,'play','game.js'),'// Gameplay subpackage.\n');
   const info={packs:{},rawSizes:{},files:{}};
   const save=()=>fs.writeFileSync(path.join(out,'assets.js'),'module.exports = '+JSON.stringify(info)+';\n');
   function writePack(name,text){
@@ -89,7 +90,7 @@ test('staging keeps every published root available even if the build stops befor
   }
 });
 
-test('finalization keeps declared roots present throughout unchanged and changed builds',t=>{
+test('finalization keeps declared entries and archives present throughout unchanged and changed builds',t=>{
   const f=fixture(t);finalizeResourcePackages(f.out,f.config);
   const missing=[];
   // Model DevTools observing each directory mutation or config replacement.
@@ -100,7 +101,10 @@ test('finalization keeps declared roots present throughout unchanged and changed
       const result=original(...args);
       const config=JSON.parse(fs.readFileSync(path.join(f.out,'game.json'),'utf8'));
       for(const pkg of config.subpackages){
-        if(!fs.existsSync(path.join(f.out,pkg.root)))missing.push(method+': '+pkg.root);
+        for(const name of pkg.name==='play'?['game.js']:['game.js','assets.bin']){
+          const file=path.join(pkg.root,name);
+          if(!fs.existsSync(path.join(f.out,file)))missing.push(method+': '+file);
+        }
       }
       return result;
     });
@@ -110,7 +114,55 @@ test('finalization keeps declared roots present throughout unchanged and changed
     stageResourcePackages(f.out);
     addBootAssets(f.out,{'assets/opening/p00.webp':Buffer.from('new opening page')});
     finalizeResourcePackages(f.out,f.config);
-    assert.deepEqual(missing,[],'The live game.json must never reference a removed directory');
+    assert.deepEqual(missing,[],'The live game.json must always reference complete subpackages');
+  }finally{t.mock.restoreAll();}
+});
+
+test('new and changed roots reach the file index before their subpackage declarations',t=>{
+  const f=fixture(t),missing=[];
+  const indexed=new Set(fs.readdirSync(f.out,{recursive:true}).map(file=>path.join(f.out,file))
+    .filter(file=>fs.statSync(file).isFile()));
+  const forget=file=>{
+    for(const known of indexed)if(known===file||known.startsWith(file+path.sep))indexed.delete(known);
+  };
+  // Model a watcher that receives file events but does not recursively scan
+  // the contents of a directory moved into the project. Checking disk alone
+  // would pass while DevTools still cannot resolve the declared package.
+  for(const method of ['mkdirSync','copyFileSync','writeFileSync','renameSync','rmSync']){
+    const original=fs[method];
+    t.mock.method(fs,method,(...args)=>{
+      const from=path.resolve(args[0]);
+      const renamedFile=method==='renameSync'&&fs.statSync(from).isFile();
+      const result=original(...args);
+      if(method==='copyFileSync')indexed.add(path.resolve(args[1]));
+      else if(method==='writeFileSync')indexed.add(from);
+      else if(method==='rmSync')forget(from);
+      else if(method==='renameSync'){
+        forget(from);
+        if(renamedFile)indexed.add(path.resolve(args[1]));
+      }
+      const configFile=path.join(f.out,'game.json');
+      if(fs.existsSync(configFile))for(const pkg of JSON.parse(fs.readFileSync(configFile,'utf8')).subpackages){
+        for(const name of pkg.name==='play'?['game.js']:['game.js','assets.bin']){
+          const file=path.join(f.out,pkg.root,name);
+          if(!indexed.has(file))missing.push(method+': '+path.relative(f.out,file));
+        }
+      }
+      return result;
+    });
+  }
+  try{
+    const first=finalizeResourcePackages(f.out,f.config);
+    assert.equal(stageResourcePackages(f.out),true);
+    f.writePack('text','updated text archive');
+    f.writePack('wind','new wind archive');f.save();
+    f.config.subpackages.push({name:'wind',root:'packs/wind'});
+    const updated=finalizeResourcePackages(f.out,f.config);
+    assert.notEqual(updated.packRoots.text,first.packRoots.text);
+    assert.ok(updated.packRoots.wind);
+    assert.equal(stageResourcePackages(f.out),true);
+    finalizeResourcePackages(f.out,f.config);
+    assert.deepEqual(missing,[],'Declared entries and archives must be available to the file index throughout publication');
   }finally{t.mock.restoreAll();}
 });
 

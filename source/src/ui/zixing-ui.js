@@ -857,21 +857,25 @@ export function createZixingUI(app,api) {
       // Profile sync can wait on the network. Install scene packs alongside
       // it, but join both before choosing a starter or writing any progress.
       const profileWeight=prepareProfile ? .05 : 0;
+      // Install wind artwork before native texture loading starts its timeout.
+      // Co-op can include a wind teammate regardless of the local starter.
+      const needsWind=!!config.coop||character(config.species).tone==='wind';
+      const requiredPacks=['world','art',...(needsWind?['wind']:[])];
       let profileDone=!prepareProfile,packProgress=0;
       await Promise.all([prepareProfile?Promise.resolve().then(prepareProfile).then(()=>{
         profileDone=true;update({phase:'存档已就绪',progress:profileWeight+packProgress});
       }):null,Promise.resolve().then(()=>window.prepareForest?.(state=>{
         packs.set(state.name,state);
         const pending=[...packs.values()].find(s=>s.phase!=='ready')||state;
-        const name=pending.name==='world'?'场景':'字灵';
+        const name=pending.name==='world'?'场景':pending.name==='wind'?'风系特效':'字灵';
         const action={download:'下载',unpack:'解压',write:'保存',ready:'已准备',error:'准备失败'}[pending.phase];
         // Each pack has download, unpack and write work. Reserve the remaining
         // 60% for the scene, actors and first rendered frame, including cache hits.
         const fraction=s=>!s?0:s.phase==='ready'?1:s.phase==='download' ? .55*(s.total?s.completed/s.total:0):s.phase==='unpack' ? .55:s.phase==='write' ? .7+.3*(s.total?s.completed/s.total:0):0;
-        packProgress=(.4-profileWeight)/2*(fraction(packs.get('world'))+fraction(packs.get('art')));
+        packProgress=(.4-profileWeight)/requiredPacks.length*requiredPacks.reduce((sum,name)=>sum+fraction(packs.get(name)),0);
         const waiting=!profileDone&&packProgress>=.4-profileWeight;
         update({phase:waiting?'同步存档':action+name+'资源',detail:pending.phase==='download'?'正在下载所需资源':pending.total?pending.completed+' / '+pending.total:'正在处理资源',progress:packProgress+(profileDone?profileWeight:0)});
-      }))]);
+      },{wind:needsWind}))]);
       if(abandoned())return false;
       if(mapProgress){
         if(mapRead===mapProgress)update({phase:'同步关卡进度',progress:.4});
@@ -2020,6 +2024,7 @@ export function createZixingUI(app,api) {
     hud.hud=function(...args){
       placeCombo();
       hud.streakHud(run.streak,run.streakT,run.realTime);
+      hud.updateEffectivePopups(run);
       const pos=run.player.pos,feet=hud.project(run,pos.x,pos.y-.15,pos.z);
       if(resultSlip)updateEvolution(feet);
       updateHealth(feet);

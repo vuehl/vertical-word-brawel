@@ -10,7 +10,7 @@
     },
     {
       "name": "art",
-      "root": "packs/art-69edc56aec234b50"
+      "root": "packs/art-5bf465dc30ac37b9"
     },
     {
       "name": "world",
@@ -19,6 +19,10 @@
     {
       "name": "text",
       "root": "packs/text-89e3ed23d38b34e4"
+    },
+    {
+      "name": "wind",
+      "root": "packs/wind-9b509447219ab082"
     },
     {
       "name": "dragon_summon",

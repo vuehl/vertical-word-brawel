@@ -49,9 +49,10 @@ test('cooperative model expansion preserves every byte and yields between batche
 
 function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSubpackage}={}){
   const {pool,recipes}=models(),data=new Map(),dirs=new Set(),downloads={};
-  const archives={world:[['model-parts.bin',pool],['model-map.json',Buffer.from(JSON.stringify(recipes))]],art:[],text:[]};
+  const archives={world:[['model-parts.bin',pool],['model-map.json',Buffer.from(JSON.stringify(recipes))]],art:[],text:[],
+    wind:[['wind.webp',Uint8Array.of(4,8,15,16,23,42)]]};
   let failFile=null,writeError,yields=0,asyncReads=0,syncReads=0,asyncWrites=0,asyncRemovals=0;
-  const compressed=filePath=>Uint8Array.of(filePath.includes('world')?1:filePath.includes('text')?3:2,0,0,0).buffer;
+  const compressed=filePath=>Uint8Array.of(filePath.includes('world')?1:filePath.includes('text')?3:filePath.includes('wind')?4:2,0,0,0).buffer;
   const manager={
     accessSync(p){if(!data.has(p)&&!dirs.has(p))throw Error('ENOENT');},
     mkdirSync(p){dirs.add(p);},
@@ -70,11 +71,12 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
     manager.writeFile=({filePath,data:bytes,success,fail})=>{asyncWrites++;if(stalledWrite)return;
       queueMicrotask(()=>{try{manager.writeFileSync(filePath,bytes);success({});}catch(error){fail(error);}});};
   }
-  const info={packs:{world:'1111111111111111',art:'2222222222222222',text:'3333333333333333'},rawSizes:{world:4,art:4,text:4},
+  const info={packs:{world:'1111111111111111',art:'2222222222222222',text:'3333333333333333',wind:'4444444444444444'},rawSizes:{world:4,art:4,text:4,wind:4},
     files:Object.fromEntries(Object.keys(recipes).map(file=>['assets/models/'+file,'world/'+file])),sprites:{}};
+  info.files['assets/vfx/wind-skills.png']='wind/wind.webp';
   info.packRoots=Object.fromEntries(Object.entries(info.packs).map(([name,revision])=>[name,'packs/'+name+'-'+revision]));
   const archive=name=>info.packRoots[name]+'/assets.bin';
-  const runtime={decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text'}[new Uint8Array(raw)[0]]],decodeBrotli};
+  const runtime={decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text',4:'wind'}[new Uint8Array(raw)[0]]],decodeBrotli};
   // Fault cases deliberately warn with errors from another VM realm. Keep
   // those expected logs out of Node's test-worker error serialization.
   const GameGlobal={pokebonkResourcePackages:{}};
@@ -96,8 +98,8 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
 
 test('a cold launch with obsolete archives completes even if recursive deletion never calls back',{timeout:2000},async()=>{
   const f=installer(),base='/userdata/pokebonk-assets';
-  const removed=[base+'/sound-aaaaaaaaaaaaaaaa',base+'/music_boss-bbbbbbbbbbbbbbbb',base+'/text-cccccccccccccccc',base+'/art-89c24aead3d2160a'];
-  const kept=['/userdata/saves',base+'/player-data',base+'/world-'+f.info.packs.world];
+  const removed=[base+'/sound-aaaaaaaaaaaaaaaa',base+'/music_boss-bbbbbbbbbbbbbbbb',base+'/text-cccccccccccccccc',base+'/art-89c24aead3d2160a',base+'/wind-aaaaaaaaaaaaaaaa'];
+  const kept=['/userdata/saves',base+'/player-data',base+'/world-'+f.info.packs.world,base+'/wind-'+f.info.packs.wind];
   for(const dir of [...removed,...kept]){f.dirs.add(dir);f.data.set(dir+'/test',new Uint8Array([42]));}
   await f.api.init();
   for(const dir of removed)assert.ok(f.dirs.has(dir));
@@ -258,6 +260,62 @@ test('native async installs coalesce, report progress and leave unused models on
   for(const events of [progressA,progressB])for(const phase of ['download','unpack','write','ready'])assert.ok(events.some(s=>s.phase===phase),phase);
   await fixture.api.prepareForest();assert.deepEqual(fixture.downloads,{world:1,art:1});
 });
+test('fire entry installs no wind art, while wind entry joins an in-flight background download',async()=>{
+  let finishWind,windRequested;
+  const requested=new Promise(resolve=>{windRequested=resolve;});
+  const f=installer({loadSubpackage({name,success}){
+    if(name==='wind'){finishWind=success;windRequested();}
+    else queueMicrotask(success);
+  }});
+  await f.api.init();await f.api.prepareForest();
+  assert.deepEqual(f.downloads,{text:1,world:1,art:1});
+  const background=f.api.preloadDeferred();
+  await requested;
+  let entered=false;
+  const states=[];
+  const entering=f.api.prepareForest(s=>states.push(s),{wind:true}).then(()=>{entered=true;});
+  const image=f.api.resolvePath('assets/vfx/wind-skills.png');
+  await Promise.resolve();
+  assert.equal(entered,false,'Wind entry must wait before starting image decode');
+  assert.deepEqual(f.downloads,{text:1,world:1,art:1,wind:1});
+  finishWind();
+  const [, , file]=await Promise.all([background,entering,image]);
+  assert.equal(entered,true);
+  assert.deepEqual([...f.data.get(file)],[4,8,15,16,23,42]);
+  for(const phase of ['download','unpack','write','ready'])assert.ok(states.some(s=>s.name==='wind'&&s.phase===phase),phase);
+  assert.deepEqual(f.downloads,{text:1,world:1,art:1,wind:1});
+});
+
+test('wind entry downloads all required packs together and retries a failed deferred installation',async()=>{
+  const pending={};
+  const f=installer({loadSubpackage({name,success}){pending[name]=success;}});
+  f.failNext('wind.webp');
+  const entering=f.api.prepareForest(undefined,{wind:true});
+  assert.deepEqual(f.downloads,{world:1,art:1,wind:1});
+  for(const finish of Object.values(pending))finish();
+  await assert.rejects(entering,/simulated disk error/);
+  const dir='/userdata/pokebonk-assets/wind-'+f.info.packs.wind+'/';
+  assert.ok(!f.data.has(dir+'.ready'));
+  const retry=f.api.resolvePath('assets/vfx/wind-skills.png');
+  pending.wind();
+  assert.equal(await retry,dir+'wind.webp');
+  assert.ok(f.data.has(dir+'.ready'));
+  assert.deepEqual(f.downloads,{world:1,art:1,wind:2});
+  await f.api.preloadDeferred();
+  assert.deepEqual(f.downloads,{world:1,art:1,wind:2});
+});
+
+test('installed wind art skips downloading and decoding after a process restart',async()=>{
+  const f=installer(),dir='/userdata/pokebonk-assets/wind-'+f.info.packs.wind+'/';
+  f.dirs.add('/userdata/pokebonk-assets');f.dirs.add(dir.slice(0,-1));
+  f.data.set(dir+'.ready',f.info.packs.wind);f.data.set(dir+'wind.webp',Uint8Array.of(9,8,7));
+  await f.api.preloadDeferred();
+  const file=await f.api.resolvePath('assets/vfx/wind-skills.png');
+  assert.equal(file,dir+'wind.webp');assert.deepEqual([...f.data.get(file)],[9,8,7]);
+  assert.equal(f.api.diagnostics.packs.wind.cached,true);
+  assert.deepEqual(f.downloads,{});assert.deepEqual(f.io,{asyncReads:0,syncReads:0,asyncWrites:0});
+});
+
 test('an interrupted install has no ready marker and can be retried',async()=>{
   const fixture=installer();fixture.failNext('model-map.json');
   await assert.rejects(fixture.api.prepareForest(),/simulated disk error/);

@@ -80,11 +80,10 @@ export function finalizeResourcePackages(out,config){
   });
   for(const {name,revision,source,target} of packages){
     if(source!==target){
-      if(fs.existsSync(target)){
-        // An unchanged revision is already published. Refresh changed files
-        // without deleting its directory or retriggering unchanged archives.
-        copyPackageFiles(source,target);
-      }else fs.renameSync(source,target);
+      // DevTools can miss files inside a directory renamed into a new root.
+      // Publish each file so its live index sees the entry and archive before
+      // game.json references them. Unchanged files are left untouched.
+      copyPackageFiles(source,target);
     }
     writeText(path.join(target,'game.js'),'// Resource '+name+' revision '+revision+'.\n'+
       '(GameGlobal.pokebonkResourcePackages || (GameGlobal.pokebonkResourcePackages = {}))['+

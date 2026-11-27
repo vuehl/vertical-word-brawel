@@ -1422,6 +1422,42 @@ function comboSheet(tier){
   }
   return comboSheets[tier];
 }
+let effectiveSheet;
+// Reference lime face, with the original 17.6px caption height and no backing art.
+class EffectiveCallout {
+  static duration=.9;
+  constructor(reducedMotion=false){
+    this.reducedMotion=reducedMotion;
+    this.canvas=document.createElement('canvas');
+    this.canvas.width=224;this.canvas.height=104;
+    this.width=112;this.height=52;
+    this.inkBounds={left:10,top:5,right:102,bottom:38};
+    this.canvas.className='zx-effective-popup';
+    this.canvas.style.cssText='position:absolute;display:block;width:112px;height:52px;pointer-events:none';
+    this.canvas.setAttribute('role','img');this.canvas.setAttribute('aria-label','效果绝佳');
+    this.canvas.textContent='效果绝佳';
+    if(!effectiveSheet){
+      effectiveSheet=document.createElement('canvas');
+      effectiveSheet.width=256;effectiveSheet.height=64;
+      const ctx=effectiveSheet.getContext('2d');
+      drawCutGlyphRow(ctx,'效果绝佳','#bffd3f','#99eb25',comboLettering,comboOutline);
+    }
+    this.frame=-1;
+  }
+  paint(age){
+    age=Math.max(0,age);
+    const frame=Math.floor(age*30);
+    if(frame===this.frame)return;
+    this.frame=frame;
+    const ctx=this.canvas.getContext('2d');
+    ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+    const cell=17.6*2*64/50,rise=this.reducedMotion?0:18*(1-Math.exp(-age*2.2));
+    ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,(EffectiveCallout.duration-age)/.28));
+    ctx.translate(this.canvas.width/2,52-rise);
+    ctx.drawImage(effectiveSheet,-cell*2,-cell/2,cell*4,cell);
+    ctx.restore();this.canvas.dataset.frame=String(frame);
+  }
+}
 // Wheels use an unwrapped position so another kill can retarget a roll in flight.
 function comboWheelAt(wheel,time){
   const t=Math.max(0,Math.min(1,(time-wheel.start)/.10));
@@ -1518,8 +1554,13 @@ class ComboRoller {
     const flash=Math.max(0,1-age/.065)*.12;
     this.active=this.pulseStart!=null && age<comboPulseDuration;
     const centerX=this.canvas.width*.5,width=lineWidth*scale,angle=-8*Math.PI/180;
+    const cos=Math.cos(angle),sin=-Math.sin(angle),originX=this.canvas.width-19-width*cos/2;
+    const halfWidth=width/2+8,above=cell*scale*.5+8,below=cell*scale*.7+8;
+    // Screen-space feedback avoids only the painted combo, not its transparent canvas margin.
+    this.inkBounds={left:originX-halfWidth*cos-above*sin,right:originX+halfWidth*cos+below*sin,
+      top:92-halfWidth*sin-above*cos,bottom:92+halfWidth*sin+below*cos};
     // Rotate the label and timer together, reserving the right edge for the pulse.
-    ctx.save();ctx.translate(this.canvas.width-19-width*Math.cos(angle)/2,92);ctx.rotate(angle);
+    ctx.save();ctx.translate(originX,92);ctx.rotate(angle);
     paintComboSlash(ctx,width,cell*scale,tier,this.slashVariant,age,progress);
     ctx.scale(scale,scale);ctx.translate(-centerX,-cy);
     const wheelStep=cell*1.04;
@@ -2222,5 +2263,6 @@ export {
   Kl,
   comboFaces,
   ComboRoller,
+  EffectiveCallout,
   Nl
 };

@@ -29,7 +29,7 @@ const development=process.argv.includes('--dev');
 const projectRoot=gameProject(root,development);
 const out=path.join(projectRoot,'minigame');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pokebonk-art-'));
-const packs = {art: {}, world: {}, text: {}, dragon_summon: {}, capture_bag: {}};
+const packs = {art: {}, world: {}, text: {}, wind: {}, dragon_summon: {}, capture_bag: {}};
 const filters = {world:{},dragon_summon:{}};
 const index = {};
 const generatedSprites={};
@@ -82,7 +82,8 @@ for (const folder of ['assets', 'overrides/assets']) {
       const key = 'assets/' + name;
       // The home and character screens need the atlas before the first tap.
       if(key.startsWith(dragonDirectory))continue;
-      const targetPack=key.startsWith('assets/vfx/capture-bag/')?'capture_bag':key==='assets/glyphs/atlas.png'?'text':pack;
+      const targetPack=key.startsWith('assets/vfx/capture-bag/')?'capture_bag':key==='assets/glyphs/atlas.png'?'text':
+        windClarityAtlases.has(key)?'wind':pack;
       if (selected.has(key)) continue;
       selected.add(key);
       const input = sourceFor(key);

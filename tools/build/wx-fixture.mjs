@@ -197,8 +197,11 @@ globalThis.wx={
   showLoading(o){window.loadingTitle=o.title;},hideLoading(){window.loadingTitle=null;},showModal(o){window.problem=o.content;console.error('WX MODAL',o.content);},
   loadSubpackage(o){
     (window.requestedPackages??=[]).push(o.name);
+    const event={name:o.name,requestedAt:performance.now()};
+    (window.packageTimings??=[]).push(event);
     let notify;
     (async()=>{try{
+      if(window.fixtureDownloadDelays?.[o.name])await new Promise(resolve=>setTimeout(resolve,window.fixtureDownloadDelays[o.name]));
       if(o.name==='text'){
         window.textRequested=true;
         window.reportTextProgress=p=>notify?.({progress:p,totalBytesWritten:p*1024});
@@ -208,6 +211,7 @@ globalThis.wx={
       }
       if(o.name!=='play'&&o.name!=='text')await optionalDownloadGate;
       await window.loadFixtureData(o.name);
+      event.downloadedAt=performance.now();
       // Reproduce a device reporting package success before evaluating its entry.
       if(o.name!=='text'||!window.fixtureMissingTextCallback)o.success();
       if(o.name==='play')window.playDownloaded=true;

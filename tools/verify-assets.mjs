@@ -76,6 +76,7 @@ for(const [key,ref] of Object.entries(index.files)){
   iconErrors.tiles++;
 }
 for(const key of windClarityAtlases){
+  assert.match(index.files[key],/^wind\//,'Wind effects must not delay the default fire entry');
   const source=await sharp(path.join(pub,key)).ensureAlpha().raw().toBuffer();
   const decoded=await sharp(bytes(key)).ensureAlpha().raw().toBuffer();
   assert.equal(decoded.length,source.length,key);

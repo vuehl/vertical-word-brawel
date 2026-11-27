@@ -1,4 +1,4 @@
-"""Build the combo caption from the same Swei Gothic Bold font as the game UI."""
+"""Build combat captions from the same Swei Gothic Bold font as the game UI."""
 import json
 import math
 from pathlib import Path
@@ -45,7 +45,7 @@ class OutlinePen(BasePen):
 
 
 lettering = {}
-for character in "连击":
+for character in "连击效果绝佳":
     pen = OutlinePen()
     glyphs[cmap[ord(character)]].draw(pen)
     points = [p for ring in pen.rings for p in ring]

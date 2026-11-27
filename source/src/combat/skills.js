@@ -1926,7 +1926,7 @@ var e_ = class {
           l > 1.01 &&
             F.chance(0.25) &&
             this.canReact(`eff`) &&
-            r.ui.popup(i.x[e], i.y[e] + i.hgt[e] + 1.2, i.z[e], c(`¡Muy eficaz!`), `#ffb03a`, 0.8),
+            r.ui.effectivePopup(i.x[e], i.y[e] + i.hgt[e], i.z[e]),
           r.audio.hit(l, u, m));
       }
       return (i.hp[e] <= 0 && this.killEnemy(e, n), s);

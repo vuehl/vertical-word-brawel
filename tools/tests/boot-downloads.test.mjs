@@ -1,0 +1,147 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const source=fs.readFileSync(new URL('../../game.js',import.meta.url),'utf8');
+const flush=()=>new Promise(resolve=>setImmediate(resolve));
+function deferred(){
+  let resolve,reject;
+  const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});
+  return {promise,resolve,reject};
+}
+
+function fixture(t,{joinForest=true}={}){
+  let now=0,env;
+  const gates=Object.fromEntries(['play','text','world','art'].map(name=>[name,deferred()]));
+  const events=[],warnings=[],modals=[],drawn=[],downloads={},jobs=new Map(),timers=new Set();
+  const diagnostics={packs:{}};
+  const GameGlobal={};
+  function install(name){
+    if(!jobs.has(name)){
+      downloads[name]=(downloads[name]||0)+1;
+      events.push('start:'+name);
+      diagnostics.packs[name]={cached:false,totalMs:undefined};
+      const started=now;
+      jobs.set(name,gates[name].promise.then(()=>{
+        diagnostics.packs[name].totalMs=now-started;
+        events.push('ready:'+name);
+      },error=>{jobs.delete(name);throw error;}));
+    }
+    return jobs.get(name);
+  }
+  const files={
+    diagnostics,
+    async loadPackage(name,progress){
+      await install(name);GameGlobal.pokebonkPlayEntry={api:play};progress(100);
+    },
+    async init(_,progress){
+      progress({name:'text',phase:'download',completed:0,total:100});
+      await install('text');progress({name:'text',phase:'ready',completed:1,total:1});
+    },
+    prepareForest:()=>Promise.all(['world','art'].map(install)),
+    preloadForest:()=>Promise.all(['world','art'].map(install)),
+    async preloadDeferred(){
+      events.push('deferred');diagnostics.packs.wind={cached:false};
+      // A delayed update must not mutate the cold-start diagnostics snapshot.
+      diagnostics.packs.text.totalMs=99999;
+    },
+    async cleanObsoletePacks(){events.push('cleanup');},
+  };
+  const play={
+    async setup(){
+      events.push('setup');
+      return env={drawUI(){},onBootReady(){events.push('reveal');}};
+    },
+    async run(){
+      events.push('profile');
+      if(joinForest)await files.prepareForest();
+      events.push('scene');
+    },
+  };
+  const context={GameGlobal,Promise,Date:class extends Date{static now(){return now;}},
+    console:{info(){},warn(...args){warnings.push(args);},error(...args){warnings.push(args);}},
+    setTimeout(fn,ms){const timer=setTimeout(fn,ms);timers.add(timer);return timer;},
+    clearTimeout(timer){timers.delete(timer);clearTimeout(timer);},
+    setInterval(){return 1;},clearInterval(){},
+    wx:{
+      onShow(){},getWindowInfo:()=>({windowWidth:390,windowHeight:844,pixelRatio:1}),
+      createCanvas:()=>({getContext:()=>({})}),
+      showModal(options){modals.push(options);},exitMiniProgram(){events.push('exit');},
+    },
+    require(name){
+      if(name==='./files')return files;
+      if(name==='./boot-screen')return async()=>({draw(value){drawn.push(value);},dispose(){events.push('dispose');}});
+      throw Error(name);
+    },
+  };
+  t.after(()=>{for(const timer of timers)clearTimeout(timer);});
+  vm.runInNewContext(source.replace(/start\(\);\s*$/,'globalThis.bootComplete=start();'),context);
+  return {gates,events,warnings,modals,drawn,downloads,diagnostics,
+    get host(){return GameGlobal.pokebonk;},
+    async step(){now+=100;env?.drawUI({resetState(){}});await flush();},
+    async complete(){
+      for(let i=0;i<20&&!GameGlobal.pokebonk?.bootDiagnostics.completed;i++){
+        now+=100;env?.drawUI({resetState(){}});await flush();
+      }
+      assert.equal(GameGlobal.pokebonk?.bootDiagnostics.completed,true,'Startup must finish');
+      await context.bootComplete;
+    },
+    settle:()=>context.bootComplete,
+  };
+}
+
+test('cold startup overlaps all required downloads and engine/profile work without revealing an incomplete scene',async t=>{
+  const f=fixture(t);await flush();
+  assert.deepEqual([...f.events].sort(),['start:art','start:play','start:text','start:world']);
+  assert.equal(f.host.bootDiagnostics.forestPreload.status,'loading');
+  f.gates.play.resolve();f.gates.text.resolve();await flush();
+  assert.ok(f.events.includes('setup')&&f.events.includes('profile'),'Scene downloads must not delay engine and save preparation');
+  assert.equal(f.events.includes('scene'),false);
+  for(let i=0;i<4;i++)await f.step();
+  assert.equal(f.drawn.includes(100),false);
+  f.gates.world.resolve();await flush();
+  assert.equal(f.events.includes('scene'),false,'Entry still waits for character art');
+  f.gates.art.resolve();await flush();await f.complete();
+  assert.deepEqual(f.downloads,{play:1,text:1,world:1,art:1});
+  assert.equal(f.host.bootDiagnostics.forestPreload.status,'ready');
+  assert.ok(f.events.indexOf('reveal')>f.events.indexOf('scene'));
+  assert.ok(f.events.indexOf('deferred')>f.events.indexOf('reveal'));
+  assert.equal(f.host.bootDiagnostics.packs.wind,undefined);
+  assert.notEqual(f.host.bootDiagnostics.packs.text.totalMs,99999,'Cold timings are a snapshot, not live background diagnostics');
+});
+
+test('a deferred scene failure is handled and entry retries only the failed pack',async t=>{
+  const f=fixture(t);await flush();
+  f.gates.world.resolve();f.gates.art.reject(Error('temporary art failure'));await flush();
+  assert.equal(f.host.bootDiagnostics.forestPreload.status,'error');
+  assert.match(f.host.bootDiagnostics.forestPreload.error,/temporary art failure/);
+  assert.equal(f.modals.length,0,'Preload failure must leave the visible entry retry flow in control');
+  f.gates.art=deferred();
+  f.gates.play.resolve();f.gates.text.resolve();await flush();
+  assert.deepEqual(f.downloads,{play:1,text:1,world:1,art:2});
+  f.gates.art.resolve();await flush();await f.complete();
+  assert.equal(f.events.includes('reveal'),true);
+  assert.equal(f.modals.length,0);
+});
+
+test('a menu-only launch does not wait for a pending scene preload',async t=>{
+  const f=fixture(t,{joinForest:false});await flush();
+  f.gates.play.resolve();f.gates.text.resolve();await flush();await f.complete();
+  assert.equal(f.host.bootDiagnostics.forestPreload.status,'loading');
+  assert.equal(f.events.includes('ready:world'),false);
+  f.gates.world.resolve();f.gates.art.resolve();await flush();
+  assert.equal(f.host.bootDiagnostics.forestPreload.status,'ready');
+  assert.deepEqual(f.downloads,{play:1,text:1,world:1,art:1});
+});
+
+test('exiting after a text failure leaves no unhandled scene preload rejection',async t=>{
+  const f=fixture(t);await flush();
+  f.gates.play.resolve();f.gates.text.reject(Error('text unavailable'));await flush();
+  assert.equal(f.modals.length,1);
+  f.modals[0].success({confirm:false});await f.settle();
+  f.gates.world.reject(Error('late scene failure'));f.gates.art.resolve();await flush();
+  assert.equal(f.events.includes('exit'),true);
+  assert.equal(f.events.includes('setup'),false);
+  assert.equal(f.host.bootDiagnostics.forestPreload.status,'error');
+});

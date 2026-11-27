@@ -145,7 +145,19 @@ if(process.argv.includes('--legacy-runtime'))await page.evaluateOnNewDocument(()
   delete String.prototype.at;
   window.TextDecoder=window.TextEncoder=undefined;
 });
-if(!process.argv.includes('--opening-flow'))await page.evaluateOnNewDocument(()=>{window.fixtureReturning=true;window.fixtureSkipOpening=true;});
+const coldStart=process.argv.includes('--cold-start');
+if(!process.argv.includes('--opening-flow')&&!coldStart)await page.evaluateOnNewDocument(()=>{window.fixtureReturning=true;window.fixtureSkipOpening=true;});
+if(coldStart){
+  const packageBytes=Object.fromEntries(subpackages.map(pkg=>[pkg.name,fs.readdirSync(path.join(game,pkg.root),{recursive:true})
+    .map(file=>fs.statSync(path.join(game,pkg.root,file))).reduce((sum,stat)=>sum+(stat.isFile()?stat.size:0),0)]));
+  await page.evaluateOnNewDocument(packageBytes=>{
+    window.holdHomeStatus=false;window.fixturePlatform='android';window.coldPackageBytes=packageBytes;
+    // Controlled per-package transport: 200 ms latency plus 2 MiB/s.
+    // This is a repeatable comparison, not a prediction of real phone networks.
+    window.fixtureDownloadDelays=Object.fromEntries(Object.entries(packageBytes).map(([name,bytes])=>[name,200+bytes/(2*1048576)*1000]));
+    addEventListener('DOMContentLoaded',()=>{releaseTextDownload();releaseOptionalDownloads();});
+  },packageBytes);
+}
 if(process.argv.includes('--opening-retry'))await page.evaluateOnNewDocument(()=>{window.failOpeningResources=true;});
 if(process.argv.includes('--opening-image-retry'))await page.evaluateOnNewDocument(()=>{window.testOpeningImageFailure=true;window.failOpeningPageOnce=true;});
 if(process.argv.includes('--opening-flow'))await page.evaluateOnNewDocument(()=>{window.fixturePlatform='android';});
@@ -316,8 +328,8 @@ async function verifyStartup(){
     if(retryInstall)assert.ok(await page.evaluate(()=>bootLabels.slice(beforeRetryLabel).some(label=>{
       const value=parseFloat(label);return value>parseFloat(bootLabels[beforeRetryLabel-1]) && value<100;
     })),'The remaining progress must animate before reaching 100%');
-    assert.ok(await page.evaluate(()=>app.screen.dataset.page==='home'&&bootPercentages.includes(100)&&!requestedPackages.includes('art')),
-      'Home must be usable while the first background download is held');
+    assert.ok(await page.evaluate(()=>app.screen.dataset.page==='home'&&bootPercentages.includes(100)&&requestedPackages.includes('art')),
+      'Home must remain usable while the early scene downloads are held');
     assert.ok(await page.evaluate(()=>!requestedPackages.includes('capture_bag')),'Capture effects are only needed in a run');
     if(retryInstall)await page.evaluate(()=>window.releaseHomeDesk());
     await page.evaluate(()=>window.releaseOptionalDownloads());
@@ -630,7 +642,39 @@ async function verifyStartup(){
   console.log('Boot percentages through the first home frame:',[...new Set(values)].join(', '));
 }
 try{
-  if(process.argv.includes('--joystick-only')){
+  if(coldStart){
+    await page.waitForFunction(()=>GameGlobal.pokebonk?.bootDiagnostics.completed||window.problem,{timeout:90000});
+    if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
+    const result=await page.evaluate(()=>({boot:GameGlobal.pokebonk.bootDiagnostics,
+      packs:GameGlobal.pokebonk.files.diagnostics.packs,timings:packageTimings,
+      packageBytes:coldPackageBytes,screen:app.screen?.dataset.page,time:app.run?.time}));
+    assert.equal(result.screen,'entry');assert.equal(result.time,0);
+    for(const name of ['text','world','art'])assert.equal(result.packs[name].cached,false,'Must use a fresh resource cache');
+    if(!process.argv.includes('--baseline')){
+      const timings=Object.fromEntries(result.timings.map(event=>[event.name,event]));
+      assert.ok(timings.world.requestedAt<timings.text.downloadedAt&&timings.art.requestedAt<timings.text.downloadedAt,
+        'Scene downloads must overlap the initial text package');
+      assert.ok(!result.boot.packs?.wind,'Wind must not be a default fire-entry dependency');
+    }
+    await page.waitForFunction(()=>app.run?.state==='play'&&!app.screen&&!app.entryOpening,{timeout:90000});
+    assert.deepEqual(await page.evaluate(()=>[...missingAssets]),[]);
+    assert.equal(await page.evaluate(()=>openingDecoders.at(-1).frames),169);
+    if(!process.argv.includes('--baseline')){
+      const wind=await page.evaluate(async()=>{
+        await app.startRun({species:16,biome:'forest',tier:0,boosts:[],mode:'standard'});
+        return {species:app.run.player.speciesId,state:app.run.state,
+          prepared:app.run.vfx.crafted.windSkillArt().texture.userData.prepared,
+          downloads:requestedPackages.filter(name=>name==='wind').length};
+      });
+      assert.deepEqual(wind,{species:16,state:'play',prepared:true,downloads:1},
+        'Wind entry must reuse the deferred install and prepare its real skill texture');
+      result.windEntry=wind;
+    }
+    if(errors.length)throw Error(errors[0]);
+    const filename=process.argv.includes('--baseline')?'cold-start-before.json':'cold-start-after.json';
+    fs.writeFileSync(path.join(dir,filename),JSON.stringify(result,null,2)+'\n');
+    console.log('Cold startup:',JSON.stringify(result));
+  }else if(process.argv.includes('--joystick-only')){
     const {verifyJoystick}=await import('./regression/joystick-regression.mjs');
     await verifyJoystick(page,dir);
     if(errors.length)throw Error(errors[0]);

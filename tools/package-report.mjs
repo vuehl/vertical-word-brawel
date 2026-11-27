@@ -8,7 +8,7 @@ const root=path.resolve(import.meta.dirname,'..'),game=path.join(root,'minigame'
 const index=createRequire(import.meta.url)(path.join(game,'assets.js'));
 const {subpackages}=JSON.parse(fs.readFileSync(path.join(game,'game.json')));
 const labels={main:'主包 · 启动与资源加载',play:'play · 玩法、界面与引擎',art:'art · 字灵、道具与特效',
-  world:'world · 场景、模型与界面',text:'text · 字体、文字、数据与启动美术',dragon_summon:'dragon_summon · 召唤动画'};
+  world:'world · 场景、模型与界面',text:'text · 字体、文字、数据与启动美术',wind:'wind · 按需风系特效',dragon_summon:'dragon_summon · 召唤动画'};
 const category=file=>{
   const name=subpackages.find(p=>file===p.root||file.startsWith(p.root.replace(/\/$/,'')+'/'))?.name||'main';
   return labels[name]||name;

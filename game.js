@@ -222,6 +222,24 @@ async function start() {
     }
     showProgress(5);
     let play;
+    // Start both scene downloads while the code and text are still loading.
+    // Do not join them here: engine setup and profile sync can run alongside
+    // installation. The entry screen joins the same jobs through prepareForest.
+    const forestStarted = Date.now();
+    const forestPreload = host.bootDiagnostics.forestPreload = {
+      startedMs:forestStarted-began,status:'loading'
+    };
+    Promise.resolve().then(() => files.prepareForest()).then(() => {
+      forestPreload.status='ready';
+      forestPreload.totalMs=Date.now()-forestStarted;
+    }, error => {
+      forestPreload.status='error';
+      forestPreload.totalMs=Date.now()-forestStarted;
+      forestPreload.error=error.errMsg||error.message||String(error);
+      // Installation failures remain retryable. Entry owns the visible retry
+      // flow; an early failure must not become an unhandled background rejection.
+      console.warn('[字由搏击] 提前准备场景资源失败，进入时重试',error);
+    });
     // Downloads have their own inactivity watchdog, and file operations have
     // per-call timeouts. Slow installs that keep advancing can finish.
     const resourcesReady = await prepareResources([
@@ -247,9 +265,12 @@ async function start() {
     host.bootDiagnostics.completed=true;
     host.bootDiagnostics.totalMs=Date.now()-began;
     host.bootDiagnostics.text = files.diagnostics.packs.text;
+    host.bootDiagnostics.packs = Object.fromEntries(Object.entries(files.diagnostics.packs)
+      .map(([name,stats])=>[name,Object.assign({},stats)]));
     console.info('[字由搏击启动耗时]', JSON.stringify(host.bootDiagnostics));
     console.info('[宝可梦启动] 游戏首页已绘制', Date.now() - began, 'ms');
     files.preloadForest().catch(error=>console.warn('[字由搏击] 后台准备场景资源失败',error));
+    files.preloadDeferred().catch(error=>console.warn('[字由搏击] 后台准备后续资源失败',error));
     files.cleanObsoletePacks().catch(error=>console.info('[字由搏击] 无法读取旧缓存目录',error.message));
   } catch (error) {
     console.error('[宝可梦] ' + phase + '失败', error);

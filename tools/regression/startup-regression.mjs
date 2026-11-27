@@ -56,8 +56,8 @@ export async function reviewRunSettlement({page,dir}) {
   console.log('Interrupted run settled once, with no confirmation on either launch.');
 }
 
-// Exercise the returning-player path: a fresh guest never reads cloud progress
-// until the first tap, so a cold-only smoke test cannot catch this startup stall.
+// A restored account reads cloud progress before the automatic entry. Scene
+// downloads must overlap that read, while the single boot bar still covers it.
 export async function reviewStartupLatency({page,dir,baseline=false}) {
   // Automatic first-launch handoff is covered by opening-regression.mjs.
   const saved=await page.evaluate(async()=>{
@@ -72,7 +72,10 @@ export async function reviewStartupLatency({page,dir,baseline=false}) {
     const info=console.info;
     console.info=function(...args){
       if(args[0]==='[宝可梦启动]')startupAudit.events.push({stage:args[1],ms:args[2]});
-      else if(args[0]==='[宝可梦启动] 游戏首页已绘制')startupAudit.events.push({stage:'游戏首页已绘制',ms:args[1]});
+      else if(args[0]==='[宝可梦启动] 游戏首页已绘制'){
+        startupAudit.events.push({stage:'游戏首页已绘制',ms:args[1]});
+        startupAudit.completedAt=performance.now();
+      }
       return info.apply(this,args);
     };
     const proto=WebGL2RenderingContext.prototype,store=proto.pixelStorei;
@@ -98,28 +101,39 @@ export async function reviewStartupLatency({page,dir,baseline=false}) {
   // Hold the server response independently of local loading and rendering.
   await new Promise(resolve=>setTimeout(resolve,3000));
   const before=await page.evaluate(()=>({home:!!app.zixing&&app.screen?.dataset.page==='home',
-    complete:bootPercentages.includes(100),profile:!!app.meta.profile,percent:bootPercentages.at(-1)}));
+    complete:bootPercentages.includes(100),profile:!!app.meta.profile,percent:bootPercentages.at(-1),
+    sceneReady:['world','art'].every(name=>Number.isFinite(GameGlobal.pokebonk.files.diagnostics.packs[name]?.totalMs)),
+    sceneDownloads:requestedPackages.filter(name=>name==='world'||name==='art'),
+    deferredRequested:requestedPackages.includes('wind')}));
   await page.screenshot({path:path.join(dir,baseline?'startup-before.png':'startup-after.png')});
   if(!baseline){
-    assert.ok(before.home&&before.complete,'Home must be usable while cloud progress is still pending');
+    // Every launch now prepares the saved profile before automatic entry. The
+    // earlier menu-first contract must not require revealing incomplete state.
+    assert.equal(before.complete,false,'Boot cannot report completion while the saved profile is pending');
     assert.equal(before.profile,false,'Do not fabricate a profile before cloud progress arrives');
-    await page.evaluate(()=>inspected.doc.querySelector('[data-action="journey"]').click());
-    await page.waitForFunction(()=>app.screen?.dataset.page==='choose'&&app.screen.textContent.includes('正在读取存档'));
-    assert.ok(await page.evaluate(()=>app.screen.textContent.includes('正在读取存档')&&!app.screen.querySelector('.zc-character')));
-    await page.evaluate(()=>app.screen.querySelector('.zx-footer button').click());
+    assert.equal(before.sceneReady,true,'Scene installation must finish independently of the pending cloud response');
+    assert.deepEqual(before.sceneDownloads.sort(),['art','world'],'Early preload and entry must share one install per scene package');
+    assert.equal(before.deferredRequested,false,'Later character resources must not compete with startup');
   }
   await page.evaluate(()=>releaseStartupCloud());
   await page.waitForFunction(()=>app.meta.profile?.stardust===321&&bootPercentages.includes(100),{timeout:15000});
   if(!baseline){
     await page.waitForFunction(()=>app.screen?.querySelector('[data-action="multiplayer"]'));
-    assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'home','A late save must not reopen character selection after going back');
+    assert.equal(await page.evaluate(()=>app.screen?.dataset.page),'home','The menu fixture must finish after the profile arrives');
+    // The full bar stays visible briefly before boot completion. Deferred
+    // preparation also yields once, so wait for its actual request boundary.
+    await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed&&requestedPackages.includes('wind'));
   }
-  const report=await page.evaluate(()=>({...startupAudit,packages:requestedPackages,percentages:[...new Set(bootPercentages)]}));
+  const report=await page.evaluate(()=>({...startupAudit,packages:requestedPackages,packageTimings,
+    percentages:[...new Set(bootPercentages)]}));
   report.beforeCloudReturned=before;
   if(!baseline){
     assert.equal(report.unsupportedCalls,0,'Native rendering must never submit unsupported color-space pixelStore calls');
     assert.equal(report.cloudRequests,1,'Home and gameplay entry must share one profile request');
-    assert.deepEqual([...new Set(report.packages)].sort(),['art','play','text','world'],'Startup must use the packaged desk and character art');
+    assert.deepEqual([...new Set(report.packages)].sort(),['art','play','text','wind','world'],'Startup must use the packaged desk and character art, with wind prefetched after boot');
+    assert.equal(report.packages.filter(name=>name==='wind').length,1);
+    assert.ok(report.packageTimings.find(event=>event.name==='wind').requestedAt>=report.completedAt,
+      'Deferred downloads must start after the full boot bar is submitted');
   }
   await page.evaluate(()=>app.zixing.home());
   fs.writeFileSync(path.join(dir,baseline?'startup-before.json':'startup-after.json'),JSON.stringify(report,null,2)+'\n');

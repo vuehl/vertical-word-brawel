@@ -25,7 +25,7 @@ import {typeColors as Ni, gameData as k} from "../data/game-database.js";
 import {qi, Xi, ta, ia, Da, Pa, La, Ga, uo, Zo, Qo} from "./controls.js";
 import {gameAudio as N} from "../combat/game-audio.js";
 import {Ys, Xs, Zs, P} from "../effects/scene-renderer.js";
-import {comboFaces, ComboRoller} from "../effects/battle-particles.js";
+import {comboFaces, ComboRoller, EffectiveCallout} from "../effects/battle-particles.js";
 import {nf, rf, _f, R} from "../combat/enemy-population.js";
 import {km, jm, Nm} from "../combat/field-effects.js";
 import {g_, O_, $_} from "../combat/skills.js";
@@ -348,6 +348,7 @@ var JI = class {
       e.append(this.root);
     }
     destroy() {
+      this.clearWorldNotices();
       (this.offPad(), this.touch.destroy(), this.coopHud?.destroy(), this.root.remove());
     }
     hs = 1;
@@ -387,6 +388,57 @@ var JI = class {
     runRef = null;
     floatText = !0;
     popups = new Set();
+    effectivePopups = [];
+    effectivePopup(x,y,z) {
+      const run=this.runRef;
+      if(!run||!this.floatText||this.popups.size>=BI||this.effectivePopups.length>=3)return;
+      const point=this.project(run,x,y,z);
+      if(!point.vis||point.x<0||point.x>innerWidth||point.y<0||point.y>innerHeight)return;
+      // Repeated hits in one cluster share a readable notice instead of piling up.
+      if(this.effectivePopups.some(item=>{
+        const other=this.project(run,item.x,item.y,item.z);
+        return Math.abs(other.x-point.x)<112&&Math.abs(other.y-point.y)<56;
+      }))return;
+      const callout=new EffectiveCallout(!!run.meta.profile.settings.reduceFlashes);
+      Object.assign(callout,{x,y,z,start:run.realTime});
+      this.effectivePopups.push(callout);this.popups.add(callout.canvas);
+      (this.popupRoot||this.hudEl).append(callout.canvas);
+      this.updateEffectivePopups(run);
+    }
+    updateEffectivePopups(run) {
+      for(let i=this.effectivePopups.length-1;i>=0;i--){
+        const callout=this.effectivePopups[i],age=run.realTime-callout.start,node=callout.canvas;
+        if(age>=EffectiveCallout.duration||!this.floatText||run.player.dead||run.state!=='play'){
+          node.remove();this.popups.delete(node);this.effectivePopups.splice(i,1);continue;
+        }
+        const point=this.project(run,callout.x,callout.y,callout.z);
+        const visible=point.vis&&point.x>=0&&point.x<=innerWidth&&point.y>=0&&point.y<=innerHeight;
+        node.style.display=visible?'block':'none';
+        if(!visible)continue;
+        // Lift the small caption above the enemy and leave the combo's painted area clear.
+        let left=Math.max(6,Math.min(innerWidth-callout.width-6,point.x-callout.width/2));
+        let top=Math.max(6,Math.min(innerHeight-callout.height-6,point.y-callout.height/2-36));
+        const roller=this.comboRoller,ink=callout.inkBounds;
+        if(this.stkOn&&roller?.inkBounds&&!this.hudEl.classList.contains('no-streak')){
+          const box=roller.canvas.getBoundingClientRect(),bounds=roller.inkBounds;
+          const sx=box.width/roller.canvas.width,sy=box.height/roller.canvas.height;
+          const combo={left:box.left+bounds.left*sx,right:box.left+bounds.right*sx,
+            top:box.top+bounds.top*sy,bottom:box.top+bounds.bottom*sy};
+          if(left+ink.right>combo.left-8&&left+ink.left<combo.right+8&&
+            top+ink.bottom>combo.top-8&&top+ink.top<combo.bottom+8){
+            const beside=combo.left-8-ink.right;
+            if(beside>=6)left=beside;
+            else top=Math.max(6,combo.top-8-ink.bottom);
+          }
+        }
+        left=Math.round(left);top=Math.round(top);
+        const position=left+'/'+top;
+        if(node.dataset.worldPosition!==position){
+          node.style.left=left+'px';node.style.top=top+'px';node.dataset.worldPosition=position;
+        }
+        callout.paint(age);
+      }
+    }
     popup(e, t, n, r, i, a = 1) {
       if (!this.runRef || !this.floatText || !r || this.popups.size >= BI) return;
       const o = this.project(this.runRef, e, t, n), size = 22 * a;
@@ -1059,6 +1111,7 @@ var JI = class {
       let i = performance.now(),
         a = Math.min(0.1, (i - this.lagT) / 1e3);
       this.streakHud(e.streak, e.streakT);
+      this.updateEffectivePopups(e);
       if(this.compact){
         this.lagT=i;this.touch.update(e,this.promptText);this.ultHud(e);
         n.lowhp.style.display=r<.25&&!t.dead?``:`none`;
@@ -1398,6 +1451,7 @@ var JI = class {
       this.clearWorldLabels();
       for (const popup of this.popups) popup.remove();
       this.popups.clear();
+      this.effectivePopups.length=0;
       this.toastsEl.replaceChildren();
     }
     worldLabels(run) {
