@@ -61,7 +61,7 @@ export function paintMenuScene(c,width,height,hero,drawWord,selectedWord){
   c.restore();c.restore();
 }
 
-// Artwork is exported without progress so the bar always follows resource loading.
+// Artwork is exported without progress so loading can animate independently.
 export const loadingBackdropColor='#26222A';
 export function paintLoadingBackdrop(ctx,W,H,poster){
   ctx.fillStyle=loadingBackdropColor;ctx.fillRect(0,0,W,H);
@@ -79,13 +79,26 @@ export function paintLoadingBackdrop(ctx,W,H,poster){
     ctx.fillStyle='#FFD04A';ctx.fillText('字由搏击',W/2,H*.46);
   }
 }
-export function paintLoadingSlip(ctx,value,label){
+export function paintLoadingSlip(ctx,value,label,animationMs=0){
   ctx.textBaseline='alphabetic';ctx.textAlign='left';ctx.fillStyle='#F9ECCE';ctx.font='bold 14px sans-serif';
   ctx.fillText(label,32,-12,246);
   ctx.textAlign='right';ctx.font='italic bold 29px sans-serif';ctx.fillStyle='#FFD04A';
-  ctx.fillText(value+'%',358,-12);
+  ctx.fillText(Math.floor(value)+'%',358,-12);
   ctx.save();ctx.transform(1,0,-.25,1,0,0);
   ctx.fillStyle='#514953';ctx.fillRect(32,0,326,8);
-  if(value){ctx.fillStyle='#FFC52D';ctx.fillRect(32,0,326*value/100,8);}
+  if(value){
+    const width=326*value/100;
+    ctx.fillStyle='#FFC52D';ctx.fillRect(32,0,width,8);
+    // Keep a visible heartbeat when the estimated percentage reaches its cap.
+    if(animationMs>0&&value<100){
+      const head=(animationMs%1600)/1600*(width+60)-60;
+      const from=Math.max(0,head),to=Math.min(width,head+60);
+      if(to>from){
+        const shine=ctx.createLinearGradient(32+head,0,92+head,0);
+        shine.addColorStop(0,'#FFC52D');shine.addColorStop(.5,'#FFE9A0');shine.addColorStop(1,'#FFC52D');
+        ctx.fillStyle=shine;ctx.fillRect(32+from,0,to-from,8);
+      }
+    }
+  }
   ctx.restore();
 }

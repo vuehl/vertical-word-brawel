@@ -29,7 +29,7 @@ module.exports = async function presentBootFrame(gl) {
     if(canvas){canvas.width=canvas.height=1;canvas=null;}
     if(patch){patch.width=patch.height=1;patch=null;}
   }
-  function paint(value,w,h,full){
+  function paint(value,w,h,full,animationMs){
     if(full){canvas.width=w;canvas.height=h;}
     const s=Math.min(w/390,h/550),W=w/s,H=h/s,left=(W-390)/2,track=H*.93-8;
     const strip=h/(w/390)>=600;
@@ -47,7 +47,7 @@ module.exports = async function presentBootFrame(gl) {
       ctx.fillStyle=loadingBackdropColor;ctx.fillRect(0,0,w,height);
     }
     ctx.setTransform(s,0,0,s,left*s,-y);ctx.save();ctx.translate(0,track);
-    paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源');
+    paintLoadingSlip(ctx,value,value===100?'准备就绪':value>=95?'正在打开首页':value>=85?'正在整理资源':'正在准备游戏资源',animationMs);
     ctx.restore();
     return strip?y:null;
   }
@@ -63,10 +63,13 @@ module.exports = async function presentBootFrame(gl) {
     gl.linkProgram(program);
     if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program)||'启动画面着色器未就绪');
     const percent=gl.getUniformLocation(program,'percent'),overScene=gl.getUniformLocation(program,'overScene');
-    function draw(value,overlay=false){
+    function draw(value,overlay=false,animationMs=0){
       if(!program)return;
-      value=Math.max(0,Math.min(100,Math.floor(value)));
-      const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight,key=w+'x'+h+'@'+value;
+      value=Math.max(0,Math.min(100,Math.floor(value*10)/10));
+      // The small progress strip animates at 10 fps, even at 99% on a slow
+      // connection. Completed frames reuse their texture until uncovering.
+      animationMs=value<100?Math.floor(animationMs/100)*100:0;
+      const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight,key=w+'x'+h+'@'+value+':'+animationMs;
       gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.disable(gl.SCISSOR_TEST);gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.STENCIL_TEST);gl.disable(gl.CULL_FACE);gl.disable(gl.BLEND);gl.colorMask(true,true,true,true);
       gl.viewport(0,0,w,h);gl.useProgram(program);gl.bindVertexArray(vao);
@@ -77,7 +80,7 @@ module.exports = async function presentBootFrame(gl) {
         // illustration. Ordinary progress updates repaint/upload only a strip.
         // Compact viewports can overlap the caption/art: use a full paint there.
         const full=!last||textureWidth!==w||textureHeight!==h||h/(w/390)<600;
-        const stripY=paint(value,w,h,full);
+        const stripY=paint(value,w,h,full,animationMs);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
         if(textureWidth!==w||textureHeight!==h){
           gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);

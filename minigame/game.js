@@ -116,11 +116,18 @@ async function start() {
       const t = Math.max(0, (lastPaint - finishStart) / 160);
       displayed = t >= 1 ? 100 : Math.max(displayed, Math.floor((finishFrom + (100 - finishFrom) * t) * 10) / 10);
     } else if (lastPaint - lastStep >= 90) {
-      displayed = Math.min(Math.round(shown * 10) / 10, displayed + 3);
+      // Keep moving even while downloads, save sync or decoders have no new
+      // callback. Bound elapsed time so returning from the background cannot
+      // jump the bar. Only finishProgress is allowed to reveal 100%.
+      const seconds = Math.max(0, Math.min(250, lastPaint - lastStep)) / 1000;
+      const target = Math.min(99, shown);
+      const drift = displayed < 80 ? 1 / .7 : displayed < 95 ? 1 / 1.2 : 1 / 2.5;
+      const step = displayed < target ? Math.min(target - displayed, 12 * seconds) : drift * seconds;
+      displayed = Math.min(99, displayed + step);
       lastStep = lastPaint;
     }
     try {
-      splash.draw(displayed, !!renderer);
+      splash.draw(displayed, !!renderer, lastPaint);
       if (displayed === 100 && fullSince === null) fullSince = Date.now();
     } catch (error) {
       console.warn('[宝可梦启动] 无法更新加载进度', error);
@@ -179,6 +186,7 @@ async function start() {
         return false;
       }
       waitingForRetry = false;
+      lastStep = Date.now();
       pending = failed;
     }
   }

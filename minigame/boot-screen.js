@@ -218,7 +218,7 @@ function paintLoadingBackdrop(ctx, W, H, poster) {
     ctx.fillText("\u5B57\u7531\u640F\u51FB", W / 2, H * 0.46);
   }
 }
-function paintLoadingSlip(ctx, value, label) {
+function paintLoadingSlip(ctx, value, label, animationMs = 0) {
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   ctx.fillStyle = "#F9ECCE";
@@ -227,14 +227,27 @@ function paintLoadingSlip(ctx, value, label) {
   ctx.textAlign = "right";
   ctx.font = "italic bold 29px sans-serif";
   ctx.fillStyle = "#FFD04A";
-  ctx.fillText(value + "%", 358, -12);
+  ctx.fillText(Math.floor(value) + "%", 358, -12);
   ctx.save();
   ctx.transform(1, 0, -0.25, 1, 0, 0);
   ctx.fillStyle = "#514953";
   ctx.fillRect(32, 0, 326, 8);
   if (value) {
+    const width = 326 * value / 100;
     ctx.fillStyle = "#FFC52D";
-    ctx.fillRect(32, 0, 326 * value / 100, 8);
+    ctx.fillRect(32, 0, width, 8);
+    if (animationMs > 0 && value < 100) {
+      const head = animationMs % 1600 / 1600 * (width + 60) - 60;
+      const from = Math.max(0, head), to = Math.min(width, head + 60);
+      if (to > from) {
+        const shine = ctx.createLinearGradient(32 + head, 0, 92 + head, 0);
+        shine.addColorStop(0, "#FFC52D");
+        shine.addColorStop(0.5, "#FFE9A0");
+        shine.addColorStop(1, "#FFC52D");
+        ctx.fillStyle = shine;
+        ctx.fillRect(32 + from, 0, to - from, 8);
+      }
+    }
   }
   ctx.restore();
 }
@@ -299,7 +312,7 @@ module.exports = async function presentBootFrame(gl) {
       patch = null;
     }
   }
-  function paint(value, w, h, full) {
+  function paint(value, w, h, full, animationMs) {
     if (full) {
       canvas.width = w;
       canvas.height = h;
@@ -327,15 +340,16 @@ module.exports = async function presentBootFrame(gl) {
     ctx.setTransform(s, 0, 0, s, left * s, -y);
     ctx.save();
     ctx.translate(0, track);
-    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 95 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 85 ? "\u6B63\u5728\u6574\u7406\u8D44\u6E90" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90");
+    paintLoadingSlip2(ctx, value, value === 100 ? "\u51C6\u5907\u5C31\u7EEA" : value >= 95 ? "\u6B63\u5728\u6253\u5F00\u9996\u9875" : value >= 85 ? "\u6B63\u5728\u6574\u7406\u8D44\u6E90" : "\u6B63\u5728\u51C6\u5907\u6E38\u620F\u8D44\u6E90", animationMs);
     ctx.restore();
     return strip ? y : null;
   }
   try {
-    let draw = function(value, overlay = false) {
+    let draw = function(value, overlay = false, animationMs = 0) {
       if (!program) return;
-      value = Math.max(0, Math.min(100, Math.floor(value)));
-      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value;
+      value = Math.max(0, Math.min(100, Math.floor(value * 10) / 10));
+      animationMs = value < 100 ? Math.floor(animationMs / 100) * 100 : 0;
+      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, key = w + "x" + h + "@" + value + ":" + animationMs;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.SCISSOR_TEST);
       gl.disable(gl.DEPTH_TEST);
@@ -350,7 +364,7 @@ module.exports = async function presentBootFrame(gl) {
       gl.bindTexture(gl.TEXTURE_2D, texture);
       if (key !== last) {
         const full = !last || textureWidth !== w || textureHeight !== h || h / (w / 390) < 600;
-        const stripY = paint(value, w, h, full);
+        const stripY = paint(value, w, h, full, animationMs);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         if (textureWidth !== w || textureHeight !== h) {

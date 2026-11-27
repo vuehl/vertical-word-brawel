@@ -170,15 +170,21 @@ console.log('CDP',b.wsEndpoint(),dir);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function verifyProgressImage(percent, filename){
   const image=await page.screenshot(filename?{path:path.join(dir,filename)}:{});
+  const after=await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1]));
   const {data,info:{width,height,channels}}=await sharp(image).removeAlpha().raw().toBuffer({resolveWithObject:true});
   const sx=Math.min(width/390,height/550),left=Math.round((width-390*sx)/2+31*sx),right=Math.round((width-390*sx)/2+357*sx);
   const y=Math.floor(height*.93-5*sx);
   let filled=0;
   for(let x=left;x<right;x++){
     const at=(y*width+x)*channels;
-    if(Math.abs(data[at]-255)<8&&Math.abs(data[at+1]-197)<8&&Math.abs(data[at+2]-45)<8)filled++;
+    // Include the warm highlight sweeping across the live yellow fill.
+    if(data[at]>=247&&data[at+1]>=189&&data[at+1]<=241&&data[at+2]>=37&&data[at+2]<=168)filled++;
   }
-  assert.ok(Math.abs(filled-326*sx*percent/100)<=2,'Paper slip progress bar at '+percent+'%');
+  // The bar can advance while the screenshot is captured; its caption is an
+  // integer but the fill moves in tenths of a percent.
+  const minimum=326*sx*Math.min(percent,after)/100-2;
+  const maximum=326*sx*Math.min(100,Math.max(percent,after)+1)/100+2;
+  assert.ok(filled>=minimum&&filled<=maximum,'Paper slip progress bar between '+percent+'% and '+after+'%');
   if(percent>=85){
     // The approved logo has a warm face and white keyline across the dark diagonal.
     let highlights=0;
@@ -205,16 +211,22 @@ async function verifyStartup(){
   const baseline=process.argv.includes('--baseline');
   await page.waitForFunction(floor=>bootPercentages[bootPercentages.length-1]>=floor,{},baseline?35:30);
   const playReady=await page.evaluate(()=>bootPercentages[bootPercentages.length-1]);
-  assert.ok(baseline ? playReady===35||playReady===50 : playReady===30);
+  assert.ok(baseline ? playReady===35||playReady===50 : playReady>=30&&playReady<100);
   if(!baseline){
     const labels=await page.evaluate(()=>bootLabels.map(parseFloat));
-    assert.ok(labels.every((v,i)=>!i||v-labels[i-1]<=3.01),'A single download callback must not jump the displayed bar');
+    assert.ok(labels.every((v,i)=>!i||v>=labels[i-1]&&v-labels[i-1]<=3.01),'The displayed bar advances smoothly without moving backwards');
   }
   const halfText=baseline?(playReady===35?42:67):35;
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
   await page.evaluate(()=>window.reportTextProgress(50));
   await page.waitForFunction(p=>bootPercentages[bootPercentages.length-1]>=p,{},halfText);
-  if(!baseline)await page.waitForFunction(()=>bootLabels[bootLabels.length-1]==='35%');
+  if(!baseline){
+    const waiting=await page.evaluate(()=>({value:parseFloat(bootLabels[bootLabels.length-1]),at:bootLabels.length}));
+    await page.waitForFunction(value=>parseFloat(bootLabels[bootLabels.length-1])>value,{timeout:4000},waiting.value);
+    const values=await page.evaluate(at=>bootLabels.slice(at-1).map(parseFloat),waiting.at);
+    assert.ok(values.every((value,i)=>value<100&&(!i||value>=values[i-1])),
+      'A held download keeps advancing without regressions or premature completion');
+  }
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])),'00-loading.png');
   const checkGlyphGate=process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline');
   if(checkGlyphGate)await page.evaluate(()=>{
@@ -257,7 +269,7 @@ async function verifyStartup(){
   if(checkGlyphGate){
     await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
     await page.evaluate(()=>releaseHomeStatus());
-    await page.waitForFunction(()=>bootPercentages.includes(52));
+    await page.waitForFunction(()=>bootPercentages[bootPercentages.length-1]>=52);
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
     assert.equal(await page.evaluate(()=>!!app.screen?.querySelector('button')||bootPercentages.includes(100)),false);
     await page.evaluate(()=>releaseGlyphAtlas());

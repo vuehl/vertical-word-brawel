@@ -66,6 +66,22 @@ try{
         if(changed){const i=incremental.findIndex((v,i)=>v!==full[i]);differences.push({value,changed,x:Math.floor(i/4)%w,y:h-1-Math.floor(i/4/w),actual:[...incremental.slice(i-i%4,i-i%4+4)],expected:[...full.slice(i-i%4,i-i%4+4)]});}
         reference.splash.dispose();
       }
+      // Percent text stays integer-valued, while even a tenth of a percent
+      // changes the fill. Long waits at 99% retain a moving highlight.
+      const animated=await make();animated.splash.draw(49);
+      const integerPixels=pixels();animated.splash.draw(49.1);
+      const fractionalChangedChannels=difference(integerPixels,pixels());
+      animated.splash.draw(99,false,200);const beforeMotion=pixels();
+      bootUploads.length=0;animated.splash.draw(99,false,700);
+      const movingPixels=pixels(),motionChangedChannels=difference(beforeMotion,movingPixels);
+      const motionUploads=[...bootUploads];
+      animated.splash.dispose();
+      const motionReference=await make();motionReference.splash.draw(99,false,700);
+      const motionReferenceChangedChannels=difference(movingPixels,pixels());
+      motionReference.splash.draw(100,false,700);const completedPixels=pixels();bootUploads.length=0;
+      motionReference.splash.draw(100,false,1200);
+      const completedChangedChannels=difference(completedPixels,pixels()),completedUploads=bootUploads.length;
+      motionReference.splash.dispose();
       // An image arriving after the first paint must invalidate the background.
       const late=await make(true);late.splash.draw(67);await late.release();bootUploads.length=0;late.splash.draw(67);
       const lateFull=bootUploads.some(u=>u.width===w&&u.height===h),latePixels=pixels();late.splash.dispose();
@@ -79,14 +95,24 @@ try{
       window.lastBoot=reference.splash;
       const releasedCanvases=current.canvases.every(c=>c.width===1&&c.height===1);
       return {width,height,changedChannels,differences,lateChangedChannels,lateDifference,lateFull,resizedFull,releasedCanvases,unchangedUploads,
+        fractionalChangedChannels,motionChangedChannels,motionReferenceChangedChannels,completedChangedChannels,completedUploads,
+        motionUploadedBytes:motionUploads.reduce((n,u)=>n+u.width*u.height*4,0),
         progressUpdates:count,uploadedBytes:uploads.reduce((n,u)=>n+u.width*u.height*4,0),fullUploadBytes:100*w*h*4,
         maxUploadHeight:Math.max(...uploads.map(u=>u.height))};
     },{source,art,width,height});
     assert.equal(sample.changedChannels,0,'Incremental output must match a fresh full paint: '+JSON.stringify(sample.differences));
     assert.equal(sample.lateChangedChannels,0,'Late poster images must appear without stale background: '+JSON.stringify(sample.lateDifference));
     assert.equal(sample.unchangedUploads,0);assert.equal(sample.progressUpdates,100);
+    assert.ok(sample.fractionalChangedChannels>0,'A tenth of a percent must visibly move the fill');
+    assert.ok(sample.motionChangedChannels>0,'The highlight must keep moving while progress is held at 99%');
+    assert.equal(sample.motionReferenceChangedChannels,0,'Animated strip output must match a fresh paint at the same time');
+    assert.equal(sample.completedChangedChannels,0,'Completed progress must stop animating');
+    assert.equal(sample.completedUploads,0,'Completed progress must reuse its texture');
     assert.ok(sample.lateFull&&sample.resizedFull&&sample.releasedCanvases);
-    if(height/(width/390)>=600)assert.ok(sample.uploadedBytes<sample.fullUploadBytes*.2,'Phone progress should upload under 20% of a full frame');
+    if(height/(width/390)>=600){
+      assert.ok(sample.uploadedBytes<sample.fullUploadBytes*.2,'Phone progress should upload under 20% of a full frame');
+      assert.ok(sample.motionUploadedBytes<width*height*16*.2,'Waiting animation should upload only the progress strip');
+    }
     await page.screenshot({path:path.join(dir,`boot-${width}x${height}.png`)});
     await page.evaluate(()=>lastBoot.dispose());
     report.samples.push(sample);
