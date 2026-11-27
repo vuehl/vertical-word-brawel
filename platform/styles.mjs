@@ -1,5 +1,5 @@
-const inherited = ['color','font-size','font-weight','line-height','text-align','white-space','pointer-events','visibility'];
-const defaults = {color:'#2a2440','font-size':'16px','font-weight':'400','line-height':'1.2','pointer-events':'auto',visibility:'visible'};
+const inherited = ['color','font-size','font-weight','font-style','line-height','text-align','white-space','pointer-events','visibility'];
+const defaults = {color:'#2a2440','font-size':'16px','font-weight':'400','font-style':'normal','line-height':'1.2','pointer-events':'auto',visibility:'visible'};
 const inline = new Set('span b small strong i em kbd label a img canvas svg input button select'.split(' '));
 function spaceValues(value) {
   const values=[];let start=0,depth=0;

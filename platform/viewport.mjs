@@ -19,7 +19,9 @@ export function gameViewport(info,menu){
       :{x:pad,y:top+8,w:right-left-pad*2,h:26};
   }
   hudTop.y-=top;
-  const stack={x:pad,y:Math.max(8,hudTop.y+hudTop.h+15),w:right-left-pad*2,h:156};
+  // Follow the capsule caption itself; a second safe-area inset adds an
+  // unwanted blank row between the caption and the portrait/map.
+  const stack={x:pad,y:hudTop.y+hudTop.h+3,w:right-left-pad*2,h:156};
   stack.h=Math.max(stack.h,bottom-top-stack.y);
   const hint={x:stack.x+4,y:stack.y+144,w:Math.min(292,stack.w-52),h:100};
   const gameScreen={x:-left,y:-top,w:width,h:height,fill:true};

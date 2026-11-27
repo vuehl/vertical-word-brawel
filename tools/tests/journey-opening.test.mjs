@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createJourneyOpening,openingFilm} from '../../platform/journey-opening.mjs';
+import {createOpeningFrames} from '../../platform/journey-opening-frames.mjs';
 
 function fixture({stall=false,reject=false}={}){
   let now=0,removed=0,read=0;
@@ -99,4 +100,43 @@ test('native output canvas survives the held frame and shrinks only after reveal
     film.dispose();assert.equal(removed,1);assert.equal(disposed,1);
     assert.deepEqual([canvas.width,canvas.height],[1,1]);assert.equal(film.layer(390,844),null);
   }
+});
+
+test('atlas playback uploads once per page and keeps its final image valid through the fade',async()=>{
+  let now=0,uploads=0;
+  const images=[];
+  const wx={createImage(){
+    const image={width:1170,height:1688,set src(value){this.url=value;if(value)this.onload?.();}};
+    images.push(image);return image;
+  }};
+  const film=createJourneyOpening(wx,{now:()=>now,createSource:()=>createOpeningFrames(wx)});
+  for(let i=0;i<169;i++){
+    now+=1000/24+.001;
+    const layer=film.layer(390,844);
+    assert.match(layer.canvas.url,new RegExp('p'+String(Math.floor(i/6)).padStart(2,'0')+'\\.webp$'));
+    assert.equal(layer.changed,i%6===0);
+    if(layer.changed)uploads++;
+  }
+  await film.finished;
+  assert.equal(uploads,29);assert.equal(images.length,2);
+  assert.match(film.layer(390,844).canvas.url,/p28\.webp$/);
+  const revealed=film.reveal();
+  for(let i=0;i<10;i++){now+=100;film.layer(390,844);}
+  await revealed;
+  assert.ok(images.every(image=>image.url===''));
+});
+
+test('a delayed page holds the image and resumes without a burst of overdue frames',()=>{
+  let now=0,available=true;
+  const film=createJourneyOpening(null,{now:()=>now,createSource:()=>({
+    on(){},start(){},remove(){},getFrameData:()=>available?{width:1,height:1,data:new Uint8Array(4).buffer}:null,
+  })});
+  const first=film.layer(390,844);available=false;
+  for(let i=0;i<20;i++){
+    now+=50;const held=film.layer(390,844);
+    assert.equal(held.canvas,first.canvas);assert.equal(held.changed,false);
+  }
+  available=true;film.layer(390,844);assert.equal(film.frameCount,2);
+  now+=10;film.layer(390,844);assert.equal(film.frameCount,2,'Decoding delay must not fast-forward the film');
+  film.dispose();
 });

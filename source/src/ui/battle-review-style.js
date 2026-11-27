@@ -118,24 +118,26 @@ html.zixing .zx-combat-feed .bb-tag,html.zixing .zx-combat-feed .bb-sub{color:#5
 html.zixing .zx-combat-feed .bb-rage,html.zixing .zx-combat-feed .bb-bar>b{color:#943C56}
 html.zixing .zx-combat-feed .bb-bar{background:#D8DDEB}
 html.zixing .zx-combat-feed .zx-review-boss:not(.shield):not(.immune) .bb-bar>i{background:#C36879}
-html.zixing .zx-combat-feed .zx-review-boss{gap:8px;padding:5px 9px 7px 8px;border:0;border-radius:3px;background:#3E4D69;align-items:center}
-html.zixing .zx-combat-feed .zx-review-boss .bb-pt{width:34px;height:36px;display:flex;align-items:center;justify-content:center;background:#E7CCD7;border:0;padding:3px}
-html.zixing .zx-combat-feed .zx-review-boss .bb-pt>img,html.zixing .zx-combat-feed .zx-review-boss .bb-pt>canvas{width:26px;height:26px;object-fit:contain}
-html.zixing .zx-combat-feed .zx-review-boss .bb-body{min-height:0;gap:0}
-html.zixing .zx-combat-feed .zx-review-boss .bb-name{font-size:15px;line-height:19px;color:#F3F1FA}
-html.zixing .zx-combat-feed .zx-review-boss .bb-tag{color:#D2DDEC;font-size:11px;line-height:16px}
+html.zixing .zx-combat-feed .zx-review-boss{gap:7px;padding:0;border:0;border-left:0;border-radius:0;background:rgba(40,35,45,.9);align-items:flex-start;min-height:34px}
+html.zixing .zx-combat-feed .zx-review-boss .bb-pt{width:44px;height:34px;display:flex;align-items:center;justify-content:center;background:#EEC659;border:0;border-radius:0;padding:2px 6px;overflow:visible}
+html.zixing .zx-combat-feed .zx-review-boss .bb-pt>img,html.zixing .zx-combat-feed .zx-review-boss .bb-pt>canvas{width:28px;height:28px;object-fit:contain}
+html.zixing .zx-combat-feed .zx-review-boss .bb-body{min-height:34px;gap:0;padding:3px 6px 10px 0;border-radius:0}
+html.zixing .zx-combat-feed .zx-review-boss .bb-head{height:18px;padding-right:67px;gap:3px}
+html.zixing .zx-combat-feed .zx-review-boss .bb-name{font-size:12px;line-height:18px;color:#F3F1FA}
+html.zixing .zx-combat-feed .zx-review-boss .bb-tag{color:#F3F1FA;font-size:11px;line-height:16px}
 html.zixing .zx-combat-feed .zx-review-boss .bb-rage{color:#FFE4E8;background:#9E576B;padding:0 4px;line-height:16px;margin:0}
-html.zixing .zx-combat-feed .zx-review-boss .bb-bar{height:9px;min-height:9px;margin:4px 0 0;border-radius:2px;background:#29364E}
-html.zixing .zx-combat-feed .zx-review-boss .bb-bar>b{color:#F4E6EE;font-size:14px;line-height:18px}
-html.zixing .zx-combat-feed .zx-review-boss:not(.shield):not(.immune) .bb-bar>i{background:linear-gradient(90deg,var(--boss-fill,#B96882),var(--boss-accent,#E797A3))}
-html.zixing .zx-combat-feed .zx-review-boss .bb-bar>u{background:#D9B2AE}
-html.zixing .zx-combat-feed .zx-review-boss .bb-foot{min-height:0;margin-top:3px}
+html.zixing .zx-combat-feed .zx-review-boss .bb-bar{position:absolute;left:0;right:6px;top:26px;bottom:auto;height:6px;min-height:6px;margin:0;border-radius:0;background:rgba(104,96,106,.42);z-index:2}
+html.zixing .zx-combat-feed .zx-review-boss .bb-bar>b{top:-24px;right:4px;color:#FFF6E9;font-size:14px;font-style:italic;line-height:18px}
+html.zixing .zx-combat-feed .zx-review-boss .bb-bar>i,html.zixing .zx-combat-feed .zx-review-boss .bb-bar>u{border-radius:0}
+html.zixing .zx-combat-feed .zx-review-boss:not(.shield):not(.immune) .bb-bar>i{background:linear-gradient(90deg,var(--boss-fill,#F58A64),var(--boss-accent,#F16C55))}
+html.zixing .zx-combat-feed .zx-review-boss .bb-bar>u{background:#F4CE83}
+html.zixing .zx-combat-feed .zx-review-boss .bb-foot{min-height:0;margin-top:12px}
 html.zixing .zx-combat-feed .zx-review-boss .bb-sub{color:#E3DDEA}
-.zx-combat-feed .totem{--boss-fill:#DEA33D;--boss-accent:#F8D373;--boss-seal-edge:#9D763D;--boss-seal-face:#FFF1CF}
-.zx-combat-feed .summoner{--boss-fill:${summonerBarColors.fill};--boss-accent:${summonerBarColors.accent};--boss-seal-edge:#527494;--boss-seal-face:#E2F2FC}
-html.zixing .zx-combat-feed .zx-review-boss.mini{margin:0;padding:6px 10px 8px 11px;opacity:1}
-html.zixing .zx-combat-feed .mini .bb-pt{border-radius:5px;background:var(--boss-seal-face)}
-html.zixing .zx-combat-feed .mini .bb-tag{background:#2C3951;color:var(--boss-accent);border-radius:2px;padding:0 4px;letter-spacing:0}
+.zx-combat-feed .totem{--boss-fill:#DEA33D;--boss-accent:#F8D373;--boss-seal-face:#EEC659}
+.zx-combat-feed .summoner{--boss-fill:${summonerBarColors.fill};--boss-accent:${summonerBarColors.accent};--boss-seal-face:#9CD9FC}
+html.zixing .zx-combat-feed .zx-review-boss.mini{margin:0;padding:0;opacity:1}
+html.zixing .zx-combat-feed .mini .bb-pt{border-radius:0;background:var(--boss-seal-face)}
+html.zixing .zx-combat-feed .mini .bb-tag{background:transparent;color:var(--boss-accent);border-radius:0;padding:0;letter-spacing:0}
 html.zixing .zx-combat-feed .mini .bb-bar>u{background:var(--boss-seal-face)}
 html.zixing .zx-combat-feed .mini .bb-bar>b{color:#FAF7F0}
 html.zixing .zx-combat-feed .mini .bb-sub,html.zixing .zx-combat-feed .mini .bb-sti>b{color:#DFE7F3;letter-spacing:0}

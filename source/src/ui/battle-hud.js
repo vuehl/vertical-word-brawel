@@ -1211,12 +1211,12 @@ var JI = class {
         let t = _.bossIndex,
           r = _.kit,
           i = e.enemies.species[t];
-        const bossKey=i+'-'+_.name, bossTag=c(r ? `Legendario` : `Guardián`);
+        const bossKey=i+'-'+_.name, bossTag=this.compact&&!r?'':c(r ? `Legendario` : `Guardián`);
         (n.boss.dataset.k !== bossKey &&
           ((n.boss.dataset.k = bossKey),
           $(n.bossPt).append(glyphPreview(i,.75,'pix',_.name)),
           n.boss.style.setProperty(`--c`, YC(Ni[k.get(i).types[0]])),
-          (n.bossName.textContent = _.name),
+          (n.bossName.textContent = this.compact&&!r?'首领镇守':_.name),
           (this.bossLag = 1)),
           (n.bossTag.textContent !== bossTag && (n.bossTag.textContent = bossTag)),
           (n.bossRage.style.display = _.enraged ? `` : `none`),

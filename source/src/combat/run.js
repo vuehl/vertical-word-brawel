@@ -1,7 +1,7 @@
 import {VFX_SCALE} from '../effects/visual-scale.js';
 import {MapSpawnError} from "../world/map-rules.js";
 import {ALTAR_RING_EMISSIVE} from "../effects/altar-ring-vfx.js";
-import {bossSummonUnlockSeconds, springShoesKey} from "../data/active-content.js";
+import {bossSummonUnlockSeconds, springShoesKey, weatherDurationSeconds} from "../data/active-content.js";
 import {roomMonster} from "../world/room-monsters.js";
 import {LITE_SPECIES, SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, runRecordKey, zoneDuration, enemyDifficulty} from "../data/lite-rules.js";
 import {finalBossSpecies} from "../data/character-rules.js";
@@ -153,6 +153,7 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
     weather = `clear`;
     baseWeather = `clear`;
     weatherT = 0;
+    weatherDuration = 0;
     timeScale = 1;
     hitstopT = 0;
     cine = { want: 0, blend: 0, follow: -2, x: 0, y: 0, z: 0, dist: 3.6, pitch: 0.22, orbit: 0 };
@@ -959,9 +960,9 @@ var SE = (e) => Math.round(Number.isFinite(e) ? Math.min(0xe8d4a51000, e) : 0xe8
     setBaseWeather(e) {
       ((this.baseWeather = e), this.weatherT <= 0 && ((this.weather = e), this.applyWeatherLook()));
     }
-    setWeather(e, t) {
+    setWeather(e) {
       ((this.weather = e),
-        (this.weatherT = t),
+        (this.weatherT = this.weatherDuration = weatherDurationSeconds),
         this.applyWeatherLook(),
         this.ui.toast(
           c(`¡El clima cambia: {weather}!`, {

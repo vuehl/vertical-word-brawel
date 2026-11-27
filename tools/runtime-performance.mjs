@@ -100,7 +100,7 @@ try{
   const fiveMinute=process.argv.includes('--five-minute');
   const upgradeResume=process.argv.includes('--upgrade-resume');
   const evolutionResume=process.argv.includes('--evolution-resume');
-  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects','--difficulty','--enemy-shot'].includes(arg));
+  const deskReview=process.argv.some(arg=>['--map-play','--illustrated-desk','--weather-effects','--hud-reference','--difficulty','--enemy-shot'].includes(arg));
   const repeatableMap=!!iphone||deskReview||(!development&&(fiveMinute||upgradeResume||fireReview||['--crowded-steering','--profile','--battle-visual','--battle-pacing','--boss-performance','--summon-mode','--hand-drawn-fireball','--fire-breath','--startup-soak','--android-stability','--frame-stability'].some(arg=>process.argv.includes(arg))));
   const initial=await page.evaluate(async({development,repeatableMap,upgradeResume,evolutionResume})=>{
     const account=await app.backend.guest();await app.meta.load(account);
@@ -133,7 +133,10 @@ try{
     await page.evaluate(()=>{const dev=inspected.env.__zixingDeveloper;dev.options.hideScenery=false;dev.close();app.run.renderWorld(0);});
   }
   await new Promise(resolve=>setTimeout(resolve,2000));
-  if(iphone){
+  if(process.argv.includes('--hud-reference')){
+    const {reviewHudReference}=await import('./regression/hud-reference-regression.mjs');
+    await reviewHudReference(page,dir);assert.deepEqual(errors,[]);
+  }else if(iphone){
     await reviewIOSLateGame(page,dir,iphone);assert.deepEqual(errors,[]);
   }else if(process.argv.includes('--crowded-steering')){
     const {reviewCrowdedSteering}=await import('./regression/crowded-steering.mjs');

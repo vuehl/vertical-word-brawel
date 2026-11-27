@@ -148,6 +148,7 @@ if(process.argv.includes('--legacy-runtime'))await page.evaluateOnNewDocument(()
 if(!process.argv.includes('--opening-flow'))await page.evaluateOnNewDocument(()=>{window.fixtureReturning=true;window.fixtureSkipOpening=true;});
 if(process.argv.includes('--opening-retry'))await page.evaluateOnNewDocument(()=>{window.failOpeningResources=true;});
 if(process.argv.includes('--opening-image-retry'))await page.evaluateOnNewDocument(()=>{window.testOpeningImageFailure=true;window.failOpeningPageOnce=true;});
+if(process.argv.includes('--opening-flow'))await page.evaluateOnNewDocument(()=>{window.fixturePlatform='android';});
 await page.goto('http://127.0.0.1:'+srv.address().port);
 console.log('CDP',b.wsEndpoint(),dir);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -186,18 +187,18 @@ async function verifyStartup(){
     })),{mounted:[true,true],downloads:1,reads:[]},'Stale mounted resources must not skip the current package download');
   }
   const baseline=process.argv.includes('--baseline');
-  await page.waitForFunction(floor=>bootPercentages[bootPercentages.length-1]>=floor,{},baseline?35:40);
+  await page.waitForFunction(floor=>bootPercentages[bootPercentages.length-1]>=floor,{},baseline?35:30);
   const playReady=await page.evaluate(()=>bootPercentages[bootPercentages.length-1]);
-  assert.ok(baseline ? playReady===35||playReady===50 : playReady===40);
+  assert.ok(baseline ? playReady===35||playReady===50 : playReady===30);
   if(!baseline){
     const labels=await page.evaluate(()=>bootLabels.map(parseFloat));
     assert.ok(labels.every((v,i)=>!i||v-labels[i-1]<=3.01),'A single download callback must not jump the displayed bar');
   }
-  const halfText=baseline?(playReady===35?42:67):48;
+  const halfText=baseline?(playReady===35?42:67):35;
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
   await page.evaluate(()=>window.reportTextProgress(50));
   await page.waitForFunction(p=>bootPercentages[bootPercentages.length-1]>=p,{},halfText);
-  if(!baseline)await page.waitForFunction(()=>bootLabels[bootLabels.length-1]==='48%');
+  if(!baseline)await page.waitForFunction(()=>bootLabels[bootLabels.length-1]==='35%');
   await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])),'00-loading.png');
   const checkGlyphGate=process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline');
   if(checkGlyphGate)await page.evaluate(()=>{
@@ -240,7 +241,7 @@ async function verifyStartup(){
   if(checkGlyphGate){
     await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
     await page.evaluate(()=>releaseHomeStatus());
-    await page.waitForFunction(()=>bootPercentages.includes(82));
+    await page.waitForFunction(()=>bootPercentages.includes(52));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels[bootLabels.length-1])));
     assert.equal(await page.evaluate(()=>!!app.screen?.querySelector('button')||bootPercentages.includes(100)),false);
     await page.evaluate(()=>releaseGlyphAtlas());
@@ -254,9 +255,20 @@ async function verifyStartup(){
     return;
   }
   if(!checkGlyphGate){
-    await page.waitForFunction(floor=>window.homeStatusRequested && window.bootPercentages.at(-1)>=floor ||window.problem,{timeout:60000},baseline?97:86);
+    await page.waitForFunction(floor=>window.homeStatusRequested && window.bootPercentages.at(-1)>=floor ||window.problem,{timeout:60000},baseline?97:56);
     if(await page.evaluate(()=>window.problem))throw Error(await page.evaluate(()=>window.problem));
     await verifyProgressImage(await page.evaluate(()=>parseFloat(bootLabels.at(-1))),'00-background.png');
+    if(process.argv.includes('--opening-flow')&&!process.argv.includes('--opening-retry')&&!process.argv.includes('--opening-image-retry')){
+      await page.evaluate(()=>{
+        const call=wx.cloud.callContainer;
+        const gate=new Promise(resolve=>{window.releaseOpeningProfile=resolve;});
+        wx.cloud.callContainer=async options=>{
+          window.openingProfileRequested=true;
+          await gate;
+          return call(options);
+        };
+      });
+    }
     await page.evaluate(()=>{window.beforeHomeLabel=bootLabels.length;window.releaseHomeStatus();});
   }
   if(process.argv.includes('--stale-resource-pack')){

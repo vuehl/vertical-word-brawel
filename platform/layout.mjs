@@ -14,7 +14,7 @@ export function createLayout(doc,view,native,fonts,uiAssets) {
   const ref=readReference(view,uiAssets.layout);
   let boxes=[],seen=new WeakMap(),metrics={},clampedScroll=false;
   let overlay=null,overlayBoxes=[],overlaySeen=new WeakMap();
-  const font=s=>(parseInt(s['font-weight'],10)>=600?'bold ':'')+s.font+'px "'+
+  const font=s=>(s['font-style']==='italic'?'italic ':'')+(parseInt(s['font-weight'],10)>=600?'bold ':'')+s.font+'px "'+
     (parseInt(s['font-weight'],10)>=600?fonts.bold:fonts.regular)+'", sans-serif';
   const widths=new Map(),wrapped=new Map();
   function remember(cache,key,value){

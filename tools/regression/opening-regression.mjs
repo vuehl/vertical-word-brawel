@@ -13,7 +13,13 @@ export async function verifyOpening({page,dir}){
       full:bootLabels.includes('100%'),frames:app.entryOpening.frameCount,
       secondBar:!!app.screen.querySelector('[role="progressbar"]')})),
     {complete:false,full:false,frames:1,secondBar:false});
+    assert.equal(await page.evaluate(()=>!!window.openingProfileRequested),true,
+      'Scene downloads and the first movie frame must start while cloud profile sync is still pending');
     await page.evaluate(()=>releaseOptionalDownloads());
+    await page.waitForFunction(()=>['world','art'].every(name=>GameGlobal.pokebonk.files.diagnostics.packs[name]?.totalMs!==undefined),{timeout:60000});
+    assert.equal(await page.evaluate(()=>GameGlobal.pokebonk.bootDiagnostics.completed),false,
+      'Downloaded resources must not bypass the pending save');
+    await page.evaluate(()=>releaseOpeningProfile());
   }
   if(await page.evaluate(()=>!!window.testOpeningImageFailure))await page.evaluate(()=>releaseOptionalDownloads());
   if(await page.evaluate(()=>!!window.failOpeningResources||!!window.testOpeningImageFailure)){

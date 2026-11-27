@@ -1,7 +1,6 @@
 import {createCaptureTicket} from './capture-ticket.js';
 import {castTitleLayout,castTitleLeft,castTitlePose,flameOpeningBand,titleCenter,titleFont,titleLine,titleWidth} from '../effects/ultimate-cast-layout.js';
-import {drawWeatherTime} from './paper-hud-art.js';
-import {weatherStyle,weatherFill,drawWeatherMark} from './weather-presentation.js';
+import {weatherStyle,weatherFill,drawWeatherMark,drawWeatherCountdown} from './weather-presentation.js';
 import {glyphPreview} from '../actors/zixing-glyphs.js';
 import {summonerBarColors} from './battle-review-style.js';
 import {planIncludes,runPlan} from '../combat/battle-plan.js';
@@ -394,14 +393,17 @@ export function drawBossArrival(canvas,{title,word,type,legend=false,kind},progr
 }
 export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   const queue=new ReviewFeedbackQueue();let timer=0,arrival=null,started=0,session=0,lastSuccess=-1,captureWord='',flag=null,shown=null;
+  const arrivals=[];
   const feed=el('div','zx-combat-feed'),teamRow=el('div','zx-combat-team'),feedback=el('div','zx-combat-feedback');
   hud.els.boss.classList.add('zx-review-boss');hud.els.boss.dataset.uiLayer='boss';
   hud.els.bossBar.dataset.uiLayer='boss-health';
   hud.els.boss.dataset.paperSurface='boss-strip';hud.els.bossPt.dataset.paperSurface='boss-seal';
+  hud.els.boss.append(hud.els.bossBar);
   for(const mini of hud.minis){
     mini.el.classList.add('zx-review-boss');
     mini.el.dataset.paperSurface='boss-strip';
     mini.pt.dataset.paperSurface='boss-seal';
+    mini.el.append(mini.bar);
   }
   const directions=new Map();
   for(const marker of [hud.arrow,...hud.pins]){
@@ -417,7 +419,7 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   event.setAttribute('role','timer');event.dataset.uiLayer='weather';event.append(mark);
   const fill=el('i','zx-weather-fill',[],{'aria-hidden':'true'});
   const weatherTime=el('canvas','zx-weather-time',[],{'aria-hidden':'true','data-static':'true'});
-  weatherTime.width=114;weatherTime.height=58;
+  weatherTime.width=220;weatherTime.height=58;
   event.append(fill,weatherTime);
   stack.querySelector('.zx-status-row').append(event);
   lane.append(feed);stack.append(lane);
@@ -426,23 +428,29 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   function syncEvent(){
     const active=event.style.display!=='none';
     if(active!==lane.classList.contains('with-event'))lane.classList.toggle('with-event',active);
-    if(!active)return;
+    if(!active){lane.classList.remove('with-stacked-event');return;}
     const kind=event.dataset.kind,colors=weatherStyle(kind);
     if(mark.dataset.frame!==kind){
       drawWeatherMark(mark,kind);
       event.classList.toggle('weather-clock',Boolean(colors));
       event.setAttribute('role','timer');
-      event.setAttribute('aria-label',event.children[0].textContent);
       event.children[0].style.color=colors?.[0]||'#F3F1FA';
-      event.style.width=colors?'94px':Math.min(window.innerWidth<=350?102:127,80+event.children[0].textContent.length*14)+'px';
     }
-    const label=event.children[1].textContent;
-    if(colors&&weatherTime.dataset.frame!==label){
-      drawWeatherTime(weatherTime,label);weatherTime.dataset.frame=label;
-    }
+    const name=event.children[0].textContent,layoutKey=kind+'/'+name+'/'+window.innerWidth;
+    if(event.dataset.layout!==layoutKey){
+      const width=colors?82+name.length*14:Math.min(window.innerWidth<=350?102:127,80+name.length*14);
+      const available=window.innerWidth-(window.innerWidth<=350?20:24)-(window.innerWidth<=365?108:132)-8-92-4;
+      const stacked=width>available;
+      event.style.width=width+'px';event.classList.toggle('stacked',stacked);lane.classList.toggle('with-stacked-event',stacked);
+      weatherTime.width=width*2;weatherTime.dataset.paint='';event.dataset.layout=layoutKey;
+    }else lane.classList.toggle('with-stacked-event',event.classList.contains('stacked'));
+    const label=event.children[1].textContent.replace(/\s+/g,'');
+    const description=event.children[0].textContent+' '+label;
+    if(event.getAttribute('aria-label')!==description)event.setAttribute('aria-label',description);
     const world=run.events;
     const source=world?.def&&world.left>0?{left:world.left,total:world.def.dur}:kind==='blizzard'&&run.mapEvents?.bliz?{left:run.mapEvents.bliz.t,total:run.mapEvents.bliz.duration}:kind==='spout'&&run.mapEvents?.spout?{left:run.mapEvents.spout.t,total:run.mapEvents.spout.duration}:{left:run.weatherT,total:run.weatherDuration};
-    const width=Math.round(100*Math.max(0,Math.min(1,source.left/(source.total||source.left||1))))+'%';
+    const fraction=Math.max(0,Math.min(1,source.left/(source.total||source.left||1)));
+    const width=Math.round(100*fraction)+'%';
     if(fill.style.width!==width)fill.style.width=width;
     const calm=run.meta.profile.settings.reduceFlashes;
     const step=colors&&!calm?Math.round(6-6*Math.cos(performance.now()*2*Math.PI/2600)):5;
@@ -450,6 +458,11 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     if(tone!==paintedTone){
       fill.style.backgroundColor=colors?weatherFill(kind,step):'#58525D';
       paintedTone=tone;
+    }
+    const paintKey=[kind,name,label,Math.round(fraction*weatherTime.width/2),step].join('/');
+    if(colors&&weatherTime.dataset.paint!==paintKey){
+      drawWeatherCountdown(weatherTime,{kind,name,label,fraction,step,mark});
+      weatherTime.dataset.paint=paintKey;weatherTime.dataset.frame=label;
     }
   }
   function placeTeam(coopHud){
@@ -460,14 +473,15 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   }
   const flash=()=>{window.invalidateUI?.();};
   const tick=()=>{
-    timer=0;if(!hud.root.isConnected){queue.clear();return;}
+    timer=0;if(!hud.root.isConnected){queue.clear();arrivals.length=0;return;}
     const now=performance.now();
     if(arrival){
-      const p=Math.min(1,(now-started)/1400);
+      const p=Math.min(1,(now-started)/arrival.duration);
       if(p>=1||!arrival.el.isConnected){arrival.el.remove();arrival=null;}
       else drawBossArrival(arrival.canvas,arrival.data,p);
       flash();
     }
+    if(!arrival&&arrivals.length)showArrival(arrivals.shift());
     const item=queue.tick(now,!!arrival||!!hud.modalEl?.isConnected||run.state==='modal'||run.state==='cinematic');
     if(item!==shown){
       flag?.remove();flag=null;shown=item;
@@ -479,7 +493,7 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
       }
       flash();
     }
-    if(arrival||queue.active||queue.pending.length)timer=setTimeout(tick,33);
+    if(!timer&&(arrival||queue.active||queue.pending.length))timer=setTimeout(tick,33);
   };
   const wake=()=>{if(!timer)timer=setTimeout(tick,0);};
   let bulletin=null,bulletinTimer=0;
@@ -569,16 +583,23 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     if(lastSuccess===session){lastSuccess=-1;return;}
     queue.push({word:wordFor(species),ok:true});wake();
   };
-  hud.bossIntro=(species,legend,duration,word,role,kind)=>{
-    arrival?.el.remove();hud.hudEl.querySelectorAll('.bossintro').forEach(n=>n.remove());
-    const title=role+'来袭',glyph=word||wordFor(species);
+  function showArrival({species,legend,duration,word,role,kind}){
+    const title=(kind==='totem'?'霸主':kind==='summoner'?'召唤者':role)+'来袭',glyph=word||wordFor(species);
     const canvas=el('canvas','zx-review-boss-art',[],{'aria-hidden':true});
     const panel=el('div','zx-review-arrival',canvas,{role:'status','aria-label':title+' · '+glyph});
-    panel.dataset.uiLayer='boss-arrival';hud.root.append(panel);started=performance.now();arrival={el:panel,canvas,data:{title,word:glyph,type:typeName(typeOf(species)),legend,kind}};wake();
+    panel.dataset.uiLayer='boss-arrival';panel.dataset.kind=kind||'guardian';hud.root.append(panel);started=performance.now();
+    arrival={el:panel,canvas,duration:Math.max(.4,duration||1.4)*1000,data:{title,word:glyph,type:typeName(typeOf(species)),legend,kind}};
+    drawBossArrival(canvas,arrival.data,0);flash();wake();
+  }
+  hud.bossIntro=(species,legend,duration,word,role,kind)=>{
+    hud.hudEl.querySelectorAll('.bossintro').forEach(n=>n.remove());
+    const next={species,legend,duration,word,role,kind};
+    if(arrival&&(kind==='totem'||kind==='summoner')){arrivals.push(next);return;}
+    arrival?.el.remove();arrivals.length=0;showArrival(next);
     // Presentation never resumes combat; the existing run.introBoss lifecycle owns it.
   };
   const clear=hud.clear?.bind(hud);
-  if(clear)hud.clear=(...args)=>{clearTrack();clearAnnouncement();clearBulletin();clearTimeout(timer);queue.clear();arrival?.el.remove();flag?.remove();clear(...args);};
+  if(clear)hud.clear=(...args)=>{clearTrack();clearAnnouncement();clearBulletin();clearTimeout(timer);queue.clear();arrivals.length=0;arrival?.el.remove();flag?.remove();clear(...args);};
   // Compass tips extend above their zero-size screen anchor. Keep them below
   // visible status slips even when an offscreen target points toward the header.
   function placeMarkers(){

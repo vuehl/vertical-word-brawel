@@ -1013,10 +1013,12 @@ html.zixing .lab-overlay .paper-decision-actions>.primary{color:#302B33!importan
  .screen.zx.journey-prep .route-binding .zx-destination-feature,.screen.zx.journey-prep .route-binding .zx-destination-hero{height:115px;min-height:115px}
  .screen.zx.journey-prep .route-binding .zx-destination-hero>.zx-station-print{height:71px}
 }
-.zx.zx-square-hud .zx-world-status.weather-clock{width:94px;height:29px;background:#302B34}
-.zx.zx-square-hud .zx-world-status.weather-clock>b,.zx.zx-square-hud .zx-world-status.weather-clock>span,.zx.zx-square-hud .zx-world-status>.zx-weather-time{display:none}
-.zx.zx-square-hud .zx-world-status.weather-clock>.zx-event-mark{left:8px;top:5px;width:19px;height:19px}
-.zx.zx-square-hud .zx-world-status.weather-clock>.zx-weather-time{position:absolute;display:block;left:32px;top:0;width:57px;height:29px;z-index:1}
+.zx.zx-square-hud .zx-status-row{gap:4px}
+.zx.zx-square-hud .zx-world-status.weather-clock{width:110px;height:29px;background:transparent}
+.zx.zx-square-hud .zx-world-status.weather-clock>b,.zx.zx-square-hud .zx-world-status.weather-clock>span,.zx.zx-square-hud .zx-world-status.weather-clock>.zx-event-mark,.zx.zx-square-hud .zx-world-status.weather-clock>.zx-weather-fill,.zx.zx-square-hud .zx-world-status>.zx-weather-time{display:none}
+.zx.zx-square-hud .zx-world-status.weather-clock>.zx-weather-time{position:absolute;display:block;left:0;top:0;width:100%;height:29px;z-index:1}
+.zx.zx-square-hud .zx-status-row>.zx-world-status.stacked{position:absolute;left:0;top:33px}
+html.zixing .zx.zx-square-hud .zx-battle-lane.with-stacked-event{top:156px}
 .zx .zx-combat-feed>.zx-arrival,.zx .zx-combat-feed>.zx-scene-bulletin{align-self:flex-start}
 .zx .zx-arrival-copy>small,.zx .zx-bulletin-title>small{color:#F2C859}
 .zx .zx-arrival-copy>b,.zx .zx-bulletin-title>b{color:#FFF8E9}

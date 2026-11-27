@@ -6,6 +6,7 @@ import {FOREST_COMBAT_ZONES, SINGLE_STAGE, enemyDifficulty} from '../data/lite-r
 import {ENEMY_HEALTH_SCALE} from '../performance/spawn-budget.js';
 import {PaperWeather} from '../effects/paper-weather.js';
 import {WeatherSpeech} from '../ui/weather-speech.js';
+import {weatherDurationSeconds} from '../data/active-content.js';
 import {chineseText as c} from '../data/chinese-text.js';
 import {Rr as Je} from '../data/config.js';
 import {E as yr, I as Cr, K as Tr, ct as Kr, w as Ei} from '../vendor/three-DmSYIDKK.js';
@@ -8291,11 +8292,11 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
     Yy = 420,
     Xy = 300,
     Zy = 4.2,
-    Qy = 28,
+    Qy = weatherDurationSeconds,
     $y = 9,
     eb = 2.8,
     tb = 24,
-    nb = 35,
+    nb = weatherDurationSeconds,
     rb = 22,
     ib = [86, 87, 90, 91, 124],
     ab = class {
@@ -8420,6 +8421,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
             dx: (a - r) / s,
             dz: (o - i) / s,
             t: Qy,
+            duration: Qy,
             wob: F.range(0, 10),
             caught: [],
             mesh: u,
@@ -8651,6 +8653,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
           n = e.player.pos;
         ((this.bliz = {
           t: nb,
+          duration: nb,
           a: F.range(0, Math.PI * 2),
           turn: F.range(5, 8),
           k: 0,
@@ -9408,7 +9411,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         name: c(`Niebla espectral`),
         sub: c(`Una niebla helada lo cubre todo... y algo se mueve en ella`),
         color: `#9a7aff`,
-        dur: 15,
+        dur: weatherDurationSeconds,
         pool: [
           [92, 41, 96],
           [93, 42, 96],
@@ -9432,7 +9435,7 @@ export function createBossEncounters({k, F, Ni, I, Gs, em, am, R, bu, Bv, Av, Vv
         name: c(`Tormenta eléctrica`),
         sub: c(`Caen rayos: aléjate de las marcas amarillas`),
         color: `#ffd23a`,
-        dur: 40,
+        dur: weatherDurationSeconds,
         pool: [
           [100, 81, 25],
           [101, 82, 125, 26],

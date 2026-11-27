@@ -23,6 +23,26 @@ export function weatherFill(kind,step){
   }).join(',')+',.94)';
 }
 
+// Paint the stock, receding edge and type together so the native Canvas and
+// browser use the same slanted silhouette, including at partial progress.
+export function drawWeatherCountdown(canvas,{kind,name,label,fraction,step,mark}){
+  const c=canvas.getContext('2d'),w=canvas.width/2,h=29;
+  const progress=Math.max(0,Math.min(1,fraction)),edge=w*progress;
+  const polygon=points=>{c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();};
+  c.setTransform(2,0,0,2,0,0);c.clearRect(0,0,w,h);c.save();
+  polygon([[4,0],[w,0],[w-4,h],[0,h]]);c.clip();
+  c.fillStyle='#302B34';c.fillRect(0,0,w,h);
+  c.fillStyle=weatherFill(kind,step);
+  if(progress>0){polygon([[0,0],[edge+2,0],[edge-2,h],[0,h]]);c.fill();}
+  if(progress>0&&progress<1){
+    c.beginPath();c.moveTo(edge+1.5,0);c.lineTo(edge-2.5,h);c.strokeStyle=styles[kind][0];c.lineWidth=1;c.stroke();
+  }
+  c.drawImage(mark,5,4,21,21);
+  c.textBaseline='middle';c.textAlign='left';c.font='bold 14px sans-serif';c.fillStyle=styles[kind][0];c.fillText(name,28,15);
+  c.textAlign='right';c.font='bold 20px sans-serif';c.fillStyle='#FFF8E9';c.fillText(label,w-5,15);
+  c.restore();
+}
+
 export function drawWeatherMark(canvas,kind,plate=false){
   const c=canvas.getContext('2d'),size=canvas.width;
   c.setTransform(size/16,0,0,size/16,0,0);c.clearRect(0,0,16,16);

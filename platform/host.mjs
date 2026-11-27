@@ -55,7 +55,7 @@ function viewport(info) {
 }
 export async function setup(host) {
   await initCrypto();
-  host.bootStage?.('正在加载字体与界面',74);
+  host.bootStage?.('正在加载字体与界面',51);
   const {document:doc}=D.parseHTML('<!doctype html><html><head></head><body><canvas id="game"></canvas><div id="ui"></div></body></html>');
   const win=new D.EventTarget(),system=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();
   const view=viewport(system);

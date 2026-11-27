@@ -3,8 +3,7 @@
 // pages accumulate on iOS until its native image storage is garbage-collected.
 export function createOpeningFrames(wx,{pathFor=url=>url}={}){
   const width=390,height=844,frames=169,perPage=6,columns=3;
-  let canvas=wx.createCanvas();canvas.width=width;canvas.height=height;
-  let ctx=canvas.getContext('2d');const pages=new Map();
+  const pages=new Map();
   let index=0,removed=false,error=null,ended=()=>{};
   function release(entry){
     clearTimeout(entry.timer);entry.image.onload=entry.image.onerror=null;
@@ -40,22 +39,30 @@ export function createOpeningFrames(wx,{pathFor=url=>url}={}){
       if(error)throw error;
       const page=Math.floor(index/perPage),entry=pages.get(page);load(page);
       if(!entry?.ready)return null;
-      const cell=index%perPage;
-      ctx.drawImage(entry.image,cell%columns*width,Math.floor(cell/columns)*height,width,height,0,0,width,height);
-      index++;
-      if(index%perPage===0){
-        clearTimeout(entry.timer);entry.image.onload=entry.image.onerror=null;
-        pages.delete(page);load(page+2,entry.image);
+      // A native draw/upload can still refer to the image returned last time.
+      // Recycle it only once the next page can replace it. While decoding is
+      // delayed, the held frame must keep its original source and dimensions.
+      if(index>0&&index%perPage===0){
+        const previous=index/perPage-1,old=pages.get(previous);
+        if(old){
+          clearTimeout(old.timer);old.image.onload=old.image.onerror=null;
+          pages.delete(previous);load(previous+2,old.image);
+        }
       }
+      const cell=index%perPage;
+      index++;
       if(index===frames)ended();
-      return {width,height,canvas};
+      // Sample the decoded page directly in WebGL. Repainting/uploading an
+      // intermediate native 2D canvas for each frame can expose an empty or
+      // stale backing buffer on Android. Only the crop changes within a page.
+      return {width,height,image:entry.image,page,
+        sourceRect:{x:cell%columns*width,y:Math.floor(cell/columns)*height,width,height}};
     },
     remove(){
       if(removed)return;
       removed=true;
       for(const entry of pages.values())release(entry);
-      pages.clear();ended=()=>{};ctx=null;canvas=null;
-      // The output canvas is the held last frame, released by the film owner.
+      pages.clear();ended=()=>{};
     },
   };
 }

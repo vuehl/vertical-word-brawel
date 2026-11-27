@@ -4688,7 +4688,7 @@ function Q_(e, t, n, r) {
       break;
     }
     case `weather`:
-      (e.setWeather(o.weather, p), e.vfx.ring(v, i.pos.y, b, 12, c, 0.8), e.audio.power());
+      (e.setWeather(o.weather), e.vfx.ring(v, i.pos.y, b, 12, c, 0.8), e.audio.power());
       break;
     case `buff`:
       (i.addBuff(`move-buff`, p, o.name),

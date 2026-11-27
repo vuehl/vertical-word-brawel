@@ -241,8 +241,7 @@ export function createZixingUI(app,api) {
   const hasJourneyProgress=p=>!!(p?.firstJourneyPlayed||p?.runs?.length||p?.counters?.runs>0||
     p?.totalStardust>0||p?.biomes?.forest>0);
   async function prepareBoot(account){
-    await ready(account);
-    if(bootJourneyStarted)return home();
+    if(bootJourneyStarted){await ready(account);return home();}
     // Every fresh game process gets the opening, including existing saves.
     // Returning to menus or resuming from the background keeps this session.
     bootJourneyStarted=true;
@@ -251,15 +250,16 @@ export function createZixingUI(app,api) {
     const opening=window.playJourneyOpening?.({paused:true});
     const config={species:defaultStarter,biome:'forest',tier:0,boosts:[],mode:SINGLE_STAGE};
     if(!opening){
+      await ready(account);
       window.onBootReady=()=>{void start(config,null,null,true);};
       return;
     }
     let sceneReady;
     const prepared=new Promise(resolve=>{sceneReady=resolve;});
     const entering=start(config,null,opening,true,({progress,phase})=>{
-      window.bootStage?.(phase||'正在准备场景',88+11*progress);
+      window.bootStage?.(phase||'正在准备场景',60+39*progress);
       if(progress===1)sceneReady();
-    });
+    },()=>ready(account));
     window.onBootReady=()=>opening.resume();
     // Entry waits for the film to finish; boot only waits for the prepared
     // scene and first frame. Failed entry must also uncover its retry page.
@@ -828,7 +828,7 @@ export function createZixingUI(app,api) {
     }
     update({});return {node,update};
   }
-  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null,preparedOpening=null,forceOpening=false,onBootProgress=null) {
+  async function start(config={species:selected,biome:'forest',tier:selectedDifficulty.tier,boosts:[],mode:selectedDifficulty.mode},mapProgress=null,preparedOpening=null,forceOpening=false,onBootProgress=null,prepareProfile=null) {
     if(activeEntry||app.starting)return false;
     const firstJourney=!config.coop&&config.mode===SINGLE_STAGE&&(forceOpening||!hasJourneyProgress(profile()));
     let cancelled=false,lastPhase='',lastDetailAt=0;
@@ -854,7 +854,13 @@ export function createZixingUI(app,api) {
       // Give the loading screen a frame before disk/decoder work starts.
       await waitForLoadingPaint(app.r.renderer);
       if(abandoned())return false;
-      await window.prepareForest?.(state=>{
+      // Profile sync can wait on the network. Install scene packs alongside
+      // it, but join both before choosing a starter or writing any progress.
+      const profileWeight=prepareProfile ? .05 : 0;
+      let profileDone=!prepareProfile,packProgress=0;
+      await Promise.all([prepareProfile?Promise.resolve().then(prepareProfile).then(()=>{
+        profileDone=true;update({phase:'存档已就绪',progress:profileWeight+packProgress});
+      }):null,Promise.resolve().then(()=>window.prepareForest?.(state=>{
         packs.set(state.name,state);
         const pending=[...packs.values()].find(s=>s.phase!=='ready')||state;
         const name=pending.name==='world'?'场景':'字灵';
@@ -862,9 +868,10 @@ export function createZixingUI(app,api) {
         // Each pack has download, unpack and write work. Reserve the remaining
         // 60% for the scene, actors and first rendered frame, including cache hits.
         const fraction=s=>!s?0:s.phase==='ready'?1:s.phase==='download' ? .55*(s.total?s.completed/s.total:0):s.phase==='unpack' ? .55:s.phase==='write' ? .7+.3*(s.total?s.completed/s.total:0):0;
-        const progress=.2*(fraction(packs.get('world'))+fraction(packs.get('art')));
-        update({phase:action+name+'资源',detail:pending.phase==='download'?'正在下载所需资源':pending.total?pending.completed+' / '+pending.total:'正在处理资源',progress});
-      });
+        packProgress=(.4-profileWeight)/2*(fraction(packs.get('world'))+fraction(packs.get('art')));
+        const waiting=!profileDone&&packProgress>=.4-profileWeight;
+        update({phase:waiting?'同步存档':action+name+'资源',detail:pending.phase==='download'?'正在下载所需资源':pending.total?pending.completed+' / '+pending.total:'正在处理资源',progress:packProgress+(profileDone?profileWeight:0)});
+      }))]);
       if(abandoned())return false;
       if(mapProgress){
         if(mapRead===mapProgress)update({phase:'同步关卡进度',progress:.4});
@@ -897,7 +904,7 @@ export function createZixingUI(app,api) {
         const errorPage=screen('entry-error','暂时未能进入','',[
           el('div','zx-entry-slip',[menuSymbol('disconnected',48),el('div','zc-copy',[
             el('b','',destination),small(lastPhase||'准备场景')]),text(diagnostics.error,'zx-entry-message')],{'data-paper-surface':'album-page'}),
-        ],[button('返回选择',map),button('重新进入',()=>start(config,mapProgress,null,forceOpening),'primary',{'data-action':'retry-entry'})]);
+        ],[button('返回选择',map),button('重新进入',()=>start(config,mapProgress,null,forceOpening,null,prepareProfile),'primary',{'data-action':'retry-entry'})]);
         errorPage.querySelector('.zx-body').dataset.paperSurface='flat';
       }
       return false;
@@ -1751,7 +1758,7 @@ export function createZixingUI(app,api) {
     inventory.append(el('div','zx-loadout-top',[skillSlots,vitamins]));
     const health=el('canvas','zx-player-health',[],{width:176,height:40,'data-static':'true','data-ui-layer':'health',role:'progressbar','aria-label':'角色生命','aria-valuemin':0});
     node.classList.add('zx-hud-'+c.tone,'zx-hud-paper','zx-square-hud');
-    const portrait=el('canvas','zx-profile-art',[],{width:420,height:104,role:'progressbar','aria-label':c.name+' · 升级经验','aria-valuemin':0,'aria-valuemax':100});
+    const portrait=el('canvas','zx-profile-art',[],{width:372,height:104,role:'progressbar','aria-label':c.name+' · 升级经验','aria-valuemin':0,'aria-valuemax':100});
     portrait.dataset.static='true';
     portrait.dataset.uiLayer='portrait';
     const xpRing=new ExperienceRing(run.player,performance.now());

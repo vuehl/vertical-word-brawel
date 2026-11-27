@@ -474,8 +474,12 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
   if(square){
     return {count:buildings.length,groups,guidance};
   }
-  // A quiet compass notch lives on the rim, outside the clipped map contents.
-  ctx.beginPath();ctx.moveTo(60,hanging?7:3);ctx.lineTo(62.5,hanging?12:8);ctx.lineTo(57.5,hanging?12:8);ctx.closePath();ctx.fillStyle=hanging?'#57472C':'#527ab2';ctx.fill();
+  // The north marker sits in a recessed paper notch at the top of the rim.
+  if(hanging){
+    ctx.beginPath();ctx.moveTo(53.5,7);ctx.lineTo(66.5,7);ctx.lineTo(65,12.5);ctx.lineTo(55,12.5);ctx.closePath();ctx.fillStyle='#EFF5F4';ctx.fill();
+    ctx.beginPath();ctx.moveTo(55,6.7);ctx.lineTo(64.5,6.7);ctx.lineTo(63.5,10.2);ctx.lineTo(56,9.5);ctx.closePath();ctx.fillStyle='#322A36';ctx.fill();
+  }
+  ctx.beginPath();ctx.moveTo(60,hanging?7.5:3);ctx.lineTo(hanging?61.5:62.5,hanging?10.5:8);ctx.lineTo(hanging?58.5:57.5,hanging?10.5:8);ctx.closePath();ctx.fillStyle=hanging?'#EEC659':'#527ab2';ctx.fill();
   return {count:buildings.filter(marker=>!facilityKind||marker.kind===facilityKind).length,groups,guidance};
 }
 // Geometry is in logical pixels. One silhouette sits under both rows and the portrait.
@@ -486,22 +490,20 @@ export function drawBattleStatus(canvas,{word,tone,look,level,progress,gold,kill
     g.beginPath();g.moveTo(...pts[0]);for(const p of pts.slice(1))g.lineTo(...p);
     g.closePath();g.fillStyle=fill;g.fill();
   };
-  const face=(x,y,size,fill)=>{
-    const k=4;shape([[x+k,y],[x+size,y],[x+size,y+size-k],[x+size-k,y+size],[x,y+size],[x,y+k]],fill);
-  };
   const text=(s,x,y,size,color,align='left')=>{
     g.font='bold '+size+'px sans-serif';g.textBaseline='middle';g.textAlign=align;
     g.fillStyle=color;g.fillText(s,x,y);
   };
   const shade=g.createLinearGradient(0,0,w,52);
   shade.addColorStop(0,'rgba(32,28,37,.90)');shade.addColorStop(1,'rgba(32,28,37,.83)');
-  shape([[24,1],[w,1],[w-9,50],[24,50]],shade);
+  shape([[24,2],[w-3,2],[w,5],[w-4,23],[w-7,23],[w-5,26],[w-10,50],[24,50]],shade);
   g.fillStyle='rgba(216,231,240,.26)';g.fillRect(54,25,w-65,1);
   const ink='#F3F1FA',left=56,percent=Math.floor(progress*100+.00001)+'%';
-  g.font='bold 15px sans-serif';
-  const levelWidth=Math.ceil(g.measureText('Lv.'+level).width)+7;
-  shape([[left-2,3],[left+levelWidth,3],[left+levelWidth-3,23],[left-2,23]],'#EEC659');
-  text('Lv.'+level,left,13,15,'#28242D');
+  g.font='italic bold 22px sans-serif';
+  const levelWidth=23+Math.ceil(g.measureText(level).width);
+  shape([[left-2,5],[left+levelWidth,5],[left+levelWidth-3,23],[left-2,23]],'#EEC659');
+  text('Lv.',left+1,16,9,'#28242D');
+  g.font='italic bold 22px sans-serif';g.fillText(level,left+20,14);
   const trackX=left+levelWidth+4,trackEnd=w-42;
   if(trackEnd>trackX){
     g.fillStyle='rgba(221,234,243,.27)';g.fillRect(trackX,12,trackEnd-trackX,4);
@@ -521,11 +523,13 @@ export function drawBattleStatus(canvas,{word,tone,look,level,progress,gold,kill
     g.fillStyle='#DEB189';g.fillRect(-3.4,1.7,6.8,1.8);g.fillRect(-.9,3,1.8,4);g.restore();
   }
   text(kills,split+23,38,13,ink);
-  face(.5,2,49,'#463C42');face(.5,.5,48.5,'#F3E9D0');
-  shape([[2,43],[46,36],[46,46],[2,48]],'#EEC659');
-  shape([[40,1],[48,1],[48,9]],'#B9A98F');
-  g.strokeStyle='#BAAD98';g.lineWidth=.7;g.setLineDash([3,2]);g.strokeRect(4,4,40,40);g.setLineDash([]);
-  g.drawImage(appearanceGlyphCanvas(word,tone,look),3.5,2.5,42,44);
+  g.save();g.translate(26,26);g.rotate(-5*Math.PI/180);g.translate(-23,-23);
+  g.fillStyle='#463C42';g.fillRect(0,1.5,46,46);
+  g.fillStyle='#F3E9D0';g.fillRect(0,0,46,46);
+  shape([[0,40],[46,38],[46,46],[0,46]],'#EEC659');
+  shape([[39,0],[46,0],[46,7]],'#B9A98F');
+  g.strokeStyle='#BAAD98';g.lineWidth=.7;g.setLineDash([3,2]);g.strokeRect(3,3,40,40);g.setLineDash([]);
+  g.drawImage(appearanceGlyphCanvas(word,tone,look),2,1,42,44);g.restore();
   canvas.dataset.word=word;canvas.dataset.look=look||'normal';
 }
 
@@ -588,13 +592,14 @@ export function drawUltimateSeal(canvas,source,progress,state,palette,diamondFra
 // Both counters draw on a 2x canvas with one font and optical baseline.
 function drawClockLabel(g,label,x,pulse=1,urgent=false){
   g.save();g.translate(x,15);g.scale(pulse,pulse);
-  g.font='bold '+(label.length>5?16:19)+'px sans-serif';
+  g.font='bold '+(label.length>5?16:20)+'px sans-serif';
   g.textBaseline='middle';g.textAlign='center';g.fillStyle=urgent?'#FF7872':'#FFF8E9';
   g.fillText(label,0,0);g.restore();
 }
 export function drawWeatherTime(canvas,label){
-  const g=canvas.getContext('2d');g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,57,29);
-  drawClockLabel(g,label,28.5);
+  const g=canvas.getContext('2d'),width=canvas.width/2;
+  g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,width,29);
+  drawClockLabel(g,label,width/2);
 }
 export function drawHudClock(canvas,label,urgent,phase){
   const g=canvas.getContext('2d');g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,92,29);

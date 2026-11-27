@@ -73,7 +73,7 @@ async function launchEngine(host, play, showProgress, finishProgress) {
       resolve();
     };
   });
-  host.bootStage('读取玩法与字形',82);
+  host.bootStage('读取玩法与字形',52);
   const engine = play.run(env).then(() => { booted = true; });
   await Promise.all([firstFrame, engine]);
 }
@@ -214,7 +214,9 @@ async function start() {
       updateDownloads();
     }
     function updateDownloads() {
-      showProgress(5 + 35*prepared.play + 30*prepared.text);
+      // Scene preparation is part of this same bar. Reserve real room for
+      // it instead of spending 88% before the scene downloads even start.
+      showProgress(5 + 25*prepared.play + 20*prepared.text);
     }
     showProgress(5);
     let play;
@@ -238,7 +240,7 @@ async function start() {
     ]);
     if (!resourcesReady) return;
     stage('正在打开首页');
-    showProgress(70);
+    showProgress(50);
     await withTimeout(launchEngine(host,play,showProgress,finishProgress), 60000, '游戏首页未能在限时内绘制，请重新进入。');
     host.bootDiagnostics.completed=true;
     host.bootDiagnostics.totalMs=Date.now()-began;

@@ -419,14 +419,11 @@ export function drawUiPaper(ctx,box){
       break;
     }
     case 'boss-strip':
-      cut(ctx,0,2,w,h-2,7,'#354157');
-      cut(ctx,0,0,w,h-3,4,'rgba(40,35,45,.94)');
-      poly(ctx,[[0,7],[7,0],[15,0],[6,9],[6,h-12],[0,h-6]],box.s.vars?.['--boss-accent']||'#C28190');
+      poly(ctx,[[3,2],[w,2],[w-6,h],[0,h]],'#4A4149');
+      poly(ctx,[[3,0],[w,0],[w-6,h-2],[0,h-2]],'rgba(40,35,45,.90)');
       break;
     case 'boss-seal':
-      cut(ctx,0,1,w,h-1,6,box.s.vars?.['--boss-seal-edge']||'#9C6177');
-      cut(ctx,1,0,w-2,h-3,5,box.s.vars?.['--boss-accent']||'#DEC3CF');
-      cut(ctx,3,2,w-6,h-7,4,box.s.vars?.['--boss-seal-face']||'#F0DEE6');
+      poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],box.s.vars?.['--boss-seal-face']||'#EEC659');
       break;
     case 'guide-seal': {
       const r=Math.min(w,h)/2;

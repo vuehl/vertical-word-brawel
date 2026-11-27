@@ -15,6 +15,7 @@ export const facilityDwellSeconds = 0;
 export const staplerDwellSeconds = 1;
 export const staplerInteractionRadius = 2.6;
 export const altarChargeSeconds = 3;
+export const weatherDurationSeconds = 15;
 export const bossSummonSeconds = 0;
 export const bossSummonUnlockSeconds = run =>
   run?.terrain?.bossSite ? 0 : run?.biome?.id === 'forest' && run.stage === 2 ? 3 * 60 : 5 * 60;

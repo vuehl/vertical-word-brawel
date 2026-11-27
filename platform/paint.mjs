@@ -192,7 +192,7 @@ export function compositor(gl,canvas) {
   gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,`#version 300 es
 precision highp float;
 in vec2 uv;out vec4 color;
-uniform sampler2D ui;uniform float opacity;uniform bool flip;
+uniform sampler2D ui;uniform float opacity;uniform bool flip;uniform vec4 sourceUV;
 uniform bool castActive;uniform vec4 castUV;uniform vec3 castTone;uniform vec3 bladeNext;
 ${irisFragment}
 vec3 castKey(vec2 pos,float halfIndex,vec2 extent){
@@ -232,11 +232,19 @@ void main(){
     vec3 ink=castTone*.49*(body-fill)+pigment*fill;
     float halo=energy*(1.-body);
     color=vec4(ink+castTone*.83*halo,body+.23*halo);
-  }else color=texture(ui,flip?vec2(uv.x,1.-uv.y):uv)*opacity;
+  }else{
+    vec2 at=sourceUV.xy+(flip?vec2(uv.x,1.-uv.y):uv)*sourceUV.zw;
+    vec2 inset=.5/vec2(textureSize(ui,0));
+    // Clamp to the selected cell, so linear filtering cannot bleed the
+    // neighbouring movie frame along the edge of the screen.
+    at=clamp(at,sourceUV.xy+inset,sourceUV.xy+sourceUV.zw-inset);
+    color=texture(ui,at)*opacity;
+  }
 }`));
   gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(prog));
   const opacity=gl.getUniformLocation(prog,'opacity');
   const flip=gl.getUniformLocation(prog,'flip');
+  const sourceUV=gl.getUniformLocation(prog,'sourceUV');
   const cast=gl.getUniformLocation(prog,'castActive'),castUV=gl.getUniformLocation(prog,'castUV'),castTone=gl.getUniformLocation(prog,'castTone');
   const bladeNext=gl.getUniformLocation(prog,'bladeNext');
   const irisActive=gl.getUniformLocation(prog,'irisActive'),irisBounds=gl.getUniformLocation(prog,'irisBounds');
@@ -289,6 +297,9 @@ void main(){
       slots|=1<<slot;
       const cache=tiles[slot]??= {texture:gl.createTexture(),width:0,height:0};
       const {canvas:tile}=control;
+      const rect=control.sourceRect;
+      if(rect)gl.uniform4f(sourceUV,rect.x/tile.width,rect.y/tile.height,rect.width/tile.width,rect.height/tile.height);
+      else gl.uniform4f(sourceUV,0,0,1,1);
       gl.bindTexture(gl.TEXTURE_2D,cache.texture);
       if(control.changed||cache.width!==tile.width||cache.height!==tile.height){
         prepareUpload(!control.uploadPixels&&!control.pixels);
@@ -347,7 +358,7 @@ void main(){
       else gl.clearColor(.957,.949,.98,1);
       gl.clear(gl.COLOR_BUFFER_BIT);
     }
-    gl.useProgram(prog);gl.uniform1f(opacity,1);gl.bindVertexArray(vao);
+    gl.useProgram(prog);gl.uniform1f(opacity,1);gl.uniform4f(sourceUV,0,0,1,1);gl.bindVertexArray(vao);
     if(freezeKey){
       gl.disable(gl.BLEND);gl.bindTexture(gl.TEXTURE_2D,frozen);gl.uniform1i(flip,1);gl.drawArrays(gl.TRIANGLES,0,3);
     }
@@ -365,6 +376,7 @@ void main(){
     activeSlots=drawLayers(layers,prepareUpload);
     if(foregroundOpacity>0){
       gl.viewport(0,0,bufferWidth,bufferHeight);gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.uniform4f(sourceUV,0,0,1,1);
       gl.uniform1f(opacity,foregroundOpacity);gl.drawArrays(gl.TRIANGLES,0,3);
     }
   }
@@ -378,7 +390,7 @@ void main(){
   draw.topLayers=(renderer,layers)=>{
     try{
       const prepareUpload=beginPass();
-      gl.useProgram(prog);gl.bindVertexArray(vao);gl.uniform1f(opacity,1);gl.uniform1i(flip,0);
+      gl.useProgram(prog);gl.bindVertexArray(vao);gl.uniform1f(opacity,1);gl.uniform1i(flip,0);gl.uniform4f(sourceUV,0,0,1,1);
       gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
       activeSlots|=drawLayers(layers,prepareUpload);
     }finally{gl.bindVertexArray(null);renderer.resetState();}

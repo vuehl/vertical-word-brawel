@@ -15,7 +15,13 @@ export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=
     const old=decoder;decoder=null;
     try{Promise.resolve(old?.remove()).catch(()=>{});}catch{}
   };
-  const complete=()=>{if(done)return;done=true;stopDecoder();firstFrame(failure?{error:failure}:undefined);finish(failure?{error:failure}:undefined);};
+  const complete=()=>{
+    if(done)return;done=true;
+    // An atlas image must survive its final upload and the dissolve. Its
+    // decoder owns at most two native images, released together on disposal.
+    if(!frame?.image)stopDecoder();
+    firstFrame(failure?{error:failure}:undefined);finish(failure?{error:failure}:undefined);
+  };
   const fail=error=>{
     failure=error instanceof Error?error:Error(error?.errMsg||String(error));
     console.warn('[字由搏击] 开场动画播放失败',failure.message);
@@ -35,7 +41,7 @@ export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=
     resume(){paused=false;clock=null;credit=0;},
     dispose(){
       if(disposed)return;
-      disposed=true;complete();
+      disposed=true;complete();stopDecoder();
       // Shrink the native backing store, even if a completed promise still
       // retains the film API. Keep the final frame intact until the fade ends.
       if(frame?.getContext)frame.width=frame.height=1;
@@ -50,14 +56,20 @@ export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=
         if(decoder&&credit>=1000/openingFilm.fps){
           try{
             const next=decoder.getFrameData();
-            if(next?.canvas||next?.data){
-              if(!next.canvas&&next.data.byteLength!==next.width*next.height*4)throw Error('视频帧格式异常');
-              frame=next.canvas||{width:next.width,height:next.height,pixels:new Uint8Array(next.data)};
-              changed=true;count++;stalled=0;credit=Math.max(0,credit-1000/openingFilm.fps);
+            if(next?.image||next?.canvas||next?.data){
+              if(!next.image&&!next.canvas&&next.data.byteLength!==next.width*next.height*4)throw Error('视频帧格式异常');
+              changed=!next.image||!frame||next.page!==frame.page;
+              frame=next.image?next:next.canvas||{width:next.width,height:next.height,pixels:new Uint8Array(next.data)};
+              count++;stalled=0;credit=Math.max(0,credit-1000/openingFilm.fps);
               firstFrame();
               // The last frame remains on the GPU until the world is ready.
               if(count>=openingFilm.frames)complete();
-            }else if(ended&&frame)complete();
+            }else{
+              // Hold the last frame during slow page decoding; do not build
+              // a playback backlog that flashes through frames on recovery.
+              credit=Math.min(credit,1000/openingFilm.fps);
+              if(ended&&frame)complete();
+            }
           }catch(error){fail(error);}
         }
         if(stalled>8000)fail(Error('开场动画读取超时，请重试'));
@@ -69,7 +81,7 @@ export function createJourneyOpening(wx,{now=()=>performance.now(),onDispose=()=
       }
       const t=fade/openingFilm.fadeMs,opacity=1-t*t*(3-2*t);
       const ratio=Math.max(width/frame.width,height/frame.height);
-      return {canvas:frame,pixels:frame.pixels,changed,slot:30,opacity,
+      return {canvas:frame.image||frame,sourceRect:frame.sourceRect,pixels:frame.pixels,changed,slot:30,opacity,
         x:(width-frame.width*ratio)/2,y:(height-frame.height*ratio)/2,
         width:frame.width*ratio,height:frame.height*ratio};
     },

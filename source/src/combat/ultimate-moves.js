@@ -867,7 +867,7 @@ var Um = {
                 }),
               40,
             ),
-              t.later(0.6, () => t.setWeather(`hail`, 10)),
+              t.later(0.6, () => t.setWeather(`hail`)),
               J.whoosh(t.audio, 0.8, 0.12, 900));
           }),
           t.cry(87, 0.6));
@@ -3986,7 +3986,7 @@ var lh = {
         }),
           e.tier >= 2 &&
             t.later(2.3, () => {
-              (t.setWeather(`rain`, 12),
+              (t.setWeather(`rain`),
                 Ph(
                   e,
                   14 * e.R,
@@ -4432,7 +4432,7 @@ var hh = {
         let t = e.run,
           n = t.player,
           r = 18 * e.R;
-        t.setWeather(`hail`, 14);
+        t.setWeather(`hail`);
         let i = 0;
         (W(t, 3, (e, a) => {
           let o = n.pos;
@@ -4600,7 +4600,7 @@ var hh = {
               J.boom(t.audio, 0.8));
           });
         (e.tier >= 1 &&
-          (t.later(0.4, () => t.setWeather(`rain`, 12)),
+          (t.later(0.4, () => t.setWeather(`rain`)),
           t.ult.drones.add(
             145,
             e.tier >= 2 ? 4 : 3,
@@ -4889,7 +4889,7 @@ var hh = {
           ),
             t.vfx.ring(e.x, e.y, e.z, 16 * e.R, Y.water, 0.9, 0.08, L.Ripple),
             n.heal(n.maxHp * 0.25),
-            t.later(0.9, () => t.setWeather(`rain`, 12)),
+            t.later(0.9, () => t.setWeather(`rain`)),
             J.water(t.audio, 1, 0.22));
         else if (r === 135) {
           let r = { ...e, type: `electric` };
@@ -5114,7 +5114,7 @@ var hh = {
               }
               (q(e, r.x, r.z, i, 0.9, { knock: 4 }), J.boom(t.audio, 0.4));
             });
-          e.tier === 1 && t.later(0.9, () => t.setWeather(`rain`, 12));
+          e.tier === 1 && t.later(0.9, () => t.setWeather(`rain`));
         }
         e.tier >= 2 &&
           (Ih(
@@ -6152,7 +6152,7 @@ var J = {
         } else
           (n((e.tier >= 2 ? 12 : 16) * e.R, 1.8),
             e.tier === 1
-              ? t.later(0.9, () => t.setWeather(`rain`, 12))
+              ? t.later(0.9, () => t.setWeather(`rain`))
               : t.later(0.5, () => {
                   let n = 0,
                     r = Math.atan2(e.az, e.ax);
@@ -6964,7 +6964,7 @@ var J = {
                 K(t, e.x, e.y, e.z, 7 * e.R, [14203e3, 16777215], 2, 0.08, L.Jagged),
                 t.shake(0.5));
             }),
-            t.later(0.9, () => t.setWeather(`sand`, 12)),
+            t.later(0.9, () => t.setWeather(`sand`)),
             J.rumble(t.audio, 1.6, 0.24),
             J.boom(t.audio, 0.9, 0.2));
         }
@@ -9044,7 +9044,7 @@ function Kh(e, t, n, r) {
         ),
           t.vfx.ring(t.player.pos.x, t.player.pos.y, t.player.pos.z, n, 9067208, 0.9, 0.08, L.Ripple),
           J.water(t.audio, 1, 0.2),
-          t.later(0.8, () => t.setWeather(`rain`, 12)));
+          t.later(0.8, () => t.setWeather(`rain`)));
       }),
       t.cry(73, 0.6));
   },

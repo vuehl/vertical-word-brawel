@@ -57,7 +57,7 @@ test('boss health updates keep the bar and percentage at their full-layout posit
   const {document}=parseHTML(`<html class="zixing"><body><div style="padding:12px">
     <b>守护者</b><div data-ui-layer="boss-health" style="position:relative;height:9px;margin-top:4px">
       <i style="position:absolute;inset:0;transform-origin:left"></i>
-      <b style="position:absolute;top:-22px;right:0">100.0%</b>
+      <b style="position:absolute;top:-22px;right:0;font-style:italic">100.0%</b>
     </div></div></body></html>`);
   const width=390,height=746,ctx={measureText:text=>({width:text.length*10})};
   const layout=createLayout(document,{w:width,h:height},{getContext:()=>ctx},{regular:'test',bold:'test'},
@@ -65,6 +65,7 @@ test('boss health updates keep the bar and percentage at their full-layout posit
   const bar=document.querySelector('[data-ui-layer="boss-health"]'),fill=bar.firstElementChild,label=bar.lastElementChild;
   const capture=()=>layout.refresh().filter(box=>bar.contains(box.el));
   let parts=capture();
+  assert.match(layout.font(layout.box(label.firstChild).s),/^italic bold /,'Native percentage text inherits the italic face');
   const barTop=layout.box(bar).y,labelTop=layout.box(label).y;
   for(const fraction of [.75,.5,.25,0]){
     fill.style.transform='scaleX('+fraction+')';
@@ -96,9 +97,9 @@ test('stage label shares the capsule center even when the general safe area star
     const strip=view.regions['hud-top'],stack=view.regions['hud-stack'];
     assert.equal(strip.y+view.y+strip.h/2,menuTop+16);
     assert.ok(strip.x+strip.w+view.x+44<=menu.left);
-    assert.ok(stack.y>=8&&stack.y-(strip.y+strip.h)>=15);
-    assert.ok(stack.y-(strip.y+strip.h)<=25,'Profile stays close to the capsule row');
+    assert.equal(stack.y-(strip.y+strip.h),3,'Profile and map follow the capsule caption without a second safe-area gap');
+    assert.ok(stack.y+view.y>=menuTop+32,'The portrait stays below the system capsule');
   }
   const view=gameViewport({windowWidth:390,windowHeight:844});
-  assert.equal(view.regions['hud-top'].y,8);assert.equal(view.regions['hud-stack'].y,49);
+  assert.equal(view.regions['hud-top'].y,8);assert.equal(view.regions['hud-stack'].y,37);
 });

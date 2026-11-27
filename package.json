@@ -33,7 +33,7 @@
     "test:loading": "node tools/smoke.mjs --phone-layout --software-render --loading-perf",
     "test:boot": "node tools/regression/boot-loading-regression.mjs && node tools/smoke.mjs --phone-layout --boot-only",
     "test:startup": "node tools/smoke.mjs --phone-layout --software-render --startup-latency",
-    "test:opening": "node --test tools/tests/journey-opening.test.mjs tools/tests/journey-opening-frames.test.mjs && node tools/smoke.mjs --phone-layout --opening-flow && node tools/smoke.mjs --phone-layout --opening-flow --opening-retry && node tools/smoke.mjs --phone-layout --opening-flow --opening-image-retry",
+    "test:opening": "node --test tools/tests/journey-opening.test.mjs tools/tests/journey-opening-frames.test.mjs && node tools/regression/opening-frames-regression.mjs && node tools/smoke.mjs --phone-layout --opening-flow && node tools/smoke.mjs --phone-layout --opening-flow --opening-retry && node tools/smoke.mjs --phone-layout --opening-flow --opening-image-retry",
     "test:memory": "node --test tools/tests/journey-opening.test.mjs tools/tests/journey-opening-frames.test.mjs tools/tests/capture-pages.test.mjs tools/tests/memory.test.mjs && node tools/runtime-performance.mjs --memory-soak",
     "test:upgrade": "node tools/smoke.mjs --phone-layout --software-render --upgrade-perf",
     "test:upgrade-effects": "node --test tools/tests/evolution-timing.test.mjs && node tools/runtime-performance.mjs --upgrade-effects",
