@@ -149,6 +149,10 @@ if(!process.argv.includes('--opening-flow'))await page.evaluateOnNewDocument(()=
 if(process.argv.includes('--opening-retry'))await page.evaluateOnNewDocument(()=>{window.failOpeningResources=true;});
 if(process.argv.includes('--opening-image-retry'))await page.evaluateOnNewDocument(()=>{window.testOpeningImageFailure=true;window.failOpeningPageOnce=true;});
 if(process.argv.includes('--opening-flow'))await page.evaluateOnNewDocument(()=>{window.fixturePlatform='android';});
+if(process.argv.includes('--resource-read-recovery'))await page.evaluateOnNewDocument(()=>{
+  window.fixtureResourceReadRecovery=true;
+  window.fixtureResourceReads={asyncFailures:0,unmounted:0,unrooted:0,recovered:0};
+});
 await page.goto('http://127.0.0.1:'+srv.address().port);
 console.log('CDP',b.wsEndpoint(),dir);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -236,7 +240,7 @@ async function verifyStartup(){
   if(retryInstall){
     await page.waitForFunction(()=>window.retryBootInstall||window.problem);
     assert.deepEqual(await page.evaluate(()=>[retryBootInstall.confirmText,bootPercentages.includes(100)]),['重试',false]);
-    await page.evaluate(()=>retryBootInstall.success({confirm:true}));
+    await page.evaluate(()=>{window.beforeRetryLabel=bootLabels.length;retryBootInstall.success({confirm:true});});
   }
   if(checkGlyphGate){
     await page.waitForFunction(()=>typeof releaseGlyphAtlas==='function');
@@ -269,16 +273,16 @@ async function verifyStartup(){
         };
       });
     }
-    await page.evaluate(()=>{window.beforeHomeLabel=bootLabels.length;window.releaseHomeStatus();});
+    await page.evaluate(()=>window.releaseHomeStatus());
   }
   if(process.argv.includes('--stale-resource-pack')){
     const audit=await page.evaluate(()=>({
-      current:packageData.text.find(file=>file.endsWith('/assets.br')),
+      current:packageData.text.find(file=>file.endsWith('/assets.bin')),
       old:staleResourcePaths,
       reads:resourcePackageReads,
       downloads:requestedPackages.filter(name=>name==='text').length,
     }));
-    assert.match(audit.current,/^packs\/text-[a-f0-9]{16}\/assets\.br$/);
+    assert.match(audit.current,/^packs\/text-[a-f0-9]{16}\/assets\.bin$/);
     assert.ok(audit.reads.includes(audit.current),'Startup must decode the current content-addressed archive');
     assert.ok(audit.old.every(file=>!audit.reads.includes(file)),'Startup must never read an old mounted archive');
     assert.equal(audit.downloads,1,'A current mounted package can complete even without its callback');
@@ -294,10 +298,23 @@ async function verifyStartup(){
   await page.waitForFunction(()=>!window.loadingTitle&&window.app?.screen?.querySelector('.auth-body button,[data-action="journey"]'),{timeout:15000});
   if(!baseline){
     await page.waitForFunction(()=>GameGlobal.pokebonk.bootDiagnostics.completed&&requestedPackages.includes('world'));
+    if(process.argv.includes('--resource-read-recovery')){
+      const recovery=await page.evaluate(()=>({
+        ...fixtureResourceReads,textDownloads:requestedPackages.filter(name=>name==='text').length,
+        completed:GameGlobal.pokebonk.bootDiagnostics.completed,
+      }));
+      assert.ok(recovery.asyncFailures>0&&recovery.unmounted>0&&recovery.unrooted>0&&recovery.recovered>0);
+      assert.equal(recovery.textDownloads,2,'Missing bytes require exactly one automatic remount');
+      assert.equal(recovery.completed,true);
+      fs.writeFileSync(path.join(dir,'resource-read-recovery.json'),JSON.stringify(recovery,null,2)+'\n');
+      console.log('Device file read errors recovered:',JSON.stringify(recovery));
+    }
     assert.ok(await page.evaluate(()=>window.fullBarBeforeHome && bootLabels.includes('100%')),
       'The completed bar must survive a display frame before the home handoff');
-    if(retryInstall)assert.ok(await page.evaluate(()=>bootLabels.slice(beforeHomeLabel).some(label=>{
-      const value=parseFloat(label);return value>parseFloat(bootLabels[beforeHomeLabel-1]) && value<100;
+    // Cloud login is nonblocking. Screenshot capture may already finish boot
+    // before releaseHomeStatus; anchor this check to the controlled retry.
+    if(retryInstall)assert.ok(await page.evaluate(()=>bootLabels.slice(beforeRetryLabel).some(label=>{
+      const value=parseFloat(label);return value>parseFloat(bootLabels[beforeRetryLabel-1]) && value<100;
     })),'The remaining progress must animate before reaching 100%');
     assert.ok(await page.evaluate(()=>app.screen.dataset.page==='home'&&bootPercentages.includes(100)&&!requestedPackages.includes('art')),
       'Home must be usable while the first background download is held');

@@ -9,6 +9,7 @@ const packStates = new Map();
 const listeners = new Map();
 const modelJobs = new Map();
 const modelSources = new Map();
+const mountedPackages = GameGlobal.pokebonkResourcePackages || (GameGlobal.pokebonkResourcePackages = {});
 const diagnostics = {packs:{},modelsRestored:0};
 const base = wx.env.USER_DATA_PATH + '/pokebonk-assets';
 const yieldTask = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -27,12 +28,31 @@ function fileCall(method,options) {
     try {fs()[method](Object.assign({},options,{success:result=>finish(null,result),fail:finish}));}catch(error){finish(error);}
   });
 }
+function readPaths(filePath) {
+  // Code-package paths can use a leading slash. Never rewrite wxfile:// or
+  // user-data paths; those refer to a different native filesystem.
+  return /^packs\//.test(filePath)?[filePath,'/'+filePath]:[filePath];
+}
 async function readFile(filePath,encoding) {
-  if(typeof fs().readFile==='function'){
-    const result=await fileCall('readFile',Object.assign({filePath},encoding?{encoding}:{}));
-    return result&&result.data!==undefined?result.data:result;
+  const manager=fs(),failures=[];
+  for(const path of readPaths(filePath)){
+    if(typeof manager.readFile==='function'){
+      try {
+        const result=await fileCall('readFile',Object.assign({filePath:path},encoding?{encoding}:{}));
+        return result&&result.data!==undefined?result.data:result;
+      } catch(error){failures.push('readFile '+path+': '+(error.errMsg||error.message||error));}
+    }
+    // An exposed async API can still fail for a mounted package on a device.
+    // Its presence does not mean that the synchronous bridge will fail too.
+    if(typeof manager.readFileSync==='function'){
+      await yieldTask();
+      try {return manager.readFileSync(path,encoding);}
+      catch(error){failures.push('readFileSync '+path+': '+(error.errMsg||error.message||error));}
+    }
   }
-  return fs().readFileSync(filePath,encoding);
+  const error=Error('无法读取资源文件 '+filePath+'（'+failures.join('；')+'）');
+  error.resourceRead=true;
+  throw error;
 }
 async function writeFile(filePath,data,encoding) {
   if(typeof fs().writeFile==='function')await fileCall('writeFile',Object.assign({filePath,data},encoding?{encoding}:{}));
@@ -51,14 +71,16 @@ async function readBrotli(archive,expected) {
     raw=binaryBytes(value);attempts.push(method+'='+raw.byteLength);
     return raw.byteLength===expected;
   }
-  if(typeof manager.readCompressedFile==='function'){
-    try {if(accept(await fileCall('readCompressedFile',{filePath:archive,compressionAlgorithm:'br'}),'async'))return raw;}
-    catch(error){console.warn('[字由搏击] 异步解压失败',archive,error);}
-  }
-  if(typeof manager.readCompressedFileSync==='function'){
-    await yieldTask();
-    try {if(accept(manager.readCompressedFileSync({filePath:archive,compressionAlgorithm:'br'}),'sync'))return raw;}
-    catch(error){console.warn('[字由搏击] 原生解压失败，使用备用解码器',archive,error);}
+  for(const filePath of readPaths(archive)){
+    if(typeof manager.readCompressedFile==='function'){
+      try {if(accept(await fileCall('readCompressedFile',{filePath,compressionAlgorithm:'br'}),'async'))return raw;}
+      catch(error){console.warn('[字由搏击] 异步解压失败',filePath,error);}
+    }
+    if(typeof manager.readCompressedFileSync==='function'){
+      await yieldTask();
+      try {if(accept(manager.readCompressedFileSync({filePath,compressionAlgorithm:'br'}),'sync'))return raw;}
+      catch(error){console.warn('[字由搏击] 原生解压失败，使用备用解码器',filePath,error);}
+    }
   }
   const bytes=binaryBytes(await readFile(archive));
   // A package reader can expose the already-expanded .br contents. Do not
@@ -78,13 +100,15 @@ function archiveFor(name) {
   // A stable path can still point at a mounted package from an older preview.
   // The archive location must carry the revision required by this main bundle.
   if(root!=='packs/'+name+'-'+info.packs[name])throw Error('资源分包版本路径无效 '+name);
-  return root+'/assets.br';
+  // Keep compressed bytes in an ordinary binary package file. Decompression
+  // is explicit (compressionAlgorithm: br), independent of suffix handling.
+  return root+'/assets.bin';
 }
 function packageAvailable(name) {
   return name === 'play' ? !!(GameGlobal.pokebonkPlayEntry && GameGlobal.pokebonkPlayEntry.api)
-    : exists(archiveFor(name));
+    : mountedPackages[name]===info.packs[name] && readPaths(archiveFor(name)).some(exists);
 }
-function downloadPackage(name, progress) {
+function downloadPackage(name, progress, acceptMounted=true) {
   return new Promise((resolve,reject) => {
     let timer, lastBytes = 0, lastPercent = 0, done = false;
     function finish(error) {
@@ -92,11 +116,14 @@ function downloadPackage(name, progress) {
       done = true;
       clearTimeout(timer);
       if (error) reject(new Error(name + ' 分包：' + (error.errMsg || error.message || error)));
-      else resolve();
+      else {
+        if(name!=='play')mountedPackages[name]=info.packs[name];
+        resolve();
+      }
     }
     let lastProgress = Date.now();
     function checkDownload() {
-      if (packageAvailable(name)) return finish();
+      if (acceptMounted && packageAvailable(name)) return finish();
       const remaining = 10000 - (Date.now() - lastProgress);
       if (remaining <= 0) return finish('下载长时间没有进展，请检查网络后重试');
       timer = setTimeout(checkDownload, Math.min(1500, remaining));
@@ -117,19 +144,37 @@ function downloadPackage(name, progress) {
     } catch (error) { finish(error); }
   });
 }
-async function loadPackage(name, progress) {
-  // Only this revision can satisfy an already-mounted check. Old preview
-  // directories must not bypass loadSubpackage or finish its download timer.
-  if (packageAvailable(name)) return;
+async function loadPackage(name, progress, force=false) {
+  // accessSync can see package metadata before its data is mounted. Require
+  // a successful load or this revision's entry, and bypass both on recovery.
+  if (name!=='play') archiveFor(name);
+  const available=()=>!force&&packageAvailable(name);
+  if (available()) return;
   try {
-    await downloadPackage(name, progress);
+    await downloadPackage(name, progress, !force);
   } catch (error) {
-    if (packageAvailable(name)) return;
+    if (available()) return;
     console.warn('[宝可梦] 重试下载分包', name, error);
     await new Promise(resolve => setTimeout(resolve, 500));
-    if (packageAvailable(name)) return;
-    try { await downloadPackage(name, progress); }
-    catch (retryError) { if (!packageAvailable(name)) throw retryError; }
+    if (available()) return;
+    try { await downloadPackage(name, progress, !force); }
+    catch (retryError) { if (!available()) throw retryError; }
+  }
+}
+async function readPackage(name,archive,stats,progress) {
+  for(let attempt=0;attempt<3;attempt++){
+    try {return await readBrotli(archive,info.rawSizes[name]);}
+    catch(error){
+      if(!error.resourceRead)throw error;
+      stats.readFailures=(stats.readFailures||0)+1;
+      stats.lastReadError=error.message;
+      if(attempt===2)throw error;
+      console.warn('[字由搏击] 资源包暂不可读，自动恢复',name,archive,error.message);
+      // Re-mount once even if accessSync still reports this file as present.
+      // Further bounded reads allow a late native mount to become readable.
+      if(attempt===0)await loadPackage(name,progress,true);
+      await new Promise(resolve=>setTimeout(resolve,200*(attempt+1)));
+    }
   }
 }
 async function unpack(name, revision, progress) {
@@ -144,7 +189,8 @@ async function unpack(name, revision, progress) {
   if (!exists(dir)) fs().mkdirSync(dir, true);
   const archive = archiveFor(name);
   report(name,'unpack');await yieldTask();
-  const unpackAt=Date.now(),raw=await readBrotli(archive,info.rawSizes[name]);
+  stats.archive=archive;
+  const unpackAt=Date.now(),raw=await readPackage(name,archive,stats,progress);
   stats.unpackMs=Date.now()-unpackAt;
   // Advancing the iterator decodes each filtered file. Give the splash
   // time to present frames even before the first native write begins.

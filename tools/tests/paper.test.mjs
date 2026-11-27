@@ -4,7 +4,7 @@ import {pickupRadius,inPickupRange,pickupSpeed,pickupArrived} from '../../source
 import fs from 'node:fs';
 import {configureGlyphNames,glyphText,glyphSpeciesFromImage} from '../../source/src/data/zixing-identity.js';
 import {glyphWordForSpecies} from '../../source/src/actors/paper-glyph-art.js';
-import {drawBattleMinimap,specialMapMarker,layoutBuildingIcons,nearestMapFacility} from '../../source/src/ui/paper-hud-art.js';
+import {drawBattleMinimap,specialMapMarker,layoutBuildingIcons,nearestMapFacility,sideGuidePosition} from '../../source/src/ui/paper-hud-art.js';
 
 test('facility guidance follows all eight north-up directions, including outside the map',()=>{
   const position={x:17,z:-23};
@@ -48,24 +48,19 @@ test('only the minimap draws guidance, including during fog',()=>{
   run.events.blind=false;marker.used=true;assert.equal(draw().guidance,null);assert.deepEqual(rotations,[]);
 });
 
-test('dense same-type map icons preserve every location in counts without overlap or clipping',()=>{
+test('dense map icons stay at every real location, including beside the player and at the rim',()=>{
   for(const size of [9,12,17]){
     const labels=Array.from({length:36},(_,i)=>({kind:'altar',
       x:60+Math.cos(i*Math.PI/18)*48,y:58+Math.sin(i*Math.PI/18)*48}));
     labels.push({kind:'altar',text:'时尚小垃圾',x:60,y:58});
     const result=layoutBuildingIcons(labels,size);
     assert.equal(result.reduce((sum,g)=>sum+g.count,0),labels.length);
-    assert.ok(result.length<labels.length);
+    assert.equal(result.length,labels.length);
     for(const group of result){
       assert.ok(labels.some(label=>label.x===group.x&&label.y===group.y),'Group retains a real location');
-      const {x,y,w,h}=group.box;
-      for(const [cx,cy] of [[x,y],[x+w,y],[x,y+h],[x+w,y+h]])
-        assert.ok(Math.hypot(cx-60,cy-58)<=47.001,'Complete label fits inside the map');
-      assert.ok(x+w<=54||x>=66||y+h<=51||y>=65,'Name does not cover the player');
-    }
-    for(let i=0;i<result.length;i++)for(let j=i+1;j<result.length;j++){
-      const a=result[i].box,b=result[j].box;
-      assert.ok(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);
+      const icon=group.hitBoxes[0];
+      assert.equal(icon.x+icon.w/2,group.x);
+      assert.equal(icon.y+icon.h/2,group.y);
     }
     assert.deepEqual(labels.map(label=>label.count),labels.map(()=>undefined),'Source markers remain unchanged');
   }
@@ -80,7 +75,8 @@ test('map filters distinguish free gifts and keep buildings visible through fog 
   const run={ui:{mapFacilityIcon:kind=>({kind,naturalWidth:16,naturalHeight:20})},player:{pos:{x:0,z:0}},enemies:{n:0},boss:{alive:false},terrain:{world:240},
     interactables:{markers:()=>markers},allies:{list:[]}};
   let result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'freechest'});
-  assert.equal(result.count,2);assert.deepEqual(icons.sort(),['freechest']);assert.deepEqual(texts,['2','免费蓝骰子']);
+  assert.equal(result.count,2);assert.deepEqual(icons.sort(),['freechest','freechest']);
+  assert.equal(result.groups.length,2);assert.ok(texts.every(text=>text==='免费蓝骰子'));
   icons.length=0;texts.length=0;result=drawBattleMinimap(canvas,run,{shadow:false,facilityKind:'chest'});
   assert.equal(result.count,1);assert.deepEqual(icons.sort(),['chest']);assert.deepEqual(texts,['红骰子']);
   markers=markers.filter(marker=>marker.kind!=='chest');
@@ -98,30 +94,75 @@ test('overlapping different facility types are never counted as one type',()=>{
   assert.equal(result.length,2);assert.deepEqual(result.map(group=>group.count),[1,1]);
 });
 
-test('expanded map keeps names below icons, clear of other names and inside the dial',()=>{
+test('crowded map names stay below fixed icons and hide when there is no room',()=>{
   const kinds=['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'];
   const widths=[13,24,29.5,18.5,13,13,18.5,18.5,18.5,18.5];
   const markers=kinds.map((kind,i)=>({kind,labelWidth:widths[i],x:60+Math.cos(i/kinds.length*Math.PI*2)*30,y:58+Math.sin(i/kinds.length*Math.PI*2)*30}));
   const groups=layoutBuildingIcons(markers,12,{x:60,y:58},5.5);
+  assert.ok(groups.some(group=>group.showLabel)&&groups.some(group=>!group.showLabel));
   for(let i=0;i<groups.length;i++){
-    const a=groups[i].box;
+    assert.equal(groups[i].hitBoxes[0].x+6,markers[i].x);
+    assert.equal(groups[i].hitBoxes[0].y+6,markers[i].y);
+    if(!groups[i].showLabel)continue;
+    const a=groups[i].label;
+    assert.ok(a.y>groups[i].y+6);
     for(const [x,y] of [[a.x,a.y],[a.x+a.w,a.y],[a.x,a.y+a.h],[a.x+a.w,a.y+a.h]])assert.ok(Math.hypot(x-60,y-58)<=47.001);
-    for(let j=i+1;j<groups.length;j++){
-      const parts=b=>[{x:b.x+(b.w-12)/2,y:b.y,w:12,h:12},{x:b.x,y:b.y+13.5,w:b.w,h:5.5}];
-      for(const p of parts(a))for(const b of parts(groups[j].box))assert.ok(p.x+p.w<=b.x||b.x+b.w<=p.x||p.y+p.h<=b.y||b.y+b.h<=p.y);
-    }
+    for(let j=0;j<groups.length;j++)if(i!==j)for(const b of groups[j].hitBoxes)
+      assert.ok(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y);
   }
 });
 
-test('compact map fits all ten types alongside a free chest near the player',()=>{
+test('player movement and nearby buildings cannot change the positions of map icons',()=>{
   const kinds=['chest','freechest','altar','boss','portal','magnet','berry','ditto','nest','bill'],lengths=[2,4,5,3,2,2,3,3,3,3];
   const size=3840/380,font=2400/380,ratio=190/(84*2.3);
   const markers=kinds.map((kind,i)=>({kind,labelWidth:lengths[i]*font+2,x:60+Math.cos(i/kinds.length*Math.PI*2)*32.4/ratio,y:58+Math.sin(i/kinds.length*Math.PI*2)*32.4/ratio}));
   markers.push({kind:'freechest',labelWidth:4*font+2,x:60-4.5/ratio,y:58+6.3/ratio});
   const groups=layoutBuildingIcons(markers,size,{x:60,y:58},font);
-  assert.equal(groups.length,10);
-  for(let i=0;i<groups.length;i++)for(let j=i+1;j<groups.length;j++)for(const a of groups[i].hitBoxes)for(const b of groups[j].hitBoxes)
-    assert.ok(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y);
+  assert.equal(groups.length,11);
+  for(const player of [{x:60,y:57},{x:60,y:59},{x:40,y:58},{x:80,y:58}]){
+    assert.deepEqual(layoutBuildingIcons(markers,size,player,font),groups);
+  }
+  const moved=layoutBuildingIcons(markers.map(m=>({...m,x:m.x-2.3,y:m.y+1.4})),size,{x:60,y:58},font);
+  for(let i=0;i<groups.length;i++){
+    assert.ok(Math.abs(moved[i].hitBoxes[0].x-groups[i].hitBoxes[0].x+2.3)<1e-9);
+    assert.ok(Math.abs(moved[i].hitBoxes[0].y-groups[i].hitBoxes[0].y-1.4)<1e-9);
+  }
+  assert.deepEqual(layoutBuildingIcons([markers[0]],size,{x:60,y:58},font)[0].hitBoxes[0],groups[0].hitBoxes[0]);
+});
+
+test('both map projections keep buildings fixed as the player approaches and crosses them',()=>{
+  const ctx=new Proxy({measureText:text=>({width:text.length*5})},{get:(target,key)=>target[key]??(()=>{})});
+  const canvas={width:240,height:240,getContext:()=>ctx};
+  const markers=[{kind:'chest',x:0,z:0},{kind:'freechest',x:2,z:1},{kind:'portal',x:30,z:-20}];
+  const run={player:{pos:{x:0,z:0}},enemies:{n:0},boss:{alive:false},terrain:{world:600},interactables:{markers:()=>markers},allies:{list:[]}};
+  for(const square of [false,true])for(const viewRatio of [1,2])for(let x=-5;x<=5;x+=.25){
+    run.player.pos.x=x;
+    const center=square?{x:0,z:0}:run.player.pos;
+    const {groups}=drawBattleMinimap(canvas,run,{center,square,viewRatio});
+    for(let i=0;i<groups.length;i++){
+      const icon=groups[i].hitBoxes[0];
+      assert.ok(Math.abs(icon.x+icon.w/2-(60+(markers[i].x-center.x)*.9/viewRatio))<1e-9);
+      assert.ok(Math.abs(icon.y+icon.h/2-(58+markers[i].z*.9/viewRatio))<1e-9);
+    }
+  }
+});
+
+test('distance cards use two fixed screen slots and resist centre-line jitter',()=>{
+  for(const [width,height] of [[320,470],[390,746],[430,834]]){
+    for(const side of [-1,1]){
+      const slot=sideGuidePosition(side*10,width,height);
+      for(const dx of [side*1000,side*3,side*.8,.4,-.4,0])assert.deepEqual(sideGuidePosition(dx,width,height,side),slot);
+      const crossed=sideGuidePosition(-side*2,width,height,side);
+      assert.equal(crossed.side,-side);assert.equal(crossed.y,slot.y);
+      assert.equal(crossed.x+slot.x,width);
+    }
+    const control={width:70,top:height*.53-35,bottom:height*.53+35};
+    const left=sideGuidePosition(-20,width,height,0,control),right=sideGuidePosition(20,width,height,0,control);
+    assert.equal(left.y,right.y);
+    assert.deepEqual(sideGuidePosition(-20,width,height,0,{width:0,top:0,bottom:0}),left,'First-frame control layout must not move the slot');
+    assert.ok(right.y+47<control.top||right.y-32>control.bottom+14+62,'Leave room for both the ultimate and the action ticket');
+    assert.ok(right.y-32>=0&&right.y+47<=height,'Keep the complete card inside the viewport');
+  }
 });
 
 test('both maps label unscaled boss distances in centimeters, including off-map minibosses',()=>{

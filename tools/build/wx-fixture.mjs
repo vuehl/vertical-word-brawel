@@ -33,16 +33,35 @@ window.loadFixtureData=async name=>{
 };
 function bytes(path){
   if(window.resourcePackageReads&&path.startsWith('packs/'))window.resourcePackageReads.push(path);
+  if(window.fixtureResourceReadRecovery&&/^\/?packs\//.test(path)){
+    const reads=window.fixtureResourceReads;
+    if(path.endsWith('.br'))throw Error('readFileSync:fail file info not exit');
+    if(path.includes('/text-')&&(window.requestedPackages||[]).filter(name=>name==='text').length<2){
+      reads.unmounted++;throw Error('readFileSync:fail file info not exit');
+    }
+    if(!path.startsWith('/')){reads.unrooted++;throw Error('readFileSync:fail file info not exit');}
+    reads.recovered++;path=path.slice(1);
+  }
   const v=data.get(path)||archives.get(path);if(!v)throw Error('Missing file '+path);return v;
 }
 const fs={
-  accessSync(path){if(!dirs.has(path)&&!data.has(path)&&!archives.has(path))throw Error('ENOENT '+path);},
+  accessSync(path){
+    // A package index may exist before loadSubpackage mounts the data.
+    if(window.fixtureResourceReadRecovery&&/^\/?packs\/text-/.test(path))return;
+    if(!dirs.has(path)&&!data.has(path)&&!archives.has(path))throw Error('ENOENT '+path);
+  },
   mkdirSync(path){dirs.add(path);},rmdirSync(path){for(const f of [...data.keys()])if(f.startsWith(path+'/'))data.delete(f);dirs.delete(path);},
   readdirSync(path){return [...new Set([...dirs,...data.keys()].filter(k=>k.startsWith(path+'/')).map(k=>k.slice(path.length+1).split('/')[0]))];},
   readFileSync(path,encoding){const b=bytes(path);return encoding?strFromU8(b):b.slice().buffer;},
   writeFileSync(path,b,encoding){data.set(path,encoding==='base64'?toByteArray(b):typeof b==='string'?strToU8(b):new Uint8Array(b));},
   copyFileSync(from,to){data.set(to,bytes(from));},renameSync(from,to){data.set(to,bytes(from));data.delete(from);},unlinkSync(path){data.delete(path);},
-  readFile({filePath,success,fail}){queueMicrotask(()=>{try{success({data:fs.readFileSync(filePath)});}catch(e){fail(e);}});},
+  readFile({filePath,success,fail}){queueMicrotask(()=>{
+    if(window.fixtureResourceReadRecovery&&/^\/?packs\//.test(filePath)){
+      window.fixtureResourceReads.asyncFailures++;
+      return fail({errMsg:'readFile:fail file info not exit'});
+    }
+    try{success({data:fs.readFileSync(filePath)});}catch(e){fail(e);}
+  });},
   writeFile({filePath,data,success,fail}){queueMicrotask(()=>{try{fs.writeFileSync(filePath,data);success({});}catch(e){fail(e);}});}
 };
 let first=true,screen=null;

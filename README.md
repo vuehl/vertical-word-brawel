@@ -108,3 +108,5 @@
 | 检查源码引用与正式包资源 | `npm run verify:source`、`npm run verify:assets` |
 
 若微信工具预览报 `ENOENT ... packs/capture_bag/game.js`，但 `minigame/game.json` 中已经是带版本后缀的分包目录，说明工具仍保留旧分包配置。完整退出微信开发者工具后重新打开当前工程；仅清理编译缓存可能无效。日常手机预览建议使用 `preview-game.cmd`：它会重新构建、检查每个资源分包的入口与内容，再打开独立工程快照生成二维码，避免沿用旧工程索引。不要手动补空的旧分包目录，它会掩盖配置不一致。
+
+手机扫码报「文字资源：readFile:fail file info not exit」时，表示启动资源文件没有读成功。本次修复统一将 Brotli 压缩数据打包为 `assets.bin`，由游戏显式解压；读取失败会尝试同步接口与代码包根路径，并自动重新加载一次分包。仅有文件索引不能跳过分包加载。运行 `npm run preview` 生成新码后，手机完全退出旧预览再扫码；无需清理玩家存档。可用 `node tools/smoke.mjs --phone-layout --software-render --boot-only --resource-read-recovery` 重现并检查自动恢复。

@@ -23,8 +23,8 @@ export function weatherFill(kind,step){
   }).join(',')+',.94)';
 }
 
-// Paint the stock, receding edge and type together so the native Canvas and
-// browser use the same slanted silhouette, including at partial progress.
+// Keep the icon and countdown above a receding weather-colored background.
+// One canvas gives the browser and native HUD the same slanted paper edge.
 export function drawWeatherCountdown(canvas,{kind,name,label,fraction,step,mark}){
   const c=canvas.getContext('2d'),w=canvas.width/2,h=29;
   const progress=Math.max(0,Math.min(1,fraction)),edge=w*progress;

@@ -1,6 +1,6 @@
 import {createCaptureTicket} from './capture-ticket.js';
 import {castTitleLayout,castTitleLeft,castTitlePose,flameOpeningBand,titleCenter,titleFont,titleLine,titleWidth} from '../effects/ultimate-cast-layout.js';
-import {weatherStyle,weatherFill,drawWeatherMark,drawWeatherCountdown} from './weather-presentation.js';
+import {weatherStyle,drawWeatherMark,drawWeatherCountdown} from './weather-presentation.js';
 import {glyphPreview} from '../actors/zixing-glyphs.js';
 import {summonerBarColors} from './battle-review-style.js';
 import {planIncludes,runPlan} from '../combat/battle-plan.js';
@@ -415,14 +415,12 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
   mark.width=mark.height=32;
   event.className='zx-world-status';
   event.setAttribute('role','timer');event.dataset.uiLayer='weather';event.append(mark);
-  const fill=el('i','zx-weather-fill',[],{'aria-hidden':'true'});
   const weatherTime=el('canvas','zx-weather-time',[],{'aria-hidden':'true','data-static':'true'});
   weatherTime.width=220;weatherTime.height=58;
-  event.append(fill,weatherTime);
+  event.append(weatherTime);
   stack.querySelector('.zx-status-row').append(event);
   lane.append(feed);stack.append(lane);
   feed.append(hud.els.boss,hud.minisEl,teamRow,feedback);
-  let paintedTone='';
   function syncEvent(){
     const active=event.style.display!=='none';
     if(active!==lane.classList.contains('with-event'))lane.classList.toggle('with-event',active);
@@ -445,18 +443,14 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
     const label=event.children[1].textContent.replace(/\s+/g,'');
     const description=event.children[0].textContent+' '+label;
     if(event.getAttribute('aria-label')!==description)event.setAttribute('aria-label',description);
-    const world=run.events;
-    const source=world?.def&&world.left>0?{left:world.left,total:world.def.dur}:kind==='blizzard'&&run.mapEvents?.bliz?{left:run.mapEvents.bliz.t,total:run.mapEvents.bliz.duration}:kind==='spout'&&run.mapEvents?.spout?{left:run.mapEvents.spout.t,total:run.mapEvents.spout.duration}:{left:run.weatherT,total:run.weatherDuration};
+    const world=run.events,zone=run.mapEvents;
+    const source=world?.def&&world.left>0?{left:world.left,total:world.def.dur}:
+      kind==='blizzard'&&zone?.bliz?{left:zone.bliz.t,total:zone.bliz.duration}:
+      kind==='spout'&&zone?.spout?{left:zone.spout.t,total:zone.spout.duration}:
+      {left:run.weatherT,total:run.weatherDuration};
     const fraction=Math.max(0,Math.min(1,source.left/(source.total||source.left||1)));
-    const width=Math.round(100*fraction)+'%';
-    if(fill.style.width!==width)fill.style.width=width;
     const calm=run.meta.profile.settings.reduceFlashes;
     const step=colors&&!calm?Math.round(6-6*Math.cos(performance.now()*2*Math.PI/2600)):5;
-    const tone=kind+'/'+step;
-    if(tone!==paintedTone){
-      fill.style.backgroundColor=colors?weatherFill(kind,step):'#58525D';
-      paintedTone=tone;
-    }
     const paintKey=[kind,name,label,Math.round(fraction*weatherTime.width/2),step].join('/');
     if(colors&&weatherTime.dataset.paint!==paintKey){
       drawWeatherCountdown(weatherTime,{kind,name,label,fraction,step,mark});
@@ -625,6 +619,7 @@ export function installReviewBattle(hud,run,stack,{wordFor,typeName,typeOf}){
           }
         }
       }
+      if(marker.dataset.fixedSlot==='true')continue;
       const y=parseFloat(marker.style.top),clearance=marker===hud.markTag?30:36;
       if(!Number.isFinite(y))continue;
       const x=parseFloat(marker.style.left)+origin.left;

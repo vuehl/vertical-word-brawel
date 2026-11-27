@@ -6,6 +6,20 @@ import {drawReadyDiamonds} from '../effects/ultimate-ready-diamonds.js';
 
 export const bossDistanceText=distance=>Number(distance.toFixed(2))+' 厘米';
 
+// Two screen slots, with a small dead band at the player's centre line.
+// Distance and bearing may change every frame without moving the card.
+export function sideGuidePosition(dx,width,height,previous=0,control=null){
+  const side=previous&&Math.abs(dx)<.65?previous:dx<0?-1:1;
+  // The first frame after a pause can still have zero-sized cached controls.
+  // Use the fixed 70px button / 47% bottom inset until its layout is available.
+  const bounds=control?.width>0?control:{top:height*.53-35,bottom:height*.53+35};
+  // Reserve the action ticket below the ultimate even when it is hidden.
+  // These slots depend on viewport/control layout, never combat notices.
+  const above=bounds.top-56,below=bounds.bottom+14+62+40;
+  const y=above>=210?Math.min(height*.5,above):Math.min(height-50,below);
+  return {side,x:side<0?44:width-44,y:Math.round(y)};
+}
+
 export function drawAltarProgress(canvas,percent){
   const ctx=canvas.getContext('2d'),size=48,center=size/2,radius=20;
   const color='#FFB84D';
@@ -48,31 +62,15 @@ export function drawCompassDial(canvas,angle){
 
 // Place labels in the map frame after projecting the icons, so zooming or
 // pinning an icon to the rim never changes the distance shown.
-function drawBossDistances(ctx,labels,fontSize,obstacles=[],player={x:60,y:58}){
+function drawBossDistances(ctx,labels,fontSize){
   ctx.font='bold '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.lineJoin='round';ctx.lineWidth=2.5;ctx.strokeStyle='#fffdf5';ctx.fillStyle='#873d32';
-  const placed=[];
   for(const label of labels){
-    const half=ctx.measureText(label.text).width/2;
-    let x,y,best=null;
-    const step=fontSize+2,side=label.y>58?-1:1;
-    for(let row=0;row<9;row++){
-      const offset=(1+Math.floor(row/2))*step*(row%2?-side:side);
-      y=Math.max(25,Math.min(91,label.y+offset));
-      const chord=Math.sqrt(47**2-(Math.abs(y-58)+fontSize/2)**2);
-      const range=Math.max(0,chord-half);
-      for(const candidate of [Math.max(60-range,Math.min(60+range,label.x)),60-range,60+range]){
-        x=candidate;
-        if(Math.abs(y-player.y)<fontSize/2+5&&Math.abs(x-player.x)<half+5)continue;
-        if(labels.some(icon=>Math.abs(y-icon.y)<fontSize/2+4&&Math.abs(x-icon.x)<half+4))continue;
-        if(obstacles.some(b=>x+half+1>b.x&&x-half-1<b.x+b.w&&y+fontSize/2+1>b.y&&y-fontSize/2-1<b.y+b.h))continue;
-        if(placed.some(p=>Math.abs(y-p.y)<step&&Math.abs(x-p.x)<half+p.half+1))continue;
-        const score=(x-label.x)**2+(y-label.y)**2;
-        if(!best||score<best.score)best={x,y,score};
-      }
-    }
-    if(best){x=best.x;y=best.y;}
-    ctx.strokeText(label.text,x,y);ctx.fillText(label.text,x,y);placed.push({x,y,half});
+    // Reserve the same width even when the distance gains or loses a digit.
+    const half=fontSize*4.5,y=Math.min(91,label.y+fontSize+2);
+    const range=Math.max(0,Math.sqrt(Math.max(0,47**2-(Math.abs(y-58)+fontSize/2)**2))-half);
+    const x=Math.max(60-range,Math.min(60+range,label.x));
+    ctx.strokeText(label.text,x,y,half*2);ctx.fillText(label.text,x,y,half*2);
   }
 }
 
@@ -198,66 +196,24 @@ function drawFacilityGuide(ctx,target){
   ctx.fillStyle='#3B3034';ctx.fill();ctx.restore();
 }
 
-// Only neighbouring places of the same type share an icon. Keep every real
-// location as a dot, and anchor each group at its nearest member, not a new point.
+// Icons always occupy their projected world coordinates. Crowding may hide a
+// name, but must never move an icon or merge it with a different location.
 export function layoutBuildingIcons(markers,size,player={x:60,y:58},labelSize=0,square=false,halfHeight=47){
-  const box=group=>{
-    const w=Math.max(size,group.labelWidth||0),h=size+(labelSize?labelSize+1.5:0);
-    const limit=(square?halfHeight:Math.sqrt(47**2-(w/2)**2))-h/2;
-    let y=Math.max(58-limit,Math.min(58+limit,group.y));
-    const fitX=()=>{
-      const half=(square?47:Math.sqrt(Math.max(0,47**2-(Math.abs(y-58)+h/2)**2)))-w/2;
-      return Math.max(60-half,Math.min(60+half,group.x));
-    };
-    let x=fitX();
-    if(Math.abs(x-player.x)<w/2+6&&Math.abs(y-player.y)<h/2+7){
-      y=Math.max(58-limit,Math.min(58+limit,player.y+(y<player.y?-1:1)*(h/2+8)));x=fitX();
-    }
-    return {...group,box:{x:x-w/2,y:y-h/2,w,h}};
-  };
-  const groups=markers.map(marker=>box({...marker,count:1})).sort((a,b)=>
-    Math.hypot(a.x-60,a.y-58)-Math.hypot(b.x-60,b.y-58)||a.x-b.x||a.y-b.y);
-  for(let changed=true;changed;){
-    changed=false;
-    outer:for(let i=0;i<groups.length;i++)for(let j=i+1;j<groups.length;j++){
-      const a=groups[i],b=groups[j],u=a.box,v=b.box;
-      if(a.kind!==b.kind||u.x>v.x+v.w+2||v.x>u.x+u.w+2||u.y>v.y+v.h+2||v.y>u.y+u.h+2)continue;
-      a.count+=b.count;groups.splice(j,1);changed=true;break outer;
-    }
-  }
-  if(labelSize){
-    const parts=b=>[{x:b.x+(b.w-size)/2,y:b.y,w:size,h:size},
-      {x:b.x,y:b.y+size+1.5,w:b.w,h:labelSize}];
-    const overlaps=(a,b)=>a.x<b.x+b.w+.7&&a.x+a.w+.7>b.x&&a.y<b.y+b.h+.7&&a.y+a.h+.7>b.y;
-    const candidates=new Map();
-    for(const group of groups){
-      const {w,h}=group.box;
-      const choices=[];
-      // Keep different building names apart as well as their icons. The dot
-      // and leader line retain the true location when a label needs to move.
-      for(let y=square?58-halfHeight:12;y+h<=(square?58+halfHeight:104);y+=2)for(let x=14;x+w<=106;x+=2){
-        if(!square&&[[x,y],[x+w,y],[x,y+h],[x+w,y+h]].some(([a,b])=>Math.hypot(a-60,b-58)>47))continue;
-        if(x<player.x+7&&x+w>player.x-7&&y<player.y+8&&y+h>player.y-8)continue;
-        const score=(x+w/2-group.x)**2+(y+size/2-group.y)**2;
-        choices.push({box:{x,y,w,h},parts:parts({x,y,w,h}),score});
-      }
-      candidates.set(group,choices.sort((a,b)=>a.score-b.score));
-    }
-    let order=[...groups].sort((a,b)=>b.box.w-a.box.w||a.y-b.y),best=null;
-    // Give a crowded type first choice on a bounded retry instead of leaving
-    // its name hidden underneath an earlier icon.
-    for(let attempt=0;attempt<4;attempt++){
-      const placed=[],boxes=new Map(),blocked=[];
-      for(const group of order){
-        const fit=candidates.get(group).find(choice=>!placed.some(b=>choice.parts.some(a=>overlaps(a,b))));
-        if(!fit)blocked.push(group);
-        const next=fit?.box??group.box;boxes.set(group,next);placed.push(...parts(next));
-      }
-      if(!best||blocked.length<best.blocked)best={boxes,blocked:blocked.length};
-      if(!blocked.length)break;
-      order=[...blocked,...order.filter(group=>!blocked.includes(group))];
-    }
-    for(const [group,box] of best.boxes){group.box=box;group.hitBoxes=parts(box);}
+  const groups=markers.map(marker=>{
+    const w=Math.max(size,marker.labelWidth||0);
+    const icon={x:marker.x-size/2,y:marker.y-size/2,w:size,h:size};
+    const label={x:marker.x-w/2,y:marker.y+size/2+1.5,w,h:labelSize};
+    return {...marker,count:1,box:{x:label.x,y:icon.y,w,h:size+(labelSize?labelSize+1.5:0)},hitBoxes:[icon],label};
+  });
+  const overlaps=(a,b)=>a.x<b.x+b.w+1&&a.x+a.w+1>b.x&&a.y<b.y+b.h+1&&a.y+a.h+1>b.y;
+  const names=[];
+  // World order is independent of the player's distance to the buildings.
+  for(const group of [...groups].sort((a,b)=>a.y-b.y||a.x-b.x||a.kind.localeCompare(b.kind))){
+    const b=group.label;
+    group.showLabel=!!labelSize&&[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]].every(([x,y])=>
+      square?Math.abs(x-60)<=47&&Math.abs(y-58)<=halfHeight:Math.hypot(x-60,y-58)<=47)&&
+      !groups.some(other=>other!==group&&overlaps(b,other.hitBoxes[0]))&&!names.some(other=>overlaps(b,other));
+    if(group.showLabel){group.hitBoxes.push(b);names.push(b);}
   }
   return groups;
 }
@@ -267,15 +223,8 @@ function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0,square=fa
     markers=markers.map(marker=>({...marker,labelWidth:ctx.measureText(facilityNames[marker.kind]).width+2}));
   }
   const groups=layoutBuildingIcons(markers,size,player,labelSize,square,halfHeight);
-  for(const marker of markers){
-    ctx.beginPath();ctx.arc(marker.x,marker.y,1,0,Math.PI*2);ctx.fillStyle='#517589';ctx.fill();
-  }
   for(const group of groups){
     const {y,w:boxWidth}=group.box,x=group.box.x+(boxWidth-size)/2,icon=iconFor?.(group.kind);
-    if(labelSize&&Math.hypot(x+size/2-group.x,y+size/2-group.y)>size*.6){
-      ctx.beginPath();ctx.moveTo(group.x,group.y);ctx.lineTo(x+size/2,y+size/2);
-      ctx.strokeStyle='#8fa9b2';ctx.lineWidth=.5;ctx.stroke();
-    }
     if(icon?.naturalWidth && icon.naturalHeight){
       const scale=size/Math.max(icon.naturalWidth,icon.naturalHeight);
       const w=icon.naturalWidth*scale,h=icon.naturalHeight*scale;
@@ -286,14 +235,7 @@ function drawBuildingIcons(ctx,markers,size,iconFor,player,labelSize=0,square=fa
       ctx.font='bold '+size*.56+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillStyle='#fff';ctx.fillText(facilityNames[group.kind][0],cx,cy);
     }
-    if(group.count>1){
-      const r=size*.26,cx=x+size-r,cy=y+size-r;
-      ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#365868';ctx.fill();
-      ctx.lineWidth=.45;ctx.strokeStyle='#fffdf5';ctx.stroke();
-      ctx.font='bold '+r*1.6+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillStyle='#fff';ctx.fillText(String(group.count),cx,cy,2*r-.5);
-    }
-    if(labelSize){
+    if(group.showLabel){
       const name=facilityNames[group.kind],cx=group.box.x+boxWidth/2,cy=y+size+1.5+labelSize/2;
       ctx.font='bold '+labelSize+'px "Ziling Swei", sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.lineJoin='round';ctx.lineWidth=1.6;ctx.strokeStyle='#fffdf7';ctx.strokeText(name,cx,cy);
@@ -470,7 +412,7 @@ export function drawBattleMinimap(canvas,run,{shadow=true,viewRatio=1,hanging=fa
   }
   ctx.restore();
   ctx.restore();
-  if(distances.length)drawBossDistances(ctx,distances,shadow?8:4.5,groups.map(group=>group.box),playerOnDial);
+  if(distances.length)drawBossDistances(ctx,distances,shadow?8:4.5);
   if(square){
     return {count:buildings.length,groups,guidance};
   }
@@ -523,13 +465,14 @@ export function drawBattleStatus(canvas,{word,tone,look,level,progress,gold,kill
     g.fillStyle='#DEB189';g.fillRect(-3.4,1.7,6.8,1.8);g.fillRect(-.9,3,1.8,4);g.restore();
   }
   text(kills,split+23,38,13,ink);
-  g.save();g.translate(26,26);g.rotate(-5*Math.PI/180);g.translate(-23,-23);
-  g.fillStyle='#463C42';g.fillRect(0,1.5,46,46);
-  g.fillStyle='#F3E9D0';g.fillRect(0,0,46,46);
-  shape([[0,40],[46,38],[46,46],[0,46]],'#EEC659');
-  shape([[39,0],[46,0],[46,7]],'#B9A98F');
-  g.strokeStyle='#BAAD98';g.lineWidth=.7;g.setLineDash([3,2]);g.strokeRect(3,3,40,40);g.setLineDash([]);
-  g.drawImage(appearanceGlyphCanvas(word,tone,look),2,1,42,44);g.restore();
+  // Match the reference's clipped paper corners, lower shadow and gold strip.
+  const face=(x,y,size,fill)=>shape([[x+4,y],[x+size,y],[x+size,y+size-4],
+    [x+size-4,y+size],[x,y+size],[x,y+4]],fill);
+  face(.5,2,49,'#463C42');face(.5,.5,48.5,'#F3E9D0');
+  shape([[2,43],[46,36],[46,46],[2,48]],'#EEC659');
+  shape([[40,1],[48,1],[48,9]],'#B9A98F');
+  g.strokeStyle='#BAAD98';g.lineWidth=.7;g.setLineDash([3,2]);g.strokeRect(4,4,40,40);g.setLineDash([]);
+  g.drawImage(appearanceGlyphCanvas(word,tone,look),3.5,2.5,42,44);
   canvas.dataset.word=word;canvas.dataset.look=look||'normal';
 }
 

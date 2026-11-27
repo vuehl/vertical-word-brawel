@@ -159,7 +159,9 @@ async function start() {
         try { await run(); }
         catch (error) {
           failed.push([name, run]);
-          messages.push(name + '：' + (error.errMsg || error.message || String(error)));
+          console.warn('[字由搏击启动] 资源准备异常',name,error);
+          messages.push(name + '：' + (error.resourceRead ? '资源文件暂时无法读取，请重试或重新进入。' :
+            (error.errMsg || error.message || String(error))));
         }
       }));
       if (!failed.length) return true;

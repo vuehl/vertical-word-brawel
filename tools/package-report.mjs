@@ -25,7 +25,7 @@ for(const pack of Object.keys(index.packs)){
   for(const [key,ref] of Object.entries(index.files))if(ref.startsWith(pack+'/')){
     const name=ref.slice(pack.length+1).split('#')[0];if(!reverse.has(name))reverse.set(name,[]);reverse.get(name).push(key);
   }
-  unpackStream(brotliDecompressSync(fs.readFileSync(path.join(game,index.packRoots[pack],'assets.br'))),(file,data)=>{
+  unpackStream(brotliDecompressSync(fs.readFileSync(path.join(game,index.packRoots[pack],'assets.bin'))),(file,data)=>{
     const models=file==='model-map.json'||file==='model-parts.bin';
     const keys=models?[...reverse].filter(([name])=>name.endsWith('.glb')).flatMap(([,keys])=>keys):reverse.get(file)||[];
     resources.push({pack,file,keys,unpackedBytes:data.length});

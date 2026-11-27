@@ -22,8 +22,18 @@ function packageDirectory(out,relative){
   return target;
 }
 function archiveMatches(directory,revision){
-  const file=path.join(directory,'assets.br');
+  const file=path.join(directory,'assets.bin');
   return fs.existsSync(file)&&hash(fs.readFileSync(file))===revision;
+}
+function copyPackageFiles(source,target){
+  // Resource packages are flat. Copy explicitly instead of the native
+  // recursive copier, which can terminate Node on this Windows project path.
+  fs.mkdirSync(target,{recursive:true});
+  for(const entry of fs.readdirSync(source,{withFileTypes:true})){
+    if(!entry.isFile())throw Error('Unexpected resource package entry '+entry.name);
+    const from=path.join(source,entry.name),to=path.join(target,entry.name);
+    if(!fs.existsSync(to)||!fs.readFileSync(from).equals(fs.readFileSync(to)))fs.copyFileSync(from,to);
+  }
 }
 
 // Build tools continue using canonical working directories. Only the final
@@ -37,7 +47,12 @@ export function stageResourcePackages(out){
     const working=packageDirectory(out,'packs/'+name);
     // DevTools can compile at any point during a build. Keep the currently
     // declared directory mounted, including when this build is interrupted.
-    if(!fs.existsSync(working)&&fs.existsSync(packaged))fs.cpSync(packaged,working,{recursive:true});
+    if(!fs.existsSync(working)&&fs.existsSync(packaged))copyPackageFiles(packaged,working);
+    // Migrate the transport filename without recompressing or invalidating
+    // the phone's already installed, content-addressed resource cache.
+    const legacy=path.join(working,'assets.br'),binary=path.join(working,'assets.bin');
+    if(!fs.existsSync(binary)&&fs.existsSync(legacy)&&hash(fs.readFileSync(legacy))===revision)
+      fs.renameSync(legacy,binary);
     // A canonical directory left by an interrupted full build takes priority.
     // If it differs from the last index, request a full rebuild rather than
     // overwriting it with an older published package.
@@ -68,11 +83,13 @@ export function finalizeResourcePackages(out,config){
       if(fs.existsSync(target)){
         // An unchanged revision is already published. Refresh changed files
         // without deleting its directory or retriggering unchanged archives.
-        fs.cpSync(source,target,{recursive:true,filter:(from,to)=>
-          fs.statSync(from).isDirectory()||!fs.existsSync(to)||!fs.readFileSync(from).equals(fs.readFileSync(to))});
+        copyPackageFiles(source,target);
       }else fs.renameSync(source,target);
     }
-    writeText(path.join(target,'game.js'),'// Resource '+name+' revision '+revision+'.\n');
+    writeText(path.join(target,'game.js'),'// Resource '+name+' revision '+revision+'.\n'+
+      '(GameGlobal.pokebonkResourcePackages || (GameGlobal.pokebonkResourcePackages = {}))['+
+      JSON.stringify(name)+'] = '+JSON.stringify(revision)+';\n');
+    fs.rmSync(path.join(target,'assets.br'),{force:true});
   }
   // Switch declarations only after all new roots exist; retire the previous
   // roots afterwards so the live game.json never points at a missing folder.

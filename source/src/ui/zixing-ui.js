@@ -1784,7 +1784,7 @@ export function createZixingUI(app,api) {
     minimap.setAttribute('aria-label','附近地图，点击查看更大范围');
     const timePrint=el('canvas','zx-timer-print',[],{width:184,height:58,'data-static':'true','aria-hidden':'true'});
     const clockDock=el('div','zx-map-clock',[clock,timePrint],{'data-ui-layer':'counters','aria-label':'关卡时间'});
-    const pauseButton=button(el('span','zx-pause-bars',[el('i'),el('i')]),()=>run.pause(),'zx-hud-pause zx-plain',{'data-paper-surface':'flat','aria-label':'暂停'});
+    const pauseButton=button(paperIcon('hud-pause'),()=>run.pause(),'zx-hud-pause zx-plain',{'data-paper-surface':'flat','aria-label':'暂停'});
     node.append(stageCaption,el('div','zx-hud-top',[
       el('div','zx-hud-profile',[portrait,
         el('div','zx-status-values',[levelValue,gold,score],{'data-ui-hidden':'true'})]),
@@ -2051,6 +2051,7 @@ export function createZixingUI(app,api) {
         drawHudClock(timePrint,timeLabel,urgent,phase);timePrint.dataset.frame=timeKey;
       }
       if(lastState===run.state&&(now-last<(run.performance?.hudInterval??80)||run.state==='paused'||run.state==='modal'||run.state==='over')){
+        hud.updateWorldLabelPositions(run);
         if(run.state==='play'&&(run.ult.ready||hud.touch.ult.classList.contains('ready')))hud.ultHud(run);
         return;
       }

@@ -160,7 +160,7 @@ for (const [name, entries] of Object.entries(packs)) {
   const {bytes,rawSize}=packStream(entries,name,filters[name]);
   const dir=path.join(out,'packs',name);
   fs.mkdirSync(dir,{recursive:true});
-  fs.writeFileSync(path.join(dir,'assets.br'),bytes);
+  fs.writeFileSync(path.join(dir,'assets.bin'),bytes);
   fs.rmSync(path.join(dir,'assets.zip'),{force:true});
   fs.writeFileSync(path.join(dir,'game.js'),'// Local resource subpackage.\n');
   meta[name]=hash(bytes);
@@ -174,7 +174,7 @@ fs.writeFileSync(path.join(reportDir,'资源打包清单.json'),JSON.stringify({
   policyVersion:assetPolicyVersion,mappedResources:Object.keys(index).length,runtimeSpecies:runtimeSpecies.length,musicTracks,
   imageSavings,
   captureCompression,
-  packs:Object.fromEntries(Object.keys(meta).map(name=>[name,{files:Object.keys(packs[name]).length,rawBytes:rawSizes[name],packedBytes:fs.statSync(path.join(out,'packs',name,'assets.br')).size}])),
+  packs:Object.fromEntries(Object.keys(meta).map(name=>[name,{files:Object.keys(packs[name]).length,rawBytes:rawSizes[name],packedBytes:fs.statSync(path.join(out,'packs',name,'assets.bin')).size}])),
   excluded:[...excluded].sort(([a],[b])=>a.localeCompare(b)).map(([key,reason])=>({key,reason})),
 },null,2)+'\n');
 fs.rmSync(temp,{recursive:true});

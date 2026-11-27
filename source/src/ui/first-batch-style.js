@@ -511,8 +511,6 @@ html.zixing #hud>.zx-combo>i>u{display:none}
 .zx.zx-square-hud .zx-map-clock{position:absolute;right:20px;top:87px;width:60px;height:18px;background:rgba(19,24,33,.80);border-radius:2px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 .zx.zx-square-hud .zx-map-clock .zx-hud-clock{flex:none;width:auto;min-width:0;max-width:none;color:#F3F1FA;font-size:13px;line-height:16px;white-space:nowrap;text-align:center}
 html.zixing .zx.zx-square-hud .zx-hud-pause{right:0;top:110px;width:44px;height:44px;min-height:44px;display:flex;align-items:center;justify-content:center;margin:0;padding:0;background:transparent;border:0;box-shadow:none}
-.zx.zx-square-hud .zx-pause-bars{width:31px;height:29px;display:flex;align-items:center;justify-content:center;gap:4px;background:rgba(19,24,33,.74);border-radius:3px}
-.zx.zx-square-hud .zx-pause-bars>i{width:4px;height:14px;background:#F3F1FA;border-radius:1px}
 .zx.zx-square-hud .zx-battle-lane{position:absolute;left:0;right:52px;top:110px;display:flex;flex-direction:column;align-items:stretch;pointer-events:none}
 .zx.zx-square-hud .zx-battle-lane.with-event{top:92px}
 .zx.zx-square-hud .zx-battle-lane>.zx-combat-feed{position:relative;top:auto;left:auto;right:auto;width:100%}
@@ -612,7 +610,6 @@ html.zixing .zx-square-hud>.zx-evolution-stamp{position:absolute;left:0;top:0;ri
 .zx.zx-square-hud .zx-world-status>.zx-event-mark{left:3px;top:4px;width:21px;height:21px;z-index:1}
 .zx.zx-square-hud .zx-world-status>b{position:absolute;left:25px;right:42px;top:5px;font-size:14px;line-height:19px;z-index:1}
 .zx.zx-square-hud .zx-world-status>span{position:absolute;right:4px;top:3px;color:#FFF8E9;font-size:20px;line-height:23px;padding:0;border:0;z-index:1}
-.zx.zx-square-hud .zx-weather-fill{position:absolute;top:0;bottom:0;left:0;height:100%;pointer-events:none}
 .zx.zx-square-hud .zx-profile-art,.zx.zx-square-hud .zx-hud-profile{width:186px;height:50px}
 .zx.zx-square-hud .zx-loadout{top:57px}
 .zx.zx-square-hud .zx-loadout-top{gap:5px}

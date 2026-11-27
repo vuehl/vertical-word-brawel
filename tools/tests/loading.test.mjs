@@ -73,23 +73,24 @@ function installer({nativeAsync=true,stalledWrite=false,lockedCache=false,loadSu
   const info={packs:{world:'1111111111111111',art:'2222222222222222',text:'3333333333333333'},rawSizes:{world:4,art:4,text:4},
     files:Object.fromEntries(Object.keys(recipes).map(file=>['assets/models/'+file,'world/'+file])),sprites:{}};
   info.packRoots=Object.fromEntries(Object.entries(info.packs).map(([name,revision])=>[name,'packs/'+name+'-'+revision]));
-  const archive=name=>info.packRoots[name]+'/assets.br';
+  const archive=name=>info.packRoots[name]+'/assets.bin';
   const runtime={decodeText:bytes=>Buffer.from(bytes).toString(),resourceEntries:raw=>archives[{1:'world',2:'art',3:'text'}[new Uint8Array(raw)[0]]],decodeBrotli};
   // Fault cases deliberately warn with errors from another VM realm. Keep
   // those expected logs out of Node's test-worker error serialization.
-  const context={module:{exports:{}},console:{warn(){},info(){}},Uint8Array,Date,clearTimeout,
+  const GameGlobal={pokebonkResourcePackages:{}};
+  const context={module:{exports:{}},GameGlobal,console:{warn(){},info(){}},Uint8Array,Date,clearTimeout,
     setTimeout:(fn,ms)=>{if(ms===0)yields++;return setTimeout(fn,ms===30000&&stalledWrite?10:ms);},
     wx:{env:{USER_DATA_PATH:'/userdata'},getFileSystemManager:()=>manager,loadSubpackage(options){
       downloads[options.name]=(downloads[options.name]||0)+1;
       if(loadSubpackage)return loadSubpackage(options);
-      queueMicrotask(options.success);
+      queueMicrotask(()=>{GameGlobal.pokebonkResourcePackages[options.name]=info.packs[options.name];options.success();});
     }},
     require(name){if(name==='./assets')return info;if(name==='./resource-codec')return codec;
       if(name==='./resource-runtime')return {...runtime,resourceEntries:(...args)=>runtime.resourceEntries(...args),decodeBrotli:(...args)=>runtime.decodeBrotli(...args)};
       throw Error(name);}
   };
   vm.runInNewContext(fs.readFileSync(new URL('../../platform/files.js',import.meta.url),'utf8'),context);
-  return {api:context.module.exports,data,dirs,downloads,info,manager,runtime,archive,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
+  return {api:context.module.exports,data,dirs,downloads,info,manager,runtime,archive,GameGlobal,get yields(){return yields;},get asyncRemovals(){return asyncRemovals;},
     get io(){return {asyncReads,syncReads,asyncWrites};},failNext(file,message='simulated disk error'){failFile=file;writeError=message;}};
 }
 
@@ -123,9 +124,30 @@ test('a locked obsolete cache does not prevent text installation, and byte-only 
 test('an already mounted archive installs without requesting the package again',async()=>{
   const f=installer();
   f.data.set(f.archive('text'),new Uint8Array(4));
+  f.GameGlobal.pokebonkResourcePackages.text=f.info.packs.text;
   await f.api.init();
   assert.deepEqual(f.downloads,{});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
+});
+
+test('file metadata or an old executed entry cannot skip loading the current resource package',async()=>{
+  for(const entry of [undefined,'aaaaaaaaaaaaaaaa']){
+    const f=installer();
+    f.data.set(f.archive('text'),new Uint8Array(4));
+    f.GameGlobal.pokebonkResourcePackages.text=entry;
+    await f.api.init();
+    assert.deepEqual(f.downloads,{text:1});
+  }
+});
+
+test('a successful load is reusable while the native resource entry is still being scheduled',async()=>{
+  const f=realTextInstaller({loadSubpackage({success}){queueMicrotask(success);}});
+  f.manager.readCompressedFile=({success})=>success({data:f.raw});
+  f.failNext('test.txt');
+  await assert.rejects(f.api.init(),/simulated disk error/);
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:1});
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
 });
 
 test('an obsolete mounted path cannot finish a new revision download timer',async t=>{
@@ -140,6 +162,7 @@ test('an obsolete mounted path cannot finish a new revision download timer',asyn
   assert.deepEqual(f.downloads,{text:1});
   assert.equal(finished,false,'The old package must not satisfy the availability poll');
   f.data.set(f.archive('text'),new Uint8Array(4));
+  f.GameGlobal.pokebonkResourcePackages.text=f.info.packs.text;
   t.mock.timers.tick(1500);
   await ready;
   assert.equal(finished,true,'A mounted current revision still handles a missing callback');
@@ -181,7 +204,10 @@ test('a full disk reclaims obsolete pack files and retries the interrupted insta
   assert.equal(f.asyncRemovals,0);
 });
 test('an archive mounted without a completion callback is picked up during the first download',{timeout:5000},async()=>{
-  const f=installer({loadSubpackage(){queueMicrotask(()=>f.data.set(f.archive('text'),new Uint8Array(4)));}});
+  const f=installer({loadSubpackage(){queueMicrotask(()=>{
+    f.data.set(f.archive('text'),new Uint8Array(4));
+    f.GameGlobal.pokebonkResourcePackages.text=f.info.packs.text;
+  });}});
   await f.api.init();
   assert.deepEqual(f.downloads,{text:1});
   assert.ok(f.data.has('/userdata/pokebonk-assets/text-'+f.info.packs.text+'/.ready'));
@@ -336,6 +362,90 @@ test('fallback reads compressed or already-expanded files without decoding a pay
     assert.equal(decodes,expanded?0:1);
     assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
   });
+});
+
+test('a device reporting readFile:fail file info not exit recovers through the synchronous reader',async()=>{
+  const f=realTextInstaller();
+  f.manager.readCompressedFile=({fail})=>fail({errMsg:'readCompressedFile:fail not supported'});
+  f.manager.readCompressedFileSync=()=>{throw Error('readCompressedFileSync:fail not supported');};
+  f.manager.readFile=({fail})=>fail({errMsg:'readFile:fail file info not exit'});
+  await f.api.init();
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+  assert.ok(f.data.has(f.installed+'.ready'));
+});
+
+test('an indexed package whose bytes are missing is remounted automatically before retrying',async()=>{
+  let loads=0,readable=false;
+  const f=realTextInstaller({loadSubpackage({success}){loads++;if(loads===2)readable=true;queueMicrotask(success);}});
+  const originalRead=f.manager.readFileSync;
+  f.manager.readCompressedFile=({fail})=>fail({errMsg:'readCompressedFile:fail file info not exit'});
+  f.manager.readCompressedFileSync=()=>{throw Error('readCompressedFileSync:fail file info not exit');};
+  f.manager.readFile=({fail})=>fail({errMsg:'readFile:fail file info not exit'});
+  f.manager.readFileSync=p=>{if(!readable)throw Error('readFileSync:fail file info not exit');return originalRead(p);};
+  await f.api.init();
+  assert.equal(loads,2);
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+  assert.ok(f.data.has(f.installed+'.ready'));
+});
+
+test('package file reads support the rooted code-package path without changing user file paths',async()=>{
+  const f=realTextInstaller(),read=f.manager.readFileSync,paths=[];
+  delete f.manager.readCompressedFile;
+  delete f.manager.readCompressedFileSync;
+  f.manager.readFile=({filePath,fail})=>{paths.push(filePath);fail({errMsg:'readFile:fail file info not exit'});};
+  f.manager.readFileSync=p=>{
+    paths.push(p);
+    if(p===f.archive('text'))throw Error('readFileSync:fail file info not exit');
+    return read(p.startsWith('/packs/')?p.slice(1):p);
+  };
+  await f.api.init();
+  assert.ok(paths.includes('/'+f.archive('text')));
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+});
+
+test('a late file mount after loadSubpackage success is given bounded time to become readable',async()=>{
+  const f=realTextInstaller();let readAttempts=0;
+  delete f.manager.readCompressedFile;
+  delete f.manager.readCompressedFileSync;
+  const read=f.manager.readFileSync;
+  f.manager.readFile=({fail})=>fail({errMsg:'readFile:fail file info not exit'});
+  f.manager.readFileSync=p=>{
+    if(++readAttempts<=4)throw Error('readFileSync:fail file info not exit');
+    return read(p);
+  };
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:2});
+  assert.equal(f.api.diagnostics.packs.text.readFailures,2);
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+});
+
+test('permanently missing package bytes stop after bounded recovery and remain retryable',async()=>{
+  const f=realTextInstaller();
+  delete f.manager.readCompressedFile;
+  delete f.manager.readCompressedFileSync;
+  const read=f.manager.readFileSync;
+  f.manager.readFile=({fail})=>fail({errMsg:'readFile:fail file info not exit'});
+  f.manager.readFileSync=()=>{throw Error('readFileSync:fail file info not exit');};
+  await assert.rejects(f.api.init(),error=>error.message.includes(f.archive('text'))&&error.message.includes('file info not exit'));
+  assert.deepEqual(f.downloads,{text:2});
+  assert.equal(f.api.diagnostics.packs.text.readFailures,3);
+  assert.ok(!f.data.has(f.installed+'.ready'));
+  assert.ok(!f.data.has(f.installed+'test.txt'));
+  f.manager.readFileSync=read;
+  await f.api.init();
+  assert.ok(f.data.has(f.installed+'.ready'));
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+});
+
+test('forced remount failure cannot be hidden by stale file metadata and an executed entry',async()=>{
+  const f=realTextInstaller({loadSubpackage({fail}){queueMicrotask(()=>fail({errMsg:'remount failed'}));}});
+  f.GameGlobal.pokebonkResourcePackages.text=f.info.packs.text;
+  delete f.manager.readCompressedFile;
+  delete f.manager.readCompressedFileSync;
+  f.manager.readFileSync=()=>{throw Error('readFileSync:fail file info not exit');};
+  await assert.rejects(f.api.init(),/remount failed/);
+  assert.deepEqual(f.downloads,{text:2});
+  assert.ok(!f.data.has(f.installed+'.ready'));
 });
 
 test('an older mounted archive fails length validation without committing its cache, then retries',async()=>{

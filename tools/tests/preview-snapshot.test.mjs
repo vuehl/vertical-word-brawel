@@ -19,7 +19,7 @@ function fixture(t){
   const raw=Buffer.from('verified text and opening'),packed=brotliCompressSync(raw);
   const revision=createHash('sha256').update(packed).digest('hex').slice(0,16),root='packs/text-'+revision;
   fs.mkdirSync(path.join(project,'minigame',root),{recursive:true});
-  fs.writeFileSync(path.join(project,'minigame',root,'assets.br'),packed);
+  fs.writeFileSync(path.join(project,'minigame',root,'assets.bin'),packed);
   fs.writeFileSync(path.join(project,'minigame',root,'game.js'),'// text '+revision);
   fs.writeFileSync(path.join(project,'minigame/assets.js'),'module.exports = '+JSON.stringify({
     packs:{text:revision},rawSizes:{text:raw.length},packRoots:{text:root}})+';\n');

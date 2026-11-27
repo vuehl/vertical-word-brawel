@@ -64,7 +64,7 @@ export function addBootAssets(out, assets) {
   const manifestPath = path.join(out,'assets.js');
   const info = createRequire(import.meta.url)(manifestPath);
   const files = Object.entries(assets).map(([key,data])=>({key,data,name:hash(data)+path.extname(key)}));
-  const archive = path.join(out,'packs/text/assets.br');
+  const archive = path.join(out,'packs/text/assets.bin');
   const packed = fs.readFileSync(archive);
   const removed=Object.keys(info.files).filter(key=>
     (key.startsWith('assets/ui-paper/')||key.startsWith('assets/opening/'))&&!Object.hasOwn(assets,key));

@@ -27,7 +27,7 @@ export function verifyAssetPackages(project){
       throw Error('资源分包入口缺失：'+entry+'，请重新构建后预览');
     if(fs.existsSync(path.join(root,'packs',name)))
       throw Error('仍存在旧的固定资源包路径：packs/'+name);
-    const file=packRoot+'/assets.br';
+    const file=packRoot+'/assets.bin';
     const packed=fs.readFileSync(path.join(root,file));
     if(createHash('sha256').update(packed).digest('hex').slice(0,16)!==revision)
       throw Error('资源包版本与清单不一致：'+file+'，请重新构建后预览');

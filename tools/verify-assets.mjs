@@ -40,7 +40,7 @@ for(const [group,expected] of Object.entries(index.packs)){
   const generatedConfig=JSON.parse(fs.readFileSync(path.join(root,'minigame/game.json'),'utf8'));
   assert.equal(generatedConfig.subpackages.find(pkg=>pkg.name===group)?.root,index.packRoots[group]);
   assert.equal(fs.existsSync(path.join(root,'minigame/packs',group)),false,'Do not ship mutable resource roots');
-  const raw=fs.readFileSync(path.join(root,'minigame',index.packRoots[group],'assets.br'));
+  const raw=fs.readFileSync(path.join(root,'minigame',index.packRoots[group],'assets.bin'));
   assert.equal(digest(raw).slice(0,16),expected);
   const decoded=brotliDecompressSync(raw);
   assert.equal(decoded.length,index.rawSizes[group]);

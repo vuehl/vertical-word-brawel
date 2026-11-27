@@ -20,7 +20,7 @@ function fixture(t){
     info.packs[name]=createHash('sha256').update(packed).digest('hex').slice(0,16);
     info.packRoots[name]='packs/'+name+'-'+info.packs[name];
     config.subpackages.push({name,root:info.packRoots[name]});
-    const file=path.join(project,'minigame',info.packRoots[name],'assets.br');
+    const file=path.join(project,'minigame',info.packRoots[name],'assets.bin');
     fs.mkdirSync(path.dirname(file),{recursive:true});
     fs.writeFileSync(file,packed);
     fs.writeFileSync(path.join(path.dirname(file),'game.js'),'// Resource subpackage.\n');
@@ -37,7 +37,7 @@ test('preview checks every archive against the current index and rejects a stale
   const f=fixture(t);
   assert.doesNotThrow(()=>verifyAssetPackages(f.project));
   fs.writeFileSync(f.world,brotliCompressSync(Buffer.from('older world package')));
-  assert.throws(()=>verifyAssetPackages(f.project),/资源包版本与清单不一致：packs\/world-[a-f0-9]{16}\/assets\.br/);
+  assert.throws(()=>verifyAssetPackages(f.project),/资源包版本与清单不一致：packs\/world-[a-f0-9]{16}\/assets\.bin/);
 });
 
 test('preview re-reads changed metadata and rejects an incorrect decompressed length',t=>{
@@ -45,7 +45,7 @@ test('preview re-reads changed metadata and rejects an incorrect decompressed le
   assert.doesNotThrow(()=>verifyAssetPackages(f.project));
   f.info.rawSizes.text++;
   f.save();
-  assert.throws(()=>verifyAssetPackages(f.project),/资源包解压长度与清单不一致：packs\/text-[a-f0-9]{16}\/assets\.br/);
+  assert.throws(()=>verifyAssetPackages(f.project),/资源包解压长度与清单不一致：packs\/text-[a-f0-9]{16}\/assets\.bin/);
 });
 
 test('preview refuses corrupt bytes even if the index hash matches them',t=>{
@@ -56,7 +56,7 @@ test('preview refuses corrupt bytes even if the index hash matches them',t=>{
   f.config.subpackages.find(pack=>pack.name==='world').root=f.info.packRoots.world;
   fs.renameSync(path.dirname(f.world),path.join(f.project,'minigame',f.info.packRoots.world));
   f.save();
-  assert.throws(()=>verifyAssetPackages(f.project),/资源包无法解压：packs\/world-[a-f0-9]{16}\/assets\.br/);
+  assert.throws(()=>verifyAssetPackages(f.project),/资源包无法解压：packs\/world-[a-f0-9]{16}\/assets\.bin/);
 });
 
 test('preview refuses a missing archive',t=>{

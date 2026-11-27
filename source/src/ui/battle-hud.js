@@ -14,7 +14,7 @@ import {facilityNames} from "../data/active-content.js";
 import {SINGLE_STAGE, FOREST_ROUTE, FOREST_COMBAT_ZONES, remainingZoneSeconds, enemyDifficultyText} from "../data/lite-rules.js";
 import {enemySpeciesWord} from "../data/character-rules.js";
 import {runPlan, planIncludes} from "../combat/battle-plan.js";
-import {bossDistanceText, buildingMapName, drawCompassDial, drawAltarProgress} from "./paper-hud-art.js";
+import {bossDistanceText, buildingMapName, drawCompassDial, drawAltarProgress, sideGuidePosition} from "./paper-hud-art.js";
 import {weatherMark, weatherStyle} from "./weather-presentation.js";
 import {glyphPreview} from "../actors/zixing-glyphs.js";
 import {EVOLUTION_REVEAL} from "../effects/upgrade-effects.js";
@@ -1289,34 +1289,23 @@ var JI = class {
           e.capture.marker ??
           e.allies.marker ??
           e.events?.marker ??
-          e.minibosses?.marker ??
+          this.trackedMiniboss(e) ??
           (y ? { x: y.x, z: y.z } : null);
       if (b) {
         const distance = Math.hypot(b.x - e.player.pos.x, b.z - e.player.pos.z),
           bossFlags = R.Boss | R.Elite | R.Alpha | R.Totem | R.Summoner,
-          atFeet = b.i!=null && e.enemies.isAlive(b.i) && !!(e.enemies.flags[b.i]&bossFlags),
-          markerText = b===bossTarget || atFeet ? bossDistanceText(distance)
+          encounter = b.i!=null && e.enemies.isAlive(b.i) && !!(e.enemies.flags[b.i]&bossFlags),
+          markerText = b===bossTarget || encounter ? bossDistanceText(distance)
             : c(`{n} m`, { n: Math.round(distance) });
-        this.markTag.classList.toggle('at-feet',atFeet);
-        let t = this.project(e, b.x, atFeet ? e.enemies.y[b.i] : e.terrain.height(b.x, b.z) + 2, b.z),
-          n = innerWidth / 2,
-          r = innerHeight / 2,
-          i = t.x - n,
-          a = t.y - r;
-        if (
-          (t.vis || ((i = -i), (a = -a)),
-          t.vis && t.x > 40 && t.x < innerWidth - 40 && t.y > 40 && t.y < innerHeight - 40)
-        ) {
-          this.arrow.style.display = `none`;
-          let r = markerText, i = this.markTag;
-          ((i.style.display = ``),
-            (i.style.left = t.x + `px`),
-            (i.style.top = t.y + `px`));
-          let a = i.children[0];
-          a.textContent !== r && (a.textContent = r);
-        } else {
-          let t = Math.atan2(a, i),
-            o = Math.min(innerWidth, innerHeight) * 0.4,
+        // The camera's right/up axes give the bearing even behind the view.
+        // Keep the same card when a target enters/leaves the visible scene.
+        const dx=b.x-e.player.pos.x,dz=b.z-e.player.pos.z,m=e.r.camera.matrixWorld.elements;
+        const horizontal=dx*m[0]+dz*m[2],vertical=-(dx*m[4]+dz*m[6]);
+        const targetKey=(b.i??'portal')+'/'+(e.enemies.gen[b.i]??0);
+        const slot=sideGuidePosition(horizontal,innerWidth,innerHeight,this.guideKey===targetKey?this.guideSide:0,this.touch.ult.getBoundingClientRect());
+        this.guideKey=targetKey;this.guideSide=slot.side;
+        {
+          let t = Math.atan2(vertical,horizontal),
             s = e.enemies,
             l = b.i,
             u =
@@ -1336,17 +1325,67 @@ var JI = class {
               l == null ? pI(`portal`, 32) : fI(`portraits/${s.species[l]}.png`, u, 32, !0, s.glyphWords[l]),
             )),
             (f.style.display = ``),
-            (f.style.left = (n + Math.cos(t) * o) + `px`),
-            (f.style.top = (r + Math.sin(t) * o) + `px`),
+            (f.dataset.fixedSlot = 'true'),
+            (f.dataset.side = slot.side<0?'left':'right'),
+            (f.style.left = slot.x + `px`),
+            (f.style.top = slot.y + `px`),
             drawCompassDial(f.children[0], t));
           let m = markerText;
           (f.children[2].textContent !== m && (f.children[2].textContent = m),
             (this.markTag.style.display = `none`));
         }
-      } else ((this.arrow.style.display = `none`), (this.markTag.style.display = `none`));
+      } else {
+        this.arrow.style.display = this.markTag.style.display = 'none';
+        this.arrow.dataset.fixedSlot='false';
+        this.guideKey=null;this.guideSide=0;
+      }
       (this.trackSeen(e), this.tickMarks(e), this.leftoverHud(e), this.drawMinimap(e), this.worldLabels(e));
     }
+    trackedMiniboss(run) {
+      const saved=this.guideEncounter,enemies=run.enemies;
+      if(saved?.terrain===run.terrain&&enemies.gen[saved.i]===saved.gen&&enemies.isAlive(saved.i)&&
+          (enemies.flags[saved.i]&(R.Alpha|R.Totem|R.Summoner)))
+        return {i:saved.i,x:enemies.x[saved.i],z:enemies.z[saved.i]};
+      const marker=run.minibosses?.marker;
+      this.guideEncounter=marker?{terrain:run.terrain,i:marker.i,gen:enemies.gen[marker.i]}:null;
+      return marker;
+    }
     worldLabelNodes = new Map();
+    worldLabelPoint(run,facility) {
+      const anchor=facility.kind==='altar'&&facility.model?.userData.labelAnchor;
+      if(anchor){
+        facility.model.updateWorldMatrix(true,false);
+        const position=facility.model.localToWorld(this.v.copy(anchor));
+        const point=this.project(run,position.x,position.y,position.z);
+        point.y-=6;
+        return point;
+      }
+      return this.project(run,facility.x,facility.y+(facility.group?.userData.h??2.5)+.5,facility.z);
+    }
+    placeWorldLabel(node,point) {
+      const {halfWidth,minY}=node.worldLabelLayout;
+      const visible=point.vis&&point.x>=halfWidth&&point.x<=innerWidth-halfWidth&&point.y>=minY&&point.y<=innerHeight-4;
+      const display=visible?'':'none';
+      if(node.style.display!==display)node.style.display=display;
+      const left=Math.round(point.x)+'px',top=Math.round(point.y)+'px';
+      if(visible){
+        if(node.style.left!==left)node.style.left=left;
+        if(node.style.top!==top)node.style.top=top;
+      }
+      // LinkeDOM style setters do not emit attribute mutations. Invalidate
+      // the notices tile explicitly, including frames without a new percent.
+      const position=visible?left+'/'+top:'hidden';
+      if(node.dataset.worldPosition!==position)node.dataset.worldPosition=position;
+    }
+    updateWorldLabelPositions(run) {
+      if(run.state!=='play'||run.player.dead||run.interactables.disposed){this.clearWorldLabels();return;}
+      // The text can use the HUD cadence, but world anchors must follow every
+      // rendered camera frame or a walking player sees the labels snap sideways.
+      for(const [facility,node] of this.worldLabelNodes){
+        if(!run.interactables.hasVisual(facility)){this.removeWorldLabel(facility);continue;}
+        this.placeWorldLabel(node,this.worldLabelPoint(run,facility));
+      }
+    }
     removeWorldLabel(facility) {
       this.worldLabelNodes.get(facility)?.remove();
       this.worldLabelNodes.delete(facility);
@@ -1426,15 +1465,7 @@ var JI = class {
         }
         if (!label) continue;
         if (kind === 'boss' && run.hints?.site === facility && run.hints.el?.parentNode) continue;
-        const height = facility.group?.userData.h ?? 2.5;
-        const anchor = kind === 'altar' && facility.model?.userData.labelAnchor;
-        let point;
-        if (anchor) {
-          facility.model.updateWorldMatrix(true,false);
-          const position = facility.model.localToWorld(this.v.copy(anchor));
-          point = this.project(run,position.x,position.y,position.z);
-          point.y -= 6;
-        } else point = this.project(run, facility.x, facility.y + height + 0.5, facility.z);
+        const point=this.worldLabelPoint(run,facility);
         // Reserve a full Chinese glyph per character plus padding and the shadow.
         const halfWidth = progress !== null ? 26 : 17 + label.length * (kind === 'meowth' ? 7 : 6);
         if (!(point.vis && point.x >= halfWidth && point.x <= innerWidth - halfWidth &&
@@ -1470,8 +1501,8 @@ var JI = class {
           }
           if (node.textContent !== label) node.textContent = label;
         }
-        node.style.left = Math.round(point.x) + 'px';
-        node.style.top = Math.round(point.y) + 'px';
+        node.worldLabelLayout={halfWidth,minY:progress!==null?50:30};
+        this.placeWorldLabel(node,point);
         node.style.opacity = String(Math.min(1, (range - distance) / (landmark ? 5 : 2)));
       }
       for (const facility of this.worldLabelNodes.keys()) {
