@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {brotliCompressSync} from 'node:zlib';
-import {verifyAssetPackages} from '../build/preview-files.mjs';
+import {verifyAssetPackages,verifyPreviewResult} from '../build/preview-files.mjs';
 
 function fixture(t){
   const project=fs.mkdtempSync(path.join(os.tmpdir(),'ziling-preview-assets-'));
@@ -95,4 +95,52 @@ test('preview refuses leftover canonical directories even beside valid versioned
   const f=fixture(t);
   fs.mkdirSync(path.join(f.project,'minigame/packs/text'));
   assert.throws(()=>verifyAssetPackages(f.project),/仍存在旧的固定资源包路径：packs\/text/);
+});
+
+function previewResult(f){
+  const packages=[{name:'main',size:1024},...f.config.subpackages.map(pack=>({
+    name:'/'+pack.root+'/',size:fs.statSync(path.join(f.project,'minigame',pack.root,'assets.bin')).size+128
+  }))];
+  const total=packages.reduce((sum,pack)=>sum+pack.size,0);
+  return {size:{total,packages:[{name:'TOTAL',size:total},...packages]}};
+}
+
+test('uploaded preview accepts current roots and archives, independent of report order',t=>{
+  const f=fixture(t),preview=previewResult(f);
+  preview.size.packages.reverse();
+  assert.doesNotThrow(()=>verifyPreviewResult(f.project,preview));
+});
+
+test('uploaded preview refuses stale roots, missing packages and duplicate entries',t=>{
+  const f=fixture(t);
+  for(const change of [
+    preview=>{preview.size.packages[2].name='/packs/text-0000000000000000/';},
+    preview=>{preview.size.packages.pop();},
+    preview=>{preview.size.packages.push({...preview.size.packages[2]});}
+  ]){
+    const preview=previewResult(f);change(preview);
+    assert.throws(()=>verifyPreviewResult(f.project,preview),/预览分包清单仍是旧版或不完整/);
+  }
+});
+
+test('uploaded preview refuses omitted archive payload even with correct roots and positive sizes',t=>{
+  const f=fixture(t),preview=previewResult(f);
+  const pack=preview.size.packages.find(pack=>pack.name==='/'+f.info.packRoots.world+'/');
+  const previous=pack.size;
+  pack.size=fs.statSync(f.world).size-1;
+  preview.size.total-=previous-pack.size;
+  preview.size.packages.find(pack=>pack.name==='TOTAL').size=preview.size.total;
+  assert.throws(()=>verifyPreviewResult(f.project,preview),/预览资源分包内容缺失：packs\/world-[a-f0-9]{16}\/assets\.bin/);
+});
+
+test('uploaded preview refuses malformed or inconsistent size reports',t=>{
+  const f=fixture(t);
+  for(const preview of [undefined,{}, {size:{total:1}}, {size:{total:0,packages:[]}}])
+    assert.throws(()=>verifyPreviewResult(f.project,preview),/微信预览结果不完整/);
+  for(const invalid of [undefined,0,-1,NaN,Infinity,1.5,'1000']){
+    const preview=previewResult(f);preview.size.packages[2].size=invalid;
+    assert.throws(()=>verifyPreviewResult(f.project,preview),/分包大小无效/);
+  }
+  const preview=previewResult(f);preview.size.total++;
+  assert.throws(()=>verifyPreviewResult(f.project,preview),/总包大小不一致/);
 });

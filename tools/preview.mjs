@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createPreviewSnapshot,verifyPreviewSnapshot} from './build/preview-snapshot.mjs';
+import {verifyPreviewResult} from './build/preview-files.mjs';
 import {verifyDeveloperPreview,writeDeveloperPreviewPage} from './developer/preview-support.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
@@ -46,11 +47,8 @@ try{
   runCLI(['preview','--project',snapshotProject,'--qr-format','image','--qr-output',nextQR,'--info-output',nextInfo]);
   if(!fs.existsSync(nextQR)||!fs.existsSync(nextInfo))throw Error('微信预览没有生成新二维码，旧预览未更新；请重新打开工程后重试。');
   preview=JSON.parse(fs.readFileSync(nextInfo,'utf8'));
-  if(!(preview.size?.total>0)||fs.statSync(nextQR).size===0)throw Error('微信预览结果不完整');
-  const declared=JSON.parse(fs.readFileSync(path.join(snapshotProject,'minigame/game.json'),'utf8')).subpackages;
-  const expected=['TOTAL','main',...declared.map(p=>'/'+p.root.replace(/\/$/,'')+(p.root.endsWith('.js')?'':'/'))].sort();
-  const actual=preview.size.packages.map(p=>p.name).sort();
-  if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error('预览分包清单仍是旧版，请重新打开工程后重试');
+  if(fs.statSync(nextQR).size===0)throw Error('微信预览结果不完整');
+  verifyPreviewResult(snapshotProject,preview);
   verifyPreviewSnapshot(snapshot);
   fs.renameSync(nextQR,qr);fs.renameSync(nextInfo,path.join(output,'preview-info.json'));
 }finally{
@@ -60,10 +58,10 @@ const createdAt=new Date().toISOString();
 fs.writeFileSync(path.join(output,'build-info.json'),JSON.stringify({project:snapshotProject,sourceProject,snapshotProject,
   development,developerBuild,createdAt,previewTotalBytes:preview.size.total,projectConfigHash,hashes},null,2)+'\n');
 console.log('预览二维码：'+qr);
+// A fresh filename prevents a chat/image viewer from reusing an older QR.
+const sharedQR=path.join(output,(development?'开发测试-':'正式预览-')+stamp+'.jpg');fs.copyFileSync(qr,sharedQR);
+console.log('本次'+(development?'开发测试':'正式预览')+'二维码：'+sharedQR);
 if(development){
-  // A fresh filename also prevents a chat/image viewer from reusing old pixels.
-  const sharedQR=path.join(output,'开发测试-'+stamp+'.jpg');fs.copyFileSync(qr,sharedQR);
-  console.log('本次开发测试二维码：'+sharedQR);
   const page=path.join(output,'开发测试入口-'+stamp+'.html');
   writeDeveloperPreviewPage({file:page,qr:sharedQR,project:snapshotProject,buildId:developerBuild,createdAt:new Date(createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})+'（北京时间）'});
   console.log('本次扫码页面：'+page+'\n扫码后请确认首页显示：开发测试版 DEV 8');

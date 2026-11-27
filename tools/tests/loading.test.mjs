@@ -152,6 +152,18 @@ test('a successful load is reusable while the native resource entry is still bei
   assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
 });
 
+test('a successful callback cannot replace a different revision reported by the resource entry',async()=>{
+  const old='aaaaaaaaaaaaaaaa';
+  const f=installer({loadSubpackage({success}){
+    queueMicrotask(()=>{f.GameGlobal.pokebonkResourcePackages.text=old;success();});
+  }});
+  f.data.set(f.archive('text'),new Uint8Array(4));
+  await f.api.loadPackage('text');
+  assert.equal(f.GameGlobal.pokebonkResourcePackages.text,old);
+  await f.api.loadPackage('text');
+  assert.deepEqual(f.downloads,{text:2},'A stale executed entry cannot reuse callback-only confirmation');
+});
+
 test('an obsolete mounted path cannot finish a new revision download timer',async t=>{
   t.mock.timers.enable({apis:['Date','setTimeout']});
   const f=installer({loadSubpackage(){}});
@@ -493,6 +505,39 @@ test('permanently missing package bytes stop after bounded recovery and remain r
   await f.api.init();
   assert.ok(f.data.has(f.installed+'.ready'));
   assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+});
+
+test('a stale preview entry with missing current bytes reports the version mismatch and stays retryable',async()=>{
+  const old='aaaaaaaaaaaaaaaa';let revision=old;
+  const f=realTextInstaller({loadSubpackage({success}){
+    queueMicrotask(()=>{f.GameGlobal.pokebonkResourcePackages.text=revision;success();});
+  }});
+  delete f.manager.readCompressedFile;
+  delete f.manager.readCompressedFileSync;
+  f.data.delete(f.archive('text'));
+  await assert.rejects(f.api.init(),error=>error.resourceVersion===true&&
+    error.message.includes('预览资源版本不一致')&&error.message.includes(old)&&error.message.includes(f.info.packs.text));
+  assert.deepEqual(f.downloads,{text:2});
+  assert.equal(f.GameGlobal.pokebonkResourcePackages.text,old);
+  assert.equal(f.api.diagnostics.packs.text.readFailures,3);
+  assert.ok(f.api.diagnostics.packs.text.lastReadError.includes(f.archive('text')));
+  assert.ok(!f.data.has(f.installed+'.ready'));
+  revision=f.info.packs.text;
+  f.data.set(f.archive('text'),f.packed.bytes);
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:3});
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+  assert.ok(f.data.has(f.installed+'.ready'));
+});
+
+test('a delayed resource entry does not reject readable bytes of the current revision',async()=>{
+  const f=realTextInstaller({loadSubpackage({success}){queueMicrotask(success);}});
+  f.GameGlobal.pokebonkResourcePackages.text='aaaaaaaaaaaaaaaa';
+  f.manager.readCompressedFile=({success})=>success({data:f.raw});
+  await f.api.init();
+  assert.deepEqual(f.downloads,{text:1});
+  assert.deepEqual(Buffer.from(f.data.get(f.installed+'test.txt')),f.contents);
+  assert.ok(f.data.has(f.installed+'.ready'));
 });
 
 test('forced remount failure cannot be hidden by stale file metadata and an executed entry',async()=>{

@@ -10,6 +10,9 @@ const listeners = new Map();
 const modelJobs = new Map();
 const modelSources = new Map();
 const mountedPackages = GameGlobal.pokebonkResourcePackages || (GameGlobal.pokebonkResourcePackages = {});
+// A successful native callback is useful before the entry executes, but it
+// cannot attest which revision actually executed. Preserve that evidence.
+const loadedPackages = new Map();
 const diagnostics = {packs:{},modelsRestored:0};
 const base = wx.env.USER_DATA_PATH + '/pokebonk-assets';
 const yieldTask = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -106,7 +109,7 @@ function archiveFor(name) {
 }
 function packageAvailable(name) {
   return name === 'play' ? !!(GameGlobal.pokebonkPlayEntry && GameGlobal.pokebonkPlayEntry.api)
-    : mountedPackages[name]===info.packs[name] && readPaths(archiveFor(name)).some(exists);
+    : (mountedPackages[name] || loadedPackages.get(name))===info.packs[name] && readPaths(archiveFor(name)).some(exists);
 }
 function downloadPackage(name, progress, acceptMounted=true) {
   return new Promise((resolve,reject) => {
@@ -117,7 +120,7 @@ function downloadPackage(name, progress, acceptMounted=true) {
       clearTimeout(timer);
       if (error) reject(new Error(name + ' 分包：' + (error.errMsg || error.message || error)));
       else {
-        if(name!=='play')mountedPackages[name]=info.packs[name];
+        if(name!=='play')loadedPackages.set(name,info.packs[name]);
         resolve();
       }
     }
@@ -168,7 +171,18 @@ async function readPackage(name,archive,stats,progress) {
       if(!error.resourceRead)throw error;
       stats.readFailures=(stats.readFailures||0)+1;
       stats.lastReadError=error.message;
-      if(attempt===2)throw error;
+      if(attempt===2){
+        // Only diagnose a stale preview after reads and remounting fail: the
+        // entry itself may legitimately execute after the success callback.
+        const actual=mountedPackages[name];
+        if(actual&&actual!==info.packs[name]){
+          stats.mountedRevision=actual;
+          const mismatch=Error('预览资源版本不一致（'+name+'，需要 '+info.packs[name]+'，实际 '+actual+'）。请完全退出旧预览，并扫描重新生成的二维码。');
+          mismatch.resourceVersion=true;
+          throw mismatch;
+        }
+        throw error;
+      }
       console.warn('[字由搏击] 资源包暂不可读，自动恢复',name,archive,error.message);
       // Re-mount once even if accessSync still reports this file as present.
       // Further bounded reads allow a late native mount to become readable.
