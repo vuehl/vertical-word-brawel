@@ -2006,8 +2006,8 @@ export function createZixingUI(app,api) {
       health.setAttribute('aria-valuenow',current);health.setAttribute('aria-valuemax',maximum);
       health.setAttribute('aria-label','生命 '+current+' / '+maximum+(bonus?'，护盾与额外生命 '+bonus:''));
     };
-    // Keep the full number animation and its timer above the release button. On short
-    // screens use the space to its left if the pause button limits headroom.
+    // Keep the combo in the upper-right area, clear of the player and release button.
+    // On short screens use the button's left side if the pause button limits headroom.
     function placeCombo(){
       let top='',right='';
       if(run.streak>=20 && run.streakT>0){
@@ -2015,7 +2015,7 @@ export function createZixingUI(app,api) {
         if(area.height && ult.height){
           const gap=16,comboHeight=108;
           const pauseBottom=pauseButton.getBoundingClientRect().bottom;
-          const above=Math.min(Math.max(area.height*.36-46,pauseBottom-area.top+gap),ult.top-area.top-gap-comboHeight);
+          const above=Math.min(Math.max(area.height*.24-46,pauseBottom-area.top+gap),ult.top-area.top-gap-comboHeight);
           if(area.top+above>=pauseBottom+gap){
             top=Math.round(above)+'px';
           }else{
