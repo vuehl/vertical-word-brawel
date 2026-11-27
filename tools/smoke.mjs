@@ -120,7 +120,7 @@ await page.evaluateOnNewDocument(()=>{
 const failFrame=process.argv.includes('--fail-first-frame');
 const menusOnly=process.argv.includes('--menus-only');
 const uiPerfOnly=process.argv.includes('--ui-perf');
-const phoneLayout=process.argv.includes('--phone-layout')||menusOnly;
+const phoneLayout=process.argv.includes('--phone-layout')||menusOnly||process.argv.includes('--coop-style-only');
 if(phoneLayout)await page.evaluateOnNewDocument(()=>{window.phoneLayout=true;});
 if(process.argv.includes('--loading-perf')&&!process.argv.includes('--baseline'))await page.evaluateOnNewDocument(()=>{localStorage.setItem('pokebonk.web.pokebonk.lang','fr');});
 if(process.argv.includes('--eager-entry'))await page.evaluateOnNewDocument(()=>{window.eagerEntry=true;});
@@ -436,6 +436,7 @@ async function verifyStartup(){
     else if(process.argv.includes('--loading-art'))await (await import('./regression/loading-art-regression.mjs')).reviewLoadingArtwork({page,resize,dir});
     else if(process.argv.includes('--icon-atlas'))await (await import('./regression/icon-atlas-regression.mjs')).checkIcons(page);
     else if(process.argv.includes('--network-loading'))await reviewNetworkActions({page,tap,resize,dir});
+    else if(process.argv.includes('--coop-style-only'))await (await import('./regression/coop-style-regression.mjs')).reviewCoopStyle({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--loading-perf'))await reviewLoading({page,tap,resize,dir,sleep});
     else if(process.argv.includes('--upgrade-perf'))await reviewUpgrade({page,resize,dir});
     else if(process.argv.includes('--starter-regression'))await reviewStarters({page,tap,resize,dir,sleep});

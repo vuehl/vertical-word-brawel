@@ -1,3 +1,4 @@
+import {coopStyle} from './coop-style.js';
 // One source of truth for system controls. Gameplay sprites and canvases are untouched.
 export const paperSystemStyle=`
 .zx{--ink:var(--paper-ink);--muted:#71788E;--paper:var(--paper-paper);--purple:#567AC0;--line:#CBD4E6;color:var(--paper-ink)}
@@ -224,43 +225,6 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .zx .zc-unlock-steps .done{color:#3975CE}
 .zx .zc-evolution{padding:4px;background:#E3ECF8;border:0}
 /* The lobby uses the same ticket, seat positions and action row before and after joining. */
-.screen.zx.zx-coop>.zx-body{display:flex;flex-direction:column;gap:0;padding:8px 6px 0;background:transparent;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
-.coop-ticket{display:flex;flex-direction:row;align-items:center;justify-content:space-between;flex:none;height:66px;padding:7px 13px 9px 16px;background:#E2EAF5}
-.coop-ticket>.zx-col{flex:1;min-width:0;gap:0}
-.coop-ticket small,.coop-count{font-size:12px;line-height:17px;color:#536780}
-.coop-number{font-size:22px;line-height:29px;color:#29344F}
-.coop-ticket>.coop-room-tag{align-self:center;padding:0 6px 0 12px;border-left:1px solid #C1CFDF;font-size:13px;line-height:20px;color:#456587;text-align:center}
-.zx .coop-ticket>.coop-copy{display:flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;padding:0;border:0}
-.coop-copy>.zx-paper-icon{width:28px;height:25px;object-fit:contain}
-.coop-section{flex:none;display:flex;flex-direction:row;align-items:center;gap:10px;height:38px}
-.coop-section>b{color:#EFF1F8;font-size:16px;line-height:21px}
-.coop-section>i{height:1px;flex:1;min-width:4px;background:#53607A}
-.coop-section>.coop-count{color:#B8C9E0}
-.coop-seats,.coop-actions{display:flex;flex:none;flex-direction:row;align-items:stretch;gap:6px}
-.coop-seats{background:#485872;border-radius:7px;padding:7px}
-.coop-seats>.coop-seat{position:relative;display:flex;flex-direction:column;flex:1;min-width:0;height:124px;gap:0;align-items:center;justify-content:center;border:0;padding:8px 4px 7px;background:#EDF0F8}
-.coop-role{align-self:flex-start;min-height:16px;padding:0 6px;font-size:11px;font-weight:700;line-height:16px;color:#406795}
-.coop-seat-art{display:flex;flex-direction:column;align-items:center;justify-content:center;height:53px}
-.coop-word{flex:none;width:46px;height:46px;object-fit:contain}
-.coop-vacancy{width:31px;height:31px;display:flex;align-items:center;justify-content:center;border:1px solid #BDCADD;border-radius:16px;text-align:center;font-size:20px;line-height:28px;color:#8298B3}
-.coop-name{max-width:100%;font-size:15px;line-height:21px;white-space:nowrap;overflow:hidden;text-align:center;color:#283650}
-.coop-state{min-height:16px;font-size:12px;line-height:16px;color:#65758A}
-.coop-seat.empty>.coop-name{font-size:13px;color:#65758A}
-.coop-state.ready{font-weight:700;color:#356A91}
-.zx .coop-seat>.coop-kick{position:absolute;right:1px;top:0;padding:0 4px;min-height:32px;font-size:12px;color:#8F4455}
-.screen.zx.zx-coop>.zx-body{overflow:hidden;overflow-y:hidden}
-.coop-roster{display:flex;flex-direction:column;flex:1;min-height:0}
-.coop-roster .zc-library-paper{width:100%;min-height:0}
-.coop-roster .zc-library-scroll{overflow-y:auto}
-.coop-status{display:flex;flex-direction:row;align-items:center;flex:none;min-height:28px;gap:8px}
-.coop-note{flex:1;min-width:0;margin:0;padding:6px 0;font-size:13px;line-height:19px;color:#D1DBEA}
-.zx .coop-status>.coop-aux{flex:none;min-height:44px;padding:0 5px;font-size:13px;color:#F0B7BE}
-.screen.zx.zx-coop>.zx-footer.coop-actions{display:flex;flex-direction:row;align-items:center;gap:8px}
-.coop-actions>.zx-button{height:var(--paper-nav-height);min-height:var(--paper-nav-height);min-width:0;flex:1;padding:0 2px;white-space:nowrap}
-.coop-actions>.zx-button.paper-back{width:var(--paper-nav-width);flex:none;padding:0}
-@media(max-height:660px){.zx-coop .coop-ticket{height:48px}.zx-coop .coop-section{height:27px}.zx-coop .coop-seats>.coop-seat{height:89px;padding:3px}.zx-coop .coop-seat-art{height:32px}.zx-coop .coop-word{width:32px;height:32px}}
-
-.coop-actions>.zx-button:disabled{opacity:1;color:#556783}
 .zx .paper-prompt>.paper-decision-actions>button,.zx .paper-prompt>.paper-decision-actions>button>span{color:#FFF8E9!important}
 .zx .paper-prompt>.paper-decision-actions>button.primary,.zx .paper-prompt>.paper-decision-actions>button.primary>span{color:#302A32!important}
 .zx .paper-prompt>.paper-decision-actions>button:disabled{color:#59535B!important}
@@ -269,15 +233,6 @@ html.zixing .zx-review-dialog .card p,html.zixing .zx-review-dialog .card .cap{c
 .paper-prompt>h2{flex:none;margin:0;padding-left:10px;border-left:3px solid #EEC659;font-size:22px;line-height:28px;text-align:left;color:#302A32}
 .paper-prompt-hint{flex:none;margin:5px 0 10px;color:#5B504C;font-size:14px;line-height:20px}
 .paper-prompt-hint.error{color:#963F52}
-.coop-code-display,.coop-code-group,.coop-pad-row{display:flex;flex-direction:row;align-items:stretch}
-.coop-code-display{flex:none;gap:10px}
-.coop-code-group{flex:1;min-width:0;gap:4px}
-.coop-code-digit{flex:1;min-width:0;height:44px;display:flex;align-items:center;justify-content:center;background:#DEE6F2;border-bottom:2px solid #A4B6CE;color:#273959;font-size:24px;line-height:31px;text-align:center}
-.coop-code-digit.current{background:#D4E3F5;border-bottom:3px solid #5079AD}
-.coop-code-pad{flex:none;display:flex;flex-direction:column;gap:4px;margin:13px 0}
-.coop-pad-row{gap:5px}
-.coop-pad-key{display:flex;flex:1;min-width:0;align-items:center;justify-content:center;height:44px;padding:0;border:0;border-radius:3px;background:#E4EAF4;color:#293A57;font-size:19px;font-weight:700;line-height:24px;text-align:center}
-.coop-pad-key[data-key="粘贴"],.coop-pad-key[data-key="删除"]{background:#D9E2F0;color:#425D82;font-size:15px}
 .paper-decision-actions{display:flex;flex:none;flex-direction:row;align-items:stretch;gap:8px;width:100%}
 .zx .paper-decision-actions>button{display:flex;flex:1;min-width:0;align-items:center;justify-content:center;height:51px;padding:0 4px;text-align:center}
 .paper-prompt .paper-decision-actions{margin-top:3px}
@@ -1085,4 +1040,5 @@ html.zixing .zx .zx-item-dialog .zx-item-actions>.paper-action.primary{color:#29
 .zx .zx-item-actions>.zx-item-sell>strong{color:#F1CA69}
 @media(max-height:660px){.zx .zx-loot-stage{height:105px}.zx .zx-loot-stage>.zx-item-image{width:88px;height:88px}.zx .zx-blessing-row{min-height:62px}.zx .zx-item-pick .zx-pick-effect{font-size:13px;line-height:17px}}
 
+${coopStyle}
 `;

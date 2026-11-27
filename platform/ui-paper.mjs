@@ -99,6 +99,13 @@ export function drawUiPaper(ctx,box){
       break;
     case 'journal-button':
       poly(ctx,[[3,0],[w,0],[w-3,h],[0,h]],el.disabled?'#B6B0AB':paperPalette.yellow);break;
+    case 'coop-seat': {
+      cut(ctx,0,3,w,h-3,3,'#201C24');
+      cut(ctx,0,0,w,h-3,3,has('empty')?'#49434D':'#F1EBDF');
+      ctx.fillStyle=has('offline')?'#AD7660':has('is-ready')?'#668465':has('local')?paperPalette.yellow:'#A99D8D';
+      ctx.fillRect(8,0,w-16,3);
+      break;
+    }
     case 'atlas-sheet':
       poly(ctx,[[0,0],[w-3,0],[w,h],[3,h]],'#E9E2D1');break;
     case 'atlas-heading':

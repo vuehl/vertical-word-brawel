@@ -193,7 +193,7 @@ export async function reviewCoop(browser, gamePort) {
         await click(page,'创建房间');
         await page.waitForFunction(()=>app.coopRoom?.code);
         code=await page.evaluate(()=>app.coopRoom.code);
-        assert.equal(await page.evaluate(()=>app.screen.querySelector('[data-action="coop-copy"]').textContent),'');
+        assert.equal(await page.evaluate(()=>app.screen.querySelector('[data-action="coop-copy"]').textContent),'复制');
         await click(page,'复制房间号');
         assert.equal(await page.evaluate(()=>window.fixtureClipboard),code);
         assert.equal(await page.evaluate(()=>window.sharedCard),undefined);

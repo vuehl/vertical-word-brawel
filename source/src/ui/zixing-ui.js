@@ -338,7 +338,7 @@ export function createZixingUI(app,api) {
       flag.style.width=(Math.ceil(textMetrics.measureText(title).width)+65)+'px';
       node.classList.add('paper-menu-page');
       const family=['choose','map','difficulty','collection-moves','collection-move-detail','collection-looks','collection-plan'].includes(name)?'sail':'wave';
-      const journal=['collection-moves','collection-looks','collection-plan','settings','lab','collection-unlock','collection-rewards'].includes(name);
+      const journal=['collection-moves','collection-looks','collection-plan','settings','lab','collection-unlock','collection-rewards','coop'].includes(name);
       if(journal){node.classList.add('collection-journal');node.dataset.paperSurface='journal-cover';}
       node.append(el('header','zx-header '+color,[journal?null:headerCutout(family),flag,subtitle?el('small','',subtitle):null],{'data-paper-surface':'flat'}));
     }
@@ -555,16 +555,16 @@ export function createZixingUI(app,api) {
     function mountLobby() {
       const roomNumber=el('b','coop-number'),count=el('small','coop-count');
       const note=el('p','coop-note',[],{'role':'status','aria-live':'polite'});
-      const copy=button(paperIcon('copy'),async()=>{
+      const copy=button('复制',async()=>{
         if(!room)return;
         try {
           await window.copyRoomCode(room.code);
         }catch{
           app.notice('复制失败，请再试一次或手动输入房间号');
         }
-      },'zx-plain coop-copy',{'data-action':'coop-copy','data-paper-surface':'flat','aria-label':'复制房间号'});
+      },'zx-plain coop-copy',{'data-action':'coop-copy','data-paper-surface':'journal-button','aria-label':'复制房间号'});
       const roomTag=el('small','coop-room-tag','待组队');
-      const ticket=el('div','coop-ticket',[col(el('small','','房间号'),roomNumber),roomTag,copy],{'data-paper-surface':'album-page'});
+      const ticket=el('div','coop-ticket',[col(el('small','','房间号'),roomNumber),roomTag,copy],{'data-paper-surface':'bound-index'});
       const section=(title,extra=null)=>el('div','coop-section',[el('b','',title),el('i','',[],{'aria-hidden':true}),extra]);
       function wordArt(c){
         const canvas=el('canvas','coop-word',[],{'data-static':true,'aria-hidden':true});
@@ -572,10 +572,10 @@ export function createZixingUI(app,api) {
       }
       const seats=Array.from({length:COOP_ROOM_SIZE},()=>{
         const tag=el('small','coop-role'),art=el('div','coop-seat-art'),name=el('b','coop-name'),state=el('small','coop-state');
-        const tile=el('div','coop-seat zx-stat-row',[tag,art,name,state],{'data-paper-surface':'route-station'});
+        const tile=el('div','coop-seat zx-stat-row',[tag,art,name,state],{'data-paper-surface':'coop-seat'});
         return {tag,art,name,state,tile};
       });
-      const roster=el('div','coop-roster zx zx-collection zc-library');
+      const roster=el('div','coop-roster zx zx-collection zc-library',[],{'data-paper-surface':'bound-index'});
       let filter='all',shownPick=null,shownFilter=null;
       function selectRoomCharacter(id){
         return perform(async()=>{
@@ -632,6 +632,7 @@ export function createZixingUI(app,api) {
       const first=action('',async()=>room?room.setReady(!room.mine.ready):connect(false),'primary');
       const second=action('',async()=>room?room.start():join());
       first.dataset.action='coop-first';second.dataset.action='coop-second';
+      first.dataset.paperSurface='trade-action';second.dataset.paperSurface='trade-action';
       const body=[ticket,section('队伍席位',count),el('div','coop-seats',seats.map(s=>s.tile)),
         section('我的字灵'),roster,el('div','coop-status',[note,reconnect])];
       const node=screen('coop',coopTitle,'和队友一起探索桌上世界',body,[action('返回',back),first,second]);
@@ -643,9 +644,12 @@ export function createZixingUI(app,api) {
         const active=mine?.species??pick;
         const online=members.filter(m=>!m.offline);
         const allReady=online.length>=2&&online.every(m=>m.ready);
+        node.dataset.roomState=!session?'lobby':allReady?'ready':online.length<2?'waiting':'preparing';
+        node.setAttribute('aria-busy',String(busy||starting));
         node.querySelector('.paper-back').setAttribute('aria-label',session?'离开房间，返回大厅':'返回首页');
         updateText(roomNumber,session?session.code.slice(0,3)+' '+session.code.slice(3):'尚未进入房间');
-        copy.hidden=!session;roomTag.hidden=!!session;
+        copy.hidden=!session;
+        updateText(roomTag,!session?'待组队':allReady?'已就绪':online.length<2?'待队友':'待准备');
         updateText(count,session?members.length+' / '+COOP_ROOM_SIZE+' 人':'组队前');
         seats.forEach(({tag,art,name,state,tile},index)=>{
           const member=members.find(m=>m.slot===index);
@@ -659,6 +663,8 @@ export function createZixingUI(app,api) {
           updateText(name,local?'你':member?(member.name||'队友'):'等待队友');
           updateText(state,member?(member.offline?'暂离':member.ready?'已准备':'未准备'):preview?'待入房':'');
           tile.classList.toggle('empty',!actor);state.classList.toggle('ready',!!member?.ready&&!member.offline);
+          tile.classList.toggle('local',local);tile.classList.toggle('is-ready',!!member?.ready&&!member.offline);
+          tile.classList.toggle('offline',!!member?.offline);
           let kick=tile.querySelector('button');
           if(session?.isHost&&member?.offline){
             if(kick?.dataset.seat!==member.id){kick?.remove();kick=action('移出',()=>session.kick(member.id),'zx-plain coop-kick');kick.dataset.seat=member.id;tile.append(kick);}
@@ -668,12 +674,13 @@ export function createZixingUI(app,api) {
         reconnect.hidden=!!session||!resume;
         const hint=!session?'创建房间，或输入六位房间号加入队友。':online.length<2?'把六位房间号发给队友，等对方加入。':allReady?(session.isHost?'队伍已就绪，可以出发。':'队伍已就绪，等待房主开始。'):'两人都准备好后，由房主开始冒险。';
         updateText(note,pending||status||hint);
+        note.classList.toggle('error',!!status&&!pending);
         updateText(first,session?(mine?.ready?'取消准备':'准备'):'创建房间');
         first.classList.toggle('primary',!session||!mine?.ready);
-        updateText(second,!session?'加入房间':session.isHost?'开始冒险':'等待房主开始');
+        updateText(second,!session?'加入房间':session.isHost?'开始冒险':'等待房主');
         second.disabled=!!session&&(!session.isHost||!allReady);
         second.classList.toggle('primary',!!session&&!second.disabled);
-        second.dataset.paperSurface=second.disabled?'button-muted':'button';
+        second.dataset.paperSurface='trade-action';
       }
       return {node,update,cancelLeave:()=>cancelLeave?.()};
     }

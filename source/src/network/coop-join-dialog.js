@@ -19,7 +19,7 @@ export function askCoopCode({el,button,parent,screen,trigger,previous='',error='
       });
       display.setAttribute('aria-label','房间号 '+(code.split('').join(' ')||'尚未输入'));
       confirm.disabled=code.length!==6;
-      confirm.dataset.paperSurface=confirm.disabled?'button-muted':'button';
+      confirm.dataset.paperSurface='trade-action';
       hint.textContent=message||'输入好友的六位房间号';
       hint.classList.toggle('error',!!message);
     }
